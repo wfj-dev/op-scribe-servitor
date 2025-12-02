@@ -3,6 +3,13 @@
 import os
 import json
 import discord
+from typing import Any
+
+# Data file locations
+DATA_DIR = "data"
+AAR_RECORDS_PATH = os.path.join(DATA_DIR, "aar_records.json")
+AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
+PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -18,6 +25,43 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
+    # Copilot: in on_message, add handling for a "!cognify":
+    # this command needs to read an entire history of messages in a channel
+    # called "after-action-reports" and compute the total AAR points, geneseed
+    # points, and armory points for each brother mentioned in any AAR and update
+    # the current record in aar_records.json accordingly. This command is only available
+    # for watch command.
+    if message.content.startswith("!cognify"):
+        if not is_watch_command(message.author):
+            return
+
+        aar_channel = discord.utils.get(
+            message.guild.channels, name="demo"
+        )
+        if not aar_channel:
+            await message.reply("++ ERROR: demo ++\n ++ CHANNEL NOT FOUND. ++")
+            return
+
+        async for msg in aar_channel.history(limit=None):
+            if is_aar_message(msg):
+                record = parse_aar(msg)
+                aar_id = record["aar_id"]
+
+                if has_been_processed(aar_id):
+                    continue
+
+                errors = validate_aar(record)
+                if errors:
+                    # Log errors and mark as processed, then skip
+                    log_aar_errors(aar_id, errors)
+                    add_processed_id(aar_id)
+                    continue
+
+                save_aar_record(record)
+
+        await message.reply("++ COGNIFICATION COMPLETE: AAR RECORDS UPDATED. ++")
+        return
+
     # Copilot: In on_message, add handling for a "!vigil-log" command:
     # - Only respond if is_watch_command(message.author) is True.
     # - Require that exactly one user is mentioned; if none, reply with usage.
@@ -71,7 +115,7 @@ async def on_message(message: discord.Message):
                 if role.name == rank:
                     current_rank = rank
                     break
-            if current_rank != "Unranked":
+            if current_rank != "Unknown":
                 break
 
         reply_text = (
@@ -111,6 +155,9 @@ async def on_message(message: discord.Message):
                 f"- {e}" for e in errors
             )
             await message.reply(error_text)
+            # Log errors and mark this AAR as processed
+            log_aar_errors(aar_id, errors)
+            add_processed_id(aar_id)
             print(f"AAR {aar_id} rejected with errors: {errors}")
             return
 
@@ -264,11 +311,11 @@ def parse_aar(message: discord.Message):
     difficulty = None
     difficulty_tags = []
     black_laurels_active = False
-    armory_data = None
+    armory_data = 0
     gene_seed_status = "unknown"
     gene_seed_carrier_id = None
     brothers_ids = []
-    waves = None
+    waves = 0
 
     brothers_start_idx = None
 
@@ -461,23 +508,79 @@ def load_aar_data(filename: str):
         return {}
 
 
+def _load_json_dict(path: str) -> dict:
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _save_json_dict(path: str, data: dict):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_json_list(path: str) -> list:
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError:
+        return []
+
+
+def _save_json_list(path: str, data: list):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def log_aar_errors(aar_id: int, errors: list[str]):
+    data = _load_json_dict(AAR_ERRORS_PATH)
+    data[str(aar_id)] = {"errors": errors}
+    _save_json_dict(AAR_ERRORS_PATH, data)
+
+
+def load_processed_ids() -> set[str]:
+    ids = _load_json_list(PROCESSED_IDS_PATH)
+    return set(str(x) for x in ids)
+
+
+def add_processed_id(aar_id: int):
+    ids = _load_json_list(PROCESSED_IDS_PATH)
+    sid = str(aar_id)
+    if sid not in ids:
+        ids.append(sid)
+        _save_json_list(PROCESSED_IDS_PATH, ids)
+
+
 def save_aar_record(record: dict):
-    filename = "aar_records.json"
+    filename = AAR_RECORDS_PATH
     data = load_aar_data(filename)
 
     key = str(record["aar_id"])
     data[key] = record
 
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
+
+    # Mark as processed after successful save
+    add_processed_id(record["aar_id"])
 
     print(f"Saved AAR {record['aar_id']} to {filename}.")
 
 
 def has_been_processed(aar_id: int):
-    filename = "aar_records.json"
-    data = load_aar_data(filename)
-    return str(aar_id) in data
+    processed = load_processed_ids()
+    return str(aar_id) in processed
 
 
 def print_aar_summary(record: dict):
@@ -496,8 +599,7 @@ def print_aar_summary(record: dict):
 # "Watch Command" or "Watch Master". Make the list of allowed role names
 # easy to modify.
 def is_watch_command(member: discord.Member):
-    print(member)
-    allowed_role_names = {"Watch Command"}
+    allowed_role_names = {"Watch Command", "Watch Master"}
     for role in member.roles:
         if role.name in allowed_role_names:
             return True
@@ -528,7 +630,7 @@ def is_watch_command(member: discord.Member):
 #           gene_seed_points += 1  # assist
 # - return all of these in a dict.
 def compute_stats_for_user(user_id: str):
-    data = load_aar_data("aar_records.json")
+    data = load_aar_data(AAR_RECORDS_PATH)
 
     ops = 0
     aar_points = 0
