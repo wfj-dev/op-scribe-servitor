@@ -25,19 +25,59 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    # Copilot: in on_message, add handling for a "!cognify":
+    # Copilot: in on_message, add handling for a "!litany-of-function" command:
+    # this command should only respond if the sender has the role "Watch COmmand"
+    # and it should only reply if the bot is direct messaged, not in a server channel.
+    if message.content.startswith("!litany-of-function"):
+        if not is_watch_command(message.author):
+            return
+
+        if message.guild is not None:
+            # Not a DM
+            return
+
+        reply_text = """++ SECURE VOX-CHANNEL ESTABLISHED ++ \n
+            Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”\n
+            Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.\n\n
+
+            This servitor is bound by the Edict of Record-Keeping to serve the officers\n
+            of Watch Fortress Jericho. Unauthorized personnel will be disregarded.\n\n
+
+            Recognized High-Authority Commands:\n\n
+
+            • !tally-deeds @Brother\n
+            Queries the Record of Deeds for the specified Watch Brother.\n
+            Returns: AAR Points, Apothecarion Gene-Seed Credit, Armory Data Tally,\n
+            and current service rank.\n\n
+
+            • !reconcile-records\n
+            Initiates a full archival sweep of the After-Action-Report vox-channel.\n
+            Reprocesses all recorded missions, amends the Record of Deeds,\n
+            and flags any corrupted or improperly formatted entries.\n\n
+
+            Operational Restrictions:\n
+            Only those bearing the mantle of Watch Command or Watch Master may issue\n
+            orders to this unit. All others shall be logged and ignored according to\n
+            Protocol Purity-Seventeen.\n\n
+
+            This servitor exists to record deeds, preserve honor, and maintain the\n
+            eternal ledger of the Long Watch.\n\n
+
+            ++ END OF TRANSMISSION ++"""
+        await message.reply(reply_text)
+        return
+
+    # Copilot: in on_message, add handling for a "!reconcile-records":
     # this command needs to read an entire history of messages in a channel
     # called "after-action-reports" and compute the total AAR points, geneseed
     # points, and armory points for each brother mentioned in any AAR and update
     # the current record in aar_records.json accordingly. This command is only available
     # for watch command.
-    if message.content.startswith("!cognify"):
+    if message.content.startswith("!reconcile-records"):
         if not is_watch_command(message.author):
             return
 
-        aar_channel = discord.utils.get(
-            message.guild.channels, name="demo"
-        )
+        aar_channel = discord.utils.get(message.guild.channels, name="demo")
         if not aar_channel:
             await message.reply("++ ERROR: demo ++\n ++ CHANNEL NOT FOUND. ++")
             return
@@ -62,7 +102,7 @@ async def on_message(message: discord.Message):
         await message.reply("++ COGNIFICATION COMPLETE: AAR RECORDS UPDATED. ++")
         return
 
-    # Copilot: In on_message, add handling for a "!vigil-log" command:
+    # Copilot: In on_message, add handling for a "!tally-deeds" command:
     # - Only respond if is_watch_command(message.author) is True.
     # - Require that exactly one user is mentioned; if none, reply with usage.
     # - Let target = first mentioned user.
@@ -77,14 +117,14 @@ async def on_message(message: discord.Message):
     #   Armory Data Points: <armory_points>
     # - Then return so the AAR handler does not run for this message.
     ############## HONORS COMMAND HANDLING ##############
-    if message.content.startswith("!vigil-log"):
+    if message.content.startswith("!tally-deeds"):
         if not is_watch_command(message.author):
             return
 
         if len(message.mentions) != 1:
             await message.reply(
-                """++ VIGIL-LOG DIRECTIVE ++\n
-                Proper Invocation: !vigil-log @Brother\n
+                """++ tally-deeds DIRECTIVE ++\n
+                Proper Invocation: !tally-deeds @Brother\n
                 One—and only one—Brother must be specified.\n
                 ++ END DIRECTIVE ++"""
             )
