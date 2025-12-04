@@ -69,10 +69,14 @@ eternal ledger of the Long Watch.
         # if not is_watch_command(message.author):
         #     return
 
-        aar_channel = discord.utils.get(message.guild.channels, name="᛭⋅after-action-reports⋅᛭")
+        aar_channel = discord.utils.get(
+            message.guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
         # aar_channel = discord.utils.get(message.guild.channels, name="demo")
         if not aar_channel:
-            await message.reply("++ ERROR: 'after-action-reports' CHANNEL NOT FOUND. ++")
+            await message.reply(
+                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
+            )
             return
 
         ingested = 0
@@ -103,17 +107,25 @@ eternal ledger of the Long Watch.
                 except Exception:
                     msg = None
                 if not msg:
-                    log_aar_errors(aar_id, ["Original AAR message not found in channel."])
+                    log_aar_errors(
+                        aar_id, ["Original AAR message not found in channel."]
+                    )
                     still_broken += 1
                     continue
                 record = parse_aar(msg)
                 if record is None:
-                    log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"], msg)
+                    log_aar_error_with_meta(
+                        aar_id,
+                        [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
+                        msg,
+                    )
                     still_broken += 1
                     continue
                 errors = validate_aar(record)
                 if errors:
-                    log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+                    log_aar_error_with_meta(
+                        aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
+                    )
                     still_broken += 1
                 else:
                     save_aar_record(record)
@@ -130,7 +142,11 @@ eternal ledger of the Long Watch.
                 continue
             record = parse_aar(msg)
             if record is None:
-                log_aar_error_with_meta(msg.id, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"], msg)
+                log_aar_error_with_meta(
+                    msg.id,
+                    [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
+                    msg,
+                )
                 rejected += 1
                 continue
             aar_id = record.get("aar_id", msg.id)
@@ -138,7 +154,9 @@ eternal ledger of the Long Watch.
                 continue
             errors = validate_aar(record)
             if errors:
-                log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+                log_aar_error_with_meta(
+                    aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
+                )
                 rejected += 1
                 continue
             save_aar_record(record)
@@ -152,12 +170,16 @@ eternal ledger of the Long Watch.
             author_lines.append(f"- {label}: {a['count']}")
 
         report = (
-            f"++ RECONCILIATION COMPLETE ++\n"
-            f"Ingested: {ingested}\nRejected: {rejected}\n"
-            f"Fixed: {fixed}\nStill Broken: {still_broken}"
+            f"++ LITANY OF RECONCILIATION COMPLETE ++\n"
+            f"Sanctioned Operational Records (ingested): {ingested}\n"
+            f"Logs Judged Corrupted or Unworthy (rejected): {rejected}\n"
+            f"Restored Entries Returned to the Annals (fixed): {fixed}\n"
+            f"Faulted Reports Remaining Under Quarantine (still broken): {still_broken}\n"
         )
         if author_lines:
-            report += "\nRejected by author:\n" + "\n".join(author_lines)
+            report += "\nEntries Rejected Due to Authorial Deviation\n" + "\n".join(
+                author_lines
+            )
 
         await message.reply(report)
         return
@@ -724,7 +746,9 @@ def summarize_error_authors():
 
     # Sort by count desc, then nickname/username
     summaries = list(by_author.values())
-    summaries.sort(key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower()))
+    summaries.sort(
+        key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower())
+    )
     return summaries
 
 
@@ -772,6 +796,7 @@ def print_aar_summary(record: dict):
     print(f"  Gene-Seed Status: {record['gene_seed_status']}")
     print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
     print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
+
 
 def compute_stats_for_user(user_id: str):
     data = load_aar_data(AAR_RECORDS_PATH)
