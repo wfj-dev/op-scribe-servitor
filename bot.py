@@ -64,48 +64,102 @@ eternal ledger of the Long Watch.
         await message.reply(litany_text)
         return
 
-    # Copilot: in on_message, add handling for a "!reconcile-records":
-    # this command needs to read an entire history of messages in a channel
-    # called "after-action-reports" and compute the total AAR points, geneseed
-    # points, and armory points for each brother mentioned in any AAR and update
-    # the current record in aar_records.json accordingly. This command is only available
-    # for watch command.
+    # Reconcile: ingest unprocessed AARs, then re-check error entries; accepted records are untouched
     if message.content.startswith("!reconcile-records"):
         # if not is_watch_command(message.author):
-        #     returnc
+        #     return
 
-        # aar_channel = discord.utils.get(message.guild.channels, name="᛭⋅after-action-reports⋅᛭")
-        aar_channel = discord.utils.get(message.guild.channels, name="demo")
-        # print discord channels
+        aar_channel = discord.utils.get(message.guild.channels, name="᛭⋅after-action-reports⋅᛭")
+        # aar_channel = discord.utils.get(message.guild.channels, name="demo")
         if not aar_channel:
-            await message.reply("++ ERROR ++\n +⋅after-action-reports⋅+ \n ++ CHANNEL NOT FOUND. ++")
+            await message.reply("++ ERROR: 'after-action-reports' CHANNEL NOT FOUND. ++")
             return
 
-        async for msg in aar_channel.history(limit=None):
-            if is_aar_message(msg):
-                record = parse_aar(msg)
+        ingested = 0
+        rejected = 0
+        fixed = 0
+        still_broken = 0
+
+        error_entries = _load_json_dict(AAR_ERRORS_PATH)
+
+        if len(error_entries) > 0:
+            # Phase A: re-check errors first
+            for aar_id_str in list(error_entries.keys()):
                 try:
-                    aar_id = record["aar_id"]
-                except TypeError:
-                    print(f"Failed to parse AAR ID from message {msg.id}, skipping.")
+                    aar_id = int(aar_id_str)
+                except ValueError:
+                    del error_entries[aar_id_str]
                     continue
-
                 if has_been_processed(aar_id):
+                    data = _load_json_dict(AAR_ERRORS_PATH)
+                    sid = str(aar_id)
+                    if sid in data:
+                        del data[sid]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    fixed += 1
                     continue
-
+                try:
+                    msg = await aar_channel.fetch_message(aar_id)
+                except Exception:
+                    msg = None
+                if not msg:
+                    log_aar_errors(aar_id, ["Original AAR message not found in channel."])
+                    still_broken += 1
+                    continue
+                record = parse_aar(msg)
+                if record is None:
+                    log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"], msg)
+                    still_broken += 1
+                    continue
                 errors = validate_aar(record)
                 if errors:
-                    # Log errors and mark as processed, then skip
-                    log_aar_errors(aar_id, errors)
-                    # Mark as rejected: log errors with jump URL, and mark processed
-                    log_aar_errors(aar_id, [f"Jump URL: {msg.jump_url}"] + errors)
-                    add_processed_id(aar_id)
-                    # exit()
-                    continue
+                    log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+                    still_broken += 1
+                else:
+                    save_aar_record(record)
+                    data = _load_json_dict(AAR_ERRORS_PATH)
+                    sid = str(aar_id)
+                    if sid in data:
+                        del data[sid]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    fixed += 1
 
-                save_aar_record(record)
+        # Phase B or only phase: ingest any new, unprocessed AARs from channel
+        async for msg in aar_channel.history(limit=None):
+            if not is_aar_message(msg):
+                continue
+            record = parse_aar(msg)
+            if record is None:
+                log_aar_error_with_meta(msg.id, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"], msg)
+                rejected += 1
+                continue
+            aar_id = record.get("aar_id", msg.id)
+            if has_been_processed(aar_id):
+                continue
+            errors = validate_aar(record)
+            if errors:
+                log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+                rejected += 1
+                continue
+            save_aar_record(record)
+            ingested += 1
 
-        await message.reply("++ COGNIFICATION COMPLETE: AAR RECORDS UPDATED. ++")
+        # Build author rejection summary from current error log
+        author_summaries = summarize_error_authors()
+        author_lines = []
+        for a in author_summaries:
+            label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
+            author_lines.append(f"- {label}: {a['count']}")
+
+        report = (
+            f"++ RECONCILIATION COMPLETE ++\n"
+            f"Ingested: {ingested}\nRejected: {rejected}\n"
+            f"Fixed: {fixed}\nStill Broken: {still_broken}"
+        )
+        if author_lines:
+            report += "\nRejected by author:\n" + "\n".join(author_lines)
+
+        await message.reply(report)
         return
 
     # Copilot: In on_message, add handling for a "!tally-deeds" command:
@@ -196,7 +250,7 @@ eternal ledger of the Long Watch.
             )
             await message.reply(error_text)
             # Log errors and mark this AAR as processed
-            log_aar_errors(aar_id, errors)
+            log_aar_error_with_meta(aar_id, errors, message)
             add_processed_id(aar_id)
             print(f"AAR {aar_id} rejected with errors: {errors}")
             return
@@ -403,17 +457,19 @@ def parse_aar(message: discord.Message):
                         try:
                             gene_seed_carried_name = user.nick
                         except AttributeError:
-                           print(f"Failed to get nickname for user ID {gene_seed_carrier_id}")
+                            print(
+                                f"Failed to get nickname for user ID {gene_seed_carrier_id}"
+                            )
 
         elif lower.startswith("brothers"):
-            # Everything after this (until END OF REPORT) is the Brothers section
-            brothers_start_idx = i + 1
+            # Brothers can appear on the same line as the header; include this line
+            brothers_start_idx = i
 
         elif lower.startswith("waves:"):
             parts = line.split(":", 1)
             try:
                 waves = int(parts[1].strip())
-            except:
+            except Exception:
                 waves = None
 
     # Copilot: After parsing mission, difficulty, waves, armory_data, and gene seed fields,
@@ -432,7 +488,7 @@ def parse_aar(message: discord.Message):
             difficulty_class
         )
 
-    # Collect Brothers from lines after "Brothers:" until END OF REPORT
+    # Collect Brothers from the "Brothers:" line and subsequent lines until END OF REPORT
     if brothers_start_idx is not None:
         for raw_line in lines[brothers_start_idx:]:
             line = raw_line.strip()
@@ -453,27 +509,29 @@ def parse_aar(message: discord.Message):
                             except AttributeError:
                                 print(f"Failed to get nickname for user ID {uid}")
                                 print(user.name)
-        return {
-            "aar_id": aar_id,
-            "mission": mission,
-            "difficulty": difficulty,
-            "difficulty_class": difficulty_class,
-            "difficulty_tags": difficulty_tags,
-            "black_laurels_active": black_laurels_active,
-            "armory_data": armory_data,
-            "armory_challenge_points": compute_armory_bonus_points(
-                difficulty_class, armory_data
-            ),
-            "gene_seed_status": gene_seed_status,
-            "gene_seed_carrier_id": gene_seed_carrier_id,
-            "gene_seed_carried_name": gene_seed_carried_name,
-            "gene_seed_base_points_for_carrier": gene_seed_base_points_for_carrier,
-            "brother_ids": brothers_ids,
-            "brother_names": brother_names,
-            "waves": waves,
-            "points_for_op": points_for_op,
-            "timestamp": message.created_at.isoformat(),
-        }
+
+    # Always return a record, even if Brothers section is missing; validation will handle errors
+    return {
+        "aar_id": aar_id,
+        "mission": mission,
+        "difficulty": difficulty,
+        "difficulty_class": difficulty_class,
+        "difficulty_tags": difficulty_tags,
+        "black_laurels_active": black_laurels_active,
+        "armory_data": armory_data,
+        "armory_challenge_points": compute_armory_bonus_points(
+            difficulty_class, armory_data
+        ),
+        "gene_seed_status": gene_seed_status,
+        "gene_seed_carrier_id": gene_seed_carrier_id,
+        "gene_seed_carried_name": gene_seed_carried_name,
+        "gene_seed_base_points_for_carrier": gene_seed_base_points_for_carrier,
+        "brother_ids": brothers_ids,
+        "brother_names": brother_names,
+        "waves": waves,
+        "points_for_op": points_for_op,
+        "timestamp": message.created_at.isoformat(),
+    }
 
 
 def validate_aar(record: dict):
@@ -612,6 +670,64 @@ def log_aar_errors(aar_id: int, errors: list[str]):
     _save_json_dict(AAR_ERRORS_PATH, data)
 
 
+def _author_info_from_message(msg: discord.Message) -> dict:
+    author = msg.author
+    info = {
+        "id": str(getattr(author, "id", "")),
+        "username": getattr(author, "name", None) or getattr(author, "username", None),
+        "nickname": getattr(author, "nick", None),
+    }
+    # Some guild member objects expose display_name for nickname
+    try:
+        if hasattr(author, "display_name") and info["nickname"] is None:
+            info["nickname"] = author.display_name
+    except Exception:
+        pass
+    return info
+
+
+def log_aar_error_with_meta(aar_id: int, errors: list[str], msg: discord.Message):
+    data = _load_json_dict(AAR_ERRORS_PATH)
+    entry = {
+        "errors": errors,
+        "author": _author_info_from_message(msg),
+    }
+    data[str(aar_id)] = entry
+    _save_json_dict(AAR_ERRORS_PATH, data)
+
+
+def summarize_error_authors():
+    """Return a list of author summaries from the error log.
+    Each entry: {"id": str, "username": str|None, "nickname": str|None, "count": int}
+    """
+    data = _load_json_dict(AAR_ERRORS_PATH)
+    by_author: dict[str, dict] = {}
+    for _aar_id, entry in data.items():
+        author = entry.get("author", {})
+        aid = str(author.get("id", ""))
+        if not aid:
+            # Bucket unknown authors under empty id
+            aid = ""
+        if aid not in by_author:
+            by_author[aid] = {
+                "id": aid,
+                "username": author.get("username"),
+                "nickname": author.get("nickname"),
+                "count": 0,
+            }
+        by_author[aid]["count"] += 1
+        # Prefer latest known nickname/username if missing
+        if not by_author[aid]["nickname"] and author.get("nickname"):
+            by_author[aid]["nickname"] = author.get("nickname")
+        if not by_author[aid]["username"] and author.get("username"):
+            by_author[aid]["username"] = author.get("username")
+
+    # Sort by count desc, then nickname/username
+    summaries = list(by_author.values())
+    summaries.sort(key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower()))
+    return summaries
+
+
 def load_processed_ids() -> set[str]:
     ids = _load_json_list(PROCESSED_IDS_PATH)
     return set(str(x) for x in ids)
@@ -657,42 +773,6 @@ def print_aar_summary(record: dict):
     print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
     print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
 
-
-# Copilot: Add a helper is_watch_command(member: discord.Member) -> bool
-# It should return True if any of the member's roles has a name like
-# "Watch Command" or "Watch Master". Make the list of allowed role names
-# easy to modify.
-# def is_watch_command(member: discord.Member):
-#     allowed_role_names = {"Watch Command", "Watch Master"}
-#     for role in member.roles:
-#         if role.name in allowed_role_names:
-#             return True
-#     return False
-
-
-# Copilot: Add a function compute_stats_for_user(user_id: str).
-# It should:
-# - load aar_records.json using load_aar_data
-# - initialize:
-#   ops = 0
-#   aar_points = 0
-#   armory_raw = 0
-#   armory_points = 0
-#   gene_carries = 0
-#   gene_seed_points = 0
-# - for each record:
-#   * if user_id in record["brothers"]:
-#       - ops += 1
-#       - aar_points += record["points_for_op"]
-#       - armory_raw += armory_data (parsed as int or 0)
-#       - armory_points += record["armory_points"]
-#   * if record["gene_seed_status"] == "carried":
-#       - if record["gene_seed_carrier_id"] == user_id:
-#           gene_carries += 1
-#           gene_seed_points += record["gene_seed_base_points_for_carrier"]
-#       - elif user_id in brothers:
-#           gene_seed_points += 1  # assist
-# - return all of these in a dict.
 def compute_stats_for_user(user_id: str):
     data = load_aar_data(AAR_RECORDS_PATH)
 
