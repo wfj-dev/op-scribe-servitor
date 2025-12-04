@@ -27,44 +27,41 @@ async def on_ready():
 async def on_message(message: discord.Message):
     # Copilot: in on_message, add handling for a "!litany-of-function" command:
     # this command should only respond if the sender has the role "Watch COmmand"
-    # and it should only reply if the bot is direct messaged, not in a server channel.
     if message.content.startswith("!litany-of-function"):
-        if not is_watch_command(message.author):
-            return
+        # if not is_watch_command(message.author):
+        #     return
 
-        if message.guild is not None:
-            # Not a DM
-            return
+        litany_text = """
+            # ++ SECURE VOX-CHANNEL ESTABLISHED ++
+Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”
+Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.
 
-        reply_text = """++ SECURE VOX-CHANNEL ESTABLISHED ++ \n
-            Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”\n
-            Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.\n\n
+This servitor is bound by the Edict of Record-Keeping to serve the officers
+of Watch Fortress Jericho. Unauthorized personnel will be disregarded.
 
-            This servitor is bound by the Edict of Record-Keeping to serve the officers\n
-            of Watch Fortress Jericho. Unauthorized personnel will be disregarded.\n\n
+# Recognized High-Authority Commands:
 
-            Recognized High-Authority Commands:\n\n
+• **!tally-deeds @Brother**
+Queries the Record of Deeds for the specified Watch Brother.
+Returns: AAR Points, Apothecarion Gene-Seed Credit, Armory Data Tally,
+and current service rank.
 
-            • !tally-deeds @Brother\n
-            Queries the Record of Deeds for the specified Watch Brother.\n
-            Returns: AAR Points, Apothecarion Gene-Seed Credit, Armory Data Tally,\n
-            and current service rank.\n\n
+• **!reconcile-records**
+Initiates a full archival sweep of the After-Action-Report vox-channel.
+Reprocesses all recorded missions, amends the Record of Deeds,
+and flags any corrupted or improperly formatted entries.
 
-            • !reconcile-records\n
-            Initiates a full archival sweep of the After-Action-Report vox-channel.\n
-            Reprocesses all recorded missions, amends the Record of Deeds,\n
-            and flags any corrupted or improperly formatted entries.\n\n
+**Operational Restrictions:**
+Only those bearing the mantle of Watch Command or Watch Master may issue
+orders to this unit. All others shall be logged and ignored according to
+Protocol Purity-Seventeen.
 
-            Operational Restrictions:\n
-            Only those bearing the mantle of Watch Command or Watch Master may issue\n
-            orders to this unit. All others shall be logged and ignored according to\n
-            Protocol Purity-Seventeen.\n\n
+This servitor exists to record deeds, preserve honor, and maintain the
+eternal ledger of the Long Watch.
 
-            This servitor exists to record deeds, preserve honor, and maintain the\n
-            eternal ledger of the Long Watch.\n\n
-
-            ++ END OF TRANSMISSION ++"""
-        await message.reply(reply_text)
+# ++ END OF TRANSMISSION ++
+            """
+        await message.reply(litany_text)
         return
 
     # Copilot: in on_message, add handling for a "!reconcile-records":
@@ -74,8 +71,8 @@ async def on_message(message: discord.Message):
     # the current record in aar_records.json accordingly. This command is only available
     # for watch command.
     if message.content.startswith("!reconcile-records"):
-        if not is_watch_command(message.author):
-            return
+        # if not is_watch_command(message.author):
+        #     return
 
         aar_channel = discord.utils.get(message.guild.channels, name="demo")
         if not aar_channel:
@@ -94,7 +91,6 @@ async def on_message(message: discord.Message):
                 if errors:
                     # Log errors and mark as processed, then skip
                     log_aar_errors(aar_id, errors)
-                    add_processed_id(aar_id)
                     continue
 
                 save_aar_record(record)
@@ -118,8 +114,8 @@ async def on_message(message: discord.Message):
     # - Then return so the AAR handler does not run for this message.
     ############## HONORS COMMAND HANDLING ##############
     if message.content.startswith("!tally-deeds"):
-        if not is_watch_command(message.author):
-            return
+        # if not is_watch_command(message.author):
+        #     return
 
         if len(message.mentions) != 1:
             await message.reply(
@@ -203,7 +199,7 @@ async def on_message(message: discord.Message):
 
         # All good: save and confirm
         save_aar_record(record)
-        print_aar_summary(record)
+        # print_aar_summary(record)
 
         try:
             await message.add_reaction("✅")
@@ -230,19 +226,19 @@ def classify_difficulty(difficulty: str | None):
 
     lower = difficulty.lower()
 
-    if "@ruthless" in lower:
+    if "ruthless" in lower:
         return "ruthless_ops"
-    if "@lethal" in lower:
+    if "lethal" in lower:
         return "lethal_ops"
-    if "@absolute" in lower:
+    if "absolute" in lower:
         return "absolute_ops"
-    if "@normal-stratagem" in lower:
+    if "normal-stratagem" in lower:
         return "normal_stratagem"
-    if "@hard-stratagem" in lower:
+    if "hard-stratagem" in lower:
         return "hard_stratagem"
-    if "@normal-siege" in lower:
+    if "normal-siege" in lower:
         return "normal_siege"
-    if "@hard-siege" in lower:
+    if "hard-siege" in lower:
         return "hard_siege"
     return None
 
@@ -352,9 +348,12 @@ def parse_aar(message: discord.Message):
     difficulty_tags = []
     black_laurels_active = False
     armory_data = 0
+    armory_data_points = 0
     gene_seed_status = "unknown"
     gene_seed_carrier_id = None
+    gene_seed_carried_name = None
     brothers_ids = []
+    brother_names = []
     waves = 0
 
     brothers_start_idx = None
@@ -366,7 +365,11 @@ def parse_aar(message: discord.Message):
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
         elif lower.startswith("difficulty:"):
-            difficulty = line.split(":", 1)[1].strip()
+            after_colon = line.split(":", 1)[1]
+            for role in message.role_mentions:
+                mention = f"<@&{role.id}>"
+                after_colon = after_colon.replace(mention, role.name)
+            difficulty = after_colon.strip()
             difficulty_tags = [t for t in difficulty.split() if t.startswith("@")]
             black_laurels_active = any(
                 "black" in t.lower() and "laurel" in t.lower() for t in difficulty_tags
@@ -376,7 +379,7 @@ def parse_aar(message: discord.Message):
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
             # e.g. "Armory Data: 3" or "Armory data: 3"
             parts = line.split(":", 1)
-            armory_data = parts[1].strip() if len(parts) > 1 else None
+            armory_data = int(parts[1].strip()) if len(parts) > 1 else 0
 
         # Gene-Seed: lost / carried by @Brother
         elif "gene-seed" in lower:
@@ -392,6 +395,10 @@ def parse_aar(message: discord.Message):
             ids_here = get_user_ids_in_line(raw_line, message)
             if ids_here:
                 gene_seed_carrier_id = ids_here[0]
+                # Copilot: also set gene_seed_carried_name to the Discord nickname of the carrier
+                for user in message.mentions:
+                    if str(user.id) == gene_seed_carrier_id:
+                        gene_seed_carried_name = user.nick
 
         elif lower.startswith("brothers"):
             # Everything after this (until END OF REPORT) is the Brothers section
@@ -424,7 +431,7 @@ def parse_aar(message: discord.Message):
     if brothers_start_idx is not None:
         for raw_line in lines[brothers_start_idx:]:
             line = raw_line.strip()
-            if "++ end of report" in line.lower():
+            if "++ end of report ++" in line.lower():
                 break
             if not line:
                 continue
@@ -433,6 +440,10 @@ def parse_aar(message: discord.Message):
             for uid in ids_here:
                 if uid not in brothers_ids:
                     brothers_ids.append(uid)
+                    # Copilot: also append brother names as represented in discord
+                    for user in message.mentions:
+                        if str(user.id) == uid:
+                            brother_names.append(user.nick)
         return {
             "aar_id": aar_id,
             "mission": mission,
@@ -441,20 +452,20 @@ def parse_aar(message: discord.Message):
             "difficulty_tags": difficulty_tags,
             "black_laurels_active": black_laurels_active,
             "armory_data": armory_data,
-            "armory_challenge_points": compute_armory_bonus_points(
-                difficulty_class, armory_data
-            ),
+            "armory_challenge_points": compute_armory_bonus_points(difficulty_class, armory_data),
             "gene_seed_status": gene_seed_status,
             "gene_seed_carrier_id": gene_seed_carrier_id,
+            "gene_seed_carried_name": gene_seed_carried_name,
             "gene_seed_base_points_for_carrier": gene_seed_base_points_for_carrier,
-            "brothers": brothers_ids,
+            "brother_ids": brothers_ids,
+            "brother_names": brother_names,
             "waves": waves,
             "points_for_op": points_for_op,
             "timestamp": message.created_at.isoformat(),
         }
 
 
-def validate_aar(record: dict) -> list[str]:
+def validate_aar(record: dict):
     """
     Validate a parsed AAR record.
     Returns a list of human-readable error messages.
@@ -466,7 +477,7 @@ def validate_aar(record: dict) -> list[str]:
     difficulty = record.get("difficulty") or ""
     waves = record.get("waves")
     armory_data = record.get("armory_data")
-    brothers = record.get("brothers") or []
+    brothers = record.get("brother_ids") or []
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
 
@@ -477,13 +488,13 @@ def validate_aar(record: dict) -> list[str]:
     # 2) Difficulty must be one of the known tags
     dlower = difficulty.lower()
     known_tags = [
-        "@ruthless",
-        "@lethal",
-        "@absolute",
-        "@normal-stratagem",
-        "@hard-stratagem",
-        "@normal-siege",
-        "@hard-siege",
+        "ruthless",
+        "lethal",
+        "absolute",
+        "normal-stratagem",
+        "hard-stratagem",
+        "normal-siege",
+        "hard-siege",
     ]
     if not difficulty or not any(tag in dlower for tag in known_tags):
         errors.append(
@@ -513,9 +524,9 @@ def validate_aar(record: dict) -> list[str]:
         except ValueError:
             errors.append("Armory/Armoury Data must be an integer (e.g. 3).")
 
-    # 5) At least one Brother
-    if not brothers:
-        errors.append("No Brothers found under the 'Brothers:' section.")
+    # 5) At least two Brothers
+    if len(brothers) < 2:
+        errors.append("At least two Brothers must be listed under the 'Brothers:' section.")
 
     # 6) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
@@ -565,7 +576,7 @@ def _save_json_dict(path: str, data: dict):
         json.dump(data, f, indent=2)
 
 
-def _load_json_list(path: str) -> list:
+def _load_json_list(path: str):
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -630,23 +641,23 @@ def print_aar_summary(record: dict):
     print(f"  Difficulty: {record['difficulty']}")
     print(f"  Armory Data: {record['armory_data']}")
     print(f"  Gene-Seed Status: {record['gene_seed_status']}")
-    print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_id')}")
-    print(f"  Brothers (user IDs): {', '.join(record['brothers'])}")
+    print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
+    print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
 
 
 # Copilot: Add a helper is_watch_command(member: discord.Member) -> bool
 # It should return True if any of the member's roles has a name like
 # "Watch Command" or "Watch Master". Make the list of allowed role names
 # easy to modify.
-def is_watch_command(member: discord.Member):
-    allowed_role_names = {"Watch Command", "Watch Master"}
-    for role in member.roles:
-        if role.name in allowed_role_names:
-            return True
-    return False
+# def is_watch_command(member: discord.Member):
+#     allowed_role_names = {"Watch Command", "Watch Master"}
+#     for role in member.roles:
+#         if role.name in allowed_role_names:
+#             return True
+#     return False
 
 
-# Copilot: Add a function compute_stats_for_user(user_id: str) -> dict.
+# Copilot: Add a function compute_stats_for_user(user_id: str).
 # It should:
 # - load aar_records.json using load_aar_data
 # - initialize:
@@ -680,8 +691,8 @@ def compute_stats_for_user(user_id: str):
     gene_seed_points = 0
 
     for record in data.values():
-        brothers = record.get("brothers", [])
-        if user_id in brothers:
+        brother_ids = record.get("brother_ids", [])
+        if user_id in brother_ids:
             ops += 1
             aar_points += record.get("points_for_op", 0)
             armory_data = record.get("armory_data")
@@ -696,7 +707,7 @@ def compute_stats_for_user(user_id: str):
             if gene_carrier == user_id:
                 gene_carries += 1
                 gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
-            elif user_id in brothers:
+            elif user_id in brother_ids:
                 gene_seed_points += 1  # assist
 
     return {
