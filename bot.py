@@ -162,6 +162,10 @@ eternal ledger of the Long Watch.
             save_aar_record(record)
             ingested += 1
 
+        # After reconcile, compute remaining errors directly from the error log
+        remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
+        still_broken = len(remaining_errors)
+
         # Build author rejection summary from current error log
         author_summaries = summarize_error_authors()
         author_lines = []
@@ -169,9 +173,10 @@ eternal ledger of the Long Watch.
             label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
             author_lines.append(f"- {label}: {a['count']}")
 
+        # Final report with metrics clarified
         report = (
-            f"++ LITANY OF RECONCILIATION COMPLETE ++\n"
-            f"Sanctioned Operational Records (ingested): {ingested}\n"
+            f"# ++ LITANY OF RECONCILIATION COMPLETE ++\n"
+            f"Sanctioned Operational Records (ingested initially): {ingested}\n"
             f"Logs Judged Corrupted or Unworthy (rejected): {rejected}\n"
             f"Restored Entries Returned to the Annals (fixed): {fixed}\n"
             f"Faulted Reports Remaining Under Quarantine (still broken): {still_broken}\n"
@@ -184,21 +189,6 @@ eternal ledger of the Long Watch.
         await message.reply(report)
         return
 
-    # Copilot: In on_message, add handling for a "!tally-deeds" command:
-    # - Only respond if is_watch_command(message.author) is True.
-    # - Require that exactly one user is mentioned; if none, reply with usage.
-    # - Let target = first mentioned user.
-    # - Call stats = compute_stats_for_user(str(target.id)).
-    # - Determine "Current Rank" by choosing the highest-priority rank role
-    #   from the target's roles (e.g. "Watch Sergeant", "Watch Brother", etc.).
-    # - Reply in the same channel with:
-    #   Stats for <mention>:
-    #   Current Rank: <rank>
-    #   AAR Points: <aar_points>
-    #   Gene-seed Points: <gene_seed_points>
-    #   Armory Data Points: <armory_points>
-    # - Then return so the AAR handler does not run for this message.
-    ############## HONORS COMMAND HANDLING ##############
     if message.content.startswith("!tally-deeds"):
         # if not is_watch_command(message.author):
         #     return
@@ -279,22 +269,7 @@ eternal ledger of the Long Watch.
 
         # All good: save and confirm
         save_aar_record(record)
-        # print_aar_summary(record)
 
-        # Optional: short confirmation reply
-        # await message.reply(f"AAR accepted and recorded as ID {aar_id}.")
-
-
-# Copilot: Replace any use of record["points"] with record["points_for_op"],
-# and remove any remaining calls to compute_points_for_difficulty. We only
-# use classify_difficulty + compute_points_for_op now.
-
-
-# Copilot: Add a helper classify_difficulty(difficulty: str | None) -> str | None
-# It should map the difficulty string to one of:
-# "ruthless_ops", "lethal_ops", "absolute_ops",
-# "normal_stratagem", "hard_stratagem",
-# "normal_siege", "hard_siege", or None.
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
         return None
@@ -318,16 +293,6 @@ def classify_difficulty(difficulty: str | None):
     return None
 
 
-# Copilot: Add a helper compute_points_for_op(difficulty_class: str | None, waves: int | None) -> int
-# Use this table:
-# Ruthless Ops -> 2
-# Lethal Ops -> 3
-# Absolute Ops -> 4
-# Normal-Stratagem -> 2
-# Hard-Stratagem -> 5
-# Normal-Siege -> 3 * (waves // 5)
-# Hard-Siege -> 4 * (waves // 5)
-# Return 0 if info is insufficient.
 def compute_points_for_op(difficulty_class: str | None, waves: int | None):
     if not difficulty_class:
         return 0
@@ -354,15 +319,6 @@ def compute_points_for_op(difficulty_class: str | None, waves: int | None):
     return 0
 
 
-# Copilot: Add a helper compute_gene_seed_base_points_for_carrier(difficulty_class: str | None) -> int
-# Use this table for when gene-seed is carried:
-# Ruthless Ops / Normal-Stratagem -> 2
-# Lethal Ops -> 3
-# Absolute Ops -> 4
-# Hard-Stratagem -> 5
-# Siege difficulties -> 0.
-#
-# Return 0 by default.
 def compute_gene_seed_base_points_for_carrier(difficulty_class: str | None):
     if not difficulty_class:
         return 0
@@ -410,10 +366,6 @@ def get_user_ids_in_line(line: str, message: discord.Message):
 
 
 def parse_aar(message: discord.Message):
-    # Copilot: After computing difficulty_class and parsing armory_data,
-    # compute armory_challenge_points = compute_armory_challenge_points(armory_data, difficulty_class)
-    # and include this field in the returned record dict.
-
     content = message.content
     aar_id = message.id
     lines = content.splitlines()
@@ -494,14 +446,6 @@ def parse_aar(message: discord.Message):
             except Exception:
                 waves = None
 
-    # Copilot: After parsing mission, difficulty, waves, armory_data, and gene seed fields,
-    # compute:
-    # difficulty_class = classify_difficulty(difficulty)
-    # points_for_op = compute_points_for_op(difficulty_class, waves)
-    # gene_seed_base_points_for_carrier = 0 unless gene_seed_status == "carried",
-    # in which case call compute_gene_seed_base_points_for_carrier(difficulty_class).
-    #
-    # Include these in the returned record dict.
     difficulty_class = classify_difficulty(difficulty)
     points_for_op = compute_points_for_op(difficulty_class, waves)
     gene_seed_base_points_for_carrier = 0
