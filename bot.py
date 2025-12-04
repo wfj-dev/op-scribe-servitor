@@ -72,17 +72,23 @@ eternal ledger of the Long Watch.
     # for watch command.
     if message.content.startswith("!reconcile-records"):
         # if not is_watch_command(message.author):
-        #     return
+        #     returnc
 
+        # aar_channel = discord.utils.get(message.guild.channels, name="᛭⋅after-action-reports⋅᛭")
         aar_channel = discord.utils.get(message.guild.channels, name="demo")
+        # print discord channels
         if not aar_channel:
-            await message.reply("++ ERROR: demo ++\n ++ CHANNEL NOT FOUND. ++")
+            await message.reply("++ ERROR ++\n +⋅after-action-reports⋅+ \n ++ CHANNEL NOT FOUND. ++")
             return
 
         async for msg in aar_channel.history(limit=None):
             if is_aar_message(msg):
                 record = parse_aar(msg)
-                aar_id = record["aar_id"]
+                try:
+                    aar_id = record["aar_id"]
+                except TypeError:
+                    print(f"Failed to parse AAR ID from message {msg.id}, skipping.")
+                    continue
 
                 if has_been_processed(aar_id):
                     continue
@@ -91,6 +97,10 @@ eternal ledger of the Long Watch.
                 if errors:
                     # Log errors and mark as processed, then skip
                     log_aar_errors(aar_id, errors)
+                    # Mark as rejected: log errors with jump URL, and mark processed
+                    log_aar_errors(aar_id, [f"Jump URL: {msg.jump_url}"] + errors)
+                    add_processed_id(aar_id)
+                    # exit()
                     continue
 
                 save_aar_record(record)
@@ -181,12 +191,6 @@ eternal ledger of the Long Watch.
         # Validate before saving
         errors = validate_aar(record)
         if errors:
-            # Mark as rejected
-            try:
-                await message.add_reaction("❌")
-            except Exception:
-                pass
-
             error_text = "AAR rejected, please correct and repost:\n" + "\n".join(
                 f"- {e}" for e in errors
             )
@@ -200,11 +204,6 @@ eternal ledger of the Long Watch.
         # All good: save and confirm
         save_aar_record(record)
         # print_aar_summary(record)
-
-        try:
-            await message.add_reaction("✅")
-        except Exception:
-            pass
 
         # Optional: short confirmation reply
         # await message.reply(f"AAR accepted and recorded as ID {aar_id}.")
@@ -292,13 +291,13 @@ def compute_gene_seed_base_points_for_carrier(difficulty_class: str | None):
     if not difficulty_class:
         return 0
     if difficulty_class == "ruthless_ops" or difficulty_class == "normal_stratagem":
-        return 2
+        return 2 + 1
     if difficulty_class == "lethal_ops":
-        return 3
+        return 3 + 1
     if difficulty_class == "absolute_ops":
-        return 4
+        return 4 + 1
     if difficulty_class == "hard_stratagem":
-        return 5
+        return 5 + 1
     if difficulty_class in ("normal_siege", "hard_siege"):
         return 0
     return 0
@@ -348,7 +347,6 @@ def parse_aar(message: discord.Message):
     difficulty_tags = []
     black_laurels_active = False
     armory_data = 0
-    armory_data_points = 0
     gene_seed_status = "unknown"
     gene_seed_carrier_id = None
     gene_seed_carried_name = None
@@ -379,7 +377,11 @@ def parse_aar(message: discord.Message):
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
             # e.g. "Armory Data: 3" or "Armory data: 3"
             parts = line.split(":", 1)
-            armory_data = int(parts[1].strip()) if len(parts) > 1 else 0
+            try:
+                armory_data = int(parts[1].strip()) if len(parts) > 1 else 0
+            except ValueError:
+                print(f"Failed to parse armory data from line: {line}")
+                armory_data = 0
 
         # Gene-Seed: lost / carried by @Brother
         elif "gene-seed" in lower:
@@ -398,7 +400,10 @@ def parse_aar(message: discord.Message):
                 # Copilot: also set gene_seed_carried_name to the Discord nickname of the carrier
                 for user in message.mentions:
                     if str(user.id) == gene_seed_carrier_id:
-                        gene_seed_carried_name = user.nick
+                        try:
+                            gene_seed_carried_name = user.nick
+                        except AttributeError:
+                           print(f"Failed to get nickname for user ID {gene_seed_carrier_id}")
 
         elif lower.startswith("brothers"):
             # Everything after this (until END OF REPORT) is the Brothers section
@@ -443,7 +448,11 @@ def parse_aar(message: discord.Message):
                     # Copilot: also append brother names as represented in discord
                     for user in message.mentions:
                         if str(user.id) == uid:
-                            brother_names.append(user.nick)
+                            try:
+                                brother_names.append(user.nick)
+                            except AttributeError:
+                                print(f"Failed to get nickname for user ID {uid}")
+                                print(user.name)
         return {
             "aar_id": aar_id,
             "mission": mission,
@@ -452,7 +461,9 @@ def parse_aar(message: discord.Message):
             "difficulty_tags": difficulty_tags,
             "black_laurels_active": black_laurels_active,
             "armory_data": armory_data,
-            "armory_challenge_points": compute_armory_bonus_points(difficulty_class, armory_data),
+            "armory_challenge_points": compute_armory_bonus_points(
+                difficulty_class, armory_data
+            ),
             "gene_seed_status": gene_seed_status,
             "gene_seed_carrier_id": gene_seed_carrier_id,
             "gene_seed_carried_name": gene_seed_carried_name,
@@ -526,7 +537,9 @@ def validate_aar(record: dict):
 
     # 5) At least two Brothers
     if len(brothers) < 2:
-        errors.append("At least two Brothers must be listed under the 'Brothers:' section.")
+        errors.append(
+            "At least two Brothers must be listed under the 'Brothers:' section."
+        )
 
     # 6) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
