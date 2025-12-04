@@ -175,16 +175,27 @@ eternal ledger of the Long Watch.
 
         # Final report with metrics clarified
         report = (
-            f"# ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-            f"Sanctioned Operational Records (ingested initially): {ingested}\n"
-            f"Logs Judged Corrupted or Unworthy (rejected): {rejected}\n"
-            f"Restored Entries Returned to the Annals (fixed): {fixed}\n"
-            f"Faulted Reports Remaining Under Quarantine (still broken): {still_broken}\n"
+            "```ansi\n"
+            "\u001b[32m===============================================\n"
+            "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
+            "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
+            "===============================================\n"
+            "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
+            f"  Sanctioned Operational Records: {ingested}\n"
+            f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
+            f"  Restored Entries Returned to the Annals: {fixed}\n"
+            f"  Faulted Reports Under Quarantine: {still_broken}\n"
         )
+
         if author_lines:
-            report += "\nEntries Rejected Due to Authorial Deviation\n" + "\n".join(
-                author_lines
-            )
+            report += "-----------------------------------------------\n"
+            report += "Entries Rejected Due to Authorial Deviation:\n"
+            for line in author_lines:
+                report += f"  {line}\n"
+
+        # Close ANSI block
+        report += "\u001b[0m```"
+
 
         await message.reply(report)
         return
@@ -231,11 +242,19 @@ eternal ledger of the Long Watch.
                 break
 
         reply_text = (
-            f"Stats for {target.mention}:\n"
-            f"Current Rank: {current_rank}\n"
-            f"AAR Points: {stats['aar_points']}\n"
-            f"Gene-seed Points: {stats['gene_seed_points']}\n"
-            f"Armory Data Points: {stats['armory_points']}"
+            "```ansi\n"
+            "\u001b[32m===============================================\n"
+            "  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE\n"
+            "  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER\n"
+            "===============================================\n"
+            f"  Tally for: {target.nick}\n"
+            "-----------------------------------------------\n"
+            f"  Current Rank: {current_rank}\n"
+            f"  AAR Commendation Points: {stats['aar_points']}\n"
+            f"  Gene-seed Retrieval Points: {stats['gene_seed_points']}\n"
+            f"  Armory Data Acquisition Points: {stats['armory_points']}\n"
+            "===============================================\n"
+            "\u001b[0m```"
         )
         await message.channel.send(reply_text)
         return
