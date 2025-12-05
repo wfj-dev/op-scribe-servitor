@@ -30,8 +30,12 @@ async def on_message(message: discord.Message):
         # if not is_watch_command(message.author):
         #     return
 
-        litany_text = """
-            # ++ SECURE VOX-CHANNEL ESTABLISHED ++
+        litany_text = """```ansi
+\u001b===============================================
+  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR
+  JERICHO LOGI-SCRIBE SERVITOR V-1 — FUNCTION LITANY
+===============================================
+            ++ SECURE VOX-CHANNEL ESTABLISHED ++
 Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”
 Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.
 
