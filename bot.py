@@ -118,6 +118,7 @@ eternal ledger of the Long Watch.
                         [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                         msg,
                     )
+                    await _set_aar_reaction(msg, "error")
                     still_broken += 1
                     continue
                 errors = validate_aar(record)
@@ -125,6 +126,7 @@ eternal ledger of the Long Watch.
                     log_aar_error_with_meta(
                         aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
                     )
+                    await _set_aar_reaction(msg, "error")
                     still_broken += 1
                 else:
                     save_aar_record(record)
@@ -133,6 +135,7 @@ eternal ledger of the Long Watch.
                     if sid in data:
                         del data[sid]
                         _save_json_dict(AAR_ERRORS_PATH, data)
+                    await _set_aar_reaction(msg, "ok")
                     fixed += 1
 
         # Phase B or only phase: ingest any new, unprocessed AARs from channel
@@ -146,6 +149,7 @@ eternal ledger of the Long Watch.
                     [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                     msg,
                 )
+                await _set_aar_reaction(msg, "error")
                 rejected += 1
                 continue
             aar_id = record.get("aar_id", msg.id)
@@ -156,9 +160,11 @@ eternal ledger of the Long Watch.
                 log_aar_error_with_meta(
                     aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
                 )
+                await _set_aar_reaction(msg, "error")
                 rejected += 1
                 continue
             save_aar_record(record)
+            await _set_aar_reaction(msg, "ok")
             ingested += 1
 
         # After reconcile, compute remaining errors directly from the error log
@@ -434,7 +440,7 @@ def parse_aar(message: discord.Message):
                     initiation_trial_progress = None
             if "watch command" in mlow:
                 initiation_trial_watch_command = True
-        elif lower.startswith("difficulty:"):
+        elif lower.startswith("difficulty:") or lower.startswith("threat:"):
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
                 mention = f"<@&{role.id}>"
@@ -455,8 +461,8 @@ def parse_aar(message: discord.Message):
                 print(f"Failed to parse armory data from line: {line}")
                 armory_data = 0
 
-        # Gene-Seed: lost / carried by @Brother
-        elif "gene-seed" in lower:
+        # Gene-Seed / Geneseed: lost / carried by @Brother
+        elif ("gene-seed" in lower) or ("geneseed" in lower):
             parts = line.split(":", 1)
             rest = parts[1].strip() if len(parts) > 1 else ""
             rest_lower = rest.lower()
@@ -478,6 +484,8 @@ def parse_aar(message: discord.Message):
                             print(
                                 f"Failed to get nickname for user ID {gene_seed_carrier_id}"
                             )
+                # If a Brother is tagged here, treat as carried regardless of wording
+                gene_seed_status = "carried"
 
         # Initiation Trial lines (e.g., "@Initiation Trial: -/3")
         elif "initiation trial" in lower:
@@ -797,6 +805,29 @@ def summarize_error_authors():
     return summaries
 
 
+async def _set_aar_reaction(msg: discord.Message, status: str):
+    """Set a single reaction on an AAR message based on status.
+    status: 'ok' -> ✅, 'error' -> 🚫
+    Ensures only one of these two reactions remains (no stacking).
+    """
+    ok_emoji = "✅"
+    err_emoji = "🚫"
+    try:
+        # Remove previous bot-added status reactions to avoid stacking
+        for reaction in msg.reactions:
+            if str(reaction.emoji) in (ok_emoji, err_emoji):
+                async for user in reaction.users():
+                    if user == msg.guild.me:
+                        await reaction.remove(user)
+        # Add the desired reaction
+        if status == "ok":
+            await msg.add_reaction(ok_emoji)
+        elif status == "error":
+            await msg.add_reaction(err_emoji)
+    except Exception as e:
+        print(f"Failed to set reaction on message {msg.id}: {e}")
+
+
 def load_processed_ids() -> set[str]:
     ids = _load_json_list(PROCESSED_IDS_PATH)
     return set(str(x) for x in ids)
@@ -865,8 +896,14 @@ def compute_stats_for_user(user_id: str):
                 armory_raw += 0
             armory_points += record.get("armory_challenge_points", 0)
 
-        if record.get("gene_seed_status") == "carried":
-            gene_carrier = record.get("gene_seed_carrier_id")
+        # Treat as carried if status is 'carried' OR a carrier is named and status is not 'lost'
+        status = (record.get("gene_seed_status") or "").lower()
+        gene_carrier = record.get("gene_seed_carrier_id")
+        effective_carried = status == "carried" or (
+            gene_carrier is not None and status != "lost"
+        )
+
+        if effective_carried:
             if gene_carrier == user_id:
                 gene_carries += 1
                 gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
