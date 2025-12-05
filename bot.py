@@ -3,7 +3,6 @@
 import os
 import json
 import discord
-from typing import Any
 
 # Data file locations
 DATA_DIR = "data"
@@ -263,31 +262,31 @@ eternal ledger of the Long Watch.
     if message.author == client.user:
         return
 
-        # AAR handling
-    if is_aar_message(message):
-        record = parse_aar(message)
-        aar_id = record["aar_id"]
+        # AAR handling for live ingestion (disabled in favor of reconcile command)
+    # if is_aar_message(message):
+    #     record = parse_aar(message)
+    #     aar_id = record["aar_id"]
 
-        # Check if already processed
-        if has_been_processed(aar_id):
-            print(f"AAR {aar_id} already processed, skipping.")
-            return
+    #     # Check if already processed
+    #     if has_been_processed(aar_id):
+    #         print(f"AAR {aar_id} already processed, skipping.")
+    #         return
 
-        # Validate before saving
-        errors = validate_aar(record)
-        if errors:
-            error_text = "AAR rejected, please correct and repost:\n" + "\n".join(
-                f"- {e}" for e in errors
-            )
-            await message.reply(error_text)
-            # Log errors and mark this AAR as processed
-            log_aar_error_with_meta(aar_id, errors, message)
-            add_processed_id(aar_id)
-            print(f"AAR {aar_id} rejected with errors: {errors}")
-            return
+    #     # Validate before saving
+    #     errors = validate_aar(record)
+    #     if errors:
+    #         error_text = "AAR rejected, please correct and repost:\n" + "\n".join(
+    #             f"- {e}" for e in errors
+    #         )
+    #         await message.reply(error_text)
+    #         # Log errors and mark this AAR as processed
+    #         log_aar_error_with_meta(aar_id, errors, message)
+    #         add_processed_id(aar_id)
+    #         # print(f"AAR {aar_id} rejected with errors: {errors}")
+    #         return
 
-        # All good: save and confirm
-        save_aar_record(record)
+    #     # All good: save and confirm
+    #     save_aar_record(record)
 
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
@@ -400,6 +399,13 @@ def parse_aar(message: discord.Message):
     brothers_ids = []
     brother_names = []
     waves = 0
+    # Initiation Trial fields
+    initiation_trial_active = False
+    initiation_trial_progress = None  # type: int | None
+    initiation_trial_max = 3
+    initiation_trial_watch_command = False
+    initiation_trial_tag_in_mission = False
+    initiation_trial_line_present = False
 
     brothers_start_idx = None
 
@@ -409,6 +415,25 @@ def parse_aar(message: discord.Message):
 
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
+            # Also detect Initiation Trial tokens on the mission line
+            mlow = mission.lower()
+            if "initiation trial" in mlow:
+                initiation_trial_active = True
+                initiation_trial_tag_in_mission = True
+                try:
+                    # Look for a token like n/3 in the mission value
+                    for token in mission.replace("@", " ").split():
+                        if "/" in token:
+                            num_part = token.split("/", 1)[0]
+                            try:
+                                initiation_trial_progress = int(num_part)
+                            except Exception:
+                                initiation_trial_progress = None
+                            break
+                except Exception:
+                    initiation_trial_progress = None
+            if "watch command" in mlow:
+                initiation_trial_watch_command = True
         elif lower.startswith("difficulty:"):
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
@@ -454,11 +479,32 @@ def parse_aar(message: discord.Message):
                                 f"Failed to get nickname for user ID {gene_seed_carrier_id}"
                             )
 
-        elif lower.startswith("brothers"):
-            # Brothers can appear on the same line as the header; include this line
+        # Initiation Trial lines (e.g., "@Initiation Trial: -/3")
+        elif "initiation trial" in lower:
+            initiation_trial_active = True
+            initiation_trial_line_present = True
+            try:
+                after_colon = line.split(":", 1)[1].strip() if ":" in line else line
+                for token in after_colon.replace("@", " ").split():
+                    if "/" in token:
+                        num_part = token.split("/", 1)[0]
+                        try:
+                            initiation_trial_progress = int(num_part)
+                        except Exception:
+                            initiation_trial_progress = None
+                        break
+            except Exception:
+                initiation_trial_progress = None
+
+        # Watch Command marker sometimes present on trial templates
+        elif "watch command" in lower:
+            initiation_trial_watch_command = True
+
+        elif lower.startswith("brothers") or lower.startswith("team"):
+            # Brothers/Team can appear on the same line as the header; include this line
             brothers_start_idx = i
 
-        elif lower.startswith("waves:"):
+        elif lower.startswith("waves:") or lower.startswith("wave:"):
             parts = line.split(":", 1)
             try:
                 waves = int(parts[1].strip())
@@ -492,8 +538,7 @@ def parse_aar(message: discord.Message):
                             try:
                                 brother_names.append(user.nick)
                             except AttributeError:
-                                print(f"Failed to get nickname for user ID {uid}")
-                                print(user.name)
+                                print(f"Failed to get nickname for user/ID {user.name}\/{uid}")
 
     # Always return a record, even if Brothers section is missing; validation will handle errors
     return {
@@ -516,12 +561,21 @@ def parse_aar(message: discord.Message):
         "waves": waves,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
+        # initiation trial meta
+        "initiation_trial_active": initiation_trial_active,
+        "initiation_trial_progress": initiation_trial_progress,
+        "initiation_trial_max": initiation_trial_max,
+        "initiation_trial_watch_command": initiation_trial_watch_command,
+        "initiation_trial_tag_in_mission": initiation_trial_tag_in_mission,
+        "initiation_trial_line_present": initiation_trial_line_present,
     }
 
 
 def validate_aar(record: dict):
     """
     Validate a parsed AAR record.
+            "initiation_trial_tag_in_mission": initiation_trial_tag_in_mission,
+            "initiation_trial_line_present": initiation_trial_line_present,
     Returns a list of human-readable error messages.
     If the list is empty, the record is considered valid.
     """
@@ -538,6 +592,13 @@ def validate_aar(record: dict):
     # 1) Mission required
     if not mission:
         errors.append("Mission is missing (line starting with 'Mission:').")
+    else:
+        mstr = str(mission)
+        # Reject any user or role mentions or trial-style tokens in Mission
+        # if "<@&" in mstr or "<@" in mstr:
+        #     errors.append("Mission must be plain text; no Discord mentions are allowed after 'Mission:'.")
+        if "/" in mstr:
+            errors.append("Mission must not include trial-style progress tokens like 'n/m' or '-/m'.")
 
     # 2) Difficulty must be one of the known tags
     dlower = difficulty.lower()
@@ -556,9 +617,15 @@ def validate_aar(record: dict):
             "(@Ruthless, @Lethal, @Absolute, @Normal-Stratagem, "
             "@Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
         )
+    else:
+        # Only allow Black Laurels on Difficulty when Absolute is present
+        has_black_laurels = ("black" in dlower and "laurel" in dlower)
+        has_absolute = ("absolute" in dlower)
+        if has_black_laurels and not has_absolute:
+            errors.append("@Black_Laurels may only be present when @Absolute is selected on the Difficulty line.")
 
     # 3) Siege must have valid Waves: line
-    if "@normal-siege" in dlower or "@hard-siege" in dlower:
+    if "normal-siege" in dlower or "hard-siege" in dlower:
         if waves is None:
             errors.append("Siege difficulty requires a 'Waves:' line.")
         else:
@@ -584,7 +651,22 @@ def validate_aar(record: dict):
             "At least two Brothers must be listed under the 'Brothers:' section."
         )
 
-    # 6) Gene-seed logic
+    # 6) Initiation Trial placement rules
+    if record.get("initiation_trial_active"):
+        if record.get("initiation_trial_tag_in_mission"):
+            errors.append(
+                "Initiation Trial tag must be on its own line (e.g., '@Initiation Trial: n/m'), not inside 'Mission:'."
+            )
+        if not record.get("initiation_trial_line_present"):
+            errors.append(
+                "Provide a dedicated '@Initiation Trial: n/m' line; do not rely on Mission text alone."
+            )
+        if not record.get("initiation_trial_watch_command"):
+            errors.append(
+                "Trial template requires '@Watch Command' marker. Please include it."
+            )
+
+    # 7) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
     if gene_status not in allowed_statuses:
         errors.append(
@@ -750,15 +832,15 @@ def has_been_processed(aar_id: int):
     return str(aar_id) in processed
 
 
-def print_aar_summary(record: dict):
-    print("AAR Summary:")
-    print(f"  AAR ID: {record['aar_id']}")
-    print(f"  Mission: {record['mission']}")
-    print(f"  Difficulty: {record['difficulty']}")
-    print(f"  Armory Data: {record['armory_data']}")
-    print(f"  Gene-Seed Status: {record['gene_seed_status']}")
-    print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
-    print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
+# def print_aar_summary(record: dict):
+#     print("AAR Summary:")
+#     print(f"  AAR ID: {record['aar_id']}")
+#     print(f"  Mission: {record['mission']}")
+#     print(f"  Difficulty: {record['difficulty']}")
+#     print(f"  Armory Data: {record['armory_data']}")
+#     print(f"  Gene-Seed Status: {record['gene_seed_status']}")
+#     print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
+#     print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
 
 
 def compute_stats_for_user(user_id: str):
