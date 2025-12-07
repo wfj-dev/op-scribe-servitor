@@ -5,6 +5,7 @@ import json
 import discord
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime, timedelta
 
 # Data file locations
 DATA_DIR = "data"
@@ -25,7 +26,7 @@ def is_watch_command(user: discord.User | discord.Member):
         for role in user.roles:
             if role.name in ("Watch Command", "Watch Master"):
                 return True
-    if str(user.id) == "933777200312881263":  # plzjules
+    if str(user.nick) == "Watch Brother Jules":  # plzjules
         return True
     return False
 
@@ -45,9 +46,9 @@ async def on_ready():
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
 )
 async def litany_of_function(interaction: discord.Interaction):
-    # if not is_watch_command(interactino.user):
-    #     await interaction.response.send_message("Access denied.", ephemeral=true)
-    #     return
+    if not is_watch_command(interaction.user):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
     litany_text = """```ansi
 \u001b[32m===============================================
   WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR
@@ -88,7 +89,8 @@ eternal ledger of the Long Watch.
 @bot.tree.command(
     name="reconcile_records", description="Reprocess AARs and update the archive."
 )
-async def reconcile_records(interaction: discord.Interaction):
+@app_commands.describe(span_days="Optional: only scan messages from the last N days.")
+async def reconcile_records(interaction: discord.Interaction, span_days: int | None = None):
     if not is_watch_command(interaction.user):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -163,7 +165,13 @@ async def reconcile_records(interaction: discord.Interaction):
                 fixed += 1
 
     # Phase B: ingest any new, unprocessed AARs
-    async for msg in aar_channel.history(limit=None):
+    # If span_days is provided, limit scan to messages after that cutoff
+    history_kwargs = {"limit": None}
+    if span_days and span_days > 0:
+        cutoff = datetime.utcnow() - timedelta(days=span_days)
+        history_kwargs["after"] = cutoff
+
+    async for msg in aar_channel.history(**history_kwargs):
         if not is_aar_message(msg):
             continue
         record = parse_aar(msg)
@@ -198,17 +206,25 @@ async def reconcile_records(interaction: discord.Interaction):
         label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
         author_lines.append(f"- {label}: {a['count']}")
 
-    report = (
+    report_header = (
         "```ansi\n"
         "\u001b[32m===============================================\n"
         "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
         "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
         "===============================================\n"
         "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-        f"  Sanctioned Operational Records: {ingested}\n"
-        f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
-        f"  Restored Entries Returned to the Annals: {fixed}\n"
-        f"  Faulted Reports Under Quarantine: {still_broken}\n"
+    )
+
+    report_header += (
+        f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n"
+    )
+
+    report = (
+        report_header
+        + f"  Sanctioned Operational Records: {ingested}\n"
+        + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
+        + f"  Restored Entries Returned to the Annals: {fixed}\n"
+        + f"  Faulted Reports Under Quarantine: {still_broken}\n"
     )
 
     if author_lines:
@@ -225,22 +241,27 @@ async def reconcile_records(interaction: discord.Interaction):
 @bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
 @app_commands.describe(brother="The Watch Brother to query.")
 async def tally_deeds(interaction: discord.Interaction, brother: discord.Member):
-    # if not is_watch_command(interaction.user):
-    #     await interaction.response.send_message("Access denied.", ephemeral=True)
-    #     return
+    if not is_watch_command(interaction.user):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
 
     target = brother
     stats = compute_stats_for_user(str(target.id))
 
     rank_roles_priority = [
         "Watch Master",
-        "Watch Techmarine",
-        "Watch Librarian",
-        "Watch Apothecary",
-        "Watch Chaplain",
+        "Venerable",
         "Lord Executioner",
+        "Reclusiarch",
+        "Forgemaster",
+        "Chief Apothecary",
+        "Void Warden",
         "Watch Captain",
         "Watch Lieutenant",
+        "Watch Chaplain",
+        "Watch Techmarine",
+        "Watch Apothecary"
+        "Watch Librarian",
         "Watch Champion",
         "Watch Sergeant",
         "Kill Team Champion",
@@ -330,13 +351,13 @@ def compute_gene_seed_base_points_for_carrier(difficulty_class: str | None):
     if not difficulty_class:
         return 0
     if difficulty_class == "ruthless_ops" or difficulty_class == "normal_stratagem":
-        return 2 + 1
+        return 2
     if difficulty_class == "lethal_ops":
-        return 3 + 1
+        return 3
     if difficulty_class == "absolute_ops":
-        return 4 + 1
+        return 4
     if difficulty_class == "hard_stratagem":
-        return 5 + 1
+        return 5
     if difficulty_class in ("normal_siege", "hard_siege"):
         return 0
     return 0
@@ -582,10 +603,12 @@ def validate_aar(record: dict):
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
 
-    # 1) Mission required
-    if not mission:
+    # 1) Mission required (except Siege templates where Mission may be omitted)
+    dlower = (record.get("difficulty") or "").lower()
+    is_siege = ("normal-siege" in dlower) or ("hard-siege" in dlower)
+    if not mission and not is_siege:
         errors.append("Mission is missing (line starting with 'Mission:').")
-    else:
+    elif mission:
         mstr = str(mission)
         # Reject any user or role mentions or trial-style tokens in Mission
         # if "<@&" in mstr or "<@" in mstr:
