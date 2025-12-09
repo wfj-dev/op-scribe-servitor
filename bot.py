@@ -6,6 +6,11 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
+import itertools
+from typing import Dict, List, Tuple, Optional
+import hashlib
+from collections import Counter
+from typing import List
 
 # Data file locations
 DATA_DIR = "data"
@@ -18,6 +23,157 @@ intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+ARCHETYPE_MOTIFS = {
+    "angelic": {
+        "adjectives": [
+            "Crimson", "Sanguine", "Weeping", "Pale",
+            "Golden", "Penitent", "Lamenting",
+        ],
+        "nouns": [
+            "Chalice", "Host", "Wing", "Spear",
+            "Lament", "Choir", "Passion",
+        ],
+    },
+    "zealot": {
+        "adjectives": [
+            "Oathbound", "Sanctified", "Hallowed",
+            "Unbroken", "Pure", "Vowed",
+        ],
+        "nouns": [
+            "Crusade", "Vow", "Sepulcher", "Benediction",
+            "Edict", "Reliquary",
+        ],
+    },
+    "shadow": {
+        "adjectives": [
+            "Shrouded", "Hidden", "Veiled", "Umbral",
+            "Obsidian", "Cloaked",
+        ],
+        "nouns": [
+            "Veil", "Shroud", "Cipher", "Raven",
+            "Watcher", "Ward",
+        ],
+    },
+    "void": {
+        "adjectives": [
+            "Abyssal", "Spectral", "Voidborne",
+            "Pale", "Drowned", "Black-Sun",
+        ],
+        "nouns": [
+            "Abyss", "Maw", "Horizon", "Tide",
+            "Kraken", "Depth", "Null-Spear",
+        ],
+    },
+    "forge": {
+        "adjectives": [
+            "Tempered", "Molten", "Ferric",
+            "Adamant", "Ember-lit", "Forged",
+        ],
+        "nouns": [
+            "Anvil", "Hammer", "Forge",
+            "Ember", "Crucible", "Pyre",
+        ],
+    },
+    "bastion": {
+        "adjectives": [
+            "Resolute", "Exemplary", "Unyielding",
+            "Aureate", "Vigilant",
+        ],
+        "nouns": [
+            "Phalanx", "Wall", "Aegis",
+            "Bulwark", "Standard", "Cohort",
+        ],
+    },
+    "feral": {
+        "adjectives": [
+            "Fenrisian", "Howling", "Savage",
+            "Blooded", "Winterborn",
+        ],
+        "nouns": [
+            "Fang", "Maw", "Hunt", "Pack",
+            "Prowl", "Totem",
+        ],
+    },
+    "sky": {
+        "adjectives": [
+            "Soaring", "Gilded", "Ascendant",
+            "Violet-Winged", "Gale-forged", "Highborn",
+        ],
+        "nouns": [
+            "Talon", "Descent", "Gale",
+            "Skyfall", "Heaven-Spear", "Wingblade",
+        ],
+    },
+    "renegade": {
+        "adjectives": [
+            "Nameless", "Masked", "Forsaken",
+            "Unmarked", "Exiled", "Broken-Edict",
+        ],
+        "nouns": [
+            "Shard", "Mask", "Oblivion",
+            "Remnant", "Fragment", "Ash-Vow",
+        ],
+    },
+    "unknown": {
+        "adjectives": ["Unknown", "Silent", "Redacted"],
+        "nouns": ["Cohort", "Band", "Triad"],
+    },
+}
+
+CHAPTER_ARCHETYPE: dict[str, str] = {
+    # Angelic / Sanguinary
+    "Blood Angels": "angelic",
+    "Flesh Tearers": "angelic",
+    "Flesh Eaters": "angelic",
+    "Lamenters": "angelic",
+
+    # Zealot / Crusader
+    "Black Templars": "zealot",
+
+    # Shadow / Secrets
+    "Dark Angels": "shadow",
+    "Raven Guard": "shadow",
+    "Blood Ravens": "shadow",
+    "Cowled Wardens": "shadow",
+
+    # Void / Abyssal
+    "Death Spectres": "void",
+    "Dark Krakens": "void",
+    "Storm Giants": "void",
+
+    # Forge / Iron
+    "Iron Hands": "forge",
+    "Sons of Medusa": "forge",
+    "Salamanders": "forge",
+
+    # Bastion / Exemplars
+    "Imperial Fists": "bastion",
+    "Ultramarines": "bastion",
+
+    # Feral / Predatory
+    "Space Wolves": "feral",
+
+    # Sky / Aerial Assault
+    "Hawk Lords": "sky",
+
+    # Renegade / Oath-broken
+    "Black Shields": "renegade",
+}
+
+ARCHETYPE_PRIORITY = [
+    "angelic",
+    "zealot",
+    "shadow",
+    "void",
+    "forge",
+    "bastion",
+    "feral",
+    "sky",
+    "renegade",
+    "unknown",
+]
 
 
 # create a function is_watch_command(user: discord.User | discord.Member) which returns true if the user has a role named "Watch Command" or "Watch Master" or is the discord user "plzjules"
@@ -72,6 +228,11 @@ and current service rank.
 Initiates a full archival sweep of the After-Action-Report vox-channel.
 Reprocesses all recorded missions, amends the Record of Deeds,
 and flags any corrupted or improperly formatted entries.
+
+• /combat-bonds [@Brother] [window:N]
+Analyzes recent missions (default last 50) to reveal Combat Bonds.
+Without an argument: shows top 3 fortress-wide triads with no repeated Brothers.
+With @Brother: shows that Brother’s strongest triads.
 
 **Operational Restrictions:**
 Only those bearing the mantle of Watch Command or Watch Master may issue
@@ -235,7 +396,7 @@ async def reconcile_records(interaction: discord.Interaction, span_days: int | N
 
     report += "\u001b[0m```"
 
-    await interaction.channel.send(report)
+    await interaction.followup.send(report)
 
 
 @bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
@@ -297,6 +458,44 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
 
     await interaction.response.send_message(reply_text)
 
+
+@bot.tree.command(name="combat_bonds", description="Show top Combat Bonds (global or for a Brother).")
+@app_commands.describe(brother="Optional: limit to bonds including this Brother.", window="Optional: number of most recent missions to consider.")
+async def combat_bonds(interaction: discord.Interaction, brother: Optional[discord.Member] = None, window: Optional[int] = None):
+    if not is_watch_command(interaction.user):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    # No defer: send a direct response to clear the interaction state
+
+    span = window if (isinstance(window, int) and window > 0) else 50
+    missions = _get_recent_missions(limit=span)
+    # Collect all brothers seen in window
+    all_bros: List[str] = []
+    for rec in missions:
+        all_bros.extend([str(b) for b in (rec.get("brother_ids") or [])])
+    all_bros = sorted(set(all_bros))
+
+    pair_counts = _build_pair_counts(missions)
+    triples = _build_triple_bonds(pair_counts, all_bros)
+
+    if brother is None:
+        top_global = _select_top_global_bonds(triples, top_n=3)
+        # Resolve chapters for all user IDs appearing in selected bonds
+        uids: List[str] = []
+        for tri, _score in top_global:
+            uids.extend(list(tri))
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
+        text = _format_bonds_for_discord(top_global, interaction.guild, window_span=span, chapters=chapters)
+        await interaction.response.send_message(text)
+    else:
+        target_id = str(brother.id)
+        personal = _select_personal_bonds(triples, target_id, max_n=3)
+        uids: List[str] = []
+        for tri, _score in personal:
+            uids.extend(list(tri))
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
+        text = _format_bonds_for_discord(personal, interaction.guild, window_span=span, chapters=chapters)
+        await interaction.response.send_message(text)
 
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
@@ -928,6 +1127,360 @@ def compute_stats_for_user(user_id: str):
         "gene_carries": gene_carries,
         "gene_seed_points": gene_seed_points,
     }
+
+
+# ===== Combat Bonds helpers =====
+def _get_recent_missions(limit: int = 50) -> List[dict]:
+    """Return the most recent missions (AAR records) sorted by timestamp desc."""
+    data = load_aar_data(AAR_RECORDS_PATH)
+    records = list(data.values())
+    def _parse_ts(r: dict) -> float:
+        ts = r.get("timestamp")
+        try:
+            return datetime.fromisoformat(ts).timestamp() if ts else 0.0
+        except Exception:
+            return 0.0
+    records.sort(key=_parse_ts, reverse=True)
+    return records[:limit]
+
+
+def _build_pair_counts(missions: List[dict]) -> Dict[Tuple[str, str], int]:
+    """Count how often each pair of brothers appears together in provided missions.
+    Keys are sorted tuples of brother IDs (str, str).
+    """
+    pair_counts: Dict[Tuple[str, str], int] = {}
+    for rec in missions:
+        bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
+        # unique per mission to avoid duplicate counting same brother twice
+        unique_bros = sorted(set(bros))
+        for a, b in itertools.combinations(unique_bros, 2):
+            key = (a, b) if a < b else (b, a)
+            pair_counts[key] = pair_counts.get(key, 0) + 1
+    return pair_counts
+
+
+def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[str]):
+    """Create 3-brother bonds and score them as sum of the three pairwise counts.
+    Skip any triple where a pair never appeared together (pair count == 0).
+    Returns list of ((id1,id2,id3), score) sorted by score desc.
+    """
+    triples: List[Tuple[Tuple[str, str, str], int]] = []
+    uniq_bros = sorted(set(brothers))
+    for x, y, z in itertools.combinations(uniq_bros, 3):
+        pairs = [tuple(sorted((x, y))), tuple(sorted((x, z))), tuple(sorted((y, z)))]
+        # all pairs must exist at least once
+        if any(pair_counts.get(p, 0) <= 0 for p in pairs):
+            continue
+        score = sum(pair_counts.get(p, 0) for p in pairs)
+        triples.append(((x, y, z), score))
+    triples.sort(key=lambda t: t[1], reverse=True)
+    return triples
+
+
+def _select_top_global_bonds(triples: List[Tuple[Tuple[str, str, str], int]], top_n: int = 3):
+    """Select top-N global bonds ensuring no brother repeats across groups."""
+    selected: List[Tuple[Tuple[str, str, str], int]] = []
+    used: set[str] = set()
+    for triple, score in triples:
+        if any(b in used for b in triple):
+            continue
+        selected.append((triple, score))
+        used.update(triple)
+        if len(selected) >= top_n:
+            break
+    return selected
+
+
+def _select_personal_bonds(triples: List[Tuple[Tuple[str, str, str], int]], target_id: str, max_n: int = 3):
+    """Return up to max_n bonds that include the target brother."""
+    results = [t for t in triples if target_id in t[0]]
+    return results[:max_n]
+
+
+def _bond_tier(score: int):
+    """Map bond score to a tier label."""
+    if score <= 2:
+        return "FRAGILE"
+    if score <= 4:
+        return "FORMING"
+    if score <= 7:
+        return "RELIABLE"
+    if score <= 10:
+        return "STALWART"
+    return "INDOMITABLE"
+
+
+# def _bond_note_for_tier(tier: str):
+#     """Short RP flavor note based on bond tier."""
+#     notes = {
+#         "FRAGILE": "Newly forged; deploy with caution and oversight.",
+#         "FORMING": "Solidifying cohesion; suitable for standard interdictions.",
+#         "RELIABLE": "Dependable triad; recommended for key objectives.",
+#         "STALWART": "Battle-proven; excels under sustained pressure.",
+#         "INDOMITABLE": "Elite assault element; unleash against priority threats.",
+#     }
+#     return notes.get(tier, "Operational performance under review.")
+
+
+def _member_rank_label(member: Optional[discord.Member]):
+    """Return best-fit Watch rank label for a member, defaulting to 'Watch Brother'."""
+    if not member:
+        return "Watch Brother"
+    rank_roles_priority = [
+        "Watch Master",
+        "Venerable",
+        "Lord Executioner",
+        "Reclusiarch",
+        "Forgemaster",
+        "Chief Apothecary",
+        "Void Warden",
+        "Watch Captain",
+        "Watch Lieutenant",
+        "Watch Chaplain",
+        "Watch Techmarine",
+        "Watch Apothecary",
+        "Watch Librarian",
+        "Watch Champion",
+        "Watch Sergeant",
+        "Kill Team Champion",
+        "Watch Veteran",
+        "Watch Brother",
+    ]
+    names = {r.name for r in getattr(member, "roles", [])}
+    for rank in rank_roles_priority:
+        if rank in names:
+            return rank
+    return "Watch Brother"
+
+
+async def _resolve_home_chapters(guild: [discord.Guild], user_ids: List[str], limit: int = 500):
+    """Resolve home chapters for given users by scanning the '#◈⋅⋅record-of-blood⋅⋅◈' channel.
+    Logic: find a message that mentions the user; the message directly above (older) contains the chapter.
+    The chapter is detected by matching any of the known `home_chapters` names within that message.
+    Returns mapping of user_id -> chapter string. Missing entries map to 'REDACTED'.
+    """
+    home_chapters = [
+        "Black Templars",
+        "Blood Angels",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Dark Krakens",
+        "Death Spectres",
+        "Flesh Eaters",
+        "Flesh Tearers",
+        "Hawk Lords",
+        "Imperial Fists",
+        "Iron Hands",
+        "Lamenters",
+        "Raven Guard",
+        "Salamanders",
+        "Sons of Medusa",
+        "Space Wolves",
+        "Storm Giants",
+        "Ultramarines",
+        "Black Shields"
+    ]
+    chapters: Dict[str, str] = {}
+    if not guild:
+        return chapters
+    channel = discord.utils.get(guild.channels, name="◈⋅⋅record-of-blood⋅⋅◈")
+    if not channel:
+        return chapters
+    target_set = set(user_ids)
+    prev_msg: Optional[discord.Message] = None
+    # Oldest first so 'prev_msg' is the message above (older) when we hit a mention line
+    async for msg in channel.history(limit=limit, oldest_first=True):
+        # Collect mentioned IDs in this message
+        mentioned = {str(u.id) for u in msg.mentions}
+        intersect = mentioned & target_set
+        if intersect:
+            for uid in intersect:
+                if uid not in chapters:
+                    chapter = "REDACTED"
+                    if prev_msg and prev_msg.content:
+                        prev_text = prev_msg.content.strip()
+                        lower_prev = prev_text.lower()
+                        match = next((hc for hc in home_chapters if hc.lower() in lower_prev), None)
+                        if match:
+                            chapter = match
+                    chapters[uid] = chapter
+        prev_msg = msg
+        if len(chapters) == len(target_set):
+            break
+    return chapters
+
+
+def _normalize_chapter(name: str):
+    """Best-effort normalization to match our mapping keys."""
+    n = name.strip()
+    # Simple canonicalization pass
+    aliases = {
+        "black templars": "Black Templars",
+        "blood angels": "Blood Angels",
+        "blood ravens": "Blood Ravens",
+        "cowled wardens": "Cowled Wardens",
+        "dark angels": "Dark Angels",
+        "dark krakens": "Dark Krakens",
+        "death spectres": "Death Spectres",
+        "flesh eaters": "Flesh Eaters",
+        "flesh tearers": "Flesh Tearers",
+        "hawk lords": "Hawk Lords",
+        "imperial fists": "Imperial Fists",
+        "iron hands": "Iron Hands",
+        "lamenters": "Lamenters",
+        "raven guard": "Raven Guard",
+        "salamanders": "Salamanders",
+        "sons of medusa": "Sons of Medusa",
+        "space wolves": "Space Wolves",
+        "storm giants": "Storm Giants",
+        "ultramarines": "Ultramarines",
+        "black shields": "Black Shields",
+    }
+    lower = n.lower()
+    return aliases.get(lower, n)
+
+
+def _chapters_to_archetypes(chapters: List[str]):
+    archetypes: List[str] = []
+    for ch in chapters:
+        key = _normalize_chapter(ch)
+        archetypes.append(CHAPTER_ARCHETYPE.get(key, "unknown"))
+    return archetypes
+
+
+def _pick_primary_secondary(archetypes: List[str]):
+    """Choose a primary and secondary archetype based on frequency & priority."""
+    counter = Counter(archetypes)
+    if not counter:
+        return "unknown", "unknown"
+
+    # Sort by count desc, then by our fixed priority
+    def sort_key(item):
+        arch, count = item
+        prio = ARCHETYPE_PRIORITY.index(arch) if arch in ARCHETYPE_PRIORITY else len(ARCHETYPE_PRIORITY)
+        return (-count, prio)
+
+    sorted_arches = sorted(counter.items(), key=sort_key)
+    primary = sorted_arches[0][0]
+
+    # Secondary is the next distinct archetype if it exists
+    secondary = primary
+    for arch, _ in sorted_arches[1:]:
+        if arch != primary:
+            secondary = arch
+            break
+
+    return primary, secondary
+
+
+def _stable_index(seed: str, modulo: int, salt: str) -> int:
+    """Deterministically pick an index using sha256(seed+salt)."""
+    h = hashlib.sha256((seed + salt).encode("utf-8")).hexdigest()
+    num = int(h[:8], 16)
+    return num % max(1, modulo)
+
+
+def generate_combat_bond_name(ch1: str, ch2: str, ch3: str) -> str:
+    """
+    Given three home chapters, generate a 40k-flavored Combat Bond name.
+
+    Example:
+        generate_combat_bond_name("Death Spectres", "Dark Angels", "Flesh Tearers")
+        -> 'THE PALE SPEAR'
+    """
+    chapters = [ch1, ch2, ch3]
+    arches = _chapters_to_archetypes(chapters)
+    primary, secondary = _pick_primary_secondary(arches)
+
+    # Seed: deterministic for this set of chapters
+    seed = "|".join(sorted(_normalize_chapter(c) for c in chapters))
+
+    # Pull motif pools, falling back to 'unknown' if needed
+    prim_motifs = ARCHETYPE_MOTIFS.get(primary, ARCHETYPE_MOTIFS["unknown"])
+    sec_motifs = ARCHETYPE_MOTIFS.get(secondary, ARCHETYPE_MOTIFS["unknown"])
+
+    # Decide where adjective & noun come from:
+    # - Adjective from primary
+    # - Noun from secondary (or primary if same)
+    prim_adjs = prim_motifs["adjectives"]
+    sec_nouns = sec_motifs["nouns"]
+
+    adj_idx = _stable_index(seed, len(prim_adjs), salt="adj")
+    noun_idx = _stable_index(seed, len(sec_nouns), salt="noun")
+
+    adj = prim_adjs[adj_idx]
+    noun = sec_nouns[noun_idx]
+
+    # Pick a template
+    template_choice = _stable_index(seed, 3, salt="tpl")
+
+    if template_choice == 0:
+        title = f"THE {adj.upper()} {noun.upper()}"
+    elif template_choice == 1:
+        title = f"{adj.upper()} {noun.upper()}"
+    else:
+        title = f"THE {noun.upper()} OF {adj.upper()}"
+
+    return title
+
+
+def _format_bonds_for_discord(bonds: List[Tuple[Tuple[str, str, str], int]], guild: Optional[discord.Guild] = None, window_span: int = 50, chapters: Optional[Dict[str, str]] = None):
+    """Produce styled Combat Bonds output matching the requested layout."""
+    if not bonds:
+        return "No qualifying Combat Bonds found in the current window."
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m===================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
+    lines.append("  SUB-ROUTINE: TRIADIC BATTLE-LITANY INDEX")
+    lines.append("=============================================================================")
+    lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
+    rank = 1
+    ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY"}
+    for triple, score in bonds:
+        tier = _bond_tier(score)
+        a, b, c = triple
+
+        # Resolve members and labels (rank + name + chapter)
+        def _member_label(uid: str) -> str:
+            member = None
+            name = "REDACTED"
+            if guild:
+                try:
+                    member = guild.get_member(int(uid))
+                except Exception:
+                    member = None
+            if member:
+                name = member.nick or member.display_name
+
+            chap = (chapters or {}).get(uid)
+            chap_str = chap if chap else "REDACTED"
+            return f"{name} [{chap_str}]"
+
+        # Optional codename derived from majority chapter
+        tri_chapters = [ (chapters or {}).get(x) for x in (a, b, c) ]
+        tri_chapters = [ch for ch in tri_chapters if ch]
+        codename = generate_combat_bond_name(*tri_chapters) if len(tri_chapters) == 3 else None
+        title = ordinal_labels.get(rank, "BOND")
+        if codename:
+            lines.append(f"#{rank}  ++ {title} BOND: \"{codename}\" ++")
+        else:
+            lines.append(f"#{rank}  ++ {title} BOND ++")
+
+        lines.append(f"    {_member_label(a)}")
+        lines.append(f"    {_member_label(b)}")
+        lines.append(f"    {_member_label(c)}")
+        lines.append(f"    Veneration: Bond Integrity classified as {tier}")
+        lines.append("")
+        rank += 1
+    lines.append("===============================================================================")
+    lines.append("  Machine-Spirit Addendum:")
+    lines.append("  These Combat Bonds are logged for future deployment rites")
+    lines.append("  and may be invoked by decree of Watch Command alone.")
+    lines.append("===============================================================================")
+    lines.append("\u001b[0m```")
+    return "\n".join(lines)
 
 
 token = os.getenv("DISCORD_TOKEN")
