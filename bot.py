@@ -235,7 +235,7 @@ async def reconcile_records(interaction: discord.Interaction, span_days: int | N
 
     report += "\u001b[0m```"
 
-    await interaction.followup.send(report)
+    await interaction.channel.send(report)
 
 
 @bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
@@ -380,7 +380,7 @@ def compute_armory_bonus_points(difficulty_class: str | None, armory_data: int |
 def is_aar_message(message: discord.Message):
     content = message.content
     # Treat presence of the start marker as sufficient; END marker optional
-    return "++ MISSION REPORT ++" in content
+    return "++ MISSION REPORT ++" in content or "++MISSION REPORT++" in content
 
 
 def get_user_ids_in_line(line: str, message: discord.Message):
@@ -644,16 +644,14 @@ def validate_aar(record: dict):
                 "@Black_Laurels may only be present when @Absolute is selected on the Difficulty line."
             )
 
-    # 3) Siege must have valid Waves: line
+    # 3) Siege must have valid Waves: line (any integer allowed; scoring floors to multiple of 5)
     if "normal-siege" in dlower or "hard-siege" in dlower:
         if waves is None:
             errors.append("Siege difficulty requires a 'Waves:' line.")
         else:
             try:
-                w = int(waves)
-                if w < 5 or w % 5 != 0:
-                    errors.append("Waves must be a multiple of 5 (e.g. 5, 10, 15).")
-            except ValueError:
+                int(waves)
+            except (TypeError, ValueError):
                 errors.append("Waves value could not be parsed as an integer.")
 
     # 4) Armory/Armoury Data required and numeric
