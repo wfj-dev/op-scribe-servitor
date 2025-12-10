@@ -176,6 +176,21 @@ ARCHETYPE_PRIORITY = [
 ]
 
 
+# Restrict commands to a specific channel (demo/training)
+ALLOWED_COMMAND_CHANNELS = {
+    # Update to your desired demo channel name
+    "demo",
+}
+
+def is_allowed_channel(interaction: discord.Interaction) -> bool:
+    try:
+        ch = interaction.channel
+        name = getattr(ch, "name", None)
+        return bool(name) and name in ALLOWED_COMMAND_CHANNELS
+    except Exception:
+        return False
+
+
 # create a function is_watch_command(user: discord.User | discord.Member) which returns true if the user has a role named "Watch Command" or "Watch Master" or is the discord user "plzjules"
 def is_watch_command(user: discord.User | discord.Member):
     if isinstance(user, discord.Member):
@@ -202,7 +217,7 @@ async def on_ready():
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
 )
 async def litany_of_function(interaction: discord.Interaction):
-    if not is_watch_command(interaction.user):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     litany_text = """```ansi
@@ -252,7 +267,7 @@ eternal ledger of the Long Watch.
 )
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
 async def reconcile_records(interaction: discord.Interaction, span_days: int | None = None):
-    if not is_watch_command(interaction.user):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     await interaction.response.defer(thinking=True)
@@ -386,6 +401,11 @@ async def reconcile_records(interaction: discord.Interaction, span_days: int | N
         + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
         + f"  Restored Entries Returned to the Annals: {fixed}\n"
         + f"  Faulted Reports Under Quarantine: {still_broken}\n"
+        + "==============================================================================\n"
+        + "  Machine-Spirit Addendum:\n"
+        + "  These Combat Bonds are logged for future deployment rites\n"
+        + "  and may be invoked by decree of Watch Command alone.\n"
+        + "==============================================================================\n"
     )
 
     if author_lines:
@@ -402,7 +422,7 @@ async def reconcile_records(interaction: discord.Interaction, span_days: int | N
 @bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
 @app_commands.describe(brother="The Watch Brother to query.")
 async def tally_deeds(interaction: discord.Interaction, brother: discord.Member):
-    if not is_watch_command(interaction.user):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -439,20 +459,31 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
             break
 
     display_name = target.nick or target.display_name
+    # Member join date (server join time); fallback to 'Unknown' if unavailable
+    try:
+        joined_at = getattr(target, "joined_at", None)
+        joined_str = joined_at.strftime("%Y-%m-%d %H:%M UTC") if joined_at else "Unknown"
+    except Exception:
+        joined_str = "Unknown"
 
     reply_text = (
         "```ansi\n"
-        "\u001b[32m===============================================\n"
+        "\u001b[32m==============================================================================\n"
         "  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE\n"
         "  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER\n"
-        "===============================================\n"
+        "==============================================================================\n"
         f"  Tally for: {display_name}\n"
-        "-----------------------------------------------\n"
+        "------------------------------------------------------------------------------\n"
         f"  Current Rank: {current_rank}\n"
+        f"  Joined Watch Fortress Jericho: {joined_str}\n"
         f"  AAR Commendation Points: {stats['aar_points']}\n"
         f"  Gene-seed Retrieval Points: {stats['gene_seed_points']}\n"
         f"  Armory Data Acquisition Points: {stats['armory_points']}\n"
-        "===============================================\n"
+            "==============================================================================\n"
+            "  Machine-Spirit Addendum:\n"
+            "  These Combat Bonds are logged for future deployment rites\n"
+            "  and may be invoked by decree of Watch Command alone.\n"
+            "==============================================================================\n"
         "\u001b[0m```"
     )
 
@@ -462,7 +493,7 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
 @bot.tree.command(name="combat_bonds", description="Show top Combat Bonds (global or for a Brother).")
 @app_commands.describe(brother="Optional: limit to bonds including this Brother.", window="Optional: number of most recent missions to consider.")
 async def combat_bonds(interaction: discord.Interaction, brother: Optional[discord.Member] = None, window: Optional[int] = None):
-    if not is_watch_command(interaction.user):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # No defer: send a direct response to clear the interaction state
@@ -1253,7 +1284,7 @@ def _member_rank_label(member: Optional[discord.Member]):
     return "Watch Brother"
 
 
-async def _resolve_home_chapters(guild: [discord.Guild], user_ids: List[str], limit: int = 500):
+async def _resolve_home_chapters(guild: Optional[discord.Guild], user_ids: List[str], limit: int = 500):
     """Resolve home chapters for given users by scanning the '#◈⋅⋅record-of-blood⋅⋅◈' channel.
     Logic: find a message that mentions the user; the message directly above (older) contains the chapter.
     The chapter is detected by matching any of the known `home_chapters` names within that message.
@@ -1350,10 +1381,35 @@ def _chapters_to_archetypes(chapters: List[str]):
 
 
 def _pick_primary_secondary(archetypes: List[str]):
-    """Choose a primary and secondary archetype based on frequency & priority."""
+    """Choose a primary and secondary archetype based on frequency.
+    - Normally: by count desc, then fixed priority.
+    - If all counts are equal: choose using a seed-based pseudo-random selection
+      for variety while remaining deterministic per input.
+    """
     counter = Counter(archetypes)
     if not counter:
         return "unknown", "unknown"
+
+    items = list(counter.items())
+    counts = {c for _, c in items}
+
+    # Build deterministic seed from the multiset of archetypes
+    seed = "|".join(sorted(archetypes))
+
+    if len(counts) == 1 and len(items) > 1:
+        # All present archetypes have equal frequency; pick via seed-based indices
+        arches_only = sorted(a for a, _ in items)
+        if len(arches_only) == 1:
+            return arches_only[0], arches_only[0]
+        i1 = _stable_index(seed, len(arches_only), salt="eq1")
+        primary = arches_only[i1]
+        # Ensure secondary differs when possible
+        i2_base = _stable_index(seed, len(arches_only), salt="eq2")
+        i2 = i2_base
+        if len(arches_only) > 1 and arches_only[i2] == primary:
+            i2 = (i2 + 1) % len(arches_only)
+        secondary = arches_only[i2]
+        return primary, secondary
 
     # Sort by count desc, then by our fixed priority
     def sort_key(item):
@@ -1361,7 +1417,7 @@ def _pick_primary_secondary(archetypes: List[str]):
         prio = ARCHETYPE_PRIORITY.index(arch) if arch in ARCHETYPE_PRIORITY else len(ARCHETYPE_PRIORITY)
         return (-count, prio)
 
-    sorted_arches = sorted(counter.items(), key=sort_key)
+    sorted_arches = sorted(items, key=sort_key)
     primary = sorted_arches[0][0]
 
     # Secondary is the next distinct archetype if it exists
@@ -1374,14 +1430,14 @@ def _pick_primary_secondary(archetypes: List[str]):
     return primary, secondary
 
 
-def _stable_index(seed: str, modulo: int, salt: str) -> int:
+def _stable_index(seed: str, modulo: int, salt: str):
     """Deterministically pick an index using sha256(seed+salt)."""
     h = hashlib.sha256((seed + salt).encode("utf-8")).hexdigest()
     num = int(h[:8], 16)
     return num % max(1, modulo)
 
 
-def generate_combat_bond_name(ch1: str, ch2: str, ch3: str) -> str:
+def generate_combat_bond_name(ch1: str, ch2: str, ch3: str):
     """
     Given three home chapters, generate a 40k-flavored Combat Bond name.
 
@@ -1431,10 +1487,10 @@ def _format_bonds_for_discord(bonds: List[Tuple[Tuple[str, str, str], int]], gui
         return "No qualifying Combat Bonds found in the current window."
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m===================================================================")
+    lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
     lines.append("  SUB-ROUTINE: TRIADIC BATTLE-LITANY INDEX")
-    lines.append("=============================================================================")
+    lines.append("==============================================================================")
     lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     rank = 1
     ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY"}
@@ -1464,9 +1520,9 @@ def _format_bonds_for_discord(bonds: List[Tuple[Tuple[str, str, str], int]], gui
         codename = generate_combat_bond_name(*tri_chapters) if len(tri_chapters) == 3 else None
         title = ordinal_labels.get(rank, "BOND")
         if codename:
-            lines.append(f"#{rank}  ++ {title} BOND: \"{codename}\" ++")
+            lines.append(f"    ++ {title} BOND: \"{codename}\" ++")
         else:
-            lines.append(f"#{rank}  ++ {title} BOND ++")
+            lines.append(f"    ++ {title} BOND ++")
 
         lines.append(f"    {_member_label(a)}")
         lines.append(f"    {_member_label(b)}")
@@ -1474,11 +1530,11 @@ def _format_bonds_for_discord(bonds: List[Tuple[Tuple[str, str, str], int]], gui
         lines.append(f"    Veneration: Bond Integrity classified as {tier}")
         lines.append("")
         rank += 1
-    lines.append("===============================================================================")
+    lines.append("==============================================================================")
     lines.append("  Machine-Spirit Addendum:")
     lines.append("  These Combat Bonds are logged for future deployment rites")
     lines.append("  and may be invoked by decree of Watch Command alone.")
-    lines.append("===============================================================================")
+    lines.append("==============================================================================")
     lines.append("\u001b[0m```")
     return "\n".join(lines)
 
