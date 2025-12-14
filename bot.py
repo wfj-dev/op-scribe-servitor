@@ -244,7 +244,8 @@ ARCHETYPE_PRIORITY = [
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {
     # Update to your desired demo channel name
-    "demo",
+    "❖⋅data-vault⋅❖",
+    "demo"
 }
 
 
@@ -283,7 +284,7 @@ def is_watch_command(user: discord.User | discord.Member):
         for role in user.roles:
             if role.name in ("Watch Command", "Watch Master"):
                 return True
-    if str(user.nick) == "Watch Brother Jules":  # plzjules
+    if str(user.nick) == "Watch Veteran Jules":  # plzjules
         return True
     return False
 
@@ -359,7 +360,7 @@ async def reconcile_records(
     if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer(thinking=True, ephemeral=True)
 
     guild = interaction.guild
     aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
@@ -588,7 +589,7 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
         return
 
     # First response: defer, so we can do slower work safely
-    await interaction.response.defer(thinking=False)
+    await interaction.response.defer(thinking=False, ephemeral=True)
 
     target = brother
     stats = compute_stats_for_user(str(target.id))
@@ -1650,7 +1651,7 @@ def generate_combat_bond_name(ch1: str, ch2: str, ch3: str):
         # THE SPEAR OF THE ABYSS (noun from secondary of primary)
         # If primary == secondary, this will still pick two different nouns
         # because of different salts.
-        title = f"THE {noun_secondary.upper()} OF THE {noun_primary.upper()}"
+        title = f"THE {noun_secondary.upper()} OF {noun_primary.upper()}"
 
     return title
 
