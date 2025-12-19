@@ -11,6 +11,7 @@ import itertools
 from typing import Dict, List, Tuple, Optional
 import hashlib
 from collections import Counter
+import logging
 
 # Data file locations
 DATA_DIR = "data"
@@ -27,6 +28,22 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Global lock to serialize reconciliation runs
 RECONCILE_LOCK = asyncio.Lock()
 
+
+# Config load
+CONFIG_PATH = os.path.join("config", "config.json")
+CONFIG: dict = {}
+if os.path.exists(CONFIG_PATH):
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            CONFIG = json.load(f) or {}
+    except Exception:
+        CONFIG = {}
+
+# Logging setup
+log_level_str = ((CONFIG.get("logging") or {}).get("level") or "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+logging.basicConfig(level=log_level, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("op-scribe-servitor")
 
 # Global rank priority list (highest -> lowest)
 RANK_ROLES_PRIORITY = [
@@ -61,6 +78,10 @@ ALLOWED_COMMAND_CHANNELS = {
 def is_allowed_channel(interaction: discord.Interaction):
     try:
         ch = interaction.channel
+        # Prefer ID-based gating from config; fall back to names
+        allowed_ids = set((CONFIG.get("allowed_command_channel_ids") or []))
+        if allowed_ids and hasattr(ch, "id"):
+            return str(ch.id) in {str(x) for x in allowed_ids}
         name = getattr(ch, "name", None)
         return bool(name) and name in ALLOWED_COMMAND_CHANNELS
     except Exception:
@@ -94,24 +115,53 @@ def _role_index(role_name: str):
 
 
 def get_highest_rank_index(user: discord.User | discord.Member):
-    if not isinstance(user, discord.Member):
+    """Return the highest (best) rank index found in user's roles.
+    Duck-typed: any object with a 'roles' iterable of role-like objects is accepted.
+    """
+    roles = getattr(user, "roles", None)
+    if roles is None:
         return None
     highest: Optional[int] = None
-    for role in user.roles:
-        idx = _role_index(role.name)
+    for role in roles:
+        name = getattr(role, "name", None)
+        if not name:
+            continue
+        idx = _role_index(name)
         if idx is not None:
             highest = idx if highest is None else min(highest, idx)
     return highest
 
 
+def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
+    """Return a set of canonical role names including aliases from config."""
+    names = set()
+    aliases: Dict[str, List[str]] = CONFIG.get("role_aliases") or {}
+    roles = getattr(user, "roles", [])
+    for role in roles:
+        rn = getattr(role, "name", None)
+        if not rn:
+            continue
+        names.add(rn)
+        # Map alias to canonical if configured
+        for canon, alias_list in aliases.items():
+            if rn in (alias_list or []):
+                names.add(canon)
+    return names
+
+
 def is_sergeant_or_higher(user: discord.User | discord.Member):
     # Allow nickname override for owner/operator
-    if str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    if str(getattr(user, "id", None)) in admin_ids or str(getattr(user, "nick", None)) == "Watch Veteran Jules":
         return True
     idx_sergeant = _role_index("Watch Sergeant")
     if idx_sergeant is None:
         return False
-    idx = get_highest_rank_index(user)
+    # Consider aliases when computing highest rank
+    role_names = _canonical_role_names(user)
+    # Map to indices and pick the minimum
+    indices = [i for name in role_names if (i := _role_index(name)) is not None]
+    idx = min(indices) if indices else None
     return idx is not None and idx <= idx_sergeant
 
 
@@ -121,26 +171,31 @@ def is_watch_command(user: discord.User | discord.Member):
 
 
 def can_reconcile_records(user: discord.User | discord.Member):
-    # Only Watch Master, Techmarines, and Forgemaster
-    if str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+    # Only Watch Master, Techmarines, and Forgemaster (config-driven)
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    if str(getattr(user, "id", None)) in admin_ids or str(getattr(user, "nick", None)) == "Watch Veteran Jules":
         return True
-    if isinstance(user, discord.Member):
-        allowed = {"Watch Master", "Forgemaster", "Watch Techmarine"}
-        for role in user.roles:
-            if role.name in allowed:
-                return True
-    return False
+    allowed_config = set((CONFIG.get("permissions", {}).get("reconcile_records", {}).get("roles") or []))
+    allowed_default = {"Watch Master", "Forgemaster", "Watch Techmarine"}
+    allowed = allowed_config or allowed_default
+    names = _canonical_role_names(user)
+    return any(r in names for r in allowed)
 
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
+    logger.info(f"Logged in as {bot.user}")
     # sync app_commands (slash commands)
     try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} slash command(s).")
+        guild_id = CONFIG.get("guild_id")
+        if guild_id:
+            # During development, sync to a single guild for faster propagation
+            synced = await bot.tree.sync(guild=discord.Object(id=int(guild_id)))
+        else:
+            synced = await bot.tree.sync()
+        logger.info(f"Synced {len(synced)} slash command(s).")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        logger.error(f"Failed to sync commands: {e}")
 
 
 @bot.tree.command(
@@ -152,43 +207,49 @@ async def litany_of_function(interaction: discord.Interaction):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     litany_text = """```ansi
-\u001b[32m===============================================
-  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR
-  JERICHO LOGI-SCRIBE SERVITOR V-1 — FUNCTION LITANY
-===============================================
-            ++ SECURE VOX-CHANNEL ESTABLISHED ++
-Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”
-Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.
+\u001b[32m===============================================================
+ WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR
+ LOGI-SCRIBE SERVITOR V-1 — FUNCTION LITANY
+===============================================================
+        ++ SECURE VOX-CHANNEL ACTIVE ++
 
-This servitor is bound by the Edict of Record-Keeping to serve the officers
-of Watch Fortress Jericho. Unauthorized personnel will be disregarded.
+Designation: Watch-Scribe Logi-Servitor V-1
+Status: Active. Machine-spirit nominal.
+Function: Record, audit, and sanctify deeds of the Long Watch.
 
-# Recognized High-Authority Commands:
+Bound by the Edict of Record-Keeping.
+Unauthorized personnel will be logged and ignored.
+
+# High-Authority Commands:
 
 • /tally_deeds @Brother
-Queries the Record of Deeds for the specified Watch Brother.
-Returns: AAR Points, Apothecarion Gene-Seed Credit, Armory Data Tally,
-and current service rank.
-
-• /reconcile_records
-Initiates a full archival sweep of the After-Action-Report vox-channel.
-Reprocesses all recorded missions, amends the Record of Deeds,
-and flags any corrupted or improperly formatted entries.
+Returns AAR Points, Gene-Seed Credit,
+Armory Tally, and Service Rank.
+Permission: Sergeant+
 
 • /combat_bonds [@Brother] [window:N]
-Analyzes recent missions (default last 100) to reveal Combat Bonds.
-Without an argument: shows top 3 fortress-wide triads with no repeated Brothers.
-With @Brother: shows that Brother’s strongest triads.
+Analyzes recent missions (default 100).
+No target: top 3 fortress triads.
+With target: strongest bonds.
+Permission: Sergeant+
 
-**Operational Restrictions:**
-Only those bearing the mantle of Watch Command or Watch Master may issue
-orders to this unit. All others shall be logged and ignored according to
-Protocol Purity-Seventeen.
+• /sanctify_battle_records [span_days:N]
+Ingests sanctioned AARs using last cursor.
+Permission: Watch Master, Forgemaster, Techmarine
 
-This servitor exists to record deeds, preserve honor, and maintain the
-eternal ledger of the Long Watch.
+• /audit_archive_discrepancies
+Rechecks rejected AARs for resolved errors.
+Permission: Watch Master, Forgemaster, Techmarine
+
+• /reconcile_records [span_days:N]
+Full rite: audit errors, then ingest new AARs.
+Permission: Watch Master, Forgemaster, Techmarine
+
+All commands restricted to sanctified channels.
+This unit exists to preserve honor and memory.
 
 # ++ END OF TRANSMISSION ++
+===============================================================
 \u001b[0m```"""
     await interaction.response.send_message(litany_text, ephemeral=True)
 
@@ -221,6 +282,129 @@ async def reconcile_records(
         RECONCILE_LOCK.release()
 
 
+@bot.tree.command(
+    name="audit_archive_discrepancies",
+    description="Recheck previously rejected AARs and restore any fixed entries.",
+)
+async def audit_archive_discrepancies(interaction: discord.Interaction):
+    if not (
+        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if RECONCILE_LOCK.locked():
+        await interaction.response.send_message(
+            "Another reconciliation is in progress. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    await RECONCILE_LOCK.acquire()
+    try:
+        guild = interaction.guild
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
+        if not aar_channel:
+            await interaction.followup.send(
+                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
+                ephemeral=True,
+            )
+            return
+        fixed, still_broken = await _run_recheck_errors(aar_channel)
+
+        author_summaries = summarize_error_authors()
+        author_lines = []
+        for a in author_summaries:
+            label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
+            author_lines.append(f"- {label}: {a['count']}")
+
+        report = (
+            "```ansi\n"
+            "\u001b[32m==============================================================================\n"
+            "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
+            "  OPERATION-SCRIBE SERVITOR — ERROR RECHECK RITE\n"
+            "==============================================================================\n"
+            f"  Restored Entries Returned to the Annals: {fixed}\n"
+            f"  Faulted Reports Under Quarantine: {still_broken}\n"
+        )
+        if author_lines:
+            report += "-----------------------------------------------\n"
+            report += "Entries Rejected Due to Authorial Deviation:\n"
+            for line in author_lines:
+                report += f"  {line}\n"
+        report += (
+            "==============================================================================\n"
+            "  Machine-Spirit Addendum:\n"
+            "  These Records are logged for future deployment rites\n"
+            "  and may be invoked by decree of Watch Command alone.\n"
+            "==============================================================================\n"
+            "\u001b[0m```"
+        )
+        await interaction.followup.send(report, ephemeral=True)
+    finally:
+        RECONCILE_LOCK.release()
+
+
+@bot.tree.command(
+    name="sanctify_battle_records",
+    description="Ingest new sanctioned AARs (optionally scoped by span of days).",
+)
+@app_commands.describe(span_days="Optional: only scan messages from the last N days.")
+async def sanctify_battle_records(interaction: discord.Interaction, span_days: int | None = None):
+    if not (
+        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if RECONCILE_LOCK.locked():
+        await interaction.response.send_message(
+            "Another reconciliation is in progress. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    await RECONCILE_LOCK.acquire()
+    try:
+        guild = interaction.guild
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
+        if not aar_channel:
+            await interaction.followup.send(
+                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
+                ephemeral=True,
+            )
+            return
+        ingested, rejected = await _run_ingest_new(aar_channel, span_days)
+
+        report = (
+            "```ansi\n"
+            "\u001b[32m==============================================================================\n"
+            "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
+            "  OPERATION-SCRIBE SERVITOR — INGESTION RITE\n"
+            "==============================================================================\n"
+            + (
+                f"  Scan Window: Last {span_days} day(s)\n"
+                if span_days
+                else "  Scan Window: Full history\n"
+            )
+            + f"  Sanctioned Operational Records: {ingested}\n"
+            + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
+            + "==============================================================================\n"
+            + "  Machine-Spirit Addendum:\n"
+            + "  These Records are logged for future deployment rites\n"
+            + "  and may be invoked by decree of Watch Command alone.\n"
+            + "==============================================================================\n"
+            + "\u001b[0m```"
+        )
+        await interaction.followup.send(report, ephemeral=True)
+    finally:
+        RECONCILE_LOCK.release()
+
+
 async def _reconciliation_core(interaction: discord.Interaction, span_days: int | None):
     guild = interaction.guild
     aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
@@ -229,171 +413,11 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
             "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
         )
         return
+    # First recheck errors, then ingest new
+    fixed, still_broken = await _run_recheck_errors(aar_channel)
+    ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
-    ingested = 0
-    rejected = 0
-    fixed = 0
-    still_broken = 0
-
-    error_entries = _load_json_dict(AAR_ERRORS_PATH)
-
-    # Phase A: re-check errors
-    if len(error_entries) > 0:
-        total_errs = len(error_entries)
-        done_errs = 0
-        for aar_id_str in list(error_entries.keys()):
-            try:
-                aar_id = int(aar_id_str)
-            except ValueError:
-                del error_entries[aar_id_str]
-                continue
-            if has_been_processed(aar_id):
-                data = _load_json_dict(AAR_RECORDS_PATH)
-                sid = str(aar_id)
-                if sid in data:
-                    del data[sid]
-                    _save_json_dict(AAR_RECORDS_PATH, data)
-                fixed += 1
-                continue
-            try:
-                msg = await aar_channel.fetch_message(aar_id)
-            except Exception:
-                msg = None
-            if not msg:
-                log_aar_errors(
-                    aar_id, ["Original message not found; cannot reprocess."]
-                )
-                still_broken += 1
-                continue
-            record = parse_aar(msg)
-            if record is None:
-                log_aar_error_with_meta(
-                    aar_id,
-                    [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
-                    msg,
-                )
-                await _set_aar_reaction(msg, "error")
-                still_broken += 1
-                continue
-            errors = validate_aar(record)
-            if errors:
-                log_aar_error_with_meta(
-                    aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
-                )
-                await _set_aar_reaction(msg, "error")
-                still_broken += 1
-            else:
-                save_aar_record(record)
-                data = _load_json_dict(AAR_ERRORS_PATH)
-                sid = str(aar_id)
-                if sid in data:
-                    del data[sid]
-                    _save_json_dict(AAR_ERRORS_PATH, data)
-                await _set_aar_reaction(msg, "ok")
-                fixed += 1
-            done_errs += 1
-            # Update progress bar every 5 items or at the end
-            if (done_errs % 5 == 0) or (done_errs == total_errs):
-                _print_progress("Phase A (re-check errors)", done_errs, total_errs)
-
-    # Phase B: ingest any new, unprocessed AARs (optimized single-pass)
-    # If span_days is provided, limit scan to messages after that cutoff
-    history_kwargs = {"limit": None}
-    cutoff_dt = None
-    if span_days and span_days > 0:
-        cutoff_dt = datetime.utcnow() - timedelta(days=span_days)
-        history_kwargs["after"] = cutoff_dt
-
-    # Cursor optimization: get latest processed ID; when scanning full history,
-    # stop once we encounter a processed message (assuming older ones are processed).
-    processed_ids = load_processed_ids()
-    latest_processed_id: Optional[int] = None
-    try:
-        if processed_ids:
-            latest_processed_id = max(int(x) for x in processed_ids if str(x).isdigit())
-    except Exception:
-        latest_processed_id = None
-
-    scanned = 0
-    to_react_ok: list[discord.Message] = []
-    to_react_err: list[discord.Message] = []
-    async for msg in aar_channel.history(**history_kwargs):
-        if not is_aar_message(msg):
-            continue
-        scanned += 1
-        # Early break: when doing a full scan (no cutoff), stop once we hit a processed message,
-        # assuming earlier history is already ingested.
-        if cutoff_dt is None and latest_processed_id and msg.id <= latest_processed_id:
-            _print_progress("Phase B (ingest new AARs)", scanned, scanned)
-            break
-        record = parse_aar(msg)
-        if record is None:
-            log_aar_error_with_meta(
-                msg.id,
-                [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
-                msg,
-            )
-            to_react_err.append(msg)
-            rejected += 1
-            if scanned % 10 == 0:
-                _print_progress("Phase B (ingest new AARs)", scanned, scanned)
-            continue
-        aar_id = record.get("aar_id", msg.id)
-        if has_been_processed(aar_id):
-            # If already processed, only re-save when content changed or edited timestamp differs
-            existing = _load_json_dict(AAR_RECORDS_PATH).get(str(aar_id))
-            existing_hash = (
-                (existing or {}).get("content_hash")
-                if isinstance(existing, dict)
-                else None
-            )
-            existing_edited = (
-                (existing or {}).get("edited_at")
-                if isinstance(existing, dict)
-                else None
-            )
-            msg_hash = record.get("content_hash")
-            msg_edited = record.get("edited_at")
-            needs_update = (msg_hash and msg_hash != existing_hash) or (
-                msg_edited and msg_edited != existing_edited
-            )
-            if not needs_update:
-                if scanned % 10 == 0:
-                    _print_progress("Phase B (ingest new AARs)", scanned, scanned)
-                continue
-        errors = validate_aar(record)
-        if errors:
-            log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
-            to_react_err.append(msg)
-            rejected += 1
-            if scanned % 10 == 0:
-                _print_progress("Phase B (ingest new AARs)", scanned, scanned)
-            continue
-        save_aar_record(record)
-        to_react_ok.append(msg)
-        ingested += 1
-        if scanned % 10 == 0:
-            _print_progress("Phase B (ingest new AARs)", scanned, scanned)
-
-        # Batch reactions to reduce API calls
-        if len(to_react_ok) + len(to_react_err) >= 25:
-            for m in to_react_ok:
-                await _set_aar_reaction(m, "ok")
-            for m in to_react_err:
-                await _set_aar_reaction(m, "error")
-            to_react_ok.clear()
-            to_react_err.clear()
-
-    # Flush any remaining reactions
-    if to_react_ok or to_react_err:
-        for m in to_react_ok:
-            await _set_aar_reaction(m, "ok")
-        for m in to_react_err:
-            await _set_aar_reaction(m, "error")
-
-    remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
-    still_broken = len(remaining_errors)
-
+    # Compose combined report
     author_summaries = summarize_error_authors()
     author_lines = []
     for a in author_summaries:
@@ -402,17 +426,12 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
 
     report_header = (
         "```ansi\n"
-        "\u001b[32m===============================================\n"
+        "\u001b[32m==============================================================================\n"
         "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
         "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
-        "===============================================\n"
+        "==============================================================================\n"
         "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-    )
-
-    report_header += (
-        f"  Scan Window: Last {span_days} day(s)\n"
-        if span_days
-        else "  Scan Window: Full history\n"
+        + (f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n")
     )
 
     report = (
@@ -437,6 +456,177 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
     report += "\u001b[0m```"
 
     await interaction.followup.send(report, ephemeral=True)
+
+
+async def _run_recheck_errors(aar_channel: discord.TextChannel):
+    fixed = 0
+    still_broken = 0
+    error_entries = _load_json_dict(AAR_ERRORS_PATH)
+    if len(error_entries) > 0:
+        total_errs = len(error_entries)
+        done_errs = 0
+        for aar_id_str in list(error_entries.keys()):
+            try:
+                aar_id = int(aar_id_str)
+            except ValueError:
+                del error_entries[aar_id_str]
+                continue
+            if has_been_processed(aar_id):
+                data = _load_json_dict(AAR_RECORDS_PATH)
+                sid = str(aar_id)
+                if sid in data:
+                    del data[sid]
+                    _save_json_dict(AAR_RECORDS_PATH, data)
+                fixed += 1
+                done_errs += 1
+                if (done_errs % 5 == 0) or (done_errs == total_errs):
+                    _print_progress("Recheck Errors", done_errs, total_errs)
+                continue
+            try:
+                msg = await aar_channel.fetch_message(aar_id)
+            except Exception:
+                msg = None
+            if not msg:
+                log_aar_errors(
+                    aar_id, ["Original message not found; cannot reprocess."]
+                )
+                still_broken += 1
+                done_errs += 1
+                if (done_errs % 5 == 0) or (done_errs == total_errs):
+                    _print_progress("Recheck Errors", done_errs, total_errs)
+                continue
+            record = parse_aar(msg)
+            if record is None:
+                log_aar_error_with_meta(
+                    aar_id,
+                    [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
+                    msg,
+                )
+                await _set_aar_reaction(msg, "error")
+                still_broken += 1
+            else:
+                errors = validate_aar(record)
+                if errors:
+                    log_aar_error_with_meta(
+                        aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
+                    )
+                    await _set_aar_reaction(msg, "error")
+                    still_broken += 1
+                else:
+                    save_aar_record(record)
+                    data = _load_json_dict(AAR_ERRORS_PATH)
+                    sid = str(aar_id)
+                    if sid in data:
+                        del data[sid]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    await _set_aar_reaction(msg, "ok")
+                    fixed += 1
+            done_errs += 1
+            if (done_errs % 5 == 0) or (done_errs == total_errs):
+                _print_progress("Recheck Errors", done_errs, total_errs)
+
+    remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
+    still_broken = len(remaining_errors)
+    return fixed, still_broken
+
+
+async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[int]):
+    ingested = 0
+    rejected = 0
+    history_kwargs = {"limit": None}
+    cutoff_dt = None
+    if span_days and span_days > 0:
+        cutoff_dt = datetime.utcnow() - timedelta(days=span_days)
+        history_kwargs["after"] = cutoff_dt
+
+    processed_ids = load_processed_ids()
+    latest_processed_id: Optional[int] = None
+    try:
+        if processed_ids:
+            latest_processed_id = max(int(x) for x in processed_ids if str(x).isdigit())
+    except Exception:
+        latest_processed_id = None
+
+    scanned = 0
+    to_react_ok: list[discord.Message] = []
+    to_react_err: list[discord.Message] = []
+    if cutoff_dt is None and latest_processed_id:
+        try:
+            history_kwargs["after"] = discord.Object(id=latest_processed_id)
+        except Exception:
+            pass
+
+    async for msg in aar_channel.history(**history_kwargs):
+        if not is_aar_message(msg):
+            continue
+        scanned += 1
+        if cutoff_dt is None and latest_processed_id and msg.id <= latest_processed_id:
+            _print_progress("Ingest New AARs", scanned, scanned)
+            break
+        record = parse_aar(msg)
+        if record is None:
+            log_aar_error_with_meta(
+                msg.id,
+                [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
+                msg,
+            )
+            to_react_err.append(msg)
+            rejected += 1
+            if scanned % 10 == 0:
+                _print_progress("Ingest New AARs", scanned, scanned)
+            continue
+        aar_id = record.get("aar_id", msg.id)
+        if has_been_processed(aar_id):
+            existing = _load_json_dict(AAR_RECORDS_PATH).get(str(aar_id))
+            existing_hash = (
+                (existing or {}).get("content_hash")
+                if isinstance(existing, dict)
+                else None
+            )
+            existing_edited = (
+                (existing or {}).get("edited_at")
+                if isinstance(existing, dict)
+                else None
+            )
+            msg_hash = record.get("content_hash")
+            msg_edited = record.get("edited_at")
+            needs_update = (msg_hash and msg_hash != existing_hash) or (
+                msg_edited and msg_edited != existing_edited
+            )
+            if not needs_update:
+                if scanned % 10 == 0:
+                    _print_progress("Ingest New AARs", scanned, scanned)
+                continue
+        errors = validate_aar(record)
+        if errors:
+            log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+            to_react_err.append(msg)
+            rejected += 1
+            if scanned % 10 == 0:
+                _print_progress("Ingest New AARs", scanned, scanned)
+            continue
+        save_aar_record(record)
+        to_react_ok.append(msg)
+        ingested += 1
+        if scanned % 10 == 0:
+            _print_progress("Ingest New AARs", scanned, scanned)
+
+        if len(to_react_ok) + len(to_react_err) >= 25:
+            for m in to_react_ok:
+                await _set_aar_reaction(m, "ok")
+            for m in to_react_err:
+                await _set_aar_reaction(m, "error")
+            to_react_ok.clear()
+            to_react_err.clear()
+
+    if to_react_ok or to_react_err:
+        for m in to_react_ok:
+            await _set_aar_reaction(m, "ok")
+        for m in to_react_err:
+            await _set_aar_reaction(m, "error")
+
+    return ingested, rejected
+
 
 
 @bot.tree.command(
@@ -557,7 +747,7 @@ async def combat_bonds(
     triples = _build_triple_bonds(pair_counts, all_bros)
 
     if brother is None:
-        top_global = _select_top_global_bonds(triples, top_n=3)
+        top_global = _select_top_global_bonds(triples, top_n=5)
         # Resolve chapters for all user IDs appearing in selected bonds
         uids: List[str] = []
         for tri, _score in top_global:
@@ -720,7 +910,7 @@ def parse_aar(message: discord.Message):
             try:
                 armory_data = int(parts[1].strip()) if len(parts) > 1 else 0
             except ValueError:
-                print(f"Failed to parse armory data from line: {line}")
+                logger.debug(f"Failed to parse armory data from line: {line}")
                 armory_data = 0
 
         # Gene-Seed / Geneseed: lost / carried by @Brother
@@ -743,7 +933,7 @@ def parse_aar(message: discord.Message):
                         try:
                             gene_seed_carried_name = user.nick
                         except AttributeError:
-                            print(
+                            logger.debug(
                                 f"Failed to get nickname for user ID {gene_seed_carrier_id}"
                             )
                 # If a Brother is tagged here, treat as carried regardless of wording
@@ -797,7 +987,7 @@ def parse_aar(message: discord.Message):
                             try:
                                 brother_names.append(user.nick)
                             except AttributeError:
-                                print(
+                                logger.debug(
                                     f"Failed to get nickname for user/ID {user.name}\/{uid}"
                                 )
                 # Try to parse per-brother waves from the same line, expecting an integer
@@ -1103,7 +1293,7 @@ async def _set_aar_reaction(msg: discord.Message, status: str):
         elif status == "error":
             await msg.add_reaction(err_emoji)
     except Exception as e:
-        print(f"Failed to set reaction on message {msg.id}: {e}")
+        logger.debug(f"Failed to set reaction on message {msg.id}: {e}")
 
 
 def load_processed_ids():
@@ -1126,9 +1316,8 @@ def save_aar_record(record: dict):
     key = str(record["aar_id"])
     data[key] = record
 
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
+    # Atomic write via tmp+replace
+    _save_json_dict(filename, data)
 
     # Mark as processed after successful save
     add_processed_id(record["aar_id"])
@@ -1391,7 +1580,7 @@ def _format_bonds_for_discord(
     )
     lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     rank = 1
-    ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY"}
+    ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY", 4: "QUATERNARY", 5: "QUINARY"}
     for triple, score in bonds:
         tier = _bond_tier(score)
         a, b, c = triple
@@ -1438,8 +1627,12 @@ def _format_bonds_for_discord(
     return "\n".join(lines)
 
 
-token = os.getenv("DISCORD_TOKEN")
-if not token:
-    raise RuntimeError("DISCORD_TOKEN environment variable not set")
+def _main():
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        raise RuntimeError("DISCORD_TOKEN environment variable not set")
+    bot.run(token)
 
-bot.run(token)
+
+if __name__ == "__main__":
+    _main()
