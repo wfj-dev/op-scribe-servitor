@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 
 import os
+import asyncio
 import json
 import discord
-from typing import Any
+from discord.ext import commands
+from discord import app_commands
+from datetime import datetime, timedelta
+import itertools
+from typing import Dict, List, Tuple, Optional
+import hashlib
+from collections import Counter
 
 # Data file locations
 DATA_DIR = "data"
@@ -15,24 +22,141 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-client = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Global lock to serialize reconciliation runs
+RECONCILE_LOCK = asyncio.Lock()
 
 
-@client.event
+# Global rank priority list (highest -> lowest)
+RANK_ROLES_PRIORITY = [
+    "Watch Master",
+    "Lord Executioner",
+    "High Chaplain",
+    "Chief Apothecary",
+    "Void Warden",
+    "Forgemaster",
+    "Venerable",
+    "Watch Captain",
+    "Watch Lieutenant",
+    "Company Champion",
+    "Watch Chaplain",
+    "Watch Apothecary",
+    "Watch Librarian",
+    "Watch Techmarine",
+    "Watch Sergeant",
+    "Kill Team Champion",
+    "Watch Veteran",
+    "Watch Brother",
+]
+
+# Restrict commands to a specific channel (demo/training)
+ALLOWED_COMMAND_CHANNELS = {
+    # Update to your desired demo channel name
+    "❖⋅data-vault⋅❖",
+    "demo",
+}
+
+
+def is_allowed_channel(interaction: discord.Interaction):
+    try:
+        ch = interaction.channel
+        name = getattr(ch, "name", None)
+        return bool(name) and name in ALLOWED_COMMAND_CHANNELS
+    except Exception:
+        return False
+
+
+def _print_progress(prefix: str, current: int, total: int, width: int = 40):
+    try:
+        if total <= 0:
+            total = 1
+        ratio = max(0.0, min(1.0, current / total))
+        filled = int(ratio * width)
+        bar = "#" * filled + "-" * (width - filled)
+        print(
+            f"\r{prefix} [{bar}] {current}/{total} ({ratio * 100:.1f}%)",
+            end="",
+            flush=True,
+        )
+        if current >= total:
+            print("", flush=True)
+    except Exception:
+        # Avoid crashing on printing failures
+        pass
+
+
+def _role_index(role_name: str):
+    try:
+        return RANK_ROLES_PRIORITY.index(role_name)
+    except ValueError:
+        return None
+
+
+def get_highest_rank_index(user: discord.User | discord.Member):
+    if not isinstance(user, discord.Member):
+        return None
+    highest: Optional[int] = None
+    for role in user.roles:
+        idx = _role_index(role.name)
+        if idx is not None:
+            highest = idx if highest is None else min(highest, idx)
+    return highest
+
+
+def is_sergeant_or_higher(user: discord.User | discord.Member):
+    # Allow nickname override for owner/operator
+    if str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+        return True
+    idx_sergeant = _role_index("Watch Sergeant")
+    if idx_sergeant is None:
+        return False
+    idx = get_highest_rank_index(user)
+    return idx is not None and idx <= idx_sergeant
+
+
+def is_watch_command(user: discord.User | discord.Member):
+    # Define "Watch Command" as Sergeant and higher (including staff roles above it)
+    return is_sergeant_or_higher(user)
+
+
+def can_reconcile_records(user: discord.User | discord.Member):
+    # Only Watch Master, Techmarines, and Forgemaster
+    if str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+        return True
+    if isinstance(user, discord.Member):
+        allowed = {"Watch Master", "Forgemaster", "Watch Techmarine"}
+        for role in user.roles:
+            if role.name in allowed:
+                return True
+    return False
+
+
+@bot.event
 async def on_ready():
-    print(f"Logged in as {client.user}")
+    print(f"Logged in as {bot.user}")
+    # sync app_commands (slash commands)
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} slash command(s).")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
 
 
-@client.event
-async def on_message(message: discord.Message):
-    # Copilot: in on_message, add handling for a "!litany-of-function" command:
-    # this command should only respond if the sender has the role "Watch COmmand"
-    if message.content.startswith("!litany-of-function"):
-        # if not is_watch_command(message.author):
-        #     return
-
-        litany_text = """
-            # ++ SECURE VOX-CHANNEL ESTABLISHED ++
+@bot.tree.command(
+    name="litany_of_function",
+    description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
+)
+async def litany_of_function(interaction: discord.Interaction):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    litany_text = """```ansi
+\u001b[32m===============================================
+  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR
+  JERICHO LOGI-SCRIBE SERVITOR V-1 — FUNCTION LITANY
+===============================================
+            ++ SECURE VOX-CHANNEL ESTABLISHED ++
 Designation: Watch-Scribe Logi-Servitor V-1, “Operation-Scribe.”
 Status: Active. Machine-spirit nominal. Awaiting Watch Command directives.
 
@@ -41,15 +165,20 @@ of Watch Fortress Jericho. Unauthorized personnel will be disregarded.
 
 # Recognized High-Authority Commands:
 
-• **!tally-deeds @Brother**
+• /tally_deeds @Brother
 Queries the Record of Deeds for the specified Watch Brother.
 Returns: AAR Points, Apothecarion Gene-Seed Credit, Armory Data Tally,
 and current service rank.
 
-• **!reconcile-records**
+• /reconcile_records
 Initiates a full archival sweep of the After-Action-Report vox-channel.
 Reprocesses all recorded missions, amends the Record of Deeds,
 and flags any corrupted or improperly formatted entries.
+
+• /combat_bonds [@Brother] [window:N]
+Analyzes recent missions (default last 100) to reveal Combat Bonds.
+Without an argument: shows top 3 fortress-wide triads with no repeated Brothers.
+With @Brother: shows that Brother’s strongest triads.
 
 **Operational Restrictions:**
 Only those bearing the mantle of Watch Command or Watch Master may issue
@@ -60,234 +189,396 @@ This servitor exists to record deeds, preserve honor, and maintain the
 eternal ledger of the Long Watch.
 
 # ++ END OF TRANSMISSION ++
-            """
-        await message.reply(litany_text)
+\u001b[0m```"""
+    await interaction.response.send_message(litany_text, ephemeral=True)
+
+
+@bot.tree.command(
+    name="reconcile_records", description="Reprocess AARs and update the archive."
+)
+@app_commands.describe(span_days="Optional: only scan messages from the last N days.")
+async def reconcile_records(
+    interaction: discord.Interaction, span_days: int | None = None
+):
+    if not (
+        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    # Serialize concurrent invocations to avoid file races
+    if RECONCILE_LOCK.locked():
+        await interaction.response.send_message(
+            "Another reconciliation is in progress. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    await RECONCILE_LOCK.acquire()
+    try:
+        await _reconciliation_core(interaction, span_days)
+    finally:
+        RECONCILE_LOCK.release()
+
+
+async def _reconciliation_core(interaction: discord.Interaction, span_days: int | None):
+    guild = interaction.guild
+    aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+    if not aar_channel:
+        await interaction.followup.send(
+            "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
+        )
         return
 
-    # Reconcile: ingest unprocessed AARs, then re-check error entries; accepted records are untouched
-    if message.content.startswith("!reconcile-records"):
-        # if not is_watch_command(message.author):
-        #     return
+    ingested = 0
+    rejected = 0
+    fixed = 0
+    still_broken = 0
 
-        aar_channel = discord.utils.get(
-            message.guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
-        # aar_channel = discord.utils.get(message.guild.channels, name="demo")
-        if not aar_channel:
-            await message.reply(
-                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
-            )
-            return
+    error_entries = _load_json_dict(AAR_ERRORS_PATH)
 
-        ingested = 0
-        rejected = 0
-        fixed = 0
-        still_broken = 0
-
-        error_entries = _load_json_dict(AAR_ERRORS_PATH)
-
-        if len(error_entries) > 0:
-            # Phase A: re-check errors first
-            for aar_id_str in list(error_entries.keys()):
-                try:
-                    aar_id = int(aar_id_str)
-                except ValueError:
-                    del error_entries[aar_id_str]
-                    continue
-                if has_been_processed(aar_id):
-                    data = _load_json_dict(AAR_ERRORS_PATH)
-                    sid = str(aar_id)
-                    if sid in data:
-                        del data[sid]
-                        _save_json_dict(AAR_ERRORS_PATH, data)
-                    fixed += 1
-                    continue
-                try:
-                    msg = await aar_channel.fetch_message(aar_id)
-                except Exception:
-                    msg = None
-                if not msg:
-                    log_aar_errors(
-                        aar_id, ["Original AAR message not found in channel."]
-                    )
-                    still_broken += 1
-                    continue
-                record = parse_aar(msg)
-                if record is None:
-                    log_aar_error_with_meta(
-                        aar_id,
-                        [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
-                        msg,
-                    )
-                    still_broken += 1
-                    continue
-                errors = validate_aar(record)
-                if errors:
-                    log_aar_error_with_meta(
-                        aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
-                    )
-                    still_broken += 1
-                else:
-                    save_aar_record(record)
-                    data = _load_json_dict(AAR_ERRORS_PATH)
-                    sid = str(aar_id)
-                    if sid in data:
-                        del data[sid]
-                        _save_json_dict(AAR_ERRORS_PATH, data)
-                    fixed += 1
-
-        # Phase B or only phase: ingest any new, unprocessed AARs from channel
-        async for msg in aar_channel.history(limit=None):
-            if not is_aar_message(msg):
+    # Phase A: re-check errors
+    if len(error_entries) > 0:
+        total_errs = len(error_entries)
+        done_errs = 0
+        for aar_id_str in list(error_entries.keys()):
+            try:
+                aar_id = int(aar_id_str)
+            except ValueError:
+                del error_entries[aar_id_str]
+                continue
+            if has_been_processed(aar_id):
+                data = _load_json_dict(AAR_RECORDS_PATH)
+                sid = str(aar_id)
+                if sid in data:
+                    del data[sid]
+                    _save_json_dict(AAR_RECORDS_PATH, data)
+                fixed += 1
+                continue
+            try:
+                msg = await aar_channel.fetch_message(aar_id)
+            except Exception:
+                msg = None
+            if not msg:
+                log_aar_errors(
+                    aar_id, ["Original message not found; cannot reprocess."]
+                )
+                still_broken += 1
                 continue
             record = parse_aar(msg)
             if record is None:
                 log_aar_error_with_meta(
-                    msg.id,
+                    aar_id,
                     [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                     msg,
                 )
-                rejected += 1
-                continue
-            aar_id = record.get("aar_id", msg.id)
-            if has_been_processed(aar_id):
+                await _set_aar_reaction(msg, "error")
+                still_broken += 1
                 continue
             errors = validate_aar(record)
             if errors:
                 log_aar_error_with_meta(
                     aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
                 )
-                rejected += 1
-                continue
-            save_aar_record(record)
-            ingested += 1
+                await _set_aar_reaction(msg, "error")
+                still_broken += 1
+            else:
+                save_aar_record(record)
+                data = _load_json_dict(AAR_ERRORS_PATH)
+                sid = str(aar_id)
+                if sid in data:
+                    del data[sid]
+                    _save_json_dict(AAR_ERRORS_PATH, data)
+                await _set_aar_reaction(msg, "ok")
+                fixed += 1
+            done_errs += 1
+            # Update progress bar every 5 items or at the end
+            if (done_errs % 5 == 0) or (done_errs == total_errs):
+                _print_progress("Phase A (re-check errors)", done_errs, total_errs)
 
-        # After reconcile, compute remaining errors directly from the error log
-        remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
-        still_broken = len(remaining_errors)
+    # Phase B: ingest any new, unprocessed AARs (optimized single-pass)
+    # If span_days is provided, limit scan to messages after that cutoff
+    history_kwargs = {"limit": None}
+    cutoff_dt = None
+    if span_days and span_days > 0:
+        cutoff_dt = datetime.utcnow() - timedelta(days=span_days)
+        history_kwargs["after"] = cutoff_dt
 
-        # Build author rejection summary from current error log
-        author_summaries = summarize_error_authors()
-        author_lines = []
-        for a in author_summaries:
-            label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
-            author_lines.append(f"- {label}: {a['count']}")
+    # Cursor optimization: get latest processed ID; when scanning full history,
+    # stop once we encounter a processed message (assuming older ones are processed).
+    processed_ids = load_processed_ids()
+    latest_processed_id: Optional[int] = None
+    try:
+        if processed_ids:
+            latest_processed_id = max(int(x) for x in processed_ids if str(x).isdigit())
+    except Exception:
+        latest_processed_id = None
 
-        # Final report with metrics clarified
-        report = (
-            "```ansi\n"
-            "\u001b[32m===============================================\n"
-            "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
-            "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
-            "===============================================\n"
-            "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-            f"  Sanctioned Operational Records: {ingested}\n"
-            f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
-            f"  Restored Entries Returned to the Annals: {fixed}\n"
-            f"  Faulted Reports Under Quarantine: {still_broken}\n"
-        )
-
-        if author_lines:
-            report += "-----------------------------------------------\n"
-            report += "Entries Rejected Due to Authorial Deviation:\n"
-            for line in author_lines:
-                report += f"  {line}\n"
-
-        # Close ANSI block
-        report += "\u001b[0m```"
-
-
-        await message.reply(report)
-        return
-
-    if message.content.startswith("!tally-deeds"):
-        # if not is_watch_command(message.author):
-        #     return
-
-        if len(message.mentions) != 1:
-            await message.reply(
-                """++ tally-deeds DIRECTIVE ++\n
-                Proper Invocation: !tally-deeds @Brother\n
-                One—and only one—Brother must be specified.\n
-                ++ END DIRECTIVE ++"""
+    scanned = 0
+    to_react_ok: list[discord.Message] = []
+    to_react_err: list[discord.Message] = []
+    async for msg in aar_channel.history(**history_kwargs):
+        if not is_aar_message(msg):
+            continue
+        scanned += 1
+        # Early break: when doing a full scan (no cutoff), stop once we hit a processed message,
+        # assuming earlier history is already ingested.
+        if cutoff_dt is None and latest_processed_id and msg.id <= latest_processed_id:
+            _print_progress("Phase B (ingest new AARs)", scanned, scanned)
+            break
+        record = parse_aar(msg)
+        if record is None:
+            log_aar_error_with_meta(
+                msg.id,
+                [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
+                msg,
             )
-            return
-
-        target = message.mentions[0]
-        stats = compute_stats_for_user(str(target.id))
-
-        # Determine Current Rank
-        rank_roles_priority = [
-            "Watch Master",
-            "Watch Techmarine",
-            "Watch Librarian",
-            "Watch Apothecary",
-            "Watch Chaplain",
-            "Lord Executioner",
-            "Watch Captain",
-            "Watch Lieutenant",
-            "Watch Champion",
-            "Watch Sergeant",
-            "Kill Team Champion",
-            "Watch Veteran",
-            "Watch Brother",
-        ]
-        current_rank = "Unknown"
-        for rank in rank_roles_priority:
-            for role in target.roles:
-                if role.name == rank:
-                    current_rank = rank
-                    break
-            if current_rank != "Unknown":
-                break
-
-        reply_text = (
-            "```ansi\n"
-            "\u001b[32m===============================================\n"
-            "  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE\n"
-            "  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER\n"
-            "===============================================\n"
-            f"  Tally for: {target.nick}\n"
-            "-----------------------------------------------\n"
-            f"  Current Rank: {current_rank}\n"
-            f"  AAR Commendation Points: {stats['aar_points']}\n"
-            f"  Gene-seed Retrieval Points: {stats['gene_seed_points']}\n"
-            f"  Armory Data Acquisition Points: {stats['armory_points']}\n"
-            "===============================================\n"
-            "\u001b[0m```"
-        )
-        await message.channel.send(reply_text)
-        return
-
-    # Ignore the bot's own messages
-    if message.author == client.user:
-        return
-
-        # AAR handling
-    if is_aar_message(message):
-        record = parse_aar(message)
-        aar_id = record["aar_id"]
-
-        # Check if already processed
+            to_react_err.append(msg)
+            rejected += 1
+            if scanned % 10 == 0:
+                _print_progress("Phase B (ingest new AARs)", scanned, scanned)
+            continue
+        aar_id = record.get("aar_id", msg.id)
         if has_been_processed(aar_id):
-            print(f"AAR {aar_id} already processed, skipping.")
-            return
-
-        # Validate before saving
+            # If already processed, only re-save when content changed or edited timestamp differs
+            existing = _load_json_dict(AAR_RECORDS_PATH).get(str(aar_id))
+            existing_hash = (
+                (existing or {}).get("content_hash")
+                if isinstance(existing, dict)
+                else None
+            )
+            existing_edited = (
+                (existing or {}).get("edited_at")
+                if isinstance(existing, dict)
+                else None
+            )
+            msg_hash = record.get("content_hash")
+            msg_edited = record.get("edited_at")
+            needs_update = (msg_hash and msg_hash != existing_hash) or (
+                msg_edited and msg_edited != existing_edited
+            )
+            if not needs_update:
+                if scanned % 10 == 0:
+                    _print_progress("Phase B (ingest new AARs)", scanned, scanned)
+                continue
         errors = validate_aar(record)
         if errors:
-            error_text = "AAR rejected, please correct and repost:\n" + "\n".join(
-                f"- {e}" for e in errors
-            )
-            await message.reply(error_text)
-            # Log errors and mark this AAR as processed
-            log_aar_error_with_meta(aar_id, errors, message)
-            add_processed_id(aar_id)
-            print(f"AAR {aar_id} rejected with errors: {errors}")
-            return
-
-        # All good: save and confirm
+            log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+            to_react_err.append(msg)
+            rejected += 1
+            if scanned % 10 == 0:
+                _print_progress("Phase B (ingest new AARs)", scanned, scanned)
+            continue
         save_aar_record(record)
+        to_react_ok.append(msg)
+        ingested += 1
+        if scanned % 10 == 0:
+            _print_progress("Phase B (ingest new AARs)", scanned, scanned)
+
+        # Batch reactions to reduce API calls
+        if len(to_react_ok) + len(to_react_err) >= 25:
+            for m in to_react_ok:
+                await _set_aar_reaction(m, "ok")
+            for m in to_react_err:
+                await _set_aar_reaction(m, "error")
+            to_react_ok.clear()
+            to_react_err.clear()
+
+    # Flush any remaining reactions
+    if to_react_ok or to_react_err:
+        for m in to_react_ok:
+            await _set_aar_reaction(m, "ok")
+        for m in to_react_err:
+            await _set_aar_reaction(m, "error")
+
+    remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
+    still_broken = len(remaining_errors)
+
+    author_summaries = summarize_error_authors()
+    author_lines = []
+    for a in author_summaries:
+        label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
+        author_lines.append(f"- {label}: {a['count']}")
+
+    report_header = (
+        "```ansi\n"
+        "\u001b[32m===============================================\n"
+        "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
+        "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
+        "===============================================\n"
+        "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
+    )
+
+    report_header += (
+        f"  Scan Window: Last {span_days} day(s)\n"
+        if span_days
+        else "  Scan Window: Full history\n"
+    )
+
+    report = (
+        report_header
+        + f"  Sanctioned Operational Records: {ingested}\n"
+        + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
+        + f"  Restored Entries Returned to the Annals: {fixed}\n"
+        + f"  Faulted Reports Under Quarantine: {still_broken}\n"
+    )
+
+    if author_lines:
+        report += "-----------------------------------------------\n"
+        report += "Entries Rejected Due to Authorial Deviation:\n"
+        for line in author_lines:
+            report += f"  {line}\n"
+
+    report += "==============================================================================\n"
+    report += "  Machine-Spirit Addendum:\n"
+    report += "  These Records are logged for future deployment rites\n"
+    report += "  and may be invoked by decree of Watch Command alone.\n"
+    report += "==============================================================================\n"
+    report += "\u001b[0m```"
+
+    await interaction.followup.send(report, ephemeral=True)
+
+
+@bot.tree.command(
+    name="tally_deeds", description="Display the Deeds Ledger for a Brother."
+)
+@app_commands.describe(brother="The Watch Brother to query.")
+async def tally_deeds(interaction: discord.Interaction, brother: discord.Member):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    # First response: defer, so we can do slower work safely
+    await interaction.response.defer(thinking=False, ephemeral=True)
+
+    target = brother
+    stats = compute_stats_for_user(str(target.id))
+
+    current_rank = "Unknown"
+    for rank in RANK_ROLES_PRIORITY:
+        for role in target.roles:
+            if role.name == rank:
+                current_rank = rank
+                break
+        if current_rank != "Unknown":
+            break
+
+    display_name = target.nick or target.display_name
+
+    # Member join date (server join time); fallback to 'Unknown' if unavailable
+    try:
+        joined_at = getattr(target, "joined_at", None)
+        joined_str = (
+            joined_at.strftime("%Y-%m-%d %H:%M UTC") if joined_at else "Unknown"
+        )
+    except Exception:
+        joined_str = "Unknown"
+
+    data = load_aar_data(AAR_RECORDS_PATH)
+    trials_raw = sum(
+        1
+        for rec in data.values()
+        if str(target.id) in (rec.get("brother_ids") or [])
+        and bool(rec.get("initiation_trial"))
+    )
+    trials_reported = max(0, trials_raw - 1)
+
+    # Column-aligned stats
+    stat_rows = [
+        ("Rank", current_rank),
+        ("Induction", joined_str),
+        ("Brothers Sanctioned", str(trials_reported)),
+        ("Siege Waves", str(stats["waves_participated"])),
+        ("AAR Commendations", str(stats["aar_points"])),
+        ("Gene-seed Secured", str(stats["gene_seed_points"])),
+        ("Armory Data Recovered", str(stats["armory_points"])),
+    ]
+    label_width = max(len(label) for label, _ in stat_rows) + 2
+    lines = []
+    lines.append("```ansi")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
+    lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
+    lines.append("  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append(f"  Tally for: {display_name}")
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
+    for label, value in stat_rows:
+        lines.append(f"  {label:<{label_width}} {value}")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append("  Machine-Spirit Addendum:")
+    lines.append("  These Deeds are logged for future deployment rites")
+    lines.append("  and may be invoked by decree of Watch Command alone.")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append("\u001b[0m```")
+    reply_text = "\n".join(lines)
+
+    # After defer, always use followup
+    await interaction.followup.send(reply_text, ephemeral=True)
+
+
+@bot.tree.command(
+    name="combat_bonds", description="Show top Combat Bonds (global or for a Brother)."
+)
+@app_commands.describe(
+    brother="Optional: limit to bonds including this Brother.",
+    window="Optional: number of most recent missions to consider.",
+)
+async def combat_bonds(
+    interaction: discord.Interaction,
+    brother: Optional[discord.Member] = None,
+    window: Optional[int] = None,
+):
+    if not (
+        is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    # No defer: send a direct response to clear the interaction state
+
+    span = window if (isinstance(window, int) and window > 0) else 100
+    missions = _get_recent_missions(limit=span)
+    # Collect all brothers seen in window
+    all_bros: List[str] = []
+    for rec in missions:
+        all_bros.extend([str(b) for b in (rec.get("brother_ids") or [])])
+    all_bros = sorted(set(all_bros))
+
+    pair_counts = _build_pair_counts(missions)
+    triples = _build_triple_bonds(pair_counts, all_bros)
+
+    if brother is None:
+        top_global = _select_top_global_bonds(triples, top_n=3)
+        # Resolve chapters for all user IDs appearing in selected bonds
+        uids: List[str] = []
+        for tri, _score in top_global:
+            uids.extend(list(tri))
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
+        text = _format_bonds_for_discord(
+            top_global, interaction.guild, window_span=span, chapters=chapters
+        )
+        await interaction.response.send_message(text, ephemeral=True)
+    else:
+        target_id = str(brother.id)
+        personal = _select_personal_bonds(triples, target_id, max_n=3)
+        uids: List[str] = []
+        for tri, _score in personal:
+            uids.extend(list(tri))
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
+        text = _format_bonds_for_discord(
+            personal, interaction.guild, window_span=span, chapters=chapters
+        )
+        await interaction.response.send_message(text, ephemeral=True)
+
 
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
@@ -342,13 +633,13 @@ def compute_gene_seed_base_points_for_carrier(difficulty_class: str | None):
     if not difficulty_class:
         return 0
     if difficulty_class == "ruthless_ops" or difficulty_class == "normal_stratagem":
-        return 2 + 1
+        return 2
     if difficulty_class == "lethal_ops":
-        return 3 + 1
+        return 3
     if difficulty_class == "absolute_ops":
-        return 4 + 1
+        return 4
     if difficulty_class == "hard_stratagem":
-        return 5 + 1
+        return 5
     if difficulty_class in ("normal_siege", "hard_siege"):
         return 0
     return 0
@@ -371,7 +662,7 @@ def compute_armory_bonus_points(difficulty_class: str | None, armory_data: int |
 def is_aar_message(message: discord.Message):
     content = message.content
     # Treat presence of the start marker as sufficient; END marker optional
-    return "++ MISSION REPORT ++" in content
+    return "++ MISSION REPORT ++" in content or "++MISSION REPORT++" in content
 
 
 def get_user_ids_in_line(line: str, message: discord.Message):
@@ -391,8 +682,7 @@ def parse_aar(message: discord.Message):
 
     mission = None
     difficulty = None
-    difficulty_tags = []
-    black_laurels_active = False
+    # Deprecated fields removed from persistence
     armory_data = 0
     gene_seed_status = "unknown"
     gene_seed_carrier_id = None
@@ -400,6 +690,10 @@ def parse_aar(message: discord.Message):
     brothers_ids = []
     brother_names = []
     waves = 0
+    # Siege per-brother waves participation (parsed from Team lines as '@Brother N')
+    brother_waves: Dict[str, int] = {}
+    # Initiation Trial mention flag (lightweight)
+    initiation_trial = False
 
     brothers_start_idx = None
 
@@ -409,16 +703,15 @@ def parse_aar(message: discord.Message):
 
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
-        elif lower.startswith("difficulty:"):
+            # Also detect Initiation Trial tokens on the mission line
+            # Deprecated: no longer tracking initiation trial state here
+        elif lower.startswith("difficulty:") or lower.startswith("threat:"):
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
                 mention = f"<@&{role.id}>"
                 after_colon = after_colon.replace(mention, role.name)
             difficulty = after_colon.strip()
-            difficulty_tags = [t for t in difficulty.split() if t.startswith("@")]
-            black_laurels_active = any(
-                "black" in t.lower() and "laurel" in t.lower() for t in difficulty_tags
-            )
+            # No longer persisting difficulty_tags or black_laurels_active
 
         # Armory / Armoury Data in any order, any capitalization
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
@@ -430,8 +723,8 @@ def parse_aar(message: discord.Message):
                 print(f"Failed to parse armory data from line: {line}")
                 armory_data = 0
 
-        # Gene-Seed: lost / carried by @Brother
-        elif "gene-seed" in lower:
+        # Gene-Seed / Geneseed: lost / carried by @Brother
+        elif ("gene-seed" in lower) or ("geneseed" in lower):
             parts = line.split(":", 1)
             rest = parts[1].strip() if len(parts) > 1 else ""
             rest_lower = rest.lower()
@@ -453,12 +746,24 @@ def parse_aar(message: discord.Message):
                             print(
                                 f"Failed to get nickname for user ID {gene_seed_carrier_id}"
                             )
+                # If a Brother is tagged here, treat as carried regardless of wording
+                gene_seed_status = "carried"
 
-        elif lower.startswith("brothers"):
-            # Brothers can appear on the same line as the header; include this line
+        for role in message.role_mentions:
+            if role.name == "Initiation Trial":
+                initiation_trial = True
+
+        # Watch Command marker sometimes present on trial templates (deprecated persistence)
+        if "watch command" in lower:
+            # Deprecated: ignore trial template markers for persistence
+            pass
+
+        elif lower.startswith("brothers") or lower.startswith("team"):
+            # Brothers/Team can appear on the same line as the header; include this line
             brothers_start_idx = i
 
-        elif lower.startswith("waves:"):
+        elif lower.startswith("waves:") or lower.startswith("wave:"):
+            # Legacy/global waves support (non-siege or old format)
             parts = line.split(":", 1)
             try:
                 waves = int(parts[1].strip())
@@ -492,8 +797,18 @@ def parse_aar(message: discord.Message):
                             try:
                                 brother_names.append(user.nick)
                             except AttributeError:
-                                print(f"Failed to get nickname for user ID {uid}")
-                                print(user.name)
+                                print(
+                                    f"Failed to get nickname for user/ID {user.name}\/{uid}"
+                                )
+                # Try to parse per-brother waves from the same line, expecting an integer
+                try:
+                    # Find last integer token in the line
+                    tokens = [t for t in line.replace("/", " ").split()]
+                    nums = [int(t) for t in tokens if t.isdigit()]
+                    if nums:
+                        brother_waves[uid] = nums[-1]
+                except Exception:
+                    pass
 
     # Always return a record, even if Brothers section is missing; validation will handle errors
     return {
@@ -501,8 +816,7 @@ def parse_aar(message: discord.Message):
         "mission": mission,
         "difficulty": difficulty,
         "difficulty_class": difficulty_class,
-        "difficulty_tags": difficulty_tags,
-        "black_laurels_active": black_laurels_active,
+        # deprecated: removed from persisted record
         "armory_data": armory_data,
         "armory_challenge_points": compute_armory_bonus_points(
             difficulty_class, armory_data
@@ -513,15 +827,23 @@ def parse_aar(message: discord.Message):
         "gene_seed_base_points_for_carrier": gene_seed_base_points_for_carrier,
         "brother_ids": brothers_ids,
         "brother_names": brother_names,
+        "brother_waves": brother_waves,
         "waves": waves,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
+        "edited_at": message.edited_at.isoformat()
+        if getattr(message, "edited_at", None)
+        else None,
+        "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
+        "initiation_trial": initiation_trial,
     }
 
 
 def validate_aar(record: dict):
     """
     Validate a parsed AAR record.
+            "initiation_trial_tag_in_mission": initiation_trial_tag_in_mission,
+            "initiation_trial_line_present": initiation_trial_line_present,
     Returns a list of human-readable error messages.
     If the list is empty, the record is considered valid.
     """
@@ -530,14 +852,26 @@ def validate_aar(record: dict):
     mission = record.get("mission")
     difficulty = record.get("difficulty") or ""
     waves = record.get("waves")
+    brother_waves = record.get("brother_waves") or {}
     armory_data = record.get("armory_data")
     brothers = record.get("brother_ids") or []
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
 
-    # 1) Mission required
-    if not mission:
+    # 1) Mission required (except Siege templates where Mission may be omitted)
+    dlower = (record.get("difficulty") or "").lower()
+    is_siege = ("normal-siege" in dlower) or ("hard-siege" in dlower)
+    if not mission and not is_siege:
         errors.append("Mission is missing (line starting with 'Mission:').")
+    elif mission:
+        mstr = str(mission)
+        # Reject any user or role mentions or trial-style tokens in Mission
+        # if "<@&" in mstr or "<@" in mstr:
+        #     errors.append("Mission must be plain text; no Discord mentions are allowed after 'Mission:'.")
+        if "/" in mstr:
+            errors.append(
+                "Mission must not include trial-style progress tokens like 'n/m' or '-/m'."
+            )
 
     # 2) Difficulty must be one of the known tags
     dlower = difficulty.lower()
@@ -556,18 +890,29 @@ def validate_aar(record: dict):
             "(@Ruthless, @Lethal, @Absolute, @Normal-Stratagem, "
             "@Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
         )
+    else:
+        # Only allow Black Laurels on Difficulty when Absolute is present
+        has_black_laurels = "black" in dlower and "laurel" in dlower
+        has_absolute = "absolute" in dlower
+        if has_black_laurels and not has_absolute:
+            errors.append(
+                "@Black_Laurels may only be present when @Absolute is selected on the Difficulty line."
+            )
 
-    # 3) Siege must have valid Waves: line
-    if "@normal-siege" in dlower or "@hard-siege" in dlower:
-        if waves is None:
-            errors.append("Siege difficulty requires a 'Waves:' line.")
-        else:
+    # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
+    if "normal-siege" in dlower or "hard-siege" in dlower:
+        global_ok = False
+        if waves is not None:
             try:
-                w = int(waves)
-                if w < 5 or w % 5 != 0:
-                    errors.append("Waves must be a multiple of 5 (e.g. 5, 10, 15).")
-            except ValueError:
+                int(waves)
+                global_ok = True
+            except (TypeError, ValueError):
                 errors.append("Waves value could not be parsed as an integer.")
+        per_bro_ok = any(isinstance(v, int) for v in brother_waves.values())
+        if not (global_ok or per_bro_ok):
+            errors.append(
+                "Siege requires waves data: provide 'Waves:' or per-brother counts after mentions."
+            )
 
     # 4) Armory/Armoury Data required and numeric
     if armory_data is None:
@@ -584,7 +929,22 @@ def validate_aar(record: dict):
             "At least two Brothers must be listed under the 'Brothers:' section."
         )
 
-    # 6) Gene-seed logic
+    # 6) Initiation Trial placement rules
+    if record.get("initiation_trial_active"):
+        if record.get("initiation_trial_tag_in_mission"):
+            errors.append(
+                "Initiation Trial tag must be on its own line (e.g., '@Initiation Trial: n/m'), not inside 'Mission:'."
+            )
+        if not record.get("initiation_trial_line_present"):
+            errors.append(
+                "Provide a dedicated '@Initiation Trial: n/m' line; do not rely on Mission text alone."
+            )
+        if not record.get("initiation_trial_watch_command"):
+            errors.append(
+                "Trial template requires '@Watch Command' marker. Please include it."
+            )
+
+    # 7) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
     if gene_status not in allowed_statuses:
         errors.append(
@@ -615,7 +975,7 @@ def load_aar_data(filename: str):
         return {}
 
 
-def _load_json_dict(path: str) -> dict:
+def _load_json_dict(path: str):
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -628,8 +988,12 @@ def _load_json_dict(path: str) -> dict:
 
 def _save_json_dict(path: str, data: dict):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 def _load_json_list(path: str):
@@ -645,8 +1009,12 @@ def _load_json_list(path: str):
 
 def _save_json_list(path: str, data: list):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 def log_aar_errors(aar_id: int, errors: list[str]):
@@ -655,7 +1023,7 @@ def log_aar_errors(aar_id: int, errors: list[str]):
     _save_json_dict(AAR_ERRORS_PATH, data)
 
 
-def _author_info_from_message(msg: discord.Message) -> dict:
+def _author_info_from_message(msg: discord.Message):
     author = msg.author
     info = {
         "id": str(getattr(author, "id", "")),
@@ -715,7 +1083,30 @@ def summarize_error_authors():
     return summaries
 
 
-def load_processed_ids() -> set[str]:
+async def _set_aar_reaction(msg: discord.Message, status: str):
+    """Set a single reaction on an AAR message based on status.
+    status: 'ok' -> ✅, 'error' -> 🚫
+    Ensures only one of these two reactions remains (no stacking).
+    """
+    ok_emoji = "✅"
+    err_emoji = "🚫"
+    try:
+        # Remove previous bot-added status reactions to avoid stacking
+        for reaction in msg.reactions:
+            if str(reaction.emoji) in (ok_emoji, err_emoji):
+                async for user in reaction.users():
+                    if user == msg.guild.me:
+                        await reaction.remove(user)
+        # Add the desired reaction
+        if status == "ok":
+            await msg.add_reaction(ok_emoji)
+        elif status == "error":
+            await msg.add_reaction(err_emoji)
+    except Exception as e:
+        print(f"Failed to set reaction on message {msg.id}: {e}")
+
+
+def load_processed_ids():
     ids = _load_json_list(PROCESSED_IDS_PATH)
     return set(str(x) for x in ids)
 
@@ -742,23 +1133,12 @@ def save_aar_record(record: dict):
     # Mark as processed after successful save
     add_processed_id(record["aar_id"])
 
-    print(f"Saved AAR {record['aar_id']} to {filename}.")
+    # print(f"Saved AAR {record['aar_id']} to {filename}.")
 
 
 def has_been_processed(aar_id: int):
     processed = load_processed_ids()
     return str(aar_id) in processed
-
-
-def print_aar_summary(record: dict):
-    print("AAR Summary:")
-    print(f"  AAR ID: {record['aar_id']}")
-    print(f"  Mission: {record['mission']}")
-    print(f"  Difficulty: {record['difficulty']}")
-    print(f"  Armory Data: {record['armory_data']}")
-    print(f"  Gene-Seed Status: {record['gene_seed_status']}")
-    print(f"  Gene-Seed Carrier ID: {record.get('gene_seed_carrier_name')}")
-    print(f"  Brothers (user IDs): {', '.join(record['brother_names'])}")
 
 
 def compute_stats_for_user(user_id: str):
@@ -770,12 +1150,34 @@ def compute_stats_for_user(user_id: str):
     armory_points = 0
     gene_carries = 0
     gene_seed_points = 0
+    waves_participated = 0
 
     for record in data.values():
         brother_ids = record.get("brother_ids", [])
         if user_id in brother_ids:
             ops += 1
-            aar_points += record.get("points_for_op", 0)
+            # For Siege difficulties, compute AAR points per-brother using their waves
+            difficulty_class = record.get("difficulty_class")
+            if difficulty_class in ("normal_siege", "hard_siege"):
+                bw = record.get("brother_waves") or {}
+                try:
+                    my_waves = int(bw.get(user_id, 0) or 0)
+                except Exception:
+                    my_waves = 0
+                # If per-brother waves not present, fall back to legacy global waves
+                if my_waves <= 0:
+                    try:
+                        my_waves = int(record.get("waves") or 0)
+                    except Exception:
+                        my_waves = 0
+                # Apply siege points and tally waves participated
+                if difficulty_class == "normal_siege":
+                    aar_points += 3 * (my_waves // 5)
+                else:
+                    aar_points += 4 * (my_waves // 5)
+                waves_participated += my_waves
+            else:
+                aar_points += record.get("points_for_op", 0)
             armory_data = record.get("armory_data")
             try:
                 armory_raw += int(armory_data) if armory_data is not None else 0
@@ -783,8 +1185,14 @@ def compute_stats_for_user(user_id: str):
                 armory_raw += 0
             armory_points += record.get("armory_challenge_points", 0)
 
-        if record.get("gene_seed_status") == "carried":
-            gene_carrier = record.get("gene_seed_carrier_id")
+        # Treat as carried if status is 'carried' OR a carrier is named and status is not 'lost'
+        status = (record.get("gene_seed_status") or "").lower()
+        gene_carrier = record.get("gene_seed_carrier_id")
+        effective_carried = status == "carried" or (
+            gene_carrier is not None and status != "lost"
+        )
+
+        if effective_carried:
             if gene_carrier == user_id:
                 gene_carries += 1
                 gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
@@ -798,11 +1206,240 @@ def compute_stats_for_user(user_id: str):
         "armory_points": armory_points,
         "gene_carries": gene_carries,
         "gene_seed_points": gene_seed_points,
+        "waves_participated": waves_participated,
     }
+
+
+# ===== Combat Bonds helpers =====
+def _get_recent_missions(limit: int = 100):
+    """Return the most recent missions (AAR records) sorted by timestamp desc."""
+    data = load_aar_data(AAR_RECORDS_PATH)
+    records = list(data.values())
+
+    def _parse_ts(r: dict):
+        ts = r.get("timestamp")
+        try:
+            return datetime.fromisoformat(ts).timestamp() if ts else 0.0
+        except Exception:
+            return 0.0
+
+    records.sort(key=_parse_ts, reverse=True)
+    return records[:limit]
+
+
+def _build_pair_counts(missions):
+    """Count how often each pair of brothers appears together in provided missions.
+    Keys are sorted tuples of brother IDs (str, str).
+    """
+    pair_counts: Dict[Tuple[str, str], int] = {}
+    for rec in missions:
+        bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
+        # unique per mission to avoid duplicate counting same brother twice
+        unique_bros = sorted(set(bros))
+        for a, b in itertools.combinations(unique_bros, 2):
+            key = (a, b) if a < b else (b, a)
+            pair_counts[key] = pair_counts.get(key, 0) + 1
+    return pair_counts
+
+
+def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[str]):
+    """Create 3-brother bonds and score them as sum of the three pairwise counts.
+    Skip any triple where a pair never appeared together (pair count == 0).
+    Returns list of ((id1,id2,id3), score) sorted by score desc.
+    """
+    triples: List[Tuple[Tuple[str, str, str], int]] = []
+    uniq_bros = sorted(set(brothers))
+    for x, y, z in itertools.combinations(uniq_bros, 3):
+        pairs = [tuple(sorted((x, y))), tuple(sorted((x, z))), tuple(sorted((y, z)))]
+        # all pairs must exist at least once
+        if any(pair_counts.get(p, 0) <= 0 for p in pairs):
+            continue
+        score = sum(pair_counts.get(p, 0) for p in pairs)
+        triples.append(((x, y, z), score))
+    triples.sort(key=lambda t: t[1], reverse=True)
+    return triples
+
+
+def _select_top_global_bonds(
+    triples: List[Tuple[Tuple[str, str, str], int]], top_n: int = 3
+):
+    """Select top-N global bonds ensuring no brother repeats across groups."""
+    selected: List[Tuple[Tuple[str, str, str], int]] = []
+    used: set[str] = set()
+    for triple, score in triples:
+        if any(b in used for b in triple):
+            continue
+        selected.append((triple, score))
+        used.update(triple)
+        if len(selected) >= top_n:
+            break
+    return selected
+
+
+def _select_personal_bonds(
+    triples: List[Tuple[Tuple[str, str, str], int]], target_id: str, max_n: int = 3
+):
+    """Return up to max_n bonds that include the target brother."""
+    results = [t for t in triples if target_id in t[0]]
+    return results[:max_n]
+
+
+def _bond_tier(score: int):
+    """Map bond score to a tier label."""
+    if score <= 6:
+        return "FRAGILE"
+    if score <= 12:
+        return "FORMING"
+    if score <= 21:
+        return "RELIABLE"
+    if score <= 33:
+        return "STALWART"
+    return "INDOMITABLE"
+
+
+def _render_veneration_line(active_tier: str):
+    """Return cogitator-style veneration line with only the active tier bracketed.
+    Example: "Veneration: FRAGILE  FORMING  RELIABLE  [ STALWART ]  INDOMITABLE"
+    """
+    tiers = ["FRAGILE", "FORMING", "RELIABLE", "STALWART", "INDOMITABLE"]
+    parts = [f"[ {t} ]" if t == active_tier else t for t in tiers]
+    return "Veneration: " + "  ".join(parts)
+
+
+async def _resolve_home_chapters(
+    guild: Optional[discord.Guild], user_ids: List[str], limit: int = 500
+):
+    """Resolve home chapters for given users by scanning the '#◈⋅⋅record-of-blood⋅⋅◈' channel.
+    Logic: find a message that mentions the user; detect the chapter within that same message's content.
+    The chapter is detected by matching any of the known `home_chapters` names within the message.
+    Returns mapping of user_id -> chapter string. Missing entries map to 'REDACTED'.
+    """
+    home_chapters = [
+        "Black Templars",
+        "Blood Angels",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Dark Krakens",
+        "Death Spectres",
+        "Flesh Eaters",
+        "Flesh Tearers",
+        "Hawk Lords",
+        "Imperial Fists",
+        "Iron Hands",
+        "Lamenters",
+        "Minotaurs",
+        "Raven Guard",
+        "Salamanders",
+        "Sons of Medusa",
+        "Space Wolves",
+        "Storm Giants",
+        "Ultramarines",
+        "White Scars",
+        "Black Shields",
+    ]
+    chapters: Dict[str, str] = {}
+    if not guild:
+        return chapters
+    channel = discord.utils.get(guild.channels, name="◈⋅⋅record-of-blood⋅⋅◈")
+    if not channel:
+        return chapters
+    target_set = set(user_ids)
+    # Oldest first so 'prev_msg' is the message above (older) when we hit a mention line
+    async for msg in channel.history(limit=limit, oldest_first=True):
+        # Collect mentioned IDs in this message
+        mentioned = {str(u.id) for u in msg.mentions}
+        intersect = mentioned & target_set
+        if intersect:
+            for uid in intersect:
+                if uid not in chapters:
+                    chapter = "REDACTED"
+                    # Adjusted: find chapter within the SAME message content
+                    if msg.content:
+                        text = msg.content.strip()
+                        lower_text = text.lower()
+                        match = next(
+                            (hc for hc in home_chapters if hc.lower() in lower_text),
+                            None,
+                        )
+                        if match:
+                            chapter = match
+                    chapters[uid] = chapter
+        if len(chapters) == len(target_set):
+            break
+    return chapters
+
+
+def _format_bonds_for_discord(
+    bonds: List[Tuple[Tuple[str, str, str], int]],
+    guild: Optional[discord.Guild] = None,
+    window_span: int = 100,
+    chapters: Optional[Dict[str, str]] = None,
+):
+    """Produce styled Combat Bonds output matching the requested layout."""
+    if not bonds:
+        return "No qualifying Combat Bonds found in the current window."
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
+    lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
+    lines.append("  SUB-ROUTINE: TRIADIC BATTLE-LITANY INDEX")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
+    rank = 1
+    ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY"}
+    for triple, score in bonds:
+        tier = _bond_tier(score)
+        a, b, c = triple
+
+        # Resolve members and labels (rank + name + chapter)
+        def _member_label(uid: str):
+            member = None
+            name = "REDACTED"
+            if guild:
+                try:
+                    member = guild.get_member(int(uid))
+                except Exception:
+                    member = None
+            if member:
+                name = member.nick or member.display_name
+
+            chap = (chapters or {}).get(uid)
+            chap_str = chap if chap else "REDACTED"
+            return f"{name} [{chap_str}]"
+
+        # Optional codename derived from majority chapter
+        tri_chapters = [(chapters or {}).get(x) for x in (a, b, c)]
+        tri_chapters = [ch for ch in tri_chapters if ch]
+        title = ordinal_labels.get(rank, "BOND")
+
+        lines.append(f"    ++ {title} BOND ++")
+        lines.append(f"    {_member_label(a)}")
+        lines.append(f"    {_member_label(b)}")
+        lines.append(f"    {_member_label(c)}")
+        lines.append(f"    {_render_veneration_line(tier)}")
+        lines.append("")
+        rank += 1
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append("  Machine-Spirit Addendum:")
+    lines.append("  These Combat Bonds are logged for future deployment rites")
+    lines.append("  and may be invoked by decree of the Watch Master, Forgemaster,")
+    lines.append("  or Watch Techmarines alone.")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append("\u001b[0m```")
+    return "\n".join(lines)
 
 
 token = os.getenv("DISCORD_TOKEN")
 if not token:
     raise RuntimeError("DISCORD_TOKEN environment variable not set")
 
-client.run(token)
+bot.run(token)
