@@ -677,6 +677,7 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
     stat_rows = [
         ("Rank", current_rank),
         ("Induction", joined_str),
+        ("Total Operations", str(stats["ops"])),
         ("Brothers Sanctioned", str(trials_reported)),
         ("Siege Waves", str(stats["waves_participated"])),
         ("AAR Commendations", str(stats["aar_points"])),
