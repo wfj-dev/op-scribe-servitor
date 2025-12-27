@@ -1631,7 +1631,10 @@ def _format_bonds_for_discord(
 
 
 def _main():
-    token = os.getenv("DISCORD_TOKEN")
+    try:
+        token = os.getenv("DISCORD_TOKEN")
+    else:
+        token = "REDACTED_DISCORD_TOKEN"
     if not token:
         raise RuntimeError("DISCORD_TOKEN environment variable not set")
     bot.run(token)
