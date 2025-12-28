@@ -673,13 +673,21 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
     )
     trials_reported = max(0, trials_raw - 1)
 
+    # Resolve home chapter for the target (falls back to 'REDACTED')
+    try:
+        chapters = await _resolve_home_chapters(interaction.guild, [str(target.id)])
+        home_chapter = chapters.get(str(target.id)) if chapters else "REDACTED"
+    except Exception:
+        home_chapter = "REDACTED"
+
     # Column-aligned stats
     stat_rows = [
-        ("Rank", current_rank),
         ("Induction", joined_str),
+        ("Home Chapter", home_chapter),
+        ("Rank", current_rank),
         ("Total Operations", str(stats["ops"])),
+        ("Total Siege Waves", str(stats["waves_participated"])),
         ("Brothers Sanctioned", str(trials_reported)),
-        ("Siege Waves", str(stats["waves_participated"])),
         ("AAR Commendations", str(stats["aar_points"])),
         ("Gene-seed Secured", str(stats["gene_seed_points"])),
         ("Armory Data Recovered", str(stats["armory_points"])),
@@ -1633,7 +1641,9 @@ def _format_bonds_for_discord(
 def _main():
     try:
         token = os.getenv("DISCORD_TOKEN")
-    else:
+    except Exception as e:
+        print(e)
+    finally:
         token = "REDACTED_DISCORD_TOKEN"
     if not token:
         raise RuntimeError("DISCORD_TOKEN environment variable not set")
