@@ -680,8 +680,52 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
     except Exception:
         home_chapter = "REDACTED"
 
+    # Determine Active/Inactive status: Active if any AAR in last 28 days.
+    try:
+        data = load_aar_data(AAR_RECORDS_PATH)
+        # Collect timestamps for AARs involving this user
+        timestamps = []
+        for rec in data.values():
+            if str(target.id) in (rec.get("brother_ids") or []):
+                ts = rec.get("timestamp")
+                if not ts:
+                    continue
+                try:
+                    t = datetime.fromisoformat(ts)
+                except Exception:
+                    # Skip records with unparseable timestamps
+                    continue
+                # Ensure naive datetimes are treated as UTC
+                if t.tzinfo is not None:
+                    # Convert to UTC naive for comparison with datetime.utcnow()
+                    try:
+                        t = t.astimezone(tz=None).replace(tzinfo=None)
+                    except Exception:
+                        # Fallback: drop tzinfo
+                        t = t.replace(tzinfo=None)
+                timestamps.append(t)
+
+        status = "Inactive"
+        if timestamps:
+            # Sort newest first and check if any within the last 28 days from now
+            timestamps.sort(reverse=True)
+            now = datetime.utcnow()
+            cutoff = now - timedelta(days=28)
+            # If the newest timestamp is newer than cutoff, mark Active
+            if timestamps[0] >= cutoff:
+                status = "Active"
+            else:
+                # As safeguard, check any timestamp in case of malformed ordering
+                for t in timestamps:
+                    if t >= cutoff:
+                        status = "Active"
+                        break
+    except Exception:
+        status = "Inactive"
+
     # Column-aligned stats
     stat_rows = [
+        ("Status", status),
         ("Induction", joined_str),
         ("Home Chapter", home_chapter),
         ("Rank", current_rank),
@@ -1629,8 +1673,8 @@ def _format_bonds_for_discord(
     )
     lines.append("  Machine-Spirit Addendum:")
     lines.append("  These Combat Bonds are logged for future deployment rites")
-    lines.append("  and may be invoked by decree of the Watch Master, Forgemaster,")
-    lines.append("  or Watch Techmarines alone.")
+    lines.append("  and may be invoked by decree of the Kill Team Sergeants or ")
+    lines.append("  any of their commanding officers.")
     lines.append(
         "=============================================================================="
     )
