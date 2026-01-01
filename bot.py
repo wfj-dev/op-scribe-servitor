@@ -723,19 +723,78 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
     except Exception:
         status = "Inactive"
 
+    # Determine Company and Kill Team visibility and values per rank/command rules
+    show_company = False
+    show_killteam = False
+    company = "Unknown"
+    killteam = "Unknown"
+    try:
+        role_names = _canonical_role_names(target)
+        roles = getattr(target, "roles", [])
+
+        # High command ranks that should NOT show Company
+        high_command = {
+            "Watch Master",
+            "Lord Executioner",
+            "Forgemaster",
+            "Void Warden",
+            "Chief Apothecary",
+            "High Chaplain",
+        }
+
+        show_company = not any(r in role_names for r in high_command)
+        if show_company:
+            # Prefer an explicit role that contains the word 'company'
+            for role in roles:
+                rn = getattr(role, "name", "") or ""
+                if "company" in rn.lower():
+                    company = rn
+                    break
+
+        # Show Kill Team only for Sergeant and below (i.e. Watch Sergeant and lower-ranked roles)
+        idx_sergeant = _role_index("Watch Sergeant")
+        highest_idx = get_highest_rank_index(target)
+        if idx_sergeant is None:
+            # If configuration missing, be conservative and do not show killteam
+            show_killteam = False
+        elif highest_idx is None:
+            # No rank detected: assume lower rank -> show killteam
+            show_killteam = True
+        else:
+            # In ranking list, higher authority has smaller index. Sergeant-and-below
+            # means index >= idx_sergeant
+            show_killteam = highest_idx >= idx_sergeant
+
+        if show_killteam:
+            for role in roles:
+                rn = getattr(role, "name", "") or ""
+                rn_l = rn.lower()
+                if "kill" in rn_l and "team" in rn_l:
+                    killteam = rn
+                    break
+    except Exception:
+        # Keep defaults (REDACTED)
+        pass
+
     # Column-aligned stats
     stat_rows = [
         ("Status", status),
         ("Induction", joined_str),
         ("Home Chapter", home_chapter),
-        ("Rank", current_rank),
+    ]
+    if show_company:
+        stat_rows.append(("Company", company))
+    stat_rows.append(("Rank", current_rank))
+    if show_killteam:
+        stat_rows.append(("Kill Team", killteam))
+    stat_rows.extend([
         ("Total Operations", str(stats["ops"])),
         ("Total Siege Waves", str(stats["waves_participated"])),
         ("Brothers Sanctioned", str(trials_reported)),
         ("AAR Commendations", str(stats["aar_points"])),
         ("Gene-seed Secured", str(stats["gene_seed_points"])),
         ("Armory Data Recovered", str(stats["armory_points"])),
-    ]
+    ])
     label_width = max(len(label) for label, _ in stat_rows) + 2
     lines = []
     lines.append("```ansi")
