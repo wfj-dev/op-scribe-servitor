@@ -632,8 +632,12 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 @bot.tree.command(
     name="tally_deeds", description="Display the Deeds Ledger for a Brother."
 )
-@app_commands.describe(brother="The Watch Brother to query.")
-async def tally_deeds(interaction: discord.Interaction, brother: discord.Member):
+@app_commands.describe(brother="The Watch Brother to query.", killteam="Role: tally every member of this kill team (mutually exclusive with brother)")
+async def tally_deeds(
+    interaction: discord.Interaction,
+    brother: Optional[discord.Member] = None,
+    killteam: Optional[discord.Role] = None,
+):
     if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -641,191 +645,307 @@ async def tally_deeds(interaction: discord.Interaction, brother: discord.Member)
     # First response: defer, so we can do slower work safely
     await interaction.response.defer(thinking=False, ephemeral=True)
 
-    target = brother
-    stats = compute_stats_for_user(str(target.id))
-
-    current_rank = "Unknown"
-    for rank in RANK_ROLES_PRIORITY:
-        for role in target.roles:
-            if role.name == rank:
-                current_rank = rank
-                break
-        if current_rank != "Unknown":
-            break
-
-    display_name = target.nick or target.display_name
-
-    # Member join date (server join time); fallback to 'Unknown' if unavailable
-    try:
-        joined_at = getattr(target, "joined_at", None)
-        joined_str = (
-            joined_at.strftime("%Y-%m-%d %H:%M UTC") if joined_at else "Unknown"
+    # Mutual exclusivity and target selection: either a single brother or a killteam role
+    if brother and killteam:
+        await interaction.response.send_message(
+            "Provide either 'brother' or 'killteam', not both.", ephemeral=True
         )
-    except Exception:
-        joined_str = "Unknown"
+        return
 
-    data = load_aar_data(AAR_RECORDS_PATH)
-    trials_raw = sum(
-        1
-        for rec in data.values()
-        if str(target.id) in (rec.get("brother_ids") or [])
-        and bool(rec.get("initiation_trial"))
-    )
-    trials_reported = max(0, trials_raw - 1)
+    if killteam:
+        members = [m for m in getattr(killteam, "members", [])]
+        if not members:
+            await interaction.followup.send(
+                f"Killteam role '{getattr(killteam, 'name', '')}' has no members.",
+                ephemeral=True,
+            )
+            return
+    elif brother:
+        members = [brother]
+    else:
+        await interaction.response.send_message(
+            "Specify a brother or a killteam role.", ephemeral=True
+        )
+        return
 
-    # Resolve home chapter for the target (falls back to 'REDACTED')
+    # We'll build one aggregated reply containing a block for each member
+    member_blocks: list[str] = []
+    # Aggregates for killteam summary
+    agg_ops = 0
+    agg_aar = 0
+    agg_gene = 0
+    agg_armory_raw = 0
+    agg_waves = 0
+
+    # Resolve home chapters for all members once (optimize network calls)
     try:
-        chapters = await _resolve_home_chapters(interaction.guild, [str(target.id)])
-        home_chapter = chapters.get(str(target.id)) if chapters else "REDACTED"
+        all_ids = [str(m.id) for m in members]
+        chapters_map = await _resolve_home_chapters(interaction.guild, all_ids)
     except Exception:
-        home_chapter = "REDACTED"
+        chapters_map = {}
 
-    # Determine Active/Inactive status: Active if any AAR in last 28 days.
-    try:
+    # Process each member and build a block for each
+    for target in members:
+        stats = compute_stats_for_user(str(target.id))
+        # Accumulate for team averages
+        try:
+            agg_ops += int(stats.get("ops", 0))
+        except Exception:
+            pass
+        try:
+            agg_aar += float(stats.get("aar_points", 0))
+        except Exception:
+            pass
+        try:
+            agg_gene += float(stats.get("gene_seed_points", 0))
+        except Exception:
+            pass
+        try:
+            agg_armory_raw += float(stats.get("armory_raw", 0))
+        except Exception:
+            pass
+        try:
+            agg_waves += float(stats.get("waves_participated", 0))
+        except Exception:
+            pass
+
+        current_rank = "Unknown"
+        for rank in RANK_ROLES_PRIORITY:
+            for role in target.roles:
+                if role.name == rank:
+                    current_rank = rank
+                    break
+            if current_rank != "Unknown":
+                break
+
+        display_name = target.nick or target.display_name
+
+        # Member join date (server join time); fallback to 'Unknown' if unavailable
+        try:
+            joined_at = getattr(target, "joined_at", None)
+            joined_str = (
+                joined_at.strftime("%Y-%m-%d %H:%M UTC") if joined_at else "Unknown"
+            )
+        except Exception:
+            joined_str = "Unknown"
+
         data = load_aar_data(AAR_RECORDS_PATH)
-        # Collect timestamps for AARs involving this user
-        timestamps = []
-        for rec in data.values():
-            if str(target.id) in (rec.get("brother_ids") or []):
-                ts = rec.get("timestamp")
-                if not ts:
-                    continue
-                try:
-                    t = datetime.fromisoformat(ts)
-                except Exception:
-                    # Skip records with unparseable timestamps
-                    continue
-                # Ensure naive datetimes are treated as UTC
-                if t.tzinfo is not None:
-                    # Convert to UTC naive for comparison with datetime.utcnow()
-                    try:
-                        t = t.astimezone(tz=None).replace(tzinfo=None)
-                    except Exception:
-                        # Fallback: drop tzinfo
-                        t = t.replace(tzinfo=None)
-                timestamps.append(t)
+        trials_raw = sum(
+            1
+            for rec in data.values()
+            if str(target.id) in (rec.get("brother_ids") or [])
+            and bool(rec.get("initiation_trial"))
+        )
+        trials_reported = max(0, trials_raw - 1)
 
-        status = "Inactive"
-        if timestamps:
-            # Sort newest first and check if any within the last 28 days from now
-            timestamps.sort(reverse=True)
-            now = datetime.utcnow()
-            cutoff = now - timedelta(days=28)
-            # If the newest timestamp is newer than cutoff, mark Active
-            if timestamps[0] >= cutoff:
-                status = "Active"
-            else:
-                # As safeguard, check any timestamp in case of malformed ordering
+        # Home chapter from resolved map (fallback: REDACTED)
+        home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
+
+        # Determine Active/Inactive status: Active if any AAR in last 28 days.
+        try:
+            data = load_aar_data(AAR_RECORDS_PATH)
+            # Collect timestamps for AARs involving this user
+            timestamps = []
+            for rec in data.values():
+                if str(target.id) in (rec.get("brother_ids") or []):
+                    ts = rec.get("timestamp")
+                    if not ts:
+                        continue
+                    try:
+                        t = datetime.fromisoformat(ts)
+                    except Exception:
+                        # Skip records with unparseable timestamps
+                        continue
+                    # Ensure naive datetimes are treated as UTC
+                    if t.tzinfo is not None:
+                        # Convert to UTC naive for comparison with datetime.utcnow()
+                        try:
+                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                        except Exception:
+                            # Fallback: drop tzinfo
+                            t = t.replace(tzinfo=None)
+                    timestamps.append(t)
+
+            status = "Inactive"
+            if timestamps:
+                # Sort newest first and check if any within the last 28 days from now
+                timestamps.sort(reverse=True)
+                now = datetime.utcnow()
+                cutoff = now - timedelta(days=28)
+                # If any timestamp is newer than cutoff, mark Active
                 for t in timestamps:
                     if t >= cutoff:
                         status = "Active"
                         break
-    except Exception:
-        status = "Inactive"
+        except Exception:
+            status = "Inactive"
 
-    # Determine Company and Kill Team visibility and values per rank/command rules
-    show_company = False
-    show_killteam = False
-    company = "Unknown"
-    killteam = "Unknown"
-    try:
-        role_names = _canonical_role_names(target)
-        roles = getattr(target, "roles", [])
+        # Determine Company and Kill Team visibility and values per rank/command rules
+        show_company = False
+        show_killteam = False
+        company = "Unknown"
+        kt_name = "Unknown"
+        try:
+            role_names = _canonical_role_names(target)
+            roles = getattr(target, "roles", [])
 
-        # High command ranks that should NOT show Company
-        high_command = {
-            "Watch Master",
-            "Lord Executioner",
-            "Forgemaster",
-            "Void Warden",
-            "Chief Apothecary",
-            "High Chaplain",
-        }
+            # High command ranks that should NOT show Company
+            high_command = {
+                "Watch Master",
+                "Lord Executioner",
+                "Forgemaster",
+                "Void Warden",
+                "Chief Apothecary",
+                "High Chaplain",
+            }
 
-        show_company = not any(r in role_names for r in high_command)
+            show_company = not any(r in role_names for r in high_command)
+            if show_company:
+                # Prefer an explicit role that contains the word 'company'
+                for role in roles:
+                    rn = getattr(role, "name", "") or ""
+                    if "company" in rn.lower():
+                        company = rn
+                        break
+
+            # Show Kill Team only for Sergeant and below
+            idx_sergeant = _role_index("Watch Sergeant")
+            highest_idx = get_highest_rank_index(target)
+            if idx_sergeant is None:
+                show_killteam = False
+            elif highest_idx is None:
+                show_killteam = True
+            else:
+                show_killteam = highest_idx >= idx_sergeant
+
+            if show_killteam:
+                for role in roles:
+                    rn = getattr(role, "name", "") or ""
+                    rn_l = rn.lower()
+                    if "kill" in rn_l and "team" in rn_l:
+                        kt_name = rn
+                        break
+        except Exception:
+            pass
+
+        # Column-aligned stats
+        stat_rows = [
+            ("Status", status),
+            ("Induction", joined_str),
+            ("Home Chapter", home_chapter),
+        ]
         if show_company:
-            # Prefer an explicit role that contains the word 'company'
-            for role in roles:
-                rn = getattr(role, "name", "") or ""
-                if "company" in rn.lower():
-                    company = rn
-                    break
-
-        # Show Kill Team only for Sergeant and below (i.e. Watch Sergeant and lower-ranked roles)
-        idx_sergeant = _role_index("Watch Sergeant")
-        highest_idx = get_highest_rank_index(target)
-        if idx_sergeant is None:
-            # If configuration missing, be conservative and do not show killteam
-            show_killteam = False
-        elif highest_idx is None:
-            # No rank detected: assume lower rank -> show killteam
-            show_killteam = True
-        else:
-            # In ranking list, higher authority has smaller index. Sergeant-and-below
-            # means index >= idx_sergeant
-            show_killteam = highest_idx >= idx_sergeant
-
+            stat_rows.append(("Company", company))
+        stat_rows.append(("Rank", current_rank))
         if show_killteam:
-            for role in roles:
-                rn = getattr(role, "name", "") or ""
-                rn_l = rn.lower()
-                if "kill" in rn_l and "team" in rn_l:
-                    killteam = rn
-                    break
-    except Exception:
-        # Keep defaults (REDACTED)
-        pass
+            stat_rows.append(("Kill Team", kt_name))
+        stat_rows.extend([
+            ("Total Operations", str(stats["ops"])),
+            ("Total Siege Waves", str(stats["waves_participated"])),
+            ("Brothers Sanctioned", str(trials_reported)),
+            ("AAR Commendations", str(stats["aar_points"])),
+            ("Gene-seed Secured", str(stats["gene_seed_points"])),
+            ("Armory Data Recovered", str(stats["armory_points"])),
+        ])
+        label_width = max(len(label) for label, _ in stat_rows) + 2
+        lines = []
+        lines.append("```ansi")
+        lines.append(
+            "\u001b[32m=============================================================================="
+        )
+        lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
+        lines.append("  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER")
+        lines.append(
+            "=============================================================================="
+        )
+        lines.append(f"  Tally for: {display_name}")
+        lines.append(
+            "------------------------------------------------------------------------------"
+        )
+        for label, value in stat_rows:
+            lines.append(f"  {label:<{label_width}} {value}")
+        lines.append(
+            "=============================================================================="
+        )
+        lines.append("  Machine-Spirit Addendum:")
+        lines.append("  These Deeds are logged for future deployment rites")
+        lines.append("  and may be invoked by decree of Watch Command alone.")
+        lines.append(
+            "=============================================================================="
+        )
+        lines.append("\u001b[0m```")
+        member_blocks.append("\n".join(lines))
 
-    # Column-aligned stats
-    stat_rows = [
-        ("Status", status),
-        ("Induction", joined_str),
-        ("Home Chapter", home_chapter),
-    ]
-    if show_company:
-        stat_rows.append(("Company", company))
-    stat_rows.append(("Rank", current_rank))
-    if show_killteam:
-        stat_rows.append(("Kill Team", killteam))
-    stat_rows.extend([
-        ("Total Operations", str(stats["ops"])),
-        ("Total Siege Waves", str(stats["waves_participated"])),
-        ("Brothers Sanctioned", str(trials_reported)),
-        ("AAR Commendations", str(stats["aar_points"])),
-        ("Gene-seed Secured", str(stats["gene_seed_points"])),
-        ("Armory Data Recovered", str(stats["armory_points"])),
-    ])
-    label_width = max(len(label) for label, _ in stat_rows) + 2
-    lines = []
-    lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
-    lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
-    lines.append("  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER")
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append(f"  Tally for: {display_name}")
-    lines.append(
-        "------------------------------------------------------------------------------"
-    )
-    for label, value in stat_rows:
-        lines.append(f"  {label:<{label_width}} {value}")
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append("  Machine-Spirit Addendum:")
-    lines.append("  These Deeds are logged for future deployment rites")
-    lines.append("  and may be invoked by decree of Watch Command alone.")
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append("\u001b[0m```")
-    reply_text = "\n".join(lines)
+    # Send one aggregated followup containing a block per member
+    reply_text = "\n\n".join(member_blocks)
 
-    # After defer, always use followup
-    await interaction.followup.send(reply_text, ephemeral=True)
+    # If killteam requested, prepare a short summary (under 2000 chars)
+    if killteam:
+        count = len(members)
+        if count > 0:
+            avg_ops = agg_ops / count
+            avg_aar = agg_aar / count
+            avg_gene = agg_gene / count
+            avg_armory = agg_armory_raw / count
+            avg_waves = agg_waves / count
+        else:
+            avg_ops = avg_aar = avg_gene = avg_armory = avg_waves = 0.0
+
+        # Format a compact ANSI-styled summary similar to individual tally output
+        stat_rows_summary = [
+            ("Kill Team", getattr(killteam, "name", "Unknown")),
+            ("Members", str(count)),
+            ("Avg AAR Points", f"{avg_aar:.2f}"),
+            ("Avg Gene-seed Points", f"{avg_gene:.2f}"),
+            ("Avg Armory Data", f"{avg_armory:.2f}"),
+            ("Avg Total Operations", f"{avg_ops:.2f}"),
+            ("Avg Siege Waves", f"{avg_waves:.2f}"),
+        ]
+        label_width = max(len(label) for label, _ in stat_rows_summary) + 2
+        s_lines = []
+        s_lines.append("```ansi")
+        s_lines.append(
+            "\u001b[32m=============================================================================="
+        )
+        s_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
+        s_lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM SUMMARY")
+        s_lines.append(
+            "=============================================================================="
+        )
+        for label, value in stat_rows_summary:
+            s_lines.append(f"  {label:<{label_width}} {value}")
+        s_lines.append(
+            "=============================================================================="
+        )
+        s_lines.append("\u001b[0m```")
+        summary_text = "\n".join(s_lines)
+        try:
+            await interaction.followup.send(summary_text, ephemeral=True)
+        except Exception:
+            # ignore send errors and proceed to attach full file
+            pass
+
+    # If caller requested a killteam, write the aggregated report to a temp file
+    # and send it as a file attachment to the invoking user (ephemeral).
+    if killteam:
+        import tempfile
+
+        try:
+            with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt") as tf:
+                tf.write(reply_text)
+                tmp_path = tf.name
+            # Send as file attachment; ephemeral send to the invoking user
+            await interaction.followup.send(file=discord.File(tmp_path), ephemeral=True)
+        except Exception:
+            # Fallback to inline send on failure
+            await interaction.followup.send(reply_text, ephemeral=True)
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    else:
+        await interaction.followup.send(reply_text, ephemeral=True)
 
 
 @bot.tree.command(
