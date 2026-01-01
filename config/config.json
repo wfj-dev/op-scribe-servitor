@@ -8,7 +8,9 @@
     "litany_of_function": { "min_rank": "Watch Sergeant" },
     "tally_deeds": { "min_rank": "Watch Sergeant" },
     "combat_bonds": { "min_rank": "Watch Sergeant" },
-    "reconcile_records": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] }
+    "reconcile_records": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] },
+    "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] },
+    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] }
   },
   "logging": {
     "level": "INFO"
