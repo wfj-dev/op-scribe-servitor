@@ -12,6 +12,8 @@ from typing import Dict, List, Tuple, Optional
 import hashlib
 from collections import Counter
 import logging
+import signal
+import argparse
 
 # Data file locations
 DATA_DIR = "data"
@@ -27,6 +29,119 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Global lock to serialize reconciliation runs
 RECONCILE_LOCK = asyncio.Lock()
+
+# Guard to avoid double shutdown handling
+SHUTDOWN_INITIATED = False
+
+# Control whether startup/shutdown status broadcasts are sent.
+BROADCAST_STATUS = True
+
+def _is_truthy(val) -> bool:
+    try:
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return val != 0
+        if isinstance(val, str):
+            return val.strip().lower() in {"1", "true", "yes", "on"}
+    except Exception:
+        pass
+    return False
+
+def _resolve_notification_guild() -> Optional[discord.Guild]:
+    """Resolve the notification guild by name first, then ID, then fallback.
+    Priority:
+      1) CONFIG.guild_name (default "Watch Fortress Jericho")
+      2) CONFIG.guild_id
+      3) First connected guild
+    """
+    # 1) Try by configured name (or the known fortress name)
+    try:
+        target_name = (CONFIG.get("guild_name") or "Watch Fortress Jericho")
+    except Exception:
+        target_name = "Watch Fortress Jericho"
+    try:
+        for g in bot.guilds:
+            if getattr(g, "name", None) == target_name:
+                return g
+    except Exception:
+        pass
+    # 2) Try by configured ID
+    try:
+        gid = CONFIG.get("guild_id")
+    except Exception:
+        gid = None
+    if gid:
+        try:
+            g = bot.get_guild(int(gid))
+            if g:
+                return g
+        except Exception:
+            pass
+    # 3) Fallback to the first guild
+    try:
+        return bot.guilds[0] if bot.guilds else None
+    except Exception:
+        return None
+
+async def _send_watch_command_notice(kind: str):
+    """Send a status notice to ❖⋅data-vault⋅❖ mentioning @Watch Command.
+    kind: 'ONLINE' or 'OFFLINE' (case-insensitive)."""
+    guild = _resolve_notification_guild()
+    if not guild:
+        logger.debug("No guild available for notification.")
+        return
+    try:
+        channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
+    except Exception:
+        channel = None
+    if not channel:
+        logger.debug("Notification channel '❖⋅data-vault⋅❖' not found.")
+        return
+    try:
+        role = discord.utils.get(guild.roles, name="Watch Command")
+    except Exception:
+        role = None
+    mention = f"<@&{role.id}>" if role else "@Watch Command"
+    status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    # Compose styled ANSI block similar to other outputs; keep the actual mention outside the block to ping.
+    block = (
+        "```ansi\n"
+        "\u001b[32m==============================================================================\n"
+        "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
+        "  OPERATION-SCRIBE SERVITOR — STATUS BULLETIN\n"
+        "==============================================================================\n"
+        f"  Servitor Unit: Jericho Logi-Scribe V-1\n"
+        f"  Status: {status}\n"
+        f"  Timestamp: {ts}\n"
+        "==============================================================================\n"
+        "  Machine-Spirit Addendum:\n"
+        "  Status broadcasts are preserved within the data-vault and\n"
+        "  may be invoked by decree of the Forgemaster and Watch Techmarines alone.\n"
+        "==============================================================================\n"
+        "\u001b[0m```"
+    )
+    content = f"{mention}\n{block}"
+    try:
+        await channel.send(content, allowed_mentions=discord.AllowedMentions(roles=True))
+    except Exception as e:
+        logger.debug(f"Failed to send notification: {e}")
+
+async def _announce_shutdown_and_close():
+    global SHUTDOWN_INITIATED
+    if SHUTDOWN_INITIATED:
+        return
+    SHUTDOWN_INITIATED = True
+    try:
+        if BROADCAST_STATUS:
+            await _send_watch_command_notice("OFFLINE")
+    except Exception as e:
+        logger.debug(f"Shutdown announce failed: {e}")
+    try:
+        await bot.close()
+    except Exception:
+        pass
 
 
 # Config load
@@ -44,6 +159,12 @@ log_level_str = ((CONFIG.get("logging") or {}).get("level") or "INFO").upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(level=log_level, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("op-scribe-servitor")
+
+# Apply initial debug setting from config (CLI may override later in _main)
+try:
+    BROADCAST_STATUS = not _is_truthy((CONFIG or {}).get("debug"))
+except Exception:
+    BROADCAST_STATUS = True
 
 # Global rank priority list (highest -> lowest)
 RANK_ROLES_PRIORITY = [
@@ -196,6 +317,32 @@ async def on_ready():
         logger.info(f"Synced {len(synced)} slash command(s).")
     except Exception as e:
         logger.error(f"Failed to sync commands: {e}")
+
+    # Announce startup to Watch Command in data-vault
+    if BROADCAST_STATUS:
+        try:
+            await _send_watch_command_notice("ONLINE")
+        except Exception as e:
+            logger.debug(f"Startup announce failed: {e}")
+
+    # Register graceful shutdown signal handlers
+    try:
+        loop = asyncio.get_running_loop()
+        def _sig_handler():
+            try:
+                loop.create_task(_announce_shutdown_and_close())
+            except Exception:
+                pass
+        try:
+            loop.add_signal_handler(signal.SIGTERM, _sig_handler)
+        except Exception:
+            pass
+        try:
+            loop.add_signal_handler(signal.SIGINT, _sig_handler)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.debug(f"Failed to register signal handlers: {e}")
 
 
 @bot.tree.command(
@@ -1862,6 +2009,18 @@ def _format_bonds_for_discord(
 
 
 def _main():
+    # Parse CLI args for debug flag (overrides config). Use parse_known to avoid discord.py argv issues.
+    try:
+        parser = argparse.ArgumentParser(add_help=True)
+        parser.add_argument("--debug", action="store_true", help="Disable startup/shutdown status broadcasts")
+        args, _unknown = parser.parse_known_args()
+        # Merge: CLI overrides config
+        debug_flag = bool(args.debug) or _is_truthy((CONFIG or {}).get("debug"))
+        # Update global broadcast toggle
+        global BROADCAST_STATUS
+        BROADCAST_STATUS = not debug_flag
+    except Exception as e:
+        logger.debug(f"Failed to parse CLI args: {e}")
     try:
         token = os.getenv("DISCORD_TOKEN")
     except Exception as e:
