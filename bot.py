@@ -1074,17 +1074,56 @@ async def tally_deeds(
     # If killteam requested, prepare a short summary (under 2000 chars)
     if killteam:
         count = len(members)
+        recent_records = _get_recent_missions(limit=100)
+        w_ops = 0.0
+        w_aar = 0.0
+        w_gene = 0.0
+        w_armory = 0.0
+        w_waves = 0.0
+        for target in members:
+            try:
+                w_stats = compute_stats_for_user_in_records(str(target.id), recent_records)
+            except Exception:
+                w_stats = {
+                    "ops": 0,
+                    "aar_points": 0,
+                    "gene_seed_points": 0,
+                    "armory_raw": 0,
+                    "waves_participated": 0,
+                }
+            try:
+                w_ops += float(w_stats.get("ops", 0))
+            except Exception:
+                pass
+            try:
+                w_aar += float(w_stats.get("aar_points", 0))
+            except Exception:
+                pass
+            try:
+                w_gene += float(w_stats.get("gene_seed_points", 0))
+            except Exception:
+                pass
+            try:
+                w_armory += float(w_stats.get("armory_raw", 0))
+            except Exception:
+                pass
+            try:
+                w_waves += float(w_stats.get("waves_participated", 0))
+            except Exception:
+                pass
+
         if count > 0:
-            avg_ops = agg_ops / count
-            avg_aar = agg_aar / count
-            avg_gene = agg_gene / count
-            avg_armory = agg_armory_raw / count
-            avg_waves = agg_waves / count
+            avg_ops = w_ops / count
+            avg_aar = w_aar / count
+            avg_gene = w_gene / count
+            avg_armory = w_armory / count
+            avg_waves = w_waves / count
         else:
             avg_ops = avg_aar = avg_gene = avg_armory = avg_waves = 0.0
 
         # Format a compact ANSI-styled summary similar to individual tally output
         stat_rows_summary = [
+            ("Window", "Last 100 AARs"),
             ("Kill Team", _extract_killteam_name(getattr(killteam, "name", "Unknown"))),
             ("Members", str(count)),
             ("Avg AAR Points", f"{avg_aar:.2f}"),
@@ -1811,6 +1850,69 @@ def compute_stats_for_user(user_id: str):
                 gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
             elif user_id in brother_ids:
                 gene_seed_points += 1  # assist
+
+    return {
+        "ops": ops,
+        "aar_points": aar_points,
+        "armory_raw": armory_raw,
+        "armory_points": armory_points,
+        "gene_carries": gene_carries,
+        "gene_seed_points": gene_seed_points,
+        "waves_participated": waves_participated,
+    }
+
+
+def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
+    ops = 0
+    aar_points = 0
+    armory_raw = 0
+    armory_points = 0
+    gene_carries = 0
+    gene_seed_points = 0
+    waves_participated = 0
+
+    for record in records:
+        brother_ids = record.get("brother_ids", [])
+        if user_id in brother_ids:
+            ops += 1
+            difficulty_class = record.get("difficulty_class")
+            if difficulty_class in ("normal_siege", "hard_siege"):
+                bw = record.get("brother_waves") or {}
+                try:
+                    my_waves = int(bw.get(user_id, 0) or 0)
+                except Exception:
+                    my_waves = 0
+                if my_waves <= 0:
+                    try:
+                        my_waves = int(record.get("waves") or 0)
+                    except Exception:
+                        my_waves = 0
+                if difficulty_class == "normal_siege":
+                    aar_points += 3 * (my_waves // 5)
+                else:
+                    aar_points += 4 * (my_waves // 5)
+                waves_participated += my_waves
+            else:
+                aar_points += record.get("points_for_op", 0)
+            armory_data = record.get("armory_data")
+            try:
+                armory_raw += int(armory_data) if armory_data is not None else 0
+            except ValueError:
+                armory_raw += 0
+            armory_points += record.get("armory_challenge_points", 0)
+
+        status = (record.get("gene_seed_status") or "").lower()
+        gene_carrier = record.get("gene_seed_carrier_id")
+        effective_carried = status == "carried" or (
+            gene_carrier is not None and status != "lost"
+        )
+
+        if effective_carried:
+            if gene_carrier == user_id:
+                gene_carries += 1
+                gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
+            elif user_id in brother_ids:
+                gene_seed_points += 1
 
     return {
         "ops": ops,
