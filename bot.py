@@ -1353,6 +1353,93 @@ async def killteam_brief(
             }
         )
 
+    # Also compute a synthetic team for Company Command
+    try:
+        idx_sergeant = _role_index("Watch Sergeant")
+        idx_captain = _role_index("Watch Captain")
+    except Exception:
+        idx_sergeant = None
+        idx_captain = None
+
+    company_command_members: List[discord.Member] = []
+    try:
+        base_members = list(getattr(company, "members", []))
+        for m in base_members:
+            roles = getattr(m, "roles", [])
+            # Must have a role that looks like "Watch Company Primus" (case-insensitive)
+            has_primus = False
+            for r in roles:
+                rn = (getattr(r, "name", "") or "").lower()
+                if ("primus" in rn) and ("company" in rn):
+                    has_primus = True
+                    break
+            highest_idx = get_highest_rank_index(m)
+            if (
+                has_primus
+                and idx_sergeant is not None
+                and idx_captain is not None
+                and highest_idx is not None
+                and (idx_captain <= highest_idx < idx_sergeant)  # Captain through just above Sergeant
+            ):
+                company_command_members.append(m)
+    except Exception:
+        company_command_members = []
+
+    if len(company_command_members) > 0:
+        member_metrics = {"aar": [], "gene": [], "armory": [], "ops": [], "waves": []}
+        w_ops = w_aar = w_gene = w_armory = w_waves = 0.0
+        for m in company_command_members:
+            stats = compute_stats_for_user_in_records(str(m.id), recent_records)
+            w_ops += float(stats.get("ops", 0))
+            w_aar += float(stats.get("aar_points", 0))
+            w_gene += float(stats.get("gene_seed_points", 0))
+            w_armory += float(stats.get("armory_raw", 0))
+            w_waves += float(stats.get("waves_participated", 0))
+            member_metrics["ops"].append(float(stats.get("ops", 0)))
+            member_metrics["aar"].append(float(stats.get("aar_points", 0)))
+            member_metrics["gene"].append(float(stats.get("gene_seed_points", 0)))
+            member_metrics["armory"].append(float(stats.get("armory_raw", 0)))
+            member_metrics["waves"].append(float(stats.get("waves_participated", 0)))
+
+        count = len(company_command_members)
+        avg_ops = w_ops / count
+        avg_aar = w_aar / count
+        avg_gene = w_gene / count
+        avg_armory = w_armory / count
+        avg_waves = w_waves / count
+
+        def _pstdev(vals: List[float]):
+            return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
+
+        std_ops = _pstdev(member_metrics["ops"])  # lower is more consistent
+        std_aar = _pstdev(member_metrics["aar"])  # lower is more consistent
+        std_gene = _pstdev(member_metrics["gene"])  # lower is more consistent
+        std_armory = _pstdev(member_metrics["armory"])  # lower is more consistent
+        std_waves = _pstdev(member_metrics["waves"])  # lower is more consistent
+
+        reliability = (avg_ops + avg_aar + avg_gene + avg_armory + avg_waves) - (
+            std_ops + std_aar + std_gene + std_armory + std_waves
+        )
+
+        team_stats.append(
+            {
+                "role": None,
+                "name": "Company Command",
+                "count": count,
+                "avg_ops": avg_ops,
+                "avg_aar": avg_aar,
+                "avg_gene": avg_gene,
+                "avg_armory": avg_armory,
+                "avg_waves": avg_waves,
+                "std_ops": std_ops,
+                "std_aar": std_aar,
+                "std_gene": std_gene,
+                "std_armory": std_armory,
+                "std_waves": std_waves,
+                "reliability": reliability,
+            }
+        )
+
     if not team_stats:
         await interaction.followup.send(
             "No kill teams found for the provided company.", ephemeral=True
@@ -1377,6 +1464,11 @@ async def killteam_brief(
     # Force Multiplier: Avg AAR per Member
     force_multiplier = best_lethality
 
+    # Helper: label teams; prefix with "Kill Team" unless Company Command
+    def _team_label(team: dict) -> str:
+        name = team.get("name", "Unknown")
+        return "Company Command" if name == "Company Command" else f"Kill Team {name}"
+
     # Render brief
     lines: List[str] = []
     lines.append("```ansi")
@@ -1386,21 +1478,21 @@ async def killteam_brief(
     lines.append("==============================================================================")
     lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 AARs")
     lines.append("------------------------------------------------------------------------------")
-    lines.append(f"  Veteran Lethality Index     :: Kill Team {best_lethality['name']}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
-    lines.append(f"  Gene-Seed Preservation      :: Kill Team {best_preservation['name']}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
-    lines.append(f"  Armory Yield Efficiency     :: Kill Team {best_armory['name']}  (Avg Armory: {best_armory['avg_armory']:.2f})")
-    lines.append(f"  Operational Tempo           :: Kill Team {best_tempo['name']}  (Avg Ops: {best_tempo['avg_ops']:.2f})")
-    lines.append(f"  Siegebreaker Rating         :: Kill Team {best_siegebreaker['name']}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})")
-    lines.append(f"  Kill Team Reliability Index :: Kill Team {best_reliability['name']}  (Score: {best_reliability['reliability']:.2f})")
-    lines.append(f"  Risk Appetite — Shock       :: Kill Team {shock_team['name']}  (Δ AAR-Gene: {(shock_team['avg_aar']-shock_team['avg_gene']):.2f})")
-    lines.append(f"  Risk Appetite — Surgical    :: Kill Team {surgical_team['name']}  (Δ Gene-AAR: {(surgical_team['avg_gene']-surgical_team['avg_aar']):.2f})")
-    lines.append(f"  Force Multiplier Rating     :: Kill Team {force_multiplier['name']}  (Avg AAR/Member: {force_multiplier['avg_aar']:.2f})")
+    lines.append(f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
+    lines.append(f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
+    lines.append(f"  Armory Yield Efficiency     :: {_team_label(best_armory)}  (Avg Armory: {best_armory['avg_armory']:.2f})")
+    lines.append(f"  Operational Tempo           :: {_team_label(best_tempo)}  (Avg Ops: {best_tempo['avg_ops']:.2f})")
+    lines.append(f"  Siegebreaker Rating         :: {_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})")
+    lines.append(f"  Kill Team Reliability Index :: {_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})")
+    lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Δ AAR-Gene: {(shock_team['avg_aar']-shock_team['avg_gene']):.2f})")
+    lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Δ Gene-AAR: {(surgical_team['avg_gene']-surgical_team['avg_aar']):.2f})")
+    lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier['avg_aar']:.2f})")
     lines.append("==============================================================================")
     lines.append("  Command Notes:")
-    lines.append(f"  + Kill Team {best_lethality['name']} is recommended for high-risk, high-value assaults.")
-    lines.append(f"  + Kill Team {best_preservation['name']} is favored for prolonged campaigns requiring force")
+    lines.append(f"  + {_team_label(best_lethality)} is recommended for high-risk, high-value assaults.")
+    lines.append(f"  + {_team_label(best_preservation)} is favored for prolonged campaigns requiring force")
     lines.append("   preservation.")
-    lines.append(f"  +Kill Team {best_armory['name']} demonstrates exceptional strategic yield beyond direct")
+    lines.append(f"  + {_team_label(best_armory)} demonstrates exceptional strategic yield beyond direct")
     lines.append("   engagement.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
