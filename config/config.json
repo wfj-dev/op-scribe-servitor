@@ -1,5 +1,6 @@
 {
   "guild_id": null,
+  "guild_name": "Watch Fortress Jericho",
   "allowed_command_channel_ids": [],
   "admin_user_ids": [],
   "role_aliases": {
@@ -14,5 +15,6 @@
   },
   "logging": {
     "level": "INFO"
-  }
+  },
+  "debug": false
 }
