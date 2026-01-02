@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
+import re
 import itertools
 from typing import Dict, List, Tuple, Optional
 import hashlib
@@ -86,7 +87,16 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
 
 async def _send_watch_command_notice(kind: str):
     """Send a status notice to ❖⋅data-vault⋅❖ mentioning @Watch Command.
-    kind: 'ONLINE' or 'OFFLINE' (case-insensitive)."""
+    kind: 'ONLINE' or 'OFFLINE' (case-insensitive).
+    Also deletes the most recent prior status bulletin of the opposite kind
+    (e.g., when turning ONLINE, deletes the last OFFLINE bulletin)."""
+    # Respect broadcast toggle (e.g., when debug mode disables broadcasts)
+    try:
+        if not BROADCAST_STATUS:
+            return
+    except Exception:
+        # If BROADCAST_STATUS is undefined for any reason, continue safely
+        pass
     guild = _resolve_notification_guild()
     if not guild:
         logger.debug("No guild available for notification.")
@@ -104,6 +114,28 @@ async def _send_watch_command_notice(kind: str):
         role = None
     mention = f"<@&{role.id}>" if role else "@Watch Command"
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
+    # Delete the most recent opposite-status bulletin, if present
+    try:
+        target_delete = "OFFLINE" if status == "ONLINE" else "ONLINE"
+        # Limit scan to a reasonable number to avoid rate limits
+        async for msg in channel.history(limit=100):
+            try:
+                if getattr(msg.author, "id", None) != getattr(bot.user, "id", None):
+                    continue
+                content = msg.content or ""
+                # Identify our bulletin by the header and the status line
+                if (
+                    "OPERATION-SCRIBE SERVITOR — STATUS BULLETIN" in content
+                    and f"Status: {target_delete}" in content
+                ):
+                    await msg.delete()
+                    break
+            except Exception:
+                # Continue scanning on per-message errors
+                continue
+    except Exception as e:
+        logger.debug(f"Failed to delete previous status bulletin: {e}")
+
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     # Compose styled ANSI block similar to other outputs; keep the actual mention outside the block to ping.
     block = (
@@ -268,6 +300,19 @@ def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
             if rn in (alias_list or []):
                 names.add(canon)
     return names
+
+def _extract_killteam_name(name: str) -> str:
+    """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
+    Handles optional separators like ':', '-', and varying whitespace/case.
+    If no match, returns the original name (or 'Unknown' if empty).
+    """
+    try:
+        m = re.match(r"(?i)\s*kill\s*team\s*[:\-]?\s*(.+)", (name or ""))
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return name or "Unknown"
 
 
 def is_sergeant_or_higher(user: discord.User | discord.Member):
@@ -970,7 +1015,7 @@ async def tally_deeds(
                     rn = getattr(role, "name", "") or ""
                     rn_l = rn.lower()
                     if "kill" in rn_l and "team" in rn_l:
-                        kt_name = rn
+                        kt_name = _extract_killteam_name(rn)
                         break
         except Exception:
             pass
@@ -980,10 +1025,10 @@ async def tally_deeds(
             ("Status", status),
             ("Induction", joined_str),
             ("Home Chapter", home_chapter),
+            ("Rank", current_rank),
         ]
         if show_company:
             stat_rows.append(("Company", company))
-        stat_rows.append(("Rank", current_rank))
         if show_killteam:
             stat_rows.append(("Kill Team", kt_name))
         stat_rows.extend([
@@ -1040,7 +1085,7 @@ async def tally_deeds(
 
         # Format a compact ANSI-styled summary similar to individual tally output
         stat_rows_summary = [
-            ("Kill Team", getattr(killteam, "name", "Unknown")),
+            ("Kill Team", _extract_killteam_name(getattr(killteam, "name", "Unknown"))),
             ("Members", str(count)),
             ("Avg AAR Points", f"{avg_aar:.2f}"),
             ("Avg Gene-seed Points", f"{avg_gene:.2f}"),
