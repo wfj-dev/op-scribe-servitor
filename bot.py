@@ -15,6 +15,7 @@ from collections import Counter
 import logging
 import signal
 import argparse
+import statistics
 
 # Data file locations
 DATA_DIR = "data"
@@ -424,6 +425,10 @@ Analyzes recent missions (default 100).
 No target: top 3 fortress triads.
 With target: strongest bonds.
 Permission: Sergeant+
+
+• /killteam_brief [company:@Role]
+Brief Watch Company kill teams (last 100 AARs).
+Permission: Above Sergeant
 
 • /sanctify_battle_records [span_days:N]
 Ingests sanctioned AARs using last cursor.
@@ -1231,6 +1236,176 @@ async def combat_bonds(
             personal, interaction.guild, window_span=span, chapters=chapters
         )
         await interaction.response.send_message(text, ephemeral=True)
+
+
+@bot.tree.command(
+    name="killteam_brief",
+    description="Brief Watch Command on company kill teams (last 100 AARs).",
+)
+@app_commands.describe(company="The Watch Company role to analyze.")
+async def killteam_brief(
+    interaction: discord.Interaction, company: discord.Role
+):
+    # Permissions: strictly above Sergeant and allowed channel
+    idx_sergeant = _role_index("Watch Sergeant")
+    highest_idx = get_highest_rank_index(interaction.user)
+    is_above_sergeant = (
+        idx_sergeant is not None
+        and highest_idx is not None
+        and highest_idx < idx_sergeant
+    )
+    if not (is_above_sergeant and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    # Validate role
+    if not company or not getattr(company, "members", None):
+        await interaction.followup.send("Provide a valid company role with members.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    recent_records = _get_recent_missions(limit=100)
+
+    # Collect kill team roles and intersect members with the company
+    killteam_roles: List[discord.Role] = []
+    try:
+        for role in getattr(guild, "roles", []):
+            rn = getattr(role, "name", "") or ""
+            rl = rn.lower()
+            if ("kill" in rl) and ("team" in rl):
+                # Exclude rank-style roles like 'Kill Team Champion'
+                if "champion" in rl:
+                    continue
+                killteam_roles.append(role)
+    except Exception:
+        pass
+
+    # Build per-killteam windowed averages restricted to company members
+    team_stats: List[dict] = []
+    for kt in killteam_roles:
+        try:
+            kt_members = [m for m in getattr(kt, "members", []) if company in getattr(m, "roles", [])]
+        except Exception:
+            kt_members = []
+        count = len(kt_members)
+        if count <= 0:
+            continue
+        # Compute per-member windowed stats
+        member_metrics = {
+            "aar": [],
+            "gene": [],
+            "armory": [],
+            "ops": [],
+            "waves": [],
+        }
+        w_ops = w_aar = w_gene = w_armory = w_waves = 0.0
+        for m in kt_members:
+            stats = compute_stats_for_user_in_records(str(m.id), recent_records)
+            w_ops += float(stats.get("ops", 0))
+            w_aar += float(stats.get("aar_points", 0))
+            w_gene += float(stats.get("gene_seed_points", 0))
+            w_armory += float(stats.get("armory_raw", 0))
+            w_waves += float(stats.get("waves_participated", 0))
+            member_metrics["ops"].append(float(stats.get("ops", 0)))
+            member_metrics["aar"].append(float(stats.get("aar_points", 0)))
+            member_metrics["gene"].append(float(stats.get("gene_seed_points", 0)))
+            member_metrics["armory"].append(float(stats.get("armory_raw", 0)))
+            member_metrics["waves"].append(float(stats.get("waves_participated", 0)))
+
+        avg_ops = w_ops / count
+        avg_aar = w_aar / count
+        avg_gene = w_gene / count
+        avg_armory = w_armory / count
+        avg_waves = w_waves / count
+
+        # Stddev across members (population std; 0 for <2 members)
+        def _pstdev(vals: List[float]):
+            return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
+
+        std_ops = _pstdev(member_metrics["ops"])  # lower is more consistent
+        std_aar = _pstdev(member_metrics["aar"])  # lower is more consistent
+        std_gene = _pstdev(member_metrics["gene"])  # lower is more consistent
+        std_armory = _pstdev(member_metrics["armory"])  # lower is more consistent
+        std_waves = _pstdev(member_metrics["waves"])  # lower is more consistent
+
+        reliability = (avg_ops + avg_aar + avg_gene + avg_armory + avg_waves) - (
+            std_ops + std_aar + std_gene + std_armory + std_waves
+        )
+
+        team_stats.append(
+            {
+                "role": kt,
+                "name": _extract_killteam_name(getattr(kt, "name", "Unknown")),
+                "count": count,
+                "avg_ops": avg_ops,
+                "avg_aar": avg_aar,
+                "avg_gene": avg_gene,
+                "avg_armory": avg_armory,
+                "avg_waves": avg_waves,
+                "std_ops": std_ops,
+                "std_aar": std_aar,
+                "std_gene": std_gene,
+                "std_armory": std_armory,
+                "std_waves": std_waves,
+                "reliability": reliability,
+            }
+        )
+
+    if not team_stats:
+        await interaction.followup.send(
+            "No kill teams found for the provided company.", ephemeral=True
+        )
+        return
+
+    # Find category winners
+    def _winner(key: str):
+        return max(team_stats, key=lambda t: t.get(key, 0.0))
+
+    best_lethality = _winner("avg_aar")
+    best_preservation = _winner("avg_gene")
+    best_armory = _winner("avg_armory")
+    best_tempo = _winner("avg_ops")
+    best_siegebreaker = _winner("avg_waves")
+    best_reliability = _winner("reliability")
+
+    # Risk Appetite: Shock vs Surgical
+    shock_team = max(team_stats, key=lambda t: (t["avg_aar"] - t["avg_gene"]))
+    surgical_team = max(team_stats, key=lambda t: (t["avg_gene"] - t["avg_aar"]))
+
+    # Force Multiplier: Avg AAR per Member
+    force_multiplier = best_lethality
+
+    # Render brief
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // COMPANY KILL TEAM BRIEF")
+    lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM BRIEF")
+    lines.append("==============================================================================")
+    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 AARs")
+    lines.append("------------------------------------------------------------------------------")
+    lines.append(f"  Veteran Lethality Index     :: Kill Team {best_lethality['name']}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
+    lines.append(f"  Gene-Seed Preservation      :: Kill Team {best_preservation['name']}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
+    lines.append(f"  Armory Yield Efficiency     :: Kill Team {best_armory['name']}  (Avg Armory: {best_armory['avg_armory']:.2f})")
+    lines.append(f"  Operational Tempo           :: Kill Team {best_tempo['name']}  (Avg Ops: {best_tempo['avg_ops']:.2f})")
+    lines.append(f"  Siegebreaker Rating         :: Kill Team {best_siegebreaker['name']}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})")
+    lines.append(f"  Kill Team Reliability Index :: Kill Team {best_reliability['name']}  (Score: {best_reliability['reliability']:.2f})")
+    lines.append(f"  Risk Appetite — Shock       :: Kill Team {shock_team['name']}  (Δ AAR-Gene: {(shock_team['avg_aar']-shock_team['avg_gene']):.2f})")
+    lines.append(f"  Risk Appetite — Surgical    :: Kill Team {surgical_team['name']}  (Δ Gene-AAR: {(surgical_team['avg_gene']-surgical_team['avg_aar']):.2f})")
+    lines.append(f"  Force Multiplier Rating     :: Kill Team {force_multiplier['name']}  (Avg AAR/Member: {force_multiplier['avg_aar']:.2f})")
+    lines.append("==============================================================================")
+    lines.append("  Command Notes:")
+    lines.append(f"  + Kill Team {best_lethality['name']} is recommended for high-risk, high-value assaults.")
+    lines.append(f"  + Kill Team {best_preservation['name']} is favored for prolonged campaigns requiring force")
+    lines.append("   preservation.")
+    lines.append(f"  +Kill Team {best_armory['name']} demonstrates exceptional strategic yield beyond direct")
+    lines.append("   engagement.")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
 
 
 def classify_difficulty(difficulty: str | None):
