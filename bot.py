@@ -927,13 +927,26 @@ async def tally_deeds(
             joined_str = "Unknown"
 
         data = load_aar_data(AAR_RECORDS_PATH)
-        trials_raw = sum(
-            1
-            for rec in data.values()
-            if str(target.id) in (rec.get("brother_ids") or [])
-            and bool(rec.get("initiation_trial"))
-        )
-        trials_reported = max(0, trials_raw - 1)
+        ops_trials = 0
+        siege_inductions = 0
+        for rec in data.values():
+            try:
+                brother_ids = rec.get("brother_ids") or []
+                if str(target.id) not in brother_ids:
+                    continue
+                if not bool(rec.get("initiation_trial")):
+                    continue
+                dclass = (rec.get("difficulty_class") or "").lower()
+                if "siege" in dclass:
+                    # Siege initiation counts immediately as one induction
+                    siege_inductions += 1
+                else:
+                    # Operation initiation requires three trials to count as one induction
+                    ops_trials += 1
+            except Exception:
+                # Be resilient to malformed records
+                pass
+        trials_reported = siege_inductions + (ops_trials // 3)
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -1080,51 +1093,42 @@ async def tally_deeds(
     if killteam:
         count = len(members)
         recent_records = _get_recent_missions(limit=100)
-        w_ops = 0.0
-        w_aar = 0.0
-        w_gene = 0.0
-        w_armory = 0.0
-        w_waves = 0.0
-        for target in members:
+        member_ids = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+
+        ops_count = 0
+        aar_vals: List[float] = []
+        gene_vals: List[float] = []
+        armory_vals: List[float] = []
+        waves_vals: List[float] = []  # siege-only
+
+        for rec in recent_records:
             try:
-                w_stats = compute_stats_for_user_in_records(str(target.id), recent_records)
-            except Exception:
-                w_stats = {
-                    "ops": 0,
-                    "aar_points": 0,
-                    "gene_seed_points": 0,
-                    "armory_raw": 0,
-                    "waves_participated": 0,
-                }
-            try:
-                w_ops += float(w_stats.get("ops", 0))
-            except Exception:
-                pass
-            try:
-                w_aar += float(w_stats.get("aar_points", 0))
-            except Exception:
-                pass
-            try:
-                w_gene += float(w_stats.get("gene_seed_points", 0))
-            except Exception:
-                pass
-            try:
-                w_armory += float(w_stats.get("armory_raw", 0))
-            except Exception:
-                pass
-            try:
-                w_waves += float(w_stats.get("waves_participated", 0))
+                bros = [str(b) for b in (rec.get("brother_ids") or [])]
+                participants_in_team = sum(1 for b in bros if b in member_ids)
+                if participants_in_team <= 0:
+                    continue
+                ops_count += 1
+                aar = float(rec.get("points_for_op", 0) or 0)
+                armory = float(rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0) or 0)
+                gene = 0.0
+                if (rec.get("gene_seed_status") or "").lower() == "carried":
+                    gene = float(rec.get("gene_seed_base_points_for_carrier", 0) or 0)
+                aar_vals.append(aar)
+                armory_vals.append(armory)
+                gene_vals.append(gene)
+                dclass = (rec.get("difficulty_class") or "").lower()
+                if "siege" in dclass:
+                    waves_vals.append(float(rec.get("waves", 0) or 0))
             except Exception:
                 pass
 
-        if count > 0:
-            avg_ops = w_ops / count
-            avg_aar = w_aar / count
-            avg_gene = w_gene / count
-            avg_armory = w_armory / count
-            avg_waves = w_waves / count
-        else:
-            avg_ops = avg_aar = avg_gene = avg_armory = avg_waves = 0.0
+        def _mean(vals: List[float]) -> float:
+            return (sum(vals) / len(vals)) if vals else 0.0
+
+        avg_aar = _mean(aar_vals)
+        avg_gene = _mean(gene_vals)
+        avg_armory = _mean(armory_vals)
+        avg_waves = _mean(waves_vals)
 
         # Format a compact ANSI-styled summary similar to individual tally output
         stat_rows_summary = [
@@ -1134,7 +1138,7 @@ async def tally_deeds(
             ("Avg AAR Points", f"{avg_aar:.2f}"),
             ("Avg Gene-seed Points", f"{avg_gene:.2f}"),
             ("Avg Armory Data", f"{avg_armory:.2f}"),
-            ("Avg Total Operations", f"{avg_ops:.2f}"),
+            ("Operations", str(int(ops_count))),
             ("Avg Siege Waves", f"{avg_waves:.2f}"),
         ]
         label_width = max(len(label) for label, _ in stat_rows_summary) + 2
