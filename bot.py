@@ -203,16 +203,16 @@ except Exception:
 RANK_ROLES_PRIORITY = [
     "Watch Master",
     "Lord Executioner",
-    "High Chaplain",
     "Chief Apothecary",
-    "Void Warden",
+    "High Chaplain",
     "Forgemaster",
+    "Void Warden",
     "Venerable",
     "Watch Captain",
     "Watch Lieutenant",
     "Company Champion",
-    "Watch Chaplain",
     "Watch Apothecary",
+    "Watch Chaplain",
     "Watch Librarian",
     "Watch Techmarine",
     "Watch Sergeant",
@@ -1246,15 +1246,8 @@ async def combat_bonds(
 async def killteam_brief(
     interaction: discord.Interaction, company: discord.Role
 ):
-    # Permissions: strictly above Sergeant and allowed channel
-    idx_sergeant = _role_index("Watch Sergeant")
-    highest_idx = get_highest_rank_index(interaction.user)
-    is_above_sergeant = (
-        idx_sergeant is not None
-        and highest_idx is not None
-        and highest_idx < idx_sergeant
-    )
-    if not (is_above_sergeant and is_allowed_channel(interaction)):
+    # Permissions: Sergeant and higher, restricted channel
+    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -1268,90 +1261,34 @@ async def killteam_brief(
     guild = interaction.guild
     recent_records = _get_recent_missions(limit=100)
 
-    # Collect kill team roles and intersect members with the company
+    # Collect kill team roles (exclude rank-style roles) and map current membership (restricted to company)
     killteam_roles: List[discord.Role] = []
     try:
         for role in getattr(guild, "roles", []):
             rn = getattr(role, "name", "") or ""
             rl = rn.lower()
             if ("kill" in rl) and ("team" in rl):
-                # Exclude rank-style roles like 'Kill Team Champion'
                 if "champion" in rl:
                     continue
                 killteam_roles.append(role)
     except Exception:
         pass
 
-    # Build per-killteam windowed averages restricted to company members
-    team_stats: List[dict] = []
+    teams: List[dict] = []
     for kt in killteam_roles:
         try:
             kt_members = [m for m in getattr(kt, "members", []) if company in getattr(m, "roles", [])]
         except Exception:
             kt_members = []
-        count = len(kt_members)
-        if count <= 0:
+        member_ids = {str(getattr(m, "id", "")) for m in kt_members if getattr(m, "id", None)}
+        if not member_ids:
             continue
-        # Compute per-member windowed stats
-        member_metrics = {
-            "aar": [],
-            "gene": [],
-            "armory": [],
-            "ops": [],
-            "waves": [],
-        }
-        w_ops = w_aar = w_gene = w_armory = w_waves = 0.0
-        for m in kt_members:
-            stats = compute_stats_for_user_in_records(str(m.id), recent_records)
-            w_ops += float(stats.get("ops", 0))
-            w_aar += float(stats.get("aar_points", 0))
-            w_gene += float(stats.get("gene_seed_points", 0))
-            w_armory += float(stats.get("armory_raw", 0))
-            w_waves += float(stats.get("waves_participated", 0))
-            member_metrics["ops"].append(float(stats.get("ops", 0)))
-            member_metrics["aar"].append(float(stats.get("aar_points", 0)))
-            member_metrics["gene"].append(float(stats.get("gene_seed_points", 0)))
-            member_metrics["armory"].append(float(stats.get("armory_raw", 0)))
-            member_metrics["waves"].append(float(stats.get("waves_participated", 0)))
-
-        avg_ops = w_ops / count
-        avg_aar = w_aar / count
-        avg_gene = w_gene / count
-        avg_armory = w_armory / count
-        avg_waves = w_waves / count
-
-        # Stddev across members (population std; 0 for <2 members)
-        def _pstdev(vals: List[float]):
-            return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
-
-        std_ops = _pstdev(member_metrics["ops"])  # lower is more consistent
-        std_aar = _pstdev(member_metrics["aar"])  # lower is more consistent
-        std_gene = _pstdev(member_metrics["gene"])  # lower is more consistent
-        std_armory = _pstdev(member_metrics["armory"])  # lower is more consistent
-        std_waves = _pstdev(member_metrics["waves"])  # lower is more consistent
-
-        reliability = (avg_ops + avg_aar + avg_gene + avg_armory + avg_waves) - (
-            std_ops + std_aar + std_gene + std_armory + std_waves
-        )
-
-        team_stats.append(
-            {
-                "role": kt,
-                "name": _extract_killteam_name(getattr(kt, "name", "Unknown")),
-                "count": count,
-                "avg_ops": avg_ops,
-                "avg_aar": avg_aar,
-                "avg_gene": avg_gene,
-                "avg_armory": avg_armory,
-                "avg_waves": avg_waves,
-                "std_ops": std_ops,
-                "std_aar": std_aar,
-                "std_gene": std_gene,
-                "std_armory": std_armory,
-                "std_waves": std_waves,
-                "reliability": reliability,
-            }
-        )
+        teams.append({
+            "role": kt,
+            "name": _extract_killteam_name(getattr(kt, "name", "Unknown")),
+            "member_ids": member_ids,
+            "count": len(member_ids),
+        })
 
     # Also compute a synthetic team for Company Command
     try:
@@ -1386,59 +1323,89 @@ async def killteam_brief(
         company_command_members = []
 
     if len(company_command_members) > 0:
-        member_metrics = {"aar": [], "gene": [], "armory": [], "ops": [], "waves": []}
-        w_ops = w_aar = w_gene = w_armory = w_waves = 0.0
-        for m in company_command_members:
-            stats = compute_stats_for_user_in_records(str(m.id), recent_records)
-            w_ops += float(stats.get("ops", 0))
-            w_aar += float(stats.get("aar_points", 0))
-            w_gene += float(stats.get("gene_seed_points", 0))
-            w_armory += float(stats.get("armory_raw", 0))
-            w_waves += float(stats.get("waves_participated", 0))
-            member_metrics["ops"].append(float(stats.get("ops", 0)))
-            member_metrics["aar"].append(float(stats.get("aar_points", 0)))
-            member_metrics["gene"].append(float(stats.get("gene_seed_points", 0)))
-            member_metrics["armory"].append(float(stats.get("armory_raw", 0)))
-            member_metrics["waves"].append(float(stats.get("waves_participated", 0)))
+        member_ids = {str(getattr(m, "id", "")) for m in company_command_members if getattr(m, "id", None)}
+        teams.append({
+            "role": None,
+            "name": "Company Command",
+            "member_ids": member_ids,
+            "count": len(member_ids),
+        })
 
-        count = len(company_command_members)
-        avg_ops = w_ops / count
-        avg_aar = w_aar / count
-        avg_gene = w_gene / count
-        avg_armory = w_armory / count
-        avg_waves = w_waves / count
+    # Compute per-team aggregates across recent_records using current membership
+    team_stats: List[dict] = []
+    for team in teams:
+        mids = team["member_ids"]
+        ops_count = 0
+        aar_vals: List[float] = []
+        armory_vals: List[float] = []
+        gene_vals: List[float] = []
+        waves_vals: List[float] = []  # siege-only
+        total_scores: List[float] = []
+        per_capita_vals: List[float] = []
 
-        def _pstdev(vals: List[float]):
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            participants_in_team = sum(1 for b in bros if b in mids)
+            if participants_in_team <= 0:
+                continue
+
+            ops_count += 1
+            aar = float(rec.get("points_for_op", 0) or 0)
+            # Prefer armory challenge points if present, else raw armory_data
+            armory = float(rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0) or 0)
+            gene = 0.0
+            try:
+                if (rec.get("gene_seed_status") or "").lower() == "carried":
+                    gene = float(rec.get("gene_seed_base_points_for_carrier", 0) or 0)
+            except Exception:
+                gene = 0.0
+            aar_vals.append(aar)
+            armory_vals.append(armory)
+            gene_vals.append(gene)
+            total_scores.append(aar + armory + gene)
+
+            # Siege-only waves
+            try:
+                dclass = (rec.get("difficulty_class") or "").lower()
+                if "siege" in dclass:
+                    waves_vals.append(float(rec.get("waves", 0) or 0))
+            except Exception:
+                pass
+
+            # Per-capita force multiplier uses AAR per participating member
+            try:
+                if participants_in_team > 0:
+                    per_capita_vals.append(aar / float(participants_in_team))
+            except Exception:
+                pass
+
+        def _mean(vals: List[float]) -> float:
+            return (sum(vals) / len(vals)) if vals else 0.0
+
+        def _pstdev(vals: List[float]) -> float:
             return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
 
-        std_ops = _pstdev(member_metrics["ops"])  # lower is more consistent
-        std_aar = _pstdev(member_metrics["aar"])  # lower is more consistent
-        std_gene = _pstdev(member_metrics["gene"])  # lower is more consistent
-        std_armory = _pstdev(member_metrics["armory"])  # lower is more consistent
-        std_waves = _pstdev(member_metrics["waves"])  # lower is more consistent
+        avg_aar = _mean(aar_vals)
+        avg_armory = _mean(armory_vals)
+        avg_gene = _mean(gene_vals)
+        avg_waves = _mean(waves_vals)
+        reliability = 0.0
+        if total_scores:
+            reliability = _mean(total_scores) / (1.0 + _pstdev(total_scores))
+        force_multiplier = _mean(per_capita_vals)
 
-        reliability = (avg_ops + avg_aar + avg_gene + avg_armory + avg_waves) - (
-            std_ops + std_aar + std_gene + std_armory + std_waves
-        )
-
-        team_stats.append(
-            {
-                "role": None,
-                "name": "Company Command",
-                "count": count,
-                "avg_ops": avg_ops,
-                "avg_aar": avg_aar,
-                "avg_gene": avg_gene,
-                "avg_armory": avg_armory,
-                "avg_waves": avg_waves,
-                "std_ops": std_ops,
-                "std_aar": std_aar,
-                "std_gene": std_gene,
-                "std_armory": std_armory,
-                "std_waves": std_waves,
-                "reliability": reliability,
-            }
-        )
+        team_stats.append({
+            "role": team["role"],
+            "name": team["name"],
+            "count": team["count"],
+            "avg_ops": float(ops_count),  # Operational Tempo now counts ops
+            "avg_aar": avg_aar,
+            "avg_gene": avg_gene,
+            "avg_armory": avg_armory,
+            "avg_waves": avg_waves,
+            "reliability": reliability,
+            "force_multiplier": force_multiplier,
+        })
 
     if not team_stats:
         await interaction.followup.send(
@@ -1456,13 +1423,45 @@ async def killteam_brief(
     best_tempo = _winner("avg_ops")
     best_siegebreaker = _winner("avg_waves")
     best_reliability = _winner("reliability")
+    best_force = _winner("force_multiplier")
 
     # Risk Appetite: Shock vs Surgical
-    shock_team = max(team_stats, key=lambda t: (t["avg_aar"] - t["avg_gene"]))
-    surgical_team = max(team_stats, key=lambda t: (t["avg_gene"] - t["avg_aar"]))
+    # Risk appetite via medians
+    try:
+        aar_list = [t["avg_aar"] for t in team_stats]
+        gene_list = [t["avg_gene"] for t in team_stats]
+        med_aar = statistics.median(aar_list) if aar_list else 0.0
+        med_gene = statistics.median(gene_list) if gene_list else 0.0
+    except Exception:
+        med_aar = 0.0
+        med_gene = 0.0
 
-    # Force Multiplier: Avg AAR per Member
-    force_multiplier = best_lethality
+    shock_candidates = []
+    surgical_candidates = []
+    for t in team_stats:
+        a = t["avg_aar"]
+        g = t["avg_gene"]
+        if a > med_aar and g < med_gene:
+            score = (a - med_aar) + (med_gene - g)
+            shock_candidates.append((t, score))
+        if a < med_aar and g > med_gene:
+            score = (med_aar - a) + (g - med_gene)
+            surgical_candidates.append((t, score))
+
+    if shock_candidates:
+        shock_team, shock_score = max(shock_candidates, key=lambda x: x[1])
+    else:
+        shock_team = max(team_stats, key=lambda t: (t["avg_aar"] - t["avg_gene"]))
+        shock_score = (shock_team["avg_aar"] - med_aar) + (med_gene - shock_team["avg_gene"]) if med_aar or med_gene else (shock_team["avg_aar"] - shock_team["avg_gene"]) 
+
+    if surgical_candidates:
+        surgical_team, surgical_score = max(surgical_candidates, key=lambda x: x[1])
+    else:
+        surgical_team = max(team_stats, key=lambda t: (t["avg_gene"] - t["avg_aar"]))
+        surgical_score = (med_aar - surgical_team["avg_aar"]) + (surgical_team["avg_gene"] - med_gene) if med_aar or med_gene else (surgical_team["avg_gene"] - surgical_team["avg_aar"]) 
+
+    # Force Multiplier: per-op per-capita AAR average
+    force_multiplier = best_force
 
     # Helper: label teams; prefix with "Kill Team" unless Company Command
     def _team_label(team: dict) -> str:
@@ -1481,19 +1480,19 @@ async def killteam_brief(
     lines.append(f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
     lines.append(f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
     lines.append(f"  Armory Yield Efficiency     :: {_team_label(best_armory)}  (Avg Armory: {best_armory['avg_armory']:.2f})")
-    lines.append(f"  Operational Tempo           :: {_team_label(best_tempo)}  (Avg Ops: {best_tempo['avg_ops']:.2f})")
+    lines.append(f"  Operational Tempo           :: {_team_label(best_tempo)}  (Ops: {int(best_tempo['avg_ops'])})")
     lines.append(f"  Siegebreaker Rating         :: {_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})")
     lines.append(f"  Kill Team Reliability Index :: {_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})")
-    lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Δ AAR-Gene: {(shock_team['avg_aar']-shock_team['avg_gene']):.2f})")
-    lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Δ Gene-AAR: {(surgical_team['avg_gene']-surgical_team['avg_aar']):.2f})")
-    lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier['avg_aar']:.2f})")
+    lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})")
+    lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})")
+    lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
     lines.append("==============================================================================")
     lines.append("  Command Notes:")
     lines.append(f"  + {_team_label(best_lethality)} is recommended for high-risk, high-value assaults.")
     lines.append(f"  + {_team_label(best_preservation)} is favored for prolonged campaigns requiring force")
-    lines.append("   preservation.")
+    lines.append("     preservation.")
     lines.append(f"  + {_team_label(best_armory)} demonstrates exceptional strategic yield beyond direct")
-    lines.append("   engagement.")
+    lines.append("     engagement.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
