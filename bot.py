@@ -483,7 +483,8 @@ async def reconcile_records(
     name="audit_archive_discrepancies",
     description="Recheck previously rejected AARs and restore any fixed entries.",
 )
-async def audit_archive_discrepancies(interaction: discord.Interaction):
+@app_commands.describe(span_days="Optional: only recheck errors from the last N days.")
+async def audit_archive_discrepancies(interaction: discord.Interaction, span_days: int | None = None):
     if not (
         can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
     ):
@@ -509,7 +510,7 @@ async def audit_archive_discrepancies(interaction: discord.Interaction):
                 ephemeral=True,
             )
             return
-        fixed, still_broken = await _run_recheck_errors(aar_channel)
+        fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
 
         author_summaries = summarize_error_authors()
         author_lines = []
@@ -611,7 +612,7 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
         )
         return
     # First recheck errors, then ingest new
-    fixed, still_broken = await _run_recheck_errors(aar_channel)
+    fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
     ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
     # Compose combined report
@@ -655,13 +656,23 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
     await interaction.followup.send(report, ephemeral=True)
 
 
-async def _run_recheck_errors(aar_channel: discord.TextChannel):
+async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optional[int] = None):
     fixed = 0
     still_broken = 0
+    cutoff_dt = None
+    if span_days and span_days > 0:
+        cutoff_dt = datetime.utcnow() - timedelta(days=span_days)
     error_entries = _load_json_dict(AAR_ERRORS_PATH)
     if len(error_entries) > 0:
-        total_errs = len(error_entries)
+        # If windowed, compute total within window for progress counters
+        total_errs = 0
         done_errs = 0
+        window_ids = list(error_entries.keys())
+        if cutoff_dt is not None:
+            # We will determine window membership lazily when fetching messages
+            pass
+        else:
+            total_errs = len(error_entries)
         for aar_id_str in list(error_entries.keys()):
             try:
                 aar_id = int(aar_id_str)
@@ -676,8 +687,9 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel):
                     _save_json_dict(AAR_RECORDS_PATH, data)
                 fixed += 1
                 done_errs += 1
-                if (done_errs % 5 == 0) or (done_errs == total_errs):
-                    _print_progress("Recheck Errors", done_errs, total_errs)
+                if cutoff_dt is None:
+                    if (done_errs % 5 == 0) or (done_errs == total_errs):
+                        _print_progress("Recheck Errors", done_errs, total_errs)
                 continue
             try:
                 msg = await aar_channel.fetch_message(aar_id)
@@ -687,11 +699,29 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel):
                 log_aar_errors(
                     aar_id, ["Original message not found; cannot reprocess."]
                 )
-                still_broken += 1
+                # Count as broken only for full scans (no reliable timestamp)
+                if cutoff_dt is None:
+                    still_broken += 1
                 done_errs += 1
-                if (done_errs % 5 == 0) or (done_errs == total_errs):
-                    _print_progress("Recheck Errors", done_errs, total_errs)
+                if cutoff_dt is None:
+                    if (done_errs % 5 == 0) or (done_errs == total_errs):
+                        _print_progress("Recheck Errors", done_errs, total_errs)
                 continue
+            # Window filter: skip messages older than cutoff
+            if cutoff_dt is not None:
+                try:
+                    msg_dt = msg.created_at
+                    if msg_dt.tzinfo is not None:
+                        msg_dt = msg_dt.astimezone(tz=None).replace(tzinfo=None)
+                    if total_errs == 0:
+                        # First time we see a windowed message, estimate total as count of window hits
+                        pass
+                    if msg_dt < cutoff_dt:
+                        continue
+                    total_errs += 1
+                except Exception:
+                    # If timestamp parse fails, conservatively skip from windowed run
+                    continue
             record = parse_aar(msg)
             if record is None:
                 log_aar_error_with_meta(
@@ -719,11 +749,14 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel):
                     await _set_aar_reaction(msg, "ok")
                     fixed += 1
             done_errs += 1
-            if (done_errs % 5 == 0) or (done_errs == total_errs):
-                _print_progress("Recheck Errors", done_errs, total_errs)
+            if cutoff_dt is None:
+                if (done_errs % 5 == 0) or (done_errs == total_errs):
+                    _print_progress("Recheck Errors", done_errs, total_errs)
 
-    remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
-    still_broken = len(remaining_errors)
+    if cutoff_dt is None:
+        remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
+        still_broken = len(remaining_errors)
+    # For windowed runs, still_broken already reflects the subset processed
     return fixed, still_broken
 
 
