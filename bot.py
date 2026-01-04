@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
+import difflib
 import re
 import itertools
 from typing import Dict, List, Tuple, Optional
@@ -1779,6 +1780,351 @@ async def killteam_brief(
     await interaction.followup.send("\n".join(lines), ephemeral=True)
 
 
+# ===== Librarius Dossier (Kill Team) =====
+# Mission classification table (11 operations + Siege special)
+MISSION_TAGS: Dict[str, Dict[str, List[str]]] = {
+    "Inferno": {
+        "env": ["Jungle", "Industrial", "Refinery"],
+        "doctrine": ["Sabotage", "Perimeter Strike", "Extraction"],
+    },
+    "Decapitation": {
+        "env": ["Open Approach", "Urban Ruin", "Bridgework"],
+        "doctrine": ["Assassination", "Target Elimination"],
+    },
+    "Vox Liberatis": {
+        "env": ["Urban Ruin", "ECCLESIARCHY Interior", "Lower Levels"],
+        "doctrine": ["Communications", "Heretic Purge"],
+    },
+    "Reliquary": {
+        "env": ["Catacombs", "Tomb Interior", "Bridge Corridor"],
+        "doctrine": ["Beacon Destruction", "Infiltration"],
+    },
+    "Fall of Atreus": {
+        "env": ["Necropolis", "Cathedral", "Mechanicus Base"],
+        "doctrine": ["Advance & Prepare", "Securement"],
+    },
+    "Ballistic Engine": {
+        "env": ["Industrial Exterior", "Storm Desert", "Train Station"],
+        "doctrine": ["Weapon Delivery", "Sabotage"],
+    },
+    "Termination": {
+        "env": ["Jungle", "Generator Hall", "Reclamation Center"],
+        "doctrine": ["Extermination", "Area Clearing"],
+    },
+    "Obelisk": {
+        "env": ["Bridge Underpass", "Ruin Hollow", "Underground"],
+        "doctrine": ["Objective Disruption", "Dark Labyrinth"],
+    },
+    "Exfiltration": {
+        "env": ["Urban Pursuit", "Extraction Corridors"],
+        "doctrine": ["Extraction", "Break Contact"],
+    },
+    "Vortex": {
+        "env": ["Warp-Affected Area", "Unstable Terrain"],
+        "doctrine": ["Containment", "Ritual Disruption"],
+    },
+    "Reclamation": {
+        "env": ["Industrial Ruins", "Recovery Zones"],
+        "doctrine": ["Asset Recovery", "Area Securement"],
+    },
+}
+
+# Environment macro categories used for band rendering
+ENV_MACROS_ORDER: List[str] = [
+    "JUNGLE",
+    "URBAN",
+    "INDUSTRIAL",
+    "UNDERGROUND",
+    "SACRAL",
+    "DESERT",
+    "WARP",
+    "FORTRESS",
+]
+
+def _env_macro_for(tag: str) -> str:
+    t = (tag or "").lower()
+    if "fortress" in t or "defensive grid" in t:
+        return "FORTRESS"
+    if "warp" in t or "unstable" in t:
+        return "WARP"
+    if "jungle" in t:
+        return "JUNGLE"
+    if (
+        "urban" in t
+        or "train station" in t
+        or "bridge" in t
+        or "ruin" in t
+        or "pursuit" in t
+        or "extraction corridor" in t
+    ):
+        return "URBAN"
+    if (
+        "industrial" in t
+        or "refinery" in t
+        or "generator" in t
+        or "mechanicus" in t
+        or "reclamation" in t
+        or "recovery" in t
+        or "exterior" in t
+        or "ruins" in t
+    ):
+        return "INDUSTRIAL"
+    if "catacomb" in t or "tomb" in t or "underground" in t or "lower level" in t:
+        return "UNDERGROUND"
+    if "ecclesiarchy" in t or "cathedral" in t or "necropolis" in t:
+        return "SACRAL"
+    if "desert" in t or "open approach" in t or "open field" in t:
+        return "DESERT"
+    return "URBAN"
+
+def _normalize_mission(name: Optional[str]) -> str:
+    try:
+        return re.sub(r"[^a-z0-9]+", "", (name or "").lower()).strip()
+    except Exception:
+        return (name or "").lower().strip()
+
+def _match_mission_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    canon = list(MISSION_TAGS.keys())
+    norm_map = { _normalize_mission(k): k for k in canon }
+    target = _normalize_mission(name)
+    # Direct match on normalized keys
+    if target in norm_map:
+        return norm_map[target]
+    # Fuzzy match across normalized keys
+    candidates = difflib.get_close_matches(target, list(norm_map.keys()), n=1, cutoff=0.6)
+    if candidates:
+        return norm_map.get(candidates[0])
+    # Also try startswith/contains on raw names
+    lower = (name or "").lower()
+    for k in canon:
+        if lower.startswith(k.lower()) or k.lower() in lower:
+            return k
+    return None
+
+def _tags_for_record(rec: dict) -> Tuple[List[str], List[str], Optional[str]]:
+    """Return (env_tags, doctrine_tags, canonical_mission) for a record.
+    Siege Mode handled via difficulty_class -> FORTRESS/HOLD+ATTRITION.
+    Unknown missions yield empty tag lists.
+    """
+    dlower = (rec.get("difficulty_class") or rec.get("difficulty") or "").lower()
+    mission = rec.get("mission")
+    # Siege special handling
+    if "normal_siege" in dlower or "hard_siege" in dlower or (mission and "siege" in mission.lower()):
+        return ["Fortress Sectors", "Defensive Grid"], ["Hold", "Attrition"], "Siege Mode"
+    m = _match_mission_name(mission)
+    if not m:
+        return [], [], None
+    info = MISSION_TAGS.get(m) or {}
+    return info.get("env", []), info.get("doctrine", []), m
+
+def _render_band(label: str, states: List[str], active: Optional[str]) -> str:
+    parts = [f"[ {s} ]" if (active and s == active) else s for s in states]
+    return f"  {label}: " + " ".join(parts)
+
+def _render_single_band(label: str, active: Optional[str]) -> str:
+    """Render only the bracketed active state for concise bands."""
+    return f"  {label}: [ {active or 'UNDETERMINED'} ]"
+
+def _doctrinal_coherence_tier(distinct_count: int) -> str:
+    # Map number of distinct doctrine tags to coherence tier
+    if distinct_count <= 1:
+        return "SPECIALIZED"
+    if distinct_count == 2:
+        return "REFINED"
+    if distinct_count <= 4:
+        return "STABLE"
+    if distinct_count <= 6:
+        return "EMERGENT"
+    return "FRAGMENTED"
+
+def _operational_exposure_tier(distinct_missions: int) -> str:
+    if distinct_missions <= 1:
+        return "ISOLATED"
+    if distinct_missions == 2:
+        return "LIMITED"
+    if distinct_missions <= 4:
+        return "DIVERSE"
+    if distinct_missions <= 7:
+        return "BROAD"
+    return "EXTENSIVE"
+
+DOCTRINE_BAND_ORDER: List[str] = [
+    "Sabotage",
+    "Perimeter Strike",
+    "Extraction",
+    "Assassination",
+    "Target Elimination",
+    "Communications",
+    "Heretic Purge",
+    "Beacon Destruction",
+    "Infiltration",
+    "Advance & Prepare",
+    "Securement",
+    "Weapon Delivery",
+    "Extermination",
+    "Area Clearing",
+    "Objective Disruption",
+    "Dark Labyrinth",
+    "Break Contact",
+    "Containment",
+    "Ritual Disruption",
+    "Asset Recovery",
+    "Area Securement",
+    "Hold",
+    "Attrition",
+]
+
+@bot.tree.command(
+    name="librarius_dossier",
+    description="Generate a Librarian dossier for a Kill Team over recent AARs.",
+)
+@app_commands.describe(
+    company="The Watch Company role to analyze.",
+    window="Optional: number of most recent missions to consider.",
+)
+async def librarius_dossier(
+    interaction: discord.Interaction,
+    company: discord.Role,
+    window: Optional[int] = None,
+):
+    # Permissions: Sergeant and higher, restricted channel
+    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("++ ERROR: Guild not available. ++", ephemeral=True)
+        return
+
+    if not company or not getattr(company, "members", None):
+        await interaction.followup.send("++ ERROR: Company role not found or empty. ++", ephemeral=True)
+        return
+
+    # Window of records to analyze
+    span = window if (isinstance(window, int) and window > 0) else 100
+    recent_records = _get_recent_missions(limit=span)
+
+    # Identify Kill Team roles within the fortress
+    killteam_roles: List[discord.Role] = []
+    try:
+        for r in getattr(guild, "roles", []):
+            n = (getattr(r, "name", "") or "").strip()
+            if re.search(r"(?i)^\s*kill\s*team", n):
+                # Exclude rank-style role 'Kill Team Champion'
+                if n.lower() == "kill team champion" or re.search(r"(?i)kill\s*team\s*champion", n):
+                    continue
+                killteam_roles.append(r)
+    except Exception:
+        killteam_roles = []
+
+    # Build roster per Kill Team for the selected company (intersection of members)
+    company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
+    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+
+    teams: List[Tuple[str, List[discord.Member]]] = []
+    for kt in killteam_roles:
+        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        if kt_members:
+            teams.append((getattr(kt, "name", "Kill Team"), kt_members))
+
+    # Company Command synthetic team: Sergeant+ in company
+    idx_sergeant = _role_index("Watch Sergeant")
+    company_command_members: List[discord.Member] = []
+    if idx_sergeant is not None:
+        for m in company_members:
+            # Use existing is_sergeant_or_higher, already role-alias aware
+            if is_sergeant_or_higher(m):
+                company_command_members.append(m)
+    if company_command_members:
+        teams.append(("Company Command", company_command_members))
+
+    if not teams:
+        await interaction.followup.send("No Kill Teams or Company Command members found in the selected company.", ephemeral=True)
+        return
+
+    # Prepare ANSI-styled report
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUS ARCHIVE")
+    lines.append("  OPERATION-SCRIBE SERVITOR — LIBRARIUS DOSSIER (COMPANY)")
+    lines.append("==============================================================================")
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last {span} Operations")
+    lines.append("------------------------------------------------------------------------------")
+
+    any_section = False
+    for name, members in sorted(teams, key=lambda t: t[0].lower()):
+        team_ids: set[str] = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        env_counts: Counter[str] = Counter()
+        doctrine_counts: Counter[str] = Counter()
+        missions_seen: set[str] = set()
+
+        for rec in recent_records:
+            bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
+            if not bros:
+                continue
+            if not (set(bros) & team_ids):
+                continue
+            env_tags, doc_tags, canon_mission = _tags_for_record(rec)
+            for t in env_tags:
+                env_counts[_env_macro_for(t)] += 1
+            for d in doc_tags:
+                doctrine_counts[d] += 1
+            if canon_mission:
+                missions_seen.add(canon_mission)
+
+        if not env_counts and not doctrine_counts and not missions_seen:
+            # Skip empty sections to keep report concise
+            continue
+
+        any_section = True
+        # Dominant environment macro
+        dom_env: Optional[str] = None
+        if env_counts:
+            dom_env = max(env_counts.items(), key=lambda kv: (kv[1], -ENV_MACROS_ORDER.index(kv[0]) if kv[0] in ENV_MACROS_ORDER else 999))[0]
+
+        # Dominant doctrine tag
+        dom_doc: Optional[str] = None
+        if doctrine_counts:
+            dom_doc = max(doctrine_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+        # Coherence and exposure tiers
+        coherence = _doctrinal_coherence_tier(len(set(doctrine_counts.keys())))
+        exposure = _operational_exposure_tier(len(missions_seen))
+
+        # Bands
+        env_band = _render_single_band("ENVIRONMENTAL ORIENTATION", dom_env)
+        coherence_band = _render_single_band("DOCTRINAL COHERENCE", coherence)
+        doc_band = _render_single_band("DOCTRINAL ORIENTATION", dom_doc)
+        exposure_band = _render_single_band("OPERATIONAL EXPOSURE", exposure)
+
+        # Section render
+        lines.append(name)
+        lines.append(env_band)
+        lines.append(doc_band)
+        lines.append(coherence_band)
+        lines.append(exposure_band)
+        lines.append("")
+
+    if not any_section:
+        await interaction.followup.send("No qualifying records found for any teams in the selected company and window.", ephemeral=True)
+        return
+
+    lines.append("==============================================================================")
+    lines.append("  Librarius Addendum:")
+    lines.append("  These profiles inform Librarian counsel and deployment rites.")
+    lines.append("  Siege variants reuse FORTRESS/HOLD-ATTRITION tags across maps.")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
         return None
@@ -2580,6 +2926,7 @@ async def _resolve_home_chapters(
         "Blood Angels",
         "Blood Ravens",
         "Cowled Wardens",
+        "Crimson Fists",
         "Dark Angels",
         "Dark Krakens",
         "Death Spectres",
@@ -2948,3 +3295,4 @@ def _main():
 
 if __name__ == "__main__":
     _main()
+
