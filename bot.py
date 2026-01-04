@@ -1436,9 +1436,12 @@ async def killteam_brief(
         gene_list = [t["avg_gene"] for t in team_stats]
         med_aar = statistics.median(aar_list) if aar_list else 0.0
         med_gene = statistics.median(gene_list) if gene_list else 0.0
+        ops_list = [t["avg_ops"] for t in team_stats]
+        med_ops = statistics.median(ops_list) if ops_list else 0.0
     except Exception:
         med_aar = 0.0
         med_gene = 0.0
+        med_ops = 0.0
 
     shock_candidates = []
     surgical_candidates = []
@@ -1467,6 +1470,77 @@ async def killteam_brief(
     # Force Multiplier: per-op per-capita AAR average
     force_multiplier = best_force
 
+    # High Command assessment note
+    # Identify High Command members and compute deployments and lethality relative to medians
+    high_command_roles = {
+        "Watch Master",
+        "Forgemaster",
+        "Lord Executioner",
+        "Void Warden",
+        "Voidwarden",
+        "Chief Apothecary",
+        "High Chaplain",
+    }
+    hc_ids: set[str] = set()
+    try:
+        for m in getattr(guild, "members", []):
+            names = _canonical_role_names(m)
+            if any(r in names for r in high_command_roles):
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+    except Exception:
+        hc_ids = set()
+
+    hc_ops_count = 0
+    hc_aar_vals: List[float] = []
+    try:
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if any(b in hc_ids for b in bros):
+                hc_ops_count += 1
+                try:
+                    hc_aar_vals.append(float(rec.get("points_for_op", 0) or 0))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    def _mean(vals: List[float]) -> float:
+        return (sum(vals) / len(vals)) if vals else 0.0
+
+    hc_avg_aar = _mean(hc_aar_vals)
+
+    # Determine case text
+    hc_note_lines: List[str] = []
+    if hc_ops_count <= 0:
+        hc_note_lines = [
+            "+ High Command recorded no deployments during this window.",
+            "+ The Watch Master and the heads of the specialist orders remained committed ",
+            "  to strategic oversight and internal readiness.",
+        ]
+    elif hc_ops_count < med_ops and hc_avg_aar > med_aar:
+        hc_note_lines = [
+            "+ High Command deployments during this window exceeded the company median in ",
+            "  lethality but remained limited in frequency by doctrine.",
+            "+ The Watch Master and the heads of the specialist orders deploy only when ",
+            "  strategic necessity overrides standing command duties.",
+        ]
+    elif hc_ops_count < med_ops:
+        hc_note_lines = [
+            "+ High Command deployments during this window were limited in scope and ",
+            "  aligned with oversight and command responsibilities.",
+            "+ The Watch Master and the heads of the specialist orders prioritize ",
+            "  continuity of command over routine engagement.",
+        ]
+    else:
+        hc_note_lines = [
+            "+ High Command maintained an elevated operational tempo during this window, ",
+            "  temporarily assuming direct battlefield roles.",
+            "+ This level of commitment indicates an exceptional operational posture under ",
+            "  the Watch Master’s authority.",
+        ]
+
     # Helper: label teams; prefix with "Kill Team" unless Company Command
     def _team_label(team: dict) -> str:
         name = team.get("name", "Unknown")
@@ -1491,12 +1565,21 @@ async def killteam_brief(
     lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})")
     lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
     lines.append("==============================================================================")
-    lines.append("  Command Notes:")
+    lines.append("  Company Command Notes:")
     lines.append(f"  + {_team_label(best_lethality)} is recommended for high-risk, high-value assaults.")
     lines.append(f"  + {_team_label(best_preservation)} is favored for prolonged campaigns requiring force")
-    lines.append("     preservation.")
+    lines.append("    preservation.")
     lines.append(f"  + {_team_label(best_armory)} demonstrates exceptional strategic yield beyond direct")
-    lines.append("     engagement.")
+    lines.append("    engagement.")
+    lines.append("------------------------------------------------------------------------------")
+    lines.append("  High Command Notes:")
+    # Compact numeric comparison to show values used in assessment
+    try:
+        lines.append(f"  [ops {hc_ops_count}|{int(med_ops)}; aar {hc_avg_aar:.1f}|{med_aar:.1f}]")
+    except Exception:
+        pass
+    for ln in hc_note_lines:
+        lines.append(f"  {ln}")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
