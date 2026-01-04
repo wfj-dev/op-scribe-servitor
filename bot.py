@@ -1586,65 +1586,6 @@ async def killteam_brief(
     def _is_low_out(val: float, med: float, sd: float, eps: float = 0.1) -> bool:
         return val <= med - max(sd, eps)
 
-    # Build conditional Company Command notes (max one per specialist)
-    company_notes: List[str] = []
-    # Techmarine
-    try:
-        tech_name = spec_names.get("Techmarine", "Techmarine")
-        # Priority: Armory outlier
-        if _is_high_out(best_armory["avg_armory"], med_armory, sd_armory) or _is_low_out(best_armory["avg_armory"], med_armory, sd_armory):
-            company_notes.append(f"  + [{tech_name}] {_abbr_label(best_armory)} arm {best_armory['avg_armory']:.1f}|{med_armory:.1f}.")
-        # Reliability outlier
-        elif _is_high_out(best_reliability["reliability"], med_rel, sd_rel) or _is_low_out(best_reliability["reliability"], med_rel, sd_rel):
-            company_notes.append(f"  + [{tech_name}] {_abbr_label(best_reliability)} rel {best_reliability['reliability']:.2f}|{med_rel:.2f}.")
-        # Risk appetite extremes
-        else:
-            shock_delta = shock_team["avg_aar"] - shock_team["avg_gene"]
-            surg_delta = surgical_team["avg_gene"] - surgical_team["avg_aar"]
-            if _is_high_out(shock_delta, med_shock, sd_shock):
-                company_notes.append(f"  + [{tech_name}] {_abbr_label(shock_team)} shock Δ {shock_delta:.2f}|{med_shock:.2f}.")
-            elif _is_high_out(surg_delta, med_surg, sd_surg):
-                company_notes.append(f"  + [{tech_name}] {_abbr_label(surgical_team)} surg Δ {surg_delta:.2f}|{med_surg:.2f}.")
-            else:
-                # Force multiplier contradiction vs tempo
-                if _is_high_out(best_force["force_multiplier"], med_fm, sd_fm) and _is_low_out(best_force["avg_ops"], med_ops, sd_ops, eps=1.0):
-                    company_notes.append(f"  + [{tech_name}] {_abbr_label(best_force)} fm {best_force['force_multiplier']:.2f}|{med_fm:.2f} vs ops {int(best_force['avg_ops'])}|{int(med_ops)}.")
-                elif _is_low_out(best_force["force_multiplier"], med_fm, sd_fm) and _is_high_out(best_force["avg_ops"], med_ops, sd_ops, eps=1.0):
-                    company_notes.append(f"  + [{tech_name}] {_abbr_label(best_force)} fm {best_force['force_multiplier']:.2f}|{med_fm:.2f} vs ops {int(best_force['avg_ops'])}|{int(med_ops)}.")
-                else:
-                    # Ops with rel/armory strain/surplus
-                    if _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_low_out(best_reliability["reliability"], med_rel, sd_rel):
-                        company_notes.append(f"  + [{tech_name}] {_abbr_label(best_tempo)} load+strain ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, rel {best_reliability['reliability']:.2f}|{med_rel:.2f}.")
-                    elif _is_low_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_high_out(best_armory["avg_armory"], med_armory, sd_armory):
-                        company_notes.append(f"  + [{tech_name}] {_abbr_label(best_tempo)} surplus ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, arm {best_armory['avg_armory']:.1f}|{med_armory:.1f}.")
-    except Exception:
-        pass
-
-    # Apothecary
-    try:
-        apoth_name = spec_names.get("Apothecary", "Apothecary")
-        if _is_high_out(best_preservation["avg_gene"], med_gene, sd_gene) or _is_low_out(best_preservation["avg_gene"], med_gene, sd_gene):
-            company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_preservation)} gene {best_preservation['avg_gene']:.2f}|{med_gene:.2f}.")
-        elif _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_low_out(best_tempo.get("avg_gene", 0.0), med_gene, sd_gene):
-            company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_tempo)} tempo+low gene ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, gene {best_tempo.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
-        else:
-            # Siegebreaker paired with gene strain/resilience
-            if _is_high_out(best_siegebreaker["avg_waves"], med_ops, sd_ops, eps=1.0):
-                if _is_low_out(best_siegebreaker.get("avg_gene", 0.0), med_gene, sd_gene):
-                    company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_siegebreaker)} siege+strain waves {best_siegebreaker['avg_waves']:.2f}, gene {best_siegebreaker.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
-                elif _is_high_out(best_siegebreaker.get("avg_gene", 0.0), med_gene, sd_gene):
-                    company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_siegebreaker)} siege+resilience waves {best_siegebreaker['avg_waves']:.2f}, gene {best_siegebreaker.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
-    except Exception:
-        pass
-
-    # Chaplain
-    try:
-        chap_name = spec_names.get("Chaplain", "Chaplain")
-        if _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and abs(best_tempo.get("reliability", 0.0) - med_rel) <= max(sd_rel, 0.1):
-            company_notes.append(f"  + [{chap_name}] {_abbr_label(best_tempo)} sustained tempo; reliability steady {best_tempo.get('reliability',0.0):.2f}|{med_rel:.2f}.")
-    except Exception:
-        pass
-
     # Librarius Notice (separate section), at most one
     librarius_note: Optional[str] = None
     try:
@@ -1754,17 +1695,7 @@ async def killteam_brief(
     lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})")
     lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})")
     lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
-    # Conditional notes: print section only if any notes
-    if company_notes:
-        lines.append("==============================================================================")
-        lines.append("  Company Command Notes:")
-        for note in company_notes[:3]:  # guardrail: max one per specialist; we already enforce, but cap defensively
-            lines.append(note)
-    # Librarius Notice separate
-    if librarius_note:
-        lines.append("------------------------------------------------------------------------------")
-        lines.append("  Librarius Notice:")
-        lines.append(librarius_note)
+    # Company Command Notes section removed
     lines.append("------------------------------------------------------------------------------")
     lines.append("  High Command Notes:")
     # # Compact numeric comparison to show values used in assessment
@@ -2052,9 +1983,16 @@ async def librarius_dossier(
     lines.append("```ansi")
     lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // LIBRARIUS ARCHIVE")
-    lines.append("  OPERATION-SCRIBE SERVITOR — LIBRARIUS DOSSIER (COMPANY)")
+    lines.append("  OPERATION-SCRIBE SERVITOR — COMPANY LIBRARIUS DOSSIER")
     lines.append("==============================================================================")
     lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last {span} Operations")
+    lines.append("------------------------------------------------------------------------------")
+    # Legend — list metric options once to shorten per-team output
+    lines.append("  Legend — Metric Options:")
+    lines.append("  ENV: JUNGLE  URBAN  INDUSTRIAL  UNDERGROUND  SACRAL  DESERT  WARP  FORTRESS")
+    lines.append("  COH: SPECIALIZED  REFINED  STABLE  EMERGENT  FRAGMENTED")
+    lines.append("  EXP: ISOLATED  LIMITED  DIVERSE  BROAD  EXTENSIVE")
+    lines.append("  DOC: Active tag only (varies by mission)")
     lines.append("------------------------------------------------------------------------------")
 
     any_section = False
@@ -2097,23 +2035,91 @@ async def librarius_dossier(
         coherence = _doctrinal_coherence_tier(len(set(doctrine_counts.keys())))
         exposure = _operational_exposure_tier(len(missions_seen))
 
-        # Bands
-        env_band = _render_single_band("ENVIRONMENTAL ORIENTATION", dom_env)
-        coherence_band = _render_single_band("DOCTRINAL COHERENCE", coherence)
-        doc_band = _render_single_band("DOCTRINAL ORIENTATION", dom_doc)
-        exposure_band = _render_single_band("OPERATIONAL EXPOSURE", exposure)
+        # Compact per-team line: ENV/DOC/COH/EXP
+        def _abbr_label(n: str) -> str:
+            if not n:
+                return "Team"
+            lower = n.lower()
+            if lower.startswith("kill team "):
+                return "KT " + n[10:]
+            return n
 
-        # Section render
-        lines.append(name)
-        lines.append(env_band)
-        lines.append(doc_band)
-        lines.append(coherence_band)
-        lines.append(exposure_band)
-        lines.append("")
+        env_str = dom_env or "URBAN"
+        doc_str = dom_doc or "—"
+        lines.append(f"{_abbr_label(name)}: ENV[{env_str}] DOC[{doc_str}] COH[{coherence}] EXP[{exposure}]")
 
     if not any_section:
         await interaction.followup.send("No qualifying records found for any teams in the selected company and window.", ephemeral=True)
         return
+
+    # High Command Notes (company-level doctrinal and environmental posture)
+    try:
+        high_command_roles = {
+            "Watch Master",
+            "Forgemaster",
+            "Lord Executioner",
+            "Void Warden",
+            "Voidwarden",
+            "Chief Apothecary",
+            "High Chaplain",
+        }
+        hc_ids: set[str] = set()
+        for m in getattr(guild, "members", []):
+            names = _canonical_role_names(m)
+            if any(r in names for r in high_command_roles):
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+
+        hc_ops_count = 0
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if any(b in hc_ids for b in bros):
+                hc_ops_count += 1
+
+        company_env_counts: Counter[str] = Counter()
+        company_doc_counts: Counter[str] = Counter()
+        company_missions_seen: set[str] = set()
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if not (set(bros) & company_ids):
+                continue
+            env_tags, doc_tags, canon_mission = _tags_for_record(rec)
+            for t in env_tags:
+                company_env_counts[_env_macro_for(t)] += 1
+            for d in doc_tags:
+                company_doc_counts[d] += 1
+            if canon_mission:
+                company_missions_seen.add(canon_mission)
+
+        dom_env: Optional[str] = None
+        if company_env_counts:
+            dom_env = max(company_env_counts.items(), key=lambda kv: (kv[1], -ENV_MACROS_ORDER.index(kv[0]) if kv[0] in ENV_MACROS_ORDER else 999))[0]
+        dom_doc: Optional[str] = None
+        if company_doc_counts:
+            dom_doc = max(company_doc_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        comp_coherence = _doctrinal_coherence_tier(len(set(company_doc_counts.keys())))
+        comp_exposure = _operational_exposure_tier(len(company_missions_seen))
+
+        lines.append("------------------------------------------------------------------------------")
+        lines.append("  High Command Notes:")
+        if hc_ops_count <= 0:
+            lines.append("  + High Command recorded no deployments across the dossier window.")
+            lines.append("  + Librarius counsel remained in strategic oversight: archives curated, auguries maintained.")
+        elif hc_ops_count <= 3 and comp_coherence in ("SPECIALIZED", "REFINED"):
+            lines.append("  + High Command deployments were limited; doctrine indicates specialized orientation.")
+            lines.append(f"  + Counsel calibrated for precision: {dom_doc or 'specialist doctrine'} in {dom_env or 'key theatres'}.")
+        elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in ("EMERGENT", "STABLE"):
+            lines.append("  + Company operations spanned varied theatres; doctrine held adaptive coherence.")
+            lines.append("  + Librarius endorses flexible rites and cross-theatre stratagem rehearsal.")
+        elif hc_ops_count >= 6 and comp_coherence in ("SPECIALIZED", "REFINED"):
+            lines.append("  + Elevated High Command deployments under focused campaigns.")
+            lines.append(f"  + Orientation sustained by {dom_doc or 'focused doctrine'} across {comp_exposure.lower()} exposure.")
+        else:
+            lines.append("  + High Command activity remained within expected bounds for the window.")
+            lines.append("  + Librarius counsel aligns with observed operations and doctrinal posture.")
+    except Exception:
+        pass
 
     lines.append("==============================================================================")
     lines.append("  Librarius Addendum:")
@@ -2122,7 +2128,26 @@ async def librarius_dossier(
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+    # Length safeguard: strip decorative banners if message too long
+    def _is_decoration_line(s: str) -> bool:
+        t = s.replace("\u001b[32m", "").strip()
+        return (set(t) <= {"=", "-"}) and (len(t) >= 20)
+
+    msg = "\n".join(lines)
+    if len(msg) > 1900:
+        compacted: List[str] = []
+        for ln in lines:
+            if ln.strip().startswith("```") or ln.strip() == "\u001b[0m```":
+                compacted.append(ln)
+                continue
+            if _is_decoration_line(ln):
+                continue
+            compacted.append(ln)
+        if compacted and compacted[0].strip().startswith("```"):
+            compacted.insert(1, "\u001b[32mLibrarius Dossier (Compact)")
+        msg = "\n".join(compacted)
+
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 def classify_difficulty(difficulty: str | None):
@@ -3188,6 +3213,15 @@ async def apothecarion_readiness(
         parts = [f"[ {t} ]" if t == active_tier else t for t in tiers]
         return f"    {label}:        " + "  ".join(parts)
 
+    # Compact single-line renderer for per-team metrics
+    def _render_compact_row(label: str, s: Dict[str, float]) -> str:
+        return (
+            f"  {label}: "
+            f"R[{_select_readiness_tier(s)}] "
+            f"C[{_select_care_tier(s)}] "
+            f"S[{_select_stability_tier(s)}]"
+        )
+
     def _select_readiness_tier(s: Dict[str, float]) -> str:
         n = int(s.get("count", 0) or 0)
         active = int(s.get("active", 0) or 0)
@@ -3245,20 +3279,101 @@ async def apothecarion_readiness(
             return "VARIABLE"
         return "FRACTURED"
 
-    # Company Command first (tiered rendering)
-    stats_cmd = _absence_stats(company_command_members)
-    lines.append("  Company Command")
-    lines.append(_render_band("Readiness", ["CRITICAL", "DEGRADED", "HIGH", "NEAR-TOTAL", "FULL"], _select_readiness_tier(stats_cmd)))
-    lines.append(_render_band("Care Load", ["CRITICAL", "ELEVATED", "LOW", "NEGLIGIBLE", "CLEAR"], _select_care_tier(stats_cmd)))
-    lines.append(_render_band("Stability", ["FRACTURED", "VARIABLE", "STABLE", "CONSISTENT", "UNIFORM"], _select_stability_tier(stats_cmd)))
+    # Legend of possible tiers (once at top)
+    lines.append("  Legend — Metric Options:")
+    lines.append("  Readiness: CRITICAL  DEGRADED  HIGH  NEAR-TOTAL  FULL")
+    lines.append("  Care Load: CRITICAL  ELEVATED  LOW  NEGLIGIBLE  CLEAR")
+    lines.append("  Stability: FRACTURED  VARIABLE  STABLE  CONSISTENT  UNIFORM")
+    lines.append("------------------------------------------------------------------------------")
 
-    # Each Kill Team (tiered rendering)
+    # Company Command (compact rendering)
+    stats_cmd = _absence_stats(company_command_members)
+    lines.append(_render_compact_row("Company Command", stats_cmd))
+
+    # Each Kill Team (compact rendering)
     for name, members in sorted(teams, key=lambda t: t[0].lower()):
         s = _absence_stats(members)
-        lines.append(f"  Kill Team {name}")
-        lines.append(_render_band("Readiness", ["CRITICAL", "DEGRADED", "HIGH", "NEAR-TOTAL", "FULL"], _select_readiness_tier(s)))
-        lines.append(_render_band("Care Load", ["CRITICAL", "ELEVATED", "LOW", "NEGLIGIBLE", "CLEAR"], _select_care_tier(s)))
-        lines.append(_render_band("Stability", ["FRACTURED", "VARIABLE", "STABLE", "CONSISTENT", "UNIFORM"], _select_stability_tier(s)))
+        lines.append(_render_compact_row(f"KT {name}", s))
+
+    # High Command Notes (30-day posture using medical load and stability signals)
+    try:
+        high_command_roles = {
+            "Watch Master",
+            "Forgemaster",
+            "Lord Executioner",
+            "Void Warden",
+            "Voidwarden",
+            "Chief Apothecary",
+            "High Chaplain",
+        }
+        hc_ids: set[str] = set()
+        for m in getattr(guild, "members", []):
+            names = _canonical_role_names(m)
+            if any(r in names for r in high_command_roles):
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+
+        hc_ops_count = 0
+        for rec in data.values():
+            try:
+                ts = rec.get("timestamp")
+                if not ts:
+                    continue
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                if dt < cutoff:
+                    continue
+                bros = [str(b) for b in (rec.get("brother_ids") or [])]
+                if any(b in hc_ids for b in bros):
+                    hc_ops_count += 1
+            except Exception:
+                continue
+
+        # Aggregate care and stability signals across Company Command + Kill Teams
+        care_levels: List[str] = []
+        stab_levels: List[str] = []
+        read_levels: List[str] = []
+        care_levels.append(_select_care_tier(stats_cmd))
+        stab_levels.append(_select_stability_tier(stats_cmd))
+        read_levels.append(_select_readiness_tier(stats_cmd))
+        for name, members in teams:
+            s = _absence_stats(members)
+            care_levels.append(_select_care_tier(s))
+            stab_levels.append(_select_stability_tier(s))
+            read_levels.append(_select_readiness_tier(s))
+
+        def _ratio(xs: List[str], bad: set[str]) -> float:
+            n = len(xs)
+            if n <= 0:
+                return 0.0
+            return sum(1 for x in xs if x in bad) / float(n)
+
+        care_ratio = _ratio(care_levels, {"ELEVATED", "CRITICAL"})
+        stab_ratio = _ratio(stab_levels, {"VARIABLE", "FRACTURED"})
+        read_ratio = _ratio(read_levels, {"DEGRADED", "CRITICAL"})
+
+        lines.append("------------------------------------------------------------------------------")
+        lines.append("  High Command Notes:")
+        if hc_ops_count <= 0:
+            lines.append("  + High Command recorded no deployments in the last thirty days.")
+            lines.append("  + Oversight posture maintained; Apothecarion focuses on steady readiness cycles.")
+        elif hc_ops_count <= 2 and (care_ratio >= 0.4 or stab_ratio >= 0.4):
+            lines.append("  + High Command deployments remained limited while medical load and/or stability")
+            lines.append("    indicators trended adverse across the roster.")
+            lines.append("  + Cautionary posture: prioritize triage rites and cohesion drills prior to escalation.")
+        elif hc_ops_count >= 5 and read_ratio >= 0.4:
+            lines.append("  + Elevated High Command deployments coincided with degraded readiness across teams.")
+            lines.append("  + Emergency posture justified: Apothecarion release criteria tightened; rotations shortened.")
+        elif hc_ops_count >= 5 and stab_ratio < 0.3:
+            lines.append("  + High Command maintained a proactive operational posture with steady cohesion.")
+            lines.append("  + Apothecarion endorses forward deployment under current stability readings.")
+        else:
+            lines.append("  + High Command deployments remained within expected bounds for the period.")
+            lines.append("  + Apothecarion advises routine cycles: recovery rites, gene-seed audits, cohesion maintenance.")
+    except Exception:
+        pass
 
     lines.append("==============================================================================")
     lines.append("  Apothecarion Addendum:")
@@ -3266,7 +3381,27 @@ async def apothecarion_readiness(
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+    # Safeguard: if message is still too long, strip decorative lines
+    def _is_decoration_line(s: str) -> bool:
+        t = s.replace("\u001b[32m", "").strip()
+        return (set(t) <= {"=", "-"}) and (len(t) >= 20)
+
+    msg = "\n".join(lines)
+    if len(msg) > 1900:
+        compacted: List[str] = []
+        for ln in lines:
+            if ln.strip().startswith("```") or ln.strip() == "\u001b[0m```":
+                compacted.append(ln)
+                continue
+            if _is_decoration_line(ln):
+                continue
+            compacted.append(ln)
+        # Insert concise header after the opening code fence
+        if compacted and compacted[0].strip().startswith("```"):
+            compacted.insert(1, "\u001b[32mApothecarion Readiness Ledger (30 Days)")
+        msg = "\n".join(compacted)
+
+    await interaction.followup.send(msg, ephemeral=True)
 
 
 def _main():
