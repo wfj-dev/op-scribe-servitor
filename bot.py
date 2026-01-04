@@ -2845,7 +2845,7 @@ async def apothecarion_readiness(
     # Company Command first (qualitative only)
     stats_cmd = _absence_stats(company_command_members)
     lines.append("  Company Command")
-    lines.append(f" + {_compose_assessment(stats_cmd)}")
+    lines.append(f"  + {_compose_assessment(stats_cmd)}")
 
     # Each Kill Team (qualitative only)
     for name, members in sorted(teams, key=lambda t: t[0].lower()):
