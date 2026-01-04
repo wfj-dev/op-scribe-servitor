@@ -2668,6 +2668,168 @@ def _format_bonds_for_discord(
     return "\n".join(lines)
 
 
+@bot.tree.command(
+    name="apothecarion_readiness",
+    description="Summarize last-14-day availability per Kill Team in a Company."
+)
+@app_commands.describe(company="The Company role to analyze (e.g., '@Watch Company Primus').")
+async def apothecarion_readiness(
+    interaction: discord.Interaction,
+    company: discord.Role,
+):
+    # Permissions: restricted to Watch Command and allowed channels
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=False, ephemeral=True)
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("Guild context unavailable.", ephemeral=True)
+        return
+
+    # Identify Kill Team roles within the fortress
+    killteam_roles: List[discord.Role] = []
+    try:
+        for role in guild.roles:
+            rn = getattr(role, "name", "") or ""
+            rl = rn.lower()
+            if ("kill" in rl) and ("team" in rl):
+                # Exclude rank-style roles like 'Kill Team Champion'
+                if "champion" in rl:
+                    continue
+                killteam_roles.append(role)
+    except Exception:
+        killteam_roles = []
+
+    # Build roster per Kill Team for the selected company (intersection of members)
+    company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
+    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+
+    teams: List[Tuple[str, List[discord.Member]]] = []
+    for kt in killteam_roles:
+        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        if kt_members:
+            teams.append((_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members))
+
+    # Company Command: mirror killteam_brief logic (Captain through above Sergeant, in 'Watch Company Primus')
+    try:
+        idx_sergeant = _role_index("Watch Sergeant")
+        idx_captain = _role_index("Watch Captain")
+    except Exception:
+        idx_sergeant = None
+        idx_captain = None
+
+    company_command_members: List[discord.Member] = []
+    try:
+        base_members = list(getattr(company, "members", []))
+        for m in base_members:
+            roles = getattr(m, "roles", [])
+            has_primus = False
+            for r in roles:
+                rn = (getattr(r, "name", "") or "").lower()
+                if ("primus" in rn) and ("company" in rn):
+                    has_primus = True
+                    break
+            highest_idx = get_highest_rank_index(m)
+            if (
+                has_primus
+                and idx_sergeant is not None
+                and idx_captain is not None
+                and highest_idx is not None
+                and (idx_captain <= highest_idx < idx_sergeant)
+            ):
+                company_command_members.append(m)
+    except Exception:
+        company_command_members = []
+
+    # Compute last-14-day activity map from AAR records
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    data = load_aar_data(AAR_RECORDS_PATH)
+    active_map: Dict[str, bool] = {}
+    for rec in data.values():
+        try:
+            ts = rec.get("timestamp")
+            if not ts:
+                continue
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is not None:
+                try:
+                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                except Exception:
+                    dt = dt.replace(tzinfo=None)
+            if dt < cutoff:
+                continue
+            for uid in (rec.get("brother_ids") or []):
+                sid = str(uid)
+                if sid:
+                    active_map[sid] = True
+        except Exception:
+            continue
+
+    def _absence_stats(members: List[discord.Member]):
+        measures: List[int] = []  # 1 = absent, 0 = active
+        active_cnt = 0
+        for m in members:
+            sid = str(getattr(m, "id", ""))
+            is_active = bool(active_map.get(sid, False))
+            measures.append(0 if is_active else 1)
+            if is_active:
+                active_cnt += 1
+        n = len(measures)
+        avg = (sum(measures) / n) if n > 0 else 0.0
+        med = statistics.median(measures) if measures else 0.0
+        try:
+            sd = statistics.pstdev(measures) if n > 1 else 0.0
+        except Exception:
+            sd = 0.0
+        return {
+            "count": n,
+            "active": active_cnt,
+            "absent": n - active_cnt,
+            "avg": avg,
+            "median": med,
+            "stdev": sd,
+        }
+
+    # Prepare ANSI-styled report
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // APOTHECARION NODE")
+    lines.append("  OPERATION-SCRIBE SERVITOR — READINESS SUMMARY (14 DAYS)")
+    lines.append("==============================================================================")
+    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}")
+    lines.append("------------------------------------------------------------------------------")
+
+    # Company Command first
+    stats_cmd = _absence_stats(company_command_members)
+    lines.append(f"  Company Command  | Members: {stats_cmd['count']}")
+    lines.append(f"    Active: {stats_cmd['active']}  Absent: {stats_cmd['absent']}")
+    lines.append(
+        f"    Absence Avg: {stats_cmd['avg']:.2f}  Median: {stats_cmd['median']:.2f}  Std Dev: {stats_cmd['stdev']:.2f}"
+    )
+
+    # Each Kill Team
+    for name, members in sorted(teams, key=lambda t: t[0].lower()):
+        s = _absence_stats(members)
+        lines.append(f"  Kill Team {name}  | Members: {s['count']}")
+        lines.append(f"    Active: {s['active']}  Absent: {s['absent']}")
+        lines.append(
+            f"    Absence Avg: {s['avg']:.2f}  Median: {s['median']:.2f}  Std Dev: {s['stdev']:.2f}"
+        )
+
+    lines.append("==============================================================================")
+    lines.append("  Machine-Spirit Addendum:")
+    lines.append("  Absence is 1 when no AAR participation in last 14 days.")
+    lines.append("  Metrics reveal overall presence and uneven availability per team.")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+
 def _main():
     # Parse CLI args for debug flag (overrides config). Use parse_known to avoid discord.py argv issues.
     try:
