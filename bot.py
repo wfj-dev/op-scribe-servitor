@@ -1470,6 +1470,57 @@ async def killteam_brief(
     # Force Multiplier: per-op per-capita AAR average
     force_multiplier = best_force
 
+    # Company specialists: pick most recently active member for each role
+    def _member_display_name(m: discord.Member) -> str:
+        try:
+            return getattr(m, "nick", None) or getattr(m, "display_name", None) or getattr(m, "name", None) or str(getattr(m, "id", "Unknown"))
+        except Exception:
+            return str(getattr(m, "id", "Unknown"))
+
+    # Build recency index from recent_records (0 = most recent)
+    recency_index: Dict[str, int] = {}
+    try:
+        for idx, rec in enumerate(reversed(list(recent_records))):
+            for b in (rec.get("brother_ids") or []):
+                sb = str(b)
+                if sb not in recency_index:
+                    recency_index[sb] = idx
+    except Exception:
+        recency_index = {}
+
+    spec_roles_map = {
+        "Watch Chaplain": "Chaplain",
+        "Watch Apothecary": "Apothecary",
+        "Watch Techmarine": "Techmarine",
+        "Watch Librarian": "Librarian",
+    }
+    spec_names: Dict[str, str] = {}
+    try:
+        company_members = list(getattr(company, "members", []))
+        for role_key, short_label in spec_roles_map.items():
+            candidates: List[discord.Member] = []
+            for m in company_members:
+                names = _canonical_role_names(m)
+                if role_key in names:
+                    candidates.append(m)
+            if not candidates:
+                spec_names[short_label] = short_label
+                continue
+            # Pick most recently active by lowest recency index
+            best_m = None
+            best_idx = float("inf")
+            for m in candidates:
+                mid = str(getattr(m, "id", ""))
+                idx = recency_index.get(mid, float("inf"))
+                if idx < best_idx:
+                    best_idx = idx
+                    best_m = m
+            spec_names[short_label] = _member_display_name(best_m) if best_m else _member_display_name(candidates[0])
+    except Exception:
+        # Fallback to role labels if failure
+        for _rk, _sl in spec_roles_map.items():
+            spec_names[_sl] = _sl
+
     # High Command assessment note
     # Identify High Command members and compute deployments and lethality relative to medians
     high_command_roles = {
@@ -1546,6 +1597,13 @@ async def killteam_brief(
         name = team.get("name", "Unknown")
         return "Company Command" if name == "Company Command" else f"Kill Team {name}"
 
+    # Abbreviated label for Company Command notes (KT instead of Kill Team)
+    def _abbr_label(team: dict) -> str:
+        try:
+            return _team_label(team).replace("Kill Team ", "KT ")
+        except Exception:
+            return _team_label(team)
+
     # Render brief
     lines: List[str] = []
     lines.append("```ansi")
@@ -1566,18 +1624,18 @@ async def killteam_brief(
     lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
     lines.append("==============================================================================")
     lines.append("  Company Command Notes:")
-    lines.append(f"  + {_team_label(best_lethality)} is recommended for high-risk, high-value assaults.")
-    lines.append(f"  + {_team_label(best_preservation)} is favored for prolonged campaigns requiring force")
-    lines.append("    preservation.")
-    lines.append(f"  + {_team_label(best_armory)} demonstrates exceptional strategic yield beyond direct")
-    lines.append("    engagement.")
+    lines.append(f"  + [{spec_names.get('Chaplain','Chaplain')}] {_abbr_label(best_lethality)} recommended for high-risk,\n    high-value engagements.")
+    lines.append(f"  + [{spec_names.get('Apothecary','Apothecary')}] {_abbr_label(best_preservation)} superior gene-seed\n    preservation; suited for long campaigns.")
+    lines.append(f"  + [{spec_names.get('Techmarine','Techmarine')}] {_abbr_label(best_armory)} exceptional materiel\n    recovery; prioritize archeotech tasking.")
+    lines.append(f"  + [{spec_names.get('Librarian','Librarian')}] Doctrine: Shock — {_abbr_label(shock_team)}; Surgical —")
+    lines.append(f"    {_abbr_label(surgical_team)}. Task accordingly.")
     lines.append("------------------------------------------------------------------------------")
     lines.append("  High Command Notes:")
-    # Compact numeric comparison to show values used in assessment
-    try:
-        lines.append(f"  [ops {hc_ops_count}|{int(med_ops)}; aar {hc_avg_aar:.1f}|{med_aar:.1f}]")
-    except Exception:
-        pass
+    # # Compact numeric comparison to show values used in assessment
+    # try:
+    #     lines.append(f"  [ops {hc_ops_count}|{int(med_ops)}; aar {hc_avg_aar:.1f}|{med_aar:.1f}]")
+    # except Exception:
+    #     pass
     for ln in hc_note_lines:
         lines.append(f"  {ln}")
     lines.append("==============================================================================")
