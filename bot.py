@@ -2670,7 +2670,7 @@ def _format_bonds_for_discord(
 
 @bot.tree.command(
     name="apothecarion_readiness",
-    description="Summarize last-14-day availability per Kill Team in a Company."
+    description="Summarize last-30-day availability per Kill Team in a Company."
 )
 @app_commands.describe(company="The Company role to analyze (e.g., '@Watch Company Primus').")
 async def apothecarion_readiness(
@@ -2744,8 +2744,8 @@ async def apothecarion_readiness(
     except Exception:
         company_command_members = []
 
-    # Compute last-14-day activity map from AAR records
-    cutoff = datetime.utcnow() - timedelta(days=14)
+    # Compute last-30-day activity map from AAR records
+    cutoff = datetime.utcnow() - timedelta(days=30)
     data = load_aar_data(AAR_RECORDS_PATH)
     active_map: Dict[str, bool] = {}
     for rec in data.values():
@@ -2798,32 +2798,65 @@ async def apothecarion_readiness(
     lines.append("```ansi")
     lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // APOTHECARION NODE")
-    lines.append("  OPERATION-SCRIBE SERVITOR — READINESS SUMMARY (14 DAYS)")
+    lines.append("  OPERATION-SCRIBE SERVITOR — BIOLOGICAL READINESS LEDGER (30 DAYS)")
     lines.append("==============================================================================")
     lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}")
     lines.append("------------------------------------------------------------------------------")
 
-    # Company Command first
-    stats_cmd = _absence_stats(company_command_members)
-    lines.append(f"  Company Command  | Members: {stats_cmd['count']}")
-    lines.append(f"    Active: {stats_cmd['active']}  Absent: {stats_cmd['absent']}")
-    lines.append(
-        f"    Absence Avg: {stats_cmd['avg']:.2f}  Median: {stats_cmd['median']:.2f}  Std Dev: {stats_cmd['stdev']:.2f}"
-    )
+    # Helper to compose qualitative assessments without revealing numbers
+    def _compose_assessment(s: Dict[str, float]) -> str:
+        n = s.get("count", 0) or 0
+        if n <= 0:
+            return "No rostered brothers for assessment."
+        avg = float(s.get("avg", 0.0) or 0.0)
+        med = float(s.get("median", 0.0) or 0.0)
+        sd = float(s.get("stdev", 0.0) or 0.0)
 
-    # Each Kill Team
+        # Base readiness message from care incidence (avg)
+        if avg < 0.10:
+            base = "Near-total readiness; negligible Apothecarion cases"
+        elif avg < 0.25:
+            base = "High readiness; few under Apothecarion care"
+        elif avg < 0.50:
+            base = "Mixed readiness; some care cases observed"
+        elif avg < 0.75:
+            base = "Elevated care incidence; availability constrained"
+        else:
+            base = "Critical care incidence; team largely unavailable"
+
+        # Median-based qualifier (0=majority ready, 1=majority absent on this scale)
+        if med <= 0.0 and avg < 0.5:
+            median_note = "majority battle-ready"
+        elif med >= 1.0 and avg >= 0.5:
+            median_note = "majority under care"
+        else:
+            median_note = "availability mixed across the roster"
+
+        # Dispersion qualifier from std dev on binary measure
+        if sd >= 0.35:
+            spread = "uneven participation patterns"
+        elif sd <= 0.15:
+            spread = "consistent participation patterns"
+        else:
+            spread = "variable participation patterns"
+
+        return f"{base}; {median_note}; {spread}."
+
+    # Company Command first (qualitative only)
+    stats_cmd = _absence_stats(company_command_members)
+    lines.append("  Company Command")
+    lines.append(f" + {_compose_assessment(stats_cmd)}")
+
+    # Each Kill Team (qualitative only)
     for name, members in sorted(teams, key=lambda t: t[0].lower()):
         s = _absence_stats(members)
-        lines.append(f"  Kill Team {name}  | Members: {s['count']}")
-        lines.append(f"    Active: {s['active']}  Absent: {s['absent']}")
-        lines.append(
-            f"    Absence Avg: {s['avg']:.2f}  Median: {s['median']:.2f}  Std Dev: {s['stdev']:.2f}"
-        )
+        lines.append(f"  Kill Team {name}")
+        lines.append(f"  + {_compose_assessment(s)}")
 
     lines.append("==============================================================================")
-    lines.append("  Machine-Spirit Addendum:")
-    lines.append("  Absence is 1 when no AAR participation in last 14 days.")
-    lines.append("  Metrics reveal overall presence and uneven availability per team.")
+    lines.append("  Apothecarion Addendum:")
+    lines.append("  Presence is determined by participation in sanctioned operations")
+    lines.append("  Metrics reveal overall presence and uneven availability per kill team.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
