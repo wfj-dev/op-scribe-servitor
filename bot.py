@@ -2833,63 +2833,89 @@ async def apothecarion_readiness(
     lines.append("  WATCH FORTRESS JERICHO // APOTHECARION NODE")
     lines.append("  OPERATION-SCRIBE SERVITOR — BIOLOGICAL READINESS LEDGER (30 DAYS)")
     lines.append("==============================================================================")
-    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}")
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}")
     lines.append("------------------------------------------------------------------------------")
 
-    # Helper to compose qualitative assessments without revealing numbers
-    def _compose_assessment(s: Dict[str, float]) -> str:
-        n = s.get("count", 0) or 0
-        if n <= 0:
-            return "No rostered brothers for assessment."
-        avg = float(s.get("avg", 0.0) or 0.0)
+    # Helpers to render tiered lines with a single active tier bracketed
+    def _render_band(label: str, tiers: List[str], active_tier: str) -> str:
+        parts = [f"[ {t} ]" if t == active_tier else t for t in tiers]
+        return f"    {label}:        " + "  ".join(parts)
+
+    def _select_readiness_tier(s: Dict[str, float]) -> str:
+        n = int(s.get("count", 0) or 0)
+        active = int(s.get("active", 0) or 0)
+        avg_absent = float(s.get("avg", 0.0) or 0.0)
         med = float(s.get("median", 0.0) or 0.0)
+        if n <= 0:
+            return "CRITICAL"
+        p_active = (active / n) if n > 0 else 0.0
+        # Base tier from active proportion (best to worst)
+        if p_active >= 0.95:
+            tier = "FULL"
+        elif p_active >= 0.85:
+            tier = "NEAR-TOTAL"
+        elif p_active >= 0.65:
+            tier = "HIGH"
+        elif p_active >= 0.40:
+            tier = "DEGRADED"
+        else:
+            tier = "CRITICAL"
+        # Adjust with median: if majority absent (median ~1) and avg high, nudge worse; if majority ready and avg low, nudge better
+        ordering = ["CRITICAL", "DEGRADED", "HIGH", "NEAR-TOTAL", "FULL"]
+        idx = ordering.index(tier)
+        try:
+            if (med >= 1.0 and avg_absent >= 0.5) and idx > 0:
+                idx -= 1
+            elif (med <= 0.0 and avg_absent <= 0.25) and idx < len(ordering) - 1:
+                idx += 1
+        except Exception:
+            pass
+        return ordering[idx]
+
+    def _select_care_tier(s: Dict[str, float]) -> str:
+        avg_absent = float(s.get("avg", 0.0) or 0.0)
+        # Care load increases with absent incidence
+        if avg_absent <= 0.05:
+            return "CLEAR"
+        if avg_absent <= 0.15:
+            return "NEGLIGIBLE"
+        if avg_absent <= 0.35:
+            return "LOW"
+        if avg_absent <= 0.60:
+            return "ELEVATED"
+        return "CRITICAL"
+
+    def _select_stability_tier(s: Dict[str, float]) -> str:
         sd = float(s.get("stdev", 0.0) or 0.0)
+        # Lower dispersion indicates steadier participation across roster
+        if sd <= 0.10:
+            return "UNIFORM"
+        if sd <= 0.18:
+            return "CONSISTENT"
+        if sd <= 0.26:
+            return "STABLE"
+        if sd <= 0.34:
+            return "VARIABLE"
+        return "FRACTURED"
 
-        # Base readiness message from care incidence (avg)
-        if avg < 0.10:
-            base = "Near-total readiness; negligible Apothecarion cases"
-        elif avg < 0.25:
-            base = "High readiness; few under Apothecarion care"
-        elif avg < 0.50:
-            base = "Mixed readiness; some care cases observed"
-        elif avg < 0.75:
-            base = "Elevated care incidence; availability constrained"
-        else:
-            base = "Critical care incidence; team largely unavailable"
-
-        # Median-based qualifier (0=majority ready, 1=majority absent on this scale)
-        if med <= 0.0 and avg < 0.5:
-            median_note = "majority battle-ready"
-        elif med >= 1.0 and avg >= 0.5:
-            median_note = "majority under care"
-        else:
-            median_note = "availability mixed across the roster"
-
-        # Dispersion qualifier from std dev on binary measure
-        if sd >= 0.35:
-            spread = "uneven participation patterns"
-        elif sd <= 0.15:
-            spread = "consistent participation patterns"
-        else:
-            spread = "variable participation patterns"
-
-        return f"{base}; {median_note}; {spread}."
-
-    # Company Command first (qualitative only)
+    # Company Command first (tiered rendering)
     stats_cmd = _absence_stats(company_command_members)
     lines.append("  Company Command")
-    lines.append(f"  + {_compose_assessment(stats_cmd)}")
+    lines.append(_render_band("Readiness", ["CRITICAL", "DEGRADED", "HIGH", "NEAR-TOTAL", "FULL"], _select_readiness_tier(stats_cmd)))
+    lines.append(_render_band("Care Load", ["CRITICAL", "ELEVATED", "LOW", "NEGLIGIBLE", "CLEAR"], _select_care_tier(stats_cmd)))
+    lines.append(_render_band("Stability", ["FRACTURED", "VARIABLE", "STABLE", "CONSISTENT", "UNIFORM"], _select_stability_tier(stats_cmd)))
 
-    # Each Kill Team (qualitative only)
+    # Each Kill Team (tiered rendering)
     for name, members in sorted(teams, key=lambda t: t[0].lower()):
         s = _absence_stats(members)
         lines.append(f"  Kill Team {name}")
-        lines.append(f"  + {_compose_assessment(s)}")
+        lines.append(_render_band("Readiness", ["CRITICAL", "DEGRADED", "HIGH", "NEAR-TOTAL", "FULL"], _select_readiness_tier(s)))
+        lines.append(_render_band("Care Load", ["CRITICAL", "ELEVATED", "LOW", "NEGLIGIBLE", "CLEAR"], _select_care_tier(s)))
+        lines.append(_render_band("Stability", ["FRACTURED", "VARIABLE", "STABLE", "CONSISTENT", "UNIFORM"], _select_stability_tier(s)))
 
     lines.append("==============================================================================")
     lines.append("  Apothecarion Addendum:")
-    lines.append("  Presence is determined by participation in sanctioned operations")
-    lines.append("  Metrics reveal overall presence and uneven availability per kill team.")
+    lines.append("  Deployment clearance is granted only upon Apothecarion release.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
