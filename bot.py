@@ -1438,10 +1438,34 @@ async def killteam_brief(
         med_gene = statistics.median(gene_list) if gene_list else 0.0
         ops_list = [t["avg_ops"] for t in team_stats]
         med_ops = statistics.median(ops_list) if ops_list else 0.0
+        armory_list = [t["avg_armory"] for t in team_stats]
+        med_armory = statistics.median(armory_list) if armory_list else 0.0
+        rel_list = [t["reliability"] for t in team_stats]
+        med_rel = statistics.median(rel_list) if rel_list else 0.0
+        fm_list = [t["force_multiplier"] for t in team_stats]
+        med_fm = statistics.median(fm_list) if fm_list else 0.0
+        shock_deltas = [tt["avg_aar"] - tt["avg_gene"] for tt in team_stats]
+        med_shock = statistics.median(shock_deltas) if shock_deltas else 0.0
+        surg_deltas = [tt["avg_gene"] - tt["avg_aar"] for tt in team_stats]
+        med_surg = statistics.median(surg_deltas) if surg_deltas else 0.0
+        # Standard deviations for outlier detection
+        sd_ops = statistics.pstdev(ops_list) if len(ops_list) >= 2 else 0.0
+        sd_armory = statistics.pstdev(armory_list) if len(armory_list) >= 2 else 0.0
+        sd_rel = statistics.pstdev(rel_list) if len(rel_list) >= 2 else 0.0
+        sd_fm = statistics.pstdev(fm_list) if len(fm_list) >= 2 else 0.0
+        sd_gene = statistics.pstdev(gene_list) if len(gene_list) >= 2 else 0.0
+        sd_shock = statistics.pstdev(shock_deltas) if len(shock_deltas) >= 2 else 0.0
+        sd_surg = statistics.pstdev(surg_deltas) if len(surg_deltas) >= 2 else 0.0
     except Exception:
         med_aar = 0.0
         med_gene = 0.0
         med_ops = 0.0
+        med_armory = 0.0
+        med_rel = 0.0
+        med_fm = 0.0
+        med_shock = 0.0
+        med_surg = 0.0
+        sd_ops = sd_armory = sd_rel = sd_fm = sd_gene = sd_shock = sd_surg = 0.0
 
     shock_candidates = []
     surgical_candidates = []
@@ -1520,6 +1544,80 @@ async def killteam_brief(
         # Fallback to role labels if failure
         for _rk, _sl in spec_roles_map.items():
             spec_names[_sl] = _sl
+
+    # Helper: outlier checks
+    def _is_high_out(val: float, med: float, sd: float, eps: float = 0.1) -> bool:
+        return val >= med + max(sd, eps)
+
+    def _is_low_out(val: float, med: float, sd: float, eps: float = 0.1) -> bool:
+        return val <= med - max(sd, eps)
+
+    # Build conditional Company Command notes (max one per specialist)
+    company_notes: List[str] = []
+    # Techmarine
+    try:
+        tech_name = spec_names.get("Techmarine", "Techmarine")
+        # Priority: Armory outlier
+        if _is_high_out(best_armory["avg_armory"], med_armory, sd_armory) or _is_low_out(best_armory["avg_armory"], med_armory, sd_armory):
+            company_notes.append(f"  + [{tech_name}] {_abbr_label(best_armory)} arm {best_armory['avg_armory']:.1f}|{med_armory:.1f}.")
+        # Reliability outlier
+        elif _is_high_out(best_reliability["reliability"], med_rel, sd_rel) or _is_low_out(best_reliability["reliability"], med_rel, sd_rel):
+            company_notes.append(f"  + [{tech_name}] {_abbr_label(best_reliability)} rel {best_reliability['reliability']:.2f}|{med_rel:.2f}.")
+        # Risk appetite extremes
+        else:
+            shock_delta = shock_team["avg_aar"] - shock_team["avg_gene"]
+            surg_delta = surgical_team["avg_gene"] - surgical_team["avg_aar"]
+            if _is_high_out(shock_delta, med_shock, sd_shock):
+                company_notes.append(f"  + [{tech_name}] {_abbr_label(shock_team)} shock Δ {shock_delta:.2f}|{med_shock:.2f}.")
+            elif _is_high_out(surg_delta, med_surg, sd_surg):
+                company_notes.append(f"  + [{tech_name}] {_abbr_label(surgical_team)} surg Δ {surg_delta:.2f}|{med_surg:.2f}.")
+            else:
+                # Force multiplier contradiction vs tempo
+                if _is_high_out(best_force["force_multiplier"], med_fm, sd_fm) and _is_low_out(best_force["avg_ops"], med_ops, sd_ops, eps=1.0):
+                    company_notes.append(f"  + [{tech_name}] {_abbr_label(best_force)} fm {best_force['force_multiplier']:.2f}|{med_fm:.2f} vs ops {int(best_force['avg_ops'])}|{int(med_ops)}.")
+                elif _is_low_out(best_force["force_multiplier"], med_fm, sd_fm) and _is_high_out(best_force["avg_ops"], med_ops, sd_ops, eps=1.0):
+                    company_notes.append(f"  + [{tech_name}] {_abbr_label(best_force)} fm {best_force['force_multiplier']:.2f}|{med_fm:.2f} vs ops {int(best_force['avg_ops'])}|{int(med_ops)}.")
+                else:
+                    # Ops with rel/armory strain/surplus
+                    if _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_low_out(best_reliability["reliability"], med_rel, sd_rel):
+                        company_notes.append(f"  + [{tech_name}] {_abbr_label(best_tempo)} load+strain ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, rel {best_reliability['reliability']:.2f}|{med_rel:.2f}.")
+                    elif _is_low_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_high_out(best_armory["avg_armory"], med_armory, sd_armory):
+                        company_notes.append(f"  + [{tech_name}] {_abbr_label(best_tempo)} surplus ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, arm {best_armory['avg_armory']:.1f}|{med_armory:.1f}.")
+    except Exception:
+        pass
+
+    # Apothecary
+    try:
+        apoth_name = spec_names.get("Apothecary", "Apothecary")
+        if _is_high_out(best_preservation["avg_gene"], med_gene, sd_gene) or _is_low_out(best_preservation["avg_gene"], med_gene, sd_gene):
+            company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_preservation)} gene {best_preservation['avg_gene']:.2f}|{med_gene:.2f}.")
+        elif _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and _is_low_out(best_tempo.get("avg_gene", 0.0), med_gene, sd_gene):
+            company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_tempo)} tempo+low gene ops {int(best_tempo['avg_ops'])}|{int(med_ops)}, gene {best_tempo.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
+        else:
+            # Siegebreaker paired with gene strain/resilience
+            if _is_high_out(best_siegebreaker["avg_waves"], med_ops, sd_ops, eps=1.0):
+                if _is_low_out(best_siegebreaker.get("avg_gene", 0.0), med_gene, sd_gene):
+                    company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_siegebreaker)} siege+strain waves {best_siegebreaker['avg_waves']:.2f}, gene {best_siegebreaker.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
+                elif _is_high_out(best_siegebreaker.get("avg_gene", 0.0), med_gene, sd_gene):
+                    company_notes.append(f"  + [{apoth_name}] {_abbr_label(best_siegebreaker)} siege+resilience waves {best_siegebreaker['avg_waves']:.2f}, gene {best_siegebreaker.get('avg_gene',0.0):.2f}|{med_gene:.2f}.")
+    except Exception:
+        pass
+
+    # Chaplain
+    try:
+        chap_name = spec_names.get("Chaplain", "Chaplain")
+        if _is_high_out(best_tempo["avg_ops"], med_ops, sd_ops, eps=1.0) and abs(best_tempo.get("reliability", 0.0) - med_rel) <= max(sd_rel, 0.1):
+            company_notes.append(f"  + [{chap_name}] {_abbr_label(best_tempo)} sustained tempo; reliability steady {best_tempo.get('reliability',0.0):.2f}|{med_rel:.2f}.")
+    except Exception:
+        pass
+
+    # Librarius Notice (separate section), at most one
+    librarius_note: Optional[str] = None
+    try:
+        if _is_high_out(best_lethality["avg_aar"], med_aar, statistics.pstdev(aar_list) if len(aar_list) >= 2 else 0.0) and _is_low_out(best_lethality["avg_ops"], med_ops, sd_ops, eps=1.0):
+            librarius_note = f"  + Contradiction: {_abbr_label(best_lethality)} high lethality with low tempo (aar {best_lethality['avg_aar']:.2f}|{med_aar:.2f}, ops {int(best_lethality['avg_ops'])}|{int(med_ops)})."
+    except Exception:
+        pass
 
     # High Command assessment note
     # Identify High Command members and compute deployments and lethality relative to medians
@@ -1611,7 +1709,7 @@ async def killteam_brief(
     lines.append("  WATCH FORTRESS JERICHO // COMPANY KILL TEAM BRIEF")
     lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM BRIEF")
     lines.append("==============================================================================")
-    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 AARs")
+    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 Operations")
     lines.append("------------------------------------------------------------------------------")
     lines.append(f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
     lines.append(f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
@@ -1622,13 +1720,17 @@ async def killteam_brief(
     lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})")
     lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})")
     lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
-    lines.append("==============================================================================")
-    lines.append("  Company Command Notes:")
-    lines.append(f"  + [{spec_names.get('Chaplain','Chaplain')}] {_abbr_label(best_lethality)} recommended for high-risk,\n    high-value engagements.")
-    lines.append(f"  + [{spec_names.get('Apothecary','Apothecary')}] {_abbr_label(best_preservation)} superior gene-seed\n    preservation; suited for long campaigns.")
-    lines.append(f"  + [{spec_names.get('Techmarine','Techmarine')}] {_abbr_label(best_armory)} exceptional materiel\n    recovery; prioritize archeotech tasking.")
-    lines.append(f"  + [{spec_names.get('Librarian','Librarian')}] Doctrine: Shock — {_abbr_label(shock_team)}; Surgical —")
-    lines.append(f"    {_abbr_label(surgical_team)}. Task accordingly.")
+    # Conditional notes: print section only if any notes
+    if company_notes:
+        lines.append("==============================================================================")
+        lines.append("  Company Command Notes:")
+        for note in company_notes[:3]:  # guardrail: max one per specialist; we already enforce, but cap defensively
+            lines.append(note)
+    # Librarius Notice separate
+    if librarius_note:
+        lines.append("------------------------------------------------------------------------------")
+        lines.append("  Librarius Notice:")
+        lines.append(librarius_note)
     lines.append("------------------------------------------------------------------------------")
     lines.append("  High Command Notes:")
     # # Compact numeric comparison to show values used in assessment
