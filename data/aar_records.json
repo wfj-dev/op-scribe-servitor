@@ -55451,5 +55451,121 @@
     "edited_at": null,
     "content_hash": "068b3b6691b35b58569685efa218362ef0b256264fc89f8cfb0116a1f7b8f220",
     "initiation_trial": false
+  },
+  "1457480545637372078": {
+    "aar_id": 1457480545637372078,
+    "mission": "Termination",
+    "difficulty": "Normal-Stratagem",
+    "difficulty_class": "normal_stratagem",
+    "armory_data": 1,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "172418258324946944",
+    "gene_seed_carried_name": "Watch Brother Silver",
+    "gene_seed_base_points_for_carrier": 2,
+    "brother_ids": [
+      "733907873528283197",
+      "172418258324946944",
+      "402754610110005250"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Brother Silver",
+      "Watch Brother Sethius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 2,
+    "timestamp": "2026-01-04T21:07:20.759000+00:00",
+    "edited_at": null,
+    "content_hash": "f1bbce573c617d74fa13b92428e98969b2a8a618a9809efd04956c74f0752d58",
+    "initiation_trial": false
+  },
+  "1457493093736775741": {
+    "aar_id": 1457493093736775741,
+    "mission": "Reclamation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "402754610110005250",
+    "gene_seed_carried_name": "Watch Brother Sethius",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402754610110005250",
+      "1444810056821637133",
+      "281651485782310914"
+    ],
+    "brother_names": [
+      "Watch Brother Sethius",
+      "Watch Sergeant Jack",
+      "Watch Techmarine Jules"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-04T21:57:12.459000+00:00",
+    "edited_at": null,
+    "content_hash": "f005261487f09b00186716be517d5a1d6ab07e8ac8154488cee4710163334a70",
+    "initiation_trial": false
+  },
+  "1457496724401688810": {
+    "aar_id": 1457496724401688810,
+    "mission": "Termination",
+    "difficulty": "Lethal",
+    "difficulty_class": "lethal_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1217601361571610716",
+    "gene_seed_carried_name": "Watch Brother Verdaghast",
+    "gene_seed_base_points_for_carrier": 3,
+    "brother_ids": [
+      "228703987816202240",
+      "710530020803870730",
+      "1217601361571610716"
+    ],
+    "brother_names": [
+      "Watch Librarian Bob",
+      "Watch Brother DeVito",
+      "Watch Brother Verdaghast"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 3,
+    "timestamp": "2026-01-04T22:11:38.077000+00:00",
+    "edited_at": null,
+    "content_hash": "d2e6113922443f883597d8f0fad724e6fd6736e6467ad997ca0c9a5d0d2d6990",
+    "initiation_trial": false
+  },
+  "1457498800506535969": {
+    "aar_id": 1457498800506535969,
+    "mission": "Decapitation <@&1440108298115485716>",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "281651485782310914",
+    "gene_seed_carried_name": "Watch Techmarine Jules",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402754610110005250",
+      "1444810056821637133",
+      "281651485782310914"
+    ],
+    "brother_names": [
+      "Watch Brother Sethius",
+      "Watch Sergeant Jack",
+      "Watch Techmarine Jules"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-04T22:19:53.059000+00:00",
+    "edited_at": null,
+    "content_hash": "a2dbf85f39a29beadc41b8073b02983ff68b5fbe2e802c9cfdc3029ce8a59b82",
+    "initiation_trial": false
   }
 }
