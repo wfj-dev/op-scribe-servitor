@@ -23,6 +23,8 @@ DATA_DIR = "data"
 AAR_RECORDS_PATH = os.path.join(DATA_DIR, "aar_records.json")
 AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
 PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
+TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
+OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,6 +34,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Global lock to serialize reconciliation runs
 RECONCILE_LOCK = asyncio.Lock()
+CHAPLAIN_INGEST_LOCK = asyncio.Lock()
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -2163,9 +2166,6 @@ async def librarian_brief(
     except Exception:
         pass
 
-    lines.append("------------------------------------------------------------------------------")
-    lines.append("  Librarius Directive:")
-    lines.append("  These assessments inform Librarian rites, counsel, and deployment alignment.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
@@ -3536,9 +3536,6 @@ async def apothecary_brief(
     except Exception:
         pass
 
-    lines.append("------------------------------------------------------------------------------")
-    lines.append("  Apothecarion Directive:")
-    lines.append("  Deployment clearance remains valid pending Apothecarion release.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
@@ -3588,6 +3585,383 @@ def _main():
         raise RuntimeError("DISCORD_TOKEN environment variable not set")
     bot.run(token)
 
+
+async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
+    added = 0
+    updated = 0
+    if not guild:
+        return added, updated
+    channel = discord.utils.get(guild.channels, name="❖⋅trophy-hall⋅❖")
+    if not channel:
+        return added, updated
+    index = _load_json_dict(TROPHY_HALL_INDEX_PATH)
+    meta = index.get("_meta") or {}
+    last_id_str = meta.get("last_ingested_message_id")
+    try:
+        last_id = int(last_id_str) if last_id_str else 0
+    except Exception:
+        last_id = 0
+    tri_buf: List[discord.Message] = []
+    async for msg in channel.history(limit=None, oldest_first=True):
+        if last_id and msg.id <= last_id:
+            continue
+        tri_buf.append(msg)
+        if len(tri_buf) >= 3:
+            m1, m2, m3 = tri_buf[-3:]
+            key = str(m3.id)
+            content_hashes = {
+                str(m1.id): hashlib.sha256((m1.content or "").encode("utf-8")).hexdigest(),
+                str(m2.id): hashlib.sha256((m2.content or "").encode("utf-8")).hexdigest(),
+                str(m3.id): hashlib.sha256((m3.content or "").encode("utf-8")).hexdigest(),
+            }
+            edited_at = {
+                str(m1.id): m1.edited_at.isoformat() if getattr(m1, "edited_at", None) else None,
+                str(m2.id): m2.edited_at.isoformat() if getattr(m2, "edited_at", None) else None,
+                str(m3.id): m3.edited_at.isoformat() if getattr(m3, "edited_at", None) else None,
+            }
+            completers = [str(u.id) for u in m3.mentions]
+            challenge_title = (m1.content or "").strip()
+            entry = {
+                "challenge_title": challenge_title,
+                "completer_user_ids": completers,
+                "completion_message_id": str(m3.id),
+                "message_ids": [str(m1.id), str(m2.id), str(m3.id)],
+                "content_hashes": content_hashes,
+                "edited_at": edited_at,
+            }
+            prev = index.get(key)
+            if not prev:
+                index[key] = entry
+                added += 1
+            else:
+                prev_hashes = prev.get("content_hashes") or {}
+                prev_completers = set(prev.get("completer_user_ids") or [])
+                if prev_hashes != content_hashes or prev_completers != set(completers):
+                    index[key] = entry
+                    updated += 1
+            meta["last_ingested_message_id"] = str(m3.id)
+    keys = [k for k in index.keys() if k != "_meta"]
+    try:
+        recent_sorted = sorted([int(k) for k in keys])
+    except Exception:
+        recent_sorted = []
+    recent_keys = [str(k) for k in recent_sorted[-50:]]
+    for kid in recent_keys:
+        e = index.get(kid) or {}
+        mids = e.get("message_ids") or []
+        changed = False
+        hashes = e.get("content_hashes") or {}
+        edits = e.get("edited_at") or {}
+        new_hashes = dict(hashes)
+        new_edits = dict(edits)
+        for mid in mids:
+            try:
+                m = await channel.fetch_message(int(mid))
+            except Exception:
+                continue
+            h = hashlib.sha256((m.content or "").encode("utf-8")).hexdigest()
+            ea = m.edited_at.isoformat() if getattr(m, "edited_at", None) else None
+            if new_hashes.get(mid) != h or new_edits.get(mid) != ea:
+                new_hashes[mid] = h
+                new_edits[mid] = ea
+                changed = True
+        if changed:
+            e["content_hashes"] = new_hashes
+            e["edited_at"] = new_edits
+            index[kid] = e
+            updated += 1
+    index["_meta"] = meta
+    _save_json_dict(TROPHY_HALL_INDEX_PATH, index)
+    return added, updated
+
+async def _parse_oath_message(msg: discord.Message):
+    content = msg.content or ""
+    lines = [l.strip() for l in content.splitlines()]
+    user_id = None
+    if msg.mentions:
+        user_id = str(msg.mentions[0].id)
+    current_rank_raw = None
+    for l in lines:
+        low = l.lower()
+        if low.startswith("current rank:") or low.startswith("rank:"):
+            try:
+                current_rank_raw = l.split(":", 1)[1].strip()
+            except Exception:
+                current_rank_raw = l.strip()
+            break
+    target_role_names = [getattr(r, "name", "") for r in msg.role_mentions]
+    has_oath = True if user_id else False
+    entry = {
+        "message_id": str(msg.id),
+        "user_id": user_id,
+        "current_rank_raw": current_rank_raw,
+        "oath_target_roles": [n for n in target_role_names if n],
+        "content_hash": hashlib.sha256((content).encode("utf-8")).hexdigest(),
+        "edited_at": msg.edited_at.isoformat() if getattr(msg, "edited_at", None) else None,
+        "has_oath": bool(has_oath),
+        "timestamp": msg.created_at.isoformat(),
+    }
+    return entry
+
+async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
+    added = 0
+    updated = 0
+    if not guild:
+        return added, updated
+    channel = discord.utils.get(guild.channels, name="❖⋅record-of-oaths⋅❖")
+    if not channel:
+        return added, updated
+    index = _load_json_dict(OATHS_INDEX_PATH)
+    meta = index.get("_meta") or {}
+    last_id_str = meta.get("last_ingested_message_id")
+    try:
+        last_id = int(last_id_str) if last_id_str else 0
+    except Exception:
+        last_id = 0
+    async for msg in channel.history(limit=None):
+        if last_id and msg.id <= last_id:
+            break
+        entry = await _parse_oath_message(msg)
+        key = str(msg.id)
+        prev = index.get(key)
+        if not prev:
+            index[key] = entry
+            added += 1
+        else:
+            if prev.get("content_hash") != entry["content_hash"] or prev.get("edited_at") != entry["edited_at"]:
+                index[key] = entry
+                updated += 1
+        meta["last_ingested_message_id"] = str(msg.id)
+    keys = [k for k in index.keys() if k != "_meta"]
+    try:
+        recent_sorted = sorted([int(k) for k in keys], reverse=True)
+    except Exception:
+        recent_sorted = []
+    recent_keys = [str(k) for k in recent_sorted[:200]]
+    for kid in recent_keys:
+        try:
+            m = await channel.fetch_message(int(kid))
+        except Exception:
+            continue
+        e = await _parse_oath_message(m)
+        prev = index.get(kid)
+        if not prev or prev.get("content_hash") != e.get("content_hash") or prev.get("edited_at") != e.get("edited_at"):
+            index[kid] = e
+            updated += 1
+    index["_meta"] = meta
+    _save_json_dict(OATHS_INDEX_PATH, index)
+    return added, updated
+
+BATTLE_LINE_ORDER = [
+    "Watch Brother",
+    "Watch Veteran",
+    "Watch Sergeant",
+    "Watch Lieutenant",
+    "Watch Captain",
+]
+CHAMPION_ROLES = {"Kill Team Champion", "Company Champion", "Lord Executioner"}
+SPECIALIST_ROLES = {"Watch Chaplain", "Watch Apothecary", "Watch Librarian", "Watch Techmarine"}
+HIGH_COMMAND_ROLES = {"Watch Master", "High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster"}
+
+def _member_has_any_role(member: discord.Member, targets: set[str]) -> bool:
+    names = _canonical_role_names(member)
+    return any(t in names for t in targets)
+
+def _current_battle_line_index(member: discord.Member) -> Optional[int]:
+    names = _canonical_role_names(member)
+    idxs = [i for i, r in enumerate(BATTLE_LINE_ORDER) if r in names]
+    if not idxs:
+        return None
+    return max(idxs)
+
+def _rank_index_from_text(text: Optional[str]) -> Optional[int]:
+    if not text:
+        return None
+    low = (text or "").lower()
+    for i, r in enumerate(BATTLE_LINE_ORDER):
+        if r.lower() in low:
+            return i
+    return None
+
+def _evaluate_oath(member: discord.Member, oath_entry: dict) -> str:
+    targets = set(oath_entry.get("oath_target_roles") or [])
+    bl_targets = [r for r in BATTLE_LINE_ORDER if r in targets]
+    has_champion = any(r in CHAMPION_ROLES for r in targets)
+    has_specialist = any(r in SPECIALIST_ROLES for r in targets)
+    has_highcmd = any(r in HIGH_COMMAND_ROLES for r in targets)
+    if bl_targets:
+        target_idx = max([BATTLE_LINE_ORDER.index(r) for r in bl_targets])
+        cur_idx = _current_battle_line_index(member)
+        if cur_idx is None:
+            cur_idx = _rank_index_from_text(oath_entry.get("current_rank_raw"))
+        if cur_idx is not None and cur_idx >= target_idx:
+            return "fulfilled"
+        return "unfulfilled"
+    if has_champion and _member_has_any_role(member, CHAMPION_ROLES):
+        return "fulfilled"
+    if has_specialist and _member_has_any_role(member, SPECIALIST_ROLES):
+        return "fulfilled"
+    if has_highcmd and _member_has_any_role(member, HIGH_COMMAND_ROLES):
+        return "fulfilled"
+    if targets:
+        return "unclassified"
+    return "unclassified"
+
+def _discipline_tier(participation_pct: float, unfulfilled_count: int) -> str:
+    if participation_pct >= 80.0 and unfulfilled_count <= 1:
+        return "Exemplary"
+    if participation_pct >= 60.0 and unfulfilled_count <= 2:
+        return "Steady"
+    if participation_pct >= 40.0:
+        return "Lacking"
+    return "Requires Intervention"
+
+def _collect_company_teams(guild: discord.Guild, company: discord.Role):
+    killteam_roles: List[discord.Role] = []
+    try:
+        for r in getattr(guild, "roles", []):
+            n = getattr(r, "name", "")
+            low = n.lower()
+            if "kill" in low and "team" in low and "champion" not in low:
+                killteam_roles.append(r)
+    except Exception:
+        killteam_roles = []
+    company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
+    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+    teams: List[Tuple[str, List[discord.Member]]] = []
+    for kt in killteam_roles:
+        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        if kt_members:
+            teams.append((_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members))
+    idx_sergeant = _role_index("Watch Sergeant")
+    company_command_members: List[discord.Member] = []
+    if idx_sergeant is not None:
+        for m in company_members:
+            names = _canonical_role_names(m)
+            bl_idxs = [i for i, r in enumerate(BATTLE_LINE_ORDER) if r in names]
+            if bl_idxs and max(bl_idxs) >= BATTLE_LINE_ORDER.index("Watch Sergeant"):
+                company_command_members.append(m)
+    if company_command_members:
+        teams.append(("Company Command", company_command_members))
+    return teams
+
+def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
+    trophy = _load_json_dict(TROPHY_HALL_INDEX_PATH)
+    oaths = _load_json_dict(OATHS_INDEX_PATH)
+    completer_ids: set[str] = set()
+    for key, e in trophy.items():
+        if key == "_meta":
+            continue
+        for uid in (e.get("completer_user_ids") or []):
+            completer_ids.add(str(uid))
+    oath_entries_by_user: Dict[str, dict] = {}
+    for key, e in oaths.items():
+        if key == "_meta":
+            continue
+        uid = e.get("user_id")
+        if not uid:
+            continue
+        prev = oath_entries_by_user.get(uid)
+        if not prev or int(key) > int(prev.get("message_id", "0")):
+            oath_entries_by_user[uid] = e
+    teams = _collect_company_teams(guild, company)
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // CHAPLAIN DISCIPLINE BRIEF")
+    lines.append("  OPERATION-SCRIBE SERVITOR — DISCIPLINE ASSESSMENT")
+    lines.append("==============================================================================")
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Cached Sources: Trophy Hall, Record of Oaths")
+    lines.append("------------------------------------------------------------------------------")
+    for team_name, members in teams:
+        member_ids = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        if not member_ids:
+            continue
+        challenge_done = len(member_ids & completer_ids)
+        challenge_pct = 100.0 * challenge_done / max(1, len(member_ids))
+        oath_users = [uid for uid in member_ids if uid in oath_entries_by_user]
+        oath_participation_pct = 100.0 * len(oath_users) / max(1, len(member_ids))
+        fulfilled = 0
+        unfulfilled = 0
+        unclassified = 0
+        for uid in oath_users:
+            m = next((mm for mm in members if str(getattr(mm, "id", "")) == uid), None)
+            if not m:
+                continue
+            status = _evaluate_oath(m, oath_entries_by_user.get(uid) or {})
+            if status == "fulfilled":
+                fulfilled += 1
+            elif status == "unfulfilled":
+                unfulfilled += 1
+            else:
+                unclassified += 1
+        tier = _discipline_tier(oath_participation_pct, unfulfilled)
+        lines.append(f"  Kill Team {team_name}   :: Discipline: {tier}")
+        lines.append(f"    Oath Participation    :: {oath_participation_pct:.0f}%")
+        lines.append(f"    Oath Status           :: Fulfilled {fulfilled}  Unfulfilled {unfulfilled}  Unclassified {unclassified}")
+        flag_zero = "  (Zero challenge participation)" if challenge_done == 0 else ""
+        lines.append(f"    Challenge Compliance  :: {challenge_pct:.0f}%{flag_zero}")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+    msg = "\n".join(lines)
+    if len(msg) > 1900:
+        trimmed = []
+        for ln in lines:
+            if ln.strip().startswith("Challenge Compliance"):
+                continue
+            trimmed.append(ln)
+        msg = "\n".join(trimmed)
+    if len(msg) > 1900:
+        trimmed2 = []
+        for ln in msg.splitlines():
+            if "Unclassified" in ln:
+                ln = ln.split("Unclassified")[0].rstrip()
+            trimmed2.append(ln)
+        msg = "\n".join(trimmed2)
+    return msg
+
+@bot.tree.command(
+    name="chaplain_brief",
+    description="Generate a Chaplain discipline brief for a Company; optionally update caches."
+)
+@app_commands.describe(company="The Watch Company role to analyze.", update="If true, ingest updates from Trophy Hall and Record of Oaths.")
+async def chaplain_brief(
+    interaction: discord.Interaction,
+    company: discord.Role,
+    update: Optional[bool] = False,
+):
+    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
+        try:
+            await interaction.response.send_message("++ ACCESS DENIED: SERGEANT+ IN SANCTIFIED CHANNEL REQUIRED. ++", ephemeral=True)
+        except Exception:
+            return
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    guild = interaction.guild
+    if not guild or not company or not getattr(company, "members", None):
+        await interaction.followup.send("++ ERROR: COMPANY ROLE OR GUILD UNAVAILABLE. ++", ephemeral=True)
+        return
+    if update:
+        if CHAPLAIN_INGEST_LOCK.locked():
+            await interaction.followup.send("++ INTAKE IN PROGRESS: PLEASE RETRY SHORTLY. ++", ephemeral=True)
+            return
+        await CHAPLAIN_INGEST_LOCK.acquire()
+        try:
+            th_added, th_updated = await _ingest_trophy_hall(guild)
+            oa_added, oa_updated = await _ingest_record_of_oaths(guild)
+            await interaction.followup.send(
+                f"++ CACHE UPDATED: TrophyHall +{th_added}/{th_updated} | Oaths +{oa_added}/{oa_updated} ++",
+                ephemeral=True,
+            )
+        except Exception as e:
+            await interaction.followup.send(f"++ UPDATE FAILED: {e} ++", ephemeral=True)
+        finally:
+            try:
+                CHAPLAIN_INGEST_LOCK.release()
+            except Exception:
+                pass
+    report = _build_chaplain_report(guild, company)
+    await interaction.followup.send(report, ephemeral=True)
 
 if __name__ == "__main__":
     _main()

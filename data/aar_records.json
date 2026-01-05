@@ -55944,5 +55944,86 @@
     "edited_at": null,
     "content_hash": "a12a9f4c26a074842be3f3394587e79e8aa1a02f5d65a25acb061c67811d97c3",
     "initiation_trial": false
+  },
+  "1457611072520323117": {
+    "aar_id": 1457611072520323117,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "308032160089243649",
+    "gene_seed_carried_name": "Kill Team Champion Falcon",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "308032160089243649",
+      "440987777039990786"
+    ],
+    "brother_names": [
+      "Kill Team Champion Falcon",
+      "Lord Executioner Kaedes"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T05:46:00.793000+00:00",
+    "edited_at": null,
+    "content_hash": "0a8f98bc153832e39e086a3abe3144701202d1e422b397e0dd2f63bf7c142aa8",
+    "initiation_trial": false
+  },
+  "1457684600104030209": {
+    "aar_id": 1457684600104030209,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "440987777039990786",
+    "gene_seed_carried_name": "Lord Executioner Kaedes",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "308032160089243649",
+      "440987777039990786"
+    ],
+    "brother_names": [
+      "Kill Team Champion Falcon",
+      "Lord Executioner Kaedes"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T10:38:11.135000+00:00",
+    "edited_at": null,
+    "content_hash": "ac315693abe7259be473ae375840dda1d68bf0a12035d016a1a53414a9db9c86",
+    "initiation_trial": false
+  },
+  "1457684881449549999": {
+    "aar_id": 1457684881449549999,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "308032160089243649",
+    "gene_seed_carried_name": "Kill Team Champion Falcon",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "440987777039990786",
+      "308032160089243649"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Kill Team Champion Falcon"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T10:39:18.213000+00:00",
+    "edited_at": null,
+    "content_hash": "6863a6f590725bb264e046bc631cd77a6471f3b57c01af7ed35600f2cfe79d95",
+    "initiation_trial": false
   }
 }
