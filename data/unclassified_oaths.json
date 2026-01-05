@@ -1,0 +1,117 @@
+{
+  "1434667202329448579": {
+    "message_id": "1434667202329448579",
+    "user_id": "669647693030752273",
+    "user_display_name": "Watch Veteran Korvaan",
+    "oath_target_roles": [
+      "Watch Techmarine",
+      "Watch Chaplain"
+    ],
+    "current_rank_raw": "Watch Brother",
+    "canonical_roles": [
+      "@everyone",
+      "Black Shield",
+      "Initiation Trial",
+      "Kill Team Moloch",
+      "LFG-PVE",
+      "LFG-PVP",
+      "LFG-SIEGE",
+      "Watch Brother",
+      "Watch Company Primus",
+      "Watch Veteran"
+    ],
+    "team": "Moloch",
+    "company": "Watch Company Primus",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1434667202329448579"
+  },
+  "1451802802434216089": {
+    "message_id": "1451802802434216089",
+    "user_id": "591485804526698507",
+    "user_display_name": "Watch Brother Odium",
+    "oath_target_roles": [
+      "Watch Techmarine"
+    ],
+    "current_rank_raw": "Watch Brother",
+    "canonical_roles": [
+      "@everyone",
+      "Initiation Trial",
+      "Kill Team Moloch",
+      "LFG-PVE",
+      "LFG-SIEGE",
+      "North America",
+      "Watch Brother",
+      "Watch Company Primus"
+    ],
+    "team": "Moloch",
+    "company": "Watch Company Primus",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1451802802434216089"
+  },
+  "1449679268283154432": {
+    "message_id": "1449679268283154432",
+    "user_id": "402023509280292875",
+    "user_display_name": "Watch Sergeant Moloch",
+    "oath_target_roles": [],
+    "current_rank_raw": "Watch Brother",
+    "canonical_roles": [
+      "@everyone",
+      "Ardent Raider",
+      "Black Laurels",
+      "Centurion of the Fallen",
+      "Crimson Laurels",
+      "Europe",
+      "Initiation Trial",
+      "Kill Team Moloch",
+      "LFG-PVE",
+      "LFG-SIEGE",
+      "Master Terminus Slayer",
+      "SOK-G: Pipehitter",
+      "Terminus Slayer - Assault",
+      "Terminus Slayer - Bulwark",
+      "Terminus Slayer - Heavy",
+      "Terminus Slayer - Sniper",
+      "Terminus Slayer - Tactical",
+      "Terminus Slayer - Vanguard",
+      "Watch Brother",
+      "Watch Command",
+      "Watch Company Primus",
+      "Watch Sergeant",
+      "Watch Veteran"
+    ],
+    "team": "Company Command",
+    "company": "Watch Company Primus",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1449679268283154432"
+  },
+  "1443270673089695876": {
+    "message_id": "1443270673089695876",
+    "user_id": "415956330705059841",
+    "user_display_name": "Watch Veteran Crit",
+    "oath_target_roles": [
+      "Watch Apothecary",
+      "Watch Librarian"
+    ],
+    "current_rank_raw": "Watch Brother",
+    "canonical_roles": [
+      "@everyone",
+      "Ardent Raider",
+      "Black Laurels",
+      "Centurion of the Fallen",
+      "Initiation Trial",
+      "Kill Team Wifi",
+      "LFG-PVE",
+      "LFG-PVP",
+      "LFG-SIEGE",
+      "North America",
+      "SOK-G: Pipehitter",
+      "Server Booster",
+      "Watch Brother",
+      "Watch Company Primus",
+      "Watch Veteran"
+    ],
+    "team": "Wifi",
+    "company": "Watch Company Primus",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1443270673089695876"
+  },
+  "_meta": {
+    "last_update": "2026-01-05T21:02:40.936110"
+  }
+}
