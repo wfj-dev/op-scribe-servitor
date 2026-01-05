@@ -1684,7 +1684,7 @@ async def techmarine_brief(
     lines.append("  WATCH FORTRESS JERICHO // COMPANY KILL TEAM BRIEF")
     lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM BRIEF")
     lines.append("==============================================================================")
-    lines.append(f"  Company: {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 Operations")
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 Operations")
     lines.append("------------------------------------------------------------------------------")
     lines.append(f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
     lines.append(f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
@@ -1982,75 +1982,117 @@ async def librarian_brief(
     lines: List[str] = []
     lines.append("```ansi")
     lines.append("\u001b[32m==============================================================================")
-    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUS ARCHIVE")
-    lines.append("  OPERATION-SCRIBE SERVITOR — COMPANY LIBRARIUS DOSSIER")
+    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUS OPERATIONAL BRIEF")
+    lines.append("  OPERATION-SCRIBE SERVITOR — COMPANY DOCTRINAL DOSSIER")
     lines.append("==============================================================================")
     lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last {span} Operations")
     lines.append("------------------------------------------------------------------------------")
-    # Legend — list metric options once to shorten per-team output
-    lines.append("  Legend — Metric Options:")
-    lines.append("  ENV: JUNGLE  URBAN  INDUSTRIAL  UNDERGROUND  SACRAL  DESERT  WARP  FORTRESS")
-    lines.append("  COH: SPECIALIZED  REFINED  STABLE  EMERGENT  FRAGMENTED")
-    lines.append("  EXP: ISOLATED  LIMITED  DIVERSE  BROAD  EXTENSIVE")
-    lines.append("  DOC: Active tag only (varies by mission)")
-    lines.append("------------------------------------------------------------------------------")
 
-    any_section = False
-    for name, members in sorted(teams, key=lambda t: t[0].lower()):
-        team_ids: set[str] = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
-        env_counts: Counter[str] = Counter()
-        doctrine_counts: Counter[str] = Counter()
-        missions_seen: set[str] = set()
+    # Build team membership map for aggregation
+    team_member_ids: Dict[str, set[str]] = {name: {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)} for name, members in teams}
 
-        for rec in recent_records:
-            bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
-            if not bros:
-                continue
-            if not (set(bros) & team_ids):
-                continue
-            env_tags, doc_tags, canon_mission = _tags_for_record(rec)
-            for t in env_tags:
-                env_counts[_env_macro_for(t)] += 1
-            for d in doc_tags:
-                doctrine_counts[d] += 1
-            if canon_mission:
-                missions_seen.add(canon_mission)
+    # Company-wide aggregates
+    company_env_counts: Counter[str] = Counter()
+    company_doc_counts: Counter[str] = Counter()
+    company_missions_seen: set[str] = set()
 
-        if not env_counts and not doctrine_counts and not missions_seen:
-            # Skip empty sections to keep report concise
+    # Per-team doctrine counts for divergence
+    per_team_doc_counts: Dict[str, Counter[str]] = {name: Counter() for name, _ in teams}
+
+    for rec in recent_records:
+        bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
+        if not bros:
             continue
+        if not (set(bros) & company_ids):
+            continue
+        env_tags, doc_tags, canon_mission = _tags_for_record(rec)
+        for t in env_tags:
+            company_env_counts[_env_macro_for(t)] += 1
+        for d in doc_tags:
+            company_doc_counts[d] += 1
+        if canon_mission:
+            company_missions_seen.add(canon_mission)
+        # Attribute doctrines to any team intersecting this record
+        for name, mids in team_member_ids.items():
+            if set(bros) & mids:
+                for d in doc_tags:
+                    per_team_doc_counts[name][d] += 1
 
-        any_section = True
-        # Dominant environment macro
-        dom_env: Optional[str] = None
-        if env_counts:
-            dom_env = max(env_counts.items(), key=lambda kv: (kv[1], -ENV_MACROS_ORDER.index(kv[0]) if kv[0] in ENV_MACROS_ORDER else 999))[0]
+    # Helper to abbreviate team label
+    def _abbr_label(n: str) -> str:
+        if not n:
+            return "Team"
+        lower = n.lower()
+        if lower.startswith("kill team "):
+            return "KT " + n[10:]
+        return "KT " + n if not lower.startswith("company command") else n
 
-        # Dominant doctrine tag
-        dom_doc: Optional[str] = None
-        if doctrine_counts:
-            dom_doc = max(doctrine_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    # Primary Operational Environment
+    if company_env_counts:
+        env_sorted = sorted(company_env_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        env_name, env_count = env_sorted[0]
+        total_env = sum(company_env_counts.values())
+        env_pct = (env_count / total_env) if total_env > 0 else 0.0
+        lines.append(f"  Primary Operational Environment :: {env_name} (Count: {env_count} — {env_pct:.0%})")
+    else:
+        lines.append("  Primary Operational Environment :: URBAN")
 
-        # Coherence and exposure tiers
-        coherence = _doctrinal_coherence_tier(len(set(doctrine_counts.keys())))
-        exposure = _operational_exposure_tier(len(missions_seen))
+    # Dominant Doctrinal Pattern (with split detection)
+    if company_doc_counts:
+        doc_sorted = sorted(company_doc_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        top_doc, top_cnt = doc_sorted[0]
+        if len(doc_sorted) >= 2:
+            second_doc, second_cnt = doc_sorted[1]
+        else:
+            second_doc, second_cnt = None, 0
+        if second_doc and second_cnt >= 0.8 * top_cnt:
+            lines.append(
+                f"  Dominant Doctrinal Pattern      :: {top_doc} / {second_doc} Split (Counts: {top_cnt}|{second_cnt})"
+            )
+        else:
+            lines.append(
+                f"  Dominant Doctrinal Pattern      :: {top_doc} (Count: {top_cnt})"
+            )
+    else:
+        lines.append("  Dominant Doctrinal Pattern      :: —")
 
-        # Compact per-team line: ENV/DOC/COH/EXP
-        def _abbr_label(n: str) -> str:
-            if not n:
-                return "Team"
-            lower = n.lower()
-            if lower.startswith("kill team "):
-                return "KT " + n[10:]
-            return n
+    # Experience Saturation from distinct missions
+    comp_exposure = _operational_exposure_tier(len(company_missions_seen))
+    lines.append(
+        f"  Experience Saturation           :: {comp_exposure} (Distinct Missions: {len(company_missions_seen)})"
+    )
 
-        env_str = dom_env or "URBAN"
-        doc_str = dom_doc or "—"
-        lines.append(f"  {_abbr_label(name)}: ENV[{env_str}] DOC[{doc_str}] COH[{coherence}] EXP[{exposure}]")
+    # Cohesion Trend from distinct doctrines
+    comp_coherence = _doctrinal_coherence_tier(len(set(company_doc_counts.keys())))
+    lines.append(
+        f"  Cohesion Trend                  :: {comp_coherence} (Distinct Doctrines: {len(set(company_doc_counts.keys()))})"
+    )
 
-    if not any_section:
-        await interaction.followup.send("No qualifying records found for any teams in the selected company and window.", ephemeral=True)
-        return
+    # Doctrinal Divergence: list up to two teams whose dominant doctrine != company top
+    div_line = None
+    try:
+        top_company_doc = None
+        if company_doc_counts:
+            top_company_doc = max(company_doc_counts.items(), key=lambda kv: kv[1])[0]
+        team_tops: List[Tuple[str, str, int]] = []  # (team, doc, count)
+        for name, counts in per_team_doc_counts.items():
+            if not counts:
+                continue
+            doc, cnt = max(counts.items(), key=lambda kv: (kv[1], kv[0]))
+            team_tops.append((name, doc, cnt))
+        # Prefer those diverging from company top
+        divergers = [t for t in team_tops if t[1] != top_company_doc]
+        source = divergers if divergers else team_tops
+        source.sort(key=lambda t: (-t[2], t[0].lower()))
+        if source:
+            pick = source[:2]
+            names = " / ".join(_abbr_label(n) for n, _d, _c in pick)
+            # If both share same doc, display it; else show first's doc
+            doc_lbl = pick[0][1] if len(pick) == 1 or pick[0][1] == pick[1][1] else "Mixed"
+            div_line = f"  Doctrinal Divergence            :: {names} ({doc_lbl})"
+    except Exception:
+        div_line = None
+    lines.append(div_line or "  Doctrinal Divergence             :: —")
 
     # High Command Notes (company-level doctrinal and environmental posture)
     try:
@@ -2121,10 +2163,9 @@ async def librarian_brief(
     except Exception:
         pass
 
-    lines.append("==============================================================================")
-    lines.append("  Librarius Addendum:")
-    lines.append("  These profiles inform Librarian counsel and deployment rites.")
-    lines.append("  Siege variants reuse FORTRESS/HOLD-ATTRITION tags across maps.")
+    lines.append("------------------------------------------------------------------------------")
+    lines.append("  Librarius Directive:")
+    lines.append("  These assessments inform Librarian rites, counsel, and deployment alignment.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
@@ -2144,7 +2185,7 @@ async def librarian_brief(
                 continue
             compacted.append(ln)
         if compacted and compacted[0].strip().startswith("```"):
-            compacted.insert(1, "\u001b[32mLibrarius Dossier (Compact)")
+            compacted.insert(1, "\u001b[32mLibrarius Operational Brief (Compact)")
         msg = "\n".join(compacted)
 
     await interaction.followup.send(msg, ephemeral=True)
@@ -3205,7 +3246,7 @@ async def apothecary_brief(
     lines.append("  WATCH FORTRESS JERICHO // APOTHECARION NODE")
     lines.append("  OPERATION-SCRIBE SERVITOR — BIOLOGICAL READINESS LEDGER (30 DAYS)")
     lines.append("==============================================================================")
-    lines.append(f"  {getattr(company, 'name', 'Unknown')}")
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 30 Days")
     lines.append("------------------------------------------------------------------------------")
 
     # Helpers to render tiered lines with a single active tier bracketed
@@ -3279,21 +3320,141 @@ async def apothecary_brief(
             return "VARIABLE"
         return "FRACTURED"
 
-    # Legend of possible tiers (once at top)
-    lines.append("  Legend — Metric Options:")
-    lines.append("  Readiness: CRITICAL  DEGRADED  HIGH  NEAR-TOTAL  FULL")
-    lines.append("  Care Load: CRITICAL  ELEVATED  LOW  NEGLIGIBLE  CLEAR")
-    lines.append("  Stability: FRACTURED  VARIABLE  STABLE  CONSISTENT  UNIFORM")
-    lines.append("------------------------------------------------------------------------------")
-
-    # Company Command (compact rendering)
+    # Company Command stats (used in summary line)
     stats_cmd = _absence_stats(company_command_members)
-    lines.append(_render_compact_row("Company Command", stats_cmd))
 
-    # Each Kill Team (compact rendering)
+    # Build per-team stats for summary computations
+    team_stats: List[Tuple[str, Dict[str, float]]] = []
     for name, members in sorted(teams, key=lambda t: t[0].lower()):
-        s = _absence_stats(members)
-        lines.append(_render_compact_row(f"KT {name}", s))
+        team_stats.append((name, _absence_stats(members)))
+
+    # Overall Biological Readiness across all units (Company Command + Kill Teams)
+    try:
+        by_id: Dict[str, discord.Member] = {}
+        # include all team members
+        for name, members in teams:
+            for m in members:
+                sid = str(getattr(m, "id", ""))
+                if sid:
+                    by_id[sid] = m
+        # include company command
+        for m in company_command_members:
+            sid = str(getattr(m, "id", ""))
+            if sid:
+                by_id[sid] = m
+        all_units: List[discord.Member] = list(by_id.values())
+        overall_stats = _absence_stats(all_units)
+        overall_ready = _select_readiness_tier(overall_stats)
+    except Exception:
+        overall_ready = "CRITICAL"
+
+    # Care Load Concentration: team with highest average absence
+    care_team_label = "N/A"
+    care_team_name: Optional[str] = None
+    care_stats: Optional[Dict[str, float]] = None
+    try:
+        if team_stats:
+            # choose by avg desc, tie-break by stdev desc then name asc
+            def _care_key(item):
+                name, s = item
+                return (float(s.get("avg", 0.0) or 0.0), float(s.get("stdev", 0.0) or 0.0), -ord(name[0].lower()) if name else 0)
+            worst = max(team_stats, key=lambda it: (float(it[1].get("avg", 0.0) or 0.0), float(it[1].get("stdev", 0.0) or 0.0), it[0].lower()))
+            w_name, w_stats = worst
+            care_team_name = w_name
+            care_stats = w_stats
+            care_team_label = f"KT {w_name} ({_select_care_tier(w_stats)})"
+    except Exception:
+        pass
+
+    # Stability Outlier: team with highest dispersion (stdev)
+    stab_team_label = "N/A"
+    stab_team_name: Optional[str] = None
+    stab_stats: Optional[Dict[str, float]] = None
+    try:
+        if team_stats:
+            worst = max(team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0))
+            w_name, w_stats = worst
+            stab_team_name = w_name
+            stab_stats = w_stats
+            stab_team_label = f"KT {w_name} ({_select_stability_tier(w_stats)})"
+    except Exception:
+        pass
+
+    # Most Stable Formation: up to 3 teams with lowest dispersion
+    stable_names_fmt = "N/A"
+    stable_tier = "UNDETERMINED"
+    stable_best_stats: Optional[Dict[str, float]] = None
+    try:
+        if team_stats:
+            ordered = sorted(team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0))
+            top = ordered[:3]
+            names = [f"KT {n}" for n, _s in top]
+            stable_names_fmt = " / ".join(names) if names else "N/A"
+            if top:
+                stable_best_stats = top[0][1]
+                stable_tier = _select_stability_tier(top[0][1])
+            else:
+                stable_best_stats = None
+                stable_tier = "UNDETERMINED"
+    except Exception:
+        pass
+
+    # Company Command Status: readiness and stability
+    cc_ready = _select_readiness_tier(stats_cmd)
+    cc_stab = _select_stability_tier(stats_cmd)
+
+    # Summary section with contextual parentheses similar to techmarine_brief
+    # Overall readiness: show active/total and percentage
+    try:
+        o_count = int(overall_stats.get("count", 0) if 'overall_stats' in locals() else 0)
+        o_active = int(overall_stats.get("active", 0) if 'overall_stats' in locals() else 0)
+        p_active = (o_active / o_count) if o_count > 0 else 0.0
+        lines.append(
+            f"  Overall Biological Readiness   :: {overall_ready} (Active: {o_active}/{o_count} — {p_active:.0%})"
+        )
+    except Exception:
+        lines.append(f"  Overall Biological Readiness   :: {overall_ready} (All Units)")
+
+    # Care concentration: show avg absent (and stdev for quick context)
+    if care_stats is not None:
+        c_avg = float(care_stats.get("avg", 0.0) or 0.0)
+        c_sd = float(care_stats.get("stdev", 0.0) or 0.0)
+        lines.append(
+            f"  Care Load Concentration        :: {care_team_label} (Avg Absent: {c_avg:.2f}; SD: {c_sd:.2f})"
+        )
+    else:
+        lines.append(f"  Care Load Concentration        :: {care_team_label}")
+
+    # Stability outlier: show stdev
+    if stab_stats is not None:
+        s_sd = float(stab_stats.get("stdev", 0.0) or 0.0)
+        lines.append(
+            f"  Stability Outlier              :: {stab_team_label} (Stdev: {s_sd:.2f})"
+        )
+    else:
+        lines.append(f"  Stability Outlier              :: {stab_team_label}")
+
+    # Most stable formation: show stdev of most stable
+    if stable_best_stats is not None:
+        mb_sd = float(stable_best_stats.get("stdev", 0.0) or 0.0)
+        lines.append(
+            f"  Most Stable Formation          :: {stable_names_fmt} ({stable_tier}) (Stdev: {mb_sd:.2f})"
+        )
+    else:
+        lines.append(
+            f"  Most Stable Formation          :: {stable_names_fmt} ({cc_stab if stable_tier=='UNDETERMINED' else stable_tier})"
+        )
+
+    # Company Command status: show active/total and stdev
+    try:
+        cc_count = int(stats_cmd.get("count", 0) or 0)
+        cc_active = int(stats_cmd.get("active", 0) or 0)
+        cc_sd = float(stats_cmd.get("stdev", 0.0) or 0.0)
+        lines.append(
+            f"  Company Command Status         :: {cc_ready} READINESS — {cc_stab} STABILITY (Active: {cc_active}/{cc_count}; SD: {cc_sd:.2f})"
+        )
+    except Exception:
+        lines.append(f"  Company Command Status         :: {cc_ready} READINESS — {cc_stab} STABILITY")
 
     # High Command Notes (30-day posture using medical load and stability signals)
     try:
@@ -3375,9 +3536,9 @@ async def apothecary_brief(
     except Exception:
         pass
 
-    lines.append("==============================================================================")
-    lines.append("  Apothecarion Addendum:")
-    lines.append("  Deployment clearance is granted only upon Apothecarion release.")
+    lines.append("------------------------------------------------------------------------------")
+    lines.append("  Apothecarion Directive:")
+    lines.append("  Deployment clearance remains valid pending Apothecarion release.")
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
@@ -3398,7 +3559,7 @@ async def apothecary_brief(
             compacted.append(ln)
         # Insert concise header after the opening code fence
         if compacted and compacted[0].strip().startswith("```"):
-            compacted.insert(1, "\u001b[32mApothecarion Readiness Ledger (30 Days)")
+            compacted.insert(1, "\u001b[32mApothecarion Readiness Brief (30 Days)")
         msg = "\n".join(compacted)
 
     await interaction.followup.send(msg, ephemeral=True)
