@@ -1277,11 +1277,11 @@ async def combat_bonds(
 
 
 @bot.tree.command(
-    name="killteam_brief",
+    name="techmarine_brief",
     description="Brief Watch Command on company kill teams (last 100 AARs).",
 )
 @app_commands.describe(company="The Watch Company role to analyze.")
-async def killteam_brief(
+async def techmarine_brief(
     interaction: discord.Interaction, company: discord.Role
 ):
     # Permissions: Sergeant and higher, restricted channel
@@ -1908,14 +1908,14 @@ DOCTRINE_BAND_ORDER: List[str] = [
 ]
 
 @bot.tree.command(
-    name="librarius_dossier",
+    name="librarian_brief",
     description="Generate a Librarian dossier for a Kill Team over recent AARs.",
 )
 @app_commands.describe(
     company="The Watch Company role to analyze.",
     window="Optional: number of most recent missions to consider.",
 )
-async def librarius_dossier(
+async def librarian_brief(
     interaction: discord.Interaction,
     company: discord.Role,
     window: Optional[int] = None,
@@ -2046,7 +2046,7 @@ async def librarius_dossier(
 
         env_str = dom_env or "URBAN"
         doc_str = dom_doc or "—"
-        lines.append(f"{_abbr_label(name)}: ENV[{env_str}] DOC[{doc_str}] COH[{coherence}] EXP[{exposure}]")
+        lines.append(f"  {_abbr_label(name)}: ENV[{env_str}] DOC[{doc_str}] COH[{coherence}] EXP[{exposure}]")
 
     if not any_section:
         await interaction.followup.send("No qualifying records found for any teams in the selected company and window.", ephemeral=True)
@@ -3074,11 +3074,11 @@ def _format_bonds_for_discord(
 
 
 @bot.tree.command(
-    name="apothecarion_readiness",
+    name="apothecary_brief",
     description="Summarize last-30-day availability per Kill Team in a Company."
 )
 @app_commands.describe(company="The Company role to analyze (e.g., '@Watch Company Primus').")
-async def apothecarion_readiness(
+async def apothecary_brief(
     interaction: discord.Interaction,
     company: discord.Role,
 ):
