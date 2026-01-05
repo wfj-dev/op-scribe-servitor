@@ -25,6 +25,7 @@ AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
 PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
+UNCLASSIFIED_OATHS_PATH = os.path.join(DATA_DIR, "unclassified_oaths.json")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -4311,7 +4312,7 @@ async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
     except Exception:
         recent_sorted = []
     recent_keys = [str(k) for k in recent_sorted[-50:]]
-    for kid in recent_keys:
+    for i, kid in enumerate(recent_keys, start=1):
         e = index.get(kid) or {}
         mids = e.get("message_ids") or []
         changed = False
@@ -4335,6 +4336,10 @@ async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
             e["edited_at"] = new_edits
             index[kid] = e
             updated += 1
+        try:
+            _print_progress("Trophy Hall refresh", i, len(recent_keys))
+        except Exception:
+            pass
     index["_meta"] = meta
     _save_json_dict(TROPHY_HALL_INDEX_PATH, index)
     return added, updated
@@ -4342,26 +4347,48 @@ async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
 
 async def _parse_oath_message(msg: discord.Message):
     content = msg.content or ""
-    lines = [l.strip() for l in content.splitlines()]
+    lines = [ln.strip() for ln in content.splitlines()]
     user_id = None
+    user_display_name = None
     if msg.mentions:
-        user_id = str(msg.mentions[0].id)
+        m0 = msg.mentions[0]
+        user_id = str(m0.id)
+        try:
+            user_display_name = (
+                getattr(m0, "nick", None)
+                or getattr(m0, "display_name", None)
+                or getattr(m0, "name", None)
+                or getattr(m0, "username", None)
+            )
+        except Exception:
+            user_display_name = None
     current_rank_raw = None
-    for l in lines:
-        low = l.lower()
+    for ln in lines:
+        low = ln.lower()
         if low.startswith("current rank:") or low.startswith("rank:"):
             try:
-                current_rank_raw = l.split(":", 1)[1].strip()
+                current_rank_raw = ln.split(":", 1)[1].strip()
             except Exception:
-                current_rank_raw = l.strip()
+                current_rank_raw = ln.strip()
             break
     target_role_names = [getattr(r, "name", "") for r in msg.role_mentions]
     has_oath = True if user_id else False
+    guild_id = str(getattr(getattr(msg, "guild", None), "id", ""))
+    channel_id = str(getattr(getattr(msg, "channel", None), "id", ""))
+    message_link = (
+        f"https://discord.com/channels/{guild_id}/{channel_id}/{msg.id}"
+        if guild_id and channel_id
+        else None
+    )
     entry = {
         "message_id": str(msg.id),
         "user_id": user_id,
+        "user_display_name": user_display_name,
         "current_rank_raw": current_rank_raw,
         "oath_target_roles": [n for n in target_role_names if n],
+        "guild_id": guild_id,
+        "channel_id": channel_id,
+        "message_link": message_link,
         "content_hash": hashlib.sha256((content).encode("utf-8")).hexdigest(),
         "edited_at": msg.edited_at.isoformat()
         if getattr(msg, "edited_at", None)
@@ -4410,7 +4437,7 @@ async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
     except Exception:
         recent_sorted = []
     recent_keys = [str(k) for k in recent_sorted[:200]]
-    for kid in recent_keys:
+    for i, kid in enumerate(recent_keys, start=1):
         try:
             m = await channel.fetch_message(int(kid))
         except Exception:
@@ -4424,6 +4451,10 @@ async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
         ):
             index[kid] = e
             updated += 1
+        try:
+            _print_progress("Oaths refresh", i, len(recent_keys))
+        except Exception:
+            pass
     index["_meta"] = meta
     _save_json_dict(OATHS_INDEX_PATH, index)
     return added, updated
@@ -4584,6 +4615,9 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     lines.append(
         "------------------------------------------------------------------------------"
     )
+    # Track unclassified oath entries for later inspection
+    unclassified_records: List[dict] = []
+
     for team_name, members in teams:
         member_ids = {
             str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
@@ -4608,14 +4642,109 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
                 unfulfilled += 1
             else:
                 unclassified += 1
+                try:
+                    entry = oath_entries_by_user.get(uid) or {}
+                    # Build or reuse a jump link to the oath
+                    msg_link = entry.get("message_link")
+                    if not msg_link:
+                        try:
+                            ch = discord.utils.get(
+                                guild.channels, name="❖⋅record-of-oaths⋅❖"
+                            )
+                            gid = str(getattr(guild, "id", ""))
+                            cid = str(getattr(ch, "id", "")) if ch else ""
+                            mid = str(entry.get("message_id") or "")
+                            if gid and cid and mid:
+                                msg_link = f"https://discord.com/channels/{gid}/{cid}/{mid}"
+                        except Exception:
+                            msg_link = None
+                    # Resolve display name if missing
+                    disp = entry.get("user_display_name")
+                    if not disp:
+                        try:
+                            member = guild.get_member(int(uid)) if guild else None
+                            disp = (
+                                getattr(member, "nick", None)
+                                or getattr(member, "display_name", None)
+                                or getattr(member, "name", None)
+                                or str(uid)
+                            ) if member else str(uid)
+                        except Exception:
+                            disp = str(uid)
+
+                    rec = {
+                        "message_id": entry.get("message_id"),
+                        "user_id": uid,
+                        "user_display_name": disp,
+                        "oath_target_roles": entry.get("oath_target_roles") or [],
+                        "current_rank_raw": entry.get("current_rank_raw"),
+                        "canonical_roles": sorted(list(_canonical_role_names(m))),
+                        "team": team_name,
+                        "company": getattr(company, "name", "Unknown"),
+                        "message_link": msg_link,
+                    }
+                    unclassified_records.append(rec)
+                except Exception:
+                    pass
         tier = _discipline_tier(oath_participation_pct, unfulfilled)
-        lines.append(f"  Kill Team {team_name}   :: Discipline: {tier}")
-        lines.append(f"    Oath Participation    :: {oath_participation_pct:.0f}%")
+        lines.append(f"  KT {team_name}")
+        lines.append(f"    Discipline Status     :: {tier.upper()}")
         lines.append(
-            f"    Oath Status           :: Fulfilled {fulfilled}  Unfulfilled {unfulfilled}  Unclassified {unclassified}"
+            f"    Oath Adherence        :: {oath_participation_pct:.0f}%  (Fulfilled {fulfilled} | Unfulfilled {unfulfilled} | Unclassified {unclassified})"
         )
-        flag_zero = "  (Zero challenge participation)" if challenge_done == 0 else ""
-        lines.append(f"    Challenge Compliance  :: {challenge_pct:.0f}%{flag_zero}")
+        lines.append(f"    Challenge Compliance  :: {challenge_pct:.0f}%")
+    # High Command Notes (state-based; no window references)
+    try:
+        hc_ids: set[str] = set()
+        for m in getattr(guild, "members", []):
+            names = _canonical_role_names(m)
+            if any(r in names for r in HIGH_COMMAND_ROLES):
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+
+        # Oath evaluation for High Command
+        hc_fulfilled = hc_unfulfilled = hc_unclassified = 0
+        for uid, entry in oath_entries_by_user.items():
+            if uid not in hc_ids:
+                continue
+            member = None
+            try:
+                member = guild.get_member(int(uid)) if guild else None
+            except Exception:
+                member = None
+            status = _evaluate_oath(member, entry or {}) if member else "unclassified"
+            if status == "fulfilled":
+                hc_fulfilled += 1
+            elif status == "unfulfilled":
+                hc_unfulfilled += 1
+            else:
+                hc_unclassified += 1
+
+        hc_total_oath = hc_fulfilled + hc_unfulfilled + hc_unclassified
+        hc_fulfill_rate = (100.0 * hc_fulfilled / hc_total_oath) if hc_total_oath > 0 else 0.0
+
+        # Challenge compliance for High Command (from Trophy Hall completers)
+        hc_completers = [uid for uid in completer_ids if uid in hc_ids]
+        hc_challenge_pct = 100.0 * len(hc_completers) / max(1, len(hc_ids))
+
+        lines.append("------------------------------------------------------------------------------")
+        lines.append("  High Command Notes:")
+        if hc_total_oath == 0 and len(hc_completers) == 0:
+            lines.append(
+                "  + High Command maintained a posture of oversight, issuing guidance rather than formal oaths."
+            )
+        elif hc_fulfill_rate >= 75.0 and hc_challenge_pct >= 75.0:
+            lines.append(
+                "  + High Command discipline stands as a doctrinal exemplar for the company."
+            )
+        else:
+            lines.append(
+                "  + High Command discipline reflects command authority rather than aspirational\n    progression."
+            )
+    except Exception:
+        pass
+
     lines.append(
         "=============================================================================="
     )
@@ -4635,6 +4764,17 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
                 ln = ln.split("Unclassified")[0].rstrip()
             trimmed2.append(ln)
         msg = "\n".join(trimmed2)
+    # Persist unclassified oath entries to JSON for future review
+    try:
+        existing = _load_json_dict(UNCLASSIFIED_OATHS_PATH)
+        store: dict = existing if isinstance(existing, dict) else {}
+        for rec in unclassified_records:
+            key = str(rec.get("message_id")) if rec.get("message_id") else f"uid:{rec.get('user_id')}"
+            store[key] = rec
+        store["_meta"] = {"last_update": datetime.utcnow().isoformat()}
+        _save_json_dict(UNCLASSIFIED_OATHS_PATH, store)
+    except Exception:
+        pass
     return msg
 
 

@@ -56226,5 +56226,63 @@
     "edited_at": null,
     "content_hash": "d14dcd266d3ee4412fba61ca1570115ef2d2628b90b1b1d9f683ad41bbdc8eb9",
     "initiation_trial": false
+  },
+  "1457825915567341730": {
+    "aar_id": 1457825915567341730,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1455947665782210782",
+    "gene_seed_carried_name": "Watch Brother Eagle Halo",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "933777200312881263",
+      "1455947665782210782",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Brother Eagle Halo",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T19:59:43.367000+00:00",
+    "edited_at": null,
+    "content_hash": "c0ccae2cac656f0e613704d5035b3e8dc0d6f7880d366b4053229192e0ff5977",
+    "initiation_trial": false
+  },
+  "1457835068679524393": {
+    "aar_id": 1457835068679524393,
+    "mission": "Inferno <@&1440108298115485716>",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "933777200312881263",
+    "gene_seed_carried_name": "Watch Sergeant Psycho",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "933777200312881263",
+      "1455947665782210782",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Brother Eagle Halo",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T20:36:05.639000+00:00",
+    "edited_at": "2026-01-05T20:36:24.457000+00:00",
+    "content_hash": "c7200f2ca7b1eb0f236b4b8026aa00a9e4992d02997163df0a394cd3546272aa",
+    "initiation_trial": false
   }
 }
