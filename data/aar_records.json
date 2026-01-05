@@ -56025,5 +56025,206 @@
     "edited_at": null,
     "content_hash": "6863a6f590725bb264e046bc631cd77a6471f3b57c01af7ed35600f2cfe79d95",
     "initiation_trial": false
+  },
+  "1457771599913681070": {
+    "aar_id": 1457771599913681070,
+    "mission": "Ballistic engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "402754610110005250",
+    "gene_seed_carried_name": "Watch Brother Sethius",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "1455947665782210782",
+      "107101884757598208",
+      "402754610110005250"
+    ],
+    "brother_names": [
+      "Watch Brother Eagle Halo",
+      "Watch Veteran Atom",
+      "Watch Brother Sethius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T16:23:53.506000+00:00",
+    "edited_at": null,
+    "content_hash": "5ad93d1501f0495cc61bbef216008deafdd7b1fb4c6dc6f5e6c0e7dd9ad558b8",
+    "initiation_trial": false
+  },
+  "1457778936535584941": {
+    "aar_id": 1457778936535584941,
+    "mission": "Termination",
+    "difficulty": "Normal-Stratagem",
+    "difficulty_class": "normal_stratagem",
+    "armory_data": 2,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "933777200312881263",
+    "gene_seed_carried_name": "Watch Sergeant Psycho",
+    "gene_seed_base_points_for_carrier": 2,
+    "brother_ids": [
+      "281651485782310914",
+      "933777200312881263",
+      "437645667838590976"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Sergeant Psycho",
+      "Watch Apothecary Veritas"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 2,
+    "timestamp": "2026-01-05T16:53:02.693000+00:00",
+    "edited_at": null,
+    "content_hash": "db0c06ff22221e81588ab4ec7a50110e36004661401a07213956d2920a429981",
+    "initiation_trial": false
+  },
+  "1457779000368693291": {
+    "aar_id": 1457779000368693291,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1455947665782210782",
+    "gene_seed_carried_name": "Watch Brother Eagle Halo",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "1455947665782210782",
+      "107101884757598208",
+      "402754610110005250"
+    ],
+    "brother_names": [
+      "Watch Brother Eagle Halo",
+      "Watch Veteran Atom",
+      "Watch Brother Sethius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T16:53:17.912000+00:00",
+    "edited_at": null,
+    "content_hash": "74e7744e6a73c1405e03fb3dad20cff2c94d95e0d4b5fa5d5871b90c99428dba",
+    "initiation_trial": false
+  },
+  "1457807103103336478": {
+    "aar_id": 1457807103103336478,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 1,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "933777200312881263",
+      "1444810056821637133",
+      "1105816777885229196"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Sergeant Jack",
+      "Watch Veteran Twinkus"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T18:44:58.126000+00:00",
+    "edited_at": null,
+    "content_hash": "ee72b2611ffa0d42e71b83008e7700dc91e065b067c28227c2f688b94c0c7b65",
+    "initiation_trial": false
+  },
+  "1457815665908908357": {
+    "aar_id": 1457815665908908357,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 1,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "933777200312881263",
+      "1105816777885229196",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Veteran Twinkus",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T19:18:59.658000+00:00",
+    "edited_at": null,
+    "content_hash": "461baea1e98fa9a73d84f0e9dc6d7dcb6ee24f9b6b96ae8174153a678d3e75f4",
+    "initiation_trial": false
+  },
+  "1457816570930925783": {
+    "aar_id": 1457816570930925783,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "402754610110005250",
+    "gene_seed_carried_name": "Watch Brother Sethius",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "281651485782310914",
+      "402754610110005250",
+      "1455947665782210782"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Brother Sethius",
+      "Watch Brother Eagle Halo"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T19:22:35.432000+00:00",
+    "edited_at": null,
+    "content_hash": "140fa3bbae41c42a1e6378307ff7f301dea5332a1e34a2cdeb11bee4ca6315e0",
+    "initiation_trial": false
+  },
+  "1457824481694187707": {
+    "aar_id": 1457824481694187707,
+    "mission": "Ballistic Engine",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 2,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "281651485782310914",
+      "402754610110005250"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Brother Sethius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-05T19:54:01.505000+00:00",
+    "edited_at": null,
+    "content_hash": "d14dcd266d3ee4412fba61ca1570115ef2d2628b90b1b1d9f683ad41bbdc8eb9",
+    "initiation_trial": false
   }
 }
