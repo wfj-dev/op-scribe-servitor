@@ -1914,6 +1914,7 @@ async def techmarine_brief(
     # Compute armory-only metrics per team
     team_member_ids: Dict[str, set[str]] = {name: {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)} for name, members in teams}
     per_team_values: Dict[str, List[float]] = {name: [] for name, _ in teams}
+    per_team_points: Dict[str, List[float]] = {name: [] for name, _ in teams}
     for rec in recent_records:
         try:
             bros = [str(b) for b in (rec.get("brother_ids") or [])]
@@ -1924,9 +1925,15 @@ async def techmarine_brief(
                 arm_val = None
             if arm_val is None:
                 continue
+            # Compute risk-adjusted armory points for this operation
+            try:
+                arm_points = float(compute_armory_bonus_points(rec.get("difficulty_class"), arm))
+            except Exception:
+                arm_points = 0.0
             for name, mids in team_member_ids.items():
                 if set(bros) & mids:
                     per_team_values[name].append(arm_val)
+                    per_team_points[name].append(arm_points)
         except Exception:
             continue
 
@@ -1943,6 +1950,10 @@ async def techmarine_brief(
         total = sum(vals) if vals else 0.0
         team_stats.append((name, avg, sd, total))
 
+    # Compute points averages and op counts per team for medians and ranking
+    per_team_points_avg: Dict[str, float] = {n: _mean(per_team_points.get(n, [])) for n, _ in teams}
+    per_team_ops_count: Dict[str, int] = {n: len(per_team_values.get(n, [])) for n, _ in teams}
+
     # Derive winners/labels, restricting to teams with at least one data point where relevant
     nonempty = [t for t in team_stats if t[3] > 0]
     best_yield = max(nonempty, key=lambda t: t[1]) if nonempty else None
@@ -1952,6 +1963,19 @@ async def techmarine_brief(
     if nonempty and total_all > 0:
         top_share = max(nonempty, key=lambda t: t[3])
     low_yield = min(nonempty, key=lambda t: t[1]) if nonempty else None
+
+    # Winner for risk-adjusted armory yield (average points per operation)
+    best_points: Optional[Tuple[str, float]] = None
+    try:
+        candidates = [
+            (name, per_team_points_avg.get(name, 0.0))
+            for name, _ in teams
+            if per_team_ops_count.get(name, 0) > 0
+        ]
+        if candidates:
+            best_points = max(candidates, key=lambda x: x[1])
+    except Exception:
+        best_points = None
 
     def _label(name: str) -> str:
         return name if name == "Company Command" else f"KT {name}"
@@ -1972,6 +1996,14 @@ async def techmarine_brief(
         )
     else:
         lines.append("  Armory Yield Efficiency    :: —")
+
+    # Insert new risk-adjusted armory metric (average challenge points per operation)
+    if best_points:
+        lines.append(
+            f"  Risk-Adjusted Armory Yield :: {_label(best_points[0])}  (Avg Points: {best_points[1]:.2f})"
+        )
+    else:
+        lines.append("  Risk-Adjusted Armory Yield :: —")
 
     if best_consistency:
         lines.append(
@@ -1994,6 +2026,87 @@ async def techmarine_brief(
         )
     else:
         lines.append("  Low-Yield Outlier          :: —")
+
+    # High Command comparison notes (armory focus)
+    try:
+        high_command_roles = {
+            "Watch Master",
+            "Forgemaster",
+            "Lord Executioner",
+            "Void Warden",
+            "Voidwarden",
+            "Chief Apothecary",
+            "High Chaplain",
+        }
+        hc_ids: set[str] = set()
+        for m in getattr(guild, "members", []):
+            names = _canonical_role_names(m)
+            if any(r in names for r in high_command_roles):
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+
+        hc_arm_vals: List[float] = []
+        hc_pts_vals: List[float] = []
+        hc_ops = 0
+        for rec in recent_records:
+            try:
+                bros = [str(b) for b in (rec.get("brother_ids") or [])]
+                if not any(b in hc_ids for b in bros):
+                    continue
+                arm = rec.get("armory_data")
+                if arm is None:
+                    continue
+                # Count only armory-bearing ops for frequency in this brief
+                hc_ops += 1
+                try:
+                    arm_val = float(arm)
+                except Exception:
+                    arm_val = None
+                if arm_val is not None:
+                    hc_arm_vals.append(arm_val)
+                try:
+                    pts = float(compute_armory_bonus_points(rec.get("difficulty_class"), arm))
+                except Exception:
+                    pts = 0.0
+                hc_pts_vals.append(pts)
+            except Exception:
+                continue
+
+        # Company medians across teams (only teams with at least one armory record)
+        valid_teams = [t for t in team_stats if t[3] > 0]
+        comp_med_data = statistics.median([t[1] for t in valid_teams]) if valid_teams else 0.0
+        comp_med_points = statistics.median(
+            [per_team_points_avg.get(t[0], 0.0) for t in valid_teams]
+        ) if valid_teams else 0.0
+        comp_med_ops = statistics.median(
+            [per_team_ops_count.get(t[0], 0) for t in valid_teams]
+        ) if valid_teams else 0.0
+
+        # Compose notes
+        lines.append("------------------------------------------------------------------------------")
+        lines.append("  High Command Notes:")
+        if len(hc_arm_vals) == 0:
+            lines.append(
+                "  + High Command recorded no materiel recovery during this window."
+            )
+        else:
+            hc_avg_arm = (sum(hc_arm_vals) / len(hc_arm_vals)) if hc_arm_vals else 0.0
+            hc_avg_pts = (sum(hc_pts_vals) / len(hc_pts_vals)) if hc_pts_vals else 0.0
+            if (hc_avg_pts > comp_med_points) and (hc_ops < comp_med_ops):
+                lines.append(
+                    "  + High Command deployments exceeded company norms for materiel recovery under\n    risk, while remaining limited in frequency by doctrine."
+                )
+            elif hc_avg_arm >= comp_med_data:
+                lines.append(
+                    "  + High Command maintained materiel recovery in line with company standards."
+                )
+            else:
+                lines.append(
+                    "  + High Command deployments favored command oversight over direct materiel recovery."
+                )
+    except Exception:
+        pass
 
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
