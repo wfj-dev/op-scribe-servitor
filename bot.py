@@ -6,7 +6,7 @@ import json
 import discord
 from discord.ext import commands
 from discord import app_commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import difflib
 import re
 import itertools
@@ -42,6 +42,7 @@ SHUTDOWN_INITIATED = False
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
 
+
 def _is_truthy(val) -> bool:
     try:
         if isinstance(val, bool):
@@ -54,6 +55,7 @@ def _is_truthy(val) -> bool:
         pass
     return False
 
+
 def _resolve_notification_guild() -> Optional[discord.Guild]:
     """Resolve the notification guild by name first, then ID, then fallback.
     Priority:
@@ -63,7 +65,7 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
     """
     # 1) Try by configured name (or the known fortress name)
     try:
-        target_name = (CONFIG.get("guild_name") or "Watch Fortress Jericho")
+        target_name = CONFIG.get("guild_name") or "Watch Fortress Jericho"
     except Exception:
         target_name = "Watch Fortress Jericho"
     try:
@@ -89,6 +91,7 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
         return bot.guilds[0] if bot.guilds else None
     except Exception:
         return None
+
 
 async def _send_watch_command_notice(kind: str):
     """Send a status notice to ❖⋅data-vault⋅❖ mentioning @Watch Command.
@@ -161,9 +164,12 @@ async def _send_watch_command_notice(kind: str):
     )
     content = f"{mention}\n{block}"
     try:
-        await channel.send(content, allowed_mentions=discord.AllowedMentions(roles=True))
+        await channel.send(
+            content, allowed_mentions=discord.AllowedMentions(roles=True)
+        )
     except Exception as e:
         logger.debug(f"Failed to send notification: {e}")
+
 
 async def _announce_shutdown_and_close():
     global SHUTDOWN_INITIATED
@@ -306,6 +312,7 @@ def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
                 names.add(canon)
     return names
 
+
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
@@ -323,7 +330,10 @@ def _extract_killteam_name(name: str) -> str:
 def is_sergeant_or_higher(user: discord.User | discord.Member):
     # Allow nickname override for owner/operator
     admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    if str(getattr(user, "id", None)) in admin_ids or str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+    if (
+        str(getattr(user, "id", None)) in admin_ids
+        or str(getattr(user, "nick", None)) == "Watch Veteran Jules"
+    ):
         return True
     idx_sergeant = _role_index("Watch Sergeant")
     if idx_sergeant is None:
@@ -344,9 +354,14 @@ def is_watch_command(user: discord.User | discord.Member):
 def can_reconcile_records(user: discord.User | discord.Member):
     # Only Watch Master, Techmarines, and Forgemaster (config-driven)
     admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    if str(getattr(user, "id", None)) in admin_ids or str(getattr(user, "nick", None)) == "Watch Veteran Jules":
+    if (
+        str(getattr(user, "id", None)) in admin_ids
+        or str(getattr(user, "nick", None)) == "Watch Veteran Jules"
+    ):
         return True
-    allowed_config = set((CONFIG.get("permissions", {}).get("reconcile_records", {}).get("roles") or []))
+    allowed_config = set(
+        (CONFIG.get("permissions", {}).get("reconcile_records", {}).get("roles") or [])
+    )
     allowed_default = {"Watch Master", "Forgemaster", "Watch Techmarine"}
     allowed = allowed_config or allowed_default
     names = _canonical_role_names(user)
@@ -378,11 +393,13 @@ async def on_ready():
     # Register graceful shutdown signal handlers
     try:
         loop = asyncio.get_running_loop()
+
         def _sig_handler():
             try:
                 loop.create_task(_announce_shutdown_and_close())
             except Exception:
                 pass
+
         try:
             loop.add_signal_handler(signal.SIGTERM, _sig_handler)
         except Exception:
@@ -488,7 +505,9 @@ async def reconcile_records(
     description="Recheck previously rejected AARs and restore any fixed entries.",
 )
 @app_commands.describe(span_days="Optional: only recheck errors from the last N days.")
-async def audit_archive_discrepancies(interaction: discord.Interaction, span_days: int | None = None):
+async def audit_archive_discrepancies(
+    interaction: discord.Interaction, span_days: int | None = None
+):
     if not (
         can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
     ):
@@ -554,7 +573,9 @@ async def audit_archive_discrepancies(interaction: discord.Interaction, span_day
     description="Ingest new sanctioned AARs (optionally scoped by span of days).",
 )
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
-async def sanctify_battle_records(interaction: discord.Interaction, span_days: int | None = None):
+async def sanctify_battle_records(
+    interaction: discord.Interaction, span_days: int | None = None
+):
     if not (
         can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
     ):
@@ -633,7 +654,11 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
         "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
         "==============================================================================\n"
         "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-        + (f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n")
+        + (
+            f"  Scan Window: Last {span_days} day(s)\n"
+            if span_days
+            else "  Scan Window: Full history\n"
+        )
     )
 
     report = (
@@ -660,7 +685,9 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
     await interaction.followup.send(report, ephemeral=True)
 
 
-async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optional[int] = None):
+async def _run_recheck_errors(
+    aar_channel: discord.TextChannel, span_days: Optional[int] = None
+):
     fixed = 0
     still_broken = 0
     cutoff_dt = None
@@ -862,11 +889,13 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     return ingested, rejected
 
 
-
 @bot.tree.command(
     name="tally_deeds", description="Display the Deeds Ledger for a Brother."
 )
-@app_commands.describe(brother="The Watch Brother to query.", killteam="Role: tally every member of this kill team (mutually exclusive with brother)")
+@app_commands.describe(
+    brother="The Watch Brother to query.",
+    killteam="Role: tally every member of this kill team (mutually exclusive with brother)",
+)
 async def tally_deeds(
     interaction: discord.Interaction,
     brother: Optional[discord.Member] = None,
@@ -1086,14 +1115,16 @@ async def tally_deeds(
             stat_rows.append(("Company", company))
         if show_killteam:
             stat_rows.append(("Kill Team", kt_name))
-        stat_rows.extend([
-            ("Total Operations", str(stats["ops"])),
-            ("Total Siege Waves", str(stats["waves_participated"])),
-            ("Brothers Sanctioned", str(trials_reported)),
-            ("AAR Commendations", str(stats["aar_points"])),
-            ("Gene-seed Secured", str(stats["gene_seed_points"])),
-            ("Armory Data Recovered", str(stats["armory_points"])),
-        ])
+        stat_rows.extend(
+            [
+                ("Total Operations", str(stats["ops"])),
+                ("Total Siege Waves", str(stats["waves_participated"])),
+                ("Brothers Sanctioned", str(trials_reported)),
+                ("AAR Commendations", str(stats["aar_points"])),
+                ("Gene-seed Secured", str(stats["gene_seed_points"])),
+                ("Armory Data Recovered", str(stats["armory_points"])),
+            ]
+        )
         label_width = max(len(label) for label, _ in stat_rows) + 2
         lines = []
         lines.append("```ansi")
@@ -1130,7 +1161,9 @@ async def tally_deeds(
     if killteam:
         count = len(members)
         recent_records = _get_recent_missions(limit=100)
-        member_ids = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        member_ids = {
+            str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
+        }
 
         ops_count = 0
         aar_vals: List[float] = []
@@ -1146,7 +1179,10 @@ async def tally_deeds(
                     continue
                 ops_count += 1
                 aar = float(rec.get("points_for_op", 0) or 0)
-                armory = float(rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0) or 0)
+                armory = float(
+                    rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0)
+                    or 0
+                )
                 gene = 0.0
                 if (rec.get("gene_seed_status") or "").lower() == "carried":
                     gene = float(rec.get("gene_seed_base_points_for_carrier", 0) or 0)
@@ -1284,11 +1320,11 @@ async def combat_bonds(
     description="Brief Watch Command on company kill teams (last 100 AARs).",
 )
 @app_commands.describe(company="The Watch Company role to analyze.")
-async def techmarine_brief(
-    interaction: discord.Interaction, company: discord.Role
-):
+async def techmarine_brief(interaction: discord.Interaction, company: discord.Role):
     # Permissions: Sergeant and higher, restricted channel
-    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
+    if not (
+        is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -1296,11 +1332,38 @@ async def techmarine_brief(
 
     # Validate role
     if not company or not getattr(company, "members", None):
-        await interaction.followup.send("Provide a valid company role with members.", ephemeral=True)
+        await interaction.followup.send(
+            "Provide a valid company role with members.", ephemeral=True
+        )
         return
 
     guild = interaction.guild
-    recent_records = _get_recent_missions(limit=100)
+    recent_records = _get_missions_last_30_days()
+
+    # Guard: ensure there are records for this company in the 30-day window
+    try:
+        company_ids: set[str] = {
+            str(getattr(m, "id", ""))
+            for m in getattr(company, "members", [])
+            if getattr(m, "id", None)
+        }
+    except Exception:
+        company_ids = set()
+    has_company_records = False
+    try:
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if set(bros) & company_ids:
+                has_company_records = True
+                break
+    except Exception:
+        has_company_records = False
+    if not has_company_records:
+        await interaction.followup.send(
+            "No AARs recorded in the last 30 days for this company window.",
+            ephemeral=True,
+        )
+        return
 
     # Collect kill team roles (exclude rank-style roles) and map current membership (restricted to company)
     killteam_roles: List[discord.Role] = []
@@ -1318,18 +1381,26 @@ async def techmarine_brief(
     teams: List[dict] = []
     for kt in killteam_roles:
         try:
-            kt_members = [m for m in getattr(kt, "members", []) if company in getattr(m, "roles", [])]
+            kt_members = [
+                m
+                for m in getattr(kt, "members", [])
+                if company in getattr(m, "roles", [])
+            ]
         except Exception:
             kt_members = []
-        member_ids = {str(getattr(m, "id", "")) for m in kt_members if getattr(m, "id", None)}
+        member_ids = {
+            str(getattr(m, "id", "")) for m in kt_members if getattr(m, "id", None)
+        }
         if not member_ids:
             continue
-        teams.append({
-            "role": kt,
-            "name": _extract_killteam_name(getattr(kt, "name", "Unknown")),
-            "member_ids": member_ids,
-            "count": len(member_ids),
-        })
+        teams.append(
+            {
+                "role": kt,
+                "name": _extract_killteam_name(getattr(kt, "name", "Unknown")),
+                "member_ids": member_ids,
+                "count": len(member_ids),
+            }
+        )
 
     # Also compute a synthetic team for Company Command
     try:
@@ -1357,20 +1428,28 @@ async def techmarine_brief(
                 and idx_sergeant is not None
                 and idx_captain is not None
                 and highest_idx is not None
-                and (idx_captain <= highest_idx < idx_sergeant)  # Captain through just above Sergeant
+                and (
+                    idx_captain <= highest_idx < idx_sergeant
+                )  # Captain through just above Sergeant
             ):
                 company_command_members.append(m)
     except Exception:
         company_command_members = []
 
     if len(company_command_members) > 0:
-        member_ids = {str(getattr(m, "id", "")) for m in company_command_members if getattr(m, "id", None)}
-        teams.append({
-            "role": None,
-            "name": "Company Command",
-            "member_ids": member_ids,
-            "count": len(member_ids),
-        })
+        member_ids = {
+            str(getattr(m, "id", ""))
+            for m in company_command_members
+            if getattr(m, "id", None)
+        }
+        teams.append(
+            {
+                "role": None,
+                "name": "Company Command",
+                "member_ids": member_ids,
+                "count": len(member_ids),
+            }
+        )
 
     # Compute per-team aggregates across recent_records using current membership
     team_stats: List[dict] = []
@@ -1393,7 +1472,9 @@ async def techmarine_brief(
             ops_count += 1
             aar = float(rec.get("points_for_op", 0) or 0)
             # Prefer armory challenge points if present, else raw armory_data
-            armory = float(rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0) or 0)
+            armory = float(
+                rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0) or 0
+            )
             gene = 0.0
             try:
                 if (rec.get("gene_seed_status") or "").lower() == "carried":
@@ -1435,18 +1516,20 @@ async def techmarine_brief(
             reliability = _mean(total_scores) / (1.0 + _pstdev(total_scores))
         force_multiplier = _mean(per_capita_vals)
 
-        team_stats.append({
-            "role": team["role"],
-            "name": team["name"],
-            "count": team["count"],
-            "avg_ops": float(ops_count),  # Operational Tempo now counts ops
-            "avg_aar": avg_aar,
-            "avg_gene": avg_gene,
-            "avg_armory": avg_armory,
-            "avg_waves": avg_waves,
-            "reliability": reliability,
-            "force_multiplier": force_multiplier,
-        })
+        team_stats.append(
+            {
+                "role": team["role"],
+                "name": team["name"],
+                "count": team["count"],
+                "avg_ops": float(ops_count),  # Operational Tempo now counts ops
+                "avg_aar": avg_aar,
+                "avg_gene": avg_gene,
+                "avg_armory": avg_armory,
+                "avg_waves": avg_waves,
+                "reliability": reliability,
+                "force_multiplier": force_multiplier,
+            }
+        )
 
     if not team_stats:
         await interaction.followup.send(
@@ -1520,13 +1603,22 @@ async def techmarine_brief(
         shock_team, shock_score = max(shock_candidates, key=lambda x: x[1])
     else:
         shock_team = max(team_stats, key=lambda t: (t["avg_aar"] - t["avg_gene"]))
-        shock_score = (shock_team["avg_aar"] - med_aar) + (med_gene - shock_team["avg_gene"]) if med_aar or med_gene else (shock_team["avg_aar"] - shock_team["avg_gene"]) 
+        shock_score = (
+            (shock_team["avg_aar"] - med_aar) + (med_gene - shock_team["avg_gene"])
+            if med_aar or med_gene
+            else (shock_team["avg_aar"] - shock_team["avg_gene"])
+        )
 
     if surgical_candidates:
         surgical_team, surgical_score = max(surgical_candidates, key=lambda x: x[1])
     else:
         surgical_team = max(team_stats, key=lambda t: (t["avg_gene"] - t["avg_aar"]))
-        surgical_score = (med_aar - surgical_team["avg_aar"]) + (surgical_team["avg_gene"] - med_gene) if med_aar or med_gene else (surgical_team["avg_gene"] - surgical_team["avg_aar"]) 
+        surgical_score = (
+            (med_aar - surgical_team["avg_aar"])
+            + (surgical_team["avg_gene"] - med_gene)
+            if med_aar or med_gene
+            else (surgical_team["avg_gene"] - surgical_team["avg_aar"])
+        )
 
     # Force Multiplier: per-op per-capita AAR average
     force_multiplier = best_force
@@ -1534,7 +1626,12 @@ async def techmarine_brief(
     # Company specialists: pick most recently active member for each role
     def _member_display_name(m: discord.Member) -> str:
         try:
-            return getattr(m, "nick", None) or getattr(m, "display_name", None) or getattr(m, "name", None) or str(getattr(m, "id", "Unknown"))
+            return (
+                getattr(m, "nick", None)
+                or getattr(m, "display_name", None)
+                or getattr(m, "name", None)
+                or str(getattr(m, "id", "Unknown"))
+            )
         except Exception:
             return str(getattr(m, "id", "Unknown"))
 
@@ -1542,7 +1639,7 @@ async def techmarine_brief(
     recency_index: Dict[str, int] = {}
     try:
         for idx, rec in enumerate(reversed(list(recent_records))):
-            for b in (rec.get("brother_ids") or []):
+            for b in rec.get("brother_ids") or []:
                 sb = str(b)
                 if sb not in recency_index:
                     recency_index[sb] = idx
@@ -1576,26 +1673,15 @@ async def techmarine_brief(
                 if idx < best_idx:
                     best_idx = idx
                     best_m = m
-            spec_names[short_label] = _member_display_name(best_m) if best_m else _member_display_name(candidates[0])
+            spec_names[short_label] = (
+                _member_display_name(best_m)
+                if best_m
+                else _member_display_name(candidates[0])
+            )
     except Exception:
         # Fallback to role labels if failure
         for _rk, _sl in spec_roles_map.items():
             spec_names[_sl] = _sl
-
-    # Helper: outlier checks
-    def _is_high_out(val: float, med: float, sd: float, eps: float = 0.1) -> bool:
-        return val >= med + max(sd, eps)
-
-    def _is_low_out(val: float, med: float, sd: float, eps: float = 0.1) -> bool:
-        return val <= med - max(sd, eps)
-
-    # Librarius Notice (separate section), at most one
-    librarius_note: Optional[str] = None
-    try:
-        if _is_high_out(best_lethality["avg_aar"], med_aar, statistics.pstdev(aar_list) if len(aar_list) >= 2 else 0.0) and _is_low_out(best_lethality["avg_ops"], med_ops, sd_ops, eps=1.0):
-            librarius_note = f"  + Contradiction: {_abbr_label(best_lethality)} high lethality with low tempo (aar {best_lethality['avg_aar']:.2f}|{med_aar:.2f}, ops {int(best_lethality['avg_ops'])}|{int(med_ops)})."
-    except Exception:
-        pass
 
     # High Command assessment note
     # Identify High Command members and compute deployments and lethality relative to medians
@@ -1683,23 +1769,49 @@ async def techmarine_brief(
     # Render brief
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // COMPANY KILL TEAM BRIEF")
     lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM BRIEF")
-    lines.append("==============================================================================")
-    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 100 Operations")
-    lines.append("------------------------------------------------------------------------------")
-    lines.append(f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})")
-    lines.append(f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})")
-    lines.append(f"  Armory Yield Efficiency     :: {_team_label(best_armory)}  (Avg Armory: {best_armory['avg_armory']:.2f})")
-    lines.append(f"  Operational Tempo           :: {_team_label(best_tempo)}  (Ops: {int(best_tempo['avg_ops'])})")
-    lines.append(f"  Siegebreaker Rating         :: {_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})")
-    lines.append(f"  Kill Team Reliability Index :: {_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})")
-    lines.append(f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})")
-    lines.append(f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})")
-    lines.append(f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 30 Days")
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
+    lines.append(
+        f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})"
+    )
+    lines.append(
+        f"  Gene-Seed Preservation      :: {_team_label(best_preservation)}  (Avg Gene: {best_preservation['avg_gene']:.2f})"
+    )
+    lines.append(
+        f"  Armory Yield Efficiency     :: {_team_label(best_armory)}  (Avg Armory: {best_armory['avg_armory']:.2f})"
+    )
+    lines.append(
+        f"  Operational Tempo           :: {_team_label(best_tempo)}  (Ops: {int(best_tempo['avg_ops'])})"
+    )
+    lines.append(
+        f"  Siegebreaker Rating         :: {_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})"
+    )
+    lines.append(
+        f"  Kill Team Reliability Index :: {_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})"
+    )
+    lines.append(
+        f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})"
+    )
+    lines.append(
+        f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})"
+    )
+    lines.append(
+        f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})"
+    )
     # Company Command Notes section removed
-    lines.append("------------------------------------------------------------------------------")
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
     lines.append("  High Command Notes:")
     # # Compact numeric comparison to show values used in assessment
     # try:
@@ -1708,7 +1820,9 @@ async def techmarine_brief(
     #     pass
     for ln in hc_note_lines:
         lines.append(f"  {ln}")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     await interaction.followup.send("\n".join(lines), ephemeral=True)
@@ -1775,6 +1889,7 @@ ENV_MACROS_ORDER: List[str] = [
     "FORTRESS",
 ]
 
+
 def _env_macro_for(tag: str) -> str:
     t = (tag or "").lower()
     if "fortress" in t or "defensive grid" in t:
@@ -1811,23 +1926,27 @@ def _env_macro_for(tag: str) -> str:
         return "DESERT"
     return "URBAN"
 
+
 def _normalize_mission(name: Optional[str]) -> str:
     try:
         return re.sub(r"[^a-z0-9]+", "", (name or "").lower()).strip()
     except Exception:
         return (name or "").lower().strip()
 
+
 def _match_mission_name(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
     canon = list(MISSION_TAGS.keys())
-    norm_map = { _normalize_mission(k): k for k in canon }
+    norm_map = {_normalize_mission(k): k for k in canon}
     target = _normalize_mission(name)
     # Direct match on normalized keys
     if target in norm_map:
         return norm_map[target]
     # Fuzzy match across normalized keys
-    candidates = difflib.get_close_matches(target, list(norm_map.keys()), n=1, cutoff=0.6)
+    candidates = difflib.get_close_matches(
+        target, list(norm_map.keys()), n=1, cutoff=0.6
+    )
     if candidates:
         return norm_map.get(candidates[0])
     # Also try startswith/contains on raw names
@@ -1837,6 +1956,7 @@ def _match_mission_name(name: Optional[str]) -> Optional[str]:
             return k
     return None
 
+
 def _tags_for_record(rec: dict) -> Tuple[List[str], List[str], Optional[str]]:
     """Return (env_tags, doctrine_tags, canonical_mission) for a record.
     Siege Mode handled via difficulty_class -> FORTRESS/HOLD+ATTRITION.
@@ -1845,21 +1965,32 @@ def _tags_for_record(rec: dict) -> Tuple[List[str], List[str], Optional[str]]:
     dlower = (rec.get("difficulty_class") or rec.get("difficulty") or "").lower()
     mission = rec.get("mission")
     # Siege special handling
-    if "normal_siege" in dlower or "hard_siege" in dlower or (mission and "siege" in mission.lower()):
-        return ["Fortress Sectors", "Defensive Grid"], ["Hold", "Attrition"], "Siege Mode"
+    if (
+        "normal_siege" in dlower
+        or "hard_siege" in dlower
+        or (mission and "siege" in mission.lower())
+    ):
+        return (
+            ["Fortress Sectors", "Defensive Grid"],
+            ["Hold", "Attrition"],
+            "Siege Mode",
+        )
     m = _match_mission_name(mission)
     if not m:
         return [], [], None
     info = MISSION_TAGS.get(m) or {}
     return info.get("env", []), info.get("doctrine", []), m
 
+
 def _render_band(label: str, states: List[str], active: Optional[str]) -> str:
     parts = [f"[ {s} ]" if (active and s == active) else s for s in states]
     return f"  {label}: " + " ".join(parts)
 
+
 def _render_single_band(label: str, active: Optional[str]) -> str:
     """Render only the bracketed active state for concise bands."""
     return f"  {label}: [ {active or 'UNDETERMINED'} ]"
+
 
 def _doctrinal_coherence_tier(distinct_count: int) -> str:
     # Map number of distinct doctrine tags to coherence tier
@@ -1873,6 +2004,7 @@ def _doctrinal_coherence_tier(distinct_count: int) -> str:
         return "EMERGENT"
     return "FRAGMENTED"
 
+
 def _operational_exposure_tier(distinct_missions: int) -> str:
     if distinct_missions <= 1:
         return "ISOLATED"
@@ -1883,6 +2015,7 @@ def _operational_exposure_tier(distinct_missions: int) -> str:
     if distinct_missions <= 7:
         return "BROAD"
     return "EXTENSIVE"
+
 
 DOCTRINE_BAND_ORDER: List[str] = [
     "Sabotage",
@@ -1910,6 +2043,7 @@ DOCTRINE_BAND_ORDER: List[str] = [
     "Attrition",
 ]
 
+
 @bot.tree.command(
     name="librarian_brief",
     description="Generate a Librarian dossier for a Kill Team over recent AARs.",
@@ -1924,7 +2058,9 @@ async def librarian_brief(
     window: Optional[int] = None,
 ):
     # Permissions: Sergeant and higher, restricted channel
-    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
+    if not (
+        is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -1932,16 +2068,19 @@ async def librarian_brief(
 
     guild = interaction.guild
     if not guild:
-        await interaction.followup.send("++ ERROR: Guild not available. ++", ephemeral=True)
+        await interaction.followup.send(
+            "++ ERROR: Guild not available. ++", ephemeral=True
+        )
         return
 
     if not company or not getattr(company, "members", None):
-        await interaction.followup.send("++ ERROR: Company role not found or empty. ++", ephemeral=True)
+        await interaction.followup.send(
+            "++ ERROR: Company role not found or empty. ++", ephemeral=True
+        )
         return
 
-    # Window of records to analyze
-    span = window if (isinstance(window, int) and window > 0) else 100
-    recent_records = _get_recent_missions(limit=span)
+    # Window of records to analyze: fixed last 30 days
+    recent_records = _get_missions_last_30_days()
 
     # Identify Kill Team roles within the fortress
     killteam_roles: List[discord.Role] = []
@@ -1950,7 +2089,9 @@ async def librarian_brief(
             n = (getattr(r, "name", "") or "").strip()
             if re.search(r"(?i)^\s*kill\s*team", n):
                 # Exclude rank-style role 'Kill Team Champion'
-                if n.lower() == "kill team champion" or re.search(r"(?i)kill\s*team\s*champion", n):
+                if n.lower() == "kill team champion" or re.search(
+                    r"(?i)kill\s*team\s*champion", n
+                ):
                     continue
                 killteam_roles.append(r)
     except Exception:
@@ -1958,11 +2099,34 @@ async def librarian_brief(
 
     # Build roster per Kill Team for the selected company (intersection of members)
     company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
-    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+    company_ids: set[str] = {
+        str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)
+    }
+
+    # Guard: ensure there are records for this company in the 30-day window
+    has_company_records = False
+    try:
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if set(bros) & company_ids:
+                has_company_records = True
+                break
+    except Exception:
+        has_company_records = False
+    if not has_company_records:
+        await interaction.followup.send(
+            "No AARs recorded in the last 30 days for this company window.",
+            ephemeral=True,
+        )
+        return
 
     teams: List[Tuple[str, List[discord.Member]]] = []
     for kt in killteam_roles:
-        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        kt_members = [
+            m
+            for m in getattr(kt, "members", [])
+            if str(getattr(m, "id", "")) in company_ids
+        ]
         if kt_members:
             teams.append((getattr(kt, "name", "Kill Team"), kt_members))
 
@@ -1978,21 +2142,33 @@ async def librarian_brief(
         teams.append(("Company Command", company_command_members))
 
     if not teams:
-        await interaction.followup.send("No Kill Teams or Company Command members found in the selected company.", ephemeral=True)
+        await interaction.followup.send(
+            "No Kill Teams or Company Command members found in the selected company.",
+            ephemeral=True,
+        )
         return
 
     # Prepare ANSI-styled report
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // LIBRARIUS OPERATIONAL BRIEF")
     lines.append("  OPERATION-SCRIBE SERVITOR — COMPANY DOCTRINAL DOSSIER")
-    lines.append("==============================================================================")
-    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last {span} Operations")
-    lines.append("------------------------------------------------------------------------------")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 30 Days")
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
 
     # Build team membership map for aggregation
-    team_member_ids: Dict[str, set[str]] = {name: {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)} for name, members in teams}
+    team_member_ids: Dict[str, set[str]] = {
+        name: {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        for name, members in teams
+    }
 
     # Company-wide aggregates
     company_env_counts: Counter[str] = Counter()
@@ -2000,7 +2176,9 @@ async def librarian_brief(
     company_missions_seen: set[str] = set()
 
     # Per-team doctrine counts for divergence
-    per_team_doc_counts: Dict[str, Counter[str]] = {name: Counter() for name, _ in teams}
+    per_team_doc_counts: Dict[str, Counter[str]] = {
+        name: Counter() for name, _ in teams
+    }
 
     for rec in recent_records:
         bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
@@ -2036,7 +2214,9 @@ async def librarian_brief(
         env_name, env_count = env_sorted[0]
         total_env = sum(company_env_counts.values())
         env_pct = (env_count / total_env) if total_env > 0 else 0.0
-        lines.append(f"  Primary Operational Environment :: {env_name} (Count: {env_count} — {env_pct:.0%})")
+        lines.append(
+            f"  Primary Operational Environment :: {env_name} (Count: {env_count} — {env_pct:.0%})"
+        )
     else:
         lines.append("  Primary Operational Environment :: URBAN")
 
@@ -2091,7 +2271,9 @@ async def librarian_brief(
             pick = source[:2]
             names = " / ".join(_abbr_label(n) for n, _d, _c in pick)
             # If both share same doc, display it; else show first's doc
-            doc_lbl = pick[0][1] if len(pick) == 1 or pick[0][1] == pick[1][1] else "Mixed"
+            doc_lbl = (
+                pick[0][1] if len(pick) == 1 or pick[0][1] == pick[1][1] else "Mixed"
+            )
             div_line = f"  Doctrinal Divergence            :: {names} ({doc_lbl})"
     except Exception:
         div_line = None
@@ -2139,34 +2321,69 @@ async def librarian_brief(
 
         dom_env: Optional[str] = None
         if company_env_counts:
-            dom_env = max(company_env_counts.items(), key=lambda kv: (kv[1], -ENV_MACROS_ORDER.index(kv[0]) if kv[0] in ENV_MACROS_ORDER else 999))[0]
+            dom_env = max(
+                company_env_counts.items(),
+                key=lambda kv: (
+                    kv[1],
+                    -ENV_MACROS_ORDER.index(kv[0])
+                    if kv[0] in ENV_MACROS_ORDER
+                    else 999,
+                ),
+            )[0]
         dom_doc: Optional[str] = None
         if company_doc_counts:
             dom_doc = max(company_doc_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
         comp_coherence = _doctrinal_coherence_tier(len(set(company_doc_counts.keys())))
         comp_exposure = _operational_exposure_tier(len(company_missions_seen))
 
-        lines.append("------------------------------------------------------------------------------")
+        lines.append(
+            "------------------------------------------------------------------------------"
+        )
         lines.append("  High Command Notes:")
         if hc_ops_count <= 0:
-            lines.append("  + High Command recorded no deployments across the dossier window.")
-            lines.append("  + Librarius counsel remained in strategic oversight: archives curated, auguries maintained.")
+            lines.append(
+                "  + High Command recorded no deployments across the dossier window."
+            )
+            lines.append(
+                "  + Librarius counsel remained in strategic oversight: archives curated, auguries maintained."
+            )
         elif hc_ops_count <= 3 and comp_coherence in ("SPECIALIZED", "REFINED"):
-            lines.append("  + High Command deployments were limited; doctrine indicates specialized orientation.")
-            lines.append(f"  + Counsel calibrated for precision: {dom_doc or 'specialist doctrine'} in {dom_env or 'key theatres'}.")
-        elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in ("EMERGENT", "STABLE"):
-            lines.append("  + Company operations spanned varied theatres; doctrine held adaptive coherence.")
-            lines.append("  + Librarius endorses flexible rites and cross-theatre stratagem rehearsal.")
+            lines.append(
+                "  + High Command deployments were limited; doctrine indicates specialized orientation."
+            )
+            lines.append(
+                f"  + Counsel calibrated for precision: {dom_doc or 'specialist doctrine'} in {dom_env or 'key theatres'}."
+            )
+        elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in (
+            "EMERGENT",
+            "STABLE",
+        ):
+            lines.append(
+                "  + Company operations spanned varied theatres; doctrine held adaptive coherence."
+            )
+            lines.append(
+                "  + Librarius endorses flexible rites and cross-theatre stratagem rehearsal."
+            )
         elif hc_ops_count >= 6 and comp_coherence in ("SPECIALIZED", "REFINED"):
-            lines.append("  + Elevated High Command deployments under focused campaigns.")
-            lines.append(f"  + Orientation sustained by {dom_doc or 'focused doctrine'} across {comp_exposure.lower()} exposure.")
+            lines.append(
+                "  + Elevated High Command deployments under focused campaigns."
+            )
+            lines.append(
+                f"  + Orientation sustained by {dom_doc or 'focused doctrine'} across {comp_exposure.lower()} exposure."
+            )
         else:
-            lines.append("  + High Command activity remained within expected bounds for the window.")
-            lines.append("  + Librarius counsel aligns with observed operations and doctrinal posture.")
+            lines.append(
+                "  + High Command activity remained within expected bounds for the window."
+            )
+            lines.append(
+                "  + Librarius counsel aligns with observed operations and doctrinal posture."
+            )
     except Exception:
         pass
 
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     # Length safeguard: strip decorative banners if message too long
@@ -2900,6 +3117,39 @@ def _get_recent_missions(limit: int = 100):
     return records[:limit]
 
 
+def _parse_iso8601_to_utc(ts: Optional[str]):
+    """Parse an ISO8601 timestamp into an aware UTC datetime.
+    Accepts 'Z' or '+00:00' suffixes; treats naive timestamps as UTC.
+    Returns None on failure.
+    """
+    if not ts:
+        return None
+    try:
+        s = ts.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _get_missions_last_30_days():
+    """Return missions with timestamp within the last 30 days (UTC), newest first."""
+    data = load_aar_data(AAR_RECORDS_PATH)
+    now_utc = datetime.now(timezone.utc)
+    cutoff = now_utc - timedelta(days=30)
+    stamped: List[Tuple[datetime, dict]] = []
+    for rec in data.values():
+        dt = _parse_iso8601_to_utc(rec.get("timestamp"))
+        if dt and dt >= cutoff:
+            stamped.append((dt, rec))
+    stamped.sort(key=lambda t: t[0], reverse=True)
+    return [r for _dt, r in stamped]
+
+
 def _build_pair_counts(missions):
     """Count how often each pair of brothers appears together in provided missions.
     Keys are sorted tuples of brother IDs (str, str).
@@ -3067,7 +3317,13 @@ def _format_bonds_for_discord(
     )
     lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     rank = 1
-    ordinal_labels = {1: "PRIMARY", 2: "SECONDARY", 3: "TERTIARY", 4: "QUATERNARY", 5: "QUINARY"}
+    ordinal_labels = {
+        1: "PRIMARY",
+        2: "SECONDARY",
+        3: "TERTIARY",
+        4: "QUATERNARY",
+        5: "QUINARY",
+    }
     for triple, score in bonds:
         tier = _bond_tier(score)
         a, b, c = triple
@@ -3116,9 +3372,11 @@ def _format_bonds_for_discord(
 
 @bot.tree.command(
     name="apothecary_brief",
-    description="Summarize last-30-day availability per Kill Team in a Company."
+    description="Summarize last-30-day availability per Kill Team in a Company.",
 )
-@app_commands.describe(company="The Company role to analyze (e.g., '@Watch Company Primus').")
+@app_commands.describe(
+    company="The Company role to analyze (e.g., '@Watch Company Primus')."
+)
 async def apothecary_brief(
     interaction: discord.Interaction,
     company: discord.Role,
@@ -3151,13 +3409,21 @@ async def apothecary_brief(
 
     # Build roster per Kill Team for the selected company (intersection of members)
     company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
-    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+    company_ids: set[str] = {
+        str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)
+    }
 
     teams: List[Tuple[str, List[discord.Member]]] = []
     for kt in killteam_roles:
-        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        kt_members = [
+            m
+            for m in getattr(kt, "members", [])
+            if str(getattr(m, "id", "")) in company_ids
+        ]
         if kt_members:
-            teams.append((_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members))
+            teams.append(
+                (_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members)
+            )
 
     # Company Command: mirror killteam_brief logic (Captain through above Sergeant, in 'Watch Company Primus')
     try:
@@ -3191,23 +3457,29 @@ async def apothecary_brief(
         company_command_members = []
 
     # Compute last-30-day activity map from AAR records
-    cutoff = datetime.utcnow() - timedelta(days=30)
-    data = load_aar_data(AAR_RECORDS_PATH)
+    recent_records = _get_missions_last_30_days()
+
+    # Guard: ensure there are records for this company in the 30-day window
+    has_company_records = False
+    try:
+        for rec in recent_records:
+            bros = [str(b) for b in (rec.get("brother_ids") or [])]
+            if set(bros) & company_ids:
+                has_company_records = True
+                break
+    except Exception:
+        has_company_records = False
+    if not has_company_records:
+        await interaction.followup.send(
+            "No AARs recorded in the last 30 days for this company window.",
+            ephemeral=True,
+        )
+        return
+
     active_map: Dict[str, bool] = {}
-    for rec in data.values():
+    for rec in recent_records:
         try:
-            ts = rec.get("timestamp")
-            if not ts:
-                continue
-            dt = datetime.fromisoformat(ts)
-            if dt.tzinfo is not None:
-                try:
-                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
-                except Exception:
-                    dt = dt.replace(tzinfo=None)
-            if dt < cutoff:
-                continue
-            for uid in (rec.get("brother_ids") or []):
+            for uid in rec.get("brother_ids") or []:
                 sid = str(uid)
                 if sid:
                     active_map[sid] = True
@@ -3242,12 +3514,18 @@ async def apothecary_brief(
     # Prepare ANSI-styled report
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // APOTHECARION NODE")
     lines.append("  OPERATION-SCRIBE SERVITOR — BIOLOGICAL READINESS LEDGER (30 DAYS)")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Window: Last 30 Days")
-    lines.append("------------------------------------------------------------------------------")
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
 
     # Helpers to render tiered lines with a single active tier bracketed
     def _render_band(label: str, tiers: List[str], active_tier: str) -> str:
@@ -3357,8 +3635,20 @@ async def apothecary_brief(
             # choose by avg desc, tie-break by stdev desc then name asc
             def _care_key(item):
                 name, s = item
-                return (float(s.get("avg", 0.0) or 0.0), float(s.get("stdev", 0.0) or 0.0), -ord(name[0].lower()) if name else 0)
-            worst = max(team_stats, key=lambda it: (float(it[1].get("avg", 0.0) or 0.0), float(it[1].get("stdev", 0.0) or 0.0), it[0].lower()))
+                return (
+                    float(s.get("avg", 0.0) or 0.0),
+                    float(s.get("stdev", 0.0) or 0.0),
+                    -ord(name[0].lower()) if name else 0,
+                )
+
+            worst = max(
+                team_stats,
+                key=lambda it: (
+                    float(it[1].get("avg", 0.0) or 0.0),
+                    float(it[1].get("stdev", 0.0) or 0.0),
+                    it[0].lower(),
+                ),
+            )
             w_name, w_stats = worst
             care_team_name = w_name
             care_stats = w_stats
@@ -3372,7 +3662,9 @@ async def apothecary_brief(
     stab_stats: Optional[Dict[str, float]] = None
     try:
         if team_stats:
-            worst = max(team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0))
+            worst = max(
+                team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0)
+            )
             w_name, w_stats = worst
             stab_team_name = w_name
             stab_stats = w_stats
@@ -3386,7 +3678,9 @@ async def apothecary_brief(
     stable_best_stats: Optional[Dict[str, float]] = None
     try:
         if team_stats:
-            ordered = sorted(team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0))
+            ordered = sorted(
+                team_stats, key=lambda it: float(it[1].get("stdev", 0.0) or 0.0)
+            )
             top = ordered[:3]
             names = [f"KT {n}" for n, _s in top]
             stable_names_fmt = " / ".join(names) if names else "N/A"
@@ -3406,8 +3700,12 @@ async def apothecary_brief(
     # Summary section with contextual parentheses similar to techmarine_brief
     # Overall readiness: show active/total and percentage
     try:
-        o_count = int(overall_stats.get("count", 0) if 'overall_stats' in locals() else 0)
-        o_active = int(overall_stats.get("active", 0) if 'overall_stats' in locals() else 0)
+        o_count = int(
+            overall_stats.get("count", 0) if "overall_stats" in locals() else 0
+        )
+        o_active = int(
+            overall_stats.get("active", 0) if "overall_stats" in locals() else 0
+        )
         p_active = (o_active / o_count) if o_count > 0 else 0.0
         lines.append(
             f"  Overall Biological Readiness   :: {overall_ready} (Active: {o_active}/{o_count} — {p_active:.0%})"
@@ -3442,7 +3740,7 @@ async def apothecary_brief(
         )
     else:
         lines.append(
-            f"  Most Stable Formation          :: {stable_names_fmt} ({cc_stab if stable_tier=='UNDETERMINED' else stable_tier})"
+            f"  Most Stable Formation          :: {stable_names_fmt} ({cc_stab if stable_tier == 'UNDETERMINED' else stable_tier})"
         )
 
     # Company Command status: show active/total and stdev
@@ -3454,7 +3752,9 @@ async def apothecary_brief(
             f"  Company Command Status         :: {cc_ready} READINESS — {cc_stab} STABILITY (Active: {cc_active}/{cc_count}; SD: {cc_sd:.2f})"
         )
     except Exception:
-        lines.append(f"  Company Command Status         :: {cc_ready} READINESS — {cc_stab} STABILITY")
+        lines.append(
+            f"  Company Command Status         :: {cc_ready} READINESS — {cc_stab} STABILITY"
+        )
 
     # High Command Notes (30-day posture using medical load and stability signals)
     try:
@@ -3476,16 +3776,8 @@ async def apothecary_brief(
                     hc_ids.add(uid)
 
         hc_ops_count = 0
-        for rec in data.values():
+        for rec in recent_records:
             try:
-                ts = rec.get("timestamp")
-                if not ts:
-                    continue
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is not None:
-                    dt = dt.astimezone(tz=None).replace(tzinfo=None)
-                if dt < cutoff:
-                    continue
                 bros = [str(b) for b in (rec.get("brother_ids") or [])]
                 if any(b in hc_ids for b in bros):
                     hc_ops_count += 1
@@ -3515,28 +3807,52 @@ async def apothecary_brief(
         stab_ratio = _ratio(stab_levels, {"VARIABLE", "FRACTURED"})
         read_ratio = _ratio(read_levels, {"DEGRADED", "CRITICAL"})
 
-        lines.append("------------------------------------------------------------------------------")
+        lines.append(
+            "------------------------------------------------------------------------------"
+        )
         lines.append("  High Command Notes:")
         if hc_ops_count <= 0:
-            lines.append("  + High Command recorded no deployments in the last thirty days.")
-            lines.append("  + Oversight posture maintained; Apothecarion focuses on steady readiness cycles.")
+            lines.append(
+                "  + High Command recorded no deployments in the last thirty days."
+            )
+            lines.append(
+                "  + Oversight posture maintained; Apothecarion focuses on steady readiness cycles."
+            )
         elif hc_ops_count <= 2 and (care_ratio >= 0.4 or stab_ratio >= 0.4):
-            lines.append("  + High Command deployments remained limited while medical load and/or stability")
+            lines.append(
+                "  + High Command deployments remained limited while medical load and/or stability"
+            )
             lines.append("    indicators trended adverse across the roster.")
-            lines.append("  + Cautionary posture: prioritize triage rites and cohesion drills prior to escalation.")
+            lines.append(
+                "  + Cautionary posture: prioritize triage rites and cohesion drills prior to escalation."
+            )
         elif hc_ops_count >= 5 and read_ratio >= 0.4:
-            lines.append("  + Elevated High Command deployments coincided with degraded readiness across teams.")
-            lines.append("  + Emergency posture justified: Apothecarion release criteria tightened; rotations shortened.")
+            lines.append(
+                "  + Elevated High Command deployments coincided with degraded readiness across teams."
+            )
+            lines.append(
+                "  + Emergency posture justified: Apothecarion release criteria tightened; rotations shortened."
+            )
         elif hc_ops_count >= 5 and stab_ratio < 0.3:
-            lines.append("  + High Command maintained a proactive operational posture with steady cohesion.")
-            lines.append("  + Apothecarion endorses forward deployment under current stability readings.")
+            lines.append(
+                "  + High Command maintained a proactive operational posture with steady cohesion."
+            )
+            lines.append(
+                "  + Apothecarion endorses forward deployment under current stability readings."
+            )
         else:
-            lines.append("  + High Command deployments remained within expected bounds for the period.")
-            lines.append("  + Apothecarion advises routine cycles: recovery rites, gene-seed audits, cohesion maintenance.")
+            lines.append(
+                "  + High Command deployments remained within expected bounds for the period."
+            )
+            lines.append(
+                "  + Apothecarion advises routine cycles: recovery rites, gene-seed audits, cohesion maintenance."
+            )
     except Exception:
         pass
 
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     # Safeguard: if message is still too long, strip decorative lines
@@ -3566,7 +3882,11 @@ def _main():
     # Parse CLI args for debug flag (overrides config). Use parse_known to avoid discord.py argv issues.
     try:
         parser = argparse.ArgumentParser(add_help=True)
-        parser.add_argument("--debug", action="store_true", help="Disable startup/shutdown status broadcasts")
+        parser.add_argument(
+            "--debug",
+            action="store_true",
+            help="Disable startup/shutdown status broadcasts",
+        )
         args, _unknown = parser.parse_known_args()
         # Merge: CLI overrides config
         debug_flag = bool(args.debug) or _is_truthy((CONFIG or {}).get("debug"))
@@ -3580,7 +3900,9 @@ def _main():
     except Exception as e:
         print(e)
     finally:
-        token = "REDACTED_DISCORD_TOKEN"
+        token = (
+            "REDACTED_DISCORD_TOKEN"
+        )
     if not token:
         raise RuntimeError("DISCORD_TOKEN environment variable not set")
     bot.run(token)
@@ -3610,14 +3932,26 @@ async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
             m1, m2, m3 = tri_buf[-3:]
             key = str(m3.id)
             content_hashes = {
-                str(m1.id): hashlib.sha256((m1.content or "").encode("utf-8")).hexdigest(),
-                str(m2.id): hashlib.sha256((m2.content or "").encode("utf-8")).hexdigest(),
-                str(m3.id): hashlib.sha256((m3.content or "").encode("utf-8")).hexdigest(),
+                str(m1.id): hashlib.sha256(
+                    (m1.content or "").encode("utf-8")
+                ).hexdigest(),
+                str(m2.id): hashlib.sha256(
+                    (m2.content or "").encode("utf-8")
+                ).hexdigest(),
+                str(m3.id): hashlib.sha256(
+                    (m3.content or "").encode("utf-8")
+                ).hexdigest(),
             }
             edited_at = {
-                str(m1.id): m1.edited_at.isoformat() if getattr(m1, "edited_at", None) else None,
-                str(m2.id): m2.edited_at.isoformat() if getattr(m2, "edited_at", None) else None,
-                str(m3.id): m3.edited_at.isoformat() if getattr(m3, "edited_at", None) else None,
+                str(m1.id): m1.edited_at.isoformat()
+                if getattr(m1, "edited_at", None)
+                else None,
+                str(m2.id): m2.edited_at.isoformat()
+                if getattr(m2, "edited_at", None)
+                else None,
+                str(m3.id): m3.edited_at.isoformat()
+                if getattr(m3, "edited_at", None)
+                else None,
             }
             completers = [str(u.id) for u in m3.mentions]
             challenge_title = (m1.content or "").strip()
@@ -3674,6 +4008,7 @@ async def _ingest_trophy_hall(guild: Optional[discord.Guild]):
     _save_json_dict(TROPHY_HALL_INDEX_PATH, index)
     return added, updated
 
+
 async def _parse_oath_message(msg: discord.Message):
     content = msg.content or ""
     lines = [l.strip() for l in content.splitlines()]
@@ -3697,11 +4032,14 @@ async def _parse_oath_message(msg: discord.Message):
         "current_rank_raw": current_rank_raw,
         "oath_target_roles": [n for n in target_role_names if n],
         "content_hash": hashlib.sha256((content).encode("utf-8")).hexdigest(),
-        "edited_at": msg.edited_at.isoformat() if getattr(msg, "edited_at", None) else None,
+        "edited_at": msg.edited_at.isoformat()
+        if getattr(msg, "edited_at", None)
+        else None,
         "has_oath": bool(has_oath),
         "timestamp": msg.created_at.isoformat(),
     }
     return entry
+
 
 async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
     added = 0
@@ -3728,7 +4066,10 @@ async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
             index[key] = entry
             added += 1
         else:
-            if prev.get("content_hash") != entry["content_hash"] or prev.get("edited_at") != entry["edited_at"]:
+            if (
+                prev.get("content_hash") != entry["content_hash"]
+                or prev.get("edited_at") != entry["edited_at"]
+            ):
                 index[key] = entry
                 updated += 1
         meta["last_ingested_message_id"] = str(msg.id)
@@ -3745,12 +4086,17 @@ async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
             continue
         e = await _parse_oath_message(m)
         prev = index.get(kid)
-        if not prev or prev.get("content_hash") != e.get("content_hash") or prev.get("edited_at") != e.get("edited_at"):
+        if (
+            not prev
+            or prev.get("content_hash") != e.get("content_hash")
+            or prev.get("edited_at") != e.get("edited_at")
+        ):
             index[kid] = e
             updated += 1
     index["_meta"] = meta
     _save_json_dict(OATHS_INDEX_PATH, index)
     return added, updated
+
 
 BATTLE_LINE_ORDER = [
     "Watch Brother",
@@ -3760,12 +4106,25 @@ BATTLE_LINE_ORDER = [
     "Watch Captain",
 ]
 CHAMPION_ROLES = {"Kill Team Champion", "Company Champion", "Lord Executioner"}
-SPECIALIST_ROLES = {"Watch Chaplain", "Watch Apothecary", "Watch Librarian", "Watch Techmarine"}
-HIGH_COMMAND_ROLES = {"Watch Master", "High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster"}
+SPECIALIST_ROLES = {
+    "Watch Chaplain",
+    "Watch Apothecary",
+    "Watch Librarian",
+    "Watch Techmarine",
+}
+HIGH_COMMAND_ROLES = {
+    "Watch Master",
+    "High Chaplain",
+    "Chief Apothecary",
+    "Void Warden",
+    "Forgemaster",
+}
+
 
 def _member_has_any_role(member: discord.Member, targets: set[str]) -> bool:
     names = _canonical_role_names(member)
     return any(t in names for t in targets)
+
 
 def _current_battle_line_index(member: discord.Member) -> Optional[int]:
     names = _canonical_role_names(member)
@@ -3773,6 +4132,7 @@ def _current_battle_line_index(member: discord.Member) -> Optional[int]:
     if not idxs:
         return None
     return max(idxs)
+
 
 def _rank_index_from_text(text: Optional[str]) -> Optional[int]:
     if not text:
@@ -3782,6 +4142,7 @@ def _rank_index_from_text(text: Optional[str]) -> Optional[int]:
         if r.lower() in low:
             return i
     return None
+
 
 def _evaluate_oath(member: discord.Member, oath_entry: dict) -> str:
     targets = set(oath_entry.get("oath_target_roles") or [])
@@ -3807,6 +4168,7 @@ def _evaluate_oath(member: discord.Member, oath_entry: dict) -> str:
         return "unclassified"
     return "unclassified"
 
+
 def _discipline_tier(participation_pct: float, unfulfilled_count: int) -> str:
     if participation_pct >= 80.0 and unfulfilled_count <= 1:
         return "Exemplary"
@@ -3815,6 +4177,7 @@ def _discipline_tier(participation_pct: float, unfulfilled_count: int) -> str:
     if participation_pct >= 40.0:
         return "Lacking"
     return "Requires Intervention"
+
 
 def _collect_company_teams(guild: discord.Guild, company: discord.Role):
     killteam_roles: List[discord.Role] = []
@@ -3827,12 +4190,20 @@ def _collect_company_teams(guild: discord.Guild, company: discord.Role):
     except Exception:
         killteam_roles = []
     company_members: List[discord.Member] = [m for m in getattr(company, "members", [])]
-    company_ids: set[str] = {str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)}
+    company_ids: set[str] = {
+        str(getattr(m, "id", "")) for m in company_members if getattr(m, "id", None)
+    }
     teams: List[Tuple[str, List[discord.Member]]] = []
     for kt in killteam_roles:
-        kt_members = [m for m in getattr(kt, "members", []) if str(getattr(m, "id", "")) in company_ids]
+        kt_members = [
+            m
+            for m in getattr(kt, "members", [])
+            if str(getattr(m, "id", "")) in company_ids
+        ]
         if kt_members:
-            teams.append((_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members))
+            teams.append(
+                (_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members)
+            )
     idx_sergeant = _role_index("Watch Sergeant")
     company_command_members: List[discord.Member] = []
     if idx_sergeant is not None:
@@ -3845,6 +4216,7 @@ def _collect_company_teams(guild: discord.Guild, company: discord.Role):
         teams.append(("Company Command", company_command_members))
     return teams
 
+
 def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     trophy = _load_json_dict(TROPHY_HALL_INDEX_PATH)
     oaths = _load_json_dict(OATHS_INDEX_PATH)
@@ -3852,7 +4224,7 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     for key, e in trophy.items():
         if key == "_meta":
             continue
-        for uid in (e.get("completer_user_ids") or []):
+        for uid in e.get("completer_user_ids") or []:
             completer_ids.add(str(uid))
     oath_entries_by_user: Dict[str, dict] = {}
     for key, e in oaths.items():
@@ -3867,14 +4239,24 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     teams = _collect_company_teams(guild, company)
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // CHAPLAIN DISCIPLINE BRIEF")
     lines.append("  OPERATION-SCRIBE SERVITOR — DISCIPLINE ASSESSMENT")
-    lines.append("==============================================================================")
-    lines.append(f"  {getattr(company, 'name', 'Unknown')}  |  Cached Sources: Trophy Hall, Record of Oaths")
-    lines.append("------------------------------------------------------------------------------")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append(
+        f"  {getattr(company, 'name', 'Unknown')}  |  Cached Sources: Trophy Hall, Record of Oaths"
+    )
+    lines.append(
+        "------------------------------------------------------------------------------"
+    )
     for team_name, members in teams:
-        member_ids = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        member_ids = {
+            str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
+        }
         if not member_ids:
             continue
         challenge_done = len(member_ids & completer_ids)
@@ -3898,10 +4280,14 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
         tier = _discipline_tier(oath_participation_pct, unfulfilled)
         lines.append(f"  Kill Team {team_name}   :: Discipline: {tier}")
         lines.append(f"    Oath Participation    :: {oath_participation_pct:.0f}%")
-        lines.append(f"    Oath Status           :: Fulfilled {fulfilled}  Unfulfilled {unfulfilled}  Unclassified {unclassified}")
+        lines.append(
+            f"    Oath Status           :: Fulfilled {fulfilled}  Unfulfilled {unfulfilled}  Unclassified {unclassified}"
+        )
         flag_zero = "  (Zero challenge participation)" if challenge_done == 0 else ""
         lines.append(f"    Challenge Compliance  :: {challenge_pct:.0f}%{flag_zero}")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
     msg = "\n".join(lines)
     if len(msg) > 1900:
@@ -3920,30 +4306,43 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
         msg = "\n".join(trimmed2)
     return msg
 
+
 @bot.tree.command(
     name="chaplain_brief",
-    description="Generate a Chaplain discipline brief for a Company; optionally update caches."
+    description="Generate a Chaplain discipline brief for a Company; optionally update caches.",
 )
-@app_commands.describe(company="The Watch Company role to analyze.", update="If true, ingest updates from Trophy Hall and Record of Oaths.")
+@app_commands.describe(
+    company="The Watch Company role to analyze.",
+    update="If true, ingest updates from Trophy Hall and Record of Oaths.",
+)
 async def chaplain_brief(
     interaction: discord.Interaction,
     company: discord.Role,
     update: Optional[bool] = False,
 ):
-    if not (is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)):
+    if not (
+        is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
+    ):
         try:
-            await interaction.response.send_message("++ ACCESS DENIED: SERGEANT+ IN SANCTIFIED CHANNEL REQUIRED. ++", ephemeral=True)
+            await interaction.response.send_message(
+                "++ ACCESS DENIED: SERGEANT+ IN SANCTIFIED CHANNEL REQUIRED. ++",
+                ephemeral=True,
+            )
         except Exception:
             return
         return
     await interaction.response.defer(thinking=True, ephemeral=True)
     guild = interaction.guild
     if not guild or not company or not getattr(company, "members", None):
-        await interaction.followup.send("++ ERROR: COMPANY ROLE OR GUILD UNAVAILABLE. ++", ephemeral=True)
+        await interaction.followup.send(
+            "++ ERROR: COMPANY ROLE OR GUILD UNAVAILABLE. ++", ephemeral=True
+        )
         return
     if update:
         if CHAPLAIN_INGEST_LOCK.locked():
-            await interaction.followup.send("++ INTAKE IN PROGRESS: PLEASE RETRY SHORTLY. ++", ephemeral=True)
+            await interaction.followup.send(
+                "++ INTAKE IN PROGRESS: PLEASE RETRY SHORTLY. ++", ephemeral=True
+            )
             return
         await CHAPLAIN_INGEST_LOCK.acquire()
         try:
@@ -3963,6 +4362,6 @@ async def chaplain_brief(
     report = _build_chaplain_report(guild, company)
     await interaction.followup.send(report, ephemeral=True)
 
+
 if __name__ == "__main__":
     _main()
-
