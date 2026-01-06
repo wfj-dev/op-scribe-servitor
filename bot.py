@@ -332,7 +332,7 @@ def is_sergeant_or_higher(user: discord.User | discord.Member):
     admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
     if (
         str(getattr(user, "id", None)) in admin_ids
-        or str(getattr(user, "nick", None)) == "Watch Veteran Jules"
+        or str(getattr(user, "nick", None)) == "Watch Techmarine Jules"
     ):
         return True
     idx_sergeant = _role_index("Watch Sergeant")
@@ -4634,6 +4634,52 @@ def _member_challenge_compliance(member: Optional[discord.Member], challenge_rol
         return 0.0
 
 
+def _has_stable_leadership(team_name: str, members: List[discord.Member]) -> bool:
+    """Determine stable leadership per team rules.
+    - Kill Teams: at least one Watch Sergeant who is not also a Watch Lieutenant or Watch Captain.
+    - Company Command: at least one Watch Captain present.
+    """
+    try:
+        if team_name == "Company Command":
+            try:
+                msg = f"CC leadership check — member count: {len(members)}"
+                (print(msg) if not BROADCAST_STATUS else logger.debug(msg))
+                for m in members:
+                    names = _canonical_role_names(m)
+                    label = (
+                        getattr(m, "nick", None)
+                        or getattr(m, "display_name", None)
+                        or getattr(m, "name", None)
+                        or getattr(m, "username", None)
+                        or str(getattr(m, "id", ""))
+                    )
+                    try:
+                        msg = f"CC member: {label} roles={sorted(list(names))}"
+                    except Exception:
+                        msg = f"CC member: {label}"
+                    (print(msg) if not BROADCAST_STATUS else logger.debug(msg))
+                    if "Watch Captain" in names:
+                        msg = f"Stable leader present: {label} holds Watch Captain"
+                        (print(msg) if not BROADCAST_STATUS else logger.debug(msg))
+                        return True
+            except Exception:
+                pass
+            return False
+
+        # Kill Team: require a dedicated Sergeant (not outranked by Lt/Captain)
+        for m in members:
+            names = _canonical_role_names(m)
+            if (
+                "Watch Sergeant" in names
+                and "Watch Lieutenant" not in names
+                and "Watch Captain" not in names
+            ):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def _member_has_any_role(member: discord.Member, targets: set[str]) -> bool:
     names = _canonical_role_names(member)
     return any(t in names for t in targets)
@@ -4713,24 +4759,46 @@ def _evaluate_oath(member: discord.Member, oath_entry: dict) -> str:
     return "unclassified"
 
 
-def _discipline_tier(participation_pct: float, unfulfilled_count: int, oath_takers: int) -> str:
-    """Grade discipline using participation and unfulfilled rate.
-    Exemplary: participation >= 80% and unfulfilled rate <= 15%
-    Steady:    participation >= 60% and unfulfilled rate <= 30%
-    Lacking:   participation >= 40% (otherwise Requires Intervention)
-    oath_takers: number of members who submitted oaths (for rate calc)
+def _discipline_tier(challenge_pct: float, has_stable_leadership: bool, dist_mean: float, dist_sd: float) -> str:
+    """Classify discipline into five tiers using distribution-aware thresholds.
+    Oaths are narrative only and not factored.
+
+    Tiers:
+    - EXEMPLARIS: leadership present and engagement notably above peers (z >= +0.8) or cp >= 65%.
+    - STALWART: leadership present and above-average engagement (z >= +0.2) or cp >= 50%.
+    - STEADFAST: leadership present and near-average engagement (z >= -0.2) or cp >= 30%.
+    - LITURGICAL CORRECTION REQUIRED: leadership present but low engagement; OR no leadership with some engagement.
+    - DISCIPLINE DERELICT: no stable leadership and very low engagement (z <= -0.8 or cp <= 10%).
     """
     try:
-        rate = (unfulfilled_count / max(1, int(oath_takers))) if oath_takers is not None else 0.0
+        cp = float(challenge_pct or 0.0)
     except Exception:
-        rate = 0.0
-    if participation_pct >= 80.0 and rate <= 0.15:
-        return "Exemplary"
-    if participation_pct >= 60.0 and rate <= 0.30:
-        return "Steady"
-    if participation_pct >= 40.0:
-        return "Lacking"
-    return "Requires Intervention"
+        cp = 0.0
+    if cp < 0.0:
+        cp = 0.0
+    if cp > 100.0:
+        cp = 100.0
+    try:
+        mu = float(dist_mean or 0.0)
+        sd = float(dist_sd or 0.0)
+    except Exception:
+        mu, sd = 0.0, 0.0
+    z = (cp - mu) / sd if sd and sd > 0.0 else 0.0
+
+    # Leadership absent: cap at Requires Intervention, Lacking if truly low
+    if not has_stable_leadership:
+        if z <= -0.8 or cp <= 10.0:
+            return "Discipline Derelict"
+        return "Liturgical Correction Required"
+
+    # Leadership present: allow full 4-tier expressiveness
+    if z >= 0.8 or cp >= 65.0:
+        return "Exemplaris"
+    if z >= 0.2 or cp >= 50.0:
+        return "Stalwart"
+    if z >= -0.2 or cp >= 30.0:
+        return "Steadfast"
+    return "Liturgical Correction Required"
 
 
 def _collect_company_teams(guild: discord.Guild, company: discord.Role):
@@ -4760,28 +4828,49 @@ def _collect_company_teams(guild: discord.Guild, company: discord.Role):
             )
     # Company Command per doctrine: strictly above Sergeant up to Captain (inclusive),
     # plus the four specialist roles and Company Champion.
-    idx_lieutenant = _role_index("Watch Lieutenant")
-    idx_captain = _role_index("Watch Captain")
     company_command_members: List[discord.Member] = []
+    cc_debug: List[Tuple[discord.Member, str]] = []
     for m in company_members:
         names = _canonical_role_names(m)
-        # Battle-line index (if any)
-        bl_idxs = [i for i, r in enumerate(BATTLE_LINE_ORDER) if r in names]
-        has_bl = bool(bl_idxs)
-        max_bl = max(bl_idxs) if bl_idxs else None
-        # Above Sergeant: Lieutenant or Captain
-        above_sergeant = False
-        try:
-            if has_bl and idx_lieutenant is not None and max_bl is not None:
-                above_sergeant = max_bl >= idx_lieutenant
-        except Exception:
-            above_sergeant = False
+        # Explicit exclusion: Lord Executioner is never considered Company Command
+        if "Lord Executioner" in names:
+            cc_debug.append((m, "excluded: lord-executioner"))
+            continue
+        # Include Lieutenants and Captains explicitly
+        has_lt = "Watch Lieutenant" in names
+        has_capt = "Watch Captain" in names
         # Specialists and Company Champion
         is_specialist = any(r in names for r in SPECIALIST_ROLES)
         is_company_champion = "Company Champion" in names
-        if above_sergeant or is_specialist or is_company_champion:
+        if has_lt or has_capt or is_specialist or is_company_champion:
             company_command_members.append(m)
+            reason = (
+                "captain" if has_capt else ("lieutenant" if has_lt else ("specialist" if is_specialist else "champion"))
+            )
+            cc_debug.append((m, reason))
     if company_command_members:
+        # Debug-only: dump Company Command roster to terminal
+        try:
+            header = (
+                f"Company Command roster for {getattr(company, 'name', 'Unknown')} — count: {len(company_command_members)}"
+            )
+            (print(header) if not BROADCAST_STATUS else logger.debug(header))
+            for m, reason in cc_debug:
+                label = (
+                    getattr(m, "nick", None)
+                    or getattr(m, "display_name", None)
+                    or getattr(m, "name", None)
+                    or getattr(m, "username", None)
+                    or str(getattr(m, "id", ""))
+                )
+                try:
+                    role_list = sorted(list(_canonical_role_names(m)))
+                    line = f" - {label} [{', '.join(role_list)}]; reason={reason}"
+                except Exception:
+                    line = f" - {label}; reason={reason}"
+                (print(line) if not BROADCAST_STATUS else logger.debug(line))
+        except Exception:
+            pass
         teams.append(("Company Command", company_command_members))
     return teams
 
@@ -4820,6 +4909,39 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     )
     # Unclassified entries are counted for display only; no ledger persisted
 
+    # Pre-pass: compute per-team challenge compliance and leadership for distribution
+    team_challenge: Dict[str, float] = {}
+    team_leadership: Dict[str, bool] = {}
+    for team_name, members in teams:
+        member_ids = {
+            str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
+        }
+        member_list = [m for m in members if str(getattr(m, "id", "")) in member_ids]
+        if member_list:
+            try:
+                avg_pre = sum(_member_challenge_compliance(m, challenge_roles) for m in member_list) / float(len(member_list))
+                cp_pre = 100.0 * avg_pre
+            except Exception:
+                cp_pre = 0.0
+        else:
+            cp_pre = 0.0
+        team_challenge[team_name] = cp_pre
+        team_leadership[team_name] = _has_stable_leadership(team_name, member_list)
+
+    cp_values = list(team_challenge.values())
+    try:
+        mu = (sum(cp_values) / float(len(cp_values))) if cp_values else 0.0
+    except Exception:
+        mu = 0.0
+    try:
+        if cp_values and len(cp_values) >= 2:
+            var = sum((x - mu) ** 2 for x in cp_values) / float(len(cp_values))
+            sd = var ** 0.5
+        else:
+            sd = 0.0
+    except Exception:
+        sd = 0.0
+
     for team_name, members in teams:
         member_ids = {
             str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
@@ -4835,6 +4957,8 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
             challenge_pct = 0.0
         oath_users = [uid for uid in member_ids if uid in oath_entries_by_user]
         oath_participation_pct = 100.0 * len(oath_users) / max(1, len(member_ids))
+        # Stable leadership per new rules (precomputed)
+        has_stable_leadership = team_leadership.get(team_name, False)
         fulfilled = 0
         unfulfilled = 0
         unclassified = 0
@@ -4855,7 +4979,8 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
                 unfulfilled += 1
             else:
                 unclassified += 1
-        tier = _discipline_tier(oath_participation_pct, unfulfilled, len(oath_users))
+        # Discipline now based on challenge compliance (distribution-aware) and leadership presence only
+        tier = _discipline_tier(challenge_pct, has_stable_leadership, mu, sd)
         lines.append(f"  KT {team_name}")
         lines.append(f"    Discipline Status     :: {tier.upper()}")
         lines.append(

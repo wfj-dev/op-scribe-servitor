@@ -16,5 +16,5 @@
   "logging": {
     "level": "INFO"
   },
-  "debug": false
+  "debug": true
 }
