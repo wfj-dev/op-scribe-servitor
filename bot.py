@@ -313,6 +313,52 @@ def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
     return names
 
 
+def _resolve_company_command_members(company: discord.Role) -> List[discord.Member]:
+    """Return Company Command members for a company using consistent rules:
+    - Strictly higher than Sergeant (exclude Sergeant and below)
+    - Up to Captain (include Watch Lieutenant and Watch Captain)
+    - Include specialist orders and Company Champion
+    - Exclude Lord Executioner
+    Applies across briefs for consistency.
+    """
+    try:
+        idx_sergeant = _role_index("Watch Sergeant")
+        idx_captain = _role_index("Watch Captain")
+    except Exception:
+        idx_sergeant = None
+        idx_captain = None
+    members: List[discord.Member] = []
+    try:
+        base_members = list(getattr(company, "members", []))
+    except Exception:
+        base_members = []
+    excluded_roles = {
+        "Lord Executioner",
+        "High Chaplain",
+        "Forgemaster",
+        "Void Warden",
+        "Voidwarden",
+        "Chief Apothecary",
+    }
+    for m in base_members:
+        try:
+            names = _canonical_role_names(m)
+            # Explicit exclusion of high-command roles
+            if any(er in names for er in excluded_roles):
+                continue
+            highest_idx = get_highest_rank_index(m)
+            if (
+                idx_sergeant is not None
+                and idx_captain is not None
+                and highest_idx is not None
+                and (idx_captain <= highest_idx < idx_sergeant)
+            ):
+                members.append(m)
+        except Exception:
+            continue
+    return members
+
+
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
@@ -1410,39 +1456,8 @@ async def command_brief(
             }
         )
 
-    # Also compute a synthetic team for Company Command
-    try:
-        idx_sergeant = _role_index("Watch Sergeant")
-        idx_captain = _role_index("Watch Captain")
-    except Exception:
-        idx_sergeant = None
-        idx_captain = None
-
-    company_command_members: List[discord.Member] = []
-    try:
-        base_members = list(getattr(company, "members", []))
-        for m in base_members:
-            roles = getattr(m, "roles", [])
-            # Must have a role that looks like "Watch Company Primus" (case-insensitive)
-            has_primus = False
-            for r in roles:
-                rn = (getattr(r, "name", "") or "").lower()
-                if ("primus" in rn) and ("company" in rn):
-                    has_primus = True
-                    break
-            highest_idx = get_highest_rank_index(m)
-            if (
-                has_primus
-                and idx_sergeant is not None
-                and idx_captain is not None
-                and highest_idx is not None
-                and (
-                    idx_captain <= highest_idx < idx_sergeant
-                )  # Captain through just above Sergeant
-            ):
-                company_command_members.append(m)
-    except Exception:
-        company_command_members = []
+    # Also compute a synthetic team for Company Command (shared rule)
+    company_command_members: List[discord.Member] = _resolve_company_command_members(company)
 
     if len(company_command_members) > 0:
         member_ids = {
@@ -1557,8 +1572,7 @@ async def command_brief(
     best_reliability = _winner("reliability")
     best_force = _winner("force_multiplier")
 
-    # Risk Appetite: Shock vs Surgical
-    # Risk appetite via medians
+    # Risk Appetite medians (used for per-team cube profiles below)
     try:
         aar_list = [t["avg_aar"] for t in team_stats]
         gene_list = [t["avg_gene"] for t in team_stats]
@@ -1572,18 +1586,6 @@ async def command_brief(
         med_rel = statistics.median(rel_list) if rel_list else 0.0
         fm_list = [t["force_multiplier"] for t in team_stats]
         med_fm = statistics.median(fm_list) if fm_list else 0.0
-        shock_deltas = [tt["avg_aar"] - tt["avg_gene"] for tt in team_stats]
-        med_shock = statistics.median(shock_deltas) if shock_deltas else 0.0
-        surg_deltas = [tt["avg_gene"] - tt["avg_aar"] for tt in team_stats]
-        med_surg = statistics.median(surg_deltas) if surg_deltas else 0.0
-        # Standard deviations for outlier detection
-        sd_ops = statistics.pstdev(ops_list) if len(ops_list) >= 2 else 0.0
-        sd_armory = statistics.pstdev(armory_list) if len(armory_list) >= 2 else 0.0
-        sd_rel = statistics.pstdev(rel_list) if len(rel_list) >= 2 else 0.0
-        sd_fm = statistics.pstdev(fm_list) if len(fm_list) >= 2 else 0.0
-        sd_gene = statistics.pstdev(gene_list) if len(gene_list) >= 2 else 0.0
-        sd_shock = statistics.pstdev(shock_deltas) if len(shock_deltas) >= 2 else 0.0
-        sd_surg = statistics.pstdev(surg_deltas) if len(surg_deltas) >= 2 else 0.0
     except Exception:
         med_aar = 0.0
         med_gene = 0.0
@@ -1591,42 +1593,86 @@ async def command_brief(
         med_armory = 0.0
         med_rel = 0.0
         med_fm = 0.0
-        med_shock = 0.0
-        med_surg = 0.0
-        sd_ops = sd_armory = sd_rel = sd_fm = sd_gene = sd_shock = sd_surg = 0.0
 
-    shock_candidates = []
-    surgical_candidates = []
+    # Composite Preservation axis (Gene + Armory) for 2×2 Risk Appetite grid
+    # Use z-scores when dispersion is available; fallback to median-centered distances
+    try:
+        sd_aar = statistics.pstdev(aar_list) if len(aar_list) >= 2 else 0.0
+    except Exception:
+        sd_aar = 0.0
+    try:
+        sd_gene = statistics.pstdev(gene_list) if len(gene_list) >= 2 else 0.0
+    except Exception:
+        sd_gene = 0.0
+    try:
+        sd_arm = statistics.pstdev(armory_list) if len(armory_list) >= 2 else 0.0
+    except Exception:
+        sd_arm = 0.0
+
+    def _quad_label(code: str) -> str:
+        # 40k/Deathwatch flavored, descriptive, one word per quadrant
+        mapping = {
+            "HH": "Sanctifier",  # High lethality + High preservation
+            "HL": "Purgator",    # High lethality + Low preservation
+            "LH": "Conservator", # Low lethality + High preservation
+            "LL": "Dormant",   # Low lethality + Low preservation
+        }
+        return mapping.get(code, code)
+
+    def _quad_code(z_aar: float, z_pres: float) -> str:
+        return ("H" if z_aar >= 0 else "L") + ("H" if z_pres >= 0 else "L")
+
+    def _quad_score(z_aar: float, z_pres: float, code: str, dx: float, dp: float) -> float:
+        xa = z_aar if sd_aar > 0.0 else dx
+        xp = z_pres if (sd_gene > 0.0 or sd_arm > 0.0) else dp
+        if code == "HH":
+            return max(xa, 0.0) + max(xp, 0.0)
+        if code == "HL":
+            return max(xa, 0.0) + max(-xp, 0.0)
+        if code == "LH":
+            return max(-xa, 0.0) + max(xp, 0.0)
+        return max(-xa, 0.0) + max(-xp, 0.0)  # LL
+
+    risk_profiles: List[Tuple[dict, str, float, float, float]] = []
     for t in team_stats:
-        a = t["avg_aar"]
-        g = t["avg_gene"]
-        if a > med_aar and g < med_gene:
-            score = (a - med_aar) + (med_gene - g)
-            shock_candidates.append((t, score))
-        if a < med_aar and g > med_gene:
-            score = (med_aar - a) + (g - med_gene)
-            surgical_candidates.append((t, score))
+        # Median-centered distances for axes
+        dx = (float(t.get("avg_aar", 0.0) or 0.0) - med_aar)
+        dy = (float(t.get("avg_gene", 0.0) or 0.0) - med_gene)
+        dz = (float(t.get("avg_armory", 0.0) or 0.0) - med_armory)
+        # Axis z-scores (zero if dispersion not available)
+        z_aar = (dx / sd_aar) if sd_aar > 0.0 else 0.0
+        z_gene = (dy / sd_gene) if sd_gene > 0.0 else 0.0
+        z_arm = (dz / sd_arm) if sd_arm > 0.0 else 0.0
+        # Composite Preservation*
+        z_pres = 0.6 * z_gene + 0.4 * z_arm
+        dp = 0.6 * dy + 0.4 * dz
+        code = _quad_code(z_aar, z_pres)
+        score = _quad_score(z_aar, z_pres, code, dx, dp)
+        risk_profiles.append((t, code, score, dx, dp))
 
-    if shock_candidates:
-        shock_team, shock_score = max(shock_candidates, key=lambda x: x[1])
-    else:
-        shock_team = max(team_stats, key=lambda t: (t["avg_aar"] - t["avg_gene"]))
-        shock_score = (
-            (shock_team["avg_aar"] - med_aar) + (med_gene - shock_team["avg_gene"])
-            if med_aar or med_gene
-            else (shock_team["avg_aar"] - shock_team["avg_gene"])
-        )
-
-    if surgical_candidates:
-        surgical_team, surgical_score = max(surgical_candidates, key=lambda x: x[1])
-    else:
-        surgical_team = max(team_stats, key=lambda t: (t["avg_gene"] - t["avg_aar"]))
-        surgical_score = (
-            (med_aar - surgical_team["avg_aar"])
-            + (surgical_team["avg_gene"] - med_gene)
-            if med_aar or med_gene
-            else (surgical_team["avg_gene"] - surgical_team["avg_aar"])
-        )
+    # Debug-only: dump medians/dispersion and per-team deltas to terminal
+    try:
+        if not BROADCAST_STATUS:
+            header = "[Command Brief Diagnostics]"
+            print(header)
+            print(
+                f"  Medians — AAR: {med_aar:.3f}, Gene: {med_gene:.3f}, Armory: {med_armory:.3f}, Ops: {med_ops:.3f}"
+            )
+            print(
+                f"  Dispersion — sd(AAR): {sd_aar:.3f}, sd(Gene): {sd_gene:.3f}, sd(Armory): {sd_arm:.3f}"
+            )
+            for t, code, score, dx, dp in risk_profiles:
+                name = t.get("name", "Unknown")
+                a = float(t.get("avg_aar", 0.0) or 0.0)
+                g = float(t.get("avg_gene", 0.0) or 0.0)
+                r = float(t.get("avg_armory", 0.0) or 0.0)
+                near = (abs(dx) < 0.05 and abs(dp) < 0.05)
+                flag = " [near-median]" if near else ""
+                print(
+                    f"  {name:<18} | avgAAR {a:.3f} avgGene {g:.3f} avgArm {r:.3f} | ΔAAR {dx:+.3f} ΔPres* {dp:+.3f} | code {code} idx {score:.3f}{flag}"
+                )
+    except Exception:
+        pass
 
     # Force Multiplier: per-op per-capita AAR average
     force_multiplier = best_force
@@ -1789,28 +1835,56 @@ async def command_brief(
     lines.append(
         "------------------------------------------------------------------------------"
     )
-    lines.append(
-        f"  Veteran Lethality Index     :: {_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})"
-    )
-    # Gene-seed and armory metrics are owned by Apothecarion and Techmarine briefs.
-    lines.append(
-        f"  Operational Tempo           :: {_team_label(best_tempo)}  (Ops: {int(best_tempo['avg_ops'])})"
-    )
-    lines.append(
-        f"  Siegebreaker Rating         :: {_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})"
-    )
-    lines.append(
-        f"  Kill Team Reliability Index :: {_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})"
-    )
-    lines.append(
-        f"  Risk Appetite — Shock       :: {_team_label(shock_team)}  (Score: {shock_score:.2f})"
-    )
-    lines.append(
-        f"  Risk Appetite — Surgical    :: {_team_label(surgical_team)}  (Score: {surgical_score:.2f})"
-    )
-    lines.append(
-        f"  Force Multiplier Rating     :: {_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})"
-    )
+    # Build aligned key/value lines so all '::' markers line up
+    kv_lines: List[Tuple[str, str]] = []
+    kv_lines.append((
+        "Veteran Lethality Index",
+        f"{_team_label(best_lethality)}  (Avg AAR: {best_lethality['avg_aar']:.2f})",
+    ))
+    kv_lines.append((
+        "Operational Tempo",
+        f"{_team_label(best_tempo)}  (Ops: {int(best_tempo['avg_ops'])})",
+    ))
+    kv_lines.append((
+        "Siegebreaker Rating",
+        f"{_team_label(best_siegebreaker)}  (Avg Waves: {best_siegebreaker['avg_waves']:.2f})",
+    ))
+    kv_lines.append((
+        "Kill Team Reliability Index",
+        f"{_team_label(best_reliability)}  (Score: {best_reliability['reliability']:.2f})",
+    ))
+    # Per-team composite Risk Appetite (aligned)
+    def _fmt_delta(val: float) -> str:
+        try:
+            return f"{val:+.2f}"
+        except Exception:
+            return str(val)
+
+    # Treat near-median teams as neutral for readability (avoids HH/LL on exact ties)
+    EPS = 0.05
+    for t, code, score, dx, dp in risk_profiles:
+        disp_label = _quad_label(code)
+        try:
+            if abs(dx) < EPS and abs(dp) < EPS:
+                disp_label = "Orthodox"  # lore-friendly neutral label for median posture
+        except Exception:
+            pass
+        kv_lines.append((
+            f"Risk Appetite — {_team_label(t)}",
+            f"{disp_label}  (AAR Δ {_fmt_delta(dx)} | Pres* Δ {_fmt_delta(dp)}; Index {score:.2f})",
+        ))
+    kv_lines.append((
+        "Force Multiplier Rating",
+        f"{_team_label(force_multiplier)}  (Avg AAR/Member: {force_multiplier.get('force_multiplier', 0.0):.2f})",
+    ))
+
+    label_width = 0
+    try:
+        label_width = max((len(k) for k, _ in kv_lines), default=0)
+    except Exception:
+        label_width = 0
+    for k, v in kv_lines:
+        lines.append(f"  {k:<{label_width}} :: {v}")
     # Company Command Notes section removed
     lines.append(
         "------------------------------------------------------------------------------"
@@ -1828,7 +1902,19 @@ async def command_brief(
     )
     lines.append("\u001b[0m```")
 
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+    # Send response; surface interaction errors clearly when debugging
+    try:
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
+    except Exception as e:
+        try:
+            err_type = type(e).__name__
+            err_msg = str(e)
+            note = "Unknown interaction token (defer/send mismatch or expired)" if "Unknown interaction" in err_msg or "10062" in err_msg else ""
+            print(f"[Command Brief Error] {err_type}: {err_msg} {note}")
+        except Exception:
+            pass
+        # Re-raise so the framework can handle/report appropriately
+        raise
     
 @bot.tree.command(
     name="techmarine_brief",
@@ -1897,13 +1983,8 @@ async def techmarine_brief(
         if kt_members:
             teams.append((_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members))
 
-    # Company Command synthetic team: Sergeant+ in company
-    idx_sergeant = _role_index("Watch Sergeant")
-    company_command_members: List[discord.Member] = []
-    if idx_sergeant is not None:
-        for m in company_members:
-            if is_sergeant_or_higher(m):
-                company_command_members.append(m)
+    # Company Command synthetic team via shared rule
+    company_command_members = _resolve_company_command_members(company)
     if company_command_members:
         teams.append(("Company Command", company_command_members))
 
@@ -2506,14 +2587,8 @@ async def librarian_brief(
         if kt_members:
             teams.append((getattr(kt, "name", "Kill Team"), kt_members))
 
-    # Company Command synthetic team: Sergeant+ in company
-    idx_sergeant = _role_index("Watch Sergeant")
-    company_command_members: List[discord.Member] = []
-    if idx_sergeant is not None:
-        for m in company_members:
-            # Use existing is_sergeant_or_higher, already role-alias aware
-            if is_sergeant_or_higher(m):
-                company_command_members.append(m)
+    # Company Command synthetic team via shared rule
+    company_command_members = _resolve_company_command_members(company)
     if company_command_members:
         teams.append(("Company Command", company_command_members))
 
@@ -3834,36 +3909,8 @@ async def apothecary_brief(
                 (_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members)
             )
 
-    # Company Command: mirror killteam_brief logic (Captain through above Sergeant, in 'Watch Company Primus')
-    try:
-        idx_sergeant = _role_index("Watch Sergeant")
-        idx_captain = _role_index("Watch Captain")
-    except Exception:
-        idx_sergeant = None
-        idx_captain = None
-
-    company_command_members: List[discord.Member] = []
-    try:
-        base_members = list(getattr(company, "members", []))
-        for m in base_members:
-            roles = getattr(m, "roles", [])
-            has_primus = False
-            for r in roles:
-                rn = (getattr(r, "name", "") or "").lower()
-                if ("primus" in rn) and ("company" in rn):
-                    has_primus = True
-                    break
-            highest_idx = get_highest_rank_index(m)
-            if (
-                has_primus
-                and idx_sergeant is not None
-                and idx_captain is not None
-                and highest_idx is not None
-                and (idx_captain <= highest_idx < idx_sergeant)
-            ):
-                company_command_members.append(m)
-    except Exception:
-        company_command_members = []
+    # Company Command via shared rule
+    company_command_members: List[discord.Member] = _resolve_company_command_members(company)
 
     # Compute last-N-day activity map from AAR records
     span_days = days if (isinstance(days, int) and days > 0) else 7
@@ -4915,24 +4962,29 @@ def _collect_company_teams(guild: discord.Guild, company: discord.Role):
             teams.append(
                 (_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members)
             )
-    # Company Command per doctrine: strictly above Sergeant up to Captain (inclusive),
-    # plus the four specialist roles and Company Champion.
-    company_command_members: List[discord.Member] = []
+    # Company Command via shared rule; build debug reasons for visibility
+    company_command_members: List[discord.Member] = _resolve_company_command_members(company)
     cc_debug: List[Tuple[discord.Member, str]] = []
+    excluded_roles = {
+        "Lord Executioner",
+        "High Chaplain",
+        "Forgemaster",
+        "Void Warden",
+        "Voidwarden",
+        "Chief Apothecary",
+    }
     for m in company_members:
         names = _canonical_role_names(m)
-        # Explicit exclusion: Lord Executioner is never considered Company Command
-        if "Lord Executioner" in names:
-            cc_debug.append((m, "excluded: lord-executioner"))
+        if any(er in names for er in excluded_roles):
+            reason = "excluded: high-command" if "Lord Executioner" not in names else "excluded: lord-executioner"
+            cc_debug.append((m, reason))
             continue
-        # Include Lieutenants and Captains explicitly
+        included = m in company_command_members
         has_lt = "Watch Lieutenant" in names
         has_capt = "Watch Captain" in names
-        # Specialists and Company Champion
         is_specialist = any(r in names for r in SPECIALIST_ROLES)
         is_company_champion = "Company Champion" in names
-        if has_lt or has_capt or is_specialist or is_company_champion:
-            company_command_members.append(m)
+        if included:
             reason = (
                 "captain" if has_capt else ("lieutenant" if has_lt else ("specialist" if is_specialist else "champion"))
             )
