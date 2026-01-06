@@ -3322,6 +3322,35 @@ def compute_stats_for_user(user_id: str):
     }
 
 
+def _induction_count_for_user(user_id: str) -> int:
+    """Compute total inductions a brother participated in across all AARs.
+    Rule: Siege initiation counts immediately as one induction.
+          Operation initiation requires three trials to count as one induction.
+    """
+    try:
+        data = load_aar_data(AAR_RECORDS_PATH)
+    except Exception:
+        data = {}
+    ops_trials = 0
+    siege_inductions = 0
+    for rec in data.values():
+        try:
+            brother_ids = rec.get("brother_ids") or []
+            if str(user_id) not in brother_ids:
+                continue
+            if not bool(rec.get("initiation_trial")):
+                continue
+            dclass = (rec.get("difficulty_class") or "").lower()
+            if "siege" in dclass:
+                siege_inductions += 1
+            else:
+                ops_trials += 1
+        except Exception:
+            # Be resilient to malformed records
+            pass
+    return int(siege_inductions + (ops_trials // 3))
+
+
 def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
     ops = 0
     aar_points = 0
@@ -4087,6 +4116,24 @@ async def apothecary_brief(
         except Exception:
             pass
 
+    # Initiation Rites Leadership: show the formation(s) with highest average inductions
+    try:
+        induction_avgs: List[Tuple[str, float]] = []
+        for name, members in teams:
+            counts = [_induction_count_for_user(str(getattr(m, "id", ""))) for m in members]
+            avg_ind = (sum(counts) / float(len(counts))) if counts else 0.0
+            induction_avgs.append((name, avg_ind))
+        if induction_avgs:
+            best_avg = max(avg for _n, avg in induction_avgs)
+            epsilon = 1e-9
+            winners = [n for n, avg in induction_avgs if abs(avg - best_avg) <= epsilon]
+            winners_fmt = " / ".join([f"KT {n}" if n != "Company Command" else n for n in winners]) if winners else "N/A"
+            lines.append(
+                f"  Initiation Rites Leadership    :: {winners_fmt} (Avg Inductions: {best_avg:.2f})"
+            )
+    except Exception:
+        pass
+
     # High Command Notes (window posture using medical load and stability signals)
     try:
         high_command_roles = {
@@ -4371,26 +4418,45 @@ async def _parse_oath_message(msg: discord.Message):
                 oath_rank_at_time_raw = ln.strip()
             break
     target_role_names = [getattr(r, "name", "") for r in msg.role_mentions]
-    # Also parse textual oath target line for recognizable roles/ranks
+    # Also parse plaintext oath targets anywhere in the message (case-insensitive)
     try:
+        # Valid battle-line targets are strictly above Watch Veteran
+        allowed_bl = [
+            r for r in BATTLE_LINE_ORDER if r not in ("Watch Brother", "Watch Veteran")
+        ]
+        all_allowed_roles = set(allowed_bl) | CHAMPION_ROLES | SPECIALIST_ROLES | HIGH_COMMAND_ROLES
+
+        # Prefer explicit "Oath:" line if present, otherwise search entire content
+        oath_text = None
         for ln in lines:
             low = ln.lower()
-            if low.startswith("oath:"):
+            if low.startswith("oath"):
                 try:
-                    oath_text = ln.split(":", 1)[1].strip()
+                    # Support formats like "Oath:", "Oath -", "Oath —"
+                    split_tok = ":" if ":" in ln else ("-" if "-" in ln else "—" if "—" in ln else None)
+                    if split_tok:
+                        oath_text = ln.split(split_tok, 1)[1].strip()
+                    else:
+                        oath_text = ln.strip()
                 except Exception:
                     oath_text = ln.strip()
-                # Collect battle-line targets mentioned in text (ignore Brother/Veteran as oath targets)
-                for r in BATTLE_LINE_ORDER:
-                    if r in ("Watch Brother", "Watch Veteran"):
-                        continue
-                    if r.lower() in (oath_text or "").lower():
-                        target_role_names.append(r)
-                # Collect Champion/Specialist/High Command targets mentioned in text
-                for r in list(CHAMPION_ROLES | SPECIALIST_ROLES | HIGH_COMMAND_ROLES):
-                    if r.lower() in (oath_text or "").lower():
-                        target_role_names.append(r)
                 break
+        text_to_search = (oath_text or content).lower()
+
+        for r in all_allowed_roles:
+            try:
+                if r and r.lower() in text_to_search:
+                    target_role_names.append(r)
+            except Exception:
+                continue
+        # De-duplicate while preserving order
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for n in target_role_names:
+            if n and n not in seen:
+                deduped.append(n)
+                seen.add(n)
+        target_role_names = deduped
     except Exception:
         pass
     has_oath = True if user_id else False
@@ -4692,14 +4758,29 @@ def _collect_company_teams(guild: discord.Guild, company: discord.Role):
             teams.append(
                 (_extract_killteam_name(getattr(kt, "name", "Unknown")), kt_members)
             )
-    idx_sergeant = _role_index("Watch Sergeant")
+    # Company Command per doctrine: strictly above Sergeant up to Captain (inclusive),
+    # plus the four specialist roles and Company Champion.
+    idx_lieutenant = _role_index("Watch Lieutenant")
+    idx_captain = _role_index("Watch Captain")
     company_command_members: List[discord.Member] = []
-    if idx_sergeant is not None:
-        for m in company_members:
-            names = _canonical_role_names(m)
-            bl_idxs = [i for i, r in enumerate(BATTLE_LINE_ORDER) if r in names]
-            if bl_idxs and max(bl_idxs) >= BATTLE_LINE_ORDER.index("Watch Sergeant"):
-                company_command_members.append(m)
+    for m in company_members:
+        names = _canonical_role_names(m)
+        # Battle-line index (if any)
+        bl_idxs = [i for i, r in enumerate(BATTLE_LINE_ORDER) if r in names]
+        has_bl = bool(bl_idxs)
+        max_bl = max(bl_idxs) if bl_idxs else None
+        # Above Sergeant: Lieutenant or Captain
+        above_sergeant = False
+        try:
+            if has_bl and idx_lieutenant is not None and max_bl is not None:
+                above_sergeant = max_bl >= idx_lieutenant
+        except Exception:
+            above_sergeant = False
+        # Specialists and Company Champion
+        is_specialist = any(r in names for r in SPECIALIST_ROLES)
+        is_company_champion = "Company Champion" in names
+        if above_sergeant or is_specialist or is_company_champion:
+            company_command_members.append(m)
     if company_command_members:
         teams.append(("Company Command", company_command_members))
     return teams
