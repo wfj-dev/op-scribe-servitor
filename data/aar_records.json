@@ -57028,5 +57028,208 @@
     "edited_at": null,
     "content_hash": "0e93a8ad8645907845d2c6ab30832517029aa66ec5c17fdc1d9f62d1ce7b22d0",
     "initiation_trial": false
+  },
+  "1458163158635249888": {
+    "aar_id": 1458163158635249888,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "933777200312881263",
+      "1121971333278990336",
+      "840138096921804800"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Brother Grungar",
+      "Watch Brother Ogudai"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T18:19:48.380000+00:00",
+    "edited_at": null,
+    "content_hash": "6caac55c9fb9dbb21f84a11ee4b5f204d39e57e4b8901598c09888944144b58c",
+    "initiation_trial": false
+  },
+  "1458171780299620669": {
+    "aar_id": 1458171780299620669,
+    "mission": "Reliquary",
+    "difficulty": "Hard-Stratagem SOK-G: Pipehitter",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 2,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "405887897171001345",
+      "1294159011331051530",
+      "402754610110005250"
+    ],
+    "brother_names": [
+      "Watch Brother Dinnex",
+      "Watch Sergeant Wi-Fi",
+      "Watch Brother Sethius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-06T18:54:03.945000+00:00",
+    "edited_at": null,
+    "content_hash": "7a98b03cfe1fa81e1854a35e3277e5db8aca81d920e54cf7ac37781abc97e7e6",
+    "initiation_trial": false
+  },
+  "1458173166349320297": {
+    "aar_id": 1458173166349320297,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "933777200312881263",
+      "1121971333278990336",
+      "840138096921804800"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Brother Grungar",
+      "Watch Brother Ogudai"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T18:59:34.405000+00:00",
+    "edited_at": null,
+    "content_hash": "180560a914bff35ff377af4fe0a53015e85ecdb37b3a4e30baa353d6a5f4a843",
+    "initiation_trial": false
+  },
+  "1458174895770046504": {
+    "aar_id": 1458174895770046504,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "141769315085975552",
+    "gene_seed_carried_name": "Watch Veteran Davren",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402023509280292875",
+      "141769315085975552",
+      "108969956829298688"
+    ],
+    "brother_names": [
+      "Watch Sergeant Moloch",
+      "Watch Veteran Davren",
+      "Watch Veteran Hylair"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T19:06:26.731000+00:00",
+    "edited_at": null,
+    "content_hash": "03ef02c0168060919e9e7de6f120c8b99f84df2f21c361214e61809fc011ef35",
+    "initiation_trial": false
+  },
+  "1458182965749092402": {
+    "aar_id": 1458182965749092402,
+    "mission": "Inferno <@&1440108298115485716>",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "141769315085975552",
+    "gene_seed_carried_name": "Watch Veteran Davren",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402023509280292875",
+      "141769315085975552",
+      "108969956829298688"
+    ],
+    "brother_names": [
+      "Watch Sergeant Moloch",
+      "Watch Veteran Davren",
+      "Watch Veteran Hylair"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T19:38:30.764000+00:00",
+    "edited_at": null,
+    "content_hash": "30e94cd6b899e26b4cea482ea20fbe05056982aa24310c7a738712d1d19bef53",
+    "initiation_trial": false
+  },
+  "1458184180155547688": {
+    "aar_id": 1458184180155547688,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 0,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "933777200312881263",
+    "gene_seed_carried_name": "Watch Sergeant Psycho",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "933777200312881263",
+      "1444810056821637133",
+      "1121971333278990336"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Sergeant Jack",
+      "Watch Brother Grungar"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T19:43:20.301000+00:00",
+    "edited_at": null,
+    "content_hash": "3e4ae5d883194156330efc080bedbf37c616b75745df762a2c85fc4e18dae0d9",
+    "initiation_trial": false
+  },
+  "1458187549473247388": {
+    "aar_id": 1458187549473247388,
+    "mission": "Inferno",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 3,
+    "armory_challenge_points": 9,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "281651485782310914",
+      "1294159011331051530",
+      "405887897171001345"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Sergeant Wi-Fi",
+      "Watch Brother Dinnex"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-06T19:56:43.609000+00:00",
+    "edited_at": null,
+    "content_hash": "1565a8cd0fc037f948d21b780afe3a99e76533dd84c6a8887f5fb60d78ea8981",
+    "initiation_trial": false
   }
 }
