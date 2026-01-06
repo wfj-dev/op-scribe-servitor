@@ -56284,5 +56284,291 @@
     "edited_at": "2026-01-05T20:36:24.457000+00:00",
     "content_hash": "c7200f2ca7b1eb0f236b4b8026aa00a9e4992d02997163df0a394cd3546272aa",
     "initiation_trial": false
+  },
+  "1457873108647153705": {
+    "aar_id": 1457873108647153705,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 0,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "107101884757598208",
+    "gene_seed_carried_name": "Watch Veteran Atom",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "107101884757598208",
+      "543868630996353024",
+      "106830484616511488"
+    ],
+    "brother_names": [
+      "Watch Veteran Atom",
+      "Company Champion Trauma",
+      "Watch Inductee agorar"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T23:07:15.074000+00:00",
+    "edited_at": null,
+    "content_hash": "b95cb578085ddd65fabed82bd1c7190c2b7114e336a78ebd5f98395e459fe315",
+    "initiation_trial": true
+  },
+  "1457879683923443775": {
+    "aar_id": 1457879683923443775,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "440987777039990786",
+      "624772672349405204",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Watch Brother Raul",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-05T23:33:22.742000+00:00",
+    "edited_at": "2026-01-05T23:35:02.599000+00:00",
+    "content_hash": "f13a5d809c3c6501fe81fc1f854909c2a9af9893d25fe65ef542dfc6ea7daac5",
+    "initiation_trial": false
+  },
+  "1457889366595866626": {
+    "aar_id": 1457889366595866626,
+    "mission": null,
+    "difficulty": "Normal-Siege",
+    "difficulty_class": "normal_siege",
+    "armory_data": 3,
+    "armory_challenge_points": 3,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "440987777039990786",
+      "624772672349405204"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Watch Brother Raul"
+    ],
+    "brother_waves": {},
+    "waves": 10,
+    "points_for_op": 6,
+    "timestamp": "2026-01-06T00:11:51.271000+00:00",
+    "edited_at": null,
+    "content_hash": "2abc01f55baa5f78014965d4dbc99ac0257ee9b6b269f57c029720e8b621cf56",
+    "initiation_trial": false
+  },
+  "1457911258937561260": {
+    "aar_id": 1457911258937561260,
+    "mission": "Obelisk",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "440987777039990786",
+      "301998534754959370",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Watch Lieutenant Bone",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T01:38:50.812000+00:00",
+    "edited_at": "2026-01-06T01:39:12.662000+00:00",
+    "content_hash": "a059614d7690a9ab2933917ed67a829e9eef565b6452e9a8e34a4c480731dc20",
+    "initiation_trial": false
+  },
+  "1457920999017418955": {
+    "aar_id": 1457920999017418955,
+    "mission": "Obelisk",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "301998534754959370",
+      "1444810056821637133"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Lieutenant Bone",
+      "Watch Sergeant Jack"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T02:17:33.028000+00:00",
+    "edited_at": null,
+    "content_hash": "4e5ffebe4e177030654f58b23522daae7716fbf07eac2bcc784669ef90f4f3df",
+    "initiation_trial": false
+  },
+  "1457928445618163824": {
+    "aar_id": 1457928445618163824,
+    "mission": null,
+    "difficulty": "Normal-Siege",
+    "difficulty_class": "normal_siege",
+    "armory_data": 3,
+    "armory_challenge_points": 3,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "1121971333278990336",
+      "437645667838590976",
+      "727577031914815508"
+    ],
+    "brother_names": [
+      "Watch Brother Grungar",
+      "Watch Apothecary Veritas",
+      "Watch Master Van"
+    ],
+    "brother_waves": {},
+    "waves": 15,
+    "points_for_op": 9,
+    "timestamp": "2026-01-06T02:47:08.436000+00:00",
+    "edited_at": "2026-01-06T03:14:17.636000+00:00",
+    "content_hash": "d704d35a5c4c9636ad6a8f374766fe11a876597f6eb54b0ec26569329dbac928",
+    "initiation_trial": true
+  },
+  "1457937180742651904": {
+    "aar_id": 1457937180742651904,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "440987777039990786",
+    "gene_seed_carried_name": "Lord Executioner Kaedes",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "733907873528283197",
+      "440987777039990786",
+      "228703987816202240"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Lord Executioner Kaedes",
+      "Watch Librarian Bob"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T03:21:51.052000+00:00",
+    "edited_at": null,
+    "content_hash": "3aa29a238d218467d6bae4363d1c00c14a92b1611e3dc66358a7ab3ba1f4ab7c",
+    "initiation_trial": false
+  },
+  "1457949962976624651": {
+    "aar_id": 1457949962976624651,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "440987777039990786",
+    "gene_seed_carried_name": "Lord Executioner Kaedes",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "228703987816202240",
+      "440987777039990786"
+    ],
+    "brother_names": [
+      "Watch Librarian Bob",
+      "Lord Executioner Kaedes"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T04:12:38.574000+00:00",
+    "edited_at": null,
+    "content_hash": "59890e908221adf6546f87705ca57dad96876a7b03bbc229e7be4376ea0e1067",
+    "initiation_trial": false
+  },
+  "1457952500173901890": {
+    "aar_id": 1457952500173901890,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "624772672349405204",
+    "gene_seed_carried_name": "Watch Brother Raul",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "437645667838590976",
+      "624772672349405204",
+      "1121971333278990336"
+    ],
+    "brother_names": [
+      "Watch Apothecary Veritas",
+      "Watch Brother Raul",
+      "Watch Brother Grungar"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-06T04:22:43.489000+00:00",
+    "edited_at": null,
+    "content_hash": "46b06795881715c117962d1c14e6ce9d0feea6e07d0daca9320488c0e17e211d",
+    "initiation_trial": false
+  },
+  "1457980167778603151": {
+    "aar_id": 1457980167778603151,
+    "mission": null,
+    "difficulty": "Normal-Siege",
+    "difficulty_class": "normal_siege",
+    "armory_data": 6,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "281651485782310914",
+      "733907873528283197",
+      "1325341317173350421"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Apothecary Serrigan",
+      "Guest krzykxy"
+    ],
+    "brother_waves": {},
+    "waves": 24,
+    "points_for_op": 12,
+    "timestamp": "2026-01-06T06:12:39.960000+00:00",
+    "edited_at": null,
+    "content_hash": "e5ae85437c4a8b9a6b04155d660641480727c765affd87d03f581dc39fe09ff2",
+    "initiation_trial": true
   }
 }
