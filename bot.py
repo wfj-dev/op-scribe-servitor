@@ -1954,6 +1954,82 @@ async def techmarine_brief(
     per_team_points_avg: Dict[str, float] = {n: _mean(per_team_points.get(n, [])) for n, _ in teams}
     per_team_ops_count: Dict[str, int] = {n: len(per_team_values.get(n, [])) for n, _ in teams}
 
+    # New metrics: Typical Salvage Yield (Median) and High-Value Salvage Frequency
+    # - Typical Salvage Yield: per-team median of `armory_data`
+    # - High-Value Salvage Frequency: share of team ops with `armory_data` >= company Q3
+    per_team_median: Dict[str, float] = {}
+    for name, vals in per_team_values.items():
+        try:
+            per_team_median[name] = statistics.median(vals) if vals else 0.0
+        except Exception:
+            per_team_median[name] = 0.0
+
+    best_median: Optional[Tuple[str, float]] = None
+    try:
+        median_candidates = [
+            (name, per_team_median.get(name, 0.0))
+            for name, _ in teams
+            if per_team_ops_count.get(name, 0) > 0
+        ]
+        if median_candidates:
+            best_median = max(median_candidates, key=lambda x: x[1])
+    except Exception:
+        best_median = None
+
+    # Company armory distribution (only ops where any company member participated)
+    company_arm_values: List[float] = []
+    try:
+        for rec in recent_records:
+            try:
+                bros = [str(b) for b in (rec.get("brother_ids") or [])]
+                if not (set(bros) & company_ids):
+                    continue
+                arm = rec.get("armory_data")
+                if arm is None:
+                    continue
+                company_arm_values.append(float(arm))
+            except Exception:
+                continue
+    except Exception:
+        company_arm_values = []
+
+    # 75th percentile (Q3) threshold for "high-value" salvage
+    q3_threshold: float = 0.0
+    try:
+        if company_arm_values:
+            # Use inclusive method to avoid dropping extremes on small samples
+            qs = statistics.quantiles(company_arm_values, n=4, method="inclusive") if len(company_arm_values) >= 2 else []
+            q3_threshold = qs[2] if qs else company_arm_values[0]
+        else:
+            q3_threshold = 0.0
+    except Exception:
+        try:
+            q3_threshold = statistics.median(company_arm_values) if company_arm_values else 0.0
+        except Exception:
+            q3_threshold = 0.0
+
+    per_team_hv_rate: Dict[str, Tuple[int, int, float]] = {}  # name -> (hv_count, total, rate)
+    for name, vals in per_team_values.items():
+        if vals:
+            hv_count = sum(1 for v in vals if v >= q3_threshold)
+            total = len(vals)
+            rate = (hv_count / total) if total > 0 else 0.0
+            per_team_hv_rate[name] = (hv_count, total, rate)
+        else:
+            per_team_hv_rate[name] = (0, 0, 0.0)
+
+    best_hv: Optional[Tuple[str, int, int, float]] = None
+    try:
+        hv_candidates = [
+            (name, hv[0], hv[1], hv[2])
+            for name, hv in per_team_hv_rate.items()
+            if per_team_ops_count.get(name, 0) > 0
+        ]
+        if hv_candidates:
+            best_hv = max(hv_candidates, key=lambda x: x[3])
+    except Exception:
+        best_hv = None
+
     # Derive winners/labels, restricting to teams with at least one data point where relevant
     nonempty = [t for t in team_stats if t[3] > 0]
     best_yield = max(nonempty, key=lambda t: t[1]) if nonempty else None
@@ -1962,7 +2038,6 @@ async def techmarine_brief(
     top_share = None
     if nonempty and total_all > 0:
         top_share = max(nonempty, key=lambda t: t[3])
-    low_yield = min(nonempty, key=lambda t: t[1]) if nonempty else None
 
     # Winner for risk-adjusted armory yield (average points per operation)
     best_points: Optional[Tuple[str, float]] = None
@@ -2020,12 +2095,26 @@ async def techmarine_brief(
     else:
         lines.append("  Materiel Concentration     :: —")
 
-    if low_yield:
+    # Typical Salvage Yield (Median)
+    if best_median:
         lines.append(
-            f"  Low-Yield Outlier          :: {_label(low_yield[0])}  (Avg Armory Data: {low_yield[1]:.2f})"
+            f"  Typical Salvage Yield      :: {_label(best_median[0])}  (Median: {best_median[1]:.2f})"
         )
     else:
-        lines.append("  Low-Yield Outlier          :: —")
+        lines.append("  Typical Salvage Yield      :: —")
+
+    # High-Value Salvage Frequency (≥ company Q3)
+    if best_hv:
+        hv_name, hv_cnt, hv_tot, hv_rate = best_hv
+        try:
+            q3_disp = f"{q3_threshold:.0f}"
+        except Exception:
+            q3_disp = f"{q3_threshold}"
+        lines.append(
+            f"  High-Value Salvage Freq.   :: {_label(hv_name)}  (≥ Q3 {q3_disp}; Rate: {hv_rate*100:.0f}% of {hv_tot})"
+        )
+    else:
+        lines.append("  High-Value Salvage Freq.   :: —")
 
     # High Command comparison notes (armory focus)
     try:
