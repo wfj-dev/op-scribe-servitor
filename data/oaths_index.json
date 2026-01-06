@@ -2,10 +2,10 @@
   "1457534809852088471": {
     "message_id": "1457534809852088471",
     "user_id": "402754610110005250",
-    "current_rank_raw": "<@&1429338953227440148>",
+    "user_display_name": "Watch Brother Sethius",
+    "oath_rank_at_time_raw": "<@&1429338953227440148>",
     "oath_target_roles": [
-      "Watch Chaplain",
-      "Watch Brother"
+      "Watch Chaplain"
     ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
@@ -13,12 +13,15 @@
     "content_hash": "06c6dc966c63b41d6cd4399659721094a0bd8f12fdf1b85757f20eadb4612aa5",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2026-01-05T00:42:58.356000+00:00"
+    "timestamp": "2026-01-05T00:42:58.356000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578229"
   },
   "1456293248426447031": {
     "message_id": "1456293248426447031",
     "user_id": "733907873528283197",
-    "current_rank_raw": "<@&1429342815170855003>",
+    "user_display_name": "Watch Apothecary Serrigan",
+    "oath_rank_at_time_raw": "<@&1429342815170855003>",
     "oath_target_roles": [
       "Watch Apothecary",
       "Chief Apothecary"
@@ -34,7 +37,8 @@
   "1456161170493935767": {
     "message_id": "1456161170493935767",
     "user_id": "228703987816202240",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Librarian Bob",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Librarian"
     ],
@@ -49,10 +53,10 @@
   "1455466614341369978": {
     "message_id": "1455466614341369978",
     "user_id": "1309632579263135806",
-    "current_rank_raw": "<@&1429338953227440148>",
+    "user_display_name": "Watch Brother Lucian",
+    "oath_rank_at_time_raw": "<@&1429338953227440148>",
     "oath_target_roles": [
-      "Watch Techmarine",
-      "Watch Brother"
+      "Watch Techmarine"
     ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
@@ -60,12 +64,15 @@
     "content_hash": "1dca682980e6497232f71fdc0948ea2cd0e4e0fc99ca53aad49458b44de550fa",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2025-12-30T07:44:42.121000+00:00"
+    "timestamp": "2025-12-30T07:44:42.121000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.577804"
   },
   "1455248002737508353": {
     "message_id": "1455248002737508353",
     "user_id": "437645667838590976",
-    "current_rank_raw": "<@&1429342815170855003>",
+    "user_display_name": "Watch Apothecary Veritas",
+    "oath_rank_at_time_raw": "<@&1429342815170855003>",
     "oath_target_roles": [
       "Watch Chaplain",
       "Watch Apothecary",
@@ -82,7 +89,8 @@
   "1452898366290923571": {
     "message_id": "1452898366290923571",
     "user_id": "281651485782310914",
-    "current_rank_raw": "<@&1429342203251265576>",
+    "user_display_name": "Watch Techmarine Jules",
+    "oath_rank_at_time_raw": "<@&1429342203251265576>",
     "oath_target_roles": [
       "Forgemaster",
       "Watch Sergeant",
@@ -101,7 +109,8 @@
   "1452887860121178224": {
     "message_id": "1452887860121178224",
     "user_id": "228703987816202240",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Watch Librarian Bob",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Sergeant"
     ],
@@ -116,7 +125,8 @@
   "1452007067974897755": {
     "message_id": "1452007067974897755",
     "user_id": "107101884757598208",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Watch Veteran Atom",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Sergeant",
       "Kill Team Champion"
@@ -127,12 +137,15 @@
     "content_hash": "4933e3115e2ca3513e59cdd670ba4c1494bf878ee866ac3cfb7bb0b5e548ccb3",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2025-12-20T18:37:41.992000+00:00"
+    "timestamp": "2025-12-20T18:37:41.992000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578029"
   },
   "1451802802434216089": {
     "message_id": "1451802802434216089",
     "user_id": "591485804526698507",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Brother Odium",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Techmarine"
     ],
@@ -142,12 +155,15 @@
     "content_hash": "8937ed76951908c4e376c050ff8acdf9c5408ff0949107eee2bb5b3e99cf2255",
     "edited_at": "2025-12-20T05:08:53.406000+00:00",
     "has_oath": true,
-    "timestamp": "2025-12-20T05:06:01.292000+00:00"
+    "timestamp": "2025-12-20T05:06:01.292000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.577803"
   },
   "1451110447896985742": {
     "message_id": "1451110447896985742",
     "user_id": "308032160089243649",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Kill Team Champion Falcon",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Sergeant",
       "Kill Team Champion"
@@ -158,12 +174,15 @@
     "content_hash": "481e663380b634bc8422e82b4f6b9c195c092452cdf1d9e27973b8794cdf70ed",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2025-12-18T07:14:51.107000+00:00"
+    "timestamp": "2025-12-18T07:14:51.107000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578028"
   },
   "1450937553531306207": {
     "message_id": "1450937553531306207",
     "user_id": "437645667838590976",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Watch Apothecary Veritas",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Chaplain",
       "Watch Apothecary"
@@ -179,7 +198,8 @@
   "1450523813992337570": {
     "message_id": "1450523813992337570",
     "user_id": "571035376135962645",
-    "current_rank_raw": null,
+    "user_display_name": "Watch Veteran Raelyn",
+    "oath_rank_at_time_raw": null,
     "oath_target_roles": [
       "Watch Sergeant",
       "Watch Lieutenant",
@@ -191,12 +211,15 @@
     "content_hash": "074841f4c94ec611fb6e46cc8b2044baa757c6cc607ae982f7df58ce230c3055",
     "edited_at": "2025-12-16T19:14:44.943000+00:00",
     "has_oath": true,
-    "timestamp": "2025-12-16T16:23:46.685000+00:00"
+    "timestamp": "2025-12-16T16:23:46.685000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578404"
   },
   "1450243643993493665": {
     "message_id": "1450243643993493665",
     "user_id": "1444810056821637133",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Watch Sergeant Jack",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Sergeant",
       "Kill Team Champion"
@@ -207,25 +230,33 @@
     "content_hash": "3e951bdf59a1cc5bcd3093097b0fc65db00dae53855fdf077f28951762f04527",
     "edited_at": "2025-12-21T01:44:52.173000+00:00",
     "has_oath": true,
-    "timestamp": "2025-12-15T21:50:28.952000+00:00"
+    "timestamp": "2025-12-15T21:50:28.952000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578761"
   },
   "1449679268283154432": {
     "message_id": "1449679268283154432",
     "user_id": "402023509280292875",
-    "current_rank_raw": "Watch Brother",
-    "oath_target_roles": [],
+    "user_display_name": "Watch Sergeant Moloch",
+    "oath_rank_at_time_raw": "Watch Brother",
+    "oath_target_roles": [
+      "Watch Sergeant"
+    ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
     "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1449679268283154432",
     "content_hash": "b2b8103f5e4e671a34554c73ade20b850da8f5ed5e5fcbc6e9014fd90bcbe836",
     "edited_at": "2025-12-14T18:20:57.495000+00:00",
     "has_oath": true,
-    "timestamp": "2025-12-14T08:27:51.297000+00:00"
+    "timestamp": "2025-12-14T08:27:51.297000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578766"
   },
   "1445623273659306044": {
     "message_id": "1445623273659306044",
     "user_id": "440987777039990786",
-    "current_rank_raw": "<@&1435341811886588154>",
+    "user_display_name": "Lord Executioner Kaedes",
+    "oath_rank_at_time_raw": "<@&1435341811886588154>",
     "oath_target_roles": [
       "Lord Executioner",
       "Watch Command"
@@ -241,7 +272,8 @@
   "1445544142305366196": {
     "message_id": "1445544142305366196",
     "user_id": "933777200312881263",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Watch Sergeant Psycho",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Sergeant"
     ],
@@ -251,12 +283,15 @@
     "content_hash": "e54638ad9f1df4a2be630cdf5cb19864bad523db7e6815f2d751aeb91c8c528c",
     "edited_at": "2025-12-02T22:41:37.926000+00:00",
     "has_oath": true,
-    "timestamp": "2025-12-02T22:36:20.437000+00:00"
+    "timestamp": "2025-12-02T22:36:20.437000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578765"
   },
   "1444169971478560808": {
     "message_id": "1444169971478560808",
     "user_id": "281651485782310914",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Techmarine Jules",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Techmarine"
     ],
@@ -271,7 +306,8 @@
   "1444080211611357224": {
     "message_id": "1444080211611357224",
     "user_id": null,
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": null,
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Company Champion",
       "Kill Team Champion",
@@ -288,11 +324,11 @@
   "1443377352531906672": {
     "message_id": "1443377352531906672",
     "user_id": "1014712606503739392",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Captain Solomon",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Lieutenant",
-      "Company Champion",
-      "Watch Brother"
+      "Company Champion"
     ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
@@ -300,12 +336,15 @@
     "content_hash": "7a59466e9bfa6c9581ad4c51354cf7647db8234d6c134c516d651cf43994c6da",
     "edited_at": "2025-12-16T18:08:22.321000+00:00",
     "has_oath": true,
-    "timestamp": "2025-11-26T23:06:17.498000+00:00"
+    "timestamp": "2025-11-26T23:06:17.498000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578764"
   },
   "1443270673089695876": {
     "message_id": "1443270673089695876",
     "user_id": "415956330705059841",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Veteran Crit",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Apothecary",
       "Watch Librarian"
@@ -316,12 +355,15 @@
     "content_hash": "9500957f91d963bc1497b364a5e032ecf3a99f55cf3a3d8fa6fd953eed686357",
     "edited_at": "2025-11-26T16:05:38.717000+00:00",
     "has_oath": true,
-    "timestamp": "2025-11-26T16:02:23.137000+00:00"
+    "timestamp": "2025-11-26T16:02:23.137000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578403"
   },
   "1443144748033380353": {
     "message_id": "1443144748033380353",
     "user_id": "1014712606503739392",
-    "current_rank_raw": "Sergeant",
+    "user_display_name": "Watch Captain Solomon",
+    "oath_rank_at_time_raw": "Sergeant",
     "oath_target_roles": [
       "Watch Captain"
     ],
@@ -336,7 +378,8 @@
   "1443104899645833328": {
     "message_id": "1443104899645833328",
     "user_id": "733907873528283197",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Apothecary Serrigan",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Apothecary"
     ],
@@ -351,7 +394,8 @@
   "1443076519684477018": {
     "message_id": "1443076519684477018",
     "user_id": "266088909467811840",
-    "current_rank_raw": "Watch Brother:",
+    "user_display_name": "Kill Team Champion Spirit",
+    "oath_rank_at_time_raw": "Watch Brother:",
     "oath_target_roles": [
       "Company Champion"
     ],
@@ -361,12 +405,15 @@
     "content_hash": "935f9b101d5d050f9bea67754cbee985a4ca4ea6c49b81b8cdd58c4effb0481a",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2025-11-26T03:10:53.358000+00:00"
+    "timestamp": "2025-11-26T03:10:53.358000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578228"
   },
   "1441135740926038068": {
     "message_id": "1441135740926038068",
     "user_id": "543868630996353024",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Company Champion Trauma",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Company Champion"
     ],
@@ -381,7 +428,8 @@
   "1439762406602571867": {
     "message_id": "1439762406602571867",
     "user_id": "933789838136717414",
-    "current_rank_raw": "Watch Veteran",
+    "user_display_name": "Chaplain Staffy's M.I.A. account",
+    "oath_rank_at_time_raw": "Watch Veteran",
     "oath_target_roles": [
       "Watch Chaplain"
     ],
@@ -396,7 +444,8 @@
   "1434949752260137080": {
     "message_id": "1434949752260137080",
     "user_id": "440987777039990786",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Lord Executioner Kaedes",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Company Champion",
       "Lord Executioner"
@@ -412,7 +461,8 @@
   "1434760374359691367": {
     "message_id": "1434760374359691367",
     "user_id": "1014712606503739392",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Captain Solomon",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Sergeant",
       "Watch Lieutenant",
@@ -429,7 +479,8 @@
   "1434667202329448579": {
     "message_id": "1434667202329448579",
     "user_id": "669647693030752273",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Veteran Korvaan",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Techmarine",
       "Watch Chaplain"
@@ -440,12 +491,15 @@
     "content_hash": "0931310988cb2394b5b85336a205d793284ae4ff9422dac3a37b6bf6cd05bf11",
     "edited_at": null,
     "has_oath": true,
-    "timestamp": "2025-11-02T22:15:15.863000+00:00"
+    "timestamp": "2025-11-02T22:15:15.863000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.577802"
   },
   "1434609244333674532": {
     "message_id": "1434609244333674532",
     "user_id": "301998534754959370",
-    "current_rank_raw": "Watch Brother",
+    "user_display_name": "Watch Lieutenant Bone",
+    "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
       "Watch Sergeant",
       "Watch Lieutenant",
@@ -457,12 +511,15 @@
     "content_hash": "86a6aabbc8bb7143354cfe62bf31dfbcd147131809164cea619dd5f25a8cd1fe",
     "edited_at": "2025-11-17T01:45:59.070000+00:00",
     "has_oath": true,
-    "timestamp": "2025-11-02T18:24:57.600000+00:00"
+    "timestamp": "2025-11-02T18:24:57.600000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-06T03:13:07.578765"
   },
   "1434604232387854458": {
     "message_id": "1434604232387854458",
     "user_id": null,
-    "current_rank_raw": null,
+    "user_display_name": null,
+    "oath_rank_at_time_raw": null,
     "oath_target_roles": [],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
@@ -475,10 +532,9 @@
   "1434603129340559441": {
     "message_id": "1434603129340559441",
     "user_id": null,
-    "current_rank_raw": null,
-    "oath_target_roles": [
-      "Watch Brother"
-    ],
+    "user_display_name": null,
+    "oath_rank_at_time_raw": null,
+    "oath_target_roles": [],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
     "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1434603129340559441",
@@ -488,6 +544,6 @@
     "timestamp": "2025-11-02T18:00:39.672000+00:00"
   },
   "_meta": {
-    "last_ingested_message_id": "1434604232387854458"
+    "last_ingested_message_id": "1434603129340559441"
   }
 }
