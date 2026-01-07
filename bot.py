@@ -1783,8 +1783,8 @@ async def command_brief(
     if hc_ops_count <= 0:
         hc_note_lines = [
             "+ High Command recorded no deployments during this window.",
-            "+ The Watch Master and the heads of the specialist orders remained committed ",
-            "  to strategic oversight and internal readiness.",
+            "+ The Watch Master and the specialist orders kept to the strategium, prioritizing ",
+            "  oversight and readiness rites.",
         ]
     elif hc_ops_count < med_ops and hc_avg_aar > med_aar:
         hc_note_lines = [
@@ -1792,6 +1792,11 @@ async def command_brief(
             "  lethality but remained limited in frequency by doctrine.",
             "+ The Watch Master and the heads of the specialist orders deploy only when ",
             "  strategic necessity overrides standing command duties.",
+        ]
+    elif hc_ops_count >= med_ops and hc_avg_aar <= med_aar:
+        hc_note_lines = [
+            "+ High Command maintained a hands-on presence to reinforce cohesion and command drills.",
+            "+ Direct oversight emphasized continuity of command over high-intensity sorties.",
         ]
     elif hc_ops_count < med_ops:
         hc_note_lines = [
@@ -2260,6 +2265,9 @@ async def techmarine_brief(
             lines.append(
                 "  + High Command recorded no materiel recovery during this window."
             )
+            lines.append(
+                "  + Stewardship posture maintained: stockpile audits and rites of upkeep emphasized."
+            )
         else:
             hc_avg_arm = (sum(hc_arm_vals) / len(hc_arm_vals)) if hc_arm_vals else 0.0
             hc_avg_pts = (sum(hc_pts_vals) / len(hc_pts_vals)) if hc_pts_vals else 0.0
@@ -2270,6 +2278,10 @@ async def techmarine_brief(
             elif hc_avg_arm >= comp_med_data:
                 lines.append(
                     "  + High Command maintained materiel recovery in line with company standards."
+                )
+            elif (hc_ops >= comp_med_ops) and (hc_avg_pts < comp_med_points):
+                lines.append(
+                    "  + High Command accepted operational risk to meet materiel exigencies despite modest yields."
                 )
             else:
                 lines.append(
@@ -2332,6 +2344,38 @@ MISSION_TAGS: Dict[str, Dict[str, List[str]]] = {
         "doctrine": ["Asset Recovery", "Area Securement"],
     },
 }
+
+# Abbreviations for mission names (used in concise distribution displays)
+MISSION_ABBREVIATIONS: Dict[str, str] = {
+    "Inferno": "INF",
+    "Decapitation": "DEC",
+    "Vox Liberatis": "VL",
+    "Reliquary": "REL",
+    "Fall of Atreus": "FOA",
+    "Ballistic Engine": "BE",
+    "Termination": "TER",
+    "Obelisk": "OBL",
+    "Exfiltration": "EXF",
+    "Vortex": "VTX",
+    "Reclamation": "REC",
+    "Siege": "SGE",
+}
+
+def _abbr_mission_name(name: Optional[str]) -> str:
+    """Return a concise abbreviation for a canonical mission name.
+    Falls back to uppercase initials (up to 3 chars) if unmapped.
+    """
+    try:
+        if not name:
+            return "—"
+        ab = MISSION_ABBREVIATIONS.get(name)
+        if ab:
+            return ab
+        words = re.split(r"\s+", name.strip())
+        abbr = "".join(w[0] for w in words if w)[:3].upper()
+        return abbr or (name.strip()[:3].upper())
+    except Exception:
+        return (name or "").strip()[:3].upper() or "—"
 
 # Environment macro categories used for band rendering
 ENV_MACROS_ORDER: List[str] = [
@@ -2503,6 +2547,54 @@ def _operational_exposure_tier_pct(coverage_pct: float) -> str:
         return "BROAD"
     return "EXTENSIVE"
 
+# New helper: cohesion by concentration (top-1 doctrine share)
+def _cohesion_concentration_tier(share_pct: float) -> str:
+    """Map top doctrine share percentage to a loreful cohesion tier.
+    Lower share => more balanced/mixed; higher => concentrated/monolithic.
+    """
+    p = max(0.0, min(100.0, share_pct))
+    if p <= 35.0:
+        return "BALANCED"
+    if p <= 50.0:
+        return "LEANING"
+    if p <= 65.0:
+        return "FOCUSED"
+    if p <= 80.0:
+        return "ORTHODOX"
+    return "MONOLITHIC"
+
+# New helper: evenness band for per-mission replay distribution
+def _evenness_band(cv: float) -> str:
+    """Qualitative banding for coefficient of variation (sd/mean).
+    Smaller CV indicates more even replay across missions.
+    """
+    try:
+        c = float(cv)
+        if c <= 0.25:
+            return "Balanced"
+        if c <= 0.50:
+            return "Mixed"
+        return "Skewed"
+    except Exception:
+        return "Undetermined"
+
+# New helper: doctrine diversity band using HHI
+def _diversity_band_hhi(hhi: float) -> str:
+    """Classify doctrine diversity using Herfindahl–Hirschman Index (HHI).
+    Lower HHI => more diverse; higher => more concentrated.
+    """
+    try:
+        h = float(hhi)
+        if h <= 0.20:
+            return "Eclectic"
+        if h <= 0.35:
+            return "Mixed"
+        if h <= 0.50:
+            return "Concentrated"
+        return "Dominant"
+    except Exception:
+        return "Undetermined"
+
 
 DOCTRINE_BAND_ORDER: List[str] = [
     "Sabotage",
@@ -2662,6 +2754,8 @@ async def librarian_brief(
     per_team_doc_counts: Dict[str, Counter[str]] = {
         name: Counter() for name, _ in teams
     }
+    # Track which teams appeared in any AAR within the window (team coverage)
+    represented_teams: set[str] = set()
 
     for rec in recent_records:
         bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
@@ -2682,6 +2776,7 @@ async def librarian_brief(
             if set(bros) & mids:
                 for d in doc_tags:
                     per_team_doc_counts[name][d] += 1
+                represented_teams.add(name)
 
     # Helper to abbreviate team label
     def _abbr_label(n: str) -> str:
@@ -2714,36 +2809,109 @@ async def librarian_brief(
     else:
         doc_value = "—"
 
-    # Experience Saturation: weekly assumption — use intensity (avg runs per mission)
+    # Mission Coverage and Replay Rate (separate, clearer metrics)
     distinct_missions = len(company_mission_counts) or len(company_missions_seen)
     total_runs = sum(company_mission_counts.values())
     try:
         intensity = (total_runs / float(max(1, distinct_missions))) if distinct_missions > 0 else 1.0
     except Exception:
         intensity = 1.0
-    # Tier by intensity only (do not alter alignment or label width)
-    if intensity <= 1.1:
-        comp_exposure = "ISOLATED"
-    elif intensity <= 1.3:
-        comp_exposure = "LIMITED"
-    elif intensity <= 1.6:
-        comp_exposure = "DIVERSE"
-    elif intensity <= 2.0:
-        comp_exposure = "BROAD"
-    else:
-        comp_exposure = "EXTENSIVE"
-    exp_value = f"{comp_exposure} (Intensity {intensity:.1f}× per mission)"
-
-    # Cohesion Trend from distinct doctrines
-    # Cohesion Trend: normalized by doctrine catalog coverage
+    # Redefine Coverage as Team Coverage: fraction of company teams that appeared
     try:
-        total_doc_catalog = len(DOCTRINE_BAND_ORDER)
+        teams_total = len(teams)
     except Exception:
-        total_doc_catalog = 0
-    distinct_doc_count = len(set(company_doc_counts.keys()))
-    doc_cov_pct = (100.0 * distinct_doc_count / max(1, total_doc_catalog)) if total_doc_catalog else 0.0
-    comp_coherence = _doctrinal_coherence_tier_pct(doc_cov_pct)
-    coh_value = f"{comp_coherence} (Distinct Doctrines: {distinct_doc_count})"
+        teams_total = 0
+    try:
+        coverage_pct = 100.0 * (len(represented_teams) / float(max(1, teams_total))) if teams_total else 0.0
+    except Exception:
+        coverage_pct = 0.0
+    coverage_tier = _operational_exposure_tier_pct(coverage_pct)
+    coverage_value = f"{coverage_tier} (Coverage: {coverage_pct:.0f}%)"
+    replay_value = f"{intensity:.1f}× per mission"
+
+    # Evenness across mission runs via CV (sd/mean)
+    counts = list(company_mission_counts.values())
+    cv = None
+    if counts and distinct_missions > 0 and intensity > 0:
+        mean_runs = intensity
+        try:
+            var = sum((c - mean_runs) ** 2 for c in counts) / float(len(counts))
+            sd = var ** 0.5
+            cv = (sd / mean_runs) if mean_runs > 0 else 0.0
+        except Exception:
+            cv = None
+        # Build top-3 missions by share to visualize distribution
+        try:
+            total_runs = sum(company_mission_counts.values())
+        except Exception:
+            total_runs = 0
+        mission_sorted = sorted(company_mission_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        top_missions = mission_sorted[:3]
+        parts = []
+        for mname, mcnt in top_missions:
+            share = (mcnt / float(total_runs)) if total_runs > 0 else 0.0
+            parts.append(f"{_abbr_mission_name(mname)} ({share:.0%})")
+        tops = " ".join(parts) if parts else "—"
+        evenness_value = (
+            f"{_evenness_band(cv)} (CV {cv:.2f}) — Top Missions: {tops}"
+            if isinstance(cv, (int, float))
+            else "Undetermined (CV —)"
+        )
+    else:
+        evenness_value = "Undetermined (CV —)"
+
+    # Composite one-line saturation summary combining coverage, replay, evenness
+    cover_norm = max(0.0, min(1.0, (coverage_pct or 0.0) / 100.0))
+    # Replay normalization via banded scaling for intuitiveness
+    if intensity <= 1.2:
+        replay_norm = 0.2
+    elif intensity <= 1.6:
+        replay_norm = 0.4
+    elif intensity <= 2.0:
+        replay_norm = 0.6
+    elif intensity <= 3.0:
+        replay_norm = 0.8
+    else:
+        replay_norm = 1.0
+    # Evenness normalization: lower CV -> higher score
+    if isinstance(cv, (int, float)) and cv >= 0:
+        evenness_norm = max(0.0, min(1.0, 1.0 - min(cv, 1.0)))
+    else:
+        evenness_norm = 0.5
+    saturation_score = 100.0 * (0.4 * cover_norm + 0.4 * replay_norm + 0.2 * evenness_norm)
+    if saturation_score <= 20.0:
+        sat_tier = "ISOLATED"
+    elif saturation_score <= 40.0:
+        sat_tier = "LIMITED"
+    elif saturation_score <= 60.0:
+        sat_tier = "DIVERSE"
+    elif saturation_score <= 80.0:
+        sat_tier = "BROAD"
+    else:
+        sat_tier = "EXTENSIVE"
+    sat_value = f"{sat_tier} (Team Coverage: {coverage_pct:.0f}% • {intensity:.1f}×)"
+
+    # Cohesion Trend via top doctrine share (concentration) and Diversity (HHI)
+    total_doc = sum(company_doc_counts.values())
+    if total_doc > 0:
+        try:
+            top_doc_count = max(company_doc_counts.values())
+        except Exception:
+            top_doc_count = 0
+        try:
+            top_share_pct = 100.0 * (top_doc_count / float(max(1, total_doc)))
+        except Exception:
+            top_share_pct = 0.0
+        coh_tier = _cohesion_concentration_tier(top_share_pct)
+        coh_value = f"{coh_tier} (Top Doctrine Share: {top_share_pct:.0f}%)"
+        try:
+            hhi = sum((cnt / float(total_doc)) ** 2 for cnt in company_doc_counts.values())
+            diversity_value = f"{_diversity_band_hhi(hhi)} (HHI {hhi:.2f})"
+        except Exception:
+            diversity_value = "Undetermined (HHI —)"
+    else:
+        coh_value = "UNDETERMINED"
+        diversity_value = "—"
 
     # Doctrinal Divergence: single winner or multiple if tied on dominance count
     div_line = None
@@ -2784,8 +2952,10 @@ async def librarian_brief(
     kv_items = [
         ("Operational Environments", env_value),
         ("Doctrinal Pattern", doc_value),
-        ("Experience Saturation", exp_value),
+        ("Operational Saturation", sat_value),
+        ("Operational Equilibrium", evenness_value),
         ("Cohesion Trend", coh_value),
+        ("Doctrine Diversity", diversity_value),
         ("Doctrinal Divergence", div_value),
     ]
     try:
@@ -2847,9 +3017,12 @@ async def librarian_brief(
                 ),
             )[0]
         dom_doc: Optional[str] = None
+        top_share_pct = 0.0
         if company_doc_counts:
-            dom_doc = max(company_doc_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
-        comp_coherence = _doctrinal_coherence_tier(len(set(company_doc_counts.keys())))
+            dom_doc, dom_cnt = max(company_doc_counts.items(), key=lambda kv: (kv[1], kv[0]))
+            total_cnt = sum(company_doc_counts.values()) or 1
+            top_share_pct = 100.0 * (dom_cnt / float(total_cnt))
+        comp_coherence = _cohesion_concentration_tier(top_share_pct)
         comp_exposure = _operational_exposure_tier(len(company_missions_seen))
 
         lines.append(
@@ -2863,24 +3036,21 @@ async def librarian_brief(
             lines.append(
                 "  + Librarius counsel remained in strategic oversight: archives curated, auguries maintained."
             )
-        elif hc_ops_count <= 3 and comp_coherence in ("SPECIALIZED", "REFINED"):
+        elif hc_ops_count <= 3 and comp_coherence in ("FOCUSED", "ORTHODOX", "MONOLITHIC"):
             lines.append(
                 "  + High Command deployments were limited; doctrine indicates specialized orientation."
             )
             lines.append(
                 f"  + Counsel calibrated for precision: {dom_doc or 'specialist doctrine'} in {dom_env or 'key theatres'}."
             )
-        elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in (
-            "EMERGENT",
-            "STABLE",
-        ):
+        elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in ("BALANCED", "LEANING"):
             lines.append(
                 "  + Company operations spanned varied theatres; doctrine held adaptive coherence."
             )
             lines.append(
                 "  + Librarius endorses flexible rites and cross-theatre stratagem rehearsal."
             )
-        elif hc_ops_count >= 6 and comp_coherence in ("SPECIALIZED", "REFINED"):
+        elif hc_ops_count >= 6 and comp_coherence in ("FOCUSED", "ORTHODOX", "MONOLITHIC"):
             lines.append(
                 "  + Elevated High Command deployments under focused campaigns."
             )
@@ -2889,10 +3059,10 @@ async def librarian_brief(
             )
         else:
             lines.append(
-                "  + High Command activity remained within expected bounds for the window."
+                "  + High Command maintained strategic oversight consistent with the dossier window."
             )
             lines.append(
-                "  + Librarius counsel aligns with observed operations and doctrinal posture."
+                "  + Librarius counsel aligns with observed theatres and doctrinal posture."
             )
     except Exception:
         pass
@@ -3828,6 +3998,7 @@ async def _resolve_home_chapters(
         "Mentors",
         "Minotaurs",
         "Raven Guard",
+        "Red Scorpions",
         "Red Templars",
         "Salamanders",
         "Sons of Medusa",
@@ -4422,6 +4593,20 @@ async def apothecary_brief(
             )
             lines.append(
                 "  + Oversight posture maintained; Apothecarion focuses on steady readiness cycles."
+            )
+        elif hc_ops_count <= 2 and (care_ratio < 0.2 and stab_ratio < 0.2 and read_ratio < 0.2):
+            lines.append(
+                "  + Limited High Command deployments with favorable medical and stability readings."
+            )
+            lines.append(
+                "  + Green posture: sanction forward drills at discretion; maintain recovery cadence."
+            )
+        elif hc_ops_count <= 4 and ((care_ratio >= 0.4) ^ (stab_ratio >= 0.4) ^ (read_ratio >= 0.4)):
+            lines.append(
+                "  + Mixed signals across readiness facets under a restrained High Command tempo."
+            )
+            lines.append(
+                "  + Cautionary posture: apply targeted remediation while avoiding broad escalation."
             )
         elif hc_ops_count <= 2 and (care_ratio >= 0.4 or stab_ratio >= 0.4):
             lines.append(
@@ -5284,6 +5469,14 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
         elif hc_fulfill_rate >= 75.0 and hc_challenge_pct >= 75.0:
             lines.append(
                 "  + High Command discipline stands as a doctrinal exemplar for the company."
+            )
+        elif hc_fulfill_rate >= 75.0 and hc_challenge_pct < 50.0:
+            lines.append(
+                "  + High Command ritual adherence is exemplary; progression remains deliberately measured."
+            )
+        elif hc_total_oath > 0 and (hc_unclassified / float(hc_total_oath)) >= 0.5:
+            lines.append(
+                "  + Edicts predominated over formal oaths; statuses remain pending codification."
             )
         else:
             lines.append(
