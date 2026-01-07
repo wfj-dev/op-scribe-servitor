@@ -2472,6 +2472,37 @@ def _operational_exposure_tier(distinct_missions: int) -> str:
         return "BROAD"
     return "EXTENSIVE"
 
+# Percent-based tier variants for weekly-normalized interpretation
+def _doctrinal_coherence_tier_pct(coverage_pct: float) -> str:
+    """Map doctrine coverage percentage to coherence tier.
+    Intended for weekly windows where normalization by catalog size is preferred.
+    """
+    p = max(0.0, min(100.0, coverage_pct))
+    if p <= 10.0:
+        return "SPECIALIZED"
+    if p <= 20.0:
+        return "REFINED"
+    if p <= 40.0:
+        return "STABLE"
+    if p <= 60.0:
+        return "EMERGENT"
+    return "FRAGMENTED"
+
+def _operational_exposure_tier_pct(coverage_pct: float) -> str:
+    """Map mission coverage percentage to exposure tier.
+    Weekly assumption: score by fraction of mission catalog seen in window.
+    """
+    p = max(0.0, min(100.0, coverage_pct))
+    if p <= 10.0:
+        return "ISOLATED"
+    if p <= 25.0:
+        return "LIMITED"
+    if p <= 40.0:
+        return "DIVERSE"
+    if p <= 60.0:
+        return "BROAD"
+    return "EXTENSIVE"
+
 
 DOCTRINE_BAND_ORDER: List[str] = [
     "Sabotage",
@@ -2625,6 +2656,7 @@ async def librarian_brief(
     company_env_counts: Counter[str] = Counter()
     company_doc_counts: Counter[str] = Counter()
     company_missions_seen: set[str] = set()
+    company_mission_counts: Counter[str] = Counter()
 
     # Per-team doctrine counts for divergence
     per_team_doc_counts: Dict[str, Counter[str]] = {
@@ -2644,6 +2676,7 @@ async def librarian_brief(
             company_doc_counts[d] += 1
         if canon_mission:
             company_missions_seen.add(canon_mission)
+            company_mission_counts[canon_mission] += 1
         # Attribute doctrines to any team intersecting this record
         for name, mids in team_member_ids.items():
             if set(bros) & mids:
@@ -2659,48 +2692,58 @@ async def librarian_brief(
             return "KT " + n[10:]
         return "KT " + n if not lower.startswith("company command") else n
 
-    # Primary Operational Environment
+    # Operational Environments: show top 3 by share (value only)
     if company_env_counts:
         env_sorted = sorted(company_env_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        env_name, env_count = env_sorted[0]
         total_env = sum(company_env_counts.values())
-        env_pct = (env_count / total_env) if total_env > 0 else 0.0
-        lines.append(
-            f"  Primary Operational Environment :: {env_name} (Count: {env_count} — {env_pct:.0%})"
-        )
+        top_envs = env_sorted[:3]
+        _env_parts = []
+        for name, cnt in top_envs:
+            pct = (cnt / total_env) if total_env > 0 else 0.0
+            _env_parts.append(f"{name} ({pct:.0%})")
+        env_value = " ".join(_env_parts) if _env_parts else "—"
     else:
-        lines.append("  Primary Operational Environment :: URBAN")
+        env_value = "—"
 
-    # Dominant Doctrinal Pattern (with split detection)
+    # Doctrinal Pattern: show top 3 by count (value only)
     if company_doc_counts:
         doc_sorted = sorted(company_doc_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        top_doc, top_cnt = doc_sorted[0]
-        if len(doc_sorted) >= 2:
-            second_doc, second_cnt = doc_sorted[1]
-        else:
-            second_doc, second_cnt = None, 0
-        if second_doc and second_cnt >= 0.8 * top_cnt:
-            lines.append(
-                f"  Dominant Doctrinal Pattern      :: {top_doc} / {second_doc} Split (Counts: {top_cnt}|{second_cnt})"
-            )
-        else:
-            lines.append(
-                f"  Dominant Doctrinal Pattern      :: {top_doc} (Count: {top_cnt})"
-            )
+        top_docs = doc_sorted[:3]
+        _doc_parts = [f"{name} ({cnt})" for name, cnt in top_docs]
+        doc_value = " ".join(_doc_parts) if _doc_parts else "—"
     else:
-        lines.append("  Dominant Doctrinal Pattern      :: —")
+        doc_value = "—"
 
-    # Experience Saturation from distinct missions
-    comp_exposure = _operational_exposure_tier(len(company_missions_seen))
-    lines.append(
-        f"  Experience Saturation           :: {comp_exposure} (Distinct Missions: {len(company_missions_seen)})"
-    )
+    # Experience Saturation: weekly assumption — use intensity (avg runs per mission)
+    distinct_missions = len(company_mission_counts) or len(company_missions_seen)
+    total_runs = sum(company_mission_counts.values())
+    try:
+        intensity = (total_runs / float(max(1, distinct_missions))) if distinct_missions > 0 else 1.0
+    except Exception:
+        intensity = 1.0
+    # Tier by intensity only (do not alter alignment or label width)
+    if intensity <= 1.1:
+        comp_exposure = "ISOLATED"
+    elif intensity <= 1.3:
+        comp_exposure = "LIMITED"
+    elif intensity <= 1.6:
+        comp_exposure = "DIVERSE"
+    elif intensity <= 2.0:
+        comp_exposure = "BROAD"
+    else:
+        comp_exposure = "EXTENSIVE"
+    exp_value = f"{comp_exposure} (Intensity {intensity:.1f}× per mission)"
 
     # Cohesion Trend from distinct doctrines
-    comp_coherence = _doctrinal_coherence_tier(len(set(company_doc_counts.keys())))
-    lines.append(
-        f"  Cohesion Trend                  :: {comp_coherence} (Distinct Doctrines: {len(set(company_doc_counts.keys()))})"
-    )
+    # Cohesion Trend: normalized by doctrine catalog coverage
+    try:
+        total_doc_catalog = len(DOCTRINE_BAND_ORDER)
+    except Exception:
+        total_doc_catalog = 0
+    distinct_doc_count = len(set(company_doc_counts.keys()))
+    doc_cov_pct = (100.0 * distinct_doc_count / max(1, total_doc_catalog)) if total_doc_catalog else 0.0
+    comp_coherence = _doctrinal_coherence_tier_pct(doc_cov_pct)
+    coh_value = f"{comp_coherence} (Distinct Doctrines: {distinct_doc_count})"
 
     # Doctrinal Divergence: single winner or multiple if tied on dominance count
     div_line = None
@@ -2723,10 +2766,34 @@ async def librarian_brief(
             # If winners share same doc, show it; else show Mixed
             docs = {d for _n, d, _c in winners}
             doc_lbl = next(iter(docs)) if len(docs) == 1 else "Mixed"
-            div_line = f"  Doctrinal Divergence            :: {names} ({doc_lbl})"
+            if len(docs) == 1:
+                div_line = f"  Doctrinal Divergence            :: {names} ({doc_lbl} : {max_cnt})"
+            else:
+                div_line = f"  Doctrinal Divergence            :: {names} (Mixed)"
     except Exception:
         div_line = None
-    lines.append(div_line or "  Doctrinal Divergence             :: —")
+    # Capture divergence value only
+    if div_line and "::" in div_line:
+        div_value = div_line.split("::", 1)[1].strip()
+    elif div_line:
+        div_value = div_line.strip()
+    else:
+        div_value = "—"
+
+    # Render aligned key/value lines with padded labels so '::' columns align
+    kv_items = [
+        ("Operational Environments", env_value),
+        ("Doctrinal Pattern", doc_value),
+        ("Experience Saturation", exp_value),
+        ("Cohesion Trend", coh_value),
+        ("Doctrinal Divergence", div_value),
+    ]
+    try:
+        label_width = max((len(k) for k, _ in kv_items), default=0)
+    except Exception:
+        label_width = 0
+    for k, v in kv_items:
+        lines.append(f"  {k:<{label_width}} :: {v}")
 
     # High Command Notes (company-level doctrinal and environmental posture)
     try:
@@ -2854,7 +2921,31 @@ async def librarian_brief(
             compacted.insert(1, "\u001b[32mLibrarius Operational Brief (Compact)")
         msg = "\n".join(compacted)
 
-    await interaction.followup.send(msg, ephemeral=True)
+    # Send response; handle expired/unknown interaction token gracefully
+    try:
+        await interaction.followup.send(msg, ephemeral=True)
+    except Exception as e:
+        try:
+            err_type = type(e).__name__
+            err_msg = str(e)
+            is_unknown = ("Unknown interaction" in err_msg) or ("10062" in err_msg)
+            print(f"[Librarian Brief Error] {err_type}: {err_msg}")
+            if is_unknown:
+                # Fallback: post non-ephemeral message directly to the channel if available
+                ch = getattr(interaction, "channel", None)
+                if ch:
+                    try:
+                        await ch.send("(Fallback delivery)\n" + msg)
+                        print("[Librarian Brief] Fallback message posted to channel.")
+                        return
+                    except Exception as se:
+                        print(f"[Librarian Brief Fallback Error] {type(se).__name__}: {se}")
+                # If channel not available or fallback fails, suppress raising to avoid 10062 bubbling
+                return
+        except Exception:
+            pass
+        # Non-10062 errors: re-raise for framework handling
+        raise
 
 
 def classify_difficulty(difficulty: str | None):
