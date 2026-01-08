@@ -1,16 +1,47 @@
 import json
 import os
+from collections import Counter
 from datetime import datetime
 
-TARGET_NAME = "Watch Chaplain Staffy"
-TARGET_ID = "933789838136717414"
+# Remap all occurrences of OLD_ID to NEW_ID and update the paired brother name
+# to the name associated with NEW_ID (discovered from data) or a provided hint.
+OLD_ID = "933789838136717414"
+NEW_ID = "376657426046517250"
+
+# Optional override: if you know the preferred display name for NEW_ID, set here.
+# If None, the script will try to discover the most common associated name for NEW_ID
+# from existing records; if still unknown, it preserves the existing name at that index.
+NEW_NAME_HINT: str | None = None
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "aar_records.json")
 DATA_PATH = os.path.abspath(DATA_PATH)
 
 
-def normalize_name(name: str) -> str:
+def _normalize_name(name: str) -> str:
     return (name or "").strip().lower()
+
+
+def _discover_name_for_id(data: dict, target_id: str) -> str | None:
+    """Find the most common brother name paired with target_id across records."""
+    names_seen: Counter[str] = Counter()
+    for _aar_key, rec in data.items():
+        names = rec.get("brother_names")
+        ids = rec.get("broder_ids") or rec.get("brother_ids")
+        if not isinstance(names, list) or not isinstance(ids, list):
+            continue
+        limit = min(len(names), len(ids))
+        for i in range(limit):
+            try:
+                if str(ids[i]) == str(target_id):
+                    nm = str(names[i]) if i < len(names) else None
+                    if nm and nm.strip():
+                        names_seen[nm.strip()] += 1
+            except Exception:
+                continue
+    if not names_seen:
+        return None
+    # Return the most common name
+    return names_seen.most_common(1)[0][0]
 
 
 def main():
@@ -24,11 +55,15 @@ def main():
     with open(backup_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    # Resolve the replacement name once (prefer hint, else discover from data)
+    replacement_name = NEW_NAME_HINT or _discover_name_for_id(data, NEW_ID)
+
     updates = 0
+    name_updates = 0
     records_touched = 0
 
     # Expecting top-level mapping of AAR ID -> record dict
-    for aar_key, rec in data.items():
+    for _aar_key, rec in data.items():
         names = rec.get("brother_names")
         ids = rec.get("broder_ids")  # common typo guard (if any)
         if ids is None:
@@ -41,14 +76,25 @@ def main():
         # Keep lengths safe
         limit = min(len(names), len(ids))
         for i in range(limit):
-            if normalize_name(names[i]) == normalize_name(TARGET_NAME):
-                if ids[i] != TARGET_ID:
-                    ids[i] = TARGET_ID
-                    updates += 1
-                    changed_this_record = True
+            try:
+                if str(ids[i]) == str(OLD_ID):
+                    # Update ID
+                    if str(ids[i]) != str(NEW_ID):
+                        ids[i] = str(NEW_ID)
+                        updates += 1
+                        changed_this_record = True
+                    # Update name if we have a reliable replacement
+                    if isinstance(replacement_name, str) and replacement_name.strip():
+                        if str(names[i]) != replacement_name:
+                            names[i] = replacement_name
+                            name_updates += 1
+                            changed_this_record = True
+            except Exception:
+                continue
         if changed_this_record:
-            # Reassign list back to handle the case we modified a temporary ref
+            # Reassign lists back to record to ensure persistence
             rec["brother_ids"] = ids
+            rec["brother_names"] = names
             records_touched += 1
 
     # Persist
@@ -59,8 +105,10 @@ def main():
         "backup": os.path.basename(backup_path),
         "records_touched": records_touched,
         "ids_updated": updates,
-        "target_name": TARGET_NAME,
-        "target_id": TARGET_ID
+        "names_updated": name_updates,
+        "old_id": OLD_ID,
+        "new_id": NEW_ID,
+        "new_name": replacement_name or None
     }, indent=2))
 
 

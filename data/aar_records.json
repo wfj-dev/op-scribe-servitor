@@ -58412,5 +58412,892 @@
     "edited_at": null,
     "content_hash": "b79e9a5d0c4018ab964f89ad7efea511b92435c5a2101b8fbbc22120793275ea",
     "initiation_trial": false
+  },
+  "1458645044528681040": {
+    "aar_id": 1458645044528681040,
+    "mission": null,
+    "difficulty": "Normal-Siege",
+    "difficulty_class": "normal_siege",
+    "armory_data": 3,
+    "armory_challenge_points": 3,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "944030549150924861"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Inductee jazzmatazz33"
+    ],
+    "brother_waves": {},
+    "waves": 15,
+    "points_for_op": 9,
+    "timestamp": "2026-01-08T02:14:38.930000+00:00",
+    "edited_at": null,
+    "content_hash": "da11d9cf6b8a17a179def3f7425b144f48c645ff9aec226140410fc122d9248b",
+    "initiation_trial": true
+  },
+  "1458647047866679368": {
+    "aar_id": 1458647047866679368,
+    "mission": "Inferno",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 2,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "440987777039990786",
+      "228703987816202240"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Watch Librarian Bob"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-08T02:22:36.563000+00:00",
+    "edited_at": null,
+    "content_hash": "15e0d194c1b23746bff17e34a015710366447d61f55f5a737bb55f24bb20cb43",
+    "initiation_trial": false
+  },
+  "1458657243141771396": {
+    "aar_id": 1458657243141771396,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "727577031914815508",
+      "440987777039990786",
+      "228703987816202240"
+    ],
+    "brother_names": [
+      "Watch Master Van",
+      "Lord Executioner Kaedes",
+      "Watch Librarian Bob"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T03:03:07.306000+00:00",
+    "edited_at": null,
+    "content_hash": "531208a57cfb9134d7675639f59fa745effab32593ab7934bc8c031eaf2d5aa2",
+    "initiation_trial": false
+  },
+  "1458658696161792000": {
+    "aar_id": 1458658696161792000,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T03:08:53.733000+00:00",
+    "edited_at": null,
+    "content_hash": "7aa4e5c88b4bc4caae2c63f17e915dcefc6ab03fb8dd670179b37a576a387985",
+    "initiation_trial": false
+  },
+  "1458666361675841555": {
+    "aar_id": 1458666361675841555,
+    "mission": "Obelisk",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "733907873528283197",
+    "gene_seed_carried_name": "Watch Apothecary Serrigan",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "624772672349405204"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Brother Raul"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T03:39:21.334000+00:00",
+    "edited_at": null,
+    "content_hash": "8ed9faff0d372401f14fedd276e83ecc8afb0fc6893ac814e31de6516fe81d3f",
+    "initiation_trial": false
+  },
+  "1458668340384890950": {
+    "aar_id": 1458668340384890950,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "440987777039990786",
+    "gene_seed_carried_name": "Lord Executioner Kaedes",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "440987777039990786",
+      "444912473280348160"
+    ],
+    "brother_names": [
+      "Lord Executioner Kaedes",
+      "Watch Veteran Caius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T03:47:13.095000+00:00",
+    "edited_at": null,
+    "content_hash": "6b0ec1789d039b959bbb7a7dcca29c471fc2512a6435866a129d2e7d67bc5fc1",
+    "initiation_trial": false
+  },
+  "1458668858226376821": {
+    "aar_id": 1458668858226376821,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "727577031914815508",
+      "1014712606503739392",
+      "228703987816202240"
+    ],
+    "brother_names": [
+      "Watch Master Van",
+      "Watch Captain Solomon",
+      "Watch Librarian Bob"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T03:49:16.558000+00:00",
+    "edited_at": null,
+    "content_hash": "ef29b1445d16cd2ec9f3a395a00fce07204cc22788b3480620f441bb13ae28c9",
+    "initiation_trial": false
+  },
+  "1458673888622805014": {
+    "aar_id": 1458673888622805014,
+    "mission": "Obelisk",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 1,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "624772672349405204"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Brother Raul"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T04:09:15.898000+00:00",
+    "edited_at": null,
+    "content_hash": "d83f3ac6f8e54e2a8f16af04da2ff5d659ff6dbdc551d9cdb61d94eea024ad4b",
+    "initiation_trial": false
+  },
+  "1458681526429421619": {
+    "aar_id": 1458681526429421619,
+    "mission": "Vox Liberatis",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 1,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "624772672349405204"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Brother Raul"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T04:39:36.893000+00:00",
+    "edited_at": null,
+    "content_hash": "0a01e70697fe5cd9754d04e5f475f39dcd7b8c82f225e7e7b6d09878f9a9e471",
+    "initiation_trial": false
+  },
+  "1458684559666188390": {
+    "aar_id": 1458684559666188390,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "281651485782310914",
+      "440987777039990786",
+      "1294159011331051530"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Lord Executioner Kaedes",
+      "Watch Sergeant Wi-Fi"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T04:51:40.073000+00:00",
+    "edited_at": null,
+    "content_hash": "0755bafc68ae8dbcbbab1bb19706b8349bdc6bcb648e63ca6d540a959cd55a15",
+    "initiation_trial": false
+  },
+  "1458687345074110504": {
+    "aar_id": 1458687345074110504,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "727577031914815508",
+      "301998534754959370",
+      "228703987816202240"
+    ],
+    "brother_names": [
+      "Watch Master Van",
+      "Watch Lieutenant Bone",
+      "Watch Librarian Bob"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T05:02:44.166000+00:00",
+    "edited_at": null,
+    "content_hash": "2ff514ed205a76e9004c9abac03a89df2ebe0abe18df8b1f1852455de8b0ec76",
+    "initiation_trial": false
+  },
+  "1458691956052852870": {
+    "aar_id": 1458691956052852870,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "624772672349405204"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Brother Raul"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T05:21:03.509000+00:00",
+    "edited_at": null,
+    "content_hash": "7d480e70197f356b08a3ab3ec2d76ef4397bbd57faaba1cc082fd755345b51da",
+    "initiation_trial": false
+  },
+  "1458695326448881766": {
+    "aar_id": 1458695326448881766,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "281651485782310914",
+    "gene_seed_carried_name": "Watch Techmarine Jules",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "281651485782310914",
+      "440987777039990786",
+      "1294159011331051530"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Lord Executioner Kaedes",
+      "Watch Sergeant Wi-Fi"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T05:34:27.074000+00:00",
+    "edited_at": null,
+    "content_hash": "406f0c0c6de05da568ebcf0cb759bfe258c12fa4a0daa45de2b1572c3fcba5bd",
+    "initiation_trial": false
+  },
+  "1458716145082437716": {
+    "aar_id": 1458716145082437716,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "1014712606503739392",
+      "308032160089243649"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Captain Solomon",
+      "Watch Sergeant Falcon"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T06:57:10.623000+00:00",
+    "edited_at": "2026-01-08T06:57:47.980000+00:00",
+    "content_hash": "151a878e1633fe1b56b98862a4765c9233eb71130d39bc47e091f1d590df387b",
+    "initiation_trial": false
+  },
+  "1458728261491228672": {
+    "aar_id": 1458728261491228672,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1121971333278990336",
+    "gene_seed_carried_name": "Watch Brother Grungar",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "308032160089243649",
+      "1121971333278990336",
+      "727577031914815508"
+    ],
+    "brother_names": [
+      "Watch Sergeant Falcon",
+      "Watch Brother Grungar",
+      "Watch Master Van"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T07:45:19.400000+00:00",
+    "edited_at": null,
+    "content_hash": "682f11932cffa3ef85f76bc16ae3a3ffc0f083c44f11235ab62f19d03703c8fb",
+    "initiation_trial": false
+  },
+  "1458737920742522947": {
+    "aar_id": 1458737920742522947,
+    "mission": "Vox Liberatis <@&1440108298115485716>",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "308032160089243649",
+      "1121971333278990336",
+      "93975304820760576"
+    ],
+    "brother_names": [
+      "Watch Sergeant Falcon",
+      "Watch Brother Grungar",
+      "Watch Brother Valen"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T08:23:42.345000+00:00",
+    "edited_at": null,
+    "content_hash": "2856155df05d929c2bff6abfa2c8dda24c7f8ab21f8d79cf735b5604a5f8097d",
+    "initiation_trial": false
+  },
+  "1458748081079062573": {
+    "aar_id": 1458748081079062573,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "308032160089243649",
+      "1121971333278990336"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Falcon",
+      "Watch Brother Grungar"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T09:04:04.758000+00:00",
+    "edited_at": null,
+    "content_hash": "f042e395398e3874518f2cf7502c37a59876ceda6e7480ca9e7d6089ffb9be17",
+    "initiation_trial": false
+  },
+  "1458756477333536983": {
+    "aar_id": 1458756477333536983,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "308032160089243649",
+      "1121971333278990336"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Falcon",
+      "Watch Brother Grungar"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T09:37:26.581000+00:00",
+    "edited_at": null,
+    "content_hash": "796541cbec91ec51f8324ee1108c11a986d6f9c74b365663ac72acc4ab3dca99",
+    "initiation_trial": false
+  },
+  "1458768868263858293": {
+    "aar_id": 1458768868263858293,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T10:26:40.809000+00:00",
+    "edited_at": null,
+    "content_hash": "20df714ed386c20843c4b10e1d5bdab010c0f9c6b7eca54cb00ebc76ddf8df3f",
+    "initiation_trial": false
+  },
+  "1458781709217829016": {
+    "aar_id": 1458781709217829016,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T11:17:42.331000+00:00",
+    "edited_at": null,
+    "content_hash": "20df714ed386c20843c4b10e1d5bdab010c0f9c6b7eca54cb00ebc76ddf8df3f",
+    "initiation_trial": false
+  },
+  "1458791151875133545": {
+    "aar_id": 1458791151875133545,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "933777200312881263",
+      "402023509280292875"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Psycho",
+      "Watch Sergeant Moloch"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T11:55:13.636000+00:00",
+    "edited_at": null,
+    "content_hash": "c44cc45252e15e1b2e21d57091606e47a29eb0b96973198b93c599b82cc43ccf",
+    "initiation_trial": false
+  },
+  "1458800196900098227": {
+    "aar_id": 1458800196900098227,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "933777200312881263",
+      "402023509280292875"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Psycho",
+      "Watch Sergeant Moloch"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T12:31:10.138000+00:00",
+    "edited_at": null,
+    "content_hash": "1679781c6bbc66bbd84f27d1191f90b7cba971cd64776f42e13bd7a58f60918c",
+    "initiation_trial": false
+  },
+  "1458810224491368585": {
+    "aar_id": 1458810224491368585,
+    "mission": "Inferno",
+    "difficulty": "Lethal",
+    "difficulty_class": "lethal_ops",
+    "armory_data": 1,
+    "armory_challenge_points": 1,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 3,
+    "brother_ids": [
+      "93975304820760576",
+      "933777200312881263",
+      "318123902960140299"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Sergeant Psycho",
+      "Watch Inductee vanzant"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 3,
+    "timestamp": "2026-01-08T13:11:00.902000+00:00",
+    "edited_at": "2026-01-08T13:39:41.336000+00:00",
+    "content_hash": "6d4af1d6b0b9be1785056b43445be1d3f0eca2f1406f34f77fb0f8aac74659ac",
+    "initiation_trial": true
+  },
+  "1458817304497487955": {
+    "aar_id": 1458817304497487955,
+    "mission": "Decapitation",
+    "difficulty": "Lethal",
+    "difficulty_class": "lethal_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 2,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "318123902960140299",
+      "933777200312881263",
+      "93975304820760576"
+    ],
+    "brother_names": [
+      "Watch Inductee vanzant",
+      "Watch Sergeant Psycho",
+      "Watch Brother Valen"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 3,
+    "timestamp": "2026-01-08T13:39:08.907000+00:00",
+    "edited_at": null,
+    "content_hash": "5f41b4ecda8191a6bc24ec08a9cacd29222f45fab98f0b2975e0d271c83e2db8",
+    "initiation_trial": true
+  },
+  "1458826130210422939": {
+    "aar_id": 1458826130210422939,
+    "mission": "Reclamation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 0,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "933777200312881263",
+      "93975304820760576",
+      "318123902960140299"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Brother Valen",
+      "Watch Inductee vanzant"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T14:14:13.121000+00:00",
+    "edited_at": null,
+    "content_hash": "997b7a30862de8b87bdcb380297d0254fd543688a3a2221ec375c2d7cdd66457",
+    "initiation_trial": true
+  },
+  "1458835789877219401": {
+    "aar_id": 1458835789877219401,
+    "mission": "Obelisk",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 2,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "93975304820760576",
+      "402754610110005250",
+      "318123902960140299"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Brother Sethius",
+      "Watch Inductee vanzant"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-08T14:52:36.165000+00:00",
+    "edited_at": null,
+    "content_hash": "84e104ac1493ab0f895ffa92610c6f5950a6334c21ad44a9dd45c0c2da1d949d",
+    "initiation_trial": false
+  },
+  "1458845057124929679": {
+    "aar_id": 1458845057124929679,
+    "mission": "Ballistic Engine",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 1,
+    "armory_challenge_points": 3,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "93975304820760576",
+    "gene_seed_carried_name": "Watch Brother Valen",
+    "gene_seed_base_points_for_carrier": 5,
+    "brother_ids": [
+      "93975304820760576",
+      "402754610110005250",
+      "318123902960140299"
+    ],
+    "brother_names": [
+      "Watch Brother Valen",
+      "Watch Brother Sethius",
+      "Watch Inductee vanzant"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-08T15:29:25.649000+00:00",
+    "edited_at": null,
+    "content_hash": "5a64db282cf239ed02dd0be787a2247027481a7923e3ae8bc2359f38ee36f15e",
+    "initiation_trial": false
+  },
+  "1458847143421935830": {
+    "aar_id": 1458847143421935830,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "141769315085975552",
+    "gene_seed_carried_name": "Watch Veteran Davren",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402023509280292875",
+      "141769315085975552",
+      "108969956829298688"
+    ],
+    "brother_names": [
+      "Watch Sergeant Moloch",
+      "Watch Veteran Davren",
+      "Watch Veteran Hylair"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T15:37:43.061000+00:00",
+    "edited_at": null,
+    "content_hash": "749e6260e25968f735fff42976d04dc279a74dbca75375bd001552fab4b45151",
+    "initiation_trial": false
+  },
+  "1458854603687858196": {
+    "aar_id": 1458854603687858196,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "141769315085975552",
+    "gene_seed_carried_name": "Watch Veteran Davren",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "402023509280292875",
+      "141769315085975552",
+      "108969956829298688"
+    ],
+    "brother_names": [
+      "Watch Sergeant Moloch",
+      "Watch Veteran Davren",
+      "Watch Veteran Hylair"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T16:07:21.727000+00:00",
+    "edited_at": null,
+    "content_hash": "03ef02c0168060919e9e7de6f120c8b99f84df2f21c361214e61809fc011ef35",
+    "initiation_trial": false
+  },
+  "1458864723436109969": {
+    "aar_id": 1458864723436109969,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "933777200312881263",
+    "gene_seed_carried_name": "Watch Sergeant Psycho",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "933777200312881263",
+      "107101884757598208"
+    ],
+    "brother_names": [
+      "Watch Sergeant Psycho",
+      "Watch Sergeant Atom"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T16:47:34.463000+00:00",
+    "edited_at": null,
+    "content_hash": "d8cc8df08d96f732313e2a803788c97d63239bc1c6964748db1b0636e6642a73",
+    "initiation_trial": false
+  },
+  "1458886315201531914": {
+    "aar_id": 1458886315201531914,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "281651485782310914",
+    "gene_seed_carried_name": "Watch Techmarine Jules",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "281651485782310914",
+      "106830484616511488",
+      "1105816777885229196"
+    ],
+    "brother_names": [
+      "Watch Techmarine Jules",
+      "Watch Inductee Agorar",
+      "Watch Veteran Twinkus"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-08T18:13:22.341000+00:00",
+    "edited_at": null,
+    "content_hash": "bff3c3f2d42a03a39d3576083e4c932b0add1756a6850abff4de939e926c1cf1",
+    "initiation_trial": true
   }
 }
