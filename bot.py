@@ -94,10 +94,10 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
 
 
 async def _send_watch_command_notice(kind: str):
-    """Send a status notice to ❖⋅data-vault⋅❖ mentioning @Watch Command.
+    """Post a concise status notice to ❖⋅data-vault⋅❖ and replace the previous one.
     kind: 'ONLINE' or 'OFFLINE' (case-insensitive).
-    Also deletes the most recent prior status bulletin of the opposite kind
-    (e.g., when turning ONLINE, deletes the last OFFLINE bulletin)."""
+    Behavior: always delete the most recent prior status bulletin (regardless of
+    its previous state), then send the new bulletin so only one is visible."""
     # Respect broadcast toggle (e.g., when debug mode disables broadcasts)
     try:
         if not BROADCAST_STATUS:
@@ -122,51 +122,35 @@ async def _send_watch_command_notice(kind: str):
         role = None
     mention = f"<@&{role.id}>" if role else "@Watch Command"
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
-    # Delete the most recent opposite-status bulletin, if present
+    # Always delete the most recent status bulletin (regardless of prior status)
     try:
-        target_delete = "OFFLINE" if status == "ONLINE" else "ONLINE"
-        # Limit scan to a reasonable number to avoid rate limits
-        async for msg in channel.history(limit=100):
+        async for msg in channel.history(limit=50):
             try:
                 if getattr(msg.author, "id", None) != getattr(bot.user, "id", None):
                     continue
                 content = msg.content or ""
-                # Identify our bulletin by the header and the status line
-                if (
+                # Identify our prior bulletin by a concise marker or legacy header
+                if ("V-1 STATUS:" in content) or (
                     "OPERATION-SCRIBE SERVITOR — STATUS BULLETIN" in content
-                    and f"Status: {target_delete}" in content
                 ):
                     await msg.delete()
                     break
             except Exception:
-                # Continue scanning on per-message errors
                 continue
     except Exception as e:
         logger.debug(f"Failed to delete previous status bulletin: {e}")
 
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    # Compose styled ANSI block similar to other outputs; keep the actual mention outside the block to ping.
-    block = (
-        "```ansi\n"
-        "\u001b[32m==============================================================================\n"
-        "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
-        "  OPERATION-SCRIBE SERVITOR — STATUS BULLETIN\n"
-        "==============================================================================\n"
-        f"  Servitor Unit: Jericho Logi-Scribe V-1\n"
-        f"  Status: {status}\n"
-        f"  Timestamp: {ts}\n"
-        "==============================================================================\n"
-        "  Machine-Spirit Addendum:\n"
-        "  Status broadcasts are preserved within the data-vault and\n"
-        "  may be invoked by decree of the Forgemaster and Watch Techmarines alone.\n"
-        "==============================================================================\n"
-        "\u001b[0m```"
+    emoji = "✅" if status == "ONLINE" else "⛔"
+    flavor = (
+        "Machine-spirit standing by."
+        if status == "ONLINE"
+        else "Machine-spirit at rest."
     )
-    content = f"{mention}\n{block}"
+    # Concise, at-a-glance status with a touch of flavor
+    content = f"{mention} V-1 STATUS: {status} {emoji} — {ts}\n{flavor}"
     try:
-        await channel.send(
-            content, allowed_mentions=discord.AllowedMentions(roles=True)
-        )
+        await channel.send(content, allowed_mentions=discord.AllowedMentions(roles=True))
     except Exception as e:
         logger.debug(f"Failed to send notification: {e}")
 
@@ -1312,7 +1296,7 @@ async def tally_deeds(
 )
 @app_commands.describe(
     brother="Optional: limit to bonds including this Brother.",
-    window="Optional: number of most recent missions to consider.",
+    window="Optional: number of days to include (default 30).",
 )
 async def combat_bonds(
     interaction: discord.Interaction,
@@ -1326,8 +1310,9 @@ async def combat_bonds(
         return
     # No defer: send a direct response to clear the interaction state
 
-    span = window if (isinstance(window, int) and window > 0) else 100
-    missions = _get_recent_missions(limit=span)
+    # Default to last 30 days; if provided, interpret `window` as days
+    span_days = window if (isinstance(window, int) and window > 0) else 30
+    missions = _get_missions_last_days(span_days)
     # Collect all brothers seen in window
     all_bros: List[str] = []
     for rec in missions:
@@ -1345,7 +1330,7 @@ async def combat_bonds(
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
         text = _format_bonds_for_discord(
-            top_global, interaction.guild, window_span=span, chapters=chapters
+            top_global, interaction.guild, window_days=span_days, chapters=chapters
         )
         await interaction.response.send_message(text, ephemeral=True)
     else:
@@ -1356,7 +1341,7 @@ async def combat_bonds(
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
         text = _format_bonds_for_discord(
-            personal, interaction.guild, window_span=span, chapters=chapters
+            personal, interaction.guild, window_days=span_days, chapters=chapters
         )
         await interaction.response.send_message(text, ephemeral=True)
 
@@ -3962,6 +3947,36 @@ def _bond_tier(score: int):
         return "STALWART"
     return "INDOMITABLE"
 
+def _percentile(sorted_vals: List[int], p: float) -> int:
+    if not sorted_vals:
+        return 0
+    n = len(sorted_vals)
+    idx = int(max(0, min(n - 1, round(p * (n - 1)))))
+    return sorted_vals[idx]
+
+def _compute_bond_cutoffs(scores: List[int]) -> Optional[Dict[str, int]]:
+    if not scores or len(scores) < 5:
+        return None
+    s = sorted(scores)
+    q20 = _percentile(s, 0.20)
+    q40 = _percentile(s, 0.40)
+    q60 = _percentile(s, 0.60)
+    q80 = _percentile(s, 0.80)
+    return {"q20": q20, "q40": q40, "q60": q60, "q80": q80}
+
+def _bond_tier_dynamic(score: int, cutoffs: Optional[Dict[str, int]]):
+    if not cutoffs:
+        return _bond_tier(score)
+    if score <= cutoffs["q20"]:
+        return "FRAGILE"
+    if score <= cutoffs["q40"]:
+        return "FORMING"
+    if score <= cutoffs["q60"]:
+        return "RELIABLE"
+    if score <= cutoffs["q80"]:
+        return "STALWART"
+    return "INDOMITABLE"
+
 
 def _render_veneration_line(active_tier: str):
     """Return cogitator-style veneration line with only the active tier bracketed.
@@ -3975,7 +3990,7 @@ def _render_veneration_line(active_tier: str):
 async def _resolve_home_chapters(
     guild: Optional[discord.Guild], user_ids: List[str], limit: int = 500
 ):
-    """Resolve home chapters for given users by scanning the '#◈⋅⋅record-of-blood⋅⋅◈' channel.
+    """Resolve home chapters for given users by scanning the '◈⋅⋅record-of-blood⋅⋅◈' channel.
     Logic: find a message that mentions the user; detect the chapter within that same message's content.
     The chapter is detected by matching any of the known `home_chapters` names within the message.
     Returns mapping of user_id -> chapter string. Missing entries map to 'REDACTED'.
@@ -4011,7 +4026,7 @@ async def _resolve_home_chapters(
     chapters: Dict[str, str] = {}
     if not guild:
         return chapters
-    channel = discord.utils.get(guild.channels, name="◈⋅⋅record-of-blood⋅⋅◈")
+    channel = discord.utils.get(guild.channels, name="❖⋅⋅record-of-blood⋅⋅❖")
     if not channel:
         return chapters
     target_set = set(user_ids)
@@ -4045,6 +4060,7 @@ def _format_bonds_for_discord(
     guild: Optional[discord.Guild] = None,
     window_span: int = 100,
     chapters: Optional[Dict[str, str]] = None,
+    window_days: Optional[int] = None,
 ):
     """Produce styled Combat Bonds output matching the requested layout."""
     if not bonds:
@@ -4059,8 +4075,13 @@ def _format_bonds_for_discord(
     lines.append(
         "=============================================================================="
     )
-    lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
+    if window_days is not None:
+        lines.append(f"  Auspex Window: Last {window_days} day(s)")
+    else:
+        lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     rank = 1
+    scores_for_cutoffs = [score for _tri, score in bonds]
+    cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
     ordinal_labels = {
         1: "PRIMARY",
         2: "SECONDARY",
@@ -4069,7 +4090,7 @@ def _format_bonds_for_discord(
         5: "QUINARY",
     }
     for triple, score in bonds:
-        tier = _bond_tier(score)
+        tier = _bond_tier_dynamic(score, cutoffs)
         a, b, c = triple
 
         # Resolve members and labels (rank + name + chapter)
@@ -4909,7 +4930,7 @@ async def _ingest_record_of_oaths(guild: Optional[discord.Guild]):
     updated = 0
     if not guild:
         return added, updated
-    channel = discord.utils.get(guild.channels, name="❖⋅record-of-oaths⋅❖")
+    channel = discord.utils.get(guild.channels, name="❖⋅oaths⋅❖")
     if not channel:
         return added, updated
     index = _load_json_dict(OATHS_INDEX_PATH)
