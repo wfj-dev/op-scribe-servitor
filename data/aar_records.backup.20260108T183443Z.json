@@ -2,7 +2,7 @@
   "1456442097656795309": {
     "aar_id": 1456442097656795309,
     "mission": "Obelisk",
-    "difficulty": "Absolute  Black Laurels",
+    "difficulty": "Absolute",
     "difficulty_class": "absolute_ops",
     "armory_data": 3,
     "armory_challenge_points": 6,
@@ -16,16 +16,16 @@
       "107101884757598208"
     ],
     "brother_names": [
-      "Watch Sergeant Falcon",
+      "Kill Team Champion Falcon",
       "Watch Master Van",
-      "Watch Sergeant Atom"
+      "Watch Veteran Atom"
     ],
     "brother_waves": {},
     "waves": 0,
     "points_for_op": 4,
     "timestamp": "2026-01-02T00:20:55.467000+00:00",
-    "edited_at": "2026-01-02T00:57:01.273000+00:00",
-    "content_hash": "c5c240d774e9f003bf5d6ff81f43f3dbc5caf58e9fa895a0c92b3ef5ba80e2aa",
+    "edited_at": null,
+    "content_hash": "21c30cf04155850620a01dc40502a0ea4129a6c19fc9287a355139477e21798a",
     "initiation_trial": false
   },
   "1456433414080299113": {
@@ -3794,12 +3794,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "1217601361571610716"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Brother Verdaghast"
     ],
@@ -3823,11 +3823,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -3879,12 +3879,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "228703987816202240",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Bob",
       "Watch Sergeant Psycho"
     ],
@@ -3967,12 +3967,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "440987777039990786",
-      "376657426046517250",
+      "933789838136717414",
       "571035376135962645"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Raelyn"
     ],
     "brother_waves": {},
@@ -3996,11 +3996,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -4023,11 +4023,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -4079,11 +4079,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -10117,12 +10117,12 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "281651485782310914"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Techmarine Jules"
     ],
@@ -10204,12 +10204,12 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "281651485782310914"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Techmarine Jules"
     ],
@@ -10291,12 +10291,12 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "281651485782310914"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Techmarine Jules"
     ],
@@ -10550,12 +10550,12 @@
     "gene_seed_carried_name": "Lord Executioner Kaedes",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "440987777039990786"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Lord Executioner Kaedes"
     ],
@@ -10608,12 +10608,12 @@
     "brother_ids": [
       "440987777039990786",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -10666,12 +10666,12 @@
     "brother_ids": [
       "402023509280292875",
       "437645667838590976",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Apothecary Veritas",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -10723,12 +10723,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "402023509280292875",
-      "376657426046517250",
+      "933789838136717414",
       "437645667838590976"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Apothecary Veritas"
     ],
     "brother_waves": {},
@@ -10782,12 +10782,12 @@
     "brother_ids": [
       "402023509280292875",
       "437645667838590976",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Apothecary Veritas",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -10811,12 +10811,12 @@
     "brother_ids": [
       "402023509280292875",
       "108969956829298688",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Veteran Hylair",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -11354,12 +11354,12 @@
     "brother_ids": [
       "281651485782310914",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -11412,12 +11412,12 @@
     "brother_ids": [
       "281651485782310914",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -11470,12 +11470,12 @@
     "brother_ids": [
       "281651485782310914",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -12108,12 +12108,12 @@
     "brother_ids": [
       "402023509280292875",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -12193,12 +12193,12 @@
     "brother_ids": [
       "402023509280292875",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -12251,12 +12251,12 @@
     "brother_ids": [
       "402023509280292875",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -12309,12 +12309,12 @@
     "brother_ids": [
       "402023509280292875",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -13468,11 +13468,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 3,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -14184,12 +14184,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "281651485782310914",
-      "376657426046517250",
+      "933789838136717414",
       "733907873528283197"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Apothecary Serrigan"
     ],
     "brother_waves": {},
@@ -14328,11 +14328,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1217601361571610716"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Brother Verdaghast"
     ],
     "brother_waves": {},
@@ -14616,12 +14616,12 @@
     "brother_ids": [
       "933777200312881263",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -14701,12 +14701,12 @@
     "brother_ids": [
       "933777200312881263",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -14759,12 +14759,12 @@
     "brother_ids": [
       "933777200312881263",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -14844,12 +14844,12 @@
     "brother_ids": [
       "933777200312881263",
       "447617483663212566",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Brother Mike",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -14960,12 +14960,12 @@
     "brother_ids": [
       "933777200312881263",
       "308032160089243649",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Kill Team Champion Falcon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -14989,12 +14989,12 @@
     "brother_ids": [
       "933777200312881263",
       "308032160089243649",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Kill Team Champion Falcon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -15045,12 +15045,12 @@
     "brother_ids": [
       "933777200312881263",
       "308032160089243649",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Kill Team Champion Falcon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -15101,12 +15101,12 @@
     "brother_ids": [
       "308032160089243649",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Falcon",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -15130,12 +15130,12 @@
     "brother_ids": [
       "308032160089243649",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Falcon",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -16982,12 +16982,12 @@
     "brother_ids": [
       "281651485782310914",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -17037,12 +17037,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "1444810056821637133",
-      "376657426046517250",
+      "933789838136717414",
       "281651485782310914"
     ],
     "brother_names": [
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Techmarine Jules"
     ],
     "brother_waves": {},
@@ -17124,12 +17124,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "551110381876281364"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Kasziel"
     ],
     "brother_waves": {},
@@ -18272,12 +18272,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1083915431699546182",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Chaplain Staffy's M.I.A. account",
-      "Watch Chaplain Staffy"
+      "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -18300,12 +18300,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1083915431699546182",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Chaplain Staffy's M.I.A. account",
-      "Watch Chaplain Staffy"
+      "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -18328,12 +18328,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "281651485782310914",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -18383,11 +18383,11 @@
     "gene_seed_carried_name": "Watch Sergeant Psycho",
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -18467,12 +18467,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "1003158360637571134"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 15,
@@ -18610,12 +18610,12 @@
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "308032160089243649"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Kill Team Champion Falcon"
     ],
     "brother_waves": {},
@@ -18868,12 +18868,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1217601361571610716",
       "733907873528283197"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Brother Verdaghast",
       "Watch Apothecary Serrigan"
     ],
@@ -19620,12 +19620,12 @@
     "brother_ids": [
       "266088909467811840",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Spirit",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -19677,12 +19677,12 @@
     "brother_ids": [
       "266088909467811840",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Spirit",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -19706,12 +19706,12 @@
     "brother_ids": [
       "266088909467811840",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Spirit",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -19793,12 +19793,12 @@
     "brother_ids": [
       "266088909467811840",
       "281651485782310914",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Spirit",
       "Watch Techmarine Jules",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -19880,12 +19880,12 @@
     "brother_ids": [
       "266088909467811840",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Kill Team Champion Spirit",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -21875,12 +21875,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "402023509280292875",
-      "376657426046517250",
+      "933789838136717414",
       "266088909467811840"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Kill Team Champion Spirit"
     ],
     "brother_waves": {},
@@ -21963,12 +21963,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -21992,12 +21992,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -22009,7 +22009,7 @@
   },
   "1449860963611185203": {
     "aar_id": 1449860963611185203,
-    "mission": "Termination <@&1440108298115485716> \ufeff",
+    "mission": "Termination <@&1440108298115485716> ﻿",
     "difficulty": "Absolute",
     "difficulty_class": "absolute_ops",
     "armory_data": 2,
@@ -22050,12 +22050,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -23712,12 +23712,12 @@
     "brother_ids": [
       "402023509280292875",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -23741,12 +23741,12 @@
     "brother_ids": [
       "402023509280292875",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -23770,12 +23770,12 @@
     "brother_ids": [
       "402023509280292875",
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -24335,12 +24335,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "266088909467811840"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Kill Team Champion Spirit"
     ],
     "brother_waves": {},
@@ -24393,12 +24393,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "266088909467811840"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Kill Team Champion Spirit"
     ],
     "brother_waves": {},
@@ -24707,12 +24707,12 @@
     "brother_ids": [
       "402023509280292875",
       "108969956829298688",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Veteran Hylair",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -24765,12 +24765,12 @@
     "brother_ids": [
       "402023509280292875",
       "108969956829298688",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Moloch",
       "Watch Veteran Hylair",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -26718,12 +26718,12 @@
     "brother_ids": [
       "1294159011331051530",
       "258269371909144576",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Wi-Fi",
       "Guest Den Ga",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -26774,12 +26774,12 @@
     "gene_seed_carried_name": "Watch Sergeant Wi-Fi",
     "gene_seed_base_points_for_carrier": 5,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1294159011331051530",
       "258269371909144576"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Wi-Fi",
       "Guest Den Ga"
     ],
@@ -26803,12 +26803,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1294159011331051530",
       "258269371909144576"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Wi-Fi",
       "Guest Den Ga"
     ],
@@ -26978,11 +26978,11 @@
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
       "281651485782310914",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Techmarine Jules",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -27088,12 +27088,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "437645667838590976",
-      "376657426046517250",
+      "933789838136717414",
       "1444810056821637133"
     ],
     "brother_names": [
       "Watch Apothecary Veritas",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Jack"
     ],
     "brother_waves": {},
@@ -27117,11 +27117,11 @@
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
       "437645667838590976",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Apothecary Veritas",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -27144,11 +27144,11 @@
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
       "437645667838590976",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Apothecary Veritas",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -28608,12 +28608,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "327975100748005377",
       "483733346548056065"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Evader",
       "Watch Brother Mordelai"
     ],
@@ -28637,12 +28637,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "327975100748005377",
       "483733346548056065"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Evader",
       "Watch Brother Mordelai"
     ],
@@ -28695,11 +28695,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -28751,12 +28751,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1317207422510694456",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "High Chaplain Ogyus",
       "Watch Sergeant Psycho"
     ],
@@ -28780,12 +28780,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1317207422510694456",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "High Chaplain Ogyus",
       "Watch Sergeant Psycho"
     ],
@@ -29403,11 +29403,11 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -29460,12 +29460,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -29489,12 +29489,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -29518,12 +29518,12 @@
     "brother_ids": [
       "933777200312881263",
       "1444810056821637133",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Sergeant Jack",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -29546,11 +29546,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -33020,12 +33020,12 @@
     "gene_seed_carried_name": "Watch Veteran Atom",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "107101884757598208",
       "543868630996353024"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Atom",
       "Company Champion Trauma"
     ],
@@ -33136,12 +33136,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104",
       "415956330705059841"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme",
       "Watch Veteran Crit"
     ],
@@ -33165,12 +33165,12 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104",
       "415956330705059841"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme",
       "Watch Veteran Crit"
     ],
@@ -33223,12 +33223,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "281651485782310914"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Techmarine Jules"
     ],
@@ -33281,12 +33281,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "281651485782310914"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "Watch Techmarine Jules"
     ],
@@ -33310,12 +33310,12 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 2,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "710886544344350791"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "[Vindicta] Malthor | Silenced"
     ],
@@ -33339,12 +33339,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263",
       "710886544344350791"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho",
       "[Vindicta] Malthor | Silenced"
     ],
@@ -33745,12 +33745,12 @@
     "brother_ids": [
       "551110381876281364",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Kasziel",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 5,
@@ -33832,12 +33832,12 @@
     "brother_ids": [
       "1137683909337944104",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -33890,12 +33890,12 @@
     "brother_ids": [
       "1137683909337944104",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 5,
@@ -33919,12 +33919,12 @@
     "brother_ids": [
       "1137683909337944104",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -33948,12 +33948,12 @@
     "brother_ids": [
       "1137683909337944104",
       "571035376135962645",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Raelyn",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -34728,12 +34728,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "1294159011331051530"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Wi-Fi"
     ],
     "brother_waves": {},
@@ -34816,12 +34816,12 @@
     "brother_ids": [
       "1317207422510694456",
       "402023509280292875",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "High Chaplain Ogyus",
       "Watch Sergeant Moloch",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -34874,12 +34874,12 @@
     "brother_ids": [
       "1317207422510694456",
       "402023509280292875",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "High Chaplain Ogyus",
       "Watch Sergeant Moloch",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -34903,12 +34903,12 @@
     "brother_ids": [
       "1317207422510694456",
       "402023509280292875",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "High Chaplain Ogyus",
       "Watch Sergeant Moloch",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -35531,12 +35531,12 @@
     "brother_ids": [
       "405887897171001345",
       "733907873528283197",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Brother Dinnex",
       "Watch Apothecary Serrigan",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -35560,12 +35560,12 @@
     "brother_ids": [
       "301998534754959370",
       "327975100748005377",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Lieutenant Bone",
       "Watch Veteran Evader",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 5,
@@ -35589,12 +35589,12 @@
     "brother_ids": [
       "301998534754959370",
       "327975100748005377",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Lieutenant Bone",
       "Watch Veteran Evader",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -35820,11 +35820,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -35876,11 +35876,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -35959,11 +35959,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -36015,11 +36015,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -37647,12 +37647,12 @@
     "brother_ids": [
       "933777200312881263",
       "308032160089243649",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Kill Team Champion Falcon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -37849,12 +37849,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "208778900409417728",
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
       "Watch Brother Arti",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -40216,12 +40216,12 @@
     "brother_ids": [
       "539852775182434304",
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Brother Mortales",
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -40245,12 +40245,12 @@
     "brother_ids": [
       "1137683909337944104",
       "415956330705059841",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Crit",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -40332,12 +40332,12 @@
     "brother_ids": [
       "1137683909337944104",
       "415956330705059841",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Skryme",
       "Watch Veteran Crit",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -41093,12 +41093,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "228703987816202240"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Bob"
     ],
     "brother_waves": {},
@@ -41122,12 +41122,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -41151,12 +41151,12 @@
     "gene_seed_base_points_for_carrier": 5,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -41180,12 +41180,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -41839,12 +41839,12 @@
     "brother_ids": [
       "933777200312881263",
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -41868,12 +41868,12 @@
     "brother_ids": [
       "933777200312881263",
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -42012,12 +42012,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "415956330705059841",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Watch Veteran Crit",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -42041,12 +42041,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "415956330705059841",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Watch Veteran Crit",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -42070,12 +42070,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "444912473280348160",
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -42099,12 +42099,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "444912473280348160",
-      "376657426046517250",
+      "933789838136717414",
       "440987777039990786"
     ],
     "brother_names": [
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Lord Executioner Kaedes"
     ],
     "brother_waves": {},
@@ -42852,12 +42852,12 @@
     "brother_ids": [
       "543868630996353024",
       "1014712606503739392",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Company Champion Trauma",
       "Watch Captain Solomon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -43972,11 +43972,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -44109,12 +44109,12 @@
     "brother_ids": [
       "933777200312881263",
       "1317207422510694456",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
       "High Chaplain Ogyus",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -44165,12 +44165,12 @@
     "brother_ids": [
       "1294159011331051530",
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Wi-Fi",
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -44194,12 +44194,12 @@
     "brother_ids": [
       "1294159011331051530",
       "1137683909337944104",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Sergeant Wi-Fi",
       "Watch Veteran Skryme",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -44531,11 +44531,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -44588,12 +44588,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "933777200312881263",
-      "376657426046517250",
+      "933789838136717414",
       "210953727954255872"
     ],
     "brother_names": [
       "Watch Sergeant Psycho",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -44646,11 +44646,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -44673,11 +44673,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -45038,12 +45038,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon",
       "Watch Sergeant Psycho"
     ],
@@ -45096,11 +45096,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -45123,11 +45123,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "933777200312881263"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Sergeant Psycho"
     ],
     "brother_waves": {},
@@ -45205,12 +45205,12 @@
     "brother_ids": [
       "440987777039990786",
       "444912473280348160",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -45234,12 +45234,12 @@
     "brother_ids": [
       "440987777039990786",
       "444912473280348160",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -45549,12 +45549,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392",
       "301998534754959370"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon",
       "Watch Lieutenant Bone"
     ],
@@ -45578,12 +45578,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392",
       "301998534754959370"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon",
       "Watch Lieutenant Bone"
     ],
@@ -45608,12 +45608,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "444912473280348160",
-      "376657426046517250",
+      "933789838136717414",
       "301998534754959370"
     ],
     "brother_names": [
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Lieutenant Bone"
     ],
     "brother_waves": {},
@@ -45637,11 +45637,11 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "444912473280348160",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -45665,12 +45665,12 @@
     "brother_ids": [
       "444912473280348160",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Caius",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -45694,12 +45694,12 @@
     "brother_ids": [
       "444912473280348160",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Caius",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -46350,12 +46350,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392",
       "350480305141841930"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon",
       "Watch Veteran Maximus"
     ],
@@ -46379,11 +46379,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon"
     ],
     "brother_waves": {},
@@ -46406,12 +46406,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "145978703195668490",
       "1014712606503739392"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon"
     ],
     "brother_waves": {},
@@ -46804,12 +46804,12 @@
     "gene_seed_base_points_for_carrier": 3,
     "brother_ids": [
       "1014712606503739392",
-      "376657426046517250",
+      "933789838136717414",
       "350480305141841930"
     ],
     "brother_names": [
       "Watch Captain Solomon",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Maximus"
     ],
     "brother_waves": {},
@@ -46833,12 +46833,12 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "1014712606503739392",
-      "376657426046517250",
+      "933789838136717414",
       "543868630996353024"
     ],
     "brother_names": [
       "Watch Captain Solomon",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Company Champion Trauma"
     ],
     "brother_waves": {},
@@ -46890,11 +46890,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1014712606503739392"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Captain Solomon"
     ],
     "brother_waves": {},
@@ -46917,11 +46917,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 3,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "775986735477424148"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "[Vindicta] Xanovius"
     ],
     "brother_waves": {},
@@ -46944,11 +46944,11 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "727577031914815508"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Master Van"
     ],
     "brother_waves": {},
@@ -46971,11 +46971,11 @@
     "gene_seed_carried_name": "Chaplain Staffy's M.I.A. account",
     "gene_seed_base_points_for_carrier": 3,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "727577031914815508"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Master Van"
     ],
     "brother_waves": {},
@@ -47084,11 +47084,11 @@
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
       "539852775182434304",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Brother Mortales",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -47458,12 +47458,12 @@
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
       "444912473280348160",
-      "376657426046517250",
+      "933789838136717414",
       "440987777039990786"
     ],
     "brother_names": [
       "Watch Veteran Caius",
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Lord Executioner Kaedes"
     ],
     "brother_waves": {},
@@ -47488,12 +47488,12 @@
     "brother_ids": [
       "444912473280348160",
       "440987777039990786",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Caius",
       "Lord Executioner Kaedes",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -47788,12 +47788,12 @@
     "gene_seed_carried_name": "Watch Veteran Skryme",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104",
       "1317207422510694456"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme",
       "High Chaplain Ogyus"
     ],
@@ -47817,12 +47817,12 @@
     "gene_seed_carried_name": null,
     "gene_seed_base_points_for_carrier": 0,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104",
       "1317207422510694456"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme",
       "High Chaplain Ogyus"
     ],
@@ -47846,11 +47846,11 @@
     "gene_seed_carried_name": "Watch Veteran Skryme",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -47873,11 +47873,11 @@
     "gene_seed_carried_name": "Watch Veteran Skryme",
     "gene_seed_base_points_for_carrier": 4,
     "brother_ids": [
-      "376657426046517250",
+      "933789838136717414",
       "1137683909337944104"
     ],
     "brother_names": [
-      "Watch Chaplain Staffy",
+      "Chaplain Staffy's M.I.A. account",
       "Watch Veteran Skryme"
     ],
     "brother_waves": {},
@@ -47902,12 +47902,12 @@
     "brother_ids": [
       "440987777039990786",
       "727577031914815508",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Lord Executioner Kaedes",
       "Watch Master Van",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -48605,7 +48605,7 @@
   "1436583628330238152": {
     "aar_id": 1436583628330238152,
     "mission": "Ballistic Engine",
-    "difficulty": "Ruthless \ufeff",
+    "difficulty": "Ruthless ﻿",
     "difficulty_class": "ruthless_ops",
     "armory_data": 2,
     "armory_challenge_points": 0,
@@ -49319,12 +49319,12 @@
     "brother_ids": [
       "350480305141841930",
       "1014712606503739392",
-      "376657426046517250"
+      "933789838136717414"
     ],
     "brother_names": [
       "Watch Veteran Maximus",
       "Watch Captain Solomon",
-      "Watch Chaplain Staffy"
+      "Chaplain Staffy's M.I.A. account"
     ],
     "brother_waves": {},
     "waves": 0,
@@ -51104,7 +51104,7 @@
   },
   "1433946596676075590": {
     "aar_id": 1433946596676075590,
-    "mission": "Inferno \ud83c\udf83",
+    "mission": "Inferno 🎃",
     "difficulty": "Absolute",
     "difficulty_class": "absolute_ops",
     "armory_data": 2,
@@ -51133,7 +51133,7 @@
   },
   "1433928723677053019": {
     "aar_id": 1433928723677053019,
-    "mission": "Ballistic Engine \ud83c\udf83",
+    "mission": "Ballistic Engine 🎃",
     "difficulty": "Lethal",
     "difficulty_class": "lethal_ops",
     "armory_data": 2,
@@ -59299,208 +59299,5 @@
     "edited_at": null,
     "content_hash": "bff3c3f2d42a03a39d3576083e4c932b0add1756a6850abff4de939e926c1cf1",
     "initiation_trial": true
-  },
-  "1458894514256085075": {
-    "aar_id": 1458894514256085075,
-    "mission": "Inferno",
-    "difficulty": "Normal-Stratagem",
-    "difficulty_class": "normal_stratagem",
-    "armory_data": 2,
-    "armory_challenge_points": 0,
-    "gene_seed_status": "carried",
-    "gene_seed_carrier_id": "727577031914815508",
-    "gene_seed_carried_name": "Watch Master Van",
-    "gene_seed_base_points_for_carrier": 2,
-    "brother_ids": [
-      "933777200312881263",
-      "727577031914815508",
-      "376657426046517250"
-    ],
-    "brother_names": [
-      "Watch Sergeant Psycho",
-      "Watch Master Van",
-      "Watch Veteran Staffy"
-    ],
-    "brother_waves": {},
-    "waves": 0,
-    "points_for_op": 2,
-    "timestamp": "2026-01-08T18:45:57.148000+00:00",
-    "edited_at": null,
-    "content_hash": "fe85a85963d2d299affdac15c936486600e862a2554cad79a1012d9d84793eba",
-    "initiation_trial": false
-  },
-  "1458896155609141345": {
-    "aar_id": 1458896155609141345,
-    "mission": null,
-    "difficulty": "Hard-Siege",
-    "difficulty_class": "hard_siege",
-    "armory_data": 0,
-    "armory_challenge_points": 0,
-    "gene_seed_status": "unknown",
-    "gene_seed_carrier_id": null,
-    "gene_seed_carried_name": null,
-    "gene_seed_base_points_for_carrier": 0,
-    "brother_ids": [
-      "624772672349405204",
-      "944030549150924861",
-      "1121971333278990336"
-    ],
-    "brother_names": [
-      "Watch Brother Raul",
-      "Watch Brother Jazmael",
-      "Watch Brother Grungar"
-    ],
-    "brother_waves": {},
-    "waves": 5,
-    "points_for_op": 4,
-    "timestamp": "2026-01-08T18:52:28.477000+00:00",
-    "edited_at": null,
-    "content_hash": "b9392a68c442f2caa3bb6148213c01cf5ee01c4446aef16620c1d6a826959802",
-    "initiation_trial": false
-  },
-  "1458898544529248381": {
-    "aar_id": 1458898544529248381,
-    "mission": "Reclamation",
-    "difficulty": "Absolute",
-    "difficulty_class": "absolute_ops",
-    "armory_data": 2,
-    "armory_challenge_points": 4,
-    "gene_seed_status": "unknown",
-    "gene_seed_carrier_id": null,
-    "gene_seed_carried_name": null,
-    "gene_seed_base_points_for_carrier": 0,
-    "brother_ids": [
-      "1294159011331051530",
-      "106830484616511488",
-      "1105816777885229196"
-    ],
-    "brother_names": [
-      "Watch Sergeant Wi-Fi",
-      "Watch Brother Daesius",
-      "Watch Veteran Twinkus"
-    ],
-    "brother_waves": {},
-    "waves": 0,
-    "points_for_op": 4,
-    "timestamp": "2026-01-08T19:01:58.040000+00:00",
-    "edited_at": "2026-01-08T19:41:14.860000+00:00",
-    "content_hash": "ec54acd789742adb654f16a9af1f396203a5a7502a6fdabc790db76ba293217d",
-    "initiation_trial": true
-  },
-  "1458902532666556650": {
-    "aar_id": 1458902532666556650,
-    "mission": "Ballistic Engine",
-    "difficulty": "Normal-Stratagem",
-    "difficulty_class": "normal_stratagem",
-    "armory_data": 2,
-    "armory_challenge_points": 0,
-    "gene_seed_status": "carried",
-    "gene_seed_carrier_id": "376657426046517250",
-    "gene_seed_carried_name": "Watch Veteran Staffy",
-    "gene_seed_base_points_for_carrier": 2,
-    "brother_ids": [
-      "933777200312881263",
-      "727577031914815508",
-      "376657426046517250"
-    ],
-    "brother_names": [
-      "Watch Sergeant Psycho",
-      "Watch Master Van",
-      "Watch Veteran Staffy"
-    ],
-    "brother_waves": {},
-    "waves": 0,
-    "points_for_op": 2,
-    "timestamp": "2026-01-08T19:17:48.886000+00:00",
-    "edited_at": null,
-    "content_hash": "c8bd52fadfbeebe2e4759a3ea8ef98706ab300a1f47ad542df93634e185cda32",
-    "initiation_trial": false
-  },
-  "1458906441309229096": {
-    "aar_id": 1458906441309229096,
-    "mission": null,
-    "difficulty": "Hard-Siege",
-    "difficulty_class": "hard_siege",
-    "armory_data": 6,
-    "armory_challenge_points": 12,
-    "gene_seed_status": "unknown",
-    "gene_seed_carrier_id": null,
-    "gene_seed_carried_name": null,
-    "gene_seed_base_points_for_carrier": 0,
-    "brother_ids": [
-      "402023509280292875",
-      "1444810056821637133",
-      "108969956829298688"
-    ],
-    "brother_names": [
-      "Watch Sergeant Moloch",
-      "Watch Sergeant Jack",
-      "Watch Veteran Hylair"
-    ],
-    "brother_waves": {},
-    "waves": 25,
-    "points_for_op": 20,
-    "timestamp": "2026-01-08T19:33:20.779000+00:00",
-    "edited_at": null,
-    "content_hash": "234d130115cefe74e1ea5d3248db30b8c87b5616821e94c4bda8ab9b76d83734",
-    "initiation_trial": false
-  },
-  "1458908630161162405": {
-    "aar_id": 1458908630161162405,
-    "mission": "Inferno",
-    "difficulty": "Absolute",
-    "difficulty_class": "absolute_ops",
-    "armory_data": 3,
-    "armory_challenge_points": 6,
-    "gene_seed_status": "carried",
-    "gene_seed_carrier_id": "624772672349405204",
-    "gene_seed_carried_name": "Watch Brother Raul",
-    "gene_seed_base_points_for_carrier": 4,
-    "brother_ids": [
-      "624772672349405204",
-      "1121971333278990336",
-      "944030549150924861"
-    ],
-    "brother_names": [
-      "Watch Brother Raul",
-      "Watch Brother Grungar",
-      "Watch Brother Jazmael"
-    ],
-    "brother_waves": {},
-    "waves": 0,
-    "points_for_op": 4,
-    "timestamp": "2026-01-08T19:42:02.642000+00:00",
-    "edited_at": null,
-    "content_hash": "1dce158e1b51c863b452ec47fa1c257f9885d8fff76a017e10c042f7a9ffd152",
-    "initiation_trial": false
-  },
-  "1458913484300484621": {
-    "aar_id": 1458913484300484621,
-    "mission": "Reliquary",
-    "difficulty": "Normal-Stratagem",
-    "difficulty_class": "normal_stratagem",
-    "armory_data": 2,
-    "armory_challenge_points": 0,
-    "gene_seed_status": "unknown",
-    "gene_seed_carrier_id": null,
-    "gene_seed_carried_name": null,
-    "gene_seed_base_points_for_carrier": 0,
-    "brother_ids": [
-      "933777200312881263",
-      "376657426046517250",
-      "572049142457827328"
-    ],
-    "brother_names": [
-      "Watch Sergeant Psycho",
-      "Watch Veteran Staffy",
-      "Watch Brother Smiley"
-    ],
-    "brother_waves": {},
-    "waves": 0,
-    "points_for_op": 2,
-    "timestamp": "2026-01-08T20:01:19.959000+00:00",
-    "edited_at": null,
-    "content_hash": "3e425eb3a44a75ff463f4d589b44f821a46601c04e686f931f0567a0da7c903e",
-    "initiation_trial": false
   }
 }
