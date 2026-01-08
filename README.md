@@ -1,6 +1,6 @@
 # OP-Scribe Servitor — Briefs Guide (Non-Technical)
 
-This guide explains the five “briefs” the bot can generate and how to read the metrics in plain language. It’s written for Watch Command and Kill Team leaders who want quick, reliable insights without technical details.
+This guide explains the five “briefs” the bot can generate and how to read the metrics in plain language. It’s written for Watch Command and Kill Team sergeants who want quick, reliable insights without technical details.
 
 ## How to Use This Guide
 - Each brief summarizes a different aspect of operations.
@@ -184,3 +184,26 @@ How to interpret doctrine lines together:
 - Cohesion Trend (top share band) tells you “how focused we were on one pattern.”
 - Doctrine Diversity (HHI band) tells you “how varied the playbook was overall.”
 - Doctrinal Divergence tells you “who leaned hardest into a single pattern.”
+
+---
+
+## Tally Deeds (Kill Team)
+
+- What it shows: A compact, aligned roster of all members of the selected kill team, plus a 7‑day team summary.
+- How to invoke: `/tally_deeds killteam:@Kill Team X`.
+- Roster line (per brother): `Name :: Status | AAR A | Gene G | Armory R`.
+  - Status: Active if any AAR in the last 28 days.
+  - AAR/Gene/Armory: Lifetime tallies (commendations, gene‑seed stewardship, materiel recovery).
+  - Ordering: Sergeant first, then Kill Team Champion, then Veterans, then Watch Brothers/Sisters.
+- Kill Team Summary (last 7 days):
+  - Veteran Lethality Index: Avg AAR
+  - Operational Tempo: Ops count
+  - Siegebreaker Rating: Avg Waves
+  - Preservation — Gene: Average gene‑seed points
+  - Preservation — Armory: Average armory points
+  - Kill Team Reliability Index: Average total (AAR+Gene+Armory) ÷ (1 + dispersion)
+  - Force Multiplier Rating: Avg AAR/Member
+
+Notes:
+- The roster is aligned for readability and truncated if needed to stay within Discord’s 2,000‑character limit (shows “...and N more” if many members).
+- When `brother:@User` is provided instead, the detailed single‑brother Deeds Ledger is shown.

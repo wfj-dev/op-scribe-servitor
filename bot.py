@@ -963,6 +963,8 @@ async def tally_deeds(
 
     # We'll build one aggregated reply containing a block for each member
     member_blocks: list[str] = []
+    # Compact roster rows (structured) for under-2k summary
+    roster_items: List[Dict[str, int | str]] = []
     # Aggregates for killteam summary
     agg_ops = 0
     agg_aar = 0
@@ -1114,23 +1116,26 @@ async def tally_deeds(
                         company = rn
                         break
 
-            # Show Kill Team only for Sergeant and below
-            idx_sergeant = _role_index("Watch Sergeant")
-            highest_idx = get_highest_rank_index(target)
-            if idx_sergeant is None:
-                show_killteam = False
-            elif highest_idx is None:
-                show_killteam = True
-            else:
-                show_killteam = highest_idx >= idx_sergeant
+            # Show Kill Team only for Sergeant and below (Sergeant, Kill Team Champion, Watch Veteran, Watch Brother/Sister)
+            allowed_ranks = {
+                "Watch Sergeant",
+                "Kill Team Champion",
+                "Watch Veteran",
+                "Watch Brother",
+                "Watch Sister",
+            }
+            show_killteam = any(r in role_names for r in allowed_ranks)
 
-            if show_killteam:
+            # Resolve Kill Team role name (exclude rank-style 'Kill Team Champion')
+            try:
                 for role in roles:
                     rn = getattr(role, "name", "") or ""
                     rn_l = rn.lower()
-                    if "kill" in rn_l and "team" in rn_l:
+                    if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
                         kt_name = _extract_killteam_name(rn)
                         break
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1138,12 +1143,17 @@ async def tally_deeds(
         stat_rows = [
             ("Status", status),
             ("Induction", joined_str),
-            ("Home Chapter", home_chapter),
-            ("Rank", current_rank),
         ]
+        # Always include Home Chapter for single-brother queries (not a kill team request)
+        try:
+            if (killteam is None) and (len(members) == 1):
+                stat_rows.append(("Home Chapter", home_chapter))
+        except Exception:
+            pass
         if show_company:
             stat_rows.append(("Company", company))
-        if show_killteam:
+        # Show Kill Team strictly per visibility rule and only if resolved (avoid 'Unknown')
+        if show_killteam and (kt_name and kt_name != "Unknown"):
             stat_rows.append(("Kill Team", kt_name))
         stat_rows.extend(
             [
@@ -1184,13 +1194,139 @@ async def tally_deeds(
         lines.append("\u001b[0m```")
         member_blocks.append("\n".join(lines))
 
+        # Build compact roster row (safe casts and fallbacks)
+        try:
+            aar_val = int(round(float(stats.get("aar_points", 0) or 0)))
+        except Exception:
+            aar_val = 0
+        try:
+            gene_val = int(round(float(stats.get("gene_seed_points", 0) or 0)))
+        except Exception:
+            gene_val = 0
+        try:
+            armory_val = int(round(float(stats.get("armory_points", 0) or 0)))
+        except Exception:
+            armory_val = 0
+        name_val = str(display_name or getattr(target, "display_name", "Unknown"))
+        status_val = str(status or "Unknown")
+        roster_items.append(
+            {
+                "name": name_val,
+                "status": status_val,
+                "aar": aar_val,
+                "gene": gene_val,
+                "armory": armory_val,
+                # Rank bucket for roster sorting: Sergeant (0), Kill Team Champion (1), Veteran (2), Brother/Sister (3), Other (9)
+                "rank_bucket": (
+                    0
+                    if ("Watch Sergeant" in _canonical_role_names(target))
+                    else 1
+                    if ("Kill Team Champion" in _canonical_role_names(target))
+                    else 2
+                    if ("Watch Veteran" in _canonical_role_names(target))
+                    else 3
+                    if (
+                        ("Watch Brother" in _canonical_role_names(target))
+                        or ("Watch Sister" in _canonical_role_names(target))
+                    )
+                    else 9
+                ),
+            }
+        )
+
     # Send one aggregated followup containing a block per member
     reply_text = "\n\n".join(member_blocks)
 
     # If killteam requested, prepare a short summary (under 2000 chars)
     if killteam:
+        # Build compact ANSI-styled roster (enforce ~1900 char length)
+        try:
+            MAX_LEN = 1900
+            r_lines: list[str] = []
+            r_lines.append("```ansi")
+            r_lines.append("\u001b[32m==============================================================================")
+            r_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
+            r_lines.append("  KILL TEAM DEEDS ROSTER")
+            r_lines.append("==============================================================================")
+            # Sort roster by rank bucket (Sergeant, Veteran/Champion, Brother/Sister)
+            sorted_items = sorted(
+                roster_items,
+                key=lambda it: (
+                    int(it.get("rank_bucket", 9)),
+                    str(it.get("name", "")).lower(),
+                ),
+            )
+
+            # Compute column widths for aligned rendering
+            def _len_str(v):
+                try:
+                    return len(str(v))
+                except Exception:
+                    return 0
+            name_w = max((_len_str(it.get("name", "")) for it in sorted_items), default=1)
+            status_w = max((_len_str(it.get("status", "")) for it in sorted_items), default=1)
+            # Cap widths to keep table tidy and avoid overflow from long names
+            name_w = min(name_w, 24)
+            status_w = min(status_w, 12)
+            aar_w = max((_len_str(it.get("aar", 0)) for it in sorted_items), default=1)
+            gene_w = max((_len_str(it.get("gene", 0)) for it in sorted_items), default=1)
+            armory_w = max((_len_str(it.get("armory", 0)) for it in sorted_items), default=1)
+            # Build formatted rows with alignment
+            formatted_rows: List[str] = []
+            for it in sorted_items:
+                try:
+                    nm = str(it.get('name',''))[:name_w]
+                    st = str(it.get('status',''))[:status_w]
+                    line = (
+                        f"{nm:<{name_w}} :: "
+                        f"{st:<{status_w}} | "
+                        f"AAR {int(it.get('aar',0)):>{aar_w}} | "
+                        f"Gene {int(it.get('gene',0)):>{gene_w}} | "
+                        f"Armory {int(it.get('armory',0)):>{armory_w}}"
+                    )
+                except Exception:
+                    line = f"{nm} :: {st}"
+                formatted_rows.append(line)
+
+            # Footer reserved to keep block markers valid
+            footer_lines = ["==============================================================================", "\u001b[0m```"]
+            footer_len = sum(len(fl) + 1 for fl in footer_lines)
+            # Current header length
+            curr_len = sum(len(l) + 1 for l in r_lines)
+            included: list[str] = []
+            for row in formatted_rows:
+                projected = curr_len + (len(row) + 1) + footer_len
+                if projected <= MAX_LEN:
+                    included.append(row)
+                    curr_len += len(row) + 1
+                else:
+                    break
+            omitted = max(len(formatted_rows) - len(included), 0)
+            ending_line = f"  ...and {omitted} more" if omitted > 0 else None
+            # Ensure space for ending line; drop last rows if needed
+            if ending_line:
+                end_len = len(ending_line) + 1
+                while curr_len + end_len + footer_len > MAX_LEN and included:
+                    last = included.pop()
+                    curr_len -= len(last) + 1
+                # If nothing fits, omit ending line
+                if not included and curr_len + end_len + footer_len > MAX_LEN:
+                    ending_line = None
+            for row in included:
+                r_lines.append(f"  {row}")
+            if ending_line:
+                r_lines.append(ending_line)
+            for fl in footer_lines:
+                r_lines.append(fl)
+            roster_text = "\n".join(r_lines)
+            await interaction.followup.send(roster_text, ephemeral=True)
+        except Exception:
+            # Continue even if roster formatting fails
+            pass
+
         count = len(members)
-        recent_records = _get_recent_missions(limit=100)
+        span_days = 7
+        recent_records = _get_missions_last_days(span_days)
         member_ids = {
             str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
         }
@@ -1200,6 +1336,7 @@ async def tally_deeds(
         gene_vals: List[float] = []
         armory_vals: List[float] = []
         waves_vals: List[float] = []  # siege-only
+        per_capita_vals: List[float] = []
 
         for rec in recent_records:
             try:
@@ -1222,6 +1359,12 @@ async def tally_deeds(
                 dclass = (rec.get("difficulty_class") or "").lower()
                 if "siege" in dclass:
                     waves_vals.append(float(rec.get("waves", 0) or 0))
+                # Per-capita AAR for force multiplier
+                try:
+                    if participants_in_team > 0:
+                        per_capita_vals.append(aar / float(participants_in_team))
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -1232,17 +1375,25 @@ async def tally_deeds(
         avg_gene = _mean(gene_vals)
         avg_armory = _mean(armory_vals)
         avg_waves = _mean(waves_vals)
+        # Reliability and Force Multiplier (single-team context)
+        total_scores: List[float] = [a + g + r for a, g, r in zip(aar_vals, gene_vals, armory_vals)]
+        def _pstdev(vals: List[float]) -> float:
+            return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
+        reliability = (_mean(total_scores) / (1.0 + _pstdev(total_scores))) if total_scores else 0.0
+        force_multiplier = _mean(per_capita_vals)
 
         # Format a compact ANSI-styled summary similar to individual tally output
         stat_rows_summary = [
-            ("Window", "Last 100 AARs"),
+            ("Window", f"Last {span_days} Days"),
             ("Kill Team", _extract_killteam_name(getattr(killteam, "name", "Unknown"))),
             ("Members", str(count)),
-            ("Avg AAR Points", f"{avg_aar:.2f}"),
-            ("Avg Gene-seed Points", f"{avg_gene:.2f}"),
-            ("Avg Armory Data", f"{avg_armory:.2f}"),
-            ("Operations", str(int(ops_count))),
-            ("Avg Siege Waves", f"{avg_waves:.2f}"),
+            ("Veteran Lethality Index", f"Avg AAR {avg_aar:.2f}"),
+            ("Operational Tempo", f"Ops {int(ops_count)}"),
+            ("Siegebreaker Rating", f"Avg Waves {avg_waves:.2f}"),
+            ("Preservation — Gene", f"Avg {avg_gene:.2f}"),
+            ("Preservation — Armory", f"Avg {avg_armory:.2f}"),
+            ("Kill Team Reliability Index", f"Score {reliability:.2f}"),
+            ("Force Multiplier Rating", f"Avg AAR/Member {force_multiplier:.2f}"),
         ]
         label_width = max(len(label) for label, _ in stat_rows_summary) + 2
         s_lines = []
@@ -1268,26 +1419,8 @@ async def tally_deeds(
             # ignore send errors and proceed to attach full file
             pass
 
-    # If caller requested a killteam, write the aggregated report to a temp file
-    # and send it as a file attachment to the invoking user (ephemeral).
-    if killteam:
-        import tempfile
-
-        try:
-            with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt") as tf:
-                tf.write(reply_text)
-                tmp_path = tf.name
-            # Send as file attachment; ephemeral send to the invoking user
-            await interaction.followup.send(file=discord.File(tmp_path), ephemeral=True)
-        except Exception:
-            # Fallback to inline send on failure
-            await interaction.followup.send(reply_text, ephemeral=True)
-        finally:
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
-    else:
+    # Only send the detailed per-brother ledger for single-brother queries
+    if not killteam:
         await interaction.followup.send(reply_text, ephemeral=True)
 
 
@@ -1321,6 +1454,7 @@ async def combat_bonds(
 
     pair_counts = _build_pair_counts(missions)
     triples = _build_triple_bonds(pair_counts, all_bros)
+    spreads = _build_spread_counts(pair_counts)
 
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
@@ -1330,7 +1464,11 @@ async def combat_bonds(
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
         text = _format_bonds_for_discord(
-            top_global, interaction.guild, window_days=span_days, chapters=chapters
+            top_global,
+            interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
         )
         await interaction.response.send_message(text, ephemeral=True)
     else:
@@ -1341,7 +1479,11 @@ async def combat_bonds(
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
         text = _format_bonds_for_discord(
-            personal, interaction.guild, window_days=span_days, chapters=chapters
+            personal,
+            interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
         )
         await interaction.response.send_message(text, ephemeral=True)
 
@@ -3911,6 +4053,74 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
     return triples
 
 
+def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int]):
+    """Compute normalized spread per brother from pair counts.
+    Breadth/evenness via inverse Simpson effective partners; depth is bounded to
+    avoid inflating scores by grinding with a narrow partner set.
+
+    Definitions:
+    - Build per-partner frequencies from pair_counts.
+    - T = sum of partner frequencies for the user; p_i = freq_i / T.
+    - effective_partners = 1 / sum(p_i^2).  # inverse Simpson
+    - bounded_total = sum(min(freq_i, per_partner_cap)) over partners
+    - depth_factor = bounded_total ** depth_exponent (default 0.5 == sqrt)
+    - spread = round(effective_partners * depth_factor)
+
+    Optional config knobs (with safe defaults) from CONFIG.combat_bonds:
+      per_partner_cap (int, default 5), depth_exponent (float, default 0.5)
+    """
+    # Configurable knobs
+    try:
+        _cb = (CONFIG.get("combat_bonds") or {})
+    except Exception:
+        _cb = {}
+    try:
+        per_partner_cap = max(1, int(_cb.get("per_partner_cap", 5)))
+    except Exception:
+        per_partner_cap = 5
+    try:
+        depth_exponent = float(_cb.get("depth_exponent", 0.5))
+    except Exception:
+        depth_exponent = 0.5
+
+    # Build adjacency frequencies per user
+    freqs: Dict[str, Dict[str, int]] = {}
+    for (a, b), cnt in pair_counts.items():
+        if cnt <= 0:
+            continue
+        if a not in freqs:
+            freqs[a] = {}
+        if b not in freqs:
+            freqs[b] = {}
+        freqs[a][b] = freqs[a].get(b, 0) + cnt
+        freqs[b][a] = freqs[b].get(a, 0) + cnt
+
+    spreads: Dict[str, int] = {}
+    for uid, adj in freqs.items():
+        if not adj:
+            spreads[uid] = 0
+            continue
+        total = sum(max(0, v) for v in adj.values())
+        if total <= 0:
+            spreads[uid] = 0
+            continue
+        # Breadth/evenness via inverse Simpson
+        sum_sq = 0.0
+        for v in adj.values():
+            p = v / total
+            sum_sq += p * p
+        effective = (1.0 / sum_sq) if sum_sq > 0.0 else 0.0
+        # Bounded depth to avoid volume inflation on a narrow partner set
+        bounded_total = sum(min(max(0, v), per_partner_cap) for v in adj.values())
+        depth_factor = (bounded_total ** depth_exponent) if bounded_total > 0 else 0.0
+        spread_val = effective * depth_factor
+        try:
+            spreads[uid] = int(round(spread_val))
+        except Exception:
+            spreads[uid] = 0
+    return spreads
+
+
 def _select_top_global_bonds(
     triples: List[Tuple[Tuple[str, str, str], int]], top_n: int = 3
 ):
@@ -4061,6 +4271,7 @@ def _format_bonds_for_discord(
     window_span: int = 100,
     chapters: Optional[Dict[str, str]] = None,
     window_days: Optional[int] = None,
+    spreads: Optional[Dict[str, int]] = None,
 ):
     """Produce styled Combat Bonds output matching the requested layout."""
     if not bonds:
@@ -4107,7 +4318,9 @@ def _format_bonds_for_discord(
 
             chap = (chapters or {}).get(uid)
             chap_str = chap if chap else "REDACTED"
-            return f"{name} [{chap_str}]"
+            spread_val = (spreads or {}).get(uid)
+            spread_str = f" • Spread {spread_val}" if (spread_val is not None) else ""
+            return f"{name} [{chap_str}]{spread_str}"
 
         # Optional codename derived from majority chapter
         tri_chapters = [(chapters or {}).get(x) for x in (a, b, c)]
