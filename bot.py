@@ -1430,11 +1430,19 @@ async def tally_deeds(
 @app_commands.describe(
     brother="Optional: limit to bonds including this Brother.",
     window="Optional: number of days to include (default 30).",
+    style="Optional: output style (ansi or embed).",
+)
+@app_commands.choices(
+    style=[
+        app_commands.Choice(name="ANSI (console block)", value="ansi"),
+        app_commands.Choice(name="Embed (mobile-friendly)", value="embed"),
+    ]
 )
 async def combat_bonds(
     interaction: discord.Interaction,
     brother: Optional[discord.Member] = None,
     window: Optional[int] = None,
+    style: Optional[str] = None,
 ):
     if not (
         is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
@@ -1456,6 +1464,8 @@ async def combat_bonds(
     triples = _build_triple_bonds(pair_counts, all_bros)
     spreads = _build_spread_counts(pair_counts)
 
+    use_embed = (str(style).lower() == "embed") if style else False
+
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
         # Resolve chapters for all user IDs appearing in selected bonds
@@ -1463,14 +1473,24 @@ async def combat_bonds(
         for tri, _score in top_global:
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        text = _format_bonds_for_discord(
-            top_global,
-            interaction.guild,
-            window_days=span_days,
-            chapters=chapters,
-            spreads=spreads,
-        )
-        await interaction.response.send_message(text, ephemeral=True)
+        if use_embed:
+            embed = _format_bonds_embed(
+                top_global,
+                guild=interaction.guild,
+                window_days=span_days,
+                chapters=chapters,
+                spreads=spreads,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            text = _format_bonds_for_discord(
+                top_global,
+                interaction.guild,
+                window_days=span_days,
+                chapters=chapters,
+                spreads=spreads,
+            )
+            await interaction.response.send_message(text, ephemeral=True)
     else:
         target_id = str(brother.id)
         personal = _select_personal_bonds(triples, target_id, max_n=3)
@@ -1478,14 +1498,24 @@ async def combat_bonds(
         for tri, _score in personal:
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        text = _format_bonds_for_discord(
-            personal,
-            interaction.guild,
-            window_days=span_days,
-            chapters=chapters,
-            spreads=spreads,
-        )
-        await interaction.response.send_message(text, ephemeral=True)
+        if use_embed:
+            embed = _format_bonds_embed(
+                personal,
+                guild=interaction.guild,
+                window_days=span_days,
+                chapters=chapters,
+                spreads=spreads,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            text = _format_bonds_for_discord(
+                personal,
+                interaction.guild,
+                window_days=span_days,
+                chapters=chapters,
+                spreads=spreads,
+            )
+            await interaction.response.send_message(text, ephemeral=True)
 
 
 @bot.tree.command(
@@ -4036,19 +4066,76 @@ def _build_pair_counts(missions):
 
 
 def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[str]):
-    """Create 3-brother bonds and score them as sum of the three pairwise counts.
-    Skip any triple where a pair never appeared together (pair count == 0).
-    Returns list of ((id1,id2,id3), score) sorted by score desc.
+    """Create 3-brother bonds and score them using a balance-sensitive metric.
+    Base score: 3 × HarmonicMean(C_ab, C_ac, C_bc), which equals the sum when
+    all three pair counts are equal and down-weights imbalanced triads.
+    Dominance penalty: down-weight when one pair dominates the triad.
+
+    Config knobs (CONFIG.combat_bonds):
+      - dominance_alpha (float, default 0.5): strength of dominance penalty [0..1]
+      - min_pair (int, default 1): minimum pair count required to qualify
+      - min_balance_ratio (float, default 0.0): require min(C)/max(C) >= ratio (0 disables)
+
+    Returns list of ((id1, id2, id3), score:int) sorted by score desc.
     """
+    # Load config with safe defaults
+    try:
+        _cb = (CONFIG.get("combat_bonds") or {})
+    except Exception:
+        _cb = {}
+    try:
+        dominance_alpha = float(_cb.get("dominance_alpha", 0.5))
+    except Exception:
+        dominance_alpha = 0.5
+    try:
+        min_pair = max(1, int(_cb.get("min_pair", 1)))
+    except Exception:
+        min_pair = 1
+    try:
+        min_balance_ratio = float(_cb.get("min_balance_ratio", 0.0))
+    except Exception:
+        min_balance_ratio = 0.0
+
     triples: List[Tuple[Tuple[str, str, str], int]] = []
     uniq_bros = sorted(set(brothers))
     for x, y, z in itertools.combinations(uniq_bros, 3):
         pairs = [tuple(sorted((x, y))), tuple(sorted((x, z))), tuple(sorted((y, z)))]
-        # all pairs must exist at least once
-        if any(pair_counts.get(p, 0) <= 0 for p in pairs):
+        # Fetch pair counts
+        c = [int(pair_counts.get(p, 0) or 0) for p in pairs]
+        c_ab, c_ac, c_bc = c
+        # Eligibility: all pairs must meet minimum count
+        if (c_ab < min_pair) or (c_ac < min_pair) or (c_bc < min_pair):
             continue
-        score = sum(pair_counts.get(p, 0) for p in pairs)
-        triples.append(((x, y, z), score))
+        # Optional balance gate: require min/max ratio
+        try:
+            c_min = min(c)
+            c_max = max(c)
+            balance_ratio = (float(c_min) / float(c_max)) if c_max > 0 else 0.0
+        except Exception:
+            balance_ratio = 0.0
+        if (min_balance_ratio > 0.0) and (balance_ratio < min_balance_ratio):
+            continue
+
+        # Base score via Harmonic Mean (scaled by 3 to match prior sum scale when balanced)
+        # HM = 3 / (1/a + 1/b + 1/c) for positive a,b,c
+        denom = (1.0 / float(c_ab)) + (1.0 / float(c_ac)) + (1.0 / float(c_bc))
+        base_hm = (3.0 / denom) if denom > 0.0 else 0.0
+        base_score = 3.0 * base_hm
+
+        # Dominance penalty: normalize excess dominance beyond ideal 1/3 share
+        total = float(c_ab + c_ac + c_bc)
+        dom = (max(c_ab, c_ac, c_bc) / total) if total > 0.0 else 0.0
+        excess_norm = 0.0
+        try:
+            ideal = (1.0 / 3.0)
+            span = (2.0 / 3.0)
+            excess_norm = max(0.0, (dom - ideal) / span)
+        except Exception:
+            excess_norm = max(0.0, dom - (1.0 / 3.0))
+        penalty_factor = max(0.0, 1.0 - (dominance_alpha * excess_norm))
+
+        final_score = int(round(base_score * penalty_factor))
+        triples.append(((x, y, z), final_score))
     triples.sort(key=lambda t: t[1], reverse=True)
     return triples
 
@@ -4346,6 +4433,70 @@ def _format_bonds_for_discord(
     )
     lines.append("\u001b[0m```")
     return "\n".join(lines)
+
+
+def _format_bonds_embed(
+    bonds: List[Tuple[Tuple[str, str, str], int]],
+    guild: Optional[discord.Guild] = None,
+    window_span: int = 100,
+    chapters: Optional[Dict[str, str]] = None,
+    window_days: Optional[int] = None,
+    spreads: Optional[Dict[str, int]] = None,
+):
+    """Render Combat Bonds as a Discord Embed (mobile-friendly).
+    Shows up to 5 triads, with tier labels and member lines.
+    """
+    embed = discord.Embed(
+        title="Combat Bonds — Triadic Battle-Litany",
+        description=(
+            f"Auspex Window: Last {window_days} day(s)" if window_days is not None else f"Auspex Window: Last {window_span} engagements"
+        ),
+        color=0x2ecc71,
+    )
+    if not bonds:
+        embed.description = "No qualifying Combat Bonds found in the current window."
+        return embed
+
+    scores_for_cutoffs = [score for _tri, score in bonds]
+    cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
+    ordinal_labels = {
+        1: "PRIMARY",
+        2: "SECONDARY",
+        3: "TERTIARY",
+        4: "QUATERNARY",
+        5: "QUINARY",
+    }
+
+    def _member_label(uid: str) -> str:
+        member = None
+        name = "REDACTED"
+        if guild:
+            try:
+                member = guild.get_member(int(uid))
+            except Exception:
+                member = None
+        if member:
+            name = member.nick or member.display_name
+        chap = (chapters or {}).get(uid)
+        chap_str = chap if chap else "REDACTED"
+        spread_val = (spreads or {}).get(uid)
+        spread_str = f" • Spread {spread_val}" if (spread_val is not None) else ""
+        return f"{name} [{chap_str}]{spread_str}"
+
+    # Add a field per bond (Discord embeds allow up to 25 fields)
+    rank = 1
+    for triple, score in bonds:
+        if rank > 5:
+            break
+        tier = _bond_tier_dynamic(score, cutoffs)
+        a, b, c = triple
+        name = f"{ordinal_labels.get(rank, 'BOND')} — {tier}"
+        value = f"• {_member_label(a)}\n• {_member_label(b)}\n• {_member_label(c)}"
+        embed.add_field(name=name, value=value, inline=False)
+        rank += 1
+
+    embed.set_footer(text="These Combat Bonds may be invoked by decree of Watch Command.")
+    return embed
 
 
 @bot.tree.command(
