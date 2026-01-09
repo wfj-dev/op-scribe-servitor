@@ -1430,19 +1430,11 @@ async def tally_deeds(
 @app_commands.describe(
     brother="Optional: limit to bonds including this Brother.",
     window="Optional: number of days to include (default 30).",
-    style="Optional: output style (ansi or embed).",
-)
-@app_commands.choices(
-    style=[
-        app_commands.Choice(name="ANSI (console block)", value="ansi"),
-        app_commands.Choice(name="Embed (mobile-friendly)", value="embed"),
-    ]
 )
 async def combat_bonds(
     interaction: discord.Interaction,
     brother: Optional[discord.Member] = None,
     window: Optional[int] = None,
-    style: Optional[str] = None,
 ):
     if not (
         is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
@@ -1464,8 +1456,6 @@ async def combat_bonds(
     triples = _build_triple_bonds(pair_counts, all_bros)
     spreads = _build_spread_counts(pair_counts)
 
-    use_embed = (str(style).lower() == "embed") if style else False
-
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
         # Resolve chapters for all user IDs appearing in selected bonds
@@ -1473,24 +1463,22 @@ async def combat_bonds(
         for tri, _score in top_global:
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        if use_embed:
-            embed = _format_bonds_embed(
-                top_global,
-                guild=interaction.guild,
-                window_days=span_days,
-                chapters=chapters,
-                spreads=spreads,
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            text = _format_bonds_for_discord(
-                top_global,
-                interaction.guild,
-                window_days=span_days,
-                chapters=chapters,
-                spreads=spreads,
-            )
-            await interaction.response.send_message(text, ephemeral=True)
+        text = _format_bonds_for_discord(
+            top_global,
+            interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
+        )
+        embed = _format_bonds_embed(
+            top_global,
+            guild=interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
+        )
+        view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
+        await interaction.response.send_message(content=text, view=view, ephemeral=True)
     else:
         target_id = str(brother.id)
         personal = _select_personal_bonds(triples, target_id, max_n=3)
@@ -1498,24 +1486,22 @@ async def combat_bonds(
         for tri, _score in personal:
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        if use_embed:
-            embed = _format_bonds_embed(
-                personal,
-                guild=interaction.guild,
-                window_days=span_days,
-                chapters=chapters,
-                spreads=spreads,
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            text = _format_bonds_for_discord(
-                personal,
-                interaction.guild,
-                window_days=span_days,
-                chapters=chapters,
-                spreads=spreads,
-            )
-            await interaction.response.send_message(text, ephemeral=True)
+        text = _format_bonds_for_discord(
+            personal,
+            interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
+        )
+        embed = _format_bonds_embed(
+            personal,
+            guild=interaction.guild,
+            window_days=span_days,
+            chapters=chapters,
+            spreads=spreads,
+        )
+        view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
+        await interaction.response.send_message(content=text, view=view, ephemeral=True)
 
 
 @bot.tree.command(
@@ -4497,6 +4483,44 @@ def _format_bonds_embed(
 
     embed.set_footer(text="These Combat Bonds may be invoked by decree of Watch Command.")
     return embed
+
+
+class ToggleFormatView(discord.ui.View):
+    def __init__(self, text_content: Optional[str] = None, embed: Optional[discord.Embed] = None, default: str = "ansi"):
+        super().__init__(timeout=180)
+        self.text_content = text_content or ""
+        self.embed_obj = embed
+        self.current = default if default in ("ansi", "embed") else "ansi"
+
+        # Initialize button states based on available formats
+        self._update_buttons()
+
+    def _update_buttons(self):
+        # Ensure children exist before setting states (created by decorators)
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.custom_id == "show_ansi":
+                    child.disabled = (self.current == "ansi") or (not self.text_content)
+                elif child.custom_id == "show_embed":
+                    child.disabled = (self.current == "embed") or (self.embed_obj is None)
+
+    @discord.ui.button(label="Show ANSI", style=discord.ButtonStyle.secondary, custom_id="show_ansi")
+    async def show_ansi(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.text_content:
+            await interaction.response.defer()
+            return
+        self.current = "ansi"
+        self._update_buttons()
+        await interaction.response.edit_message(content=self.text_content, embed=None, view=self)
+
+    @discord.ui.button(label="Show Embed", style=discord.ButtonStyle.primary, custom_id="show_embed")
+    async def show_embed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.embed_obj is None:
+            await interaction.response.defer()
+            return
+        self.current = "embed"
+        self._update_buttons()
+        await interaction.response.edit_message(content=None, embed=self.embed_obj, view=self)
 
 
 @bot.tree.command(
