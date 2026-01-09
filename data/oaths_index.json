@@ -15,7 +15,7 @@
     "has_oath": true,
     "timestamp": "2026-01-05T00:42:58.356000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951471"
+    "status_updated_at": "2026-01-09T05:18:11.342877"
   },
   "1456293248426447031": {
     "message_id": "1456293248426447031",
@@ -34,7 +34,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T14:29:27.045000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-07T15:27:40.488142"
+    "status_updated_at": "2026-01-09T05:18:11.342988"
   },
   "1456161170493935767": {
     "message_id": "1456161170493935767",
@@ -53,7 +53,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T05:44:37.212000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952180"
+    "status_updated_at": "2026-01-09T05:15:19.130524"
   },
   "1455466614341369978": {
     "message_id": "1455466614341369978",
@@ -71,7 +71,7 @@
     "has_oath": true,
     "timestamp": "2025-12-30T07:44:42.121000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951051"
+    "status_updated_at": "2026-01-09T05:18:11.342723"
   },
   "1455248002737508353": {
     "message_id": "1455248002737508353",
@@ -91,7 +91,7 @@
     "has_oath": true,
     "timestamp": "2025-12-29T17:16:01.053000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952173"
+    "status_updated_at": "2026-01-09T05:15:19.130523"
   },
   "1452898366290923571": {
     "message_id": "1452898366290923571",
@@ -113,7 +113,7 @@
     "has_oath": true,
     "timestamp": "2025-12-23T05:39:24.070000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952179"
+    "status_updated_at": "2026-01-09T05:15:19.130521"
   },
   "1452887860121178224": {
     "message_id": "1452887860121178224",
@@ -147,8 +147,8 @@
     "edited_at": null,
     "has_oath": true,
     "timestamp": "2025-12-20T18:37:41.992000+00:00",
-    "status": "unfulfilled",
-    "status_updated_at": "2026-01-07T14:48:19.017110"
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-09T05:18:11.342879"
   },
   "1451802802434216089": {
     "message_id": "1451802802434216089",
@@ -166,7 +166,7 @@
     "has_oath": true,
     "timestamp": "2025-12-20T05:06:01.292000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951050"
+    "status_updated_at": "2026-01-08T21:45:32.575899"
   },
   "1451110447896985742": {
     "message_id": "1451110447896985742",
@@ -185,7 +185,7 @@
     "has_oath": true,
     "timestamp": "2025-12-18T07:14:51.107000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T05:41:19.354784"
+    "status_updated_at": "2026-01-09T05:18:11.342732"
   },
   "1450937553531306207": {
     "message_id": "1450937553531306207",
@@ -222,7 +222,7 @@
     "has_oath": true,
     "timestamp": "2025-12-16T16:23:46.685000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951801"
+    "status_updated_at": "2026-01-09T05:15:19.130179"
   },
   "1450243643993493665": {
     "message_id": "1450243643993493665",
@@ -249,17 +249,18 @@
     "user_display_name": "Watch Sergeant Moloch",
     "oath_rank_at_time_raw": "Watch Brother",
     "oath_target_roles": [
+      "Watch Lieutenant",
       "Watch Sergeant"
     ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
     "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1449679268283154432",
-    "content_hash": "b2b8103f5e4e671a34554c73ade20b850da8f5ed5e5fcbc6e9014fd90bcbe836",
-    "edited_at": "2025-12-14T18:20:57.495000+00:00",
+    "content_hash": "a29625276e704127e1c0b89f1f3fc5e341b0e47cd36ee90ef815b17314d7140c",
+    "edited_at": "2026-01-08T05:17:18.499000+00:00",
     "has_oath": true,
     "timestamp": "2025-12-14T08:27:51.297000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951052"
+    "status_updated_at": "2026-01-09T05:15:19.129508"
   },
   "1445623273659306044": {
     "message_id": "1445623273659306044",
@@ -296,7 +297,7 @@
     "has_oath": true,
     "timestamp": "2025-12-02T22:36:20.437000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951238"
+    "status_updated_at": "2026-01-09T05:15:19.129745"
   },
   "1444169971478560808": {
     "message_id": "1444169971478560808",
@@ -349,7 +350,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T23:06:17.498000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952176"
+    "status_updated_at": "2026-01-09T05:15:19.130522"
   },
   "1443270673089695876": {
     "message_id": "1443270673089695876",
@@ -368,7 +369,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T16:02:23.137000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951803"
+    "status_updated_at": "2026-01-09T05:15:19.130182"
   },
   "1443144748033380353": {
     "message_id": "1443144748033380353",
@@ -418,7 +419,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T03:10:53.358000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951472"
+    "status_updated_at": "2026-01-09T05:15:19.129956"
   },
   "1441135740926038068": {
     "message_id": "1441135740926038068",
@@ -436,7 +437,7 @@
     "has_oath": true,
     "timestamp": "2025-11-20T18:38:55.644000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952177"
+    "status_updated_at": "2026-01-09T05:15:19.130525"
   },
   "1439762406602571867": {
     "message_id": "1439762406602571867",
@@ -506,7 +507,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T22:15:15.863000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.951042"
+    "status_updated_at": "2026-01-09T05:18:11.342730"
   },
   "1434609244333674532": {
     "message_id": "1434609244333674532",
@@ -526,7 +527,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T18:24:57.600000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-08T20:15:58.952178"
+    "status_updated_at": "2026-01-09T05:18:11.342990"
   },
   "1434604232387854458": {
     "message_id": "1434604232387854458",
@@ -547,16 +548,55 @@
     "user_id": null,
     "user_display_name": null,
     "oath_rank_at_time_raw": null,
-    "oath_target_roles": [],
+    "oath_target_roles": [
+      "Watch Command"
+    ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
     "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1434603129340559441",
-    "content_hash": "bf445990e647bc0c2d8118f68bd33c664b5bb578963de8edfa26021658456c1e",
-    "edited_at": null,
+    "content_hash": "bfced26b05798044975e97b0316856ed9975b354be7054197bb9847a67cc1662",
+    "edited_at": "2026-01-09T04:05:03.168000+00:00",
     "has_oath": false,
     "timestamp": "2025-11-02T18:00:39.672000+00:00"
   },
   "_meta": {
-    "last_ingested_message_id": "1434603129340559441"
+    "last_ingested_message_id": "1434604232387854458"
+  },
+  "1459041545474019388": {
+    "message_id": "1459041545474019388",
+    "user_id": "1444810056821637133",
+    "user_display_name": "Watch Sergeant Jack",
+    "oath_rank_at_time_raw": "<@&1429339146371203112>",
+    "oath_target_roles": [
+      "Watch Sergeant",
+      "Watch Lieutenant"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1459041545474019388",
+    "content_hash": "e9efbc855cf2f108bdd2172e304274d1257e31df9d42d5314bce874e680bbcaa",
+    "edited_at": null,
+    "has_oath": true,
+    "timestamp": "2026-01-09T04:30:12.122000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-09T05:15:19.129954"
+  },
+  "1458917620806979807": {
+    "message_id": "1458917620806979807",
+    "user_id": "1121971333278990336",
+    "user_display_name": "Watch Brother Grungar",
+    "oath_rank_at_time_raw": "<@&1429338953227440148>",
+    "oath_target_roles": [
+      "Watch Chaplain"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1458917620806979807",
+    "content_hash": "6ffc5cf969dc4fc96f988febc112e75034eabc257f808aeb64678ce49707df76",
+    "edited_at": "2026-01-08T20:18:10.686000+00:00",
+    "has_oath": true,
+    "timestamp": "2026-01-08T20:17:46.179000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-09T05:18:11.342731"
   }
 }
