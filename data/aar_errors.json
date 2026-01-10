@@ -494,5 +494,16 @@
       "username": "vanbrieezy",
       "nickname": "Watch Master Van"
     }
+  },
+  "1459255207426003118": {
+    "errors": [
+      "Jump URL: https://discord.com/channels/1429264578440597517/1429318686447108300/1459255207426003118",
+      "At least two Brothers must be listed under the 'Brothers:' section."
+    ],
+    "author": {
+      "id": "1105816777885229196",
+      "username": "steamyshogun",
+      "nickname": "Watch Veteran Twinkus"
+    }
   }
 }
