@@ -1319,7 +1319,36 @@ async def tally_deeds(
             for fl in footer_lines:
                 r_lines.append(fl)
             roster_text = "\n".join(r_lines)
-            await interaction.followup.send(roster_text, ephemeral=True)
+            # Build a structured embed to minimize wrapping
+            try:
+                roster_embed = discord.Embed(
+                    title="Kill Team Roster",
+                    description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))}",
+                    color=0x2ecc71,
+                )
+                # Chunk rows into fields to avoid long single blocks
+                chunk_size = 15
+                for i in range(0, len(formatted_rows), chunk_size):
+                    chunk = formatted_rows[i : i + chunk_size]
+                    # keep lines short using earlier truncation
+                    field_value = "\n".join(f"• {row}" for row in chunk)
+                    roster_embed.add_field(
+                        name=f"Members {i+1}–{min(i+chunk_size, len(formatted_rows))}",
+                        value=field_value or "—",
+                        inline=False,
+                    )
+                roster_embed.set_footer(text="Roster generated from recent service records.")
+
+                roster_view = ToggleFormatView(text_content=roster_text, embed=roster_embed, default="ansi")
+                await interaction.followup.send(content=roster_text, embed=None, view=roster_view, ephemeral=True)
+            except Exception:
+                # Fallback to ANSI block with toggle
+                try:
+                    roster_embed = _embed_from_ansi("Kill Team Roster", roster_text)
+                    roster_view = ToggleFormatView(text_content=roster_text, embed=roster_embed, default="ansi")
+                    await interaction.followup.send(content=roster_text, embed=None, view=roster_view, ephemeral=True)
+                except Exception:
+                    await interaction.followup.send(roster_text, ephemeral=True)
         except Exception:
             # Continue even if roster formatting fails
             pass
@@ -1414,14 +1443,30 @@ async def tally_deeds(
         s_lines.append("\u001b[0m```")
         summary_text = "\n".join(s_lines)
         try:
-            await interaction.followup.send(summary_text, ephemeral=True)
+            # Structured summary embed with concise inline fields
+            embed = discord.Embed(
+                title="Kill Team Summary",
+                description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))} — Last {span_days} Days",
+                color=0x2ecc71,
+            )
+            for label, value in stat_rows_summary:
+                embed.add_field(name=label, value=value, inline=True)
+            view = ToggleFormatView(text_content=summary_text, embed=embed, default="ansi")
+            await interaction.followup.send(content=summary_text, embed=None, view=view, ephemeral=True)
         except Exception:
             # ignore send errors and proceed to attach full file
-            pass
+            try:
+                embed = _embed_from_ansi("Kill Team Summary", summary_text)
+                view = ToggleFormatView(text_content=summary_text, embed=embed, default="ansi")
+                await interaction.followup.send(content=summary_text, embed=None, view=view, ephemeral=True)
+            except Exception:
+                pass
 
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
-        await interaction.followup.send(reply_text, ephemeral=True)
+        embed = _embed_from_ansi("Deeds Ledger", reply_text)
+        view = ToggleFormatView(text_content=reply_text, embed=embed, default="ansi")
+        await interaction.followup.send(content=reply_text, embed=None, view=view, ephemeral=True)
 
 
 @bot.tree.command(
@@ -2050,9 +2095,71 @@ async def command_brief(
     )
     lines.append("\u001b[0m```")
 
-    # Send response; surface interaction errors clearly when debugging
+    # Send response using structured embed to minimize wrapping
     try:
-        await interaction.followup.send("\n".join(lines), ephemeral=True)
+        msg = "\n".join(lines)
+        embed = discord.Embed(
+            title="Command Brief",
+            description=f"{getattr(company, 'name', 'Unknown')} — Last {span_days} Days",
+            color=0x2ecc71,
+        )
+        # Key metrics (concise inline fields)
+        embed.add_field(
+            name="Veteran Lethality",
+            value=f"{_team_label(best_lethality)} (Avg AAR {best_lethality['avg_aar']:.2f})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Operational Tempo",
+            value=f"{_team_label(best_tempo)} (Ops {int(best_tempo['avg_ops'])})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Siegebreaker",
+            value=f"{_team_label(best_siegebreaker)} (Avg Waves {best_siegebreaker['avg_waves']:.2f})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Reliability",
+            value=f"{_team_label(best_reliability)} (Score {best_reliability['reliability']:.2f})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Force Multiplier",
+            value=f"{_team_label(force_multiplier)} (Avg AAR/Member {force_multiplier.get('force_multiplier', 0.0):.2f})",
+            inline=True,
+        )
+        # Risk Appetite summary (limit to top 8 entries for readability)
+        try:
+            risk_lines: List[str] = []
+            EPS = 0.05
+            for idx, (t, code, score, dx, dp) in enumerate(risk_profiles):
+                if idx >= 8:
+                    break
+                disp_label = _quad_label(code)
+                try:
+                    if abs(dx) < EPS and abs(dp) < EPS:
+                        disp_label = "Orthodox"
+                except Exception:
+                    pass
+                risk_lines.append(
+                    f"• {_team_label(t)} — {disp_label} (Δ AAR {dx:+.2f} | Δ Pres {dp:+.2f}; Ix {score:.2f})"
+                )
+            if risk_lines:
+                embed.add_field(name="Risk Appetite", value="\n".join(risk_lines), inline=False)
+        except Exception:
+            pass
+
+        # High Command Notes
+        if hc_note_lines:
+            embed.add_field(
+                name="High Command Notes",
+                value="\n".join(f"• {ln}" for ln in hc_note_lines)[:1024] or "—",
+                inline=False,
+            )
+
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
     except Exception as e:
         try:
             err_type = type(e).__name__
@@ -2436,7 +2543,83 @@ async def techmarine_brief(
     lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+    msg = "\n".join(lines)
+    # Structured embed for Techmarine Brief to reduce wrapping
+    try:
+        embed = discord.Embed(
+            title="Techmarine Brief",
+            description=f"{getattr(company, 'name', 'Unknown')} — Last {span_days} Days",
+            color=0x2ecc71,
+        )
+        def _label(name: str) -> str:
+            return name if name == "Company Command" else f"KT {name}"
+        if best_yield:
+            embed.add_field(
+                name="Armory Yield Efficiency",
+                value=f"{_label(best_yield[0])} (Avg Armory {best_yield[1]:.2f})",
+                inline=True,
+            )
+        if best_points:
+            embed.add_field(
+                name="Risk-Adjusted Yield",
+                value=f"{_label(best_points[0])} (Avg Points {best_points[1]:.2f})",
+                inline=True,
+            )
+        if best_consistency:
+            embed.add_field(
+                name="Armory Consistency",
+                value=f"{_label(best_consistency[0])} (SD {best_consistency[2]:.2f})",
+                inline=True,
+            )
+        if top_share and total_all > 0:
+            percent = (top_share[3] / total_all) * 100.0
+            embed.add_field(
+                name="Materiel Concentration",
+                value=f"{_label(top_share[0])} (Share {percent:.0f}%)",
+                inline=True,
+            )
+        if best_median:
+            embed.add_field(
+                name="Typical Salvage (Median)",
+                value=f"{_label(best_median[0])} (Median {best_median[1]:.2f})",
+                inline=True,
+            )
+        if best_hv:
+            hv_name, hv_cnt, hv_tot, hv_rate = best_hv
+            embed.add_field(
+                name="High-Value Salvage Freq.",
+                value=f"{_label(hv_name)} (Rate {hv_rate*100:.0f}% of {hv_tot})",
+                inline=True,
+            )
+        # High Command Notes
+        if "hc_arm_vals" in locals():
+            try:
+                hc_lines: List[str] = []
+                if len(hc_arm_vals) == 0:
+                    hc_lines.append("High Command recorded no materiel recovery during this window.")
+                    hc_lines.append("Stewardship posture maintained: stockpile audits and rites of upkeep emphasized.")
+                else:
+                    hc_avg_pts = (sum(hc_pts_vals) / len(hc_pts_vals)) if hc_pts_vals else 0.0
+                    hc_avg_arm = (sum(hc_arm_vals) / len(hc_arm_vals)) if hc_arm_vals else 0.0
+                    if (hc_avg_pts > comp_med_points) and (hc_ops < comp_med_ops):
+                        hc_lines.append("Elevated recovery under risk with restrained deployments by doctrine.")
+                    elif hc_avg_arm >= comp_med_data:
+                        hc_lines.append("Materiel recovery consistent with company standards.")
+                    elif (hc_ops >= comp_med_ops) and (hc_avg_pts < comp_med_points):
+                        hc_lines.append("Operational risk accepted despite modest yields.")
+                    else:
+                        hc_lines.append("Oversight favored over direct materiel recovery.")
+                if hc_lines:
+                    embed.add_field(name="High Command Notes", value="\n".join(f"• {x}" for x in hc_lines)[:1024], inline=False)
+            except Exception:
+                pass
+
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
+    except Exception:
+        embed = _embed_from_ansi("Techmarine Brief", msg)
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
 
 
 # ===== Librarius Dossier (Kill Team) =====
@@ -3234,9 +3417,42 @@ async def librarian_brief(
             compacted.insert(1, "\u001b[32mLibrarius Operational Brief (Compact)")
         msg = "\n".join(compacted)
 
-    # Send response; handle expired/unknown interaction token gracefully
+    # Send response with structured embed to reduce wrapping
     try:
-        await interaction.followup.send(msg, ephemeral=True)
+        embed = discord.Embed(
+            title="Librarian Brief",
+            description=f"{getattr(company, 'name', 'Unknown')} — Last {span_days} Days",
+            color=0x2ecc71,
+        )
+        # Add concise KV items as fields
+        for k, v in kv_items:
+            embed.add_field(name=k, value=v, inline=False)
+        # High Command Notes
+        if 'hc_ops_count' in locals():
+            hc_lines: List[str] = []
+            try:
+                if hc_ops_count <= 0:
+                    hc_lines.append("High Command recorded no deployments across the dossier window.")
+                    hc_lines.append("Strategic oversight maintained; archives curated, auguries sustained.")
+                elif hc_ops_count <= 3 and comp_coherence in ("FOCUSED", "ORTHODOX", "MONOLITHIC"):
+                    hc_lines.append("Limited deployments; doctrine indicates specialized orientation.")
+                    hc_lines.append(f"Counsel calibrated for precision: {dom_doc or 'specialist doctrine'} in {dom_env or 'key theatres'}.")
+                elif comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in ("BALANCED", "LEANING"):
+                    hc_lines.append("Operations spanned varied theatres; doctrine held adaptive coherence.")
+                    hc_lines.append("Librarius endorses flexible rites and cross-theatre stratagem rehearsal.")
+                elif hc_ops_count >= 6 and comp_coherence in ("FOCUSED", "ORTHODOX", "MONOLITHIC"):
+                    hc_lines.append("Elevated deployments under focused campaigns.")
+                    hc_lines.append(f"Orientation sustained by {dom_doc or 'focused doctrine'} across {comp_exposure.lower()} exposure.")
+                else:
+                    hc_lines.append("Strategic oversight consistent with the dossier window.")
+                    hc_lines.append("Counsel aligns with observed theatres and doctrinal posture.")
+            except Exception:
+                pass
+            if hc_lines:
+                embed.add_field(name="High Command Notes", value="\n".join(f"• {x}" for x in hc_lines)[:1024], inline=False)
+
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
     except Exception as e:
         try:
             err_type = type(e).__name__
@@ -4487,10 +4703,13 @@ def _format_bonds_embed(
 
 class ToggleFormatView(discord.ui.View):
     def __init__(self, text_content: Optional[str] = None, embed: Optional[discord.Embed] = None, default: str = "ansi"):
-        super().__init__(timeout=180)
+        # Extend lifetime to reduce 'Interaction failed' after short delays
+        super().__init__(timeout=900)
         self.text_content = text_content or ""
         self.embed_obj = embed
         self.current = default if default in ("ansi", "embed") else "ansi"
+        # Soft safety margin for Discord's 2000-char content limit
+        self._ansi_max_len = 1900
 
         # Initialize button states based on available formats
         self._update_buttons()
@@ -4500,20 +4719,42 @@ class ToggleFormatView(discord.ui.View):
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.custom_id == "show_ansi":
-                    child.disabled = (self.current == "ansi") or (not self.text_content)
+                    too_long = len(self.text_content) > self._ansi_max_len
+                    child.disabled = (self.current == "ansi") or (not self.text_content) or too_long
                 elif child.custom_id == "show_embed":
                     child.disabled = (self.current == "embed") or (self.embed_obj is None)
 
-    @discord.ui.button(label="Show ANSI", style=discord.ButtonStyle.secondary, custom_id="show_ansi")
+    @discord.ui.button(label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi")
     async def show_ansi(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.text_content:
-            await interaction.response.defer()
+            try:
+                await interaction.response.send_message("No PC/Console output available.", ephemeral=True)
+            except Exception:
+                pass
+            return
+        if len(self.text_content) > self._ansi_max_len:
+            # Graceful fallback: keep embed and notify
+            note = "PC/Console view exceeds message limit; showing Mobile view instead."
+            try:
+                await interaction.response.send_message(note, ephemeral=True)
+            except Exception:
+                try:
+                    await interaction.response.defer()
+                except Exception:
+                    pass
             return
         self.current = "ansi"
         self._update_buttons()
-        await interaction.response.edit_message(content=self.text_content, embed=None, view=self)
+        try:
+            await interaction.response.edit_message(content=self.text_content, embed=None, view=self)
+        except Exception:
+            # Fallback notify if edit fails (e.g., stale interaction)
+            try:
+                await interaction.followup.send("Unable to switch to PC/Console view.", ephemeral=True)
+            except Exception:
+                pass
 
-    @discord.ui.button(label="Show Embed", style=discord.ButtonStyle.primary, custom_id="show_embed")
+    @discord.ui.button(label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed")
     async def show_embed(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.embed_obj is None:
             await interaction.response.defer()
@@ -4521,6 +4762,28 @@ class ToggleFormatView(discord.ui.View):
         self.current = "embed"
         self._update_buttons()
         await interaction.response.edit_message(content=None, embed=self.embed_obj, view=self)
+
+
+def _embed_from_ansi(title: str, text_block: str, color: int = 0x2ecc71) -> discord.Embed:
+    """Generic helper: wrap an ANSI text block into an embed description safely.
+    Truncates to fit Discord limits and preserves code fence for readability.
+    """
+    # Strip surrounding backticks if present to avoid nested fences
+    content = text_block or ""
+    try:
+        stripped = content.strip()
+        if stripped.startswith("```") and stripped.endswith("```"):
+            inner = stripped[3:-3]
+            # Keep ANSI fence for styling
+            content = f"```ansi\n{inner.strip()}\n```"
+    except Exception:
+        content = text_block or ""
+    # Discord embed description limit ~4096 chars
+    max_len = 4000
+    if len(content) > max_len:
+        content = content[: max_len - 1] + "…"
+    embed = discord.Embed(title=title, description=content, color=color)
+    return embed
 
 
 @bot.tree.command(
@@ -5074,7 +5337,117 @@ async def apothecary_brief(
             compacted.insert(1, f"\u001b[32mApothecarion Readiness Brief ({span_days} Days)")
         msg = "\n".join(compacted)
 
-    await interaction.followup.send(msg, ephemeral=True)
+    # Structured embed for Apothecary Brief to reduce wrapping
+    try:
+        embed = discord.Embed(
+            title="Apothecary Brief",
+            description=f"{getattr(company, 'name', 'Unknown')} — Last {span_days} Days",
+            color=0x2ecc71,
+        )
+        # Overall readiness
+        try:
+            o_count = int(
+                overall_stats.get("count", 0) if "overall_stats" in locals() else 0
+            )
+            o_active = int(
+                overall_stats.get("active", 0) if "overall_stats" in locals() else 0
+            )
+            p_active = (o_active / o_count) if o_count > 0 else 0.0
+            embed.add_field(
+                name="Overall Biological Readiness",
+                value=f"{overall_ready} (Active {o_active}/{o_count} — {p_active:.0%})",
+                inline=False,
+            )
+        except Exception:
+            embed.add_field(name="Overall Biological Readiness", value=f"{overall_ready}", inline=False)
+
+        # Care load concentration
+        if care_stats is not None:
+            c_avg = float(care_stats.get("avg", 0.0) or 0.0)
+            c_sd = float(care_stats.get("stdev", 0.0) or 0.0)
+            embed.add_field(
+                name="Care Load Concentration",
+                value=f"{care_team_label} (Avg Absent {c_avg:.2f}; SD {c_sd:.2f})",
+                inline=True,
+            )
+        else:
+            embed.add_field(name="Care Load Concentration", value=f"{care_team_label}", inline=True)
+
+        # Stability outlier
+        if stab_stats is not None:
+            s_sd = float(stab_stats.get("stdev", 0.0) or 0.0)
+            embed.add_field(
+                name="Stability Outlier",
+                value=f"{stab_team_label} (Stdev {s_sd:.2f})",
+                inline=True,
+            )
+        else:
+            embed.add_field(name="Stability Outlier", value=f"{stab_team_label}", inline=True)
+
+        # Most stable formation
+        if stable_best_stats is not None:
+            mb_sd = float(stable_best_stats.get("stdev", 0.0) or 0.0)
+            embed.add_field(
+                name="Most Stable Formation",
+                value=f"{stable_names_fmt} ({stable_tier}) (SD {mb_sd:.2f})",
+                inline=True,
+            )
+        else:
+            embed.add_field(
+                name="Most Stable Formation",
+                value=f"{stable_names_fmt} ({stable_tier})",
+                inline=True,
+            )
+
+        # Company Command Status
+        embed.add_field(
+            name="Company Command Status",
+            value=f"{cc_ready} READINESS — {cc_stab} STABILITY",
+            inline=True,
+        )
+
+        # Gene-Seed Preservation
+        if best_gene_team is not None:
+            try:
+                name, avg_gene = best_gene_team
+                label = f"KT {name}" if name != "Company Command" else name
+                embed.add_field(
+                    name="Gene-Seed Preservation",
+                    value=f"{label} (Avg Gene {avg_gene:.2f})",
+                    inline=True,
+                )
+            except Exception:
+                pass
+
+        # Initiation Rites Leadership
+        try:
+            if 'winners_fmt' in locals() and 'best_avg' in locals():
+                embed.add_field(
+                    name="Initiation Rites Leadership",
+                    value=f"{winners_fmt} (Avg Inductions {best_avg:.2f})",
+                    inline=True,
+                )
+        except Exception:
+            pass
+
+        # High Command Notes
+        try:
+            hc_lines: List[str] = []
+            hc_lines.append(f"Deployments in window: {hc_ops_count}")
+            # Aggregate care/stability/readiness signals ratios already computed
+            hc_lines.append(f"Care adverse ratio: {care_ratio:.0%}")
+            hc_lines.append(f"Stability adverse ratio: {stab_ratio:.0%}")
+            hc_lines.append(f"Readiness adverse ratio: {read_ratio:.0%}")
+            embed.add_field(name="High Command Notes", value="\n".join(f"• {x}" for x in hc_lines)[:1024], inline=False)
+        except Exception:
+            pass
+
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
+    except Exception:
+        embed = _embed_from_ansi("Apothecary Brief", msg)
+        view = ToggleFormatView(text_content=msg, embed=embed, default="ansi")
+        await interaction.followup.send(content=msg, embed=None, view=view, ephemeral=True)
 
 
 def _main():
@@ -5738,6 +6111,8 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
     # Pre-pass: compute per-team challenge compliance and leadership for distribution
     team_challenge: Dict[str, float] = {}
     team_leadership: Dict[str, bool] = {}
+    # Structured metrics collected for embed formatting later
+    teams_metrics: List[Dict[str, object]] = []
     for team_name, members in teams:
         member_ids = {
             str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
@@ -5813,6 +6188,16 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
             f"    Oath Adherence        :: {oath_participation_pct:.0f}%  (Fulfilled {fulfilled} | Unfulfilled {unfulfilled} | Unclassified {unclassified})"
         )
         lines.append(f"    Challenge Compliance  :: {challenge_pct:.0f}%")
+        # Collect structured metrics for embed
+        teams_metrics.append({
+            "name": str(team_name),
+            "discipline": str(tier).upper(),
+            "oath_pct": float(oath_participation_pct),
+            "fulfilled": int(fulfilled),
+            "unfulfilled": int(unfulfilled),
+            "unclassified": int(unclassified),
+            "challenge_pct": float(challenge_pct),
+        })
         # Persist oath status back into OATHS index
         try:
             for mid, st in per_oath_status:
@@ -5824,6 +6209,7 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
         except Exception:
             pass
     # High Command Notes (state-based; no window references)
+    hc_notes: List[str] = []
     try:
         hc_ids: set[str] = set()
         for m in getattr(guild, "members", []):
@@ -5875,22 +6261,27 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
             lines.append(
                 "  + High Command maintained a posture of oversight, issuing guidance rather than formal oaths."
             )
+            hc_notes.append("Oversight posture; guidance predominates over formal oaths.")
         elif hc_fulfill_rate >= 75.0 and hc_challenge_pct >= 75.0:
             lines.append(
                 "  + High Command discipline stands as a doctrinal exemplar for the company."
             )
+            hc_notes.append("Discipline exemplary across oaths and challenges.")
         elif hc_fulfill_rate >= 75.0 and hc_challenge_pct < 50.0:
             lines.append(
                 "  + High Command ritual adherence is exemplary; progression remains deliberately measured."
             )
+            hc_notes.append("Ritual adherence exemplary; progression measured.")
         elif hc_total_oath > 0 and (hc_unclassified / float(hc_total_oath)) >= 0.5:
             lines.append(
                 "  + Edicts predominated over formal oaths; statuses remain pending codification."
             )
+            hc_notes.append("Edicts predominate; many statuses pending codification.")
         else:
             lines.append(
                 "  + High Command discipline reflects command authority rather than aspirational\n    progression."
             )
+            hc_notes.append("Discipline reflects command authority over aspirational progression.")
     except Exception:
         pass
 
@@ -5919,7 +6310,8 @@ def _build_chaplain_report(guild: discord.Guild, company: discord.Role):
         _save_json_dict(OATHS_INDEX_PATH, oaths)
     except Exception:
         pass
-    return msg
+    # Return both ANSI message and structured metrics for embed formatting
+    return msg, {"company": getattr(company, "name", "Unknown"), "teams": teams_metrics, "hc_notes": hc_notes}
 
 
 @bot.tree.command(
@@ -5974,8 +6366,48 @@ async def chaplain_brief(
                 CHAPLAIN_INGEST_LOCK.release()
             except Exception:
                 pass
-    report = _build_chaplain_report(guild, company)
-    await interaction.followup.send(report, ephemeral=True)
+    report, chaplain = _build_chaplain_report(guild, company)
+    # Build structured embed to reduce wrapping
+    try:
+        embed = discord.Embed(
+            title="Chaplain Brief",
+            description=f"{chaplain.get('company','Unknown')} — Cached Sources: Trophy Hall, Record of Oaths",
+            color=0x2ecc71,
+        )
+        teams = chaplain.get("teams", []) or []
+        # Limit to 20 fields to respect embed limits; use concise formatting per team
+        MAX_TEAM_FIELDS = 20
+        for idx, t in enumerate(teams[:MAX_TEAM_FIELDS]):
+            name = str(t.get("name", "Unknown"))
+            discipline = str(t.get("discipline", "UNDETERMINED"))
+            chall = float(t.get("challenge_pct", 0.0) or 0.0)
+            oath_pct = float(t.get("oath_pct", 0.0) or 0.0)
+            f = int(t.get("fulfilled", 0) or 0)
+            u = int(t.get("unfulfilled", 0) or 0)
+            x = int(t.get("unclassified", 0) or 0)
+            value = (
+                f"Discipline {discipline}\n"
+                f"Challenge {chall:.0f}%\n"
+                f"Oath {oath_pct:.0f}% (F {f} | U {u} | Unc {x})"
+            )
+            embed.add_field(name=f"KT {name}", value=value, inline=True)
+
+        # High Command Notes
+        hc_notes = chaplain.get("hc_notes", []) or []
+        if hc_notes:
+            embed.add_field(
+                name="High Command Notes",
+                value="\n".join(f"• {n}" for n in hc_notes)[:1024],
+                inline=False,
+            )
+
+        view = ToggleFormatView(text_content=report, embed=embed, default="ansi")
+        await interaction.followup.send(content=report, embed=None, view=view, ephemeral=True)
+    except Exception:
+        # Fallback to ANSI within embed
+        embed = _embed_from_ansi("Chaplain Brief", report)
+        view = ToggleFormatView(text_content=report, embed=embed, default="ansi")
+        await interaction.followup.send(content=report, embed=None, view=view, ephemeral=True)
 
 
 if __name__ == "__main__":
