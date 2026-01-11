@@ -15,7 +15,7 @@
     "has_oath": true,
     "timestamp": "2026-01-05T00:42:58.356000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764325"
+    "status_updated_at": "2026-01-11T03:07:58.686470"
   },
   "1456293248426447031": {
     "message_id": "1456293248426447031",
@@ -34,7 +34,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T14:29:27.045000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764494"
+    "status_updated_at": "2026-01-11T03:07:58.686624"
   },
   "1456161170493935767": {
     "message_id": "1456161170493935767",
@@ -53,7 +53,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T05:44:37.212000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157952"
+    "status_updated_at": "2026-01-11T03:06:59.939585"
   },
   "1455466614341369978": {
     "message_id": "1455466614341369978",
@@ -71,7 +71,7 @@
     "has_oath": true,
     "timestamp": "2025-12-30T07:44:42.121000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764080"
+    "status_updated_at": "2026-01-11T03:07:58.685999"
   },
   "1455248002737508353": {
     "message_id": "1455248002737508353",
@@ -91,7 +91,7 @@
     "has_oath": true,
     "timestamp": "2025-12-29T17:16:01.053000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157957"
+    "status_updated_at": "2026-01-11T03:06:59.939589"
   },
   "1452898366290923571": {
     "message_id": "1452898366290923571",
@@ -113,7 +113,7 @@
     "has_oath": true,
     "timestamp": "2025-12-23T05:39:24.070000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157963"
+    "status_updated_at": "2026-01-11T03:06:59.939588"
   },
   "1452887860121178224": {
     "message_id": "1452887860121178224",
@@ -148,7 +148,7 @@
     "has_oath": true,
     "timestamp": "2025-12-20T18:37:41.992000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764322"
+    "status_updated_at": "2026-01-11T03:07:58.686469"
   },
   "1451802802434216089": {
     "message_id": "1451802802434216089",
@@ -185,7 +185,7 @@
     "has_oath": true,
     "timestamp": "2025-12-18T07:14:51.107000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764077"
+    "status_updated_at": "2026-01-11T03:07:58.685989"
   },
   "1450937553531306207": {
     "message_id": "1450937553531306207",
@@ -222,7 +222,7 @@
     "has_oath": true,
     "timestamp": "2025-12-16T16:23:46.685000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157340"
+    "status_updated_at": "2026-01-11T00:00:27.416925"
   },
   "1450243643993493665": {
     "message_id": "1450243643993493665",
@@ -259,8 +259,8 @@
     "edited_at": "2026-01-08T05:17:18.499000+00:00",
     "has_oath": true,
     "timestamp": "2025-12-14T08:27:51.297000+00:00",
-    "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.155853"
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-11T03:06:59.938754"
   },
   "1445623273659306044": {
     "message_id": "1445623273659306044",
@@ -297,7 +297,7 @@
     "has_oath": true,
     "timestamp": "2025-12-02T22:36:20.437000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.156085"
+    "status_updated_at": "2026-01-11T03:06:59.938953"
   },
   "1444169971478560808": {
     "message_id": "1444169971478560808",
@@ -350,7 +350,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T23:06:17.498000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157959"
+    "status_updated_at": "2026-01-11T03:06:59.939582"
   },
   "1443270673089695876": {
     "message_id": "1443270673089695876",
@@ -369,7 +369,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T16:02:23.137000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157335"
+    "status_updated_at": "2026-01-11T03:06:59.939193"
   },
   "1443144748033380353": {
     "message_id": "1443144748033380353",
@@ -419,7 +419,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T03:10:53.358000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.156366"
+    "status_updated_at": "2026-01-11T03:07:58.686302"
   },
   "1441135740926038068": {
     "message_id": "1441135740926038068",
@@ -437,7 +437,7 @@
     "has_oath": true,
     "timestamp": "2025-11-20T18:38:55.644000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.157965"
+    "status_updated_at": "2026-01-11T03:06:59.939586"
   },
   "1439762406602571867": {
     "message_id": "1439762406602571867",
@@ -507,7 +507,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T22:15:15.863000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764060"
+    "status_updated_at": "2026-01-11T03:07:58.686000"
   },
   "1434609244333674532": {
     "message_id": "1434609244333674532",
@@ -527,7 +527,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T18:24:57.600000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764490"
+    "status_updated_at": "2026-01-11T03:07:58.686623"
   },
   "1434604232387854458": {
     "message_id": "1434604232387854458",
@@ -560,7 +560,7 @@
     "timestamp": "2025-11-02T18:00:39.672000+00:00"
   },
   "_meta": {
-    "last_ingested_message_id": "1434609244333674532"
+    "last_ingested_message_id": "1434667202329448579"
   },
   "1459041545474019388": {
     "message_id": "1459041545474019388",
@@ -579,7 +579,7 @@
     "has_oath": true,
     "timestamp": "2026-01-09T04:30:12.122000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-10T02:38:22.156364"
+    "status_updated_at": "2026-01-11T03:07:58.686622"
   },
   "1458917620806979807": {
     "message_id": "1458917620806979807",
@@ -597,6 +597,45 @@
     "has_oath": true,
     "timestamp": "2026-01-08T20:17:46.179000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-10T02:39:20.764075"
+    "status_updated_at": "2026-01-11T03:07:58.686001"
+  },
+  "1459744525688770775": {
+    "message_id": "1459744525688770775",
+    "user_id": "1217601361571610716",
+    "user_display_name": "Watch Brother Verdaghast",
+    "oath_rank_at_time_raw": "Watch brother",
+    "oath_target_roles": [
+      "Watch Chaplain",
+      "Watch Command"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1459744525688770775",
+    "content_hash": "ecf010fccfa5a124bf3c8cf411b5c7ed141fcab52143986899c10303d5495925",
+    "edited_at": null,
+    "has_oath": true,
+    "timestamp": "2026-01-11T03:03:35.666000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-11T03:07:58.686303"
+  },
+  "1459407630517932196": {
+    "message_id": "1459407630517932196",
+    "user_id": "571035376135962645",
+    "user_display_name": "Watch Veteran Raelyn",
+    "oath_rank_at_time_raw": null,
+    "oath_target_roles": [
+      "Watch Sergeant",
+      "Kill Team Champion",
+      "Watch Command"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1459407630517932196",
+    "content_hash": "09586f51c01ac93519fb15785a17e73f20f0b5024a902855ca42936f3c6bd38b",
+    "edited_at": null,
+    "has_oath": true,
+    "timestamp": "2026-01-10T04:44:53.598000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-11T03:06:59.939194"
   }
 }

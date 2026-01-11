@@ -9,12 +9,17 @@
     "litany_of_function": { "min_rank": "Watch Sergeant" },
     "tally_deeds": { "min_rank": "Watch Sergeant" },
     "combat_bonds": { "min_rank": "Watch Sergeant" },
-    "reconcile_records": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] },
-    "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] },
-    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster", "Watch Techmarine"] }
+    "reconcile_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
   },
   "logging": {
-    "level": "INFO"
+    "level": "INFO",
+    "file_enabled": true,
+    "file_path": "logs/op-scribe-servitor.log",
+    "max_bytes": 2097152,
+    "backup_count": 5
   },
-  "debug": false
+  "debug": false,
+  "company_briefs_allowed_user_ids": ["281651485782310914"]
 }
