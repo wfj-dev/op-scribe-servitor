@@ -1,6 +1,6 @@
 import types
 
-from bot import RANK_ROLES_PRIORITY, _role_index, is_sergeant_or_higher, can_reconcile_records
+from bot import RANK_ROLES_PRIORITY, _role_index, is_sergeant_or_higher, can_reconcile_records, is_high_command
 
 class FakeRole:
     def __init__(self, name):
@@ -31,3 +31,13 @@ def test_can_reconcile_records_default_roles():
 
     assert can_reconcile_records(member_ok)
     assert not can_reconcile_records(member_no)
+
+
+def test_is_high_command_roles():
+    member_watch_master = FakeMember(3001, [FakeRole("Watch Master")])
+    member_forgemaster = FakeMember(3002, [FakeRole("Forgemaster")])
+    member_sergeant = FakeMember(3003, [FakeRole("Watch Sergeant")])
+
+    assert is_high_command(member_watch_master)
+    assert is_high_command(member_forgemaster)
+    assert not is_high_command(member_sergeant)
