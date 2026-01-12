@@ -508,14 +508,8 @@
   },
   "1459461606860656662": {
     "errors": [
-      "Jump URL: https://discord.com/channels/1429264578440597517/1429318686447108300/1459461606860656662",
-      "Mission is missing (line starting with 'Mission:')."
-    ],
-    "author": {
-      "id": "649936442218512394",
-      "username": "razaman_",
-      "nickname": "Watch Brother Ra"
-    }
+      "Original message not found; cannot reprocess."
+    ]
   },
   "1459786055850135725": {
     "errors": [
@@ -527,6 +521,17 @@
       "id": "1049483826264551516",
       "username": "mack0108.",
       "nickname": "Watch Brother John"
+    }
+  },
+  "1459999676362395890": {
+    "errors": [
+      "Jump URL: https://discord.com/channels/1429264578440597517/1429318686447108300/1459999676362395890",
+      "Difficulty is missing or does not contain a known tag (@Ruthless, @Lethal, @Absolute, @Normal-Stratagem, @Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
+    ],
+    "author": {
+      "id": "572049142457827328",
+      "username": "ivmjcvi",
+      "nickname": "Watch Brother Smiley"
     }
   }
 }
