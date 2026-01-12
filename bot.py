@@ -1577,11 +1577,15 @@ async def _run_recheck_errors(
                 del error_entries[aar_id_str]
                 continue
             if has_been_processed(aar_id):
-                data = _load_json_dict(AAR_RECORDS_PATH)
+                # If the AAR has been processed since the error was recorded,
+                # remove it from the errors archive rather than touching the
+                # saved records. Previously this removed the record file by
+                # mistake which prevented error entries from being cleared.
+                data = _load_json_dict(AAR_ERRORS_PATH)
                 sid = str(aar_id)
                 if sid in data:
                     del data[sid]
-                    _save_json_dict(AAR_RECORDS_PATH, data)
+                    _save_json_dict(AAR_ERRORS_PATH, data)
                 fixed += 1
                 done_errs += 1
                 if cutoff_dt is None:
@@ -2415,7 +2419,7 @@ async def command_brief(
         return
 
     guild = interaction.guild
-    span_days = days if (isinstance(days, int) and days > 0) else 7
+    span_days = days if (isinstance(days, int) and days > 0) else 30
     recent_records = _get_missions_last_days(span_days)
 
     # Guard: ensure there are records for this company in the 30-day window
@@ -3035,7 +3039,7 @@ async def techmarine_brief(
         return
 
     guild = interaction.guild
-    span_days = days if (isinstance(days, int) and days > 0) else 7
+    span_days = days if (isinstance(days, int) and days > 0) else 30
     recent_records = _get_missions_last_days(span_days)
 
     # Build roster per Kill Team for the selected company (intersection of members)
@@ -3821,7 +3825,7 @@ async def librarian_brief(
         return
 
     # Window of records to analyze: last N days (default 7)
-    span_days = days if (isinstance(days, int) and days > 0) else 7
+    span_days = days if (isinstance(days, int) and days > 0) else 30
     recent_records = _get_missions_last_days(span_days)
 
     # Identify Kill Team roles within the fortress
@@ -5683,7 +5687,7 @@ async def apothecary_brief(
     company_command_members: List[discord.Member] = _resolve_company_command_members(company)
 
     # Compute last-N-day activity map from AAR records
-    span_days = days if (isinstance(days, int) and days > 0) else 7
+    span_days = days if (isinstance(days, int) and days > 0) else 30
     recent_records = _get_missions_last_days(span_days)
 
     # Guard: ensure there are records for this company in the 30-day window
@@ -6620,6 +6624,7 @@ CHALLENGE_ROLE_NAMES = [
     "Terminus Slayer - Sniper",
     "Terminus Slayer - Heavy",
     "Terminus Slayer - Bulwark",
+    "Terminus Slayer - Techmarine",
     "Master Terminus Slayer"
 ]
 
