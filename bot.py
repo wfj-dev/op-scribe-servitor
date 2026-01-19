@@ -1236,6 +1236,8 @@ async def tally_deeds(
         data = load_aar_data(AAR_RECORDS_PATH)
         ops_trials = 0
         siege_inductions = 0
+        # Track initiation event timestamps to identify the earliest (likely the member's own induction)
+        initiation_event_times: List[datetime] = []
         for rec in data.values():
             try:
                 brother_ids = rec.get("brother_ids") or []
@@ -1243,6 +1245,20 @@ async def tally_deeds(
                     continue
                 if not bool(rec.get("initiation_trial")):
                     continue
+                # Record timestamp for potential earliest-initiation detection
+                ts = rec.get("timestamp")
+                try:
+                    if ts:
+                        t = datetime.fromisoformat(ts)
+                        if t.tzinfo is not None:
+                            try:
+                                t = t.astimezone(tz=None).replace(tzinfo=None)
+                            except Exception:
+                                t = t.replace(tzinfo=None)
+                        initiation_event_times.append(t)
+                except Exception:
+                    # ignore parse failures; still count the trial below
+                    pass
                 dclass = (rec.get("difficulty_class") or "").lower()
                 if "siege" in dclass:
                     # Siege initiation counts immediately as one induction
@@ -1253,7 +1269,18 @@ async def tally_deeds(
             except Exception:
                 # Be resilient to malformed records
                 pass
+        # Raw count of inductions from trials
         trials_reported = siege_inductions + (ops_trials // 3)
+        # Heuristic: if the member has any initiation events, assume the earliest is their own induction
+        # and subtract one from the reported count (do not go below zero). This avoids counting the
+        # candidate's own induction as a sanctioning induction.
+        try:
+            if initiation_event_times:
+                # If there is at least one initiation event, treat the first as their own induction
+                if trials_reported > 0:
+                    trials_reported = max(0, trials_reported - 1)
+        except Exception:
+            pass
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"

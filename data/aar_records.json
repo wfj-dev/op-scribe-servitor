@@ -70533,5 +70533,119 @@
     "edited_at": null,
     "content_hash": "d333fdcbe8038101454678d474269c332cdcd5c7979dac809ed4e388db996b6b",
     "initiation_trial": false
+  },
+  "1462621176814899210": {
+    "aar_id": 1462621176814899210,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "737778434478178325",
+      "543868630996353024"
+    ],
+    "brother_names": [
+      "Watch Veteran Shrike",
+      "Company Champion Trauma"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T01:34:22.740000+00:00",
+    "edited_at": null,
+    "content_hash": "308af2a2bb5f36c44335359c2ae1b55e06e2f1b1b4b9b51bf522274ff9876cdf",
+    "initiation_trial": false
+  },
+  "1462631793051046051": {
+    "aar_id": 1462631793051046051,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "624772672349405204",
+    "gene_seed_carried_name": "Watch Veteran Raul",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "624772672349405204",
+      "737778434478178325"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Veteran Raul",
+      "Watch Veteran Shrike"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T02:16:33.848000+00:00",
+    "edited_at": null,
+    "content_hash": "d7bcaa5073d69a1b2ef991ce622b5fdf41dfc6508190895ac04fb3190b328c04",
+    "initiation_trial": false
+  },
+  "1462639526123147367": {
+    "aar_id": 1462639526123147367,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "624772672349405204",
+    "gene_seed_carried_name": "Watch Veteran Raul",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "624772672349405204",
+      "737778434478178325"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Veteran Raul",
+      "Watch Veteran Shrike"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T02:47:17.556000+00:00",
+    "edited_at": null,
+    "content_hash": "3cd3f115984360bb56900f3c9f4fb71ea49c63b4b71e22c599465257e5925fbe",
+    "initiation_trial": false
+  },
+  "1462649487645343818": {
+    "aar_id": 1462649487645343818,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "281651485782310914",
+      "156969005351960577",
+      "1217601361571610716"
+    ],
+    "brother_names": [
+      "Forgemaster Jules",
+      "Watch Brother Tullius",
+      "Watch Veteran Verdaghast"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T03:26:52.568000+00:00",
+    "edited_at": null,
+    "content_hash": "adb0ec8089c6cf1e210ae0be8e1459c4644bbaa6a7e96ff712cc3907def77821",
+    "initiation_trial": false
   }
 }
