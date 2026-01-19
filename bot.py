@@ -364,7 +364,7 @@ def _resolve_company_command_members(company: discord.Role) -> List[discord.Memb
                 idx_sergeant is not None
                 and idx_captain is not None
                 and highest_idx is not None
-                and (idx_captain <= highest_idx < idx_sergeant)
+                and (idx_captain <= highest_idx <= idx_sergeant)
             ):
                 members.append(m)
         except Exception:
@@ -1327,6 +1327,7 @@ async def litany_of_function(interaction: discord.Interaction):
         "• /command_brief [company:@Role] [days:N] — Company ops: tempo, risk, highlights. (Above Sergeant)\n"
         "• /techmarine_brief [company:@Role] [days:N] — Materiel yields, consistency, risk-adjusted metrics. (Above Sergeant)\n"
         "• /librarian_brief [company:@Role] [days:N] — Knowledge ops, formations, stability patterns. (Above Sergeant)\n"
+        "• /high_command_brief [days:N] — Strategic company summary for High Command (High Command only).\n"
         "• /apothecary_brief [company:@Role] [days:N] — Biological readiness, preservation, care load. (Above Sergeant)\n"
         "• /chaplain_brief [company:@Role] [days:N] — Morale, oaths, honors, spiritual readiness. (Above Sergeant)\n"
         "• /company_briefs companies:\"@Role …\" [days:N] — Five briefs per company; returns files. (High Command/whitelist)\n"
@@ -1864,6 +1865,55 @@ async def tally_deeds(
         except Exception:
             joined_str = "Unknown"
 
+        # Compute Service Studs: one stud per 4 weeks AND 400 AAR points (conjunctive).
+        # Only compute for members of rank Watch Veteran or higher; otherwise 0.
+        try:
+            studs_count = 0
+            idx_veteran = _role_index("Watch Veteran")
+            highest_idx = get_highest_rank_index(target)
+            # Only compute if the user has a recognized rank at or above Watch Veteran
+            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
+                # Time-based studs
+                if joined_at:
+                    now = datetime.utcnow()
+                    ja = joined_at
+                    if ja.tzinfo is not None:
+                        try:
+                            ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                        except Exception:
+                            ja = ja.replace(tzinfo=None)
+                    weeks = max(0, (now - ja).days // 7)
+                    studs_time = weeks // 4
+                else:
+                    studs_time = 0
+                # AAR-based studs
+                try:
+                    aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
+                except Exception:
+                    aar_points_val = 0
+                studs_aar = aar_points_val // 400
+                studs_count = min(studs_time, studs_aar)
+            else:
+                studs_count = 0
+        except Exception:
+            studs_count = 0
+
+        # Build display string using Unicode circles: hollow circles '○' up to 5,
+        # then a filled circle '●' to indicate more than 5. Always append numeric count in parentheses.
+        try:
+            studs_symbols = ""
+            if not studs_count:
+                studs_display = f"— ({studs_count})"
+            else:
+                if studs_count <= 5:
+                    studs_symbols = "○" * studs_count
+                else:
+                    studs_symbols = "○" * 5 + "●"
+                studs_display = f"{studs_symbols} ({studs_count})"
+        except Exception:
+            studs_display = str(studs_count)
+            studs_symbols = ""
+
         data = load_aar_data(AAR_RECORDS_PATH)
         ops_trials = 0
         siege_inductions = 0
@@ -1889,7 +1939,7 @@ async def tally_deeds(
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
 
-        # Determine Active/Inactive status: Active if any AAR in last 28 days.
+        # Determine Active/Inactive status: Active if any AAR in last 30 days.
         try:
             data = load_aar_data(AAR_RECORDS_PATH)
             # Collect timestamps for AARs involving this user
@@ -1916,10 +1966,10 @@ async def tally_deeds(
 
             status = "Inactive"
             if timestamps:
-                # Sort newest first and check if any within the last 28 days from now
+                # Sort newest first and check if any within the last 30 days from now
                 timestamps.sort(reverse=True)
                 now = datetime.utcnow()
-                cutoff = now - timedelta(days=28)
+                cutoff = now - timedelta(days=30)
                 # If any timestamp is newer than cutoff, mark Active
                 for t in timestamps:
                     if t >= cutoff:
@@ -1983,6 +2033,7 @@ async def tally_deeds(
         stat_rows = [
             ("Status", status),
             ("Induction", joined_str),
+            ("Service Studs", studs_display),
         ]
         # Always include Home Chapter for single-brother queries (not a kill team request)
         try:
@@ -2056,6 +2107,7 @@ async def tally_deeds(
                 "aar": aar_val,
                 "gene": gene_val,
                 "armory": armory_val,
+                "studs_symbols": studs_symbols,
                 # Rank bucket for roster sorting: Sergeant (0), Kill Team Champion (1), Veteran (2), Brother/Sister (3), Other (9)
                 "rank_bucket": (
                     0
@@ -2103,7 +2155,15 @@ async def tally_deeds(
                     return len(str(v))
                 except Exception:
                     return 0
-            name_w = max((_len_str(it.get("name", "")) for it in sorted_items), default=1)
+            # Include studs symbols in name width so studs appear directly after names, aligned
+            def _name_with_studs_len(it):
+                try:
+                    nm = str(it.get("name", "") or "")
+                    studs = str(it.get("studs_symbols", "") or "")
+                    return len(nm) + (1 + len(studs) if studs else 0)
+                except Exception:
+                    return 0
+            name_w = max((_name_with_studs_len(it) for it in sorted_items), default=1)
             status_w = max((_len_str(it.get("status", "")) for it in sorted_items), default=1)
             # Cap widths to keep table tidy and avoid overflow from long names
             name_w = min(name_w, 24)
@@ -2115,10 +2175,13 @@ async def tally_deeds(
             formatted_rows: List[str] = []
             for it in sorted_items:
                 try:
-                    nm = str(it.get('name',''))[:name_w]
+                    nm = str(it.get('name','') or '')
+                    studs = str(it.get('studs_symbols','') or '')
+                    combined = f"{nm} {studs}" if studs else nm
+                    combined = combined[:name_w]
                     st = str(it.get('status',''))[:status_w]
                     line = (
-                        f"{nm:<{name_w}} :: "
+                        f"{combined:<{name_w}} :: "
                         f"{st:<{status_w}} | "
                         f"AAR {int(it.get('aar',0)):>{aar_w}} | "
                         f"Gene {int(it.get('gene',0)):>{gene_w}} | "
@@ -2339,7 +2402,9 @@ async def combat_bonds(
 
     pair_counts = _build_pair_counts(missions)
     triples = _build_triple_bonds(pair_counts, all_bros)
-    spreads = _build_spread_counts(pair_counts)
+    # Active members in the window: those who appeared in at least one AAR
+    active_count = len(all_bros)
+    spreads = _build_spread_counts(pair_counts, active_count=active_count)
 
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
@@ -5182,7 +5247,7 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
     return triples
 
 
-def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int]):
+def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: Optional[int] = None):
     """Compute normalized spread per brother from pair counts.
     Breadth/evenness via inverse Simpson effective partners; depth is bounded to
     avoid inflating scores by grinding with a narrow partner set.
@@ -5224,14 +5289,18 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int]):
         freqs[a][b] = freqs[a].get(b, 0) + cnt
         freqs[b][a] = freqs[b].get(a, 0) + cnt
 
-    spreads: Dict[str, int] = {}
+    # Raw spread values (current behavior), and per-user interaction totals
+    raw_spreads: Dict[str, float] = {}
+    interactions: Dict[str, int] = {}
     for uid, adj in freqs.items():
         if not adj:
-            spreads[uid] = 0
+            raw_spreads[uid] = 0.0
+            interactions[uid] = 0
             continue
         total = sum(max(0, v) for v in adj.values())
         if total <= 0:
-            spreads[uid] = 0
+            raw_spreads[uid] = 0.0
+            interactions[uid] = 0
             continue
         # Breadth/evenness via inverse Simpson
         sum_sq = 0.0
@@ -5244,10 +5313,64 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int]):
         depth_factor = (bounded_total ** depth_exponent) if bounded_total > 0 else 0.0
         spread_val = effective * depth_factor
         try:
-            spreads[uid] = int(round(spread_val))
+            raw_spreads[uid] = float(spread_val)
         except Exception:
-            spreads[uid] = 0
-    return spreads
+            raw_spreads[uid] = 0.0
+        # interactions = total partner frequency (depth before per-partner cap)
+        try:
+            interactions[uid] = int(total)
+        except Exception:
+            interactions[uid] = 0
+
+    # Determine active count (number of active members in the window)
+    try:
+        active = int(active_count) if (active_count and int(active_count) > 0) else max(1, len(freqs))
+    except Exception:
+        active = max(1, len(freqs))
+
+    # Normalized per-active-member value
+    normalized_map: Dict[str, float] = {}
+    for uid, raw in raw_spreads.items():
+        normalized_map[uid] = (raw / float(active)) if active > 0 else 0.0
+
+    # Compute percentile rank (0-100) from normalized_map
+    percentiles: Dict[str, int] = {}
+    try:
+        items = sorted(((u, v) for u, v in normalized_map.items()), key=lambda x: x[1])
+        vals = [v for _, v in items]
+        n = len(vals)
+        for idx, (u, v) in enumerate(items):
+            if n <= 1:
+                pct = 100
+            else:
+                pct = int(round(100.0 * (idx / float(n - 1))))
+            percentiles[u] = pct
+    except Exception:
+        for u in normalized_map.keys():
+            percentiles[u] = 0
+
+    # Minimum-interaction guard (configurable)
+    try:
+        _cb = (CONFIG.get("combat_bonds") or {})
+    except Exception:
+        _cb = {}
+    try:
+        min_interactions = max(1, int(_cb.get("min_interactions", 8)))
+    except Exception:
+        min_interactions = 8
+
+    # Build final mapping preserving helpful fields for display/decisions
+    spreads_out: Dict[str, Dict[str, object]] = {}
+    for uid in raw_spreads.keys():
+        spreads_out[uid] = {
+            "raw": int(round(raw_spreads.get(uid, 0.0))),
+            "normalized": float(normalized_map.get(uid, 0.0)),
+            "percentile": int(percentiles.get(uid, 0)),
+            "interactions": int(interactions.get(uid, 0)),
+            "eligible": int(interactions.get(uid, 0)) >= min_interactions,
+        }
+
+    return spreads_out
 
 
 def _select_top_global_bonds(
@@ -5448,7 +5571,19 @@ def _format_bonds_for_discord(
             chap = (chapters or {}).get(uid)
             chap_str = chap if chap else "REDACTED"
             spread_val = (spreads or {}).get(uid)
-            spread_str = f" • Spread {spread_val}" if (spread_val is not None) else ""
+            spread_str = ""
+            try:
+                if isinstance(spread_val, dict):
+                    norm = float(spread_val.get("normalized", 0.0))
+                    pct = int(spread_val.get("percentile", 0))
+                    eligible = bool(spread_val.get("eligible", True))
+                    spread_str = f" • Spread {norm:.2f} (pct {pct}%)"
+                    if not eligible:
+                        spread_str += " [insufficient interactions]"
+                elif spread_val is not None:
+                    spread_str = f" • Spread {spread_val}"
+            except Exception:
+                spread_str = f" • Spread {spread_val}"
             return f"{name} [{chap_str}]{spread_str}"
 
         # Optional codename derived from majority chapter
@@ -5463,13 +5598,6 @@ def _format_bonds_for_discord(
         lines.append(f"    {_render_veneration_line(tier)}")
         lines.append("")
         rank += 1
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append("  Machine-Spirit Addendum:")
-    lines.append("  These Combat Bonds are logged for future deployment rites")
-    lines.append("  and may be invoked by decree of the Kill Team Sergeants or ")
-    lines.append("  any of their commanding officers.")
     lines.append(
         "=============================================================================="
     )
@@ -5522,7 +5650,19 @@ def _format_bonds_embed(
         chap = (chapters or {}).get(uid)
         chap_str = chap if chap else "REDACTED"
         spread_val = (spreads or {}).get(uid)
-        spread_str = f" • Spread {spread_val}" if (spread_val is not None) else ""
+        spread_str = ""
+        try:
+            if isinstance(spread_val, dict):
+                norm = float(spread_val.get("normalized", 0.0))
+                pct = int(spread_val.get("percentile", 0))
+                eligible = bool(spread_val.get("eligible", True))
+                spread_str = f" • Spread {norm:.2f} (pct {pct}%)"
+                if not eligible:
+                    spread_str += " [insufficient interactions]"
+            elif spread_val is not None:
+                spread_str = f" • Spread {spread_val}"
+        except Exception:
+            spread_str = f" • Spread {spread_val}"
         return f"{name} [{chap_str}]{spread_str}"
 
     # Add a field per bond (Discord embeds allow up to 25 fields)
@@ -6179,6 +6319,116 @@ async def apothecary_brief(
 
     # Structured embed for Apothecary Brief to reduce wrapping
     try:
+        # Debug output when running with debug flag (prints to stdout when BROADCAST_STATUS is False,
+        # otherwise uses logger.debug). This helps trace member counts and active mappings.
+        try:
+            dbg_lines: List[str] = []
+            dbg_lines.append("[DEBUG] Apothecary Brief internal state:")
+            dbg_lines.append(f"  Role: {getattr(company, 'name', 'Unknown')}")
+            try:
+                dbg_lines.append(f"  role_members: {len(company_members)}")
+            except Exception:
+                dbg_lines.append("  role_members: <unavailable>")
+            try:
+                dbg_lines.append(f"  company_command_members: {len(company_command_members)}")
+            except Exception:
+                dbg_lines.append("  company_command_members: <unavailable>")
+            try:
+                dbg_lines.append(f"  recent_records (window): {len(recent_records)}")
+            except Exception:
+                dbg_lines.append("  recent_records: <unavailable>")
+            try:
+                dbg_lines.append(f"  active_map count: {len(active_map)}")
+            except Exception:
+                dbg_lines.append("  active_map: <unavailable>")
+            try:
+                if 'overall_stats' in locals():
+                    dbg_lines.append(f"  overall_stats: count={overall_stats.get('count',0)} active={overall_stats.get('active',0)} absent={overall_stats.get('absent',0)}")
+            except Exception:
+                pass
+
+            # Prepare readable member lists (name (id)) for company members and all units
+            def _fmt_member(m: discord.Member) -> str:
+                try:
+                    name = getattr(m, 'nick', None) or getattr(m, 'display_name', None) or getattr(m, 'name', None) or str(getattr(m, 'id', ''))
+                    return f"{name} ({getattr(m, 'id', '')})"
+                except Exception:
+                    return str(getattr(m, 'id', ''))
+
+            try:
+                # Company members active/inactive
+                comp_active: List[str] = []
+                comp_inactive: List[str] = []
+                for m in company_members:
+                    sid = str(getattr(m, 'id', ''))
+                    if active_map.get(sid):
+                        comp_active.append(_fmt_member(m))
+                    else:
+                        comp_inactive.append(_fmt_member(m))
+                dbg_lines.append(f"  Company members active: {len(comp_active)}")
+                dbg_lines.extend([f"    {x}" for x in comp_active[:100]])
+                if len(comp_active) > 100:
+                    dbg_lines.append(f"    ... and {len(comp_active)-100} more active members")
+                dbg_lines.append(f"  Company members inactive: {len(comp_inactive)}")
+                dbg_lines.extend([f"    {x}" for x in comp_inactive[:100]])
+                if len(comp_inactive) > 100:
+                    dbg_lines.append(f"    ... and {len(comp_inactive)-100} more inactive members")
+            except Exception:
+                dbg_lines.append("  Company member lists: <error building lists>")
+
+            # Per-member AAR counts and AAR IDs (limited) for company members — helps trace who triggered active_map
+            try:
+                dbg_lines.append("  Per-member AAR counts (company members):")
+                # Build mapping uid -> list of recent record ids where uid appears
+                per_member_aars: Dict[str, List[str]] = {}
+                for rec in recent_records:
+                    rid = str(rec.get("record_id") or rec.get("id") or rec.get("message_id") or "")
+                    for uid in rec.get("brother_ids") or []:
+                        suid = str(uid)
+                        if not suid:
+                            continue
+                        per_member_aars.setdefault(suid, []).append(rid or "<anon>")
+
+                for m in company_members:
+                    sid = str(getattr(m, 'id', ''))
+                    if not sid:
+                        continue
+                    aars = per_member_aars.get(sid, [])
+                    # limit list length to avoid blowup
+                    sample = aars[:10]
+                    dbg_lines.append(f"    { _fmt_member(m) }: {len(aars)} AARs -> {sample if sample else '[]'}")
+            except Exception:
+                dbg_lines.append("  Per-member AAR counts: <error building mapping>")
+
+            try:
+                # All units (teams + company command) active/inactive
+                all_active: List[str] = []
+                all_inactive: List[str] = []
+                if 'all_units' in locals():
+                    for m in all_units:
+                        sid = str(getattr(m, 'id', ''))
+                        if active_map.get(sid):
+                            all_active.append(_fmt_member(m))
+                        else:
+                            all_inactive.append(_fmt_member(m))
+                    dbg_lines.append(f"  All units active: {len(all_active)}")
+                    dbg_lines.extend([f"    {x}" for x in all_active[:100]])
+                    if len(all_active) > 100:
+                        dbg_lines.append(f"    ... and {len(all_active)-100} more active members")
+                    dbg_lines.append(f"  All units inactive: {len(all_inactive)}")
+                    dbg_lines.extend([f"    {x}" for x in all_inactive[:100]])
+                    if len(all_inactive) > 100:
+                        dbg_lines.append(f"    ... and {len(all_inactive)-100} more inactive members")
+            except Exception:
+                dbg_lines.append("  All-unit lists: <error building lists>")
+
+            dbg_msg = "\n".join(dbg_lines)
+            if not BROADCAST_STATUS:
+                print(dbg_msg)
+            else:
+                logger.debug(dbg_msg)
+        except Exception:
+            pass
         embed = discord.Embed(
             title="Apothecary Brief",
             description=f"{getattr(company, 'name', 'Unknown')} — Last {span_days} Days",
@@ -7249,6 +7499,429 @@ async def chaplain_brief(
         embed = _embed_from_ansi("Chaplain Brief", report)
         view = ToggleFormatView(text_content=report, embed=embed, default="ansi")
         await interaction.followup.send(content=report, embed=None, view=view, ephemeral=True)
+
+
+@bot.tree.command(
+    name="high_command_brief",
+    description="High Command summary brief: strategic company-level metrics.",
+)
+@app_commands.describe(
+    days="Optional: number of days to include (default 30)",
+)
+async def high_command_brief(
+    interaction: discord.Interaction,
+    days: Optional[int] = 30,
+):
+    # Restrict to allowed channel and High Command only
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not is_high_command(interaction.user):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("Guild unavailable.", ephemeral=True)
+        return
+
+    span_days = days if (isinstance(days, int) and days > 0) else 30
+    recent = _get_missions_last_days(span_days)
+
+    # Collect company roles in guild (exclude champion roles like 'Company Champion')
+    company_roles: List[discord.Role] = [
+        r
+        for r in getattr(guild, "roles", [])
+        if "company" in (getattr(r, "name", "") or "").lower()
+        and (getattr(r, "name", "") not in CHAMPION_ROLES)
+    ]
+    company_by_id: Dict[str, discord.Role] = {str(getattr(r, "id")): r for r in company_roles}
+    # Initialize counters
+    deploy_counts: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+    armory_sums: Dict[str, float] = {str(getattr(r, "id")): 0.0 for r in company_roles}
+    armory_counts: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+    gene_carried_counts: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+    gene_total_counts: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+    init_trials_counts: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+    init_trials_success: Dict[str, int] = {str(getattr(r, "id")): 0 for r in company_roles}
+
+    # For chaplain flagging: prepare team membership map per company
+    company_team_members: Dict[str, Dict[str, set]] = {}
+    for comp in company_roles:
+        teams = _collect_company_teams(guild, comp)
+        mapping: Dict[str, set] = {}
+        for tname, members in teams:
+            mapping[str(tname)] = {str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)}
+        company_team_members[str(getattr(comp, "id"))] = mapping
+
+    # Helper to get company role ids for a member
+    def member_company_ids(member: Optional[discord.Member]) -> set:
+        ids = set()
+        if not member:
+            return ids
+        for r in getattr(member, "roles", []):
+            rn = getattr(r, "name", "") or ""
+            if "company" in rn.lower():
+                ids.add(str(getattr(r, "id", "")))
+        return ids
+
+    # Determine which records include High Command presence and per-company attribution
+    hc_mission_count = 0
+    doctrine_counter: Counter = Counter()
+    env_counter: Counter = Counter()
+
+    # Build set of high command user ids in guild for quick lookup
+    # Only include members who are recognized as High Command AND hold one of the
+    # specified High-Command-type roles (strict membership filter).
+    REQUIRED_HC_ROLES = {
+        "watch master",
+        "lord executioner",
+        "forgemaster",
+        "chief apothecary",
+        "void warden",
+        "voidwarden",
+        "high chaplain",
+    }
+    hc_ids = set()
+    for m in getattr(guild, "members", []):
+        try:
+            if not is_high_command(m):
+                continue
+            names = _canonical_role_names(m)
+            names_lc = {n.lower() for n in (names or set())}
+            if names_lc & REQUIRED_HC_ROLES:
+                uid = str(getattr(m, "id", ""))
+                if uid:
+                    hc_ids.add(uid)
+        except Exception:
+            continue
+
+    # Iterate recent records
+    for rec in recent:
+        bros = [str(b) for b in (rec.get("brother_ids") or [])]
+        if not bros:
+            continue
+        if not any(b in hc_ids for b in bros):
+            continue
+        # High Command participated in this mission
+        hc_mission_count += 1
+        # Determine involved companies for mission by checking members' company roles
+        involved_comp_ids: set = set()
+        for b in bros:
+            try:
+                mb = guild.get_member(int(b)) if guild else None
+            except Exception:
+                mb = None
+            if mb:
+                involved_comp_ids |= member_company_ids(mb)
+        # Also inspect mission text for role mention (legacy company mention in mission)
+        try:
+            mtext = rec.get("mission") or ""
+            for m in re.finditer(r"<@&(?P<id>\d+)>", str(mtext)):
+                rid = m.group("id")
+                if rid in company_by_id:
+                    involved_comp_ids.add(rid)
+        except Exception:
+            pass
+
+        # Tag environment and doctrine
+        envs, docs, _canon = _tags_for_record(rec)
+        for e in envs:
+            env_counter[e] += 1
+        for d in docs:
+            doctrine_counter[d] += 1
+
+        # Attribute metrics to each company involved in this mission
+        for cid in list(involved_comp_ids):
+            if cid not in deploy_counts:
+                # Unknown company role (skip)
+                continue
+            deploy_counts[cid] += 1
+            # Armory
+            try:
+                arm = rec.get("armory_data")
+                if arm is not None:
+                    arm_v = float(arm)
+                    armory_sums[cid] += arm_v
+                    armory_counts[cid] += 1
+            except Exception:
+                pass
+            # Gene-seed
+            try:
+                gene_total_counts[cid] += 1
+                if (rec.get("gene_seed_status") or "").lower() == "carried":
+                    gene_carried_counts[cid] += 1
+            except Exception:
+                pass
+            # Initiation trials
+            try:
+                if bool(rec.get("initiation_trial")):
+                    init_trials_counts[cid] += 1
+                    if float(rec.get("points_for_op") or 0.0) > 0.0:
+                        init_trials_success[cid] += 1
+            except Exception:
+                pass
+
+    # Primary Deployment Company
+    total_hc_ops = hc_mission_count or 1
+    primary_comp_id = None
+    if deploy_counts:
+        primary_comp_id = max(deploy_counts.items(), key=lambda kv: kv[1])[0]
+
+    # Deployment distribution (sorted high->low)
+    distribution_entries: List[Tuple[str, int, float]] = []
+    for cid, cnt in sorted(deploy_counts.items(), key=lambda kv: kv[1], reverse=True):
+        role = company_by_id.get(cid)
+        name = getattr(role, "name", "Unknown") if role else "Unknown"
+        pct = (100.0 * cnt / total_hc_ops) if total_hc_ops else 0.0
+        distribution_entries.append((name, cnt, pct))
+
+    # Least-attended company
+    least_comp_id = None
+    if deploy_counts:
+        least_comp_id = min(deploy_counts.items(), key=lambda kv: kv[1])[0]
+
+    # Apothecarion Readiness Index: combined (gene_recovery_rate + induction_efficiency)/2 -> lowest
+    apoth_scores: Dict[str, float] = {}
+    for cid in deploy_counts.keys():
+        gt = gene_total_counts.get(cid, 0)
+        gc = gene_carried_counts.get(cid, 0)
+        gene_rate = (gc / gt) if gt > 0 else 0.0
+        itot = init_trials_counts.get(cid, 0)
+        isum = init_trials_success.get(cid, 0)
+        induction_eff = (isum / itot) if itot > 0 else 0.0
+        apoth_scores[cid] = (gene_rate + induction_eff) / 2.0
+    apoth_lowest_id = None
+    if apoth_scores:
+        apoth_lowest_id = min(apoth_scores.items(), key=lambda kv: kv[1])[0]
+
+    # Chaplaincy Stability Flag: count teams flagged during HC missions
+    chaplain_flags: Dict[str, int] = {str(getattr(r, 'id')): 0 for r in company_roles}
+    # Build chaplain metrics once per company
+    chaplain_cache: Dict[str, List[dict]] = {}
+    for comp in company_roles:
+        try:
+            _, meta = _build_chaplain_report(guild, comp)
+            chaplain_cache[str(getattr(comp, 'id'))] = meta.get('teams', []) or []
+        except Exception:
+            chaplain_cache[str(getattr(comp, 'id'))] = []
+
+    # For each recent mission with HC, check teams present and if discipline is problematic
+    problematic = {"LITURGICAL CORRECTION REQUIRED", "DISCIPLINE DERELICT"}
+    for rec in recent:
+        bros = [str(b) for b in (rec.get("brother_ids") or [])]
+        if not bros or not any(b in hc_ids for b in bros):
+            continue
+        # For each company, check teams that intersect participants
+        for cid, teams_map in company_team_members.items():
+            if cid not in company_by_id:
+                continue
+            # if no intersection skip
+            team_present = False
+            for tname, mids in teams_map.items():
+                if set(bros) & mids:
+                    # lookup discipline for this team from chaplain_cache
+                    teams_meta = chaplain_cache.get(cid, [])
+                    for tm in teams_meta:
+                        if str(tm.get('name')) == str(tname):
+                            disc = str(tm.get('discipline', '')).upper()
+                            if disc in problematic:
+                                chaplain_flags[cid] = chaplain_flags.get(cid, 0) + 1
+                            break
+
+    # Librarius Operational Doctrine Bias
+    # Aggregate raw environment tags into macro categories via _env_macro_for
+    macro_env_counts: Counter = Counter()
+    for ename, cnt in env_counter.items():
+        try:
+            macro = _env_macro_for(ename)
+        except Exception:
+            macro = _env_macro_for(ename)
+        macro_env_counts[macro] += cnt
+    top_env = macro_env_counts.most_common(3)
+    top_docs = doctrine_counter.most_common(3)
+
+    # Derive top doctrine share and cohesion/exposure tiers for Librarius note
+    dom_doc = None
+    top_share_pct = 0.0
+    if doctrine_counter:
+        dom_doc, dom_cnt = max(doctrine_counter.items(), key=lambda kv: (kv[1], kv[0]))
+        total_docs_cnt = sum(doctrine_counter.values()) or 1
+        top_share_pct = 100.0 * (dom_cnt / float(total_docs_cnt))
+    comp_coherence = _cohesion_concentration_tier(top_share_pct)
+    comp_exposure = _operational_exposure_tier(len(env_counter))
+
+    # Mechanicus Yield Priority: highest average armory during HC missions
+    mech_priority_id = None
+    mech_avg: Dict[str, float] = {}
+    for cid in armory_counts.keys():
+        cnt = armory_counts.get(cid, 0)
+        if cnt > 0:
+            avg = armory_sums.get(cid, 0.0) / float(cnt)
+            mech_avg[cid] = avg
+    if mech_avg:
+        mech_priority_id = max(mech_avg.items(), key=lambda kv: kv[1])[0]
+
+    # Build brief text (aligned columns)
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // HIGH COMMAND BRIEF")
+    lines.append("  OPERATION-SCRIBE SERVITOR — STRATEGIC COMPANY SUMMARY")
+    lines.append("==============================================================================")
+    lines.append(f"  Window: Last {span_days} Days | HC Deployments Observed: {hc_mission_count}")
+    lines.append("------------------------------------------------------------------------------")
+
+    # Prepare key/value items and compute uniform label width for alignment
+    kv_items: List[Tuple[str, str]] = []
+
+    # 2 Deployment distribution (compact, single-line)
+    if distribution_entries:
+        dist_parts: List[str] = []
+        for name, cnt, pct in distribution_entries:
+            short = name
+            if isinstance(name, str) and name.startswith("Watch Company "):
+                short = name.replace("Watch Company ", "")
+            dist_parts.append(f"{short} {cnt} ops ({pct:.0f}%)")
+        kv_items.append(("Deployment Distribution", " | ".join(dist_parts)))
+    else:
+        kv_items.append(("Deployment Distribution", "—"))
+
+    # 4 Apothecarion Readiness
+    if apoth_lowest_id and apoth_lowest_id in company_by_id:
+        val = apoth_scores.get(apoth_lowest_id, 0.0)
+        kv_items.append(("Apothecarion Readiness Index", f"{company_by_id[apoth_lowest_id].name} (Score: {val:.2f})"))
+    else:
+        kv_items.append(("Apothecarion Readiness Index", "UNDETERMINED"))
+
+    # 5 Chaplaincy — Average Discipline per company
+    tier_map: Dict[str, int] = {
+        "EXEMPLARIS": 5,
+        "STALWART": 4,
+        "STEADFAST": 3,
+        "LITURGICAL CORRECTION REQUIRED": 2,
+        "DISCIPLINE DERELICT": 1,
+    }
+
+    def _tier_from_score(avg: float) -> str:
+        if avg >= 4.5:
+            return "Exemplaris"
+        if avg >= 3.5:
+            return "Stalwart"
+        if avg >= 2.5:
+            return "Steadfast"
+        if avg >= 1.5:
+            return "Liturgical Correction Required"
+        return "Discipline Derelict"
+
+    chap_parts: List[str] = []
+    chap_avg_map: Dict[str, float] = {}
+    for comp in company_roles:
+        cid = str(getattr(comp, "id"))
+        cname = getattr(comp, "name", "Unknown")
+        short = cname
+        if isinstance(cname, str) and cname.startswith("Watch Company "):
+            short = cname.replace("Watch Company ", "")
+        teams_meta = chaplain_cache.get(cid, [])
+        scores: List[int] = []
+        for tm in teams_meta:
+            disc = str(tm.get("discipline", "")).upper()
+            if disc in tier_map:
+                scores.append(tier_map[disc])
+        if scores:
+            avg = sum(scores) / float(len(scores))
+            tier_label = _tier_from_score(avg)
+            chap_parts.append(f"{short} {tier_label.upper()} ({avg:.2f})")
+            chap_avg_map[cid] = avg
+        else:
+            chap_parts.append(f"{short} —")
+    kv_items.append(("Chaplaincy — Avg Discipline", " | ".join(chap_parts)))
+
+    # 6 Librarius Operational Doctrine Bias (split: top doctrines, top environments)
+    if top_docs:
+        docs_str = ", ".join([f"{d[0]} ({d[1]})" for d in top_docs])
+        kv_items.append(("Librarius — Top Doctrines", docs_str))
+    else:
+        kv_items.append(("Librarius — Top Doctrines", "UNDETERMINED"))
+
+    # Cohesion metric: dominant doctrine share and qualitative tier
+    kv_items.append(("Librarius — Cohesion", f"{comp_coherence} ({dom_doc or '—'} {top_share_pct:.0f}%)"))
+
+    if top_env:
+        # Order top environments by their macro category per ENV_MACROS_ORDER
+        def _env_order_key(kv: Tuple[str, int]) -> Tuple[int, int]:
+            name, cnt = kv
+            macro = _env_macro_for(name)
+            try:
+                idx = ENV_MACROS_ORDER.index(macro)
+            except Exception:
+                idx = len(ENV_MACROS_ORDER) + 1
+            return (idx, -cnt)
+
+        ordered_envs = sorted(top_env, key=_env_order_key)
+        env_str = " | ".join([f"{e[0]} ({e[1]})" for e in ordered_envs])
+        kv_items.append(("Librarius — Top Environments", env_str))
+    else:
+        kv_items.append(("Librarius — Top Environments", "UNDETERMINED"))
+
+    # 7 Mechanicus Yield Priority
+    if mech_priority_id and mech_priority_id in company_by_id:
+        kv_items.append(("Mechanicus Yield Priority", f"{company_by_id[mech_priority_id].name} (Avg Armory: {mech_avg.get(mech_priority_id,0.0):.2f})"))
+    else:
+        kv_items.append(("Mechanicus Yield Priority", "UNDETERMINED"))
+
+    try:
+        label_width = max((len(k) for k, _ in kv_items), default=0)
+    except Exception:
+        label_width = 0
+    for k, v in kv_items:
+        lines.append(f"  {k:<{label_width}} :: {v}")
+
+    lines.append("------------------------------------------------------------------------------")
+    # Synthesized High Command Note
+    notes: List[str] = []
+    try:
+        if primary_comp_id and deploy_counts.get(primary_comp_id,0) > (0.5 * total_hc_ops):
+            notes.append(f"High Command deployments concentrated in {company_by_id[primary_comp_id].name}; consider redistributing oversight.")
+        if apoth_lowest_id and apoth_scores.get(apoth_lowest_id,1.0) < 0.25:
+            notes.append(f"Apothecarion attention advised for {company_by_id[apoth_lowest_id].name}; low gene/induction metrics.")
+        # Librarius synthesized note based on doctrine cohesion and exposure
+        try:
+            if comp_coherence and comp_exposure:
+                if comp_exposure in ("BROAD", "EXTENSIVE") and comp_coherence in ("BALANCED", "LEANING"):
+                    notes.append("Librarius: operations spanned varied theatres; doctrine held adaptive coherence.")
+                elif hc_mission_count >= 6 and comp_coherence in ("FOCUSED", "ORTHODOX", "MONOLITHIC"):
+                    notes.append("Librarius: elevated focused campaigns with concentrated doctrine.")
+                elif comp_coherence in ("MONOLITHIC", "ORTHODOX"):
+                    notes.append("Librarius: doctrinal concentration observed; recommend cross-theatre doctrine rehearsal.")
+        except Exception:
+            pass
+
+        # Recommend chaplain intervention only when average discipline falls below threshold
+        try:
+            if chap_avg_map:
+                worst_chap_id, worst_avg = min(chap_avg_map.items(), key=lambda kv: kv[1])
+                if worst_avg is not None and worst_avg < 2.5 and worst_chap_id in company_by_id:
+                    notes.append(f"Chaplaincy intervention recommended for {company_by_id[worst_chap_id].name}.")
+        except Exception:
+            pass
+        if mech_priority_id:
+            notes.append(f"Mechanicus: prioritize inspections of {company_by_id[mech_priority_id].name} armories.")
+    except Exception:
+        pass
+    if not notes:
+        notes.append("High Command posture nominal; no immediate strategic alerts.")
+
+    lines.append("  High Command Note:")
+    for n in notes:
+        lines.append(f"  + {n}")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    report = "\n".join(lines)
+    await interaction.followup.send(content=report, ephemeral=True)
 
 
 if __name__ == "__main__":

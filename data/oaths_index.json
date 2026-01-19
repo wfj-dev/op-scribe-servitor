@@ -15,7 +15,7 @@
     "has_oath": true,
     "timestamp": "2026-01-05T00:42:58.356000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945235"
+    "status_updated_at": "2026-01-12T21:51:50.190736"
   },
   "1456293248426447031": {
     "message_id": "1456293248426447031",
@@ -34,7 +34,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T14:29:27.045000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945385"
+    "status_updated_at": "2026-01-17T22:40:25.052844"
   },
   "1456161170493935767": {
     "message_id": "1456161170493935767",
@@ -53,7 +53,7 @@
     "has_oath": true,
     "timestamp": "2026-01-01T05:44:37.212000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.965064"
+    "status_updated_at": "2026-01-17T22:40:25.064854"
   },
   "1455466614341369978": {
     "message_id": "1455466614341369978",
@@ -71,7 +71,7 @@
     "has_oath": true,
     "timestamp": "2025-12-30T07:44:42.121000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.944844"
+    "status_updated_at": "2026-01-17T22:40:25.051816"
   },
   "1455248002737508353": {
     "message_id": "1455248002737508353",
@@ -91,7 +91,7 @@
     "has_oath": true,
     "timestamp": "2025-12-29T17:16:01.053000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.965063"
+    "status_updated_at": "2026-01-17T22:43:36.457389"
   },
   "1452898366290923571": {
     "message_id": "1452898366290923571",
@@ -148,7 +148,7 @@
     "has_oath": true,
     "timestamp": "2025-12-20T18:37:41.992000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945233"
+    "status_updated_at": "2026-01-17T22:40:25.052848"
   },
   "1451802802434216089": {
     "message_id": "1451802802434216089",
@@ -185,7 +185,7 @@
     "has_oath": true,
     "timestamp": "2025-12-18T07:14:51.107000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.944836"
+    "status_updated_at": "2026-01-17T22:40:25.052847"
   },
   "1450937553531306207": {
     "message_id": "1450937553531306207",
@@ -260,7 +260,7 @@
     "has_oath": true,
     "timestamp": "2025-12-14T08:27:51.297000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.964267"
+    "status_updated_at": "2026-01-17T22:43:36.456811"
   },
   "1445623273659306044": {
     "message_id": "1445623273659306044",
@@ -350,7 +350,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T23:06:17.498000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.965061"
+    "status_updated_at": "2026-01-17T22:43:36.457390"
   },
   "1443270673089695876": {
     "message_id": "1443270673089695876",
@@ -369,7 +369,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T16:02:23.137000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.964789"
+    "status_updated_at": "2026-01-17T22:43:36.457041"
   },
   "1443144748033380353": {
     "message_id": "1443144748033380353",
@@ -419,7 +419,7 @@
     "has_oath": true,
     "timestamp": "2025-11-26T03:10:53.358000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945071"
+    "status_updated_at": "2026-01-17T22:40:25.052237"
   },
   "1441135740926038068": {
     "message_id": "1441135740926038068",
@@ -437,7 +437,7 @@
     "has_oath": true,
     "timestamp": "2025-11-20T18:38:55.644000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.965062"
+    "status_updated_at": "2026-01-17T22:43:36.457391"
   },
   "1439762406602571867": {
     "message_id": "1439762406602571867",
@@ -507,7 +507,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T22:15:15.863000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.944847"
+    "status_updated_at": "2026-01-17T22:40:25.051829"
   },
   "1434609244333674532": {
     "message_id": "1434609244333674532",
@@ -527,7 +527,7 @@
     "has_oath": true,
     "timestamp": "2025-11-02T18:24:57.600000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945384"
+    "status_updated_at": "2026-01-17T22:40:25.052841"
   },
   "1434604232387854458": {
     "message_id": "1434604232387854458",
@@ -560,7 +560,7 @@
     "timestamp": "2025-11-02T18:00:39.672000+00:00"
   },
   "_meta": {
-    "last_ingested_message_id": "1441135740926038068"
+    "last_ingested_message_id": "1443104899645833328"
   },
   "1459041545474019388": {
     "message_id": "1459041545474019388",
@@ -579,7 +579,7 @@
     "has_oath": true,
     "timestamp": "2026-01-09T04:30:12.122000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945383"
+    "status_updated_at": "2026-01-17T22:40:25.052846"
   },
   "1458917620806979807": {
     "message_id": "1458917620806979807",
@@ -597,7 +597,7 @@
     "has_oath": true,
     "timestamp": "2026-01-08T20:17:46.179000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.944846"
+    "status_updated_at": "2026-01-17T22:40:25.051826"
   },
   "1459744525688770775": {
     "message_id": "1459744525688770775",
@@ -616,7 +616,7 @@
     "has_oath": true,
     "timestamp": "2026-01-11T03:03:35.666000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.945070"
+    "status_updated_at": "2026-01-17T22:40:25.052242"
   },
   "1459407630517932196": {
     "message_id": "1459407630517932196",
@@ -635,8 +635,8 @@
     "edited_at": null,
     "has_oath": true,
     "timestamp": "2026-01-10T04:44:53.598000+00:00",
-    "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.964788"
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-17T22:40:25.052845"
   },
   "1460066712589434880": {
     "message_id": "1460066712589434880",
@@ -655,7 +655,7 @@
     "has_oath": true,
     "timestamp": "2026-01-12T00:23:51.009000+00:00",
     "status": "unfulfilled",
-    "status_updated_at": "2026-01-12T16:47:06.944845"
+    "status_updated_at": "2026-01-17T22:40:25.051831"
   },
   "1460325757464350895": {
     "message_id": "1460325757464350895",
@@ -664,17 +664,107 @@
     "oath_rank_at_time_raw": null,
     "oath_target_roles": [
       "Watch Sergeant",
+      "Watch Lieutenant",
       "Watch Chaplain",
       "Watch Command"
     ],
     "guild_id": "1429264578440597517",
     "channel_id": "1432804829364748319",
     "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1460325757464350895",
-    "content_hash": "6a2e40dc11d8551f49f5cefc8709af805c0aec9be1696a8e085669b422132490",
-    "edited_at": null,
+    "content_hash": "08ac5f259589d44bde7265e6505088cf298aec0a87beb89478d4badc20819fc1",
+    "edited_at": "2026-01-13T22:05:07.004000+00:00",
     "has_oath": true,
     "timestamp": "2026-01-12T17:33:12.120000+00:00",
     "status": "fulfilled",
-    "status_updated_at": "2026-01-12T17:55:52.964532"
+    "status_updated_at": "2026-01-17T22:43:36.457388"
+  },
+  "1460599226214908055": {
+    "message_id": "1460599226214908055",
+    "user_id": null,
+    "user_display_name": null,
+    "oath_rank_at_time_raw": null,
+    "oath_target_roles": [],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1460599226214908055",
+    "content_hash": "d0f7bb65a3053dd2c78e8a684e84bd1801239c4861efe9af0413d62cf582b827",
+    "edited_at": null,
+    "has_oath": false,
+    "timestamp": "2026-01-13T11:39:52.151000+00:00"
+  },
+  "1460513951849910342": {
+    "message_id": "1460513951849910342",
+    "user_id": "624772672349405204",
+    "user_display_name": "Watch Veteran Raul",
+    "oath_rank_at_time_raw": "Watch Veteran",
+    "oath_target_roles": [
+      "Kill Team Champion",
+      "Watch Command"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1460513951849910342",
+    "content_hash": "8611797d78a9d637b8074c89d8d0e170f96207e6f7054a5188e03e603a78df03",
+    "edited_at": "2026-01-14T19:05:08.513000+00:00",
+    "has_oath": true,
+    "timestamp": "2026-01-13T06:01:01.158000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-17T22:43:36.457042"
+  },
+  "1460350095223554069": {
+    "message_id": "1460350095223554069",
+    "user_id": "1105816777885229196",
+    "user_display_name": "Watch Veteran Twinkus",
+    "oath_rank_at_time_raw": "Watch Veteran",
+    "oath_target_roles": [
+      "Watch Techmarine"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1460350095223554069",
+    "content_hash": "4e782edcd17b479d36dfb246901ce6696f9637bd146542da188bcc9b98b7ece8",
+    "edited_at": "2026-01-12T19:13:09.700000+00:00",
+    "has_oath": true,
+    "timestamp": "2026-01-12T19:09:54.694000+00:00",
+    "status": "unfulfilled",
+    "status_updated_at": "2026-01-17T22:43:36.456804"
+  },
+  "1461602972088664169": {
+    "message_id": "1461602972088664169",
+    "user_id": "228703987816202240",
+    "user_display_name": "Watch Librarian Bob",
+    "oath_rank_at_time_raw": "<@&1429343212421644479>",
+    "oath_target_roles": [
+      "High Command",
+      "Void Warden",
+      "Watch Librarian"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1461602972088664169",
+    "content_hash": "e46692d3d80bbeec3dda00fa2dcab4a23fd266df5c068503bfcdea73a111eec0",
+    "edited_at": "2026-01-16T06:18:36.618000+00:00",
+    "has_oath": true,
+    "timestamp": "2026-01-16T06:08:23.816000+00:00",
+    "status": "fulfilled",
+    "status_updated_at": "2026-01-17T22:43:36.457387"
+  },
+  "1461073869925519501": {
+    "message_id": "1461073869925519501",
+    "user_id": "571035376135962645",
+    "user_display_name": "Watch Sergeant Raelyn",
+    "oath_rank_at_time_raw": "<@&1429339146371203112>",
+    "oath_target_roles": [
+      "Watch Sergeant",
+      "Watch Lieutenant",
+      "Watch Command"
+    ],
+    "guild_id": "1429264578440597517",
+    "channel_id": "1432804829364748319",
+    "message_link": "https://discord.com/channels/1429264578440597517/1432804829364748319/1461073869925519501",
+    "content_hash": "61a33340e84d1ee61e4eea3fbb57060ea49d982fd0b517b0e862aaa8d3d214e9",
+    "edited_at": null,
+    "has_oath": true,
+    "timestamp": "2026-01-14T19:05:56.030000+00:00"
   }
 }
