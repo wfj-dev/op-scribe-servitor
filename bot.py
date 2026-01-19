@@ -815,6 +815,22 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
 @bot.tree.command(name="set_rite", description="Set your personal consecration rite text.")
 @app_commands.describe(rite_text="Your consecration rite text (multiline allowed)")
 async def _set_rite(interaction: discord.Interaction, rite_text: str):
+    # Restrict to Forgemaster or Techmarine
+    allowed, _role_key = _is_techmarine_or_forgemaster(interaction.user)
+    if not allowed:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    # Disallow usage in the data-vault channel
+    try:
+        ch = interaction.channel
+        if getattr(ch, "name", None) == "❖⋅data-vault⋅❖":
+            await interaction.response.send_message(
+                "This command is not usable in ❖⋅data-vault⋅❖.",
+                ephemeral=True,
+            )
+            return
+    except Exception:
+        pass
     try:
         await _set_user_rite(int(interaction.user.id), rite_text)
         await interaction.response.send_message("Consecration rite saved.", ephemeral=True)
@@ -829,6 +845,17 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
+    # Disallow usage in the data-vault channel
+    try:
+        ch = interaction.channel
+        if getattr(ch, "name", None) == "❖⋅data-vault⋅❖":
+            await interaction.response.send_message(
+                "This command is not usable in ❖⋅data-vault⋅❖.",
+                ephemeral=True,
+            )
+            return
+    except Exception:
+        pass
 
     # Build attestation
     ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -1707,6 +1734,8 @@ async def tally_deeds(
                 "gene": gene_val,
                 "armory": armory_val,
                 "studs_symbols": studs_symbols,
+                "studs_count": studs_count,
+                "role_names": list(_canonical_role_names(target)),
                 # Rank bucket for roster sorting: Sergeant (0), Kill Team Champion (1), Veteran (2), Brother/Sister (3), Other (9)
                 "rank_bucket": (
                     0
@@ -1739,14 +1768,54 @@ async def tally_deeds(
             r_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
             r_lines.append("  KILL TEAM DEEDS ROSTER")
             r_lines.append("==============================================================================")
-            # Sort roster by rank bucket (Sergeant, Veteran/Champion, Brother/Sister)
-            sorted_items = sorted(
-                roster_items,
-                key=lambda it: (
-                    int(it.get("rank_bucket", 9)),
-                    str(it.get("name", "")).lower(),
-                ),
-            )
+            # Sort roster so Active members appear first, then by precise rank priority,
+            # then by service studs (desc), then by AAR (desc), then name.
+            def _rank_priority(role_names_list):
+                try:
+                    names = {r for r in (role_names_list or [])}
+                except Exception:
+                    names = set()
+                # Explicit priority mapping (lower is higher priority)
+                if "Watch Master" in names:
+                    return 0
+                if "Lord Executioner" in names:
+                    return 1
+                # High-command specialists
+                high_specs = {"Forgemaster", "Chief Apothecary", "Void Warden", "High Chaplain"}
+                if any(r in names for r in high_specs):
+                    return 2
+                if "Watch Captain" in names:
+                    return 3
+                if "Watch Lieutenant" in names:
+                    return 4
+                if "Company Champion" in names:
+                    return 5
+                # Company specialists
+                comp_specs = {"Watch Techmarine", "Watch Apothecary", "Watch Librarian", "Watch Chaplain"}
+                if any(r in names for r in comp_specs):
+                    return 6
+                if "Watch Sergeant" in names:
+                    return 7
+                if "Kill Team Champion" in names:
+                    return 8
+                if "Watch Veteran" in names:
+                    return 9
+                if "Watch Brother" in names or "Watch Sister" in names:
+                    return 10
+                return 99
+
+            def _sort_key(it):
+                try:
+                    status_flag = 0 if str(it.get("status", "")).lower() == "active" else 1
+                    rank_pri = _rank_priority(it.get("role_names", []))
+                    studs = int(it.get("studs_count", 0) or 0)
+                    aar = int(it.get("aar", 0) or 0)
+                    name = str(it.get("name", "")).lower()
+                    return (status_flag, rank_pri, -studs, -aar, name)
+                except Exception:
+                    return (1, 99, 0, 0, "")
+
+            sorted_items = sorted(roster_items, key=_sort_key)
 
             # Compute column widths for aligned rendering
             def _len_str(v):

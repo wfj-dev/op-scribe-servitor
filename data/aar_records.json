@@ -70647,5 +70647,237 @@
     "edited_at": null,
     "content_hash": "adb0ec8089c6cf1e210ae0be8e1459c4644bbaa6a7e96ff712cc3907def77821",
     "initiation_trial": false
+  },
+  "1462672186572668959": {
+    "aar_id": 1462672186572668959,
+    "mission": "Vox Liberatis",
+    "difficulty": "Normal-Stratagem",
+    "difficulty_class": "normal_stratagem",
+    "armory_data": 0,
+    "armory_challenge_points": 0,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "156969005351960577",
+      "1217601361571610716"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Brother Tullius",
+      "Watch Veteran Verdaghast"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 2,
+    "timestamp": "2026-01-19T04:57:04.414000+00:00",
+    "edited_at": null,
+    "content_hash": "30c878fd9b72f359809bead8608fe323ce4370f1d23ee0f27272e1955626c929",
+    "initiation_trial": false
+  },
+  "1462680198989353010": {
+    "aar_id": 1462680198989353010,
+    "mission": "Vox Liberatis",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "624772672349405204",
+    "gene_seed_carried_name": "Watch Veteran Raul",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "93975304820760576",
+      "624772672349405204",
+      "266088909467811840"
+    ],
+    "brother_names": [
+      "Watch Veteran Valen",
+      "Watch Veteran Raul",
+      "Kill Team Champion Spirit"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T05:28:54.723000+00:00",
+    "edited_at": null,
+    "content_hash": "dc4379b2789d6db7691d3fcd9abafe3776a2688d568859c441a50b023926598e",
+    "initiation_trial": false
+  },
+  "1462683310839959748": {
+    "aar_id": 1462683310839959748,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "733907873528283197",
+    "gene_seed_carried_name": "Watch Apothecary Serrigan",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "733907873528283197",
+      "156969005351960577",
+      "301998534754959370"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Brother Tullius",
+      "Watch Captain Bone"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T05:41:16.646000+00:00",
+    "edited_at": null,
+    "content_hash": "84e43ddd2db4f3985e59a72d02fcb76bc49800af656c5c8a64362a47338f915a",
+    "initiation_trial": false
+  },
+  "1462786640098627830": {
+    "aar_id": 1462786640098627830,
+    "mission": "Decapitation",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "327862063428927488",
+      "318123902960140299",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "[BAAL] Reaper",
+      "Watch Brother Vanzant",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T12:31:52.261000+00:00",
+    "edited_at": null,
+    "content_hash": "797df93803f7d7b918d83aad3d1163eef4efa79b400613d39b81dc173243bd47",
+    "initiation_trial": false
+  },
+  "1462797128261963807": {
+    "aar_id": 1462797128261963807,
+    "mission": "Inferon",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "572049142457827328",
+    "gene_seed_carried_name": "Watch Brother Smiley",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "327862063428927488",
+      "318123902960140299",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "[BAAL] Reaper",
+      "Watch Brother Vanzant",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T13:13:32.834000+00:00",
+    "edited_at": null,
+    "content_hash": "e1c7106e4c9eae90077f20756a023f9bd40f132d5142c7343eb3afcb404ed07d",
+    "initiation_trial": false
+  },
+  "1462829781056884931": {
+    "aar_id": 1462829781056884931,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "572049142457827328",
+    "gene_seed_carried_name": "Watch Brother Smiley",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "437645667838590976",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Apothecary Veritas",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T15:23:17.867000+00:00",
+    "edited_at": null,
+    "content_hash": "a4c926d073bf65d408555a34d7399020edf754dc06badddd70121f1c544aa40b",
+    "initiation_trial": false
+  },
+  "1462669579263283427": {
+    "aar_id": 1462669579263283427,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "156969005351960577",
+    "gene_seed_carried_name": "Watch Brother Tullius",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "1217601361571610716",
+      "733907873528283197",
+      "156969005351960577"
+    ],
+    "brother_names": [
+      "Watch Veteran Verdaghast",
+      "Watch Apothecary Serrigan",
+      "Watch Brother Tullius"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T04:46:42.783000+00:00",
+    "edited_at": "2026-01-19T16:01:02.837000+00:00",
+    "content_hash": "48e59c96d292d3a7d228f597e3a5726ad9bd218d43ac8429a666c4c4f720509a",
+    "initiation_trial": false
+  },
+  "1462841423534755967": {
+    "aar_id": 1462841423534755967,
+    "mission": "Termination",
+    "difficulty": "Absolute Black Laurels",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "572049142457827328",
+    "gene_seed_carried_name": "Watch Brother Smiley",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "437645667838590976",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Apothecary Veritas",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T16:09:33.650000+00:00",
+    "edited_at": null,
+    "content_hash": "472e9faf73b1ddd9c4d5fdde1bee71caa0de12d228c1f853de2a3e9cc3b04a11",
+    "initiation_trial": false
   }
 }
