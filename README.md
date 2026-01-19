@@ -127,6 +127,24 @@ This guide explains the five “briefs” the bot can generate and how to read t
 
 ---
 
+## High Command Brief (Strategic Company Summary)
+
+- **What it shows:** A concise, High Command–facing dashboard summarizing where HC deployed and the company-level health signals: apothecarion readiness (gene/induction), chaplaincy discipline (avg tier), Librarius doctrine posture (cohesion & top theatres), and Mechanicus armory priority.
+- **Key lines:**
+  - **Deployment Distribution ::** compact list of companies with ops and percent of HC-attended missions.
+  - **Apothecarion Readiness Index :: NAME (Score)** — combined gene recovery + initiation efficiency (0.0–1.0). Higher is better.
+  - **Chaplaincy — Avg Discipline :: NAME TIER (score)** — company average discipline (uppercase tier and numeric 1–5 average).
+  - **Librarius — Cohesion :: TIER (TopDoc XX%)** — qualitative cohesion band and dominant doctrine share.
+  - **Librarius — Top Environments ::** macro theatres (JUNGLE, URBAN, INDUSTRIAL, etc.) by share.
+  - **Mechanicus Yield Priority :: NAME (Avg Armory: X.YZ)** — company prioritized for armory inspection.
+- **Plain-language guide:**
+  - **Apothecarion Readiness:** GOOD≥0.75 | FAIR≥0.50 | POOR≥0.25 | CRITICAL<0.25 — higher = healthier seed/induction signals.
+  - **Chaplain Discipline (tiers):** EXEMPLARIS / STALWART / STEADFAST / LITURGICAL CORRECTION REQUIRED / DISCIPLINE DERELICT — higher = better discipline; numeric averages (1–5) offer quick ranking.
+  - **Librarius Cohesion:** BALANCED / LEANING / FOCUSED / ORTHODOX / MONOLITHIC — BALANCED = mixed tactics; MONOLITHIC = doctrine concentrated.
+  - **Deployment Distribution:** the percent is HC bandwidth per company; a high single-company percent implies concentrated oversight and possible redistribution.
+
+**How to act on it:** use the brief's bottom notes (synthesized counsel) for immediate action: redistribute oversight, request Chaplain visits, or schedule Mechanicus inspections. The lines are intentionally short and human-centered so non-technical High Command can act quickly.
+
 ## Reading Labels at a Glance
 - **Orthodox (Command):** Near typical posture; measured aggression and stewardship.
 - **Sanctifier / Purgator (Command):** Highlights stewardship-first vs aggression-first postures.
@@ -143,7 +161,77 @@ This guide explains the five “briefs” the bot can generate and how to read t
 - **Use labels as signals:** Loreful labels are calibrated to reflect posture without drowning you in numbers.
 - **Cross-reference:** E.g., high **Operational Saturation** with **Skewed Equilibrium** suggests heavy repetition in a few missions.
 
-If you want screenshots or examples added, we can include a short “Sample Output” section next.
+If you want screenshots or examples added, we can include a short "Sample Output" section next.
+
+## Combat Bonds — Spread and Promotion Thresholds
+
+This project reports two new values alongside each Brother in the `combat_bonds` output:
+
+- **Spread:** a normalized per-active-member measure of a Brother’s combat bond breadth and depth.
+  - Internally computed as an inverse-Simpson (effective partners) × bounded-depth factor (sqrt by default), then normalized by the number of *active* members in the current window (active = participated in ≥1 AAR in the window). That yields a per-member average so larger fortresses don't automatically inflate raw spread values.
+- **Pct:** the candidate’s percentile rank (0–100) among all Brothers in the window, computed from the normalized spread values. Higher = more competitive relative standing.
+
+Additional metadata is returned for each Brother in the `spreads` map used by the bot:
+
+- `raw` — the original integer spread value (legacy behavior).
+- `normalized` — the per-active-member float (displayed as `Spread X.YY`).
+- `percentile` — integer 0–100 representing relative rank among peers.
+- `interactions` — number of partner interactions (pair frequency total) observed in the window.
+- `eligible` — boolean guard indicating the Brother met the minimum interaction floor (config: `combat_bonds.min_interactions`, default 8).
+
+Why both normalized and percentile?
+- Normalized removes fortress-size bias so a spread of 2.0 means roughly the same level of breadth/depth regardless of whether the fortress has 20 or 200 active members.
+- Percentile preserves the relative competitiveness within the same window: in an unusually active or unusually quiet window, a percentile check prevents promotions from being issued purely because the absolute scale shifted.
+
+Interpreting the sample output below:
+
+```
+  Watch Veteran Hylair [Blood Angels] • Spread 0.25 (pct 31%)
+  Watch Lieutenant Jack [Space Wolves] • Spread 1.14 (pct 75%)
+  Watch Veteran Moloch [Minotaurs] • Spread 1.17 (pct 76%)
+```
+
+- `Hylair` has a normalized spread of 0.25 and is at the 31st percentile — modest breadth/depth and below most peers.
+- `Jack` and `Moloch` have normalized spreads ≈1.14–1.17 and are in the mid-to-upper percentiles (75–76%), indicating stronger bonding across partners and volume.
+
+Promotion thresholds (recommended)
+- Use a combined rule: require BOTH a minimum `normalized` spread AND a minimum `percentile`, plus the `eligible` interaction guard.
+
+Mapped thresholds (suggested — tune to historical data):
+
+Battle Line Ranks
+- `Watch Brother` → `Watch Veteran`:
+  - `Watch Brother`: normalized ≥ 0.30 AND percentile ≥ 60% (min interactions)
+  - `Watch Veteran`: normalized ≥ 0.75 AND percentile ≥ 50% (min interactions)
+  - `Watch Sergeant`: normalized ≥ 1.25 AND percentile ≥ 35% (min interactions)
+  - `Watch Lieutenant`: normalized ≥ 1.75 AND percentile ≥ 25% (min interactions)
+  - `Watch Captain`: normalized ≥ 2.50 AND percentile ≥ 15% (min interactions)
+
+Champion Ranks
+- `Kill Team Champion`, `Company Champion`, `Lord Executioner`:
+  - `Kill Team Champion`: normalized ≥ 1.00 AND percentile ≥ 45% (min interactions)
+  - `Company Champion`: normalized ≥ 1.75 AND percentile ≥ 30% (min interactions)
+  - `Lord Executioner`: normalized ≥ 2.50 AND percentile ≥ 12% (min interactions)
+
+Specialist Ranks
+- `Watch Chaplain`, `Watch Apothecary`, `Watch Librarian`, `Watch Techmarine`:
+  - Suggested: normalized ≥ 1.50 AND percentile ≥ 30% (min interactions) plus role-specific criteria (e.g., Chaplain: oath/adherence; Apothecary: gene-seed preservation metrics).
+
+High Command
+- `Watch Master`, `High Chaplain`, `Chief Apothecary`, `Void Warden`, `Forgemaster`:
+  - Suggested: normalized ≥ 3.00 AND percentile ≥ 5% (min interactions) — these are exceptional promotion bands and normally accompanied by command review.
+
+Notes on thresholds and small forts
+- If the fortress is small (active members < 12), percentiles become noisy; prefer relaxing the percentile cut or rely on percentile only.
+- Always require `eligible == True` (the default min interactions = 8) to avoid promoting on sparse or bursty activity.
+- These thresholds are intentionally conservative; they aim to reward breadth (many partners) and depth (repeat interactions) simultaneously.
+
+Configuration knobs
+- `combat_bonds.per_partner_cap` — caps partner frequency contribution (default 5).
+- `combat_bonds.depth_exponent` — exponent on bounded depth (default 0.5, i.e., sqrt).
+- `combat_bonds.min_interactions` — minimum interaction count to be considered eligible (default 8).
+
+Want me to add a simple `is_promotion_candidate(spread_obj, rank)` helper that applies these rules and returns a boolean + which thresholds failed? I can add that to `bot.py` and include usage examples.
 
 ---
 
