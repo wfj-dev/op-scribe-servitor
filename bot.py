@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
+import uuid
 import re
 import itertools
 from typing import Dict, List, Tuple, Optional
@@ -25,6 +26,7 @@ AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
 PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
+RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -35,6 +37,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Global lock to serialize reconciliation runs
 RECONCILE_LOCK = asyncio.Lock()
 CHAPLAIN_INGEST_LOCK = asyncio.Lock()
+
+# Rites storage lock
+RITES_LOCK = asyncio.Lock()
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -240,6 +245,36 @@ RANK_ROLES_PRIORITY = [
     "Watch Brother",
 ]
 
+# Canonical list of known home chapters for lookup
+HOME_CHAPTERS = [
+    "Black Templars",
+    "Blood Angels",
+    "Blood Ravens",
+    "Cowled Wardens",
+    "Crimson Fists",
+    "Dark Angels",
+    "Dark Krakens",
+    "Death Spectres",
+    "Flesh Eaters",
+    "Flesh Tearers",
+    "Hawk Lords",
+    "Imperial Fists",
+    "Iron Hands",
+    "Lamenters",
+    "Mentors",
+    "Minotaurs",
+    "Raven Guard",
+    "Red Scorpions",
+    "Red Templars",
+    "Salamanders",
+    "Sons of Medusa",
+    "Space Wolves",
+    "Storm Giants",
+    "Ultramarines",
+    "White Scars",
+    "Black Shield",
+]
+
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {
     # Update to your desired demo channel name
@@ -251,11 +286,32 @@ ALLOWED_COMMAND_CHANNELS = {
 def is_allowed_channel(interaction: discord.Interaction):
     try:
         ch = interaction.channel
-        # Prefer ID-based gating from config; fall back to names
+        # determine invoked command name if possible
+        cmd_name = None
+        try:
+            cmd_name = getattr(getattr(interaction, "command", None), "name", None)
+        except Exception:
+            cmd_name = None
+        if not cmd_name:
+            try:
+                data = getattr(interaction, "data", {}) or {}
+                cmd_name = data.get("name")
+            except Exception:
+                cmd_name = None
+
+        name = getattr(ch, "name", None)
+        # Channel-specific policy:
+        # - ❖⋅arming-chamber⋅❖: only /forge_rite and /litany_of_function
+        if name == "❖⋅arming-chamber⋅❖":
+            return cmd_name in ("forge_rite", "set_rite", "litany_of_function")
+        # - ❖⋅data-vault⋅❖: everything except /forge_rite (litany allowed)
+        if name == "❖⋅data-vault⋅❖":
+            return (cmd_name is not None and cmd_name != "forge_rite" and cmd_name != "set_rite") or cmd_name == "litany_of_function"
+
+        # Fallback: respect configured allowed channel IDs or names
         allowed_ids = set((CONFIG.get("allowed_command_channel_ids") or []))
         if allowed_ids and hasattr(ch, "id"):
             return str(ch.id) in {str(x) for x in allowed_ids}
-        name = getattr(ch, "name", None)
         return bool(name) and name in ALLOWED_COMMAND_CHANNELS
     except Exception:
         return False
@@ -320,6 +376,59 @@ def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
             if rn in (alias_list or []):
                 names.add(canon)
     return names
+
+
+def _is_techmarine_or_forgemaster(user: discord.User | discord.Member) -> Tuple[bool, str]:
+    """Return (allowed, primary_role_key).
+    primary_role_key is one of: 'forgemaster', 'techmarine', or '' for none.
+    """
+    try:
+        names = {n.lower() for n in _canonical_role_names(user)}
+    except Exception:
+        names = set()
+    if any("forgemaster" in n for n in names):
+        return True, "forgemaster"
+    if any("techmarine" in n for n in names):
+        return True, "techmarine"
+    return False, ""
+
+
+def _load_rites() -> dict:
+    try:
+        if not os.path.exists(RITES_PATH):
+            return {}
+        with open(RITES_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_rites(data: dict):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(RITES_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+async def _get_user_rite(user_id: int) -> Optional[str]:
+    try:
+        async with RITES_LOCK:
+            data = _load_rites()
+            return data.get(str(user_id))
+    except Exception:
+        return None
+
+
+async def _set_user_rite(user_id: int, text: str):
+    try:
+        async with RITES_LOCK:
+            data = _load_rites()
+            data[str(user_id)] = text
+            _save_rites(data)
+    except Exception:
+        pass
 
 
 def _resolve_company_command_members(company: discord.Role) -> List[discord.Member]:
@@ -656,6 +765,150 @@ async def litany_of_function(interaction: discord.Interaction):
         "Commands restricted to sanctified channels. Honor and memory preserved."
     )
     await interaction.response.send_message(litany_text, ephemeral=True)
+
+
+# Forge rite command group
+# top-level commands: /forge_rite and /set_rite (not a command group)
+
+
+def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[str]:
+    try:
+        roles = getattr(user, "roles", []) or []
+        # 1) Exact company role match (official company roles)
+        company_roles = {
+            "Watch Company Primus",
+            "Watch Company Secundus",
+            "Watch Company Tertius",
+            "Watch Company Quartus",
+            "Watch Company Quintus",
+        }
+        for r in roles:
+            rn = (getattr(r, "name", "") or "").strip()
+            if rn in company_roles:
+                return rn
+
+        # 2) Direct match against canonical HOME_CHAPTERS (case-insensitive)
+        hc_lower = {hc.lower() for hc in HOME_CHAPTERS}
+        for r in roles:
+            rn = (getattr(r, "name", "") or "").strip()
+            if rn and rn.lower() in hc_lower:
+                return rn
+
+        # 3) If user is in High Command, return Jericho High Command
+        try:
+            names = _canonical_role_names(user)
+            if any(r in names for r in HIGH_COMMAND_ROLES):
+                return "Jericho High Command"
+        except Exception:
+            pass
+
+        # 4) Fallback heuristic: roles that contain 'company' or 'chapter' tokens
+        for r in roles:
+            rn = (getattr(r, "name", "") or "").lower()
+            if "company" in rn or "chapter" in rn:
+                return getattr(r, "name", "")
+    except Exception:
+        pass
+    return None
+
+
+@bot.tree.command(name="set_rite", description="Set your personal consecration rite text.")
+@app_commands.describe(rite_text="Your consecration rite text (multiline allowed)")
+async def _set_rite(interaction: discord.Interaction, rite_text: str):
+    try:
+        await _set_user_rite(int(interaction.user.id), rite_text)
+        await interaction.response.send_message("Consecration rite saved.", ephemeral=True)
+    except Exception:
+        await interaction.response.send_message("Failed to save rite.", ephemeral=True)
+
+
+@bot.tree.command(name="forge_rite", description="Generate and post a cogitator attestation block for a member.")
+@app_commands.describe(member="Member to attest")
+async def _attest(interaction: discord.Interaction, member: discord.Member):
+    allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
+    if not allowed:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    # Build attestation
+    ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    ledger = uuid.uuid4().hex[:12].upper()
+    # Authority
+    if role_key == "forgemaster":
+        authority = "Jericho High Command"
+    else:
+        comp = _find_company_or_chapter(interaction.user) or "Unknown Company"
+        authority = comp
+
+    # Attesting name
+    attester = getattr(interaction.user, "display_name", None) or getattr(interaction.user, "name", str(interaction.user.id))
+
+    # Optional personal rite
+    try:
+        rite_text = await _get_user_rite(int(interaction.user.id))
+    except Exception:
+        rite_text = None
+
+    # Auto-sign: prefer Forgemaster or Techmarine mention
+    try:
+        company = _find_company_or_chapter(interaction.user)
+        # Use the attester (display name) and avoid duplicating the role/token
+        if role_key == "forgemaster":
+            signer = f"{attester}, Jericho High Command"
+        elif role_key == "techmarine":
+            signer = f"{attester}, {company or 'Unknown Company'}"
+        else:
+            # fallback: include top role (if any) or just the display name
+            top_role = None
+            try:
+                roles = [getattr(r, 'name', '') for r in getattr(interaction.user, 'roles', []) if getattr(r, 'name', None)]
+                top_role = roles[-1] if roles else None
+            except Exception:
+                top_role = None
+            signer = f"{top_role + ' ' if top_role else ''}{attester}"
+    except Exception:
+        signer = attester
+
+    # Assemble block
+    lines = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // COGITATOR-ATTESTATION")
+    lines.append("  COGITATOR RITE — FORGE ATTESTATION")
+    lines.append("==============================================================================")
+    bearer_name = getattr(member, "display_name", None) or getattr(member, "name", str(member.id))
+    lines.append(f"Bearer: {bearer_name}")
+    lines.append("")
+    lines.append("Inspection Status = PASSED")
+    lines.append("Regulation Compliance = CONFIRMED")
+    lines.append("")
+    lines.append(f"Attesting Techmarine = {attester}")
+    lines.append(f"Authority = {authority}")
+    lines.append(f"Timestamp = {ts}")
+    lines.append(f"Ledger Reference = {ledger}")
+    lines.append("")
+    if rite_text:
+        lines.append("Consecration Rite:")
+        for l in str(rite_text).splitlines():
+            lines.append(f"  {l}")
+        lines.append("")
+    lines.append(f"-- SIGNED: {signer}")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    try:
+        # Ping the bearer (so they receive a notification) but keep the
+        # formatted attestation block separate so the display remains intact.
+        content = f"{member.mention}\n" + "\n".join(lines)
+        await interaction.response.send_message(content, allowed_mentions=discord.AllowedMentions(users=True))
+    except Exception:
+        try:
+            await interaction.response.send_message("Failed to post attestation.", ephemeral=True)
+        except Exception:
+            pass
+
+
+# No explicit group registration required for top-level commands
 
 
 @bot.tree.command(
@@ -2874,34 +3127,8 @@ async def _resolve_home_chapters(
     The chapter is detected by matching any of the known `home_chapters` names within the message.
     Returns mapping of user_id -> chapter string. Missing entries map to 'REDACTED'.
     """
-    home_chapters = [
-        "Black Templars",
-        "Blood Angels",
-        "Blood Ravens",
-        "Cowled Wardens",
-        "Crimson Fists",
-        "Dark Angels",
-        "Dark Krakens",
-        "Death Spectres",
-        "Flesh Eaters",
-        "Flesh Tearers",
-        "Hawk Lords",
-        "Imperial Fists",
-        "Iron Hands",
-        "Lamenters",
-        "Mentors",
-        "Minotaurs",
-        "Raven Guard",
-        "Red Scorpions",
-        "Red Templars",
-        "Salamanders",
-        "Sons of Medusa",
-        "Space Wolves",
-        "Storm Giants",
-        "Ultramarines",
-        "White Scars",
-        "Black Shields",
-    ]
+    # Use module-level HOME_CHAPTERS for canonical chapter names
+    home_chapters = HOME_CHAPTERS
     chapters: Dict[str, str] = {}
     if not guild:
         return chapters
@@ -3214,6 +3441,7 @@ def _main():
 BATTLE_LINE_ORDER = [
     "Watch Brother",
     "Watch Veteran",
+    "Watch Knight",
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
