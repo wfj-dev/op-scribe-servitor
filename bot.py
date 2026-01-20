@@ -282,9 +282,39 @@ HOME_CHAPTERS = [
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {
     # Update to your desired demo channel name
-    "❖⋅data-vault⋅❖",
-    "demo",
+    "❖⋅data-vault⋅❖"
+    # "#\"Kill Team Solomon\"",
+    # "#\"Kill Team WiFi\"",
+    # "#\"Kill Team Raelyn\"",
+    # "#\"Kill Team Falcon\"",
+    # "#\"Kill Team Atom\"",
 }
+
+# Kill Team forum/thread configuration
+# Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
+# that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
+ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set([1433351293103112202, 1458255656682258504])
+
+# Hard-coded allowlist of Kill Team role IDs that may be used with
+# /tally_deeds when invoked from Kill Team posts. Populate with ints.
+ALLOWED_KT_ROLE_IDS: set[int] = set(
+    [
+        1449445082875957420,
+        1444351512154214411,
+        1459606044509606032,
+        1458905579098734633,
+        1458905421518737716,
+    ]
+)
+
+# Optional mapping: forum parent id -> set of company
+# 4im sorry team i spilled coffee on ole IDs that own
+# the Kill Teams in that forum. Populate as needed to enable Lt/Captain checks.
+FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {}
+
+# Optional set of role IDs that are considered "company" roles. Populated
+# automatically if FORUM_PARENT_COMPANY_ROLE_IDS is used, or filled manually.
+COMPANY_ROLE_IDS: set[int] = set()
 
 
 def is_allowed_channel(interaction: discord.Interaction):
@@ -441,52 +471,6 @@ async def _set_user_rite(user_id: int, text: str):
         pass
 
 
-def _resolve_company_command_members(company: discord.Role) -> List[discord.Member]:
-    """Return Company Command members for a company using consistent rules:
-    - Strictly higher than Sergeant (exclude Sergeant and below)
-    - Up to Captain (include Watch Lieutenant and Watch Captain)
-    - Include specialist orders and Company Champion
-    - Exclude Lord Executioner
-    Applies across briefs for consistency.
-    """
-    try:
-        idx_sergeant = _role_index("Watch Sergeant")
-        idx_captain = _role_index("Watch Captain")
-    except Exception:
-        idx_sergeant = None
-        idx_captain = None
-    members: List[discord.Member] = []
-    try:
-        base_members = list(getattr(company, "members", []))
-    except Exception:
-        base_members = []
-    excluded_roles = {
-        "Lord Executioner",
-        "High Chaplain",
-        "Forgemaster",
-        "Void Warden",
-        "Voidwarden",
-        "Chief Apothecary",
-    }
-    for m in base_members:
-        try:
-            names = _canonical_role_names(m)
-            # Explicit exclusion of high-command roles
-            if any(er in names for er in excluded_roles):
-                continue
-            highest_idx = get_highest_rank_index(m)
-            if (
-                idx_sergeant is not None
-                and idx_captain is not None
-                and highest_idx is not None
-                and (idx_captain <= highest_idx <= idx_sergeant)
-            ):
-                members.append(m)
-        except Exception:
-            continue
-    return members
-
-
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
@@ -523,6 +507,232 @@ def is_sergeant_or_higher(user: discord.User | discord.Member):
 def is_watch_command(user: discord.User | discord.Member):
     # Define "Watch Command" as Sergeant and higher (including staff roles above it)
     return is_sergeant_or_higher(user)
+
+
+def check_tally_deeds_permissions_in_kt_post(
+    interaction: discord.Interaction,
+    kt_role: Optional[discord.Role],
+    target: Optional[discord.Member],
+) -> Tuple[bool, Optional[str]]:
+    """Special permission gating when `/tally_deeds` is invoked inside
+    a Kill Team forum post (thread).
+
+    Returns (handled, error_message).
+    - handled == False: caller is NOT in a KT post context; caller should
+      fall through to existing permission checks.
+    - handled == True and error_message is None: permission granted for
+      KT-post invocation; proceed with command.
+    - handled == True and error_message is str: deny with that message.
+    """
+    try:
+        ch = getattr(interaction, "channel", None)
+        if ch is None:
+            return False, None
+        # Duck-type: Threads have a `parent` attribute and are instances of discord.Thread
+        is_thread = (
+            isinstance(ch, discord.Thread)
+            if hasattr(discord, "Thread")
+            else getattr(ch, "type", None) == discord.ChannelType.public_thread
+        )
+        parent = getattr(ch, "parent", None)
+        parent_id = getattr(parent, "id", None)
+        ch_id = getattr(ch, "id", None)
+
+        # KT context if either:
+        # - invocation is inside a thread whose parent (forum) is in allowed list
+        # - invocation is inside the forum channel itself and its id is in allowed list
+        is_kt_context = False
+        try:
+            if is_thread and parent_id is not None and parent_id in ALLOWED_KT_FORUM_PARENT_IDS:
+                is_kt_context = True
+            elif ch_id is not None and ch_id in ALLOWED_KT_FORUM_PARENT_IDS:
+                is_kt_context = True
+        except Exception:
+            is_kt_context = False
+
+        if not is_kt_context:
+            # Not a Kill Team post we care about; let existing checks run
+            return False, None
+
+        # Inside a configured Kill Team post: enforce special rules.
+        caller = interaction.user
+        caller_role_names = _canonical_role_names(caller)
+        allowed_ranks = {"Watch Sergeant", "Watch Lieutenant", "Watch Captain", "Forgemaster"}
+        if not any(r in caller_role_names for r in allowed_ranks):
+            return (
+                True,
+                "This command in Kill Team posts is restricted to Sergeants leading this Kill Team and Lieutenants or Captains in this Company.",
+            )
+
+        # Validate provided Kill Team role (if given)
+        if kt_role is not None:
+            try:
+                krid = int(getattr(kt_role, "id", 0) or 0)
+            except Exception:
+                return True, "Invalid Kill Team role provided."
+            # Forgemaster path will perform name-based validation below; do
+            # not enforce the global ALLOWED_KT_ROLE_IDS membership for them
+            # here (avoids blocking Forgemaster when the allowlist contains
+            # different IDs such as forum/channel IDs).
+            if "Forgemaster" not in caller_role_names:
+                if ALLOWED_KT_ROLE_IDS and krid not in ALLOWED_KT_ROLE_IDS:
+                    return (
+                        True,
+                        "The specified Kill Team role is not permitted in this context.",
+                    )
+
+        # Build caller and target role id sets
+        try:
+            caller_role_ids = {
+                int(getattr(r, "id", 0)) for r in getattr(caller, "roles", [])
+            }
+        except Exception:
+            caller_role_ids = set()
+        try:
+            target_role_ids = (
+                {int(getattr(r, "id", 0)) for r in getattr(target, "roles", [])}
+                if target
+                else set()
+            )
+        except Exception:
+            target_role_ids = set()
+
+        # Sergeant rules
+        if "Watch Sergeant" in caller_role_names:
+            # Sergeant may only operate for their own Kill Team.
+            # They must have a KT role among ALLOWED_KT_ROLE_IDS and if kt_role arg provided it must match theirs.
+            sergeant_kt = caller_role_ids & (ALLOWED_KT_ROLE_IDS or set())
+            if not sergeant_kt:
+                return (
+                    True,
+                    "Sergeants must have an assigned Kill Team role to use this command in Kill Team posts.",
+                )
+            if kt_role is not None:
+                if int(getattr(kt_role, "id", 0) or 0) not in sergeant_kt:
+                    return (
+                        True,
+                        "Sergeants may only specify their own Kill Team role when running this command here.",
+                    )
+            else:
+                # No kt_role arg: require a target who shares a KT role with the sergeant
+                if not target:
+                    return (
+                        True,
+                        "Sergeants must specify a target Brother or their Kill Team role when running this command in a Kill Team post.",
+                    )
+                if not (sergeant_kt & target_role_ids):
+                    return True, "Target is not a member of the Sergeant's Kill Team."
+            # If kt_role provided and target provided, also ensure target has that role
+            if kt_role is not None and target is not None:
+                if int(getattr(kt_role, "id", 0) or 0) not in target_role_ids:
+                    return (
+                        True,
+                        "Target member does not belong to the specified Kill Team.",
+                    )
+
+            # All sergeant checks passed
+            return True, None
+
+        # Forgemaster: may run in any KT post, but args must align with the
+        # Kill Team associated with this thread (no company restriction).
+        if "Forgemaster" in caller_role_names:
+            # Infer kill team name from thread or parent
+            thread_name = (getattr(ch, "name", None) or "")
+            if not thread_name:
+                thread_name = (getattr(parent, "name", None) or "")
+            thread_kt = _extract_killteam_name(thread_name).lower() if thread_name else ""
+
+            # If a kt_role was provided, validate role id and that its name matches thread
+            if kt_role is not None:
+                try:
+                    krid = int(getattr(kt_role, "id", 0) or 0)
+                except Exception:
+                    return True, "Invalid Kill Team role provided."
+                # Forgemaster: allow any KT role id, but require the role's
+                # name to match the thread (so a Forgemaster cannot run
+                # Kill Team WiFi actions from the Kill Team Solomon channel).
+                kt_name = _extract_killteam_name(getattr(kt_role, "name", "")).lower()
+                if thread_kt and not (thread_kt in kt_name or kt_name in thread_kt):
+                    return True, "The specified Kill Team role does not match this thread."
+                if target is not None and krid not in target_role_ids:
+                    return True, "Target member does not belong to the specified Kill Team."
+                return True, None
+
+            # No kt_role provided: require a target whose KT role matches the thread
+            if target is None:
+                return True, "Forgemaster must specify a Kill Team role or a target when using this command in a Kill Team post."
+            # Find target's KT roles (by allowed IDs if configured, else any role whose name looks like a KT)
+            target_kt_roles = []
+            for r in getattr(target, "roles", []) or []:
+                try:
+                    rid = int(getattr(r, "id", 0) or 0)
+                except Exception:
+                    rid = 0
+                if ALLOWED_KT_ROLE_IDS:
+                    if rid in ALLOWED_KT_ROLE_IDS:
+                        target_kt_roles.append(r)
+                else:
+                    # Heuristic: role name contains 'kill' and 'team'
+                    rn = (getattr(r, "name", "") or "").lower()
+                    if "kill" in rn and "team" in rn:
+                        target_kt_roles.append(r)
+            if not target_kt_roles:
+                return True, "Target member has no recognized Kill Team role."
+            # Ensure at least one target KT role matches the thread name
+            match = False
+            for r in target_kt_roles:
+                rn = _extract_killteam_name(getattr(r, "name", "")).lower()
+                if thread_kt and (thread_kt in rn or rn in thread_kt):
+                    match = True
+                    break
+            if not match:
+                return True, "Target member's Kill Team does not match this thread."
+            return True, None
+
+        # Lieutenant / Captain rules
+        # Determine owning company roles for this forum parent
+        owning_company_ids = FORUM_PARENT_COMPANY_ROLE_IDS.get(parent_id, set())
+        if not owning_company_ids:
+            # If no mapping configured, deny to be conservative
+            return (
+                True,
+                "Kill Team post not configured with an owning company; contact an administrator.",
+            )
+        if not (caller_role_ids & owning_company_ids):
+            return (
+                True,
+                "You must belong to the company that owns this Kill Team post to run this command here.",
+            )
+
+        # Ensure a kt_role was provided and the target (if any) belongs to it
+        if kt_role is None:
+            return (
+                True,
+                "Lieutenants and Captains must specify a Kill Team role when using this command in a Kill Team post.",
+            )
+        krid = int(getattr(kt_role, "id", 0) or 0)
+        if ALLOWED_KT_ROLE_IDS and krid not in ALLOWED_KT_ROLE_IDS:
+            return (
+                True,
+                "The specified Kill Team role is not permitted in this context.",
+            )
+        if target is None:
+            return (
+                True,
+                "You must specify a target Brother when running this command for a Kill Team here.",
+            )
+        if krid not in target_role_ids:
+            return True, "Target member does not belong to the specified Kill Team."
+
+        # Passed Lt/Captain checks
+        return True, None
+    except Exception as e:
+        # On unexpected failure, deny with a safe message
+        try:
+            logger.exception("KT permission check failure")
+        except Exception:
+            pass
+        return True, "Permission check failed; contact an administrator."
 
 
 def can_reconcile_records(user: discord.User | discord.Member):
@@ -1445,9 +1655,23 @@ async def tally_deeds(
     brother: Optional[discord.Member] = None,
     killteam: Optional[discord.Role] = None,
 ):
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
+    # Special-case: if this is a Kill Team forum/thread post, use KT-specific
+    # permission gating. Otherwise, fall through to the existing checks.
+    try:
+        handled, err = check_tally_deeds_permissions_in_kt_post(
+            interaction, killteam, brother
+        )
+    except Exception:
+        handled, err = False, None
+
+    if handled:
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
+    else:
+        if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+            await interaction.response.send_message("Access denied.", ephemeral=True)
+            return
 
     # First response: defer, so we can do slower work safely
     await interaction.response.defer(thinking=False, ephemeral=True)

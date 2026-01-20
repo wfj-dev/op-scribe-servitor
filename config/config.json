@@ -20,6 +20,6 @@
     "max_bytes": 2097152,
     "backup_count": 5
   },
-  "debug": false,
+  "debug": true,
   "company_briefs_allowed_user_ids": ["281651485782310914"]
 }
