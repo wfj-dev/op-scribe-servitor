@@ -70879,5 +70879,266 @@
     "edited_at": null,
     "content_hash": "472e9faf73b1ddd9c4d5fdde1bee71caa0de12d228c1f853de2a3e9cc3b04a11",
     "initiation_trial": false
+  },
+  "1462850143807082506": {
+    "aar_id": 1462850143807082506,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "572049142457827328",
+    "gene_seed_carried_name": "Watch Brother Smiley",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "437645667838590976",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Apothecary Veritas",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T16:44:12.725000+00:00",
+    "edited_at": null,
+    "content_hash": "114753849fa58040bf55f0ee3274c11996be636ee0e6cd3f390bffe0fc947967",
+    "initiation_trial": false
+  },
+  "1462874018678964314": {
+    "aar_id": 1462874018678964314,
+    "mission": "Fall of Atreus",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "437645667838590976",
+    "gene_seed_carried_name": "Watch Apothecary Veritas",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "301998534754959370",
+      "437645667838590976",
+      "727577031914815508"
+    ],
+    "brother_names": [
+      "Watch Captain Bone",
+      "Watch Apothecary Veritas",
+      "Watch Master Van"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T18:19:04.938000+00:00",
+    "edited_at": null,
+    "content_hash": "2618255d9770350628324e3ffeb2dbdaedab8952faa9f86be50791775e6a30f3",
+    "initiation_trial": false
+  },
+  "1462884867548123210": {
+    "aar_id": 1462884867548123210,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "unknown",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "402023509280292875",
+      "1455947665782210782",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Veteran Moloch",
+      "Watch Veteran Eagle Halo",
+      "Watch Chaplain Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T19:02:11.510000+00:00",
+    "edited_at": null,
+    "content_hash": "eb36c195cb504a72dd85823a8a2c7ecac7de84d27efea9d646e6f397a5178ccc",
+    "initiation_trial": false
+  },
+  "1462884987920584806": {
+    "aar_id": 1462884987920584806,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "266088909467811840",
+      "405887897171001345"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Kill Team Champion Spirit",
+      "Watch Veteran Dinnex"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T19:02:40.209000+00:00",
+    "edited_at": null,
+    "content_hash": "1f414382159c014e2af72ac4e8b2b67b3541979d42613149ce62b6fbee2e4176",
+    "initiation_trial": false
+  },
+  "1462893167023231067": {
+    "aar_id": 1462893167023231067,
+    "mission": "Ballistic Engine",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 3,
+    "armory_challenge_points": 9,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1455947665782210782",
+    "gene_seed_carried_name": "Watch Veteran Eagle Halo",
+    "gene_seed_base_points_for_carrier": 5,
+    "brother_ids": [
+      "402023509280292875",
+      "1455947665782210782",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Veteran Moloch",
+      "Watch Veteran Eagle Halo",
+      "Watch Chaplain Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-19T19:35:10.259000+00:00",
+    "edited_at": null,
+    "content_hash": "4c9348ce0cd3256a92c25a3ee3e2fd4a7794fc04e4d44e0a6fd28f59f42e508f",
+    "initiation_trial": false
+  },
+  "1462899423209324737": {
+    "aar_id": 1462899423209324737,
+    "mission": "Termination",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "lost",
+    "gene_seed_carrier_id": null,
+    "gene_seed_carried_name": null,
+    "gene_seed_base_points_for_carrier": 0,
+    "brother_ids": [
+      "733907873528283197",
+      "405887897171001345",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Veteran Dinnex",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T20:00:01.850000+00:00",
+    "edited_at": null,
+    "content_hash": "2937eed630a249eced10bef77be95cceb8dfbf7666685cb99c985d0ffcac4e8a",
+    "initiation_trial": false
+  },
+  "1462902073447157943": {
+    "aar_id": 1462902073447157943,
+    "mission": "Exfiltration",
+    "difficulty": "Hard-Stratagem",
+    "difficulty_class": "hard_stratagem",
+    "armory_data": 3,
+    "armory_challenge_points": 9,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1455947665782210782",
+    "gene_seed_carried_name": "Watch Veteran Eagle Halo",
+    "gene_seed_base_points_for_carrier": 5,
+    "brother_ids": [
+      "402023509280292875",
+      "1455947665782210782",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Veteran Moloch",
+      "Watch Veteran Eagle Halo",
+      "Watch Chaplain Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 5,
+    "timestamp": "2026-01-19T20:10:33.716000+00:00",
+    "edited_at": null,
+    "content_hash": "1238772f73772d05e4190e7738ed6d3a88890fdefeb819abac7e3e88889ae84a",
+    "initiation_trial": false
+  },
+  "1462908471212245034": {
+    "aar_id": 1462908471212245034,
+    "mission": "Inferno",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 3,
+    "armory_challenge_points": 6,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "405887897171001345",
+    "gene_seed_carried_name": "Watch Veteran Dinnex",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "733907873528283197",
+      "405887897171001345",
+      "572049142457827328"
+    ],
+    "brother_names": [
+      "Watch Apothecary Serrigan",
+      "Watch Veteran Dinnex",
+      "Watch Brother Smiley"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T20:35:59.062000+00:00",
+    "edited_at": null,
+    "content_hash": "0d0ea053a61de6a9c597907d259a256355bc3d92358d5f9caad48bae4df88474",
+    "initiation_trial": false
+  },
+  "1462918398404071587": {
+    "aar_id": 1462918398404071587,
+    "mission": "Ballistic Engine",
+    "difficulty": "Absolute",
+    "difficulty_class": "absolute_ops",
+    "armory_data": 2,
+    "armory_challenge_points": 4,
+    "gene_seed_status": "carried",
+    "gene_seed_carrier_id": "1455947665782210782",
+    "gene_seed_carried_name": "Watch Veteran Eagle Halo",
+    "gene_seed_base_points_for_carrier": 4,
+    "brother_ids": [
+      "1455947665782210782",
+      "874746238648598548",
+      "933777200312881263"
+    ],
+    "brother_names": [
+      "Watch Veteran Eagle Halo",
+      "Watch Brother Agk9109",
+      "Watch Chaplain Psycho"
+    ],
+    "brother_waves": {},
+    "waves": 0,
+    "points_for_op": 4,
+    "timestamp": "2026-01-19T21:15:25.889000+00:00",
+    "edited_at": null,
+    "content_hash": "85e5b81316bba13678a5f6f6e078c30eccaf759ff14425fadd1bf5690d4cd221",
+    "initiation_trial": false
   }
 }

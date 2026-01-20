@@ -155,7 +155,9 @@ async def _send_watch_command_notice(kind: str):
     # Concise, at-a-glance status with a touch of flavor
     content = f"{mention} V-1 STATUS: {status} {emoji} — {ts}\n{flavor}"
     try:
-        await channel.send(content, allowed_mentions=discord.AllowedMentions(roles=True))
+        await channel.send(
+            content, allowed_mentions=discord.AllowedMentions(roles=True)
+        )
     except Exception as e:
         logger.debug(f"Failed to send notification: {e}")
 
@@ -207,7 +209,9 @@ try:
                 os.makedirs(d, exist_ok=True)
         except Exception:
             pass
-        fh = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+        fh = RotatingFileHandler(
+            path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+        )
         fh.setLevel(log_level)
         fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
         logger.addHandler(fh)
@@ -306,7 +310,11 @@ def is_allowed_channel(interaction: discord.Interaction):
             return cmd_name in ("forge_rite", "set_rite", "litany_of_function")
         # - ❖⋅data-vault⋅❖: everything except /forge_rite (litany allowed)
         if name == "❖⋅data-vault⋅❖":
-            return (cmd_name is not None and cmd_name != "forge_rite" and cmd_name != "set_rite") or cmd_name == "litany_of_function"
+            return (
+                cmd_name is not None
+                and cmd_name != "forge_rite"
+                and cmd_name != "set_rite"
+            ) or cmd_name == "litany_of_function"
 
         # Fallback: respect configured allowed channel IDs or names
         allowed_ids = set((CONFIG.get("allowed_command_channel_ids") or []))
@@ -378,7 +386,9 @@ def _canonical_role_names(user: discord.User | discord.Member) -> set[str]:
     return names
 
 
-def _is_techmarine_or_forgemaster(user: discord.User | discord.Member) -> Tuple[bool, str]:
+def _is_techmarine_or_forgemaster(
+    user: discord.User | discord.Member,
+) -> Tuple[bool, str]:
     """Return (allowed, primary_role_key).
     primary_role_key is one of: 'forgemaster', 'techmarine', or '' for none.
     """
@@ -525,11 +535,15 @@ def can_reconcile_records(user: discord.User | discord.Member):
     perms = CONFIG.get("permissions", {}) or {}
     roles_union: set[str] = set()
     ids_union: set[str] = set()
-    for key in ("reconcile_records", "sanctify_battle_records", "audit_archive_discrepancies"):
+    for key in (
+        "reconcile_records",
+        "sanctify_battle_records",
+        "audit_archive_discrepancies",
+    ):
         block = perms.get(key, {}) or {}
-        for r in (block.get("roles") or []):
+        for r in block.get("roles") or []:
             roles_union.add(str(r))
-        for i in (block.get("user_ids") or []):
+        for i in block.get("user_ids") or []:
             ids_union.add(str(i))
 
     if not roles_union:
@@ -560,7 +574,9 @@ def is_high_command(user: discord.User | discord.Member) -> bool:
         return False
 
 
-def _resolve_company_roles_from_text(guild: Optional[discord.Guild], text: str) -> List[discord.Role]:
+def _resolve_company_roles_from_text(
+    guild: Optional[discord.Guild], text: str
+) -> List[discord.Role]:
     """Parse a text argument to resolve one or more company roles.
     Accepts role mentions (<@&ID>) and case-insensitive role names containing 'company'.
     Deduplicates results and preserves input order when possible.
@@ -611,6 +627,7 @@ def _resolve_company_roles_from_text(guild: Optional[discord.Guild], text: str) 
             continue
     return filtered
 
+
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user}")
@@ -657,7 +674,13 @@ async def on_ready():
 
 def _user_label(u: discord.User | discord.Member) -> str:
     try:
-        name = getattr(u, "nick", None) or getattr(u, "display_name", None) or getattr(u, "name", None) or getattr(u, "username", None) or str(getattr(u, "id", ""))
+        name = (
+            getattr(u, "nick", None)
+            or getattr(u, "display_name", None)
+            or getattr(u, "name", None)
+            or getattr(u, "username", None)
+            or str(getattr(u, "id", ""))
+        )
         return f"{name} ({getattr(u, 'id', '')})"
     except Exception:
         return str(getattr(u, "id", ""))
@@ -668,6 +691,7 @@ def _extract_args_from_interaction_data(data: dict) -> dict:
     out: dict[str, object] = {}
     try:
         opts = data.get("options") or []
+
         def walk(options, prefix=""):
             for o in options:
                 name = o.get("name")
@@ -676,6 +700,7 @@ def _extract_args_from_interaction_data(data: dict) -> dict:
                     walk(o.get("options") or [], prefix=f"{prefix}{name}.")
                 else:
                     out[f"{prefix}{name}"] = o.get("value")
+
         walk(opts)
     except Exception:
         pass
@@ -686,7 +711,10 @@ def _extract_args_from_interaction_data(data: dict) -> dict:
 async def on_interaction(interaction: discord.Interaction):
     # Pre-invocation logging for slash commands
     try:
-        if interaction and interaction.type == discord.InteractionType.application_command:
+        if (
+            interaction
+            and interaction.type == discord.InteractionType.application_command
+        ):
             cmd_name = None
             try:
                 cmd_name = getattr(getattr(interaction, "command", None), "name", None)
@@ -707,14 +735,18 @@ async def on_interaction(interaction: discord.Interaction):
                 args_summary = _extract_args_from_interaction_data(data)
             except Exception:
                 args_summary = {}
-            logger.info(f"Invoke /{cmd_name or '?'} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id} args={args_summary}")
+            logger.info(
+                f"Invoke /{cmd_name or '?'} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id} args={args_summary}"
+            )
             _CMD_INVOCATIONS[interaction.id] = time.monotonic()
     except Exception:
         pass
 
 
 @bot.event
-async def on_app_command_completion(interaction: discord.Interaction, command: app_commands.Command):
+async def on_app_command_completion(
+    interaction: discord.Interaction, command: app_commands.Command
+):
     try:
         guild_id = getattr(getattr(interaction, "guild", None), "id", None)
         channel_id = getattr(getattr(interaction, "channel", None), "id", None)
@@ -726,9 +758,13 @@ async def on_app_command_completion(interaction: discord.Interaction, command: a
         except Exception:
             dur = None
         if dur is not None:
-            logger.info(f"Complete /{getattr(command, 'name', '?')} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id} duration={dur:.3f}s")
+            logger.info(
+                f"Complete /{getattr(command, 'name', '?')} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id} duration={dur:.3f}s"
+            )
         else:
-            logger.info(f"Complete /{getattr(command, 'name', '?')} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id}")
+            logger.info(
+                f"Complete /{getattr(command, 'name', '?')} by {_user_label(interaction.user)} guild={guild_id} channel={channel_id}"
+            )
     except Exception:
         pass
 
@@ -741,7 +777,9 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
             cmd_name = getattr(getattr(interaction, "command", None), "name", None)
         except Exception:
             cmd_name = None
-        logger.warning(f"Error in /{cmd_name or '?'} by {_user_label(interaction.user)}: {type(error).__name__}: {error}")
+        logger.warning(
+            f"Error in /{cmd_name or '?'} by {_user_label(interaction.user)}: {type(error).__name__}: {error}"
+        )
     except Exception:
         pass
 
@@ -812,7 +850,9 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
     return None
 
 
-@bot.tree.command(name="set_rite", description="Set your personal consecration rite text.")
+@bot.tree.command(
+    name="set_rite", description="Set your personal consecration rite text."
+)
 @app_commands.describe(rite_text="Your consecration rite text (multiline allowed)")
 async def _set_rite(interaction: discord.Interaction, rite_text: str):
     # Restrict to Forgemaster or Techmarine
@@ -833,12 +873,17 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
         pass
     try:
         await _set_user_rite(int(interaction.user.id), rite_text)
-        await interaction.response.send_message("Consecration rite saved.", ephemeral=True)
+        await interaction.response.send_message(
+            "Consecration rite saved.", ephemeral=True
+        )
     except Exception:
         await interaction.response.send_message("Failed to save rite.", ephemeral=True)
 
 
-@bot.tree.command(name="forge_rite", description="Generate and post a cogitator attestation block for a member.")
+@bot.tree.command(
+    name="forge_rite",
+    description="Generate and post a cogitator attestation block for a member.",
+)
 @app_commands.describe(member="Member to attest")
 async def _attest(interaction: discord.Interaction, member: discord.Member):
     allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
@@ -858,7 +903,18 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         pass
 
     # Build attestation
-    ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    # Warhammer 40k-style date: check.dayOfYear(3-digit).yearWithinMillennium(3-digit).Millennium
+    try:
+        now = datetime.now()
+        year = now.year
+        day_of_year = now.timetuple().tm_yday
+        # Check digit (usually 0)
+        check = 0
+        year_within_millennium = year % 1000
+        millennium = (year - 1) // 1000 + 1
+        ts = f"{check}.{day_of_year:03d}.{year_within_millennium:03d}.M{millennium}"
+    except Exception:
+        ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     ledger = uuid.uuid4().hex[:12].upper()
     # Authority
     if role_key == "forgemaster":
@@ -868,7 +924,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         authority = comp
 
     # Attesting name
-    attester = getattr(interaction.user, "display_name", None) or getattr(interaction.user, "name", str(interaction.user.id))
+    attester = getattr(interaction.user, "display_name", None) or getattr(
+        interaction.user, "name", str(interaction.user.id)
+    )
 
     # Optional personal rite
     try:
@@ -888,7 +946,11 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             # fallback: include top role (if any) or just the display name
             top_role = None
             try:
-                roles = [getattr(r, 'name', '') for r in getattr(interaction.user, 'roles', []) if getattr(r, 'name', None)]
+                roles = [
+                    getattr(r, "name", "")
+                    for r in getattr(interaction.user, "roles", [])
+                    if getattr(r, "name", None)
+                ]
                 top_role = roles[-1] if roles else None
             except Exception:
                 top_role = None
@@ -899,11 +961,17 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Assemble block
     lines = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // COGITATOR-ATTESTATION")
     lines.append("  COGITATOR RITE — FORGE ATTESTATION")
-    lines.append("==============================================================================")
-    bearer_name = getattr(member, "display_name", None) or getattr(member, "name", str(member.id))
+    lines.append(
+        "=============================================================================="
+    )
+    bearer_name = getattr(member, "display_name", None) or getattr(
+        member, "name", str(member.id)
+    )
     lines.append(f"Bearer: {bearer_name}")
     lines.append("")
     lines.append("Inspection Status = PASSED")
@@ -919,18 +987,24 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         for l in str(rite_text).splitlines():
             lines.append(f"  {l}")
         lines.append("")
-    lines.append(f"-- SIGNED: {signer}")
-    lines.append("==============================================================================")
+    lines.append(f"-- WITNESSED AND SEALED: {signer}")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     try:
         # Ping the bearer (so they receive a notification) but keep the
         # formatted attestation block separate so the display remains intact.
         content = f"{member.mention}\n" + "\n".join(lines)
-        await interaction.response.send_message(content, allowed_mentions=discord.AllowedMentions(users=True))
+        await interaction.response.send_message(
+            content, allowed_mentions=discord.AllowedMentions(users=True)
+        )
     except Exception:
         try:
-            await interaction.response.send_message("Failed to post attestation.", ephemeral=True)
+            await interaction.response.send_message(
+                "Failed to post attestation.", ephemeral=True
+            )
         except Exception:
             pass
 
@@ -1471,7 +1545,11 @@ async def tally_deeds(
             idx_veteran = _role_index("Watch Veteran")
             highest_idx = get_highest_rank_index(target)
             # Only compute if the user has a recognized rank at or above Watch Veteran
-            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
+            if (
+                (idx_veteran is not None)
+                and (highest_idx is not None)
+                and (highest_idx <= idx_veteran)
+            ):
                 # Time-based studs
                 if joined_at:
                     now = datetime.utcnow()
@@ -1764,10 +1842,15 @@ async def tally_deeds(
             MAX_LEN = 1900
             r_lines: list[str] = []
             r_lines.append("```ansi")
-            r_lines.append("\u001b[32m==============================================================================")
+            r_lines.append(
+                "\u001b[32m=============================================================================="
+            )
             r_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
             r_lines.append("  KILL TEAM DEEDS ROSTER")
-            r_lines.append("==============================================================================")
+            r_lines.append(
+                "=============================================================================="
+            )
+
             # Sort roster so Active members appear first, then by precise rank priority,
             # then by service studs (desc), then by AAR (desc), then name.
             def _rank_priority(role_names_list):
@@ -1781,7 +1864,12 @@ async def tally_deeds(
                 if "Lord Executioner" in names:
                     return 1
                 # High-command specialists
-                high_specs = {"Forgemaster", "Chief Apothecary", "Void Warden", "High Chaplain"}
+                high_specs = {
+                    "Forgemaster",
+                    "Chief Apothecary",
+                    "Void Warden",
+                    "High Chaplain",
+                }
                 if any(r in names for r in high_specs):
                     return 2
                 if "Watch Captain" in names:
@@ -1791,7 +1879,12 @@ async def tally_deeds(
                 if "Company Champion" in names:
                     return 5
                 # Company specialists
-                comp_specs = {"Watch Techmarine", "Watch Apothecary", "Watch Librarian", "Watch Chaplain"}
+                comp_specs = {
+                    "Watch Techmarine",
+                    "Watch Apothecary",
+                    "Watch Librarian",
+                    "Watch Chaplain",
+                }
                 if any(r in names for r in comp_specs):
                     return 6
                 if "Watch Sergeant" in names:
@@ -1806,7 +1899,9 @@ async def tally_deeds(
 
             def _sort_key(it):
                 try:
-                    status_flag = 0 if str(it.get("status", "")).lower() == "active" else 1
+                    status_flag = (
+                        0 if str(it.get("status", "")).lower() == "active" else 1
+                    )
                     rank_pri = _rank_priority(it.get("role_names", []))
                     studs = int(it.get("studs_count", 0) or 0)
                     aar = int(it.get("aar", 0) or 0)
@@ -1823,44 +1918,74 @@ async def tally_deeds(
                     return len(str(v))
                 except Exception:
                     return 0
-            # Include studs symbols in name width so studs appear directly after names, aligned
-            def _name_with_studs_len(it):
+
+            # Reserve space for studs symbols so they always display; truncate names before studs
+            def _pure_name_len(it):
                 try:
-                    nm = str(it.get("name", "") or "")
-                    studs = str(it.get("studs_symbols", "") or "")
-                    return len(nm) + (1 + len(studs) if studs else 0)
+                    return len(str(it.get("name", "") or ""))
                 except Exception:
                     return 0
-            name_w = max((_name_with_studs_len(it) for it in sorted_items), default=1)
-            status_w = max((_len_str(it.get("status", "")) for it in sorted_items), default=1)
+
+            def _studs_len(it):
+                try:
+                    return len(str(it.get("studs_symbols", "") or ""))
+                except Exception:
+                    return 0
+
+            max_name_raw = max((_pure_name_len(it) for it in sorted_items), default=1)
+            max_studs = max((_studs_len(it) for it in sorted_items), default=0)
+            # Leading space before studs when present
+            studs_reserved = (1 + max_studs) if max_studs > 0 else 0
+            # Cap total name+studs width to keep table tidy
+            TOTAL_NAME_CAP = 24
+            name_w = max(1, min(max_name_raw, TOTAL_NAME_CAP - studs_reserved))
+            status_w = max(
+                (_len_str(it.get("status", "")) for it in sorted_items), default=1
+            )
             # Cap widths to keep table tidy and avoid overflow from long names
             name_w = min(name_w, 24)
             status_w = min(status_w, 12)
             aar_w = max((_len_str(it.get("aar", 0)) for it in sorted_items), default=1)
-            gene_w = max((_len_str(it.get("gene", 0)) for it in sorted_items), default=1)
-            armory_w = max((_len_str(it.get("armory", 0)) for it in sorted_items), default=1)
+            gene_w = max(
+                (_len_str(it.get("gene", 0)) for it in sorted_items), default=1
+            )
+            armory_w = max(
+                (_len_str(it.get("armory", 0)) for it in sorted_items), default=1
+            )
             # Build formatted rows with alignment
             formatted_rows: List[str] = []
             for it in sorted_items:
                 try:
-                    nm = str(it.get('name','') or '')
-                    studs = str(it.get('studs_symbols','') or '')
-                    combined = f"{nm} {studs}" if studs else nm
-                    combined = combined[:name_w]
-                    st = str(it.get('status',''))[:status_w]
+                    nm = str(it.get("name", "") or "")
+                    studs = str(it.get("studs_symbols", "") or "")
+                    # Truncate name to leave room for studs; always show studs in reserved area
+                    truncated = nm[:name_w]
+                    if studs:
+                        # ensure a single space before studs
+                        studs_field = f" {studs}"
+                        # pad studs field to reserved width so alignment holds
+                        studs_field = f"{studs_field:<{studs_reserved}}"
+                    else:
+                        studs_field = "".ljust(studs_reserved)
+
+                    name_field = f"{truncated:<{name_w}}"
+                    st = str(it.get("status", ""))[:status_w]
                     line = (
-                        f"{combined:<{name_w}} :: "
+                        f"{name_field}{studs_field} :: "
                         f"{st:<{status_w}} | "
-                        f"AAR {int(it.get('aar',0)):>{aar_w}} | "
-                        f"Gene {int(it.get('gene',0)):>{gene_w}} | "
-                        f"Armory {int(it.get('armory',0)):>{armory_w}}"
+                        f"AAR {int(it.get('aar', 0)):>{aar_w}} | "
+                        f"Gene {int(it.get('gene', 0)):>{gene_w}} | "
+                        f"Armory {int(it.get('armory', 0)):>{armory_w}}"
                     )
                 except Exception:
                     line = f"{nm} :: {st}"
                 formatted_rows.append(line)
 
             # Footer reserved to keep block markers valid
-            footer_lines = ["==============================================================================", "\u001b[0m```"]
+            footer_lines = [
+                "==============================================================================",
+                "\u001b[0m```",
+            ]
             footer_len = sum(len(fl) + 1 for fl in footer_lines)
             # Current header length
             curr_len = sum(len(l) + 1 for l in r_lines)
@@ -1895,7 +2020,7 @@ async def tally_deeds(
                 roster_embed = discord.Embed(
                     title="Kill Team Roster",
                     description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))}",
-                    color=0x2ecc71,
+                    color=0x2ECC71,
                 )
                 # Chunk rows into fields to avoid long single blocks
                 chunk_size = 15
@@ -1904,20 +2029,33 @@ async def tally_deeds(
                     # keep lines short using earlier truncation
                     field_value = "\n".join(f"• {row}" for row in chunk)
                     roster_embed.add_field(
-                        name=f"Members {i+1}–{min(i+chunk_size, len(formatted_rows))}",
+                        name=f"Members {i + 1}–{min(i + chunk_size, len(formatted_rows))}",
                         value=field_value or "—",
                         inline=False,
                     )
-                roster_embed.set_footer(text="Roster generated from recent service records.")
+                roster_embed.set_footer(
+                    text="Roster generated from recent service records."
+                )
 
-                roster_view = ToggleFormatView(text_content=roster_text, embed=roster_embed, default="ansi")
-                await interaction.followup.send(content=roster_text, embed=None, view=roster_view, ephemeral=True)
+                roster_view = ToggleFormatView(
+                    text_content=roster_text, embed=roster_embed, default="ansi"
+                )
+                await interaction.followup.send(
+                    content=roster_text, embed=None, view=roster_view, ephemeral=True
+                )
             except Exception:
                 # Fallback to ANSI block with toggle
                 try:
                     roster_embed = _embed_from_ansi("Kill Team Roster", roster_text)
-                    roster_view = ToggleFormatView(text_content=roster_text, embed=roster_embed, default="ansi")
-                    await interaction.followup.send(content=roster_text, embed=None, view=roster_view, ephemeral=True)
+                    roster_view = ToggleFormatView(
+                        text_content=roster_text, embed=roster_embed, default="ansi"
+                    )
+                    await interaction.followup.send(
+                        content=roster_text,
+                        embed=None,
+                        view=roster_view,
+                        ephemeral=True,
+                    )
                 except Exception:
                     await interaction.followup.send(roster_text, ephemeral=True)
         except Exception:
@@ -1976,10 +2114,18 @@ async def tally_deeds(
         avg_armory = _mean(armory_vals)
         avg_waves = _mean(waves_vals)
         # Reliability and Force Multiplier (single-team context)
-        total_scores: List[float] = [a + g + r for a, g, r in zip(aar_vals, gene_vals, armory_vals)]
+        total_scores: List[float] = [
+            a + g + r for a, g, r in zip(aar_vals, gene_vals, armory_vals)
+        ]
+
         def _pstdev(vals: List[float]) -> float:
             return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
-        reliability = (_mean(total_scores) / (1.0 + _pstdev(total_scores))) if total_scores else 0.0
+
+        reliability = (
+            (_mean(total_scores) / (1.0 + _pstdev(total_scores)))
+            if total_scores
+            else 0.0
+        )
         force_multiplier = _mean(per_capita_vals)
 
         # Format a compact ANSI-styled summary similar to individual tally output
@@ -2018,18 +2164,26 @@ async def tally_deeds(
             embed = discord.Embed(
                 title="Kill Team Summary",
                 description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))} — Last {span_days} Days",
-                color=0x2ecc71,
+                color=0x2ECC71,
             )
             for label, value in stat_rows_summary:
                 embed.add_field(name=label, value=value, inline=True)
-            view = ToggleFormatView(text_content=summary_text, embed=embed, default="ansi")
-            await interaction.followup.send(content=summary_text, embed=None, view=view, ephemeral=True)
+            view = ToggleFormatView(
+                text_content=summary_text, embed=embed, default="ansi"
+            )
+            await interaction.followup.send(
+                content=summary_text, embed=None, view=view, ephemeral=True
+            )
         except Exception:
             # ignore send errors and proceed to attach full file
             try:
                 embed = _embed_from_ansi("Kill Team Summary", summary_text)
-                view = ToggleFormatView(text_content=summary_text, embed=embed, default="ansi")
-                await interaction.followup.send(content=summary_text, embed=None, view=view, ephemeral=True)
+                view = ToggleFormatView(
+                    text_content=summary_text, embed=embed, default="ansi"
+                )
+                await interaction.followup.send(
+                    content=summary_text, embed=None, view=view, ephemeral=True
+                )
             except Exception:
                 pass
 
@@ -2037,7 +2191,9 @@ async def tally_deeds(
     if not killteam:
         embed = _embed_from_ansi("Deeds Ledger", reply_text)
         view = ToggleFormatView(text_content=reply_text, embed=embed, default="ansi")
-        await interaction.followup.send(content=reply_text, embed=None, view=view, ephemeral=True)
+        await interaction.followup.send(
+            content=reply_text, embed=None, view=view, ephemeral=True
+        )
 
 
 @bot.tree.command(
@@ -2120,6 +2276,7 @@ async def combat_bonds(
         )
         view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
         await interaction.response.send_message(content=text, view=view, ephemeral=True)
+
 
 def classify_difficulty(difficulty: str | None):
     if not difficulty:
@@ -2926,7 +3083,7 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
     """
     # Load config with safe defaults
     try:
-        _cb = (CONFIG.get("combat_bonds") or {})
+        _cb = CONFIG.get("combat_bonds") or {}
     except Exception:
         _cb = {}
     try:
@@ -2973,8 +3130,8 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
         dom = (max(c_ab, c_ac, c_bc) / total) if total > 0.0 else 0.0
         excess_norm = 0.0
         try:
-            ideal = (1.0 / 3.0)
-            span = (2.0 / 3.0)
+            ideal = 1.0 / 3.0
+            span = 2.0 / 3.0
             excess_norm = max(0.0, (dom - ideal) / span)
         except Exception:
             excess_norm = max(0.0, dom - (1.0 / 3.0))
@@ -2986,7 +3143,9 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
     return triples
 
 
-def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: Optional[int] = None):
+def _build_spread_counts(
+    pair_counts: Dict[Tuple[str, str], int], active_count: Optional[int] = None
+):
     """Compute normalized spread per brother from pair counts.
     Breadth/evenness via inverse Simpson effective partners; depth is bounded to
     avoid inflating scores by grinding with a narrow partner set.
@@ -3004,7 +3163,7 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: 
     """
     # Configurable knobs
     try:
-        _cb = (CONFIG.get("combat_bonds") or {})
+        _cb = CONFIG.get("combat_bonds") or {}
     except Exception:
         _cb = {}
     try:
@@ -3049,7 +3208,7 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: 
         effective = (1.0 / sum_sq) if sum_sq > 0.0 else 0.0
         # Bounded depth to avoid volume inflation on a narrow partner set
         bounded_total = sum(min(max(0, v), per_partner_cap) for v in adj.values())
-        depth_factor = (bounded_total ** depth_exponent) if bounded_total > 0 else 0.0
+        depth_factor = (bounded_total**depth_exponent) if bounded_total > 0 else 0.0
         spread_val = effective * depth_factor
         try:
             raw_spreads[uid] = float(spread_val)
@@ -3063,7 +3222,11 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: 
 
     # Determine active count (number of active members in the window)
     try:
-        active = int(active_count) if (active_count and int(active_count) > 0) else max(1, len(freqs))
+        active = (
+            int(active_count)
+            if (active_count and int(active_count) > 0)
+            else max(1, len(freqs))
+        )
     except Exception:
         active = max(1, len(freqs))
 
@@ -3090,7 +3253,7 @@ def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: 
 
     # Minimum-interaction guard (configurable)
     try:
-        _cb = (CONFIG.get("combat_bonds") or {})
+        _cb = CONFIG.get("combat_bonds") or {}
     except Exception:
         _cb = {}
     try:
@@ -3148,12 +3311,14 @@ def _bond_tier(score: int):
         return "STALWART"
     return "INDOMITABLE"
 
+
 def _percentile(sorted_vals: List[int], p: float) -> int:
     if not sorted_vals:
         return 0
     n = len(sorted_vals)
     idx = int(max(0, min(n - 1, round(p * (n - 1)))))
     return sorted_vals[idx]
+
 
 def _compute_bond_cutoffs(scores: List[int]) -> Optional[Dict[str, int]]:
     if not scores or len(scores) < 5:
@@ -3164,6 +3329,7 @@ def _compute_bond_cutoffs(scores: List[int]) -> Optional[Dict[str, int]]:
     q60 = _percentile(s, 0.60)
     q80 = _percentile(s, 0.80)
     return {"q20": q20, "q40": q40, "q60": q60, "q80": q80}
+
 
 def _bond_tier_dynamic(score: int, cutoffs: Optional[Dict[str, int]]):
     if not cutoffs:
@@ -3332,9 +3498,11 @@ def _format_bonds_embed(
     embed = discord.Embed(
         title="Combat Bonds — Triadic Battle-Litany",
         description=(
-            f"Auspex Window: Last {window_days} day(s)" if window_days is not None else f"Auspex Window: Last {window_span} engagements"
+            f"Auspex Window: Last {window_days} day(s)"
+            if window_days is not None
+            else f"Auspex Window: Last {window_span} engagements"
         ),
-        color=0x2ecc71,
+        color=0x2ECC71,
     )
     if not bonds:
         embed.description = "No qualifying Combat Bonds found in the current window."
@@ -3390,12 +3558,19 @@ def _format_bonds_embed(
         embed.add_field(name=name, value=value, inline=False)
         rank += 1
 
-    embed.set_footer(text="These Combat Bonds may be invoked by decree of Watch Command.")
+    embed.set_footer(
+        text="These Combat Bonds may be invoked by decree of Watch Command."
+    )
     return embed
 
 
 class ToggleFormatView(discord.ui.View):
-    def __init__(self, text_content: Optional[str] = None, embed: Optional[discord.Embed] = None, default: str = "ansi"):
+    def __init__(
+        self,
+        text_content: Optional[str] = None,
+        embed: Optional[discord.Embed] = None,
+        default: str = "ansi",
+    ):
         # Extend lifetime to reduce 'Interaction failed' after short delays
         super().__init__(timeout=900)
         self.text_content = text_content or ""
@@ -3413,15 +3588,25 @@ class ToggleFormatView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 if child.custom_id == "show_ansi":
                     too_long = len(self.text_content) > self._ansi_max_len
-                    child.disabled = (self.current == "ansi") or (not self.text_content) or too_long
+                    child.disabled = (
+                        (self.current == "ansi") or (not self.text_content) or too_long
+                    )
                 elif child.custom_id == "show_embed":
-                    child.disabled = (self.current == "embed") or (self.embed_obj is None)
+                    child.disabled = (self.current == "embed") or (
+                        self.embed_obj is None
+                    )
 
-    @discord.ui.button(label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi")
-    async def show_ansi(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi"
+    )
+    async def show_ansi(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         if not self.text_content:
             try:
-                await interaction.response.send_message("No PC/Console output available.", ephemeral=True)
+                await interaction.response.send_message(
+                    "No PC/Console output available.", ephemeral=True
+                )
             except Exception:
                 pass
             return
@@ -3439,25 +3624,37 @@ class ToggleFormatView(discord.ui.View):
         self.current = "ansi"
         self._update_buttons()
         try:
-            await interaction.response.edit_message(content=self.text_content, embed=None, view=self)
+            await interaction.response.edit_message(
+                content=self.text_content, embed=None, view=self
+            )
         except Exception:
             # Fallback notify if edit fails (e.g., stale interaction)
             try:
-                await interaction.followup.send("Unable to switch to PC/Console view.", ephemeral=True)
+                await interaction.followup.send(
+                    "Unable to switch to PC/Console view.", ephemeral=True
+                )
             except Exception:
                 pass
 
-    @discord.ui.button(label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed")
-    async def show_embed(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed"
+    )
+    async def show_embed(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         if self.embed_obj is None:
             await interaction.response.defer()
             return
         self.current = "embed"
         self._update_buttons()
-        await interaction.response.edit_message(content=None, embed=self.embed_obj, view=self)
+        await interaction.response.edit_message(
+            content=None, embed=self.embed_obj, view=self
+        )
 
 
-def _embed_from_ansi(title: str, text_block: str, color: int = 0x2ecc71) -> discord.Embed:
+def _embed_from_ansi(
+    title: str, text_block: str, color: int = 0x2ECC71
+) -> discord.Embed:
     """Generic helper: wrap an ANSI text block into an embed description safely.
     Truncates to fit Discord limits and preserves code fence for readability.
     """
@@ -3477,6 +3674,7 @@ def _embed_from_ansi(title: str, text_block: str, color: int = 0x2ecc71) -> disc
         content = content[: max_len - 1] + "…"
     embed = discord.Embed(title=title, description=content, color=color)
     return embed
+
 
 def _main():
     # Parse CLI args for debug flag (overrides config). Use parse_known to avoid discord.py argv issues.
@@ -3506,6 +3704,7 @@ def _main():
     if not token:
         raise RuntimeError("DISCORD_TOKEN environment variable not set")
     bot.run(token)
+
 
 BATTLE_LINE_ORDER = [
     "Watch Brother",
