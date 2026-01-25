@@ -32,8 +32,8 @@ TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 
-# Global DataStore instance (loaded at startup)
-DATASTORE = DataStore(AAR_RECORDS_PATH, PROCESSED_IDS_PATH)
+# Global DataStore instance (initialized when bot is ready)
+DATASTORE: Optional[DataStore] = None
 
 # Data file locations
 DATA_DIR = "data"
@@ -190,7 +190,8 @@ async def _announce_shutdown_and_close():
         logger.debug(f"Shutdown announce failed: {e}")
     # Flush DataStore before closing
     try:
-        await DATASTORE.shutdown()
+        if DATASTORE:
+            await DATASTORE.shutdown()
     except Exception as e:
         logger.debug(f"DataStore shutdown failed: {e}")
     try:
@@ -878,6 +879,15 @@ def _resolve_company_roles_from_text(
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user}")
+    # Initialize DataStore here so the event loop is running and the
+    # background flush task can be started.
+    global DATASTORE
+    if DATASTORE is None:
+        try:
+            DATASTORE = DataStore(AAR_RECORDS_PATH, PROCESSED_IDS_PATH)
+            logger.info("DataStore initialized on ready; background flush started.")
+        except Exception as e:
+            logger.exception(f"Failed to initialize DataStore on ready: {e}")
     # sync app_commands (slash commands)
     try:
         guild_id = CONFIG.get("guild_id")
