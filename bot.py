@@ -245,6 +245,7 @@ RANK_ROLES_PRIORITY = [
     "Watch Techmarine",
     "Watch Sergeant",
     "Kill Team Champion",
+    "Oathsworn",
     "Watch Veteran",
     "Watch Brother",
 ]
@@ -283,11 +284,6 @@ HOME_CHAPTERS = [
 ALLOWED_COMMAND_CHANNELS = {
     # Update to your desired demo channel name
     "❖⋅data-vault⋅❖"
-    # "#\"Kill Team Solomon\"",
-    # "#\"Kill Team WiFi\"",
-    # "#\"Kill Team Raelyn\"",
-    # "#\"Kill Team Falcon\"",
-    # "#\"Kill Team Atom\"",
 }
 
 # Kill Team forum/thread configuration
@@ -299,11 +295,11 @@ ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set([1433351293103112202, 14582556566822
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
 ALLOWED_KT_ROLE_IDS: set[int] = set(
     [
-        1449445082875957420,
-        1444351512154214411,
-        1459606044509606032,
-        1458905579098734633,
-        1458905421518737716,
+        1449257158641455265,
+        1444348999401210037,
+        1458254715942080543,
+        1458254904819974386,
+        1433355179020914688,
     ]
 )
 
@@ -1197,7 +1193,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         for l in str(rite_text).splitlines():
             lines.append(f"  {l}")
         lines.append("")
-    lines.append(f"-- WITNESSED AND SEALED: {signer}")
+    lines.append(f"WITNESSED AND SEALED: {signer}")
     lines.append(
         "=============================================================================="
     )
@@ -1799,18 +1795,32 @@ async def tally_deeds(
         except Exception:
             studs_count = 0
 
-        # Build display string using Unicode circles: hollow circles '○' up to 5,
-        # then a filled circle '●' to indicate more than 5. Always append numeric count in parentheses.
+        # Build display string using three-tier Unicode symbols:
+        # - lowest: hollow circle '○' (Plasteel)
+        # - mid: filled circle '●' per five (Electrum)
+        # - top: diamond '◆' per twenty-five (Ceramite)
+        # Append a type breakdown in parentheses using in-universe names.
         try:
             studs_symbols = ""
             if not studs_count:
-                studs_display = f"— ({studs_count})"
+                studs_display = f"— (0 Plasteel)"
             else:
-                if studs_count <= 5:
-                    studs_symbols = "○" * studs_count
-                else:
-                    studs_symbols = "○" * 5 + "●"
-                studs_display = f"{studs_symbols} ({studs_count})"
+                # Breakdown into Ceramite (25), Electrum (5), Plasteel (1)
+                ceramite_count = studs_count // 25
+                electrum_count = (studs_count % 25) // 5
+                plasteel_count = studs_count % 5
+
+                studs_symbols = "◆" * ceramite_count + "●" * electrum_count + "○" * plasteel_count
+
+                parts: list[str] = []
+                if ceramite_count:
+                    parts.append(f"{ceramite_count} Ceramite")
+                if electrum_count:
+                    parts.append(f"{electrum_count} Electrum")
+                if plasteel_count:
+                    parts.append(f"{plasteel_count} Plasteel")
+                types_str = ", ".join(parts) if parts else f"0 Plasteel"
+                studs_display = f"{studs_symbols} ({types_str})"
         except Exception:
             studs_display = str(studs_count)
             studs_symbols = ""
@@ -2026,7 +2036,15 @@ async def tally_deeds(
             armory_val = int(round(float(stats.get("armory_points", 0) or 0)))
         except Exception:
             armory_val = 0
-        name_val = str(display_name or getattr(target, "display_name", "Unknown"))
+        # Sanitize name: strip any stud glyphs from nicknames so pre-existing
+        # symbols don't duplicate the computed studs in roster output.
+        try:
+            name_raw = str(display_name or getattr(target, "display_name", "Unknown"))
+            name_val = re.sub(r"[◆●○]+", "", name_raw).strip()
+            if not name_val:
+                name_val = name_raw
+        except Exception:
+            name_val = str(display_name or getattr(target, "display_name", "Unknown"))
         status_val = str(status or "Unknown")
         roster_items.append(
             {
@@ -2758,6 +2776,14 @@ def parse_aar(message: discord.Message):
         else None,
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
+        # Link back to the original Discord message (if available)
+        "message_url": (
+            f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
+            f"{getattr(getattr(message, 'channel', None), 'id', None)}/{message.id}"
+            if getattr(getattr(message, 'guild', None), 'id', None)
+            and getattr(getattr(message, 'channel', None), 'id', None)
+            else None
+        ),
     }
 
 
