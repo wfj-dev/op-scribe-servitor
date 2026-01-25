@@ -1787,6 +1787,8 @@ async def tally_deeds(
     member_blocks: list[str] = []
     # Compact roster rows (structured) for under-2k summary
     roster_items: List[Dict[str, int | str]] = []
+    # Keep the per-member stat rows (label/value pairs) for mobile embed rendering
+    member_stat_rows_list: List[List[Tuple[str, str]]] = []
     # Aggregates for killteam summary
     agg_ops = 0
     agg_aar = 0
@@ -2066,6 +2068,11 @@ async def tally_deeds(
                 ("Armory Data Recovered", str(stats["armory_points"])),
             ]
         )
+        # Keep a structured copy for building a mobile-friendly embed later
+        try:
+            member_stat_rows_list.append(list(stat_rows))
+        except Exception:
+            member_stat_rows_list.append([])
         label_width = max(len(label) for label, _ in stat_rows) + 2
         lines = []
         lines.append("```ansi")
@@ -2503,7 +2510,30 @@ async def tally_deeds(
 
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
-        embed = _embed_from_ansi("Deeds Ledger", reply_text)
+        # If this was a single-brother request, provide a dramatically simpler
+        # mobile-friendly embed (the Mobile button will show this). Otherwise
+        # fall back to converting the ANSI text into an embed.
+        try:
+            if (len(members) == 1) and member_stat_rows_list:
+                # Use the structured stat rows we captured earlier to build
+                # a compact, easy-to-read embed for mobile.
+                name_val = roster_items[0].get("name") if roster_items else "Deeds Ledger"
+                embed = discord.Embed(
+                    title=f"Deeds Ledger — {name_val}",
+                    color=0x2ECC71,
+                )
+                # Add fields non-inline so mobile clients render them vertically
+                for label, value in member_stat_rows_list[0]:
+                    try:
+                        embed.add_field(name=label, value=value or "—", inline=False)
+                    except Exception:
+                        # fallback to a single combined field if something goes wrong
+                        pass
+            else:
+                embed = _embed_from_ansi("Deeds Ledger", reply_text)
+        except Exception:
+            embed = _embed_from_ansi("Deeds Ledger", reply_text)
+
         view = ToggleFormatView(text_content=reply_text, embed=embed, default="ansi")
         await interaction.followup.send(
             content=reply_text, embed=None, view=view, ephemeral=True
