@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+
 import os
 import asyncio
 import json
@@ -18,6 +19,21 @@ from logging.handlers import RotatingFileHandler
 import signal
 import argparse
 import statistics
+
+# Import DataStore
+from datastore import DataStore
+
+# Data file locations
+DATA_DIR = "data"
+AAR_RECORDS_PATH = os.path.join(DATA_DIR, "aar_records.json")
+AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
+PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
+TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
+OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
+RITES_PATH = os.path.join(DATA_DIR, "rites.json")
+
+# Global DataStore instance (loaded at startup)
+DATASTORE = DataStore(AAR_RECORDS_PATH, PROCESSED_IDS_PATH)
 
 # Data file locations
 DATA_DIR = "data"
@@ -172,6 +188,11 @@ async def _announce_shutdown_and_close():
             await _send_watch_command_notice("OFFLINE")
     except Exception as e:
         logger.debug(f"Shutdown announce failed: {e}")
+    # Flush DataStore before closing
+    try:
+        await DATASTORE.shutdown()
+    except Exception as e:
+        logger.debug(f"DataStore shutdown failed: {e}")
     try:
         await bot.close()
     except Exception:
@@ -539,7 +560,11 @@ def check_tally_deeds_permissions_in_kt_post(
         # - invocation is inside the forum channel itself and its id is in allowed list
         is_kt_context = False
         try:
-            if is_thread and parent_id is not None and parent_id in ALLOWED_KT_FORUM_PARENT_IDS:
+            if (
+                is_thread
+                and parent_id is not None
+                and parent_id in ALLOWED_KT_FORUM_PARENT_IDS
+            ):
                 is_kt_context = True
             elif ch_id is not None and ch_id in ALLOWED_KT_FORUM_PARENT_IDS:
                 is_kt_context = True
@@ -553,7 +578,12 @@ def check_tally_deeds_permissions_in_kt_post(
         # Inside a configured Kill Team post: enforce special rules.
         caller = interaction.user
         caller_role_names = _canonical_role_names(caller)
-        allowed_ranks = {"Watch Sergeant", "Watch Lieutenant", "Watch Captain", "Forgemaster"}
+        allowed_ranks = {
+            "Watch Sergeant",
+            "Watch Lieutenant",
+            "Watch Captain",
+            "Forgemaster",
+        }
         if not any(r in caller_role_names for r in allowed_ranks):
             return (
                 True,
@@ -633,10 +663,12 @@ def check_tally_deeds_permissions_in_kt_post(
         # Kill Team associated with this thread (no company restriction).
         if "Forgemaster" in caller_role_names:
             # Infer kill team name from thread or parent
-            thread_name = (getattr(ch, "name", None) or "")
+            thread_name = getattr(ch, "name", None) or ""
             if not thread_name:
-                thread_name = (getattr(parent, "name", None) or "")
-            thread_kt = _extract_killteam_name(thread_name).lower() if thread_name else ""
+                thread_name = getattr(parent, "name", None) or ""
+            thread_kt = (
+                _extract_killteam_name(thread_name).lower() if thread_name else ""
+            )
 
             # If a kt_role was provided, validate role id and that its name matches thread
             if kt_role is not None:
@@ -649,14 +681,23 @@ def check_tally_deeds_permissions_in_kt_post(
                 # Kill Team WiFi actions from the Kill Team Solomon channel).
                 kt_name = _extract_killteam_name(getattr(kt_role, "name", "")).lower()
                 if thread_kt and not (thread_kt in kt_name or kt_name in thread_kt):
-                    return True, "The specified Kill Team role does not match this thread."
+                    return (
+                        True,
+                        "The specified Kill Team role does not match this thread.",
+                    )
                 if target is not None and krid not in target_role_ids:
-                    return True, "Target member does not belong to the specified Kill Team."
+                    return (
+                        True,
+                        "Target member does not belong to the specified Kill Team.",
+                    )
                 return True, None
 
             # No kt_role provided: require a target whose KT role matches the thread
             if target is None:
-                return True, "Forgemaster must specify a Kill Team role or a target when using this command in a Kill Team post."
+                return (
+                    True,
+                    "Forgemaster must specify a Kill Team role or a target when using this command in a Kill Team post.",
+                )
             # Find target's KT roles (by allowed IDs if configured, else any role whose name looks like a KT)
             target_kt_roles = []
             for r in getattr(target, "roles", []) or []:
@@ -1521,7 +1562,7 @@ async def _run_recheck_errors(
                     await _set_aar_reaction(msg, "error")
                     still_broken += 1
                 else:
-                    save_aar_record(record)
+                    await save_aar_record(record)
                     data = _load_json_dict(AAR_ERRORS_PATH)
                     sid = str(aar_id)
                     if sid in data:
@@ -1616,7 +1657,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             if scanned % 10 == 0:
                 _print_progress("Ingest New AARs", scanned, scanned)
             continue
-        save_aar_record(record)
+        await save_aar_record(record)
         to_react_ok.append(msg)
         ingested += 1
         if scanned % 10 == 0:
@@ -1637,6 +1678,43 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             await _set_aar_reaction(m, "error")
 
     return ingested, rejected
+
+
+# Admin-only command to print cache sizes, dirty flags, last flush time, and cache hit/miss counters
+@bot.tree.command(
+    name="cache_stats", description="Show DataStore cache and flush stats (admin only)"
+)
+async def cache_stats(interaction: discord.Interaction):
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    if str(getattr(interaction.user, "id", None)) not in admin_ids:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    stats = DATASTORE.get_cache_stats()
+    import datetime
+
+    last_flush = stats["last_flush_time"]
+    if last_flush:
+        last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime(
+            "%Y-%m-%d %H:%M:%S UTC"
+        )
+    else:
+        last_flush_str = "Never"
+    msg = (
+        f"```ansi\n"
+        f"\u001b[32m==============================================================================\n"
+        f"  WATCH FORTRESS JERICHO // SERVITOR CACHE DIAGNOSTICS\n"
+        f"==============================================================================\n"
+        f"  User Stats Cache Size:        {stats['user_stats_cache_size']}\n"
+        f"  Home Chapter Cache Size:      {stats['home_chapter_cache_size']}\n"
+        f"  Dirty AAR Records:            {stats['dirty_records']}\n"
+        f"  Dirty Processed IDs:          {stats['dirty_ids']}\n"
+        f"  Last Flush Time:              {last_flush_str}\n"
+        f"  Home Chapter Cache Hits:      {stats['home_chapter_cache_hits']}\n"
+        f"  Home Chapter Cache Misses:    {stats['home_chapter_cache_misses']}\n"
+        f"==============================================================================\n"
+        f"\u001b[0m```"
+    )
+    await interaction.response.send_message(msg, ephemeral=True)
 
 
 @bot.tree.command(
@@ -1810,7 +1888,9 @@ async def tally_deeds(
                 electrum_count = (studs_count % 25) // 5
                 plasteel_count = studs_count % 5
 
-                studs_symbols = "◆" * ceramite_count + "●" * electrum_count + "○" * plasteel_count
+                studs_symbols = (
+                    "◆" * ceramite_count + "●" * electrum_count + "○" * plasteel_count
+                )
 
                 parts: list[str] = []
                 if ceramite_count:
@@ -1825,19 +1905,17 @@ async def tally_deeds(
             studs_display = str(studs_count)
             studs_symbols = ""
 
-        data = load_aar_data(AAR_RECORDS_PATH)
+        # Use in-memory records from DATASTORE
         ops_trials = 0
         siege_inductions = 0
-        # Track initiation event timestamps to identify the earliest (likely the member's own induction)
         initiation_event_times: List[datetime] = []
-        for rec in data.values():
+        for rec in DATASTORE.iter_records():
             try:
                 brother_ids = rec.get("brother_ids") or []
                 if str(target.id) not in brother_ids:
                     continue
                 if not bool(rec.get("initiation_trial")):
                     continue
-                # Record timestamp for potential earliest-initiation detection
                 ts = rec.get("timestamp")
                 try:
                     if ts:
@@ -1849,26 +1927,17 @@ async def tally_deeds(
                                 t = t.replace(tzinfo=None)
                         initiation_event_times.append(t)
                 except Exception:
-                    # ignore parse failures; still count the trial below
                     pass
                 dclass = (rec.get("difficulty_class") or "").lower()
                 if "siege" in dclass:
-                    # Siege initiation counts immediately as one induction
                     siege_inductions += 1
                 else:
-                    # Operation initiation requires three trials to count as one induction
                     ops_trials += 1
             except Exception:
-                # Be resilient to malformed records
                 pass
-        # Raw count of inductions from trials
         trials_reported = siege_inductions + (ops_trials // 3)
-        # Heuristic: if the member has any initiation events, assume the earliest is their own induction
-        # and subtract one from the reported count (do not go below zero). This avoids counting the
-        # candidate's own induction as a sanctioning induction.
         try:
             if initiation_event_times:
-                # If there is at least one initiation event, treat the first as their own induction
                 if trials_reported > 0:
                     trials_reported = max(0, trials_reported - 1)
         except Exception:
@@ -1878,11 +1947,11 @@ async def tally_deeds(
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
 
         # Determine Active/Inactive status: Active if any AAR in last 30 days.
+
         try:
-            data = load_aar_data(AAR_RECORDS_PATH)
-            # Collect timestamps for AARs involving this user
+            # Use in-memory records from DATASTORE
             timestamps = []
-            for rec in data.values():
+            for rec in DATASTORE.iter_records():
                 if str(target.id) in (rec.get("brother_ids") or []):
                     ts = rec.get("timestamp")
                     if not ts:
@@ -1890,25 +1959,18 @@ async def tally_deeds(
                     try:
                         t = datetime.fromisoformat(ts)
                     except Exception:
-                        # Skip records with unparseable timestamps
                         continue
-                    # Ensure naive datetimes are treated as UTC
                     if t.tzinfo is not None:
-                        # Convert to UTC naive for comparison with datetime.utcnow()
                         try:
                             t = t.astimezone(tz=None).replace(tzinfo=None)
                         except Exception:
-                            # Fallback: drop tzinfo
                             t = t.replace(tzinfo=None)
                     timestamps.append(t)
-
             status = "Inactive"
             if timestamps:
-                # Sort newest first and check if any within the last 30 days from now
                 timestamps.sort(reverse=True)
                 now = datetime.utcnow()
                 cutoff = now - timedelta(days=30)
-                # If any timestamp is newer than cutoff, mark Active
                 for t in timestamps:
                     if t >= cutoff:
                         status = "Active"
@@ -2780,8 +2842,8 @@ def parse_aar(message: discord.Message):
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
             f"{getattr(getattr(message, 'channel', None), 'id', None)}/{message.id}"
-            if getattr(getattr(message, 'guild', None), 'id', None)
-            and getattr(getattr(message, 'channel', None), 'id', None)
+            if getattr(getattr(message, "guild", None), "id", None)
+            and getattr(getattr(message, "channel", None), "id", None)
             else None
         ),
     }
@@ -2909,7 +2971,13 @@ def validate_aar(record: dict):
     return errors
 
 
+# Deprecated: replaced by DataStore
 def load_aar_data(filename: str):
+    # Use DATASTORE for AAR_RECORDS_PATH
+    if filename == AAR_RECORDS_PATH:
+        # Return a dict for compatibility
+        return {str(k): v for k, v in DATASTORE._records.items()}
+    # Fallback to old logic for other files (should not be used)
     try:
         with open(filename, "r") as f:
             data = json.load(f)
@@ -2919,11 +2987,14 @@ def load_aar_data(filename: str):
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError:
-        # Handle empty or malformed JSON file gracefully
         return {}
 
 
+# Deprecated: replaced by DataStore for AAR_RECORDS_PATH
 def _load_json_dict(path: str):
+    if path == AAR_RECORDS_PATH:
+        return {str(k): v for k, v in DATASTORE._records.items()}
+    # For AAR_ERRORS_PATH and others, keep old logic
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -2934,7 +3005,12 @@ def _load_json_dict(path: str):
         return {}
 
 
+# Only used for files other than AAR_RECORDS_PATH
 def _save_json_dict(path: str, data: dict):
+    if path == AAR_RECORDS_PATH:
+        raise RuntimeError(
+            "Direct writes to AAR_RECORDS_PATH are not allowed; use DataStore.set_record."
+        )
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w") as f:
@@ -2944,7 +3020,10 @@ def _save_json_dict(path: str, data: dict):
     os.replace(tmp_path, path)
 
 
+# Deprecated: replaced by DataStore for PROCESSED_IDS_PATH
 def _load_json_list(path: str):
+    if path == PROCESSED_IDS_PATH:
+        return list(DATASTORE._processed_ids)
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -2955,7 +3034,12 @@ def _load_json_list(path: str):
         return []
 
 
+# Only used for files other than PROCESSED_IDS_PATH
 def _save_json_list(path: str, data: list):
+    if path == PROCESSED_IDS_PATH:
+        raise RuntimeError(
+            "Direct writes to PROCESSED_IDS_PATH are not allowed; use DataStore.add_processed_id."
+        )
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w") as f:
@@ -3054,107 +3138,31 @@ async def _set_aar_reaction(msg: discord.Message, status: str):
         logger.debug(f"Failed to set reaction on message {msg.id}: {e}")
 
 
+# Use DataStore for processed IDs
 def load_processed_ids():
-    ids = _load_json_list(PROCESSED_IDS_PATH)
-    return set(str(x) for x in ids)
+    return set(DATASTORE._processed_ids)
 
 
-def add_processed_id(aar_id: int):
-    ids = _load_json_list(PROCESSED_IDS_PATH)
-    sid = str(aar_id)
-    if sid not in ids:
-        ids.append(sid)
-        _save_json_list(PROCESSED_IDS_PATH, ids)
+# Use DataStore for processed IDs (async)
+async def add_processed_id(aar_id: int):
+    await DATASTORE.add_processed_id(aar_id)
 
 
-def save_aar_record(record: dict):
-    filename = AAR_RECORDS_PATH
-    data = load_aar_data(filename)
-
+# Use DataStore for AAR records and processed IDs (async)
+async def save_aar_record(record: dict):
     key = str(record["aar_id"])
-    data[key] = record
-
-    # Atomic write via tmp+replace
-    _save_json_dict(filename, data)
-
-    # Mark as processed after successful save
-    add_processed_id(record["aar_id"])
-
-    # print(f"Saved AAR {record['aar_id']} to {filename}.")
+    await DATASTORE.set_record(key, record)
+    await DATASTORE.add_processed_id(key)
 
 
+# Use DataStore for processed IDs
 def has_been_processed(aar_id: int):
-    processed = load_processed_ids()
-    return str(aar_id) in processed
+    return DATASTORE.is_processed(aar_id)
 
 
+# Use DataStore user_stats_cache for user stats
 def compute_stats_for_user(user_id: str):
-    data = load_aar_data(AAR_RECORDS_PATH)
-
-    ops = 0
-    aar_points = 0
-    armory_raw = 0
-    armory_points = 0
-    gene_carries = 0
-    gene_seed_points = 0
-    waves_participated = 0
-
-    for record in data.values():
-        brother_ids = record.get("brother_ids", [])
-        if user_id in brother_ids:
-            ops += 1
-            # For Siege difficulties, compute AAR points per-brother using their waves
-            difficulty_class = record.get("difficulty_class")
-            if difficulty_class in ("normal_siege", "hard_siege"):
-                bw = record.get("brother_waves") or {}
-                try:
-                    my_waves = int(bw.get(user_id, 0) or 0)
-                except Exception:
-                    my_waves = 0
-                # If per-brother waves not present, fall back to legacy global waves
-                if my_waves <= 0:
-                    try:
-                        my_waves = int(record.get("waves") or 0)
-                    except Exception:
-                        my_waves = 0
-                # Apply siege points and tally waves participated
-                if difficulty_class == "normal_siege":
-                    aar_points += 3 * (my_waves // 5)
-                else:
-                    aar_points += 4 * (my_waves // 5)
-                waves_participated += my_waves
-            else:
-                aar_points += record.get("points_for_op", 0)
-            armory_data = record.get("armory_data")
-            try:
-                armory_raw += int(armory_data) if armory_data is not None else 0
-            except ValueError:
-                armory_raw += 0
-            armory_points += record.get("armory_challenge_points", 0)
-
-        # Treat as carried if status is 'carried' OR a carrier is named and status is not 'lost'
-        status = (record.get("gene_seed_status") or "").lower()
-        gene_carrier = record.get("gene_seed_carrier_id")
-        effective_carried = status == "carried" or (
-            gene_carrier is not None and status != "lost"
-        )
-
-        if effective_carried:
-            if gene_carrier == user_id:
-                gene_carries += 1
-                gene_seed_points += record.get("gene_seed_base_points_for_carrier", 0)
-            elif user_id in brother_ids:
-                gene_seed_points += 1  # assist
-
-    return {
-        "ops": ops,
-        "aar_points": aar_points,
-        "armory_raw": armory_raw,
-        "armory_points": armory_points,
-        "gene_carries": gene_carries,
-        "gene_seed_points": gene_seed_points,
-        "waves_participated": waves_participated,
-    }
+    return DATASTORE.get_user_stats(user_id)
 
 
 def _induction_count_for_user(user_id: str) -> int:
