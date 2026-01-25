@@ -154,7 +154,7 @@ class DataStore:
         """Admin-only: force a rescan and refresh of the user's home chapter."""
         return self.get_home_chapter(user_id, force_refresh=True)
 
-    FLUSH_INTERVAL = 5  # seconds between background flushes
+    FLUSH_INTERVAL = 60  # seconds between background flushes
 
     def __init__(self, aar_records_path: str, processed_ids_path: str):
         self._aar_records_path = aar_records_path
