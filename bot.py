@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import re
 import itertools
+from collections import Counter
 from typing import Dict, List, Tuple, Optional
 import hashlib
 import logging
@@ -2396,6 +2397,7 @@ async def tally_deeds(
         armory_vals: List[float] = []
         waves_vals: List[float] = []  # siege-only
         per_capita_vals: List[float] = []
+        ops_types: Counter = Counter()
 
         for rec in recent_records:
             try:
@@ -2403,6 +2405,16 @@ async def tally_deeds(
                 participants_in_team = sum(1 for b in bros if b in member_ids)
                 if participants_in_team <= 0:
                     continue
+                # Track mission types for top-N breakdown (e.g., Inferno, Decapitation)
+                try:
+                    mission_raw = rec.get("mission") or ""
+                    # strip role mentions like <@&12345>
+                    mission_clean = re.sub(r"<@&\d+>", "", mission_raw).strip()
+                    # Use the first token or the whole cleaned string if single-word missions
+                    mission_key = mission_clean.split()[0] if mission_clean else "Unknown"
+                    ops_types[mission_key] += 1
+                except Exception:
+                    pass
                 ops_count += 1
                 aar = float(rec.get("points_for_op", 0) or 0)
                 armory = float(
@@ -2449,13 +2461,26 @@ async def tally_deeds(
         )
         force_multiplier = _mean(per_capita_vals)
 
+        # Build top-3 operation type breakdown for Operational Tempo
+        try:
+            top_ops = ops_types.most_common(3)
+            if top_ops:
+                top_ops_str = ", ".join(f"{k} {v}" for k, v in top_ops)
+            else:
+                top_ops_str = ""
+        except Exception:
+            top_ops_str = ""
+
         # Format a compact ANSI-styled summary similar to individual tally output
         stat_rows_summary = [
             ("Window", f"Last {span_days} Days"),
             ("Kill Team", _extract_killteam_name(getattr(killteam, "name", "Unknown"))),
             ("Members", str(count)),
             ("Veteran Lethality Index", f"Avg AAR {avg_aar:.2f}"),
-            ("Operational Tempo", f"Ops {int(ops_count)}"),
+            (
+                "Operational Tempo",
+                f"Ops {int(ops_count)}" + (f" (top: {top_ops_str})" if top_ops_str else ""),
+            ),
             ("Siegebreaker Rating", f"Avg Waves {avg_waves:.2f}"),
             ("Preservation — Gene", f"Avg {avg_gene:.2f}"),
             ("Preservation — Armory", f"Avg {avg_armory:.2f}"),
