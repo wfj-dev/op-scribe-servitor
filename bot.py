@@ -1914,6 +1914,26 @@ async def tally_deeds(
                     parts.append(f"{plasteel_count} Plasteel")
                 types_str = ", ".join(parts) if parts else f"0 Plasteel"
                 studs_display = f"{studs_symbols} ({types_str})"
+
+                # Compare with studs already present in the display name and add
+                # an in-universe notification if there's a mismatch.
+                try:
+                    dn = str(display_name or "")
+                    existing_cer = dn.count("◆")
+                    existing_elec = dn.count("●")
+                    existing_plas = dn.count("○")
+                    existing_total = existing_cer * 25 + existing_elec * 5 + existing_plas
+                    diff = studs_count - existing_total
+                    if diff > 0:
+                        # Loreful addendum when computed studs exceed what's shown
+                        notif = f"(+{diff} studs earned to be awarded)"
+                        studs_display = f"{studs_display} {notif}"
+                    elif diff < 0:
+                        # Note if the name shows more studs than computed
+                        notif = f"({abs(diff)} excess stud(s) displayed)"
+                        studs_display = f"{studs_display} {notif}"
+                except Exception:
+                    pass
         except Exception:
             studs_display = str(studs_count)
             studs_symbols = ""
