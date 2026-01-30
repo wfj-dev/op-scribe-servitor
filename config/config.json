@@ -11,7 +11,8 @@
     "combat_bonds": { "min_rank": "Watch Sergeant" },
     "reconcile_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
+    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
   },
   "logging": {
     "level": "INFO",
