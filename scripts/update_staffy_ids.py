@@ -63,39 +63,79 @@ def main():
     records_touched = 0
 
     # Expecting top-level mapping of AAR ID -> record dict
-    for _aar_key, rec in data.items():
-        names = rec.get("brother_names")
-        ids = rec.get("broder_ids")  # common typo guard (if any)
-        if ids is None:
-            ids = rec.get("brother_ids")
+    def _replace_in_obj(obj):
+        """Recursively replace occurrences of OLD_ID with NEW_ID in obj.
 
-        if not isinstance(names, list) or not isinstance(ids, list):
+        For strings, perform substring replacement; for numbers, compare numeric equality.
+        Returns (new_obj, count_replacements).
+        """
+        cnt = 0
+        if isinstance(obj, dict):
+            newd = {}
+            for k, v in obj.items():
+                # Replace in key (but avoid changing top-level AAR key elsewhere)
+                newk = k.replace(OLD_ID, NEW_ID) if isinstance(k, str) else k
+                newv, c = _replace_in_obj(v)
+                cnt += c
+                newd[newk] = newv
+            return newd, cnt
+        if isinstance(obj, list):
+            newl = []
+            for item in obj:
+                new_item, c = _replace_in_obj(item)
+                cnt += c
+                newl.append(new_item)
+            return newl, cnt
+        if isinstance(obj, str):
+            if OLD_ID in obj:
+                new_s = obj.replace(OLD_ID, NEW_ID)
+                return new_s, obj.count(OLD_ID)
+            return obj, 0
+        if isinstance(obj, int):
+            try:
+                if int(obj) == int(OLD_ID):
+                    return str(NEW_ID), 1
+            except Exception:
+                pass
+            return obj, 0
+        # Other types: leave unchanged
+        return obj, 0
+
+    for _aar_key, rec in data.items():
+        if not isinstance(rec, dict):
             continue
 
-        changed_this_record = False
-        # Keep lengths safe
-        limit = min(len(names), len(ids))
-        for i in range(limit):
-            try:
-                if str(ids[i]) == str(OLD_ID):
-                    # Update ID
-                    if str(ids[i]) != str(NEW_ID):
-                        ids[i] = str(NEW_ID)
-                        updates += 1
-                        changed_this_record = True
-                    # Update name if we have a reliable replacement
-                    if isinstance(replacement_name, str) and replacement_name.strip():
-                        if str(names[i]) != replacement_name:
-                            names[i] = replacement_name
-                            name_updates += 1
-                            changed_this_record = True
-            except Exception:
-                continue
-        if changed_this_record:
-            # Reassign lists back to record to ensure persistence
-            rec["brother_ids"] = ids
-            rec["brother_names"] = names
-            records_touched += 1
+        changed = False
+        # Perform deep replacement within the record (but do NOT change the top-level key)
+        new_rec, repl_count = _replace_in_obj(rec)
+        if repl_count > 0:
+            data[_aar_key] = new_rec
+            updates += repl_count
+            changed = True
+
+        # If brother_ids/brother_names exist, ensure brother_names updated for replaced ids
+        try:
+            ids = new_rec.get("brother_ids") or []
+            names = new_rec.get("brother_names") or []
+            if isinstance(ids, list) and isinstance(names, list):
+                limit = min(len(ids), len(names))
+                for i in range(limit):
+                    try:
+                        if str(ids[i]) == str(NEW_ID):
+                            # If user provided a hint or discovery, apply it
+                            if isinstance(replacement_name, str) and replacement_name.strip():
+                                if str(names[i]) != replacement_name:
+                                    names[i] = replacement_name
+                                    name_updates += 1
+                                    changed = True
+                    except Exception:
+                        continue
+                if changed:
+                    data[_aar_key]["brother_ids"] = ids
+                    data[_aar_key]["brother_names"] = names
+                    records_touched += 1
+        except Exception:
+            pass
 
     # Persist
     with open(DATA_PATH, "w", encoding="utf-8") as f:
