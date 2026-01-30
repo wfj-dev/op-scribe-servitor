@@ -1285,12 +1285,21 @@ async def reconcile_records(
         return
     # Serialize concurrent invocations to avoid file races
     if RECONCILE_LOCK.locked():
-        await interaction.response.send_message(
-            "Another reconciliation is in progress. Please try again shortly.",
-            ephemeral=True,
-        )
+        try:
+            await interaction.response.send_message(
+                "Another reconciliation is in progress. Please try again shortly.",
+                ephemeral=True,
+            )
+        except Exception:
+            logger.debug("Could not send 'locked' response to interaction; continuing.")
         return
-    await interaction.response.defer(thinking=True, ephemeral=True)
+    # Defer may fail (Unknown interaction) if the interaction is stale; handle gracefully.
+    interaction_deferred = False
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        interaction_deferred = True
+    except Exception as e:
+        logger.debug(f"Interaction defer failed: {e}")
 
     await RECONCILE_LOCK.acquire()
     try:
@@ -1318,7 +1327,13 @@ async def audit_archive_discrepancies(
             ephemeral=True,
         )
         return
-    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    interaction_deferred = False
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        interaction_deferred = True
+    except Exception:
+        interaction_deferred = False
 
     await RECONCILE_LOCK.acquire()
     try:
@@ -1362,7 +1377,23 @@ async def audit_archive_discrepancies(
             "==============================================================================\n"
             "\u001b[0m```"
         )
-        await interaction.followup.send(report, ephemeral=True)
+        # Try to send the report via followup if we successfully deferred.
+        if interaction_deferred:
+            try:
+                await interaction.followup.send(report, ephemeral=True)
+            except Exception as e:
+                logger.debug(f"Failed to send followup report: {e}")
+                # Attempt to DM the invoking user as a fallback
+                try:
+                    await interaction.user.send(report)
+                except Exception:
+                    logger.error("Unable to deliver report to user; check bot permissions.")
+        else:
+            # Interaction was not defer-able; attempt to DM the invoking user
+            try:
+                await interaction.user.send(report)
+            except Exception:
+                logger.error("Unable to deliver report to user; interaction unknown and DM failed.")
     finally:
         RECONCILE_LOCK.release()
 
@@ -2775,6 +2806,8 @@ def classify_difficulty(difficulty: str | None):
         return "normal_siege"
     if "hard-siege" in lower:
         return "hard_siege"
+    if "omega" in lower:
+        return "omega_ops"
     return None
 
 
@@ -2800,6 +2833,9 @@ def compute_points_for_op(difficulty_class: str | None, waves: int | None):
         if waves is None:
             return 0
         return 4 * (waves // 5)
+    if difficulty_class == "omega_ops":
+        # Omega operations are fixed-value high-intensity missions
+        return 20
 
     return 0
 
@@ -2817,6 +2853,9 @@ def compute_gene_seed_base_points_for_carrier(difficulty_class: str | None):
         return 5
     if difficulty_class in ("normal_siege", "hard_siege"):
         return 0
+    if difficulty_class == "omega_ops":
+        # Omega uses Absolute's base + 1
+        return 5
     return 0
 
 
@@ -2830,6 +2869,10 @@ def compute_armory_bonus_points(difficulty_class: str | None, armory_data: int |
         return armory_data * 2
     elif difficulty_class == "hard_stratagem":
         return armory_data * 3
+
+    if difficulty_class == "omega_ops":
+        # Omega awards one extra armory point per absolute multiplier
+        return armory_data * 4
 
     return 0
 
@@ -2870,6 +2913,8 @@ def parse_aar(message: discord.Message):
     # Initiation Trial (legacy boolean) and initiate id
     initiation_trial = False
     initiate_id = None
+    # KIA count (Killed In Action)
+    kia_count = 0
 
     brothers_start_idx = None
 
@@ -2904,6 +2949,24 @@ def parse_aar(message: discord.Message):
             except ValueError:
                 logger.debug(f"Failed to parse armory data from line: {line}")
                 armory_data = 0
+
+        # KIA (Killed In Action) line, e.g. 'KIA: 1' or 'KIA: <@12345>'
+        elif lower.startswith("kia:"):
+            parts = line.split(":", 1)
+            kia_val = parts[1].strip() if len(parts) > 1 else ""
+            # Prefer numeric count if present, otherwise count mentions on that line
+            try:
+                kia_count = int(kia_val)
+            except Exception:
+                # fallback: count mentions on this line
+                kia_count = 0
+                for uid in get_user_ids_in_line(raw_line, message):
+                    kia_count += 1
+            # Clamp KIA to allowed range 0-4
+            try:
+                kia_count = max(0, min(4, int(kia_count)))
+            except Exception:
+                kia_count = 0
 
         # Gene-Seed / Geneseed: lost / carried by @Brother
         elif ("gene-seed" in lower) or ("geneseed" in lower):
@@ -2979,6 +3042,12 @@ def parse_aar(message: discord.Message):
         gene_seed_base_points_for_carrier = compute_gene_seed_base_points_for_carrier(
             difficulty_class
         )
+    # Omega ops: subtract KIA from the base 20 points (floor at 0)
+    try:
+        if difficulty_class == "omega_ops":
+            points_for_op = max(0, int(points_for_op) - int(kia_count))
+    except Exception:
+        pass
 
     # Collect Brothers from the "Brothers:" line and subsequent lines until END OF REPORT
     if brothers_start_idx is not None:
@@ -3031,6 +3100,7 @@ def parse_aar(message: discord.Message):
         "brother_names": brother_names,
         "brother_waves": brother_waves,
         "waves": waves,
+        "killed_in_action": kia_count if difficulty_class == "omega_ops" else 0,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat()
@@ -3090,6 +3160,7 @@ def validate_aar(record: dict):
         "ruthless",
         "lethal",
         "absolute",
+        "omega",
         "normal-stratagem",
         "hard-stratagem",
         "normal-siege",
@@ -3135,10 +3206,17 @@ def validate_aar(record: dict):
             errors.append("Armory/Armoury Data must be an integer (e.g. 3).")
 
     # 5) At least two Brothers
-    if len(brothers) < 2:
-        errors.append(
-            "At least two Brothers must be listed under the 'Brothers:' section."
-        )
+    # Special-case: Omega requires 3-5 brothers
+    if "omega" in dlower:
+        if not (3 <= len(brothers) <= 5):
+            errors.append(
+                "Omega difficulty requires between 3 and 5 Brothers listed under the 'Brothers:' section."
+            )
+    else:
+        if len(brothers) < 2:
+            errors.append(
+                "At least two Brothers must be listed under the 'Brothers:' section."
+            )
 
     # 6) Initiation Trial placement rules (simplified)
     if record.get("initiation_trial"):
