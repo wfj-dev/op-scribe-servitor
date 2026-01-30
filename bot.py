@@ -20,6 +20,7 @@ from logging.handlers import RotatingFileHandler
 import signal
 import argparse
 import statistics
+import sys
 
 # Import DataStore
 from datastore import DataStore
@@ -1750,13 +1751,29 @@ async def reparse_records(interaction: discord.Interaction, limit: int | None = 
         total = 0
         updated = 0
         failed = 0
+        # Snapshot of records to process (respect optional limit)
+        records_list = list(DATASTORE._records.items())
+        if limit:
+            records_list = records_list[:limit]
+        total_records = len(records_list)
+
+        def _print_progress(done: int, total: int) -> None:
+            if not sys.stdout.isatty():
+                return
+            bar_len = 40
+            filled = int(round(bar_len * done / float(total))) if total else bar_len
+            perc = (done / total * 100) if total else 100.0
+            bar = "#" * filled + "-" * (bar_len - filled)
+            sys.stdout.write(f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)")
+            sys.stdout.flush()
+
         # Iterate snapshot of records
-        for key, rec in list(DATASTORE._records.items()):
-            if limit and total >= limit:
-                break
+        for idx, (key, rec) in enumerate(records_list, start=1):
+            _print_progress(idx - 1, total_records)
             total += 1
             msg_url = rec.get("message_url")
             if not msg_url:
+                _print_progress(idx, total_records)
                 continue
             try:
                 parts = msg_url.rstrip("/").split("/")
@@ -1787,6 +1804,12 @@ async def reparse_records(interaction: discord.Interaction, limit: int | None = 
                     updated += 1
             except Exception:
                 failed += 1
+
+        # Finalize progress output in terminal
+        _print_progress(total_records, total_records)
+        if sys.stdout.isatty():
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
         await interaction.followup.send(
             f"Reparse complete: processed={total}, updated={updated}, failed={failed}",
@@ -2911,23 +2934,26 @@ def parse_aar(message: discord.Message):
         for role in message.role_mentions:
             if role.name == "Initiation Trial":
                 initiation_trial = True
+                # Only accept an initiate mention if it's on the same line
+                ids_here = get_user_ids_in_line(raw_line, message)
+                if ids_here:
+                    initiate_id = ids_here[0]
+
+        # Detect explicit "Initiation Trial:" header and capture an initiate mention
+        if lower.startswith("initiation trial:"):
+            initiation_trial = True
+            # Only capture an initiate if mentioned on the same line as the header
+            ids_here = get_user_ids_in_line(raw_line, message)
+            if ids_here:
+                initiate_id = ids_here[0]
 
         # Detect Trial: lines (e.g. 'Trial: 1/1' or 'Trial: -/3') and try to extract an initiate
         if lower.startswith("trial:"):
-            # Mark legacy flag and try to find an initiate mention on the same or next few lines
+            # Mark legacy flag; only accept an initiate mention if on the same line
             initiation_trial = True
             ids_here = get_user_ids_in_line(raw_line, message)
             if ids_here:
                 initiate_id = ids_here[0]
-            else:
-                for j in range(i + 1, min(i + 4, len(lines))):
-                    look_line = lines[j].strip()
-                    if not look_line:
-                        continue
-                    ids_here = get_user_ids_in_line(look_line, message)
-                    if ids_here and len(ids_here) == 1:
-                        initiate_id = ids_here[0]
-                        break
 
         # Watch Command marker sometimes present on trial templates (deprecated persistence)
         if "watch command" in lower:
