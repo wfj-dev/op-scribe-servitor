@@ -1729,6 +1729,74 @@ async def cache_stats(interaction: discord.Interaction):
 
 
 @bot.tree.command(
+    name="reparse_records",
+    description="Re-parse stored AAR records from their message_url and update records (admin).",
+)
+@app_commands.describe(limit="Optional: max number of records to reparse.")
+async def reparse_records(interaction: discord.Interaction, limit: int | None = None):
+    if not (can_reconcile_records(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if RECONCILE_LOCK.locked():
+        await interaction.response.send_message(
+            "Another reconciliation is in progress. Please try again shortly.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    await RECONCILE_LOCK.acquire()
+    try:
+        total = 0
+        updated = 0
+        failed = 0
+        # Iterate snapshot of records
+        for key, rec in list(DATASTORE._records.items()):
+            if limit and total >= limit:
+                break
+            total += 1
+            msg_url = rec.get("message_url")
+            if not msg_url:
+                continue
+            try:
+                parts = msg_url.rstrip("/").split("/")
+                # Expect .../channels/<channel_id>/<message_id> or .../<channel_id>/<message_id>
+                if len(parts) < 2:
+                    raise ValueError("invalid message_url")
+                message_id = int(parts[-1])
+                channel_id = int(parts[-2])
+                channel = bot.get_channel(channel_id)
+                if channel is None:
+                    try:
+                        channel = await bot.fetch_channel(channel_id)
+                    except Exception:
+                        channel = None
+                if channel is None:
+                    raise RuntimeError(f"channel {channel_id} not available")
+                msg = await channel.fetch_message(message_id)
+                new_rec = parse_aar(msg)
+                if not new_rec:
+                    continue
+                # Preserve some metadata from existing record (timestamp/edited_at/message_url)
+                merged = rec.copy()
+                merged.update(new_rec)
+                # Ensure aar_id remains the same key
+                merged["aar_id"] = rec.get("aar_id")
+                if merged != rec:
+                    await DATASTORE.set_record(str(merged.get("aar_id")), merged)
+                    updated += 1
+            except Exception:
+                failed += 1
+
+        await interaction.followup.send(
+            f"Reparse complete: processed={total}, updated={updated}, failed={failed}",
+            ephemeral=True,
+        )
+    finally:
+        RECONCILE_LOCK.release()
+
+
+@bot.tree.command(
     name="tally_deeds", description="Display the Deeds Ledger for a Brother."
 )
 @app_commands.describe(
@@ -1949,6 +2017,9 @@ async def tally_deeds(
                     continue
                 if not bool(rec.get("initiation_trial")):
                     continue
+                # Do not count a user's own initiation as a sanctioned induction
+                if rec.get("initiate_id") == str(target.id):
+                    continue
                 ts = rec.get("timestamp")
                 try:
                     if ts:
@@ -1969,12 +2040,6 @@ async def tally_deeds(
             except Exception:
                 pass
         trials_reported = siege_inductions + (ops_trials // 3)
-        try:
-            if initiation_event_times:
-                if trials_reported > 0:
-                    trials_reported = max(0, trials_reported - 1)
-        except Exception:
-            pass
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -2779,8 +2844,9 @@ def parse_aar(message: discord.Message):
     waves = 0
     # Siege per-brother waves participation (parsed from Team lines as '@Brother N')
     brother_waves: Dict[str, int] = {}
-    # Initiation Trial mention flag (lightweight)
+    # Initiation Trial (legacy boolean) and initiate id
     initiation_trial = False
+    initiate_id = None
 
     brothers_start_idx = None
 
@@ -2790,8 +2856,14 @@ def parse_aar(message: discord.Message):
 
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
-            # Also detect Initiation Trial tokens on the mission line
-            # Deprecated: no longer tracking initiation trial state here
+            # If mission contains a trial-like token, mark the legacy initiation flag
+            try:
+                import re
+
+                if re.search(r"\b-?\d+/\d+\b", mission) or "trial" in mission.lower():
+                    initiation_trial = True
+            except Exception:
+                pass
         elif lower.startswith("difficulty:") or lower.startswith("threat:"):
             after_colon = line.split(":", 1)[1]
             for role in message.role_mentions:
@@ -2839,6 +2911,23 @@ def parse_aar(message: discord.Message):
         for role in message.role_mentions:
             if role.name == "Initiation Trial":
                 initiation_trial = True
+
+        # Detect Trial: lines (e.g. 'Trial: 1/1' or 'Trial: -/3') and try to extract an initiate
+        if lower.startswith("trial:"):
+            # Mark legacy flag and try to find an initiate mention on the same or next few lines
+            initiation_trial = True
+            ids_here = get_user_ids_in_line(raw_line, message)
+            if ids_here:
+                initiate_id = ids_here[0]
+            else:
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    look_line = lines[j].strip()
+                    if not look_line:
+                        continue
+                    ids_here = get_user_ids_in_line(look_line, message)
+                    if ids_here and len(ids_here) == 1:
+                        initiate_id = ids_here[0]
+                        break
 
         # Watch Command marker sometimes present on trial templates (deprecated persistence)
         if "watch command" in lower:
@@ -2923,6 +3012,7 @@ def parse_aar(message: discord.Message):
         else None,
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
+        "initiate_id": initiate_id,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
@@ -3024,19 +3114,11 @@ def validate_aar(record: dict):
             "At least two Brothers must be listed under the 'Brothers:' section."
         )
 
-    # 6) Initiation Trial placement rules
-    if record.get("initiation_trial_active"):
-        if record.get("initiation_trial_tag_in_mission"):
+    # 6) Initiation Trial placement rules (simplified)
+    if record.get("initiation_trial"):
+        if not record.get("initiate_id"):
             errors.append(
-                "Initiation Trial tag must be on its own line (e.g., '@Initiation Trial: n/m'), not inside 'Mission:'."
-            )
-        if not record.get("initiation_trial_line_present"):
-            errors.append(
-                "Provide a dedicated '@Initiation Trial: n/m' line; do not rely on Mission text alone."
-            )
-        if not record.get("initiation_trial_watch_command"):
-            errors.append(
-                "Trial template requires '@Watch Command' marker. Please include it."
+                "Initiation Trial present but no initiate mention found; include the person being initiated."
             )
 
     # 7) Gene-seed logic
@@ -3267,6 +3349,9 @@ def _induction_count_for_user(user_id: str) -> int:
             if str(user_id) not in brother_ids:
                 continue
             if not bool(rec.get("initiation_trial")):
+                continue
+            # Exclude records where the user is the initiate (their own induction)
+            if rec.get("initiate_id") == str(user_id):
                 continue
             dclass = (rec.get("difficulty_class") or "").lower()
             if "siege" in dclass:
