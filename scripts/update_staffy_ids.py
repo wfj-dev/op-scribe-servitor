@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from collections import Counter
 from datetime import datetime
 
@@ -62,80 +63,102 @@ def main():
     name_updates = 0
     records_touched = 0
 
-    # Expecting top-level mapping of AAR ID -> record dict
-    def _replace_in_obj(obj):
-        """Recursively replace occurrences of OLD_ID with NEW_ID in obj.
+    # Targeted replacement: only update the following fields when they exactly match OLD_ID
+    def _extract_exact_id(val):
+        """Return the normalized ID string if val represents OLD_ID in exact forms, else None.
 
-        For strings, perform substring replacement; for numbers, compare numeric equality.
-        Returns (new_obj, count_replacements).
+        Accepts:
+          - numeric (int)
+          - numeric string '12345'
+          - mention strings '<@123>', '<@!123>', '<@&123>'
+        Returns normalized id string (digits) or None.
         """
-        cnt = 0
-        if isinstance(obj, dict):
-            newd = {}
-            for k, v in obj.items():
-                # Replace in key (but avoid changing top-level AAR key elsewhere)
-                newk = k.replace(OLD_ID, NEW_ID) if isinstance(k, str) else k
-                newv, c = _replace_in_obj(v)
-                cnt += c
-                newd[newk] = newv
-            return newd, cnt
-        if isinstance(obj, list):
-            newl = []
-            for item in obj:
-                new_item, c = _replace_in_obj(item)
-                cnt += c
-                newl.append(new_item)
-            return newl, cnt
-        if isinstance(obj, str):
-            if OLD_ID in obj:
-                new_s = obj.replace(OLD_ID, NEW_ID)
-                return new_s, obj.count(OLD_ID)
-            return obj, 0
-        if isinstance(obj, int):
-            try:
-                if int(obj) == int(OLD_ID):
-                    return str(NEW_ID), 1
-            except Exception:
-                pass
-            return obj, 0
-        # Other types: leave unchanged
-        return obj, 0
+        if val is None:
+            return None
+        # ints
+        try:
+            if isinstance(val, int) and int(val) == int(OLD_ID):
+                return str(OLD_ID)
+        except Exception:
+            pass
+        # strings
+        if isinstance(val, str):
+            s = val.strip()
+            # pure digits
+            if s.isdigit():
+                try:
+                    if int(s) == int(OLD_ID):
+                        return str(OLD_ID)
+                except Exception:
+                    pass
+            # mentions
+            m = re.match(r"^<@!?(\d+)>$", s)
+            if m and m.group(1) == OLD_ID:
+                return str(OLD_ID)
+            mr = re.match(r"^<@&(\d+)>$", s)
+            if mr and mr.group(1) == OLD_ID:
+                return str(OLD_ID)
+        return None
 
     for _aar_key, rec in data.items():
         if not isinstance(rec, dict):
             continue
 
         changed = False
-        # Perform deep replacement within the record (but do NOT change the top-level key)
-        new_rec, repl_count = _replace_in_obj(rec)
-        if repl_count > 0:
-            data[_aar_key] = new_rec
-            updates += repl_count
-            changed = True
 
-        # If brother_ids/brother_names exist, ensure brother_names updated for replaced ids
+        # 1) brother_ids + brother_names
+        ids = rec.get("brother_ids")
+        names = rec.get("brother_names")
+        if isinstance(ids, list) and isinstance(names, list):
+            limit = min(len(ids), len(names))
+            for i in range(limit):
+                try:
+                    if _extract_exact_id(ids[i]) == str(OLD_ID):
+                        # replace id with NEW_ID (as string)
+                        if str(ids[i]) != str(NEW_ID):
+                            ids[i] = str(NEW_ID)
+                            updates += 1
+                            changed = True
+                        # update name if replacement available
+                        if isinstance(replacement_name, str) and replacement_name.strip():
+                            if str(names[i]) != replacement_name:
+                                names[i] = replacement_name
+                                name_updates += 1
+                                changed = True
+                except Exception:
+                    continue
+            if changed:
+                rec["brother_ids"] = ids
+                rec["brother_names"] = names
+                records_touched += 1
+
+        # 2) gene_seed_carrier_id and gene_seed_carried_name
         try:
-            ids = new_rec.get("brother_ids") or []
-            names = new_rec.get("brother_names") or []
-            if isinstance(ids, list) and isinstance(names, list):
-                limit = min(len(ids), len(names))
-                for i in range(limit):
-                    try:
-                        if str(ids[i]) == str(NEW_ID):
-                            # If user provided a hint or discovery, apply it
-                            if isinstance(replacement_name, str) and replacement_name.strip():
-                                if str(names[i]) != replacement_name:
-                                    names[i] = replacement_name
-                                    name_updates += 1
-                                    changed = True
-                    except Exception:
-                        continue
-                if changed:
-                    data[_aar_key]["brother_ids"] = ids
-                    data[_aar_key]["brother_names"] = names
-                    records_touched += 1
+            gcid = rec.get("gene_seed_carrier_id")
+            if _extract_exact_id(gcid) == str(OLD_ID):
+                rec["gene_seed_carrier_id"] = str(NEW_ID)
+                updates += 1
+                changed = True
+                if isinstance(replacement_name, str) and replacement_name.strip():
+                    if rec.get("gene_seed_carried_name") != replacement_name:
+                        rec["gene_seed_carried_name"] = replacement_name
+                        name_updates += 1
         except Exception:
             pass
+
+        # 3) initiate_id
+        try:
+            iid = rec.get("initiate_id")
+            if _extract_exact_id(iid) == str(OLD_ID):
+                rec["initiate_id"] = str(NEW_ID)
+                updates += 1
+                changed = True
+        except Exception:
+            pass
+
+        if changed:
+            # persist the mutated record back to data map
+            data[_aar_key] = rec
 
     # Persist
     with open(DATA_PATH, "w", encoding="utf-8") as f:
