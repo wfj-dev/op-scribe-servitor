@@ -1838,6 +1838,67 @@ async def tally_deeds(
 
     if killteam:
         members = [m for m in getattr(killteam, "members", [])]
+        # If the provided role is one of the canonical rank roles, restrict
+        # the roster to members who have that rank and do NOT hold any
+        # higher-ranked role. Higher rank == lower index in
+        # RANK_ROLES_PRIORITY.
+        try:
+            role_name = getattr(killteam, "name", "") or ""
+            role_idx = _role_index(role_name)
+        except Exception:
+            role_idx = None
+
+        if role_idx is not None:
+            filtered: List[discord.Member] = []
+            for m in members:
+                try:
+                    # Collect indices of all rank roles this member has
+                    member_rank_indices = [
+                        _role_index(getattr(r, "name", ""))
+                        for r in getattr(m, "roles", [])
+                    ]
+                    # Must explicitly have the passed role
+                    has_target_role = any(
+                        getattr(r, "name", "") == role_name
+                        for r in getattr(m, "roles", [])
+                    )
+                    if not has_target_role:
+                        continue
+                    # Exclude if member has any higher-ranked role (index < role_idx)
+                    higher = [i for i in member_rank_indices if i is not None and i < role_idx]
+                    if higher:
+                        continue
+                    filtered.append(m)
+                except Exception:
+                    continue
+            members = filtered
+
+        else:
+            # Specialist roles: include both the specialist and their leader(s).
+            # Map specialist role lower-case -> leader canonical name
+            try:
+                spec_map = {
+                    "watch techmarine": "Forgemaster",
+                    "watch librarian": "Void Warden",
+                    "watch apothecary": "Chief Apothecary",
+                    "watch chaplain": "High Chaplain",
+                }
+                rn = (getattr(killteam, "name", "") or "").strip().lower()
+                leader = spec_map.get(rn)
+            except Exception:
+                leader = None
+
+            if leader:
+                filtered: List[discord.Member] = []
+                for m in members:
+                    try:
+                        names = {getattr(r, "name", "") for r in getattr(m, "roles", [])}
+                        if (getattr(killteam, "name", "") in names) or (leader in names):
+                            filtered.append(m)
+                    except Exception:
+                        continue
+                members = filtered
+
         if not members:
             await interaction.followup.send(
                 f"Killteam role '{getattr(killteam, 'name', '')}' has no members.",
