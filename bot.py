@@ -1882,6 +1882,10 @@ async def tally_deeds(
                     "watch librarian": "Void Warden",
                     "watch apothecary": "Chief Apothecary",
                     "watch chaplain": "High Chaplain",
+                    # Champions: include champion members plus their head
+                    "kill team champion": "Lord Executioner",
+                    "company champion": "Lord Executioner",
+                    # Lord Executioner is a head role; mapping to itself is unnecessary
                 }
                 rn = (getattr(killteam, "name", "") or "").strip().lower()
                 leader = spec_map.get(rn)
