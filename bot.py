@@ -4583,6 +4583,8 @@ async def _build_honours(guild: discord.Guild, period_days: int, include_mention
     users: Dict[str, dict] = {}
     teams: Dict[str, dict] = {}
     chapters: Dict[str, dict] = {}
+    # Track unique members per chapter for Ops/Member (Force-like) metric
+    chapters_members: Dict[str, set] = {}
 
     if DATASTORE is None:
         return "HONOURED:", """
@@ -4785,6 +4787,11 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 if rec.get("gene_seed_status") == "carried":
                     c["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                 c["gene_participated"] += 1
+                # track unique members for Ops/Member calculation
+                try:
+                    chapters_members.setdefault(ch, set()).add(str(uid))
+                except Exception:
+                    pass
 
     # Compute winners with tie-breakers
     def sort_entities(data: Dict[str, dict], primary_key: str, reverse: bool = True):
@@ -4967,6 +4974,41 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     ch3 = top_chapters[2][0] if len(top_chapters) > 2 else "Chapter"
     ch4 = top_chapters[3][0] if len(top_chapters) > 3 else "Chapter"
 
+    # Compute chapter doctrine values to display
+    def _chap_avg_armory(ch):
+        try:
+            d = chapters.get(ch, {})
+            return (d.get("armory", 0) / float(d.get("ops", 1))) if d.get("ops", 0) else 0.0
+        except Exception:
+            return 0.0
+
+    def _chap_avg_ops(ch):
+        try:
+            d = chapters.get(ch, {})
+            return (d.get("points", 0) / float(d.get("ops", 1))) if d.get("ops", 0) else 0.0
+        except Exception:
+            return 0.0
+
+    def _chap_ops_per_member(ch):
+        try:
+            ops = chapters.get(ch, {}).get("ops", 0)
+            members = len(chapters_members.get(ch, set()))
+            return (ops / float(members)) if members else 0.0
+        except Exception:
+            return 0.0
+
+    def _chap_gene_rate(ch):
+        try:
+            d = chapters.get(ch, {})
+            return (d.get("gene_carried", 0) / float(d.get("gene_participated", 1))) if d.get("gene_participated", 0) else 0.0
+        except Exception:
+            return 0.0
+
+    ch1_val = _chap_avg_armory(ch1)
+    ch2_val = _chap_avg_ops(ch2)
+    ch3_val = _chap_ops_per_member(ch3)
+    ch4_val = _chap_gene_rate(ch4)
+
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
     ansi_inner = (
@@ -4985,13 +5027,13 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         f"Highest Tempo Team       {kt_ops_name} (Ops {kt_ops_val})\n"
         f"Most Reliable Team       {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
         f"Best Preservation Team   {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
-        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n\n"
-        f"Force Multiplier Team   {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
+        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
+        f"Force Multiplier Team    {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DOCTRINES\n"
-        f"Forge Doctrine           {ch1} (Avg ArmoryPts)\n"
-        f"Codex Discipline        {ch2} (Avg Ops)\n"
-        f"Relentless Doctrine     {ch3} (Ops/Member)\n"
-        f"Reliquary Doctrine      {ch4} (GeneseedPts Rate)\n\n"
+        f"Forge Doctrine          {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
+        f"Codex Discipline        {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
+        f"Relentless Doctrine     {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
+        f"Reliquary Doctrine      {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
         "==============================================================================\n"
     )
 
@@ -5000,6 +5042,35 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     # Apply fallbacks for character limit
     content = honour_line + "\n" + ansi
+
+    # First attempt: shorten stat/section labels but preserve numeric values
+    try:
+        short_inner = ansi_inner
+        replacements = {
+            "Operational Tempo": "Tempo",
+            "Veteran Lethality": "Lethality",
+            "Reliquary Bearer": "Geneseed",
+            "Vault Reclaimer": "Armory",
+            "High-Risk Operator": "Risk",
+            "Highest Tempo Team": "Tempo Team",
+            "Most Reliable Team": "Reliable Team",
+            "Best Preservation Team": "Preservation",
+            "Highest Risk Team": "Risk Team",
+            "Force Multiplier Team": "Force Mult",
+            "Forge Doctrine": "Forge",
+            "Codex Discipline": "Codex",
+            "Relentless Doctrine": "Relentless",
+            "Reliquary Doctrine": "Reliquary",
+        }
+        for k, v in replacements.items():
+            short_inner = short_inner.replace(k, v)
+        ansi_short = f"```ansi\n\u001b[32m{short_inner}\n\u001b[0m```"
+        short_content = honour_line + "\n" + ansi_short
+        if len(short_content) <= 2000:
+            return honour_line, ansi_short
+    except Exception:
+        pass
+
     if len(content) > 2000:
         # 1) Remove chapter doctrine block from inner
         inner_no_doctrine = ansi_inner.split("CHAPTER DOCTRINES")[0] + "==============================================================================\n"
