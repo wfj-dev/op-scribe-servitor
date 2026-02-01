@@ -5042,6 +5042,35 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     # Apply fallbacks for character limit
     content = honour_line + "\n" + ansi
+
+    # First attempt: shorten stat/section labels but preserve numeric values
+    try:
+        short_inner = ansi_inner
+        replacements = {
+            "Operational Tempo": "Tempo",
+            "Veteran Lethality": "Lethality",
+            "Reliquary Bearer": "Geneseed",
+            "Vault Reclaimer": "Armory",
+            "High-Risk Operator": "Risk",
+            "Highest Tempo Team": "Tempo Team",
+            "Most Reliable Team": "Reliable Team",
+            "Best Preservation Team": "Preservation",
+            "Highest Risk Team": "Risk Team",
+            "Force Multiplier Team": "Force Mult",
+            "Forge Doctrine": "Forge",
+            "Codex Discipline": "Codex",
+            "Relentless Doctrine": "Relentless",
+            "Reliquary Doctrine": "Reliquary",
+        }
+        for k, v in replacements.items():
+            short_inner = short_inner.replace(k, v)
+        ansi_short = f"```ansi\n\u001b[32m{short_inner}\n\u001b[0m```"
+        short_content = honour_line + "\n" + ansi_short
+        if len(short_content) <= 2000:
+            return honour_line, ansi_short
+    except Exception:
+        pass
+
     if len(content) > 2000:
         # 1) Remove chapter doctrine block from inner
         inner_no_doctrine = ansi_inner.split("CHAPTER DOCTRINES")[0] + "==============================================================================\n"
