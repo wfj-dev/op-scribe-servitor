@@ -183,7 +183,9 @@ async def _announce_shutdown_and_close():
     try:
         if globals().get("DEBUG_MODE"):
             try:
-                logger.info("Debug mode shutdown: skipping broadcast and datastore flush")
+                logger.info(
+                    "Debug mode shutdown: skipping broadcast and datastore flush"
+                )
             except Exception:
                 pass
             try:
@@ -352,7 +354,7 @@ KILL_TEAMS = [
     "Kill Team WiFi",
     "Kill Team Atom",
     "Kill Team Falcon",
-    "Kill Team Raelyn"
+    "Kill Team Raelyn",
 ]
 
 # Restrict commands to a specific channel (demo/training)
@@ -556,7 +558,9 @@ def _extract_killteam_name(name: str) -> str:
     return name or "Unknown"
 
 
-def _resolve_killteam_for_member(member: discord.User | discord.Member) -> Optional[str]:
+def _resolve_killteam_for_member(
+    member: discord.User | discord.Member,
+) -> Optional[str]:
     """Return the canonical Kill Team name for a member by inspecting their roles.
 
     Matching strategy (in order):
@@ -632,7 +636,11 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
 
         # 3) company command: detect 'Watch Company X' roles
         try:
-            comp_roles = [r for r in getattr(member, "roles", []) or [] if (getattr(r, "name", "") or "").lower().startswith("watch company")]
+            comp_roles = [
+                r
+                for r in getattr(member, "roles", []) or []
+                if (getattr(r, "name", "") or "").lower().startswith("watch company")
+            ]
             if comp_roles:
                 # Determine if member qualifies by rank or specialist role
                 qualifies = False
@@ -650,7 +658,16 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
                 # Specialist roles heuristic
                 try:
                     lname = {n.lower() for n in _canonical_role_names(member)}
-                    if any(x in lname for x in ("watch apothecary", "watch techmarine", "watch librarian", "watch veteran", "specialist")):
+                    if any(
+                        x in lname
+                        for x in (
+                            "watch apothecary",
+                            "watch techmarine",
+                            "watch librarian",
+                            "watch veteran",
+                            "specialist",
+                        )
+                    ):
                         qualifies = True
                 except Exception:
                     pass
@@ -1225,17 +1242,28 @@ async def litany_of_function(interaction: discord.Interaction):
     if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    litany_text = (
-        "Jericho Logi-Scribe Servitor V-1 — Function Litany\n\n"
-        "Sanctioned Commands (summary):\n"
-        "• /tally_deeds @Brother — Deeds ledger: AAR points, gene-seed credit, armory tally, rank. (Sergeant+)\n"
-        "• /combat_bonds [@Brother] [window:N] — Fortress/top bonds or target bonds (default 100 AARs). (Sergeant+)\n"
-        "• /audit_archive_discrepancies — Re-check rejected AARs for resolution. (Watch Master/Forgemaster)\n"
-        "• /sanctify_battle_records [span_days:N] — Ingest sanctioned AARs via cursor. (Watch Master/Forgemaster)\n"
-        "• /reconcile_records [span_days:N] — Audit then ingest in one rite. (Watch Master/Forgemaster)\n\n"
-        "Commands restricted to sanctified channels. Honor and memory preserved."
-    )
-    await interaction.response.send_message(litany_text, ephemeral=True)
+    lines = [
+        "OP-Scribe Servitor V-1 — Command Summary",
+        "",
+        "/tally_deeds brother:@User — Show a Brother's Deeds Ledger (AAR, gene, armory).",
+        "/tally_deeds killteam:@Role — Show Kill Team roster + 7-day summary.",
+        "/combat_bonds [brother] [window] — Show top combat bonds (window in days, default 30).",
+        "/set_rite rite_text — Save your personal consecration rite text.",
+        "/forge_rite member:@User — Post an attestation block for a member (role-limited).",
+        "/reconcile_records [span_days] — Reprocess and update the archive (admin).",
+        "/sanctify_battle_records [span_days] — Ingest sanctioned AARs (admin).",
+        "/audit_archive_discrepancies [span_days] — Recheck rejected AARs (admin).",
+        "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
+        "/cache_stats — Show DataStore cache and flush stats (admin).",
+        "/audit_service_studs — List service-stud mismatches (Watch Command only).",
+        "",
+        "Notes: Some commands are restricted by role/config; outputs are capped or paginated.",
+    ]
+    text = "\n".join(lines)
+    # Ensure message stays comfortably under Discord's 2000-char limit
+    if len(text) > 1900:
+        text = text[:1900].rsplit("\n", 1)[0] + "\n…"
+    await interaction.response.send_message(text, ephemeral=True)
 
 
 # Forge rite command group
@@ -1933,6 +1961,146 @@ async def cache_stats(interaction: discord.Interaction):
         f"\u001b[0m```"
     )
     await interaction.response.send_message(msg, ephemeral=True)
+
+
+@bot.tree.command(
+    name="audit_service_studs",
+    description="List brothers whose displayed service studs differ from computed entitlement (Watch Command only).",
+)
+async def audit_service_studs(interaction: discord.Interaction):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=False, ephemeral=True)
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.followup.send("Guild not available.", ephemeral=True)
+        return
+
+    idx_veteran = _role_index("Watch Veteran")
+    now = datetime.utcnow()
+    mismatches: list[tuple[discord.Member, int, int]] = []
+
+    for member in getattr(guild, "members", []) or []:
+        try:
+            # Consider only users who have any canonical Watch rank/role
+            member_role_names = _canonical_role_names(member)
+            if not any(r in member_role_names for r in RANK_ROLES_PRIORITY):
+                continue
+
+            # Compute entitlement using same rules as roster/tally
+            studs_count = 0
+            highest_idx = get_highest_rank_index(member)
+            if (
+                (idx_veteran is not None)
+                and (highest_idx is not None)
+                and (highest_idx <= idx_veteran)
+            ):
+                joined_at = getattr(member, "joined_at", None)
+                if joined_at:
+                    ja = joined_at
+                    if ja.tzinfo is not None:
+                        try:
+                            ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                        except Exception:
+                            ja = ja.replace(tzinfo=None)
+                    weeks = max(0, (now - ja).days // 7)
+                    studs_time = weeks // 4
+                else:
+                    studs_time = 0
+
+                stats = compute_stats_for_user(str(getattr(member, "id", "")))
+                try:
+                    aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
+                except Exception:
+                    aar_points_val = 0
+                studs_aar = aar_points_val // 400
+                studs_count = min(studs_time, studs_aar)
+
+            # Count existing studs shown in nickname/display name
+            dn = str(member.nick or member.display_name or "")
+            existing_cer = dn.count("◆")
+            existing_elec = dn.count("●")
+            existing_plas = dn.count("○")
+            existing_total = existing_cer * 25 + existing_elec * 5 + existing_plas
+
+            if studs_count != existing_total:
+                mismatches.append((member, studs_count, existing_total))
+        except Exception:
+            continue
+
+    if not mismatches:
+        await interaction.followup.send(
+            "No service-stud discrepancies found.", ephemeral=True
+        )
+        return
+
+    # Build an ANSI-styled, column-aligned report (green text)
+    mismatches.sort(key=lambda t: (t[1] - t[2]), reverse=True)
+
+    # Prepare printable rows and compute column widths
+    rows: list[tuple[str, str, str, str]] = []
+    name_max = 4
+    comp_max = len("Computed")
+    disp_max = len("Displayed")
+    action_max = len("Action")
+    for mem, comp, disp in mismatches:
+        diff = comp - disp
+        action = f"AWARD {diff}" if diff > 0 else f"REMOVE {abs(diff)}"
+        name = getattr(mem, "display_name", str(getattr(mem, "id", "")))
+        scomp = str(comp)
+        sdisp = str(disp)
+        rows.append((name, scomp, sdisp, action))
+        name_max = max(name_max, len(name))
+        comp_max = max(comp_max, len(scomp))
+        disp_max = max(disp_max, len(sdisp))
+        action_max = max(action_max, len(action))
+
+    # Cap name width to avoid excessively wide blocks
+    NAME_CAP = 36
+    name_w = min(NAME_CAP, name_max)
+
+    sep = "=" * (name_w + comp_max + disp_max + action_max + 10)
+
+    lines: list[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m" + sep)
+    lines.append("  WATCH FORTRESS JERICHO // SERVICE-STUDS AUDIT")
+    lines.append(sep)
+    # Build header using safe string methods to avoid nested format fields
+    header = (
+        "  "
+        + "Brother".ljust(name_w)
+        + "  "
+        + "Computed".rjust(comp_max)
+        + "  "
+        + "Displayed".rjust(disp_max)
+        + "  "
+        + "Action".rjust(action_max)
+    )
+    lines.append(header)
+    lines.append(sep)
+    for name, scomp, sdisp, action in rows:
+        # Truncate name if necessary
+        display_name = name if len(name) <= name_w else name[: name_w - 1] + "…"
+        line = (
+            "  "
+            + display_name.ljust(name_w)
+            + "  "
+            + scomp.rjust(comp_max)
+            + "  "
+            + sdisp.rjust(disp_max)
+            + "  "
+            + action.rjust(action_max)
+        )
+        lines.append(line)
+    lines.append(sep)
+    lines.append("\u001b[0m```")
+
+    report = "\n".join(lines)
+    await interaction.followup.send(report, ephemeral=True)
 
 
 @bot.tree.command(
@@ -4212,7 +4380,9 @@ async def _resolve_home_chapters(
             try:
                 # Collect member role names and compare for exact (case-insensitive) equality
                 member_role_names = {
-                    (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                    (getattr(r, "name", "") or "").strip()
+                    for r in member.roles
+                    if getattr(r, "name", None)
                 }
                 match = next(
                     (
@@ -4622,7 +4792,9 @@ def _format_imperial_date(dt: datetime) -> str:
         return ""
 
 
-def _role_for_chapter_mention(guild: discord.Guild, chapter_name: str) -> Optional[discord.Role]:
+def _role_for_chapter_mention(
+    guild: discord.Guild, chapter_name: str
+) -> Optional[discord.Role]:
     try:
         for r in guild.roles:
             if chapter_name.lower() in (r.name or "").lower():
@@ -4666,7 +4838,9 @@ async def _build_honours(
     chapters_members: Dict[str, set] = {}
 
     if DATASTORE is None:
-        return "HONOURED:", """
+        return (
+            "HONOURED:",
+            """
 ==============================================================================
   WATCH FORTRESS JERICHO // LEDGER-CAST
   OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS
@@ -4692,7 +4866,8 @@ Relentless Doctrine      Chapter (highest ops per member
 Reliquary Doctrine       Chapter (highest geneseed rate)
 
 ==============================================================================
-"""
+""",
+        )
 
     # Collect relevant records first, then resolve member chapters in bulk
     recs_in_window: List[dict] = []
@@ -4705,7 +4880,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         if ts < start or ts >= end:
             continue
         recs_in_window.append((ts, rec))
-        for uid in (rec.get("brother_ids") or []):
+        for uid in rec.get("brother_ids") or []:
             all_user_ids.add(str(uid))
 
     # Resolve home chapters for all participating users in one call
@@ -4719,10 +4894,17 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     # Process each record with resolved chapters and infer kill team from member roles when missing
     for ts, rec in recs_in_window:
         # Determine teams: try a few keys first
-        team_key = rec.get("kill_team") or rec.get("killteam") or rec.get("team") or rec.get("kill_team_name")
+        team_key = (
+            rec.get("kill_team")
+            or rec.get("killteam")
+            or rec.get("team")
+            or rec.get("kill_team_name")
+        )
         difficulty = rec.get("difficulty_class")
         is_high_risk = difficulty in ("hard_stratagem", "omega_ops")
-        omega_kia = int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
+        omega_kia = (
+            int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
+        )
 
         brother_ids = [str(x) for x in (rec.get("brother_ids") or [])]
 
@@ -4731,7 +4913,10 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
             if team_key:
                 tk_low = str(team_key).lower()
                 for kt in KILL_TEAMS:
-                    if kt.lower() in tk_low or _extract_killteam_name(str(team_key)).lower() in kt.lower():
+                    if (
+                        kt.lower() in tk_low
+                        or _extract_killteam_name(str(team_key)).lower() in kt.lower()
+                    ):
                         team_key = kt
                         break
         except Exception:
@@ -4766,7 +4951,19 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
         # Aggregate user-level stats
         for uid in brother_ids:
-            u = users.setdefault(uid, {"ops": 0, "points": 0, "armory": 0, "high_risk": 0, "omega_kia": 0, "first_ts": None, "gene_carried": 0, "gene_participated": 0})
+            u = users.setdefault(
+                uid,
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "omega_kia": 0,
+                    "first_ts": None,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                },
+            )
             u["ops"] += 1
             u["points"] += int(rec.get("points_for_op") or 0)
             u["armory"] += int(rec.get("armory_challenge_points") or 0)
@@ -4775,8 +4972,13 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
             if difficulty == "omega_ops":
                 u["omega_kia"] += omega_kia
             try:
-                if str(rec.get("gene_seed_carrier_id")) == str(uid) and (rec.get("gene_seed_status") or "") == "carried":
-                    u["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
+                if (
+                    str(rec.get("gene_seed_carrier_id")) == str(uid)
+                    and (rec.get("gene_seed_status") or "") == "carried"
+                ):
+                    u["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
                 if uid in brother_ids:
                     u["gene_participated"] += 1
             except Exception:
@@ -4840,7 +5042,9 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 try:
                     if rec.get("gene_seed_status") == "carried":
                         # count gene carried points once per record per team-member
-                        t["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
+                        t["gene_carried"] += int(
+                            rec.get("gene_seed_base_points_for_carrier") or 0
+                        )
                     t["gene_participated"] += 1
                     try:
                         t["members"].add(str(uid))
@@ -4862,12 +5066,23 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
-                c = chapters.setdefault(ch, {"ops": 0, "points": 0, "armory": 0, "gene_carried": 0, "gene_participated": 0})
+                c = chapters.setdefault(
+                    ch,
+                    {
+                        "ops": 0,
+                        "points": 0,
+                        "armory": 0,
+                        "gene_carried": 0,
+                        "gene_participated": 0,
+                    },
+                )
                 c["ops"] += 1
                 c["points"] += int(rec.get("points_for_op") or 0)
                 c["armory"] += int(rec.get("armory_challenge_points") or 0)
                 if rec.get("gene_seed_status") == "carried":
-                    c["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
+                    c["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
                 c["gene_participated"] += 1
                 # track unique members for Ops/Member calculation
                 try:
@@ -4901,13 +5116,22 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     # Veteran Lethality -> avg points per op
     for uid, v in users.items():
         v["avg"] = (v["points"] / v["ops"]) if v["ops"] else 0.0
-    leth_sorted = sort_entities({k: {**v, **{"avg": v["avg"]}} for k, v in users.items()}, "avg")
+    leth_sorted = sort_entities(
+        {k: {**v, **{"avg": v["avg"]}} for k, v in users.items()}, "avg"
+    )
     lethal_name = leth_sorted[0][0] if leth_sorted else ""
 
     # Reliquary Bearer -> geneseed rate
     for uid, v in users.items():
-        v["gene_rate"] = (v["gene_carried"] / v["gene_participated"]) if v["gene_participated"] else 0.0
-    gene_sorted = sort_entities({k: {**v, **{"gene_rate": v["gene_rate"]}} for k, v in users.items()}, "gene_rate")
+        v["gene_rate"] = (
+            (v["gene_carried"] / v["gene_participated"])
+            if v["gene_participated"]
+            else 0.0
+        )
+    gene_sorted = sort_entities(
+        {k: {**v, **{"gene_rate": v["gene_rate"]}} for k, v in users.items()},
+        "gene_rate",
+    )
     gene_name = gene_sorted[0][0] if gene_sorted else ""
 
     # Vault Reclaimer -> armory
@@ -4921,22 +5145,45 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     # Kill team picks (use ops, avg, armory/gene, high risk)
     for tid, tv in teams.items():
         tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
-        tv["gene_rate"] = (tv.get("gene_carried", 0) / tv.get("gene_participated", 1)) if tv.get("gene_participated", 0) else 0.0
+        tv["gene_rate"] = (
+            (tv.get("gene_carried", 0) / tv.get("gene_participated", 1))
+            if tv.get("gene_participated", 0)
+            else 0.0
+        )
         # Average AARs per member (force multiplier): ops divided by unique members
         try:
-            members_count = len(tv.get("members") or []) if tv.get("members") is not None else 0
-            tv["avg_aar_per_member"] = (tv["ops"] / members_count) if members_count else 0.0
+            members_count = (
+                len(tv.get("members") or []) if tv.get("members") is not None else 0
+            )
+            tv["avg_aar_per_member"] = (
+                (tv["ops"] / members_count) if members_count else 0.0
+            )
         except Exception:
             tv["avg_aar_per_member"] = 0.0
     kt_ops = sort_entities(teams, "ops")
-    kt_avg = sort_entities({k: {**v, **{"avg": v["avg"]}} for k, v in teams.items()}, "avg")
-    kt_pres = sort_entities({k: {**v, **{"pres": v.get("armory", 0) + v.get("gene_carried", 0)}} for k, v in teams.items()}, "pres")
+    kt_avg = sort_entities(
+        {k: {**v, **{"avg": v["avg"]}} for k, v in teams.items()}, "avg"
+    )
+    kt_pres = sort_entities(
+        {
+            k: {**v, **{"pres": v.get("armory", 0) + v.get("gene_carried", 0)}}
+            for k, v in teams.items()
+        },
+        "pres",
+    )
     kt_risk = sort_entities(teams, "high_risk")
     # Force multiplier: average AAR per unique member
-    kt_force = sort_entities({k: {**v, **{"force": v.get("avg_aar_per_member", 0.0)}} for k, v in teams.items()}, "force")
+    kt_force = sort_entities(
+        {
+            k: {**v, **{"force": v.get("avg_aar_per_member", 0.0)}}
+            for k, v in teams.items()
+        },
+        "force",
+    )
 
     # Build mention line
     honoured_parts: List[str] = []
+
     def user_mention(uid: str) -> str:
         return f"<@{uid}>" if include_mentions else _member_display_name(guild, uid)
 
@@ -4949,7 +5196,12 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     # Teams: attempt to find roles for team mentions
     team_mentions: List[str] = []
-    for t in [kt_ops[0][0] if kt_ops else None, kt_avg[0][0] if kt_avg else None, kt_pres[0][0] if kt_pres else None, kt_risk[0][0] if kt_risk else None]:
+    for t in [
+        kt_ops[0][0] if kt_ops else None,
+        kt_avg[0][0] if kt_avg else None,
+        kt_pres[0][0] if kt_pres else None,
+        kt_risk[0][0] if kt_risk else None,
+    ]:
         if not t:
             continue
         # Try to interpret t as role id
@@ -5011,7 +5263,9 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     honoured_parts.extend(chapter_mentions)
 
     # Construct HONOURED line
-    honour_line = "HONOURED: " + " ".join(dict.fromkeys([p for p in honoured_parts if p]))
+    honour_line = "HONOURED: " + " ".join(
+        dict.fromkeys([p for p in honoured_parts if p])
+    )
 
     # Build ANSI block exactly as requested, inserting selected display names and values
     def display_name_for(uid_key: str) -> str:
@@ -5039,16 +5293,16 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     high_val = users.get(high_name, {}).get("high_risk", 0)
     high_kia = users.get(high_name, {}).get("omega_kia", 0)
 
-    kt_ops_name = (kt_ops[0][0] if kt_ops else "Team")
+    kt_ops_name = kt_ops[0][0] if kt_ops else "Team"
     kt_ops_val = teams.get(kt_ops_name, {}).get("ops", 0)
-    kt_avg_name = (kt_avg[0][0] if kt_avg else "Team")
+    kt_avg_name = kt_avg[0][0] if kt_avg else "Team"
     kt_avg_val = teams.get(kt_avg_name, {}).get("avg", 0.0)
-    kt_pres_name = (kt_pres[0][0] if kt_pres else "Team")
+    kt_pres_name = kt_pres[0][0] if kt_pres else "Team"
     kt_pres_arm = teams.get(kt_pres_name, {}).get("armory", 0)
     kt_pres_gene = teams.get(kt_pres_name, {}).get("gene_carried", 0)
-    kt_risk_name = (kt_risk[0][0] if kt_risk else "Team")
+    kt_risk_name = kt_risk[0][0] if kt_risk else "Team"
     kt_risk_val = teams.get(kt_risk_name, {}).get("high_risk", 0)
-    kt_force_name = (kt_force[0][0] if kt_force else "Team")
+    kt_force_name = kt_force[0][0] if kt_force else "Team"
     kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
 
     ch1 = top_chapters[0][0] if len(top_chapters) > 0 else "Chapter"
@@ -5060,14 +5314,22 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     def _chap_avg_armory(ch):
         try:
             d = chapters.get(ch, {})
-            return (d.get("armory", 0) / float(d.get("ops", 1))) if d.get("ops", 0) else 0.0
+            return (
+                (d.get("armory", 0) / float(d.get("ops", 1)))
+                if d.get("ops", 0)
+                else 0.0
+            )
         except Exception:
             return 0.0
 
     def _chap_avg_ops(ch):
         try:
             d = chapters.get(ch, {})
-            return (d.get("points", 0) / float(d.get("ops", 1))) if d.get("ops", 0) else 0.0
+            return (
+                (d.get("points", 0) / float(d.get("ops", 1)))
+                if d.get("ops", 0)
+                else 0.0
+            )
         except Exception:
             return 0.0
 
@@ -5082,7 +5344,11 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     def _chap_gene_rate(ch):
         try:
             d = chapters.get(ch, {})
-            return (d.get("gene_carried", 0) / float(d.get("gene_participated", 1))) if d.get("gene_participated", 0) else 0.0
+            return (
+                (d.get("gene_carried", 0) / float(d.get("gene_participated", 1)))
+                if d.get("gene_participated", 0)
+                else 0.0
+            )
         except Exception:
             return 0.0
 
@@ -5100,7 +5366,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     ansi_inner = (
         "==============================================================================\n"
         "  WATCH FORTRESS JERICHO // LEDGER-CAST\n"
-        f"  OPERATION-SCRIBE SERVITOR — {'WEEKLY' if period_days==7 else 'MONTHLY'} HONOURS\n"
+        f"  OPERATION-SCRIBE SERVITOR — {'WEEKLY' if period_days == 7 else 'MONTHLY'} HONOURS\n"
         f"  Date: {_format_imperial_date(display_dt)}\n"
         "==============================================================================\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
@@ -5130,7 +5396,10 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     content = honour_line + "\n" + ansi
     if len(content) > 2000:
         # 1) Remove chapter doctrine block from inner
-        inner_no_doctrine = ansi_inner.split("CHAPTER DOCTRINES")[0] + "==============================================================================\n"
+        inner_no_doctrine = (
+            ansi_inner.split("CHAPTER DOCTRINES")[0]
+            + "==============================================================================\n"
+        )
         ansi_no_doctrine = f"```ansi\n\u001b[32m{inner_no_doctrine}\n\u001b[0m```"
         content = honour_line + "\n" + ansi_no_doctrine
     if len(content) > 2000:
@@ -5161,7 +5430,9 @@ async def _scheduled_honours_runner():
         if not ch_id:
             return
         try:
-            channel = guild.get_channel(int(ch_id)) or await bot.fetch_channel(int(ch_id))
+            channel = guild.get_channel(int(ch_id)) or await bot.fetch_channel(
+                int(ch_id)
+            )
         except Exception:
             return
 
@@ -5174,9 +5445,19 @@ async def _scheduled_honours_runner():
             try:
                 content = honour_line + "\\n" + ansi
                 if len(content) <= 2000:
-                    await channel.send(content, allowed_mentions=discord.AllowedMentions(users=True, roles=True))
+                    await channel.send(
+                        content,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
                 else:
-                    await channel.send(honour_line, allowed_mentions=discord.AllowedMentions(users=True, roles=True))
+                    await channel.send(
+                        honour_line,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
                     await channel.send(ansi)
             except Exception:
                 logger.exception("Failed to post weekly honours")
@@ -5196,13 +5477,25 @@ async def _scheduled_honours_runner():
             prev_start = datetime(prev_year, prev_month, 1)
             prev_end = first_of_current
 
-            honour_line, ansi = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            honour_line, ansi = await _build_honours(
+                guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+            )
             try:
                 content = honour_line + "\\n" + ansi
                 if len(content) <= 2000:
-                    await channel.send(content, allowed_mentions=discord.AllowedMentions(users=True, roles=True))
+                    await channel.send(
+                        content,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
                 else:
-                    await channel.send(honour_line, allowed_mentions=discord.AllowedMentions(users=True, roles=True))
+                    await channel.send(
+                        honour_line,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
                     await channel.send(ansi)
             except Exception:
                 logger.exception("Failed to post monthly honours")
@@ -5224,7 +5517,10 @@ def _user_is_forgemaster(user: discord.User | discord.Member) -> bool:
         return False
 
 
-@bot.tree.command(name="preview_honours", description="Preview weekly/monthly honours (Forgemaster only)")
+@bot.tree.command(
+    name="preview_honours",
+    description="Preview weekly/monthly honours (Forgemaster only)",
+)
 @app_commands.describe(period="weekly or monthly")
 async def preview_honours(interaction: discord.Interaction, period: str = "weekly"):
     # Forgemaster-only
@@ -5242,12 +5538,17 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
         first_of_current = datetime(now.year, now.month, 1)
         prev_start = first_of_current
         prev_end = now
-        honour_line, ansi = await _build_honours(guild, 30, include_mentions=False, start_dt=prev_start, end_dt=prev_end)
+        honour_line, ansi = await _build_honours(
+            guild, 30, include_mentions=False, start_dt=prev_start, end_dt=prev_end
+        )
     # Debug output should be ephemeral and must not include mentions
     content = ansi
     if len(content) > 2000:
         # Trim doctrine block first
-        content = ansi.split("CHAPTER DOCTRINES")[0] + "Notes: Honours reflect service patterns, not rank.\\n==============================================================================\\n"
+        content = (
+            ansi.split("CHAPTER DOCTRINES")[0]
+            + "Notes: Honours reflect service patterns, not rank.\\n==============================================================================\\n"
+        )
     await interaction.followup.send(content, ephemeral=True)
 
 
