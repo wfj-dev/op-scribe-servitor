@@ -54,6 +54,11 @@ RITES_LOCK = asyncio.Lock()
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
 
+# Scheduler settings (default values can be overridden in config.json under 'schedules')
+SCHEDULE_DAILY_AUDIT_ENABLED = False
+SCHEDULE_DAILY_AUDIT_SPAN_DAYS = 1
+
+
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
 
@@ -242,6 +247,39 @@ async def _announce_shutdown_and_close():
             pass
 
 
+# Scheduled audit: runs _run_recheck_errors periodically when enabled
+async def _do_scheduled_audit(span_days: int | None = None):
+    try:
+        if RECONCILE_LOCK.locked():
+            logger.info("Scheduled audit skipped: reconciliation already in progress.")
+            return
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.debug("Scheduled audit: no guild available; skipping.")
+            return
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        if not aar_channel:
+            logger.debug("Scheduled audit: AAR channel not found; skipping.")
+            return
+        await RECONCILE_LOCK.acquire()
+        try:
+            fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
+            logger.info(f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}")
+        finally:
+            RECONCILE_LOCK.release()
+    except Exception:
+        logger.exception("Scheduled audit failed")
+
+
+@tasks.loop(hours=24)
+async def _scheduled_audit_loop():
+    # Use configured span days
+    try:
+        await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
+    except Exception:
+        logger.exception("Error running scheduled audit loop")
+
+
 # Config load
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
@@ -251,6 +289,15 @@ if os.path.exists(CONFIG_PATH):
             CONFIG = json.load(f) or {}
     except Exception:
         CONFIG = {}
+
+# Apply schedule configuration if present
+try:
+    schedules_cfg = CONFIG.get("schedules") or {}
+    if _is_truthy(schedules_cfg.get("daily_audit_enabled")):
+        SCHEDULE_DAILY_AUDIT_ENABLED = True
+    SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
+except Exception:
+    pass
 
 # Logging setup
 log_level_str = ((CONFIG.get("logging") or {}).get("level") or "INFO").upper()
@@ -514,6 +561,7 @@ def _load_rites() -> dict:
             return json.load(f) or {}
     except Exception:
         return {}
+
 
 
 def _save_rites(data: dict):
@@ -1120,6 +1168,26 @@ async def on_ready():
             pass
     except Exception as e:
         logger.debug(f"Failed to register signal handlers: {e}")
+    # Start scheduled audit loop if enabled in config
+    try:
+        if SCHEDULE_DAILY_AUDIT_ENABLED:
+            # Run one immediate audit task and then start the 24-hour loop
+            try:
+                bot.loop.create_task(_do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS))
+            except Exception:
+                # best-effort immediate run
+                try:
+                    await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
+                except Exception:
+                    logger.exception("Immediate scheduled audit failed")
+            try:
+                if not _scheduled_audit_loop.is_running():
+                    _scheduled_audit_loop.start()
+                    logger.info("Scheduled daily audit started (24h interval).")
+            except Exception:
+                logger.exception("Failed to start scheduled audit loop")
+    except Exception:
+        logger.debug("Error checking/starting scheduled audit loop")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
