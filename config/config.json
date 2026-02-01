@@ -23,6 +23,10 @@
     "backup_count": 5
   },
   "debug": false,
+  "schedules": {
+    "daily_audit_enabled": true,
+    "daily_audit_span_days": 1
+  },
   "honours_channel_id": null,
   "company_briefs_allowed_user_ids": ["281651485782310914"]
 }
