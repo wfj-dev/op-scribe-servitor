@@ -4632,13 +4632,32 @@ def _role_for_chapter_mention(guild: discord.Guild, chapter_name: str) -> Option
     return None
 
 
-async def _build_honours(guild: discord.Guild, period_days: int, include_mentions: bool = True):
+async def _build_honours(
+    guild: discord.Guild,
+    period_days: int,
+    include_mentions: bool = True,
+    start_dt: Optional[datetime] = None,
+    end_dt: Optional[datetime] = None,
+):
     """Return (mentions_line:str, ansi_block:str).
 
-    Aggregates AAR records from DATASTORE for the given period in days.
+    Aggregates AAR records from DATASTORE. By default this aggregates records
+    from the last `period_days` days. Optionally a specific UTC naive
+    `start_dt` (inclusive) and `end_dt` (exclusive) may be provided to compute
+    honours for an arbitrary calendar range (useful for previous-month reports).
     """
     now = datetime.utcnow()
-    cutoff = now - timedelta(days=period_days)
+    # Determine the effective window [start, end). When start_dt/end_dt are
+    # provided they take precedence over `period_days`.
+    if start_dt is not None and end_dt is not None:
+        start = start_dt
+        end = end_dt
+    elif start_dt is not None:
+        start = start_dt
+        end = now
+    else:
+        start = now - timedelta(days=period_days)
+        end = now
     # Aggregate per-user and per-team and per-chapter
     users: Dict[str, dict] = {}
     teams: Dict[str, dict] = {}
@@ -4680,7 +4699,10 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     all_user_ids: set = set()
     for rec in DATASTORE.iter_records():
         ts = _parse_iso_ts_to_utc_naive(rec.get("timestamp") or "")
-        if not ts or ts < cutoff:
+        if not ts:
+            continue
+        # Include records in the half-open interval [start, end)
+        if ts < start or ts >= end:
             continue
         recs_in_window.append((ts, rec))
         for uid in (rec.get("brother_ids") or []):
@@ -5071,11 +5093,15 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
+    # Choose display date for the honours header: prefer end of window when
+    # provided, otherwise use `now`.
+    display_dt = end if end is not None else now
+
     ansi_inner = (
         "==============================================================================\n"
         "  WATCH FORTRESS JERICHO // LEDGER-CAST\n"
         f"  OPERATION-SCRIBE SERVITOR — {'WEEKLY' if period_days==7 else 'MONTHLY'} HONOURS\n"
-        f"  Date: {_format_imperial_date(now)}\n"
+        f"  Date: {_format_imperial_date(display_dt)}\n"
         "==============================================================================\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
         f"Operational Tempo        {tempo_disp} (Ops {tempo_val})\n"
@@ -5156,9 +5182,21 @@ async def _scheduled_honours_runner():
                 logger.exception("Failed to post weekly honours")
             LAST_WEEKLY_POST_DATE = str(today)
 
-        # Monthly: day 1
+        # Monthly: day 1 -> use previous calendar month
         if today.day == 1 and LAST_MONTHLY_POST_DATE != str(today):
-            honour_line, ansi = await _build_honours(guild, 30, include_mentions=True)
+            # Compute first day of current month and previous month (UTC naive)
+            now = datetime.utcnow()
+            first_of_current = datetime(now.year, now.month, 1)
+            if now.month == 1:
+                prev_month = 12
+                prev_year = now.year - 1
+            else:
+                prev_month = now.month - 1
+                prev_year = now.year
+            prev_start = datetime(prev_year, prev_month, 1)
+            prev_end = first_of_current
+
+            honour_line, ansi = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
             try:
                 content = honour_line + "\\n" + ansi
                 if len(content) <= 2000:
@@ -5195,8 +5233,22 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
         return
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    days = 7 if (period or "").lower().startswith("w") else 30
-    honour_line, ansi = await _build_honours(guild, days, include_mentions=False)
+    if (period or "").lower().startswith("w"):
+        days = 7
+        honour_line, ansi = await _build_honours(guild, days, include_mentions=False)
+    else:
+        # Monthly preview: show previous calendar month
+        now = datetime.utcnow()
+        first_of_current = datetime(now.year, now.month, 1)
+        if now.month == 1:
+            prev_month = 12
+            prev_year = now.year - 1
+        else:
+            prev_month = now.month - 1
+            prev_year = now.year
+        prev_start = datetime(prev_year, prev_month, 1)
+        prev_end = first_of_current
+        honour_line, ansi = await _build_honours(guild, 30, include_mentions=False, start_dt=prev_start, end_dt=prev_end)
     # Debug output should be ephemeral and must not include mentions
     content = ansi
     if len(content) > 2000:
