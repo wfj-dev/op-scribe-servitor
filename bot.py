@@ -1621,7 +1621,12 @@ async def sanctify_battle_records(
             ephemeral=True,
         )
         return
-    await interaction.response.defer(thinking=True, ephemeral=True)
+    interaction_deferred = False
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        interaction_deferred = True
+    except Exception:
+        interaction_deferred = False
 
     await RECONCILE_LOCK.acquire()
     try:
@@ -1630,10 +1635,21 @@ async def sanctify_battle_records(
             guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
         )
         if not aar_channel:
-            await interaction.followup.send(
-                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
-                ephemeral=True,
-            )
+            if interaction_deferred:
+                try:
+                    await interaction.followup.send(
+                        "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
+                        ephemeral=True,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to send followup: {e}")
+            else:
+                try:
+                    await interaction.user.send(
+                        "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
+                    )
+                except Exception:
+                    logger.error("Unable to deliver error report to user; check bot permissions.")
             return
         ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
@@ -1657,7 +1673,20 @@ async def sanctify_battle_records(
             + "==============================================================================\n"
             + "\u001b[0m```"
         )
-        await interaction.followup.send(report, ephemeral=True)
+        if interaction_deferred:
+            try:
+                await interaction.followup.send(report, ephemeral=True)
+            except Exception as e:
+                logger.debug(f"Failed to send followup report: {e}")
+                try:
+                    await interaction.user.send(report)
+                except Exception:
+                    logger.error("Unable to deliver report to user; check bot permissions.")
+        else:
+            try:
+                await interaction.user.send(report)
+            except Exception:
+                logger.error("Unable to deliver report to user; check bot permissions.")
     finally:
         RECONCILE_LOCK.release()
 
@@ -1748,11 +1777,32 @@ async def _run_recheck_errors(
                 # remove it from the errors archive rather than touching the
                 # saved records. Previously this removed the record file by
                 # mistake which prevented error entries from being cleared.
-                data = _load_json_dict(AAR_ERRORS_PATH)
-                sid = str(aar_id)
-                if sid in data:
-                    del data[sid]
-                    _save_json_dict(AAR_ERRORS_PATH, data)
+                try:
+                    data = _load_json_dict(AAR_ERRORS_PATH)
+                    sid = str(aar_id)
+                    if sid in data:
+                        reply_id = data.get(sid, {}).get("reply_id")
+                        if reply_id:
+                            try:
+                                # reply is in the same channel as original message
+                                dummy_msg = await aar_channel.fetch_message(aar_id)
+                                try:
+                                    reply_msg = await dummy_msg.channel.fetch_message(int(reply_id))
+                                    try:
+                                        await reply_msg.delete()
+                                    except Exception:
+                                        try:
+                                            logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        del data[sid]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                except Exception:
+                    pass
                 fixed += 1
                 done_errs += 1
                 if cutoff_dt is None:
@@ -1797,6 +1847,12 @@ async def _run_recheck_errors(
                     [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                     msg,
                 )
+                try:
+                    await _reply_aar_rejection(
+                        msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"]
+                    )
+                except Exception:
+                    pass
                 await _set_aar_reaction(msg, "error")
                 still_broken += 1
             else:
@@ -1805,15 +1861,38 @@ async def _run_recheck_errors(
                     log_aar_error_with_meta(
                         aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
                     )
+                    try:
+                        await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}"] + errors)
+                    except Exception:
+                        pass
                     await _set_aar_reaction(msg, "error")
                     still_broken += 1
                 else:
                     await save_aar_record(record)
-                    data = _load_json_dict(AAR_ERRORS_PATH)
-                    sid = str(aar_id)
-                    if sid in data:
-                        del data[sid]
-                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    # If an error entry exists for this AAR, attempt to remove
+                    # the bot's previous reply and clear the error record.
+                    try:
+                        data = _load_json_dict(AAR_ERRORS_PATH)
+                        sid = str(aar_id)
+                        if sid in data:
+                            reply_id = data.get(sid, {}).get("reply_id")
+                            if reply_id:
+                                try:
+                                    # reply is in the same channel as the original message
+                                    reply_msg = await msg.channel.fetch_message(int(reply_id))
+                                    try:
+                                        await reply_msg.delete()
+                                    except Exception:
+                                        try:
+                                            logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                            del data[sid]
+                            _save_json_dict(AAR_ERRORS_PATH, data)
+                    except Exception:
+                        pass
                     await _set_aar_reaction(msg, "ok")
                     fixed += 1
             done_errs += 1
@@ -1868,6 +1947,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                 msg,
             )
+            try:
+                await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"])
+            except Exception:
+                pass
             to_react_err.append(msg)
             rejected += 1
             if scanned % 10 == 0:
@@ -1898,12 +1981,38 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         errors = validate_aar(record)
         if errors:
             log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
+            try:
+                await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}"] + errors)
+            except Exception:
+                pass
             to_react_err.append(msg)
             rejected += 1
             if scanned % 10 == 0:
                 _print_progress("Ingest New AARs", scanned, scanned)
             continue
         await save_aar_record(record)
+        # If an error entry exists for this AAR/message, remove stored reply and clear the error
+        try:
+            data = _load_json_dict(AAR_ERRORS_PATH)
+            sid = str(aar_id)
+            if sid in data:
+                reply_id = data.get(sid, {}).get("reply_id")
+                if reply_id:
+                    try:
+                            reply_msg = await msg.channel.fetch_message(int(reply_id))
+                            try:
+                                await reply_msg.delete()
+                            except Exception:
+                                try:
+                                    logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                del data[sid]
+                _save_json_dict(AAR_ERRORS_PATH, data)
+        except Exception:
+            pass
         to_react_ok.append(msg)
         ingested += 1
         if scanned % 10 == 0:
@@ -3799,12 +3908,104 @@ def _author_info_from_message(msg: discord.Message):
 
 def log_aar_error_with_meta(aar_id: int, errors: list[str], msg: discord.Message):
     data = _load_json_dict(AAR_ERRORS_PATH)
+    sid = str(aar_id)
+    existing = data.get(sid) if isinstance(data, dict) else None
     entry = {
         "errors": errors,
         "author": _author_info_from_message(msg),
     }
-    data[str(aar_id)] = entry
+    # Preserve reply_id if present so we don't lose reference to previous bot reply
+    try:
+        if isinstance(existing, dict) and existing.get("reply_id"):
+            entry["reply_id"] = existing.get("reply_id")
+    except Exception:
+        pass
+    data[sid] = entry
     _save_json_dict(AAR_ERRORS_PATH, data)
+
+
+async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
+    """Attempt to reply to the original AAR message with a concise rejection reason.
+    This is best-effort: failures are logged and ignored so they don't break the
+    ingest/recheck flow."""
+    try:
+        if not msg:
+            return
+        # Filter and format errors: avoid including jump URLs or huge stacks
+        filtered = [e for e in errors if e and not e.startswith("Jump URL:")]
+        if not filtered:
+            filtered = errors[:1] if errors else ["Rejected by archive bot."]
+        # Limit to a few lines for readability
+        max_lines = 6
+        lines = [
+            "Your After-Action Report was rejected by the archive bot for the following reason(s):"
+        ]
+        for e in filtered[:max_lines]:
+            lines.append(f"- {e}")
+        content = "\n".join(lines)
+        # Keep comfortably under Discord message limits
+        if len(content) > 1900:
+            content = content[:1900].rsplit("\n", 1)[0] + "\n…"
+        # Load current stored error entry (if any) so we can deduplicate / edit
+        try:
+            data = _load_json_dict(AAR_ERRORS_PATH)
+        except Exception:
+            data = {}
+
+        sid = str(getattr(msg, "id", ""))
+        existing = data.get(sid) if isinstance(data, dict) else None
+        reply_id = existing.get("reply_id") if isinstance(existing, dict) else None
+
+        if reply_id:
+            # Edit existing reply instead of creating a new one
+            try:
+                try:
+                    reply_msg = await msg.channel.fetch_message(int(reply_id))
+                except Exception:
+                    # Could not fetch stored reply; fall back to send a new reply
+                    reply_msg = None
+                if reply_msg:
+                    await reply_msg.edit(content=content)
+                    # Update stored errors in case they changed
+                    data[sid]["errors"] = filtered[:max_lines]
+                    _save_json_dict(AAR_ERRORS_PATH, data)
+                    return
+            except Exception:
+                # If edit fails, continue to attempt sending a new reply
+                pass
+
+        # No existing reply found or edit failed: send a new reply and record its id
+        try:
+            sent = None
+            try:
+                sent = await msg.reply(content, mention_author=False)
+            except TypeError:
+                sent = await msg.reply(content)
+            if sent and isinstance(data, dict):
+                sid = str(getattr(msg, "id", ""))
+                # Ensure there's an entry for this aar in the errors file
+                ent = data.get(sid) or {}
+                ent["errors"] = filtered[:max_lines]
+                ent["author"] = _author_info_from_message(msg)
+                try:
+                    ent["reply_id"] = str(getattr(sent, "id", ""))
+                except Exception:
+                    ent["reply_id"] = None
+                data[sid] = ent
+                try:
+                    _save_json_dict(AAR_ERRORS_PATH, data)
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                logger.debug(f"Failed to reply to AAR {getattr(msg, 'id', None)}: {e}")
+            except Exception:
+                pass
+    except Exception as e:
+        try:
+            logger.debug(f"Failed to reply to AAR {getattr(msg, 'id', None)}: {e}")
+        except Exception:
+            pass
 
 
 def summarize_error_authors():
