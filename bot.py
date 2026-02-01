@@ -177,21 +177,67 @@ async def _announce_shutdown_and_close():
     if SHUTDOWN_INITIATED:
         return
     SHUTDOWN_INITIATED = True
+
+    # Fast shutdown path for debug mode: skip broadcasts and avoid waiting
+    # for a full DataStore flush to make Ctrl-C immediate during development.
     try:
-        if BROADCAST_STATUS:
-            await _send_watch_command_notice("OFFLINE")
-    except Exception as e:
-        logger.debug(f"Shutdown announce failed: {e}")
-    # Flush DataStore before closing
-    try:
-        if DATASTORE:
-            await DATASTORE.shutdown()
-    except Exception as e:
-        logger.debug(f"DataStore shutdown failed: {e}")
-    try:
-        await bot.close()
+        if globals().get("DEBUG_MODE"):
+            try:
+                logger.info("Debug mode shutdown: skipping broadcast and datastore flush")
+            except Exception:
+                pass
+            try:
+                if DATASTORE:
+                    try:
+                        DATASTORE._shutdown = True
+                    except Exception:
+                        pass
+                    try:
+                        if getattr(DATASTORE, "_flush_task", None):
+                            DATASTORE._flush_task.cancel()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(bot.close(), timeout=5)
+            except Exception:
+                try:
+                    await bot.close()
+                except Exception:
+                    pass
+            return
     except Exception:
         pass
+
+    try:
+        if BROADCAST_STATUS:
+            try:
+                await asyncio.wait_for(_send_watch_command_notice("OFFLINE"), timeout=8)
+            except Exception as e:
+                logger.debug(f"Shutdown announce failed or timed out: {e}")
+    except Exception:
+        logger.debug("Shutdown announce threw an unexpected error")
+
+    # Flush DataStore before closing, but don't block indefinitely
+    try:
+        if DATASTORE:
+            try:
+                await asyncio.wait_for(DATASTORE.shutdown(), timeout=15)
+            except asyncio.TimeoutError:
+                logger.warning("DataStore shutdown timed out; proceeding with close.")
+            except Exception as e:
+                logger.debug(f"DataStore shutdown failed: {e}")
+    except Exception:
+        logger.debug("Error during DataStore shutdown sequence")
+
+    try:
+        await asyncio.wait_for(bot.close(), timeout=10)
+    except Exception:
+        try:
+            await bot.close()
+        except Exception:
+            pass
 
 
 # Config load
@@ -239,9 +285,13 @@ except Exception as e:
 
 # Apply initial debug setting from config (CLI may override later in _main)
 try:
-    BROADCAST_STATUS = not _is_truthy((CONFIG or {}).get("debug"))
+    cfg_debug = _is_truthy((CONFIG or {}).get("debug"))
+    BROADCAST_STATUS = not cfg_debug
+    # DEBUG_MODE: when True, prefer faster, less-safe shutdown on Ctrl-C
+    DEBUG_MODE = bool(cfg_debug)
 except Exception:
     BROADCAST_STATUS = True
+    DEBUG_MODE = False
 
 # Global rank priority list (highest -> lowest)
 RANK_ROLES_PRIORITY = [
@@ -559,7 +609,7 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
       specialist role (apothecary/techmarine/librarian/etc.), include a
       derived "<Company> Command" team (e.g., 'Primus Command').
     - If member is in High Command (matches `HIGH_COMMAND_ROLES`), include
-      'Jericho High Command'.
+      'High Command'.
     - A member may contribute to multiple teams simultaneously.
     """
     out: List[str] = []
@@ -576,7 +626,7 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
         try:
             names = _canonical_role_names(member)
             if any(r in names for r in HIGH_COMMAND_ROLES):
-                out.append("Jericho High Command")
+                out.append("High Command")
         except Exception:
             pass
 
@@ -4142,8 +4192,12 @@ async def _resolve_home_chapters(
         return chapters
 
     # Iterate requested users and resolve via member roles
+    # Match strategy: exact (case-insensitive) equality between a member's
+    # individual role names and the canonical `HOME_CHAPTERS` entries.
+    # If no exact match is found, return an empty string so callers may skip
+    # attribution for that user.
     for uid in user_ids:
-        chapter = "REDACTED"
+        chapter = ""
         try:
             member = guild.get_member(int(uid))
         except Exception:
@@ -4155,20 +4209,25 @@ async def _resolve_home_chapters(
             except Exception:
                 member = None
         if member:
-            # Build a single lowercased string of role names for fast matching
             try:
-                role_text = " ".join(
-                    [r.name for r in member.roles if getattr(r, "name", None)]
-                )
-                lower_role_text = role_text.lower()
+                # Collect member role names and compare for exact (case-insensitive) equality
+                member_role_names = {
+                    (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                }
                 match = next(
-                    (hc for hc in home_chapters if hc.lower() in lower_role_text), None
+                    (
+                        hc
+                        for hc in home_chapters
+                        if any(rn.lower() == hc.lower() for rn in member_role_names)
+                    ),
+                    None,
                 )
                 if match:
                     chapter = match
+                else:
+                    chapter = ""
             except Exception:
-                # Any failure falls back to REDACTED
-                chapter = "REDACTED"
+                chapter = "chapter not found"
         chapters[str(uid)] = chapter
     return chapters
 
@@ -4465,9 +4524,10 @@ def _main():
         args, _unknown = parser.parse_known_args()
         # Merge: CLI overrides config
         debug_flag = bool(args.debug) or _is_truthy((CONFIG or {}).get("debug"))
-        # Update global broadcast toggle
-        global BROADCAST_STATUS
+        # Update global broadcast toggle and debug mode
+        global BROADCAST_STATUS, DEBUG_MODE
         BROADCAST_STATUS = not debug_flag
+        DEBUG_MODE = bool(debug_flag)
     except Exception as e:
         logger.debug(f"Failed to parse CLI args: {e}")
     try:
@@ -5030,10 +5090,10 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
         f"Force Multiplier Team    {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DOCTRINES\n"
-        f"Forge Doctrine          {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
-        f"Codex Discipline        {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
-        f"Relentless Doctrine     {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
-        f"Reliquary Doctrine      {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
+        f"Forge Doctrine           {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
+        f"Codex Discipline         {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
+        f"Relentless Doctrine      {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
+        f"Reliquary Doctrine       {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
         "==============================================================================\n"
     )
 
@@ -5042,35 +5102,6 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     # Apply fallbacks for character limit
     content = honour_line + "\n" + ansi
-
-    # First attempt: shorten stat/section labels but preserve numeric values
-    try:
-        short_inner = ansi_inner
-        replacements = {
-            "Operational Tempo": "Tempo",
-            "Veteran Lethality": "Lethality",
-            "Reliquary Bearer": "Geneseed",
-            "Vault Reclaimer": "Armory",
-            "High-Risk Operator": "Risk",
-            "Highest Tempo Team": "Tempo Team",
-            "Most Reliable Team": "Reliable Team",
-            "Best Preservation Team": "Preservation",
-            "Highest Risk Team": "Risk Team",
-            "Force Multiplier Team": "Force Mult",
-            "Forge Doctrine": "Forge",
-            "Codex Discipline": "Codex",
-            "Relentless Doctrine": "Relentless",
-            "Reliquary Doctrine": "Reliquary",
-        }
-        for k, v in replacements.items():
-            short_inner = short_inner.replace(k, v)
-        ansi_short = f"```ansi\n\u001b[32m{short_inner}\n\u001b[0m```"
-        short_content = honour_line + "\n" + ansi_short
-        if len(short_content) <= 2000:
-            return honour_line, ansi_short
-    except Exception:
-        pass
-
     if len(content) > 2000:
         # 1) Remove chapter doctrine block from inner
         inner_no_doctrine = ansi_inner.split("CHAPTER DOCTRINES")[0] + "==============================================================================\n"
