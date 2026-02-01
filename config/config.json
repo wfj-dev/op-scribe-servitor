@@ -12,7 +12,8 @@
     "reconcile_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
+    "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "preview_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
   },
   "logging": {
     "level": "INFO",
@@ -22,5 +23,6 @@
     "backup_count": 5
   },
   "debug": false,
+  "honours_channel_id": null,
   "company_briefs_allowed_user_ids": ["281651485782310914"]
 }
