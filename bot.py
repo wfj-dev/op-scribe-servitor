@@ -4692,7 +4692,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 u["omega_kia"] += omega_kia
             try:
                 if str(rec.get("gene_seed_carrier_id")) == str(uid) and (rec.get("gene_seed_status") or "") == "carried":
-                    u["gene_carried"] += 1
+                    u["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                 if uid in brother_ids:
                     u["gene_participated"] += 1
             except Exception:
@@ -4755,8 +4755,8 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                     t["omega_kia"] = t.get("omega_kia", 0) + omega_kia
                 try:
                     if rec.get("gene_seed_status") == "carried":
-                        # count gene carried once per record per team-member
-                        t["gene_carried"] += 1
+                        # count gene carried points once per record per team-member
+                        t["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                     t["gene_participated"] += 1
                     try:
                         t["members"].add(str(uid))
@@ -4783,7 +4783,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 c["points"] += int(rec.get("points_for_op") or 0)
                 c["armory"] += int(rec.get("armory_challenge_points") or 0)
                 if rec.get("gene_seed_status") == "carried":
-                    c["gene_carried"] += 1
+                    c["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                 c["gene_participated"] += 1
 
     # Compute winners with tie-breakers
@@ -4942,7 +4942,8 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     lethal_disp = display_name_for(lethal_name)
     lethal_val = users.get(lethal_name, {}).get("avg", 0.0)
     gene_disp = display_name_for(gene_name)
-    gene_val = users.get(gene_name, {}).get("gene_rate", 0.0)
+    # Show geneseed as points (sum of base points carried) rather than raw counts or rate
+    gene_val = users.get(gene_name, {}).get("gene_carried", 0)
     arm_disp = display_name_for(arm_name)
     arm_val = users.get(arm_name, {}).get("armory", 0)
     high_disp = display_name_for(high_name)
@@ -4977,20 +4978,20 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         "INDIVIDUAL DISTINCTIONS\n"
         f"Operational Tempo        {tempo_disp} (Ops {tempo_val})\n"
         f"Veteran Lethality        {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
-        f"Reliquary Bearer         {gene_disp} (Geneseed {fmt_avg(gene_val)})\n"
-        f"Vault Reclaimer          {arm_disp} (Armory {arm_val})\n"
+        f"Reliquary Bearer         {gene_disp} (GeneseedPts {gene_val})\n"
+        f"Vault Reclaimer          {arm_disp} (ArmoryPts {arm_val})\n"
         f"High-Risk Operator       {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
         "KILL TEAM DISTINCTIONS\n"
         f"Highest Tempo Team       {kt_ops_name} (Ops {kt_ops_val})\n"
         f"Most Reliable Team       {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
-        f"Best Preservation Team   {kt_pres_name} (Armory {fmt_avg(kt_pres_arm)} | Gene {fmt_avg(kt_pres_gene)})\n"
-        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
-        f"Force Multiplier Team    {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
+        f"Best Preservation Team   {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
+        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n\n"
+        f"Force Multiplier Team   {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DOCTRINES\n"
-        f"Forge Doctrine           {ch1} (highest avg armory)\n"
-        f"Codex Discipline         {ch2} (highest avg op)\n"
-        f"Relentless Doctrine      {ch3} (highest ops per member)\n"
-        f"Reliquary Doctrine       {ch4} (highest geneseed rate)\n\n"
+        f"Forge Doctrine           {ch1} (Avg ArmoryPts)\n"
+        f"Codex Discipline        {ch2} (Avg Ops)\n"
+        f"Relentless Doctrine     {ch3} (Ops/Member)\n"
+        f"Reliquary Doctrine      {ch4} (GeneseedPts Rate)\n\n"
         "==============================================================================\n"
     )
 
