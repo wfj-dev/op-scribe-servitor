@@ -5120,7 +5120,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         f"Codex Discipline         {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
         f"Relentless Doctrine      {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
         f"Reliquary Doctrine       {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
-        "==============================================================================\n"
+        "=============================================================================="
     )
 
     # Wrap the inner ANSI block in an ANSI color start and code fence for Discord
@@ -5148,7 +5148,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 @tasks.loop(minutes=60)
 async def _scheduled_honours_runner():
     """Run hourly and post weekly/monthly honours when appropriate (UTC).
-    Weekly posts on Mondays (weekday==0). Monthly posts on day 1.
+    Weekly posts on Fridays (weekday==4). Monthly posts on day 1.
     """
     try:
         if DATASTORE is None:
@@ -5167,8 +5167,8 @@ async def _scheduled_honours_runner():
 
         today = datetime.utcnow().date()
         global LAST_WEEKLY_POST_DATE, LAST_MONTHLY_POST_DATE
-        # Weekly: Monday
-        if today.weekday() == 0 and LAST_WEEKLY_POST_DATE != str(today):
+        # Weekly: Friday
+        if today.weekday() == 4 and LAST_WEEKLY_POST_DATE != str(today):
             honour_line, ansi = await _build_honours(guild, 7, include_mentions=True)
             # If returned as split (honour_line, ansi) where honour_line only and ansi full, send two messages
             try:
