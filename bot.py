@@ -1225,17 +1225,28 @@ async def litany_of_function(interaction: discord.Interaction):
     if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    litany_text = (
-        "Jericho Logi-Scribe Servitor V-1 — Function Litany\n\n"
-        "Sanctioned Commands (summary):\n"
-        "• /tally_deeds @Brother — Deeds ledger: AAR points, gene-seed credit, armory tally, rank. (Sergeant+)\n"
-        "• /combat_bonds [@Brother] [window:N] — Fortress/top bonds or target bonds (default 100 AARs). (Sergeant+)\n"
-        "• /audit_archive_discrepancies — Re-check rejected AARs for resolution. (Watch Master/Forgemaster)\n"
-        "• /sanctify_battle_records [span_days:N] — Ingest sanctioned AARs via cursor. (Watch Master/Forgemaster)\n"
-        "• /reconcile_records [span_days:N] — Audit then ingest in one rite. (Watch Master/Forgemaster)\n\n"
-        "Commands restricted to sanctified channels. Honor and memory preserved."
-    )
-    await interaction.response.send_message(litany_text, ephemeral=True)
+    lines = [
+        "OP-Scribe Servitor V-1 — Command Summary",
+        "",
+        "/tally_deeds brother:@User — Show a Brother's Deeds Ledger (AAR, gene, armory).",
+        "/tally_deeds killteam:@Role — Show Kill Team roster + 7-day summary.",
+        "/combat_bonds [brother] [window] — Show top combat bonds (window in days, default 30).",
+        "/set_rite rite_text — Save your personal consecration rite text.",
+        "/forge_rite member:@User — Post an attestation block for a member (role-limited).",
+        "/reconcile_records [span_days] — Reprocess and update the archive (admin).",
+        "/sanctify_battle_records [span_days] — Ingest sanctioned AARs (admin).",
+        "/audit_archive_discrepancies [span_days] — Recheck rejected AARs (admin).",
+        "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
+        "/cache_stats — Show DataStore cache and flush stats (admin).",
+        "/audit_service_studs — List service-stud mismatches (Watch Command only).",
+        "",
+        "Notes: Some commands are restricted by role/config; outputs are capped or paginated.",
+    ]
+    text = "\n".join(lines)
+    # Ensure message stays comfortably under Discord's 2000-char limit
+    if len(text) > 1900:
+        text = text[:1900].rsplit("\n", 1)[0] + "\n…"
+    await interaction.response.send_message(text, ephemeral=True)
 
 
 # Forge rite command group
