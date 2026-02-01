@@ -5237,17 +5237,11 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
         days = 7
         honour_line, ansi = await _build_honours(guild, days, include_mentions=False)
     else:
-        # Monthly preview: show previous calendar month
+        # Monthly preview: show current partial month (from 1st of current month to now)
         now = datetime.utcnow()
         first_of_current = datetime(now.year, now.month, 1)
-        if now.month == 1:
-            prev_month = 12
-            prev_year = now.year - 1
-        else:
-            prev_month = now.month - 1
-            prev_year = now.year
-        prev_start = datetime(prev_year, prev_month, 1)
-        prev_end = first_of_current
+        prev_start = first_of_current
+        prev_end = now
         honour_line, ansi = await _build_honours(guild, 30, include_mentions=False, start_dt=prev_start, end_dt=prev_end)
     # Debug output should be ephemeral and must not include mentions
     content = ansi
