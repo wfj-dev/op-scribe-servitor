@@ -1936,6 +1936,144 @@ async def cache_stats(interaction: discord.Interaction):
 
 
 @bot.tree.command(
+    name="audit_service_studs",
+    description="List brothers whose displayed service studs differ from computed entitlement (Watch Command only).",
+)
+async def audit_service_studs(interaction: discord.Interaction):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=False, ephemeral=True)
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.followup.send("Guild not available.", ephemeral=True)
+        return
+
+    idx_veteran = _role_index("Watch Veteran")
+    now = datetime.utcnow()
+    mismatches: list[tuple[discord.Member, int, int]] = []
+
+    for member in getattr(guild, "members", []) or []:
+        try:
+            # Consider only users who have any canonical Watch rank/role
+            member_role_names = _canonical_role_names(member)
+            if not any(r in member_role_names for r in RANK_ROLES_PRIORITY):
+                continue
+
+            # Compute entitlement using same rules as roster/tally
+            studs_count = 0
+            highest_idx = get_highest_rank_index(member)
+            if (
+                (idx_veteran is not None)
+                and (highest_idx is not None)
+                and (highest_idx <= idx_veteran)
+            ):
+                joined_at = getattr(member, "joined_at", None)
+                if joined_at:
+                    ja = joined_at
+                    if ja.tzinfo is not None:
+                        try:
+                            ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                        except Exception:
+                            ja = ja.replace(tzinfo=None)
+                    weeks = max(0, (now - ja).days // 7)
+                    studs_time = weeks // 4
+                else:
+                    studs_time = 0
+
+                stats = compute_stats_for_user(str(getattr(member, "id", "")))
+                try:
+                    aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
+                except Exception:
+                    aar_points_val = 0
+                studs_aar = aar_points_val // 400
+                studs_count = min(studs_time, studs_aar)
+
+            # Count existing studs shown in nickname/display name
+            dn = str(member.nick or member.display_name or "")
+            existing_cer = dn.count("◆")
+            existing_elec = dn.count("●")
+            existing_plas = dn.count("○")
+            existing_total = existing_cer * 25 + existing_elec * 5 + existing_plas
+
+            if studs_count != existing_total:
+                mismatches.append((member, studs_count, existing_total))
+        except Exception:
+            continue
+
+    if not mismatches:
+        await interaction.followup.send("No service-stud discrepancies found.", ephemeral=True)
+        return
+
+    # Build an ANSI-styled, column-aligned report (green text)
+    mismatches.sort(key=lambda t: (t[1] - t[2]), reverse=True)
+
+    # Prepare printable rows and compute column widths
+    rows: list[tuple[str, str, str, str]] = []
+    name_max = 4
+    comp_max = len("Computed")
+    disp_max = len("Displayed")
+    action_max = len("Action")
+    for mem, comp, disp in mismatches:
+        diff = comp - disp
+        action = f"AWARD {diff}" if diff > 0 else f"REMOVE {abs(diff)}"
+        name = getattr(mem, "display_name", str(getattr(mem, "id", "")))
+        scomp = str(comp)
+        sdisp = str(disp)
+        rows.append((name, scomp, sdisp, action))
+        name_max = max(name_max, len(name))
+        comp_max = max(comp_max, len(scomp))
+        disp_max = max(disp_max, len(sdisp))
+        action_max = max(action_max, len(action))
+
+    # Cap name width to avoid excessively wide blocks
+    NAME_CAP = 36
+    name_w = min(NAME_CAP, name_max)
+
+    sep = "=" * (name_w + comp_max + disp_max + action_max + 10)
+
+    lines: list[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m" + sep)
+    lines.append("  WATCH FORTRESS JERICHO // SERVICE-STUDS AUDIT")
+    lines.append(sep)
+    # Build header using safe string methods to avoid nested format fields
+    header = (
+        "  "
+        + "Brother".ljust(name_w)
+        + "  "
+        + "Computed".rjust(comp_max)
+        + "  "
+        + "Displayed".rjust(disp_max)
+        + "  "
+        + "Action".rjust(action_max)
+    )
+    lines.append(header)
+    lines.append(sep)
+    for name, scomp, sdisp, action in rows:
+        # Truncate name if necessary
+        display_name = name if len(name) <= name_w else name[: name_w - 1] + "…"
+        line = (
+            "  "
+            + display_name.ljust(name_w)
+            + "  "
+            + scomp.rjust(comp_max)
+            + "  "
+            + sdisp.rjust(disp_max)
+            + "  "
+            + action.rjust(action_max)
+        )
+        lines.append(line)
+    lines.append(sep)
+    lines.append("\u001b[0m```")
+
+    report = "\n".join(lines)
+    await interaction.followup.send(report, ephemeral=True)
+
+
+@bot.tree.command(
     name="reparse_records",
     description="Re-parse stored AAR records from their message_url and update records (admin).",
 )
