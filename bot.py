@@ -4733,7 +4733,19 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 continue
 
             for resolved_team in resolved_teams:
-                t = teams.setdefault(str(resolved_team), {"ops": 0, "points": 0, "armory": 0, "high_risk": 0, "first_ts": None, "gene_carried": 0, "gene_participated": 0})
+                t = teams.setdefault(
+                    str(resolved_team),
+                    {
+                        "ops": 0,
+                        "points": 0,
+                        "armory": 0,
+                        "high_risk": 0,
+                        "first_ts": None,
+                        "gene_carried": 0,
+                        "gene_participated": 0,
+                        "members": set(),
+                    },
+                )
                 t["ops"] += 1
                 t["points"] += int(rec.get("points_for_op") or 0)
                 t["armory"] += int(rec.get("armory_challenge_points") or 0)
@@ -4746,6 +4758,17 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                         # count gene carried once per record per team-member
                         t["gene_carried"] += 1
                     t["gene_participated"] += 1
+                    try:
+                        t["members"].add(str(uid))
+                    except Exception:
+                        # ensure members remains a set-like container
+                        if not t.get("members"):
+                            t["members"] = {str(uid)}
+                        else:
+                            try:
+                                t["members"].add(str(uid))
+                            except Exception:
+                                pass
                 except Exception:
                     pass
                 if t["first_ts"] is None or ts < t["first_ts"]:
@@ -4810,10 +4833,18 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     for tid, tv in teams.items():
         tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
         tv["gene_rate"] = (tv.get("gene_carried", 0) / tv.get("gene_participated", 1)) if tv.get("gene_participated", 0) else 0.0
+        # Average AARs per member (force multiplier): ops divided by unique members
+        try:
+            members_count = len(tv.get("members") or []) if tv.get("members") is not None else 0
+            tv["avg_aar_per_member"] = (tv["ops"] / members_count) if members_count else 0.0
+        except Exception:
+            tv["avg_aar_per_member"] = 0.0
     kt_ops = sort_entities(teams, "ops")
     kt_avg = sort_entities({k: {**v, **{"avg": v["avg"]}} for k, v in teams.items()}, "avg")
     kt_pres = sort_entities({k: {**v, **{"pres": v.get("armory", 0) + v.get("gene_carried", 0)}} for k, v in teams.items()}, "pres")
     kt_risk = sort_entities(teams, "high_risk")
+    # Force multiplier: average AAR per unique member
+    kt_force = sort_entities({k: {**v, **{"force": v.get("avg_aar_per_member", 0.0)}} for k, v in teams.items()}, "force")
 
     # Build mention line
     honoured_parts: List[str] = []
@@ -4927,6 +4958,8 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     kt_pres_gene = teams.get(kt_pres_name, {}).get("gene_carried", 0)
     kt_risk_name = (kt_risk[0][0] if kt_risk else "Team")
     kt_risk_val = teams.get(kt_risk_name, {}).get("high_risk", 0)
+    kt_force_name = (kt_force[0][0] if kt_force else "Team")
+    kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
 
     ch1 = top_chapters[0][0] if len(top_chapters) > 0 else "Chapter"
     ch2 = top_chapters[1][0] if len(top_chapters) > 1 else "Chapter"
@@ -4951,7 +4984,8 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         f"Highest Tempo Team       {kt_ops_name} (Ops {kt_ops_val})\n"
         f"Most Reliable Team       {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
         f"Best Preservation Team   {kt_pres_name} (Armory {fmt_avg(kt_pres_arm)} | Gene {fmt_avg(kt_pres_gene)})\n"
-        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n\n"
+        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
+        f"Force Multiplier Team    {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DOCTRINES\n"
         f"Forge Doctrine           {ch1} (highest avg armory)\n"
         f"Codex Discipline         {ch2} (highest avg op)\n"
