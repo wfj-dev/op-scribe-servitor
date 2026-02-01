@@ -3360,6 +3360,36 @@ def validate_aar(record: dict):
             errors.append(
                 "Mission must not include trial-style progress tokens like 'n/m' or '-/m'."
             )
+        # Enforce canonical mission names for non-siege ops (case-insensitive).
+        # Allowable missions:
+        # Inferno, Decapitation, Vox Liberatis, Reliquary, Fall of Atreus,
+        # Ballistic Engine, Termination, Obelisk, Vortex, Reclamation,
+        # Disruption, Exfiltration
+        try:
+            if not is_siege:
+                allowed_missions = {
+                    "inferno",
+                    "decapitation",
+                    "vox liberatis",
+                    "reliquary",
+                    "fall of atreus",
+                    "ballistic engine",
+                    "termination",
+                    "obelisk",
+                    "vortex",
+                    "reclamation",
+                    "disruption",
+                    "exfiltration",
+                }
+                # Strip any trailing role/mention tokens (e.g., '<@&...>') and BOMs
+                mclean = re.sub(r"<.*", "", mstr or "").strip()
+                mclean = mclean.replace("\ufeff", "").strip()
+                if mclean and mclean.lower() not in allowed_missions:
+                    errors.append(
+                        f"Mission '{mclean}' is not a recognized mission name."
+                    )
+        except Exception:
+            pass
 
     # 2) Difficulty must be one of the known tags
     dlower = difficulty.lower()
