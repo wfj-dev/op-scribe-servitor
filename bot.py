@@ -4040,30 +4040,57 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
         reply_id = existing.get("reply_id") if isinstance(existing, dict) else None
 
         if reply_id:
-            # Edit existing reply instead of creating a new one
+            # Try to fetch the stored reply; if it exists, prefer updating it
+            # to avoid duplicates. However, editing does not notify the user,
+            # so if the existing reply does not mention the author, also send
+            # a short ping so the author receives a notification.
             try:
                 try:
                     reply_msg = await msg.channel.fetch_message(int(reply_id))
                 except Exception:
-                    # Could not fetch stored reply; fall back to send a new reply
                     reply_msg = None
                 if reply_msg:
-                    await reply_msg.edit(content=content)
-                    # Update stored errors in case they changed
-                    data[sid]["errors"] = filtered[:max_lines]
-                    _save_json_dict(AAR_ERRORS_PATH, data)
-                    return
+                    try:
+                        await reply_msg.edit(content=content)
+                        # Update stored errors in case they changed
+                        data[sid]["errors"] = filtered[:max_lines]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                        # If the edited reply does not mention the author, send a short ping.
+                        author_id = getattr(msg.author, "id", None)
+                        try:
+                            if author_id and f"<@{author_id}>" not in (reply_msg.content or ""):
+                                ping = f"<@{author_id}> Your After-Action Report was reviewed; see the bot's reply for details."
+                                try:
+                                    await msg.channel.send(ping)
+                                except Exception:
+                                    # fall back to DM
+                                    try:
+                                        await msg.author.send(ping)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        return
+                    except Exception:
+                        # If edit fails, continue to attempt sending a new reply
+                        pass
             except Exception:
-                # If edit fails, continue to attempt sending a new reply
+                # any unexpected failure - continue to send a new reply
                 pass
 
         # No existing reply found or edit failed: send a new reply and record its id
         try:
             sent = None
+            # Send a new reply and mention the author so they receive a notification
             try:
-                sent = await msg.reply(content, mention_author=False)
+                sent = await msg.reply(content, mention_author=True)
             except TypeError:
-                sent = await msg.reply(content)
+                # older discord.py versions may not accept mention_author kw
+                # fall back to prefixing the content with an explicit mention
+                try:
+                    sent = await msg.reply(f"<@{getattr(msg.author, 'id', '')}>\n{content}")
+                except Exception:
+                    sent = None
             if sent and isinstance(data, dict):
                 sid = str(getattr(msg, "id", ""))
                 # Ensure there's an entry for this aar in the errors file
