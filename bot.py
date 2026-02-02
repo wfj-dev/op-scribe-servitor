@@ -7,6 +7,7 @@ import json
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from discord.ext import tasks
 import uuid
 import re
@@ -160,7 +161,6 @@ async def _send_watch_command_notice(kind: str):
     except Exception as e:
         logger.debug(f"Failed to delete previous status bulletin: {e}")
 
-    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     emoji = "✅" if status == "ONLINE" else "⛔"
     flavor = (
         "Machine-spirit standing by."
@@ -168,7 +168,8 @@ async def _send_watch_command_notice(kind: str):
         else "Machine-spirit at rest."
     )
     # Concise, at-a-glance status with a touch of flavor
-    content = f"{mention} V-1 STATUS: {status} {emoji} — {ts}\n{flavor}"
+    # Omit explicit timestamp; Discord shows message time in the UI.
+    content = f"{mention} V-1 STATUS: {status} {emoji}\n{flavor}"
     try:
         await channel.send(
             content, allowed_mentions=discord.AllowedMentions(roles=True)
@@ -2117,9 +2118,15 @@ async def cache_stats(interaction: discord.Interaction):
 
     last_flush = stats["last_flush_time"]
     if last_flush:
-        last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime(
-            "%Y-%m-%d %H:%M:%S UTC"
-        )
+        try:
+            lf = datetime.fromtimestamp(last_flush, tz=timezone.utc).astimezone(
+                ZoneInfo("America/New_York")
+            )
+            last_flush_str = lf.strftime("%Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
     else:
         last_flush_str = "Never"
     msg = (
@@ -2560,9 +2567,17 @@ async def tally_deeds(
         # Member join date (server join time); fallback to 'Unknown' if unavailable
         try:
             joined_at = getattr(target, "joined_at", None)
-            joined_str = (
-                joined_at.strftime("%Y-%m-%d %H:%M UTC") if joined_at else "Unknown"
-            )
+            if joined_at:
+                try:
+                    # Ensure joined_at is timezone-aware, defaulting to UTC
+                    if joined_at.tzinfo is None:
+                        joined_at = joined_at.replace(tzinfo=timezone.utc)
+                    ja_et = joined_at.astimezone(ZoneInfo("America/New_York"))
+                    joined_str = ja_et.strftime("%Y-%m-%d %H:%M %Z")
+                except Exception:
+                    joined_str = joined_at.strftime("%Y-%m-%d %H:%M UTC")
+            else:
+                joined_str = "Unknown"
         except Exception:
             joined_str = "Unknown"
 
@@ -5705,10 +5720,18 @@ async def _scheduled_honours_runner():
         except Exception:
             return
 
-        today = datetime.utcnow().date()
+        # Use America/New_York (ET) for scheduling checks so posts occur at
+        # a fixed local hour for the majority US audience.
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        today = now_et.date()
         global LAST_WEEKLY_POST_DATE, LAST_MONTHLY_POST_DATE
         # Weekly: Friday
-        if today.weekday() == 4 and LAST_WEEKLY_POST_DATE != str(today):
+        # Weekly: Friday at 20:00 ET
+        if (
+            today.weekday() == 4
+            and now_et.hour == 20
+            and LAST_WEEKLY_POST_DATE != str(today)
+        ):
             honour_line, ansi = await _build_honours(guild, 7, include_mentions=True)
             # If returned as split (honour_line, ansi) where honour_line only and ansi full, send two messages
             try:
@@ -5733,18 +5756,27 @@ async def _scheduled_honours_runner():
             LAST_WEEKLY_POST_DATE = str(today)
 
         # Monthly: day 1 -> use previous calendar month
-        if today.day == 1 and LAST_MONTHLY_POST_DATE != str(today):
+        # Monthly: day 1 at 20:00 ET -> cover previous calendar month
+        if today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today):
             # Compute first day of current month and previous month (UTC naive)
-            now = datetime.utcnow()
-            first_of_current = datetime(now.year, now.month, 1)
-            if now.month == 1:
+            # Use ET-local month boundaries, convert to UTC-naive datetimes
+            now_local = now_et
+            first_of_current_local = datetime(now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York"))
+            if now_local.month == 1:
                 prev_month = 12
-                prev_year = now.year - 1
+                prev_year = now_local.year - 1
             else:
-                prev_month = now.month - 1
-                prev_year = now.year
-            prev_start = datetime(prev_year, prev_month, 1)
-            prev_end = first_of_current
+                prev_month = now_local.month - 1
+                prev_year = now_local.year
+            prev_start_local = datetime(prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York"))
+            # convert to UTC naive datetimes expected by _build_honours
+            try:
+                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                # fallback to naive local dates if conversion fails
+                prev_start = datetime(prev_year, prev_month, 1)
+                prev_end = datetime(now_local.year, now_local.month, 1)
 
             honour_line, ansi = await _build_honours(
                 guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
