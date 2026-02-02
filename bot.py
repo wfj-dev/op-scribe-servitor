@@ -5485,6 +5485,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         kt_avg[0][0] if kt_avg else None,
         kt_pres[0][0] if kt_pres else None,
         kt_risk[0][0] if kt_risk else None,
+        kt_force[0][0] if kt_force else None,
     ]:
         if not t:
             continue
@@ -5535,16 +5536,9 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     honoured_parts.extend(team_mentions)
 
     # Chapters: collect top doctrines (just names)
-    chapter_mentions: List[str] = []
+    # Compute top-by-ops chapters for display fallback; actual doctrine winners
+    # (and mentions) are chosen below from normalized metrics.
     top_chapters = sorted(chapters.items(), key=lambda it: -it[1].get("ops", 0))[:4]
-    for ch, _ in top_chapters:
-        r = _role_for_chapter_mention(guild, ch)
-        if r and include_mentions:
-            chapter_mentions.append(f"<@&{r.id}>")
-        else:
-            chapter_mentions.append(ch)
-
-    honoured_parts.extend(chapter_mentions)
 
     # Keep top-by-ops chapters for mention/display; doctrine winners will be
     # selected from all eligible chapters below using normalized ranking to
@@ -5686,8 +5680,27 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     ch2_val = _chap_avg_ops(ch2)
     ch3_val = _chap_ops_per_member(ch3)
     ch4_val = _chap_gene_rate(ch4)
-
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
+
+    # Build chapter mentions from doctrine winners only (preserve order and
+    # dedupe). Only include winners that are non-empty and not the placeholder.
+    chapter_mentions = []
+    for ch in dict.fromkeys([ch1, ch2, ch3, ch4]):
+        if not ch or ch == "Chapter":
+            continue
+        try:
+            r = _role_for_chapter_mention(guild, ch)
+            if r and include_mentions:
+                chapter_mentions.append(f"<@&{r.id}>")
+            else:
+                chapter_mentions.append(ch)
+        except Exception:
+            chapter_mentions.append(ch)
+
+    honoured_parts.extend(chapter_mentions)
+
+    # Construct HONOURED line (dedupe while preserving order)
+    honour_line = "HONOURED: " + " ".join(dict.fromkeys([p for p in honoured_parts if p]))
 
     # Choose display date for the honours header: prefer end of window when
     # provided, otherwise use `now`.
@@ -5874,11 +5887,18 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     if not _user_is_forgemaster(interaction.user):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
-    await interaction.response.defer(ephemeral=True)
+    # Try to defer; if the interaction is already unknown/expired, fall back
+    # to sending an immediate response later. Track whether defer succeeded.
+    deferred = False
+    try:
+        await interaction.response.defer(ephemeral=True)
+        deferred = True
+    except Exception:
+        deferred = False
     guild = interaction.guild
     if (period or "").lower().startswith("w"):
         days = 7
-        honour_line, ansi = await _build_honours(guild, days, include_mentions=False)
+        honour_line, ansi = await _build_honours(guild, days, include_mentions=True)
     else:
         # Monthly preview: show current partial month (from 1st of current month to now)
         now = datetime.utcnow()
@@ -5886,17 +5906,62 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
         prev_start = first_of_current
         prev_end = now
         honour_line, ansi = await _build_honours(
-            guild, 30, include_mentions=False, start_dt=prev_start, end_dt=prev_end
+            guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
         )
-    # Debug output should be ephemeral and must not include mentions
-    content = ansi
-    if len(content) > 2000:
-        # Trim doctrine block first
-        content = (
-            ansi.split("CHAPTER DOCTRINES")[0]
-            + "Notes: Honours reflect service patterns, not rank.\\n==============================================================================\\n"
-        )
-    await interaction.followup.send(content, ephemeral=True)
+    # Include mentions in preview so Forgemasters can test tagging; send honour_line
+    # before ANSI block and respect Discord message length limits.
+    content = honour_line + "\n" + ansi
+    try:
+        if len(content) <= 2000:
+            if deferred:
+                await interaction.followup.send(
+                    content,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+            else:
+                await interaction.response.send_message(
+                    content,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+        else:
+            # Split into mentions then ANSI block. If deferred, use followups; else
+            # send the honour_line as the response and post the ANSI block to the
+            # channel (non-ephemeral) as a best-effort fallback.
+            if deferred:
+                await interaction.followup.send(
+                    honour_line,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+                await interaction.followup.send(ansi, ephemeral=True)
+            else:
+                await interaction.response.send_message(
+                    honour_line,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+                try:
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send(ansi)
+                except Exception:
+                    # last-resort: attempt to send ANSI as a normal followup
+                    try:
+                        await interaction.followup.send(ansi)
+                    except Exception:
+                        pass
+    except Exception:
+        # Fallback: try to send ANSI block without mentions
+        try:
+            if deferred:
+                await interaction.followup.send(ansi, ephemeral=True)
+            else:
+                await interaction.response.send_message(ansi, ephemeral=True)
+        except Exception:
+            # give up silently; command already logged
+            pass
 
 
 # Start scheduled runner if possible
