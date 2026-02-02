@@ -258,14 +258,18 @@ async def _do_scheduled_audit(span_days: int | None = None):
         if not guild:
             logger.debug("Scheduled audit: no guild available; skipping.")
             return
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
         if not aar_channel:
             logger.debug("Scheduled audit: AAR channel not found; skipping.")
             return
         await RECONCILE_LOCK.acquire()
         try:
             fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
-            logger.info(f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}")
+            logger.info(
+                f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}"
+            )
         finally:
             RECONCILE_LOCK.release()
     except Exception:
@@ -296,7 +300,9 @@ try:
     schedules_cfg = CONFIG.get("schedules") or {}
     if _is_truthy(schedules_cfg.get("daily_audit_enabled")):
         SCHEDULE_DAILY_AUDIT_ENABLED = True
-    SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
+    SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(
+        schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS
+    )
 except Exception:
     pass
 
@@ -562,7 +568,6 @@ def _load_rites() -> dict:
             return json.load(f) or {}
     except Exception:
         return {}
-
 
 
 def _save_rites(data: dict):
@@ -1174,7 +1179,9 @@ async def on_ready():
         if SCHEDULE_DAILY_AUDIT_ENABLED:
             # Run one immediate audit task and then start the 24-hour loop
             try:
-                bot.loop.create_task(_do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS))
+                bot.loop.create_task(
+                    _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
+                )
             except Exception:
                 # best-effort immediate run
                 try:
@@ -1652,20 +1659,30 @@ async def audit_archive_discrepancies(
                 await interaction.followup.send(report, ephemeral=True)
             except Exception as e:
                 logger.debug(f"Failed to send followup report: {e}")
-                # Attempt to DM the invoking user as a fallback
+                # Fallback: attempt to post the report to the invoking channel
                 try:
-                    await interaction.user.send(report)
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send(report)
+                    else:
+                        logger.error("Unable to deliver report: no channel available.")
                 except Exception:
                     logger.error(
-                        "Unable to deliver report to user; check bot permissions."
+                        "Unable to deliver report to channel; check bot permissions."
                     )
         else:
-            # Interaction was not defer-able; attempt to DM the invoking user
+            # Interaction was not defer-able; post the report to the invoking channel if possible
             try:
-                await interaction.user.send(report)
+                ch = interaction.channel
+                if ch:
+                    await ch.send(report)
+                else:
+                    logger.error(
+                        "Unable to deliver report: no channel available and DM disabled."
+                    )
             except Exception:
                 logger.error(
-                    "Unable to deliver report to user; interaction unknown and DM failed."
+                    "Unable to deliver report to channel; interaction unknown and channel send failed."
                 )
     finally:
         RECONCILE_LOCK.release()
@@ -1714,11 +1731,19 @@ async def sanctify_battle_records(
                     logger.debug(f"Failed to send followup: {e}")
             else:
                 try:
-                    await interaction.user.send(
-                        "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
-                    )
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send(
+                            "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
+                        )
+                    else:
+                        logger.error(
+                            "Unable to deliver error report: no channel available and DM disabled."
+                        )
                 except Exception:
-                    logger.error("Unable to deliver error report to user; check bot permissions.")
+                    logger.error(
+                        "Unable to deliver error report to channel; check bot permissions."
+                    )
             return
         ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
@@ -1748,14 +1773,28 @@ async def sanctify_battle_records(
             except Exception as e:
                 logger.debug(f"Failed to send followup report: {e}")
                 try:
-                    await interaction.user.send(report)
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send(report)
+                    else:
+                        logger.error("Unable to deliver report: no channel available.")
                 except Exception:
-                    logger.error("Unable to deliver report to user; check bot permissions.")
+                    logger.error(
+                        "Unable to deliver report to channel; check bot permissions."
+                    )
         else:
             try:
-                await interaction.user.send(report)
+                ch = interaction.channel
+                if ch:
+                    await ch.send(report)
+                else:
+                    logger.error(
+                        "Unable to deliver report: no channel available and DM disabled."
+                    )
             except Exception:
-                logger.error("Unable to deliver report to user; check bot permissions.")
+                logger.error(
+                    "Unable to deliver report to channel; check bot permissions."
+                )
     finally:
         RECONCILE_LOCK.release()
 
@@ -1856,12 +1895,16 @@ async def _run_recheck_errors(
                                 # reply is in the same channel as original message
                                 dummy_msg = await aar_channel.fetch_message(aar_id)
                                 try:
-                                    reply_msg = await dummy_msg.channel.fetch_message(int(reply_id))
+                                    reply_msg = await dummy_msg.channel.fetch_message(
+                                        int(reply_id)
+                                    )
                                     try:
                                         await reply_msg.delete()
                                     except Exception:
                                         try:
-                                            logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                            logger.debug(
+                                                f"Unable to delete reply {reply_id} for AAR {sid}"
+                                            )
                                         except Exception:
                                             pass
                                 except Exception:
@@ -1918,7 +1961,8 @@ async def _run_recheck_errors(
                 )
                 try:
                     await _reply_aar_rejection(
-                        msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"]
+                        msg,
+                        [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"],
                     )
                 except Exception:
                     pass
@@ -1931,7 +1975,9 @@ async def _run_recheck_errors(
                         aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
                     )
                     try:
-                        await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}"] + errors)
+                        await _reply_aar_rejection(
+                            msg, [f"Jump URL: {msg.jump_url}"] + errors
+                        )
                     except Exception:
                         pass
                     await _set_aar_reaction(msg, "error")
@@ -1948,12 +1994,16 @@ async def _run_recheck_errors(
                             if reply_id:
                                 try:
                                     # reply is in the same channel as the original message
-                                    reply_msg = await msg.channel.fetch_message(int(reply_id))
+                                    reply_msg = await msg.channel.fetch_message(
+                                        int(reply_id)
+                                    )
                                     try:
                                         await reply_msg.delete()
                                     except Exception:
                                         try:
-                                            logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                            logger.debug(
+                                                f"Unable to delete reply {reply_id} for AAR {sid}"
+                                            )
                                         except Exception:
                                             pass
                                 except Exception:
@@ -2017,7 +2067,9 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 msg,
             )
             try:
-                await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"])
+                await _reply_aar_rejection(
+                    msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"]
+                )
             except Exception:
                 pass
             to_react_err.append(msg)
@@ -2068,14 +2120,16 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 reply_id = data.get(sid, {}).get("reply_id")
                 if reply_id:
                     try:
-                            reply_msg = await msg.channel.fetch_message(int(reply_id))
+                        reply_msg = await msg.channel.fetch_message(int(reply_id))
+                        try:
+                            await reply_msg.delete()
+                        except Exception:
                             try:
-                                await reply_msg.delete()
+                                logger.debug(
+                                    f"Unable to delete reply {reply_id} for AAR {sid}"
+                                )
                             except Exception:
-                                try:
-                                    logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
-                                except Exception:
-                                    pass
+                                pass
                     except Exception:
                         pass
                 del data[sid]
@@ -4040,30 +4094,138 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
         reply_id = existing.get("reply_id") if isinstance(existing, dict) else None
 
         if reply_id:
-            # Edit existing reply instead of creating a new one
+            # Try to fetch the stored reply; if it exists, prefer updating it
+            # to avoid duplicates. However, editing does not notify the user,
+            # so if the existing reply does not mention the author, also send
+            # a short ping so the author receives a notification.
             try:
                 try:
                     reply_msg = await msg.channel.fetch_message(int(reply_id))
                 except Exception:
-                    # Could not fetch stored reply; fall back to send a new reply
                     reply_msg = None
                 if reply_msg:
-                    await reply_msg.edit(content=content)
-                    # Update stored errors in case they changed
-                    data[sid]["errors"] = filtered[:max_lines]
-                    _save_json_dict(AAR_ERRORS_PATH, data)
-                    return
+                    try:
+                        await reply_msg.edit(content=content)
+                        # Update stored errors in case they changed
+                        data[sid]["errors"] = filtered[:max_lines]
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+
+                        # If the edited reply does not mention the author, update the
+                        # reply to include an explicit mention so the author is
+                        # notified without sending a DM (avoid DMs).
+                        author_id = getattr(msg.author, "id", None)
+                        try:
+                            if author_id and f"<@{author_id}>" not in (
+                                reply_msg.content or ""
+                            ):
+                                try:
+                                    new_content = f"<@{author_id}>\n{content}"
+                                    await reply_msg.edit(content=new_content)
+                                    # persist updated errors and reply id
+                                    data[sid]["errors"] = filtered[:max_lines]
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        return
+                    except Exception:
+                        # If edit fails, continue to attempt sending a new reply
+                        pass
             except Exception:
-                # If edit fails, continue to attempt sending a new reply
+                # any unexpected failure - continue to send a new reply
                 pass
 
         # No existing reply found or edit failed: send a new reply and record its id
+        # Before sending a new reply, scan recent channel messages to see if the
+        # bot already posted a reply to this AAR (possible if reply_id was not
+        # recorded or is stale). If found, edit that message instead of sending
+        # a new one to avoid duplicates.
         try:
-            sent = None
+            existing_reply = None
             try:
-                sent = await msg.reply(content, mention_author=False)
+                async for recent in msg.channel.history(limit=64):
+                    try:
+                        ref = getattr(recent, "reference", None)
+                        if not ref:
+                            continue
+                        if getattr(ref, "message_id", None) == getattr(msg, "id", None):
+                            if getattr(recent.author, "id", None) == getattr(
+                                bot.user, "id", None
+                            ):
+                                existing_reply = recent
+                                break
+                    except Exception:
+                        continue
+            except Exception:
+                existing_reply = None
+            if existing_reply:
+                try:
+                    await existing_reply.edit(content=content)
+                    # Update stored reply_id for this AAR
+                    sid = str(getattr(msg, "id", ""))
+                    ent = data.get(sid) or {}
+                    ent["errors"] = filtered[:max_lines]
+                    ent["author"] = _author_info_from_message(msg)
+                    try:
+                        ent["reply_id"] = str(getattr(existing_reply, "id", ""))
+                    except Exception:
+                        ent["reply_id"] = None
+                    data[sid] = ent
+                    try:
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    except Exception:
+                        pass
+                    # If the edited reply does not mention the author, update the
+                    # reply to include an explicit mention so the author is
+                    # notified without sending a DM (avoid DMs).
+                    try:
+                        author = getattr(msg, "author", None)
+                        author_id = getattr(author, "id", None) if author else None
+                        if author_id and f"<@{author_id}>" not in (
+                            existing_reply.content or ""
+                        ):
+                            try:
+                                new_content = f"<@{author_id}>\n{content}"
+                                await existing_reply.edit(content=new_content)
+                                sid = str(getattr(msg, "id", ""))
+                                ent = data.get(sid) or {}
+                                ent["errors"] = filtered[:max_lines]
+                                ent["author"] = _author_info_from_message(msg)
+                                try:
+                                    ent["reply_id"] = str(
+                                        getattr(existing_reply, "id", "")
+                                    )
+                                except Exception:
+                                    ent["reply_id"] = None
+                                data[sid] = ent
+                                try:
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    return
+                except Exception:
+                    # fall through to sending a new reply
+                    pass
+
+            sent = None
+            # Send a new reply and mention the author so they receive a notification
+            try:
+                sent = await msg.reply(content, mention_author=True)
             except TypeError:
-                sent = await msg.reply(content)
+                # older discord.py versions may not accept mention_author kw
+                # fall back to prefixing the content with an explicit mention
+                try:
+                    sent = await msg.reply(
+                        f"<@{getattr(msg.author, 'id', '')}>\n{content}"
+                    )
+                except Exception:
+                    sent = None
             if sent and isinstance(data, dict):
                 sid = str(getattr(msg, "id", ""))
                 # Ensure there's an entry for this aar in the errors file
@@ -5816,22 +5978,34 @@ async def _scheduled_honours_runner():
 
         # Monthly: day 1 -> use previous calendar month
         # Monthly: day 1 at 20:00 ET -> cover previous calendar month
-        if today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today):
+        if (
+            today.day == 1
+            and now_et.hour == 20
+            and LAST_MONTHLY_POST_DATE != str(today)
+        ):
             # Compute first day of current month and previous month (UTC naive)
             # Use ET-local month boundaries, convert to UTC-naive datetimes
             now_local = now_et
-            first_of_current_local = datetime(now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York"))
+            first_of_current_local = datetime(
+                now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
+            )
             if now_local.month == 1:
                 prev_month = 12
                 prev_year = now_local.year - 1
             else:
                 prev_month = now_local.month - 1
                 prev_year = now_local.year
-            prev_start_local = datetime(prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York"))
+            prev_start_local = datetime(
+                prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York")
+            )
             # convert to UTC naive datetimes expected by _build_honours
             try:
-                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
-                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_start = prev_start_local.astimezone(timezone.utc).replace(
+                    tzinfo=None
+                )
+                prev_end = first_of_current_local.astimezone(timezone.utc).replace(
+                    tzinfo=None
+                )
             except Exception:
                 # fallback to naive local dates if conversion fails
                 prev_start = datetime(prev_year, prev_month, 1)
