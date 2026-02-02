@@ -438,6 +438,7 @@ HOME_CHAPTERS = [
     "Black Templars",
     "Blood Angels",
     "Blood Ravens",
+    "Carcharodons",
     "Cowled Wardens",
     "Crimson Fists",
     "Dark Angels",
@@ -3451,7 +3452,8 @@ async def combat_bonds(
     all_bros = sorted(set(all_bros))
 
     pair_counts = _build_pair_counts(missions)
-    triples = _build_triple_bonds(pair_counts, all_bros)
+    # Build multi-size groups (3..5) weighted by pair AAR points
+    triples = _build_group_bonds(pair_counts, all_bros)
     # Active members in the window: those who appeared in at least one AAR
     active_count = len(all_bros)
     spreads = _build_spread_counts(pair_counts, active_count=active_count)
@@ -4611,17 +4613,63 @@ def _get_missions_last_days(days: int):
 
 
 def _build_pair_counts(missions):
-    """Count how often each pair of brothers appears together in provided missions.
-    Keys are sorted tuples of brother IDs (str, str).
+    """Compute weighted pair counts from missions.
+
+    Instead of simple co-occurrence counts, weight each pair by the AAR
+    points the two brothers earned together in a mission. Per-member AAR
+    points are computed similarly to `compute_stats_for_user_in_records`:
+    - For non-siege ops: use `points_for_op` (shared per-member value in record).
+    - For sieges: compute per-brother waves contribution (3 or 4 points per
+      5 waves depending on siege difficulty) using `brother_waves` or the
+      global `waves` value when per-brother not present.
+
+    Returns a mapping (uid_a, uid_b) -> total_weight (int).
     """
     pair_counts: Dict[Tuple[str, str], int] = {}
     for rec in missions:
         bros: List[str] = [str(b) for b in (rec.get("brother_ids") or [])]
+        if not bros:
+            continue
+        # compute per-member AAR points for this mission
+        per_member_points: Dict[str, int] = {}
+        dlower = (rec.get("difficulty") or "").lower()
+        is_siege = ("normal-siege" in dlower) or ("hard-siege" in dlower)
+        if is_siege:
+            bw = rec.get("brother_waves") or {}
+            for uid in bros:
+                try:
+                    my_waves = int(bw.get(uid, 0) or 0)
+                except Exception:
+                    try:
+                        my_waves = int(rec.get("waves") or 0)
+                    except Exception:
+                        my_waves = 0
+                if "normal-siege" in dlower:
+                    points = 3 * (my_waves // 5)
+                else:
+                    points = 4 * (my_waves // 5)
+                per_member_points[uid] = int(points)
+        else:
+            # non-siege: use the record's points_for_op as the per-member contribution
+            try:
+                p = int(rec.get("points_for_op", 0) or 0)
+            except Exception:
+                p = 0
+            for uid in bros:
+                per_member_points[uid] = p
+
         # unique per mission to avoid duplicate counting same brother twice
         unique_bros = sorted(set(bros))
         for a, b in itertools.combinations(unique_bros, 2):
             key = (a, b) if a < b else (b, a)
-            pair_counts[key] = pair_counts.get(key, 0) + 1
+            # weight this pair by the sum of their per-member points in this mission
+            wa = int(per_member_points.get(a, 0))
+            wb = int(per_member_points.get(b, 0))
+            pair_weight = wa + wb
+            # skip adding zero-weight co-occurrences (no AAR points earned)
+            if pair_weight <= 0:
+                continue
+            pair_counts[key] = pair_counts.get(key, 0) + int(pair_weight)
     return pair_counts
 
 
@@ -4661,10 +4709,14 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
     for x, y, z in itertools.combinations(uniq_bros, 3):
         pairs = [tuple(sorted((x, y))), tuple(sorted((x, z))), tuple(sorted((y, z)))]
         # Fetch pair counts
-        c = [int(pair_counts.get(p, 0) or 0) for p in pairs]
+        # Treat pair_counts as weighted values (floats allowed); use float for
+        # intermediate math but keep integer-like semantics for gating.
+        c = [float(pair_counts.get(p, 0) or 0.0) for p in pairs]
         c_ab, c_ac, c_bc = c
         # Eligibility: all pairs must meet minimum count
-        if (c_ab < min_pair) or (c_ac < min_pair) or (c_bc < min_pair):
+        if (c_ab < float(min_pair)) or (c_ac < float(min_pair)) or (
+            c_bc < float(min_pair)
+        ):
             continue
         # Optional balance gate: require min/max ratio
         try:
@@ -4678,7 +4730,11 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
 
         # Base score via Harmonic Mean (scaled by 3 to match prior sum scale when balanced)
         # HM = 3 / (1/a + 1/b + 1/c) for positive a,b,c
-        denom = (1.0 / float(c_ab)) + (1.0 / float(c_ac)) + (1.0 / float(c_bc))
+        denom = 0.0
+        try:
+            denom = (1.0 / float(c_ab)) + (1.0 / float(c_ac)) + (1.0 / float(c_bc))
+        except Exception:
+            denom = 0.0
         base_hm = (3.0 / denom) if denom > 0.0 else 0.0
         base_score = 3.0 * base_hm
 
@@ -4698,6 +4754,93 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
         triples.append(((x, y, z), final_score))
     triples.sort(key=lambda t: t[1], reverse=True)
     return triples
+
+
+def _build_group_bonds(
+    pair_counts: Dict[Tuple[str, str], int], brothers: List[str], sizes: Optional[List[int]] = None
+):
+    """Create group bonds for sizes in `sizes` (default 3..5) and score them.
+
+    Scoring approach (generalized from triads):
+      - Collect all internal pair weights for the group (sum of per-mission AAR points).
+      - Compute Harmonic Mean across those pair weights, scaled by group size.
+      - Apply the same dominance penalty based on the largest pair share.
+
+    Returns list of ((id1,...,idN), score:int) sorted by score desc.
+    """
+    try:
+        _cb = CONFIG.get("combat_bonds") or {}
+    except Exception:
+        _cb = {}
+    try:
+        dominance_alpha = float(_cb.get("dominance_alpha", 0.5))
+    except Exception:
+        dominance_alpha = 0.5
+    try:
+        min_pair = max(1, int(_cb.get("min_pair", 1)))
+    except Exception:
+        min_pair = 1
+    try:
+        min_balance_ratio = float(_cb.get("min_balance_ratio", 0.0))
+    except Exception:
+        min_balance_ratio = 0.0
+
+    if sizes is None:
+        sizes = [3, 4, 5]
+
+    groups: List[Tuple[Tuple[str, ...], int]] = []
+    uniq_bros = sorted(set(brothers))
+    for n in sizes:
+        if n < 2:
+            continue
+        for combo in itertools.combinations(uniq_bros, n):
+            # build all internal pair keys
+            pair_keys: List[Tuple[str, str]] = []
+            for a, b in itertools.combinations(combo, 2):
+                pair_keys.append(tuple(sorted((a, b))))
+            # gather counts (weights)
+            c_vals: List[float] = [float(pair_counts.get(k, 0) or 0.0) for k in pair_keys]
+            if not c_vals:
+                continue
+            # Eligibility: each internal pair must meet minimum
+            if any(v < float(min_pair) for v in c_vals):
+                continue
+            # Optional balance gate
+            try:
+                c_min = min(c_vals)
+                c_max = max(c_vals)
+                balance_ratio = (float(c_min) / float(c_max)) if c_max > 0 else 0.0
+            except Exception:
+                balance_ratio = 0.0
+            if (min_balance_ratio > 0.0) and (balance_ratio < min_balance_ratio):
+                continue
+
+            # Harmonic mean across M pairs: HM = M / sum(1/c_i)
+            denom = 0.0
+            try:
+                denom = sum((1.0 / float(v)) for v in c_vals if float(v) > 0.0)
+            except Exception:
+                denom = 0.0
+            base_hm = (len(c_vals) / denom) if denom > 0.0 else 0.0
+            # scale by group size to keep magnitude comparable to previous triad logic
+            base_score = float(n) * base_hm
+
+            total = float(sum(c_vals))
+            dom = (max(c_vals) / total) if total > 0.0 else 0.0
+            excess_norm = 0.0
+            try:
+                ideal = 1.0 / float(len(c_vals))
+                span = 1.0 - ideal
+                excess_norm = max(0.0, (dom - ideal) / span) if span > 0 else 0.0
+            except Exception:
+                excess_norm = max(0.0, dom - (1.0 / float(len(c_vals))))
+            penalty_factor = max(0.0, 1.0 - (dominance_alpha * excess_norm))
+
+            final_score = int(round(base_score * penalty_factor))
+            groups.append((tuple(combo), final_score))
+
+    groups.sort(key=lambda t: t[1], reverse=True)
+    return groups
 
 
 def _build_spread_counts(
@@ -4989,15 +5132,14 @@ def _format_bonds_for_discord(
         "\u001b[32m=============================================================================="
     )
     lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
-    lines.append("  SUB-ROUTINE: TRIADIC BATTLE-LITANY INDEX")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("  SUB-ROUTINE: BATTLE-LITANY INDEX")
+    lines.append("==============================================================================")
     if window_days is not None:
         lines.append(f"  Auspex Window: Last {window_days} day(s)")
     else:
         lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
-    rank = 1
+    # Veneration key (compact) — per-bond output will include only the tier label
+    lines.append("  Veneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE\n")
     scores_for_cutoffs = [score for _tri, score in bonds]
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
     ordinal_labels = {
@@ -5007,11 +5149,13 @@ def _format_bonds_for_discord(
         4: "QUATERNARY",
         5: "QUINARY",
     }
-    for triple, score in bonds:
-        tier = _bond_tier_dynamic(score, cutoffs)
-        a, b, c = triple
 
-        # Resolve members and labels (rank + name + chapter)
+    # Build bond blocks independently so we can drop specific ordinal blocks
+    bond_blocks: List[Tuple[int, str]] = []
+    for idx, (triple, score) in enumerate(bonds, start=1):
+        tier = _bond_tier_dynamic(score, cutoffs)
+        members_in_group = list(triple)
+
         def _member_label(uid: str):
             member = None
             name = "REDACTED"
@@ -5023,7 +5167,27 @@ def _format_bonds_for_discord(
             if member:
                 name = member.nick or member.display_name
 
-            chap = (chapters or {}).get(uid)
+            # Resolve chapter from member roles by matching against HOME_CHAPTERS
+            chap = None
+            if member:
+                try:
+                    member_role_names = {
+                        (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                    }
+                    match = next(
+                        (
+                            hc
+                            for hc in HOME_CHAPTERS
+                            if any(rn.lower() == hc.lower() for rn in member_role_names)
+                        ),
+                        None,
+                    )
+                    if match:
+                        chap = match
+                except Exception:
+                    chap = None
+            if not chap:
+                chap = (chapters or {}).get(uid)
             chap_str = chap if chap else "REDACTED"
             spread_val = (spreads or {}).get(uid)
             spread_str = ""
@@ -5041,18 +5205,32 @@ def _format_bonds_for_discord(
                 spread_str = f" • Spread {spread_val}"
             return f"{name} [{chap_str}]{spread_str}"
 
-        # Optional codename derived from majority chapter
-        tri_chapters = [(chapters or {}).get(x) for x in (a, b, c)]
-        tri_chapters = [ch for ch in tri_chapters if ch]
-        title = ordinal_labels.get(rank, "BOND")
+        title = ordinal_labels.get(idx, "BOND")
+        b_lines: List[str] = []
+        b_lines.append(f"    ++ {title} BOND ({len(members_in_group)}-man) ++")
+        for uid in members_in_group:
+            b_lines.append(f"    {_member_label(uid)}")
+        b_lines.append(f"    Tier: {tier}")
+        b_lines.append("")
+        bond_blocks.append((idx, "\n".join(b_lines)))
 
-        lines.append(f"    ++ {title} BOND ++")
-        lines.append(f"    {_member_label(a)}")
-        lines.append(f"    {_member_label(b)}")
-        lines.append(f"    {_member_label(c)}")
-        lines.append(f"    {_render_veneration_line(tier)}")
-        lines.append("")
-        rank += 1
+    # Assemble full text, dropping QUINARY (5) then QUATERNARY (4) if over limit
+    header = "\n".join(lines)
+    footer = "\n" + "==============================================================================" + "\n\u001b[0m```"
+
+    def assemble(blocks: List[Tuple[int, str]]):
+        return header + "\n" + "\n".join(b for _i, b in blocks) + footer
+
+    full_text = assemble(bond_blocks)
+    if len(full_text) > 2000:
+        # Drop QUINARY (ordinal 5)
+        filtered = [b for b in bond_blocks if b[0] != 5]
+        full_text = assemble(filtered)
+    if len(full_text) > 2000:
+        # Drop QUATERNARY (ordinal 4)
+        filtered = [b for b in bond_blocks if b[0] not in (5, 4)]
+        full_text = assemble(filtered)
+    return full_text
     lines.append(
         "=============================================================================="
     )
@@ -5072,7 +5250,7 @@ def _format_bonds_embed(
     Shows up to 5 triads, with tier labels and member lines.
     """
     embed = discord.Embed(
-        title="Combat Bonds — Triadic Battle-Litany",
+        title="Combat Bonds — Multi-Member Battle-Litany",
         description=(
             f"Auspex Window: Last {window_days} day(s)"
             if window_days is not None
@@ -5083,6 +5261,12 @@ def _format_bonds_embed(
     if not bonds:
         embed.description = "No qualifying Combat Bonds found in the current window."
         return embed
+
+    # Compact veneration key in the embed description
+    try:
+        embed.description = (embed.description or "") + "\n\nVeneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE"
+    except Exception:
+        pass
 
     scores_for_cutoffs = [score for _tri, score in bonds]
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
@@ -5104,7 +5288,27 @@ def _format_bonds_embed(
                 member = None
         if member:
             name = member.nick or member.display_name
-        chap = (chapters or {}).get(uid)
+        # Resolve chapter from member roles by matching against HOME_CHAPTERS
+        chap = None
+        if member:
+            try:
+                member_role_names = {
+                    (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                }
+                match = next(
+                    (
+                        hc
+                        for hc in HOME_CHAPTERS
+                        if any(rn.lower() == hc.lower() for rn in member_role_names)
+                    ),
+                    None,
+                )
+                if match:
+                    chap = match
+            except Exception:
+                chap = None
+        if not chap:
+            chap = (chapters or {}).get(uid)
         chap_str = chap if chap else "REDACTED"
         spread_val = (spreads or {}).get(uid)
         spread_str = ""
@@ -5128,9 +5332,9 @@ def _format_bonds_embed(
         if rank > 5:
             break
         tier = _bond_tier_dynamic(score, cutoffs)
-        a, b, c = triple
-        name = f"{ordinal_labels.get(rank, 'BOND')} — {tier}"
-        value = f"• {_member_label(a)}\n• {_member_label(b)}\n• {_member_label(c)}"
+        members_in_group = list(triple)
+        name = f"{ordinal_labels.get(rank, 'BOND')} — {tier} ({len(members_in_group)}-man)"
+        value = "\n".join(f"• {_member_label(uid)}" for uid in members_in_group)
         embed.add_field(name=name, value=value, inline=False)
         rank += 1
 
