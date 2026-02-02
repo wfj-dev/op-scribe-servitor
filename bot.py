@@ -49,6 +49,9 @@ bot.tree = app_commands.CommandTree(bot)
 RECONCILE_LOCK = asyncio.Lock()
 CHAPLAIN_INGEST_LOCK = asyncio.Lock()
 
+# Flag to indicate a monthly full-history audit is pending/running so daily audits skip.
+MONTHLY_AUDIT_PENDING = False
+
 # Rites storage lock
 RITES_LOCK = asyncio.Lock()
 
@@ -249,8 +252,13 @@ async def _announce_shutdown_and_close():
 
 
 # Scheduled audit: runs _run_recheck_errors periodically when enabled
-async def _do_scheduled_audit(span_days: int | None = None):
+async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = False):
     try:
+        global MONTHLY_AUDIT_PENDING
+        # If a monthly audit is pending/running, skip regular scheduled runs.
+        if not monthly and MONTHLY_AUDIT_PENDING:
+            logger.info("Scheduled audit skipped: monthly audit pending.")
+            return
         if RECONCILE_LOCK.locked():
             logger.info("Scheduled audit skipped: reconciliation already in progress.")
             return
@@ -265,24 +273,60 @@ async def _do_scheduled_audit(span_days: int | None = None):
             logger.debug("Scheduled audit: AAR channel not found; skipping.")
             return
         await RECONCILE_LOCK.acquire()
+        if monthly:
+            # Mark monthly as running while we hold the lock
+            MONTHLY_AUDIT_PENDING = True
         try:
             fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
             logger.info(
                 f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}"
             )
         finally:
+            # Clear monthly flag before releasing lock so other scheduled runs
+            # may not start until this completes.
+            try:
+                if monthly:
+                    MONTHLY_AUDIT_PENDING = False
+            except Exception:
+                pass
             RECONCILE_LOCK.release()
     except Exception:
         logger.exception("Scheduled audit failed")
 
 
-@tasks.loop(hours=24)
+@tasks.loop(hours=24, wait=True)
 async def _scheduled_audit_loop():
     # Use configured span days
     try:
         await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
     except Exception:
         logger.exception("Error running scheduled audit loop")
+
+
+@tasks.loop(hours=24, wait=True)
+async def _monthly_audit_loop():
+    """Run once-per-day; on the last day of the month perform a full-history audit.
+
+    The loop uses `wait=True` so its first execution occurs one interval after
+    being started (matching the scheduled loop behavior). On the last day of
+    the month, it will call `_do_scheduled_audit` with `monthly=True` which
+    causes a full-history recheck (span_days=None) and signals priority to
+    regular scheduled audits.
+    """
+    try:
+        now = datetime.utcnow()
+        tomorrow = now + timedelta(days=1)
+        # If tomorrow is the first, today is the last day of the month.
+        if getattr(tomorrow, "day", 0) == 1:
+            logger.info("Monthly audit scheduled: running full-history recheck.")
+            try:
+                await _do_scheduled_audit(None, monthly=True)
+            except Exception:
+                logger.exception("Monthly audit failed")
+        else:
+            logger.debug("Monthly audit: not the last day of the month; skipping.")
+    except Exception:
+        logger.exception("Error running monthly audit loop")
 
 
 # Config load
@@ -1173,6 +1217,13 @@ async def on_ready():
                     logger.info("Scheduled daily audit loop started (24h interval).")
             except Exception:
                 logger.exception("Failed to start scheduled audit loop")
+            # Also start the monthly audit loop (checks for last-day-of-month)
+            try:
+                if not _monthly_audit_loop.is_running():
+                    _monthly_audit_loop.start()
+                    logger.info("Monthly audit loop started (daily check for month-end).")
+            except Exception:
+                logger.exception("Failed to start monthly audit loop")
     except Exception:
         logger.debug("Error checking/starting scheduled audit loop")
 
