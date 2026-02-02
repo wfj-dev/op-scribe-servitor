@@ -413,7 +413,6 @@ KILL_TEAMS = [
 
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {
-    # Update to your desired demo channel name
     "❖⋅data-vault⋅❖"
 }
 
@@ -698,33 +697,23 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
             if comp_roles:
                 # Determine if member qualifies by rank or specialist role
                 qualifies = False
-                hr_idx = get_highest_rank_index(member)
-                lt_idx = _role_index("Watch Lieutenant")
-                if hr_idx is not None and lt_idx is not None and hr_idx <= lt_idx:
-                    qualifies = True
-                # Company Champion override
                 try:
+                    # Only these exact roles qualify a member for Company Command
+                    allowed = {
+                        "Watch Techmarine",
+                        "Watch Apothecary",
+                        "Watch Librarian",
+                        "Watch Chaplain",
+                        "Company Champion",
+                        "Watch Lieutenant",
+                        "Watch Captain",
+                    }
                     names = _canonical_role_names(member)
-                    if "Company Champion" in names:
+                    # If the member holds any of the allowed roles exactly, they qualify
+                    if any(n in allowed for n in names):
                         qualifies = True
                 except Exception:
-                    pass
-                # Specialist roles heuristic
-                try:
-                    lname = {n.lower() for n in _canonical_role_names(member)}
-                    if any(
-                        x in lname
-                        for x in (
-                            "watch apothecary",
-                            "watch techmarine",
-                            "watch librarian",
-                            "watch veteran",
-                            "specialist",
-                        )
-                    ):
-                        qualifies = True
-                except Exception:
-                    pass
+                    qualifies = False
 
                 if qualifies:
                     for r in comp_roles:
@@ -4110,29 +4099,30 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         data[sid]["errors"] = filtered[:max_lines]
                         _save_json_dict(AAR_ERRORS_PATH, data)
 
-                        # Editing an existing bot reply does NOT trigger a
-                        # notification to the author. If the edited reply does
-                        # not already mention the author, send a short in-channel
-                        # reply that pings them so they receive a notification.
-                        author_id = getattr(msg.author, "id", None)
+                        # Preserve author mention when editing existing bot replies.
+                        # If the stored error entry includes an author id and the
+                        # new content does not contain that mention, prefix the
+                        # edited content with the mention so the visible reply
+                        # continues to include the author tag.
                         try:
-                            if author_id and f"<@{author_id}>" not in (
-                                reply_msg.content or ""
-                            ):
+                            entry = data.get(sid) if isinstance(data, dict) else None
+                            author_info = entry.get("author") if isinstance(entry, dict) else None
+                            author_id = author_info.get("id") if isinstance(author_info, dict) else None
+                        except Exception:
+                            author_id = None
+                        try:
+                            if author_id and f"<@{author_id}>" not in (reply_msg.content or ""):
                                 try:
-                                    ping_text = (
-                                        f"<@{author_id}> Your AAR was rejected — see the bot reply above."
-                                    )
-                                    try:
-                                        await msg.reply(ping_text, mention_author=True)
-                                    except TypeError:
-                                        # older discord.py may not accept mention_author
-                                        try:
-                                            await msg.reply(ping_text)
-                                        except Exception:
-                                            pass
+                                    new_content = f"<@{author_id}>\n{content}"
+                                    await reply_msg.edit(content=new_content)
+                                    # persist updated errors and reply id
+                                    data[sid]["errors"] = filtered[:max_lines]
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
                                 except Exception:
                                     pass
+                            else:
+                                # no author to preserve or already present; nothing more to do
+                                pass
                         except Exception:
                             pass
 
@@ -4184,29 +4174,37 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         _save_json_dict(AAR_ERRORS_PATH, data)
                     except Exception:
                         pass
-                    # Editing an existing bot reply does NOT trigger a
-                    # notification to the author. If the edited reply does
-                    # not already mention the author, send a short in-channel
-                    # reply that pings them so they receive a notification.
+                    # Preserve author mention when editing existing bot replies.
                     try:
-                        author = getattr(msg, "author", None)
-                        author_id = getattr(author, "id", None) if author else None
-                        if author_id and f"<@{author_id}>" not in (
-                            existing_reply.content or ""
-                        ):
+                        sid = str(getattr(msg, "id", ""))
+                        entry = data.get(sid) if isinstance(data, dict) else None
+                        author_info = entry.get("author") if isinstance(entry, dict) else None
+                        author_id = author_info.get("id") if isinstance(author_info, dict) else None
+                    except Exception:
+                        author_id = None
+                    try:
+                        if author_id and f"<@{author_id}>" not in (existing_reply.content or ""):
                             try:
-                                ping_text = (
-                                    f"<@{author_id}> Your AAR was rejected — see the bot reply above."
-                                )
+                                new_content = f"<@{author_id}>\n{content}"
+                                await existing_reply.edit(content=new_content)
+                                sid = str(getattr(msg, "id", ""))
+                                ent = data.get(sid) or {}
+                                ent["errors"] = filtered[:max_lines]
+                                ent["author"] = _author_info_from_message(msg)
                                 try:
-                                    await msg.reply(ping_text, mention_author=True)
-                                except TypeError:
-                                    try:
-                                        await msg.reply(ping_text)
-                                    except Exception:
-                                        pass
+                                    ent["reply_id"] = str(getattr(existing_reply, "id", ""))
+                                except Exception:
+                                    ent["reply_id"] = None
+                                data[sid] = ent
+                                try:
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
+                                except Exception:
+                                    pass
                             except Exception:
                                 pass
+                        else:
+                            # Either no author info or mention already present; nothing to do
+                            pass
                     except Exception:
                         pass
                     return
