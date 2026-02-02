@@ -3575,6 +3575,9 @@ def parse_aar(message: discord.Message):
     initiate_id = None
     # KIA count (Killed In Action)
     kia_count = 0
+    # Chapter Approved tag present (role mention)
+    chapter_approved = False
+    chapter_approved_extra_point_applied = False
 
     brothers_start_idx = None
 
@@ -3709,6 +3712,38 @@ def parse_aar(message: discord.Message):
     except Exception:
         pass
 
+    # Detect Chapter Approved role mention anywhere in the message.
+    try:
+        for role in message.role_mentions:
+            try:
+                rn = (getattr(role, "name", "") or "").strip().lower()
+                rid = getattr(role, "id", None)
+                # Accept either the canonical name or the known role ID
+                if rn == "chapter approved" or rid == 1467960627795464344 or str(rid) == "1467960627795464344":
+                    chapter_approved = True
+                    break
+            except Exception:
+                continue
+    except Exception:
+        chapter_approved = False
+
+    # If Chapter Approved tag present, apply +1 point only when the AAR
+    # is recorded on the 1st or 3rd Saturday of the month.
+    try:
+        if chapter_approved and getattr(message, "created_at", None):
+            dt = message.created_at
+            # weekday(): Monday=0 .. Sunday=6 ; Saturday == 5
+            day = getattr(dt, "day", None)
+            wd = getattr(dt, "weekday", lambda: None)()
+            if wd == 5 and day is not None and ((1 <= day <= 7) or (15 <= day <= 21)):
+                try:
+                    points_for_op = int(points_for_op) + 1
+                    chapter_approved_extra_point_applied = True
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # Collect Brothers from the "Brothers:" line and subsequent lines until END OF REPORT
     if brothers_start_idx is not None:
         for raw_line in lines[brothers_start_idx:]:
@@ -3769,6 +3804,8 @@ def parse_aar(message: discord.Message):
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
         "initiate_id": initiate_id,
+        "chapter_approved": chapter_approved,
+        "chapter_approved_extra_point_applied": chapter_approved_extra_point_applied,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
