@@ -1166,21 +1166,11 @@ async def on_ready():
     # Start scheduled audit loop if enabled in config
     try:
         if SCHEDULE_DAILY_AUDIT_ENABLED:
-            # Run one immediate audit task and then start the 24-hour loop
-            try:
-                bot.loop.create_task(
-                    _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
-                )
-            except Exception:
-                # best-effort immediate run
-                try:
-                    await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
-                except Exception:
-                    logger.exception("Immediate scheduled audit failed")
+            # Start the 24-hour loop only; do not run an immediate audit on startup.
             try:
                 if not _scheduled_audit_loop.is_running():
                     _scheduled_audit_loop.start()
-                    logger.info("Scheduled daily audit started (24h interval).")
+                    logger.info("Scheduled daily audit loop started (24h interval).")
             except Exception:
                 logger.exception("Failed to start scheduled audit loop")
     except Exception:
