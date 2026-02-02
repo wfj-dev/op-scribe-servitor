@@ -4110,20 +4110,27 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         data[sid]["errors"] = filtered[:max_lines]
                         _save_json_dict(AAR_ERRORS_PATH, data)
 
-                        # If the edited reply does not mention the author, update the
-                        # reply to include an explicit mention so the author is
-                        # notified without sending a DM (avoid DMs).
+                        # Editing an existing bot reply does NOT trigger a
+                        # notification to the author. If the edited reply does
+                        # not already mention the author, send a short in-channel
+                        # reply that pings them so they receive a notification.
                         author_id = getattr(msg.author, "id", None)
                         try:
                             if author_id and f"<@{author_id}>" not in (
                                 reply_msg.content or ""
                             ):
                                 try:
-                                    new_content = f"<@{author_id}>\n{content}"
-                                    await reply_msg.edit(content=new_content)
-                                    # persist updated errors and reply id
-                                    data[sid]["errors"] = filtered[:max_lines]
-                                    _save_json_dict(AAR_ERRORS_PATH, data)
+                                    ping_text = (
+                                        f"<@{author_id}> Your AAR was rejected — see the bot reply above."
+                                    )
+                                    try:
+                                        await msg.reply(ping_text, mention_author=True)
+                                    except TypeError:
+                                        # older discord.py may not accept mention_author
+                                        try:
+                                            await msg.reply(ping_text)
+                                        except Exception:
+                                            pass
                                 except Exception:
                                     pass
                         except Exception:
@@ -4177,9 +4184,10 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         _save_json_dict(AAR_ERRORS_PATH, data)
                     except Exception:
                         pass
-                    # If the edited reply does not mention the author, update the
-                    # reply to include an explicit mention so the author is
-                    # notified without sending a DM (avoid DMs).
+                    # Editing an existing bot reply does NOT trigger a
+                    # notification to the author. If the edited reply does
+                    # not already mention the author, send a short in-channel
+                    # reply that pings them so they receive a notification.
                     try:
                         author = getattr(msg, "author", None)
                         author_id = getattr(author, "id", None) if author else None
@@ -4187,23 +4195,16 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                             existing_reply.content or ""
                         ):
                             try:
-                                new_content = f"<@{author_id}>\n{content}"
-                                await existing_reply.edit(content=new_content)
-                                sid = str(getattr(msg, "id", ""))
-                                ent = data.get(sid) or {}
-                                ent["errors"] = filtered[:max_lines]
-                                ent["author"] = _author_info_from_message(msg)
+                                ping_text = (
+                                    f"<@{author_id}> Your AAR was rejected — see the bot reply above."
+                                )
                                 try:
-                                    ent["reply_id"] = str(
-                                        getattr(existing_reply, "id", "")
-                                    )
-                                except Exception:
-                                    ent["reply_id"] = None
-                                data[sid] = ent
-                                try:
-                                    _save_json_dict(AAR_ERRORS_PATH, data)
-                                except Exception:
-                                    pass
+                                    await msg.reply(ping_text, mention_author=True)
+                                except TypeError:
+                                    try:
+                                        await msg.reply(ping_text)
+                                    except Exception:
+                                        pass
                             except Exception:
                                 pass
                     except Exception:
@@ -4214,16 +4215,22 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                     pass
 
             sent = None
-            # Send a new reply and mention the author so they receive a notification
+            # Send a new reply and ensure the author is mentioned so they
+            # receive a notification. Use an explicit mention prefix and
+            # set allowed_mentions to permit user pings (safer than relying
+            # on `mention_author=True` which can be affected by global
+            # allowed-mentions settings).
             try:
-                sent = await msg.reply(content, mention_author=True)
-            except TypeError:
-                # older discord.py versions may not accept mention_author kw
-                # fall back to prefixing the content with an explicit mention
+                author_id = getattr(msg.author, "id", "")
+                mention_prefix = f"<@{author_id}>\n" if author_id else ""
+                sent = await msg.reply(
+                    mention_prefix + content,
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
+            except Exception:
+                # Last-resort fallback: try replying without explicit allowed_mentions
                 try:
-                    sent = await msg.reply(
-                        f"<@{getattr(msg.author, 'id', '')}>\n{content}"
-                    )
+                    sent = await msg.reply(f"<@{getattr(msg.author, 'id', '')}>\n{content}")
                 except Exception:
                     sent = None
             if sent and isinstance(data, dict):
