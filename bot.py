@@ -5531,6 +5531,10 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
     honoured_parts.extend(chapter_mentions)
 
+    # Keep top-by-ops chapters for mention/display; doctrine winners will be
+    # selected from all eligible chapters below using normalized ranking to
+    # reduce bias from chapter size.
+
     # Construct HONOURED line
     honour_line = "HONOURED: " + " ".join(
         dict.fromkeys([p for p in honoured_parts if p])
@@ -5574,10 +5578,8 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     kt_force_name = kt_force[0][0] if kt_force else "Team"
     kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
 
-    ch1 = top_chapters[0][0] if len(top_chapters) > 0 else "Chapter"
-    ch2 = top_chapters[1][0] if len(top_chapters) > 1 else "Chapter"
-    ch3 = top_chapters[2][0] if len(top_chapters) > 2 else "Chapter"
-    ch4 = top_chapters[3][0] if len(top_chapters) > 3 else "Chapter"
+    # doctrine winners (ch1..ch4) will be computed after metric helpers below
+    ch1 = ch2 = ch3 = ch4 = "Chapter"
 
     # Compute chapter doctrine values to display
     def _chap_avg_armory(ch):
@@ -5620,6 +5622,50 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
             )
         except Exception:
             return 0.0
+
+    # Determine eligible chapters for doctrine evaluation to avoid noisy
+    # single-member spikes; use z-score normalization to pick winners.
+    MIN_CHAPTER_MEMBERS = 1
+    # Dynamic min ops based on reporting window: weekly/monthly tuned.
+    if period_days == 7:
+        min_ops_required = 7
+    elif period_days >= 28:
+        min_ops_required = 30
+    else:
+        # fallback proportional floor (30% of window) with a sensible min
+        min_ops_required = max(3, int(period_days * 0.3))
+
+    eligible = [
+        ch
+        for ch, d in chapters.items()
+        if len(chapters_members.get(ch, set())) >= MIN_CHAPTER_MEMBERS
+        and d.get("ops", 0) >= min_ops_required
+    ]
+    if not eligible:
+        # fallback to top-chapters (display list) if no chapters meet thresholds
+        eligible = [ch for ch, _ in top_chapters] if top_chapters else []
+
+    def _pick_by_zscore(metric_fn):
+        try:
+            vals = [(ch, float(metric_fn(ch))) for ch in eligible]
+        except Exception:
+            vals = []
+        if not vals:
+            return "Chapter"
+        nums = [v for _, v in vals]
+        mean = statistics.mean(nums)
+        stdev = statistics.pstdev(nums) if len(nums) >= 2 else 0.0
+        if stdev == 0.0:
+            # no spread; pick highest raw metric
+            return max(vals, key=lambda it: it[1])[0]
+        zscores = [(ch, (v - mean) / stdev) for ch, v in vals]
+        return max(zscores, key=lambda it: it[1])[0]
+
+    # Select doctrine winners across eligible chapters
+    ch1 = _pick_by_zscore(_chap_avg_armory)
+    ch2 = _pick_by_zscore(_chap_avg_ops)
+    ch3 = _pick_by_zscore(_chap_ops_per_member)
+    ch4 = _pick_by_zscore(_chap_gene_rate)
 
     ch1_val = _chap_avg_armory(ch1)
     ch2_val = _chap_avg_ops(ch2)
