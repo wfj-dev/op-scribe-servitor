@@ -1648,24 +1648,32 @@ async def audit_archive_discrepancies(
         )
         # Try to send the report via followup if we successfully deferred.
         if interaction_deferred:
-            try:
-                await interaction.followup.send(report, ephemeral=True)
-            except Exception as e:
-                logger.debug(f"Failed to send followup report: {e}")
-                # Attempt to DM the invoking user as a fallback
                 try:
-                    await interaction.user.send(report)
-                except Exception:
-                    logger.error(
-                        "Unable to deliver report to user; check bot permissions."
-                    )
+                    await interaction.followup.send(report, ephemeral=True)
+                except Exception as e:
+                    logger.debug(f"Failed to send followup report: {e}")
+                    # Fallback: attempt to post the report to the invoking channel
+                    try:
+                        ch = interaction.channel
+                        if ch:
+                            await ch.send(report)
+                        else:
+                            logger.error("Unable to deliver report: no channel available.")
+                    except Exception:
+                        logger.error(
+                            "Unable to deliver report to channel; check bot permissions."
+                        )
         else:
-            # Interaction was not defer-able; attempt to DM the invoking user
+            # Interaction was not defer-able; post the report to the invoking channel if possible
             try:
-                await interaction.user.send(report)
+                ch = interaction.channel
+                if ch:
+                    await ch.send(report)
+                else:
+                    logger.error("Unable to deliver report: no channel available and DM disabled.")
             except Exception:
                 logger.error(
-                    "Unable to deliver report to user; interaction unknown and DM failed."
+                    "Unable to deliver report to channel; interaction unknown and channel send failed."
                 )
     finally:
         RECONCILE_LOCK.release()
@@ -1714,11 +1722,13 @@ async def sanctify_battle_records(
                     logger.debug(f"Failed to send followup: {e}")
             else:
                 try:
-                    await interaction.user.send(
-                        "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
-                    )
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send("++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++")
+                    else:
+                        logger.error("Unable to deliver error report: no channel available and DM disabled.")
                 except Exception:
-                    logger.error("Unable to deliver error report to user; check bot permissions.")
+                    logger.error("Unable to deliver error report to channel; check bot permissions.")
             return
         ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
@@ -1748,14 +1758,22 @@ async def sanctify_battle_records(
             except Exception as e:
                 logger.debug(f"Failed to send followup report: {e}")
                 try:
-                    await interaction.user.send(report)
+                    ch = interaction.channel
+                    if ch:
+                        await ch.send(report)
+                    else:
+                        logger.error("Unable to deliver report: no channel available.")
                 except Exception:
-                    logger.error("Unable to deliver report to user; check bot permissions.")
+                    logger.error("Unable to deliver report to channel; check bot permissions.")
         else:
             try:
-                await interaction.user.send(report)
+                ch = interaction.channel
+                if ch:
+                    await ch.send(report)
+                else:
+                    logger.error("Unable to deliver report: no channel available and DM disabled.")
             except Exception:
-                logger.error("Unable to deliver report to user; check bot permissions.")
+                logger.error("Unable to deliver report to channel; check bot permissions.")
     finally:
         RECONCILE_LOCK.release()
 
@@ -4055,21 +4073,24 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         # Update stored errors in case they changed
                         data[sid]["errors"] = filtered[:max_lines]
                         _save_json_dict(AAR_ERRORS_PATH, data)
-                        # If the edited reply does not mention the author, send a short ping.
+
+                        # If the edited reply does not mention the author, update the
+                        # reply to include an explicit mention so the author is
+                        # notified without sending a DM (avoid DMs).
                         author_id = getattr(msg.author, "id", None)
                         try:
                             if author_id and f"<@{author_id}>" not in (reply_msg.content or ""):
-                                ping = f"<@{author_id}> Your After-Action Report was reviewed; see the bot's reply for details."
                                 try:
-                                    await msg.channel.send(ping)
+                                    new_content = f"<@{author_id}>\n{content}"
+                                    await reply_msg.edit(content=new_content)
+                                    # persist updated errors and reply id
+                                    data[sid]["errors"] = filtered[:max_lines]
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
                                 except Exception:
-                                    # fall back to DM
-                                    try:
-                                        await msg.author.send(ping)
-                                    except Exception:
-                                        pass
+                                    pass
                         except Exception:
                             pass
+
                         return
                     except Exception:
                         # If edit fails, continue to attempt sending a new reply
@@ -4079,7 +4100,75 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                 pass
 
         # No existing reply found or edit failed: send a new reply and record its id
+        # Before sending a new reply, scan recent channel messages to see if the
+        # bot already posted a reply to this AAR (possible if reply_id was not
+        # recorded or is stale). If found, edit that message instead of sending
+        # a new one to avoid duplicates.
         try:
+            existing_reply = None
+            try:
+                async for recent in msg.channel.history(limit=64):
+                    try:
+                        ref = getattr(recent, "reference", None)
+                        if not ref:
+                            continue
+                        if getattr(ref, "message_id", None) == getattr(msg, "id", None):
+                            if getattr(recent.author, "id", None) == getattr(bot.user, "id", None):
+                                existing_reply = recent
+                                break
+                    except Exception:
+                        continue
+            except Exception:
+                existing_reply = None
+            if existing_reply:
+                try:
+                    await existing_reply.edit(content=content)
+                    # Update stored reply_id for this AAR
+                    sid = str(getattr(msg, "id", ""))
+                    ent = data.get(sid) or {}
+                    ent["errors"] = filtered[:max_lines]
+                    ent["author"] = _author_info_from_message(msg)
+                    try:
+                        ent["reply_id"] = str(getattr(existing_reply, "id", ""))
+                    except Exception:
+                        ent["reply_id"] = None
+                    data[sid] = ent
+                    try:
+                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    except Exception:
+                        pass
+                    # If the edited reply does not mention the author, update the
+                    # reply to include an explicit mention so the author is
+                    # notified without sending a DM (avoid DMs).
+                    try:
+                        author = getattr(msg, "author", None)
+                        author_id = getattr(author, "id", None) if author else None
+                        if author_id and f"<@{author_id}>" not in (existing_reply.content or ""):
+                            try:
+                                new_content = f"<@{author_id}>\n{content}"
+                                await existing_reply.edit(content=new_content)
+                                sid = str(getattr(msg, "id", ""))
+                                ent = data.get(sid) or {}
+                                ent["errors"] = filtered[:max_lines]
+                                ent["author"] = _author_info_from_message(msg)
+                                try:
+                                    ent["reply_id"] = str(getattr(existing_reply, "id", ""))
+                                except Exception:
+                                    ent["reply_id"] = None
+                                data[sid] = ent
+                                try:
+                                    _save_json_dict(AAR_ERRORS_PATH, data)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    return
+                except Exception:
+                    # fall through to sending a new reply
+                    pass
+
             sent = None
             # Send a new reply and mention the author so they receive a notification
             try:
