@@ -456,9 +456,7 @@ KILL_TEAMS = [
 ]
 
 # Restrict commands to a specific channel (demo/training)
-ALLOWED_COMMAND_CHANNELS = {
-    "❖⋅data-vault⋅❖"
-}
+ALLOWED_COMMAND_CHANNELS = {"❖⋅data-vault⋅❖"}
 
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
@@ -1221,7 +1219,9 @@ async def on_ready():
             try:
                 if not _monthly_audit_loop.is_running():
                     _monthly_audit_loop.start()
-                    logger.info("Monthly audit loop started (daily check for month-end).")
+                    logger.info(
+                        "Monthly audit loop started (daily check for month-end)."
+                    )
             except Exception:
                 logger.exception("Failed to start monthly audit loop")
     except Exception:
@@ -3760,7 +3760,11 @@ def parse_aar(message: discord.Message):
                 rn = (getattr(role, "name", "") or "").strip().lower()
                 rid = getattr(role, "id", None)
                 # Accept either the canonical name or the known role ID
-                if rn == "chapter approved" or rid == 1467960627795464344 or str(rid) == "1467960627795464344":
+                if (
+                    rn == "chapter approved"
+                    or rid == 1467960627795464344
+                    or str(rid) == "1467960627795464344"
+                ):
                     chapter_approved = True
                     break
             except Exception:
@@ -4184,12 +4188,20 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         # continues to include the author tag.
                         try:
                             entry = data.get(sid) if isinstance(data, dict) else None
-                            author_info = entry.get("author") if isinstance(entry, dict) else None
-                            author_id = author_info.get("id") if isinstance(author_info, dict) else None
+                            author_info = (
+                                entry.get("author") if isinstance(entry, dict) else None
+                            )
+                            author_id = (
+                                author_info.get("id")
+                                if isinstance(author_info, dict)
+                                else None
+                            )
                         except Exception:
                             author_id = None
                         try:
-                            if author_id and f"<@{author_id}>" not in (reply_msg.content or ""):
+                            if author_id and f"<@{author_id}>" not in (
+                                reply_msg.content or ""
+                            ):
                                 try:
                                     new_content = f"<@{author_id}>\n{content}"
                                     await reply_msg.edit(content=new_content)
@@ -4256,12 +4268,20 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                     try:
                         sid = str(getattr(msg, "id", ""))
                         entry = data.get(sid) if isinstance(data, dict) else None
-                        author_info = entry.get("author") if isinstance(entry, dict) else None
-                        author_id = author_info.get("id") if isinstance(author_info, dict) else None
+                        author_info = (
+                            entry.get("author") if isinstance(entry, dict) else None
+                        )
+                        author_id = (
+                            author_info.get("id")
+                            if isinstance(author_info, dict)
+                            else None
+                        )
                     except Exception:
                         author_id = None
                     try:
-                        if author_id and f"<@{author_id}>" not in (existing_reply.content or ""):
+                        if author_id and f"<@{author_id}>" not in (
+                            existing_reply.content or ""
+                        ):
                             try:
                                 new_content = f"<@{author_id}>\n{content}"
                                 await existing_reply.edit(content=new_content)
@@ -4270,7 +4290,9 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                                 ent["errors"] = filtered[:max_lines]
                                 ent["author"] = _author_info_from_message(msg)
                                 try:
-                                    ent["reply_id"] = str(getattr(existing_reply, "id", ""))
+                                    ent["reply_id"] = str(
+                                        getattr(existing_reply, "id", "")
+                                    )
                                 except Exception:
                                     ent["reply_id"] = None
                                 data[sid] = ent
@@ -4306,7 +4328,9 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
             except Exception:
                 # Last-resort fallback: try replying without explicit allowed_mentions
                 try:
-                    sent = await msg.reply(f"<@{getattr(msg.author, 'id', '')}>\n{content}")
+                    sent = await msg.reply(
+                        f"<@{getattr(msg.author, 'id', '')}>\n{content}"
+                    )
                 except Exception:
                     sent = None
             if sent and isinstance(data, dict):
@@ -5945,7 +5969,9 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     honoured_parts.extend(chapter_mentions)
 
     # Construct HONOURED line (dedupe while preserving order)
-    honour_line = "HONOURED: " + " ".join(dict.fromkeys([p for p in honoured_parts if p]))
+    honour_line = "HONOURED: " + " ".join(
+        dict.fromkeys([p for p in honoured_parts if p])
+    )
 
     # Choose display date for the honours header: prefer end of window when
     # provided, otherwise use `now`.
