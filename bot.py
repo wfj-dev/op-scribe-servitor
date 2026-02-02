@@ -294,8 +294,17 @@ async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = F
         logger.exception("Scheduled audit failed")
 
 
-@tasks.loop(hours=24, wait=True)
+@tasks.loop(hours=24)
 async def _scheduled_audit_loop():
+    # Delay the first run so startup does not trigger an immediate audit.
+    try:
+        if not getattr(_scheduled_audit_loop, "_first_run_done", False):
+            setattr(_scheduled_audit_loop, "_first_run_done", True)
+            # Sleep one full interval (24 hours) before the first audit
+            await asyncio.sleep(24 * 3600)
+    except Exception:
+        pass
+
     # Use configured span days
     try:
         await _do_scheduled_audit(SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
@@ -303,7 +312,7 @@ async def _scheduled_audit_loop():
         logger.exception("Error running scheduled audit loop")
 
 
-@tasks.loop(hours=24, wait=True)
+@tasks.loop(hours=24)
 async def _monthly_audit_loop():
     """Run once-per-day; on the last day of the month perform a full-history audit.
 
@@ -313,6 +322,14 @@ async def _monthly_audit_loop():
     causes a full-history recheck (span_days=None) and signals priority to
     regular scheduled audits.
     """
+    # Delay first run so startup doesn't immediately evaluate month-end
+    try:
+        if not getattr(_monthly_audit_loop, "_first_run_done", False):
+            setattr(_monthly_audit_loop, "_first_run_done", True)
+            await asyncio.sleep(24 * 3600)
+    except Exception:
+        pass
+
     try:
         now = datetime.utcnow()
         tomorrow = now + timedelta(days=1)
