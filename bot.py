@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple, Optional
 import hashlib
 import logging
 import time
+import random
 from logging.handlers import RotatingFileHandler
 import signal
 import argparse
@@ -54,6 +55,9 @@ MONTHLY_AUDIT_PENDING = False
 
 # Rites storage lock
 RITES_LOCK = asyncio.Lock()
+
+# Lock for rotation state operations
+ROTATION_LOCK = asyncio.Lock()
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -1386,6 +1390,117 @@ async def litany_of_function(interaction: discord.Interaction):
     if len(text) > 1900:
         text = text[:1900].rsplit("\n", 1)[0] + "\n…"
     await interaction.response.send_message(text, ephemeral=True)
+
+
+ROTATION_STATE_PATH = os.path.join(DATA_DIR, "home_chapter_rotation.json")
+
+
+def _month_key_for_offset(offset: int = 0) -> str:
+    from datetime import datetime
+
+    now = datetime.utcnow()
+    year = now.year
+    month = now.month - 1 + offset
+    new_year = year + (month // 12)
+    new_month = (month % 12) + 1
+    return f"{new_year}-{new_month:02d}"
+
+
+def _load_home_chapter_rotation() -> dict:
+    try:
+        with open(ROTATION_STATE_PATH, "r") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    # default state: all chapters available and no selections cached
+    return {"remaining": HOME_CHAPTERS.copy(), "selected": {}}
+
+
+def _save_home_chapter_rotation(state: dict):
+    tmp = ROTATION_STATE_PATH + ".tmp"
+    bak = ROTATION_STATE_PATH + ".bak"
+    try:
+        os.makedirs(os.path.dirname(ROTATION_STATE_PATH), exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        if os.path.exists(ROTATION_STATE_PATH):
+            try:
+                os.replace(ROTATION_STATE_PATH, bak)
+            except Exception:
+                pass
+        os.replace(tmp, ROTATION_STATE_PATH)
+    except Exception:
+        pass
+
+
+async def _select_home_chapters_for_month(offset: int = 0) -> Tuple[str, str]:
+    """Select (and cache) two chapters for a month specified by offset from now.
+
+    If a selection for that month already exists, return it. Otherwise pick two
+    random chapters from the current `remaining` pool (resetting if needed),
+    remove them from the pool, cache the pair under that month, and persist.
+    """
+    async with ROTATION_LOCK:
+        state = _load_home_chapter_rotation()
+        target = _month_key_for_offset(offset)
+        selected = state.get("selected", {}) or {}
+        if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
+            return selected[target][0], selected[target][1]
+
+        remaining = [r for r in (state.get("remaining") or []) if r in HOME_CHAPTERS]
+        if len(remaining) < 2:
+            remaining = HOME_CHAPTERS.copy()
+
+        try:
+            pick = random.sample(remaining, 2)
+        except Exception:
+            pick = random.sample(HOME_CHAPTERS, 2)
+
+        for p in pick:
+            try:
+                remaining.remove(p)
+            except ValueError:
+                pass
+
+        state["remaining"] = remaining
+        selected[target] = pick
+        state["selected"] = selected
+        _save_home_chapter_rotation(state)
+        return pick[0], pick[1]
+
+
+@bot.tree.command(
+    name="pick_home_chapters",
+    description="Show selected home chapters for this month and next (plans ahead).",
+)
+async def pick_home_chapters(interaction: discord.Interaction):
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    # Compute current and next month keys and selections
+    this_key = _month_key_for_offset(0)
+    next_key = _month_key_for_offset(1)
+    a1, b1 = await _select_home_chapters_for_month(0)
+    a2, b2 = await _select_home_chapters_for_month(1)
+    # Format human-friendly month names
+    from datetime import datetime
+
+    def fmt_month(key: str) -> str:
+        y, m = key.split("-")
+        dt = datetime(int(y), int(m), 1)
+        return dt.strftime("%B %Y")
+
+    text = (
+        f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
+    )
+    await interaction.response.send_message(text)
 
 
 # Forge rite command group
