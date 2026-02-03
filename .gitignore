@@ -212,4 +212,5 @@ data/*.bak
 !data/rites.json
 !data/oaths_index.json
 !data/trophy_hall_index.json
+!data/home_chapter_rotation.json
 logs

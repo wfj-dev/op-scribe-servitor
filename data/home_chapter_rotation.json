@@ -1,0 +1,38 @@
+{
+  "remaining": [
+    "Black Templars",
+    "Blood Angels",
+    "Blood Ravens",
+    "Carcharodons",
+    "Cowled Wardens",
+    "Crimson Fists",
+    "Dark Angels",
+    "Dark Krakens",
+    "Death Spectres",
+    "Exorcists",
+    "Flesh Eaters",
+    "Flesh Tearers",
+    "Genesis Chapter",
+    "Hawk Lords",
+    "Imperial Fists",
+    "Iron Hands",
+    "Iron Hounds",
+    "Lamenters",
+    "Mentors",
+    "Minotaurs",
+    "Raptors",
+    "Raven Guard",
+    "Red Scorpions",
+    "Space Wolves",
+    "Storm Giants",
+    "Ultramarines",
+    "White Scars",
+    "Black Shield"
+  ],
+  "selected": {
+    "2026-02": [
+      "Red Templars",
+      "Salamanders"
+    ]
+  }
+}
