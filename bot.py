@@ -5064,7 +5064,8 @@ def _build_group_bonds(
         sizes = [3, 4, 5]
 
     groups: List[Tuple[Tuple[str, ...], int]] = []
-    uniq_bros = sorted(set(brothers))
+    # Ensure brother identifiers are strings to avoid type-comparison issues
+    uniq_bros = sorted(set(str(x) for x in brothers))
     for n in sizes:
         if n < 2:
             continue
@@ -5072,7 +5073,8 @@ def _build_group_bonds(
             # build all internal pair keys
             pair_keys: List[Tuple[str, str]] = []
             for a, b in itertools.combinations(combo, 2):
-                pair_keys.append(tuple(sorted((a, b))))
+                # Coerce to str and sort to avoid mixed-type compare errors
+                pair_keys.append(tuple(sorted((str(a), str(b)))))
             # gather counts (weights)
             c_vals: List[float] = [float(pair_counts.get(k, 0) or 0.0) for k in pair_keys]
             if not c_vals:
