@@ -469,7 +469,6 @@ HOME_CHAPTERS = [
 ]
 
 KILL_TEAMS = [
-    "Kill Team Solomon",
     "Kill Team Psycho",
     "Kill Team Atom",
     "Kill Team Falcon",
