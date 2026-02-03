@@ -167,6 +167,10 @@ class DataStore:
         self._flush_task: Optional[asyncio.Task] = None
         self._shutdown = False
         self.user_stats_cache: dict[str, dict] = {}
+        # Combat cache: span_days (str) -> dict with keys 'pair_counts','triples','spreads','ts'
+        self._combat_cache: Dict[str, dict] = {}
+        # Timestamp when user_stats_cache was last (re)built
+        self._user_stats_cache_built_ts: Optional[int] = None
         self._load()
         self._build_user_stats_cache()
         self._init_home_chapter_cache()
@@ -210,6 +214,29 @@ class DataStore:
             uid: _compute_stats_for_user_from_records(uid, recs)
             for uid, recs in user_to_records.items()
         }
+        try:
+            self._user_stats_cache_built_ts = self._now()
+        except Exception:
+            self._user_stats_cache_built_ts = None
+
+    async def _clear_combat_cache_locked(self):
+        # internal: must be called with self._lock held or awaited
+        self._combat_cache = {}
+
+    def get_combat_cache(self, span_days: int) -> Optional[dict]:
+        """Return cached combat data for the given span_days, or None if missing."""
+        try:
+            return self._combat_cache.get(str(span_days))
+        except Exception:
+            return None
+
+    async def set_combat_cache(self, span_days: int, data: dict):
+        """Store computed combat cache (async-safe)."""
+        async with self._lock:
+            try:
+                self._combat_cache[str(span_days)] = {"data": data, "ts": self._now()}
+            except Exception:
+                pass
 
     def get_record(self, aar_id: str | int) -> Optional[dict]:
         return self._records.get(str(aar_id))
@@ -241,6 +268,11 @@ class DataStore:
                 self.user_stats_cache[uid] = _compute_stats_for_user_from_records(
                     uid, user_recs
                 )
+            # Invalidate any cached combat computations when records change
+            try:
+                self._combat_cache = {}
+            except Exception:
+                pass
 
     def get_user_stats(self, user_id: str) -> dict:
         """Get cached stats for a user (empty dict if not present)."""
@@ -293,14 +325,21 @@ class DataStore:
 
     def get_cache_stats(self) -> dict:
         """Return cache and flush stats for admin diagnostics."""
+        try:
+            combat_size = len(self._combat_cache) if hasattr(self, "_combat_cache") else 0
+            combat_spans = sorted(list(self._combat_cache.keys())) if hasattr(self, "_combat_cache") else []
+        except Exception:
+            combat_size = 0
+            combat_spans = []
         return {
             "user_stats_cache_size": len(self.user_stats_cache),
-            "home_chapter_cache_size": len(self._home_chapter_cache),
+            "user_stats_cache_built_ts": self._user_stats_cache_built_ts,
+            "combat_cache_size": combat_size,
+            "combat_cache_spans": combat_spans,
             "dirty_records": self._dirty_records,
             "dirty_ids": self._dirty_ids,
             "last_flush_time": self._last_flush_time,
-            "home_chapter_cache_hits": self._home_chapter_cache_hits,
-            "home_chapter_cache_misses": self._home_chapter_cache_misses,
+            "user_stats_cache_built_ts": self._user_stats_cache_built_ts,
         }
 
     async def _background_flush(self):
