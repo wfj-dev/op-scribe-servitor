@@ -98,24 +98,20 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
                 return g
     except Exception:
         pass
-    # 2) Try by configured ID
+    # 2) Try by configured guild id
     try:
         gid = CONFIG.get("guild_id")
+        if gid:
+            for g in bot.guilds:
+                if str(getattr(g, "id", None)) == str(gid):
+                    return g
     except Exception:
-        gid = None
-    if gid:
-        try:
-            g = bot.get_guild(int(gid))
-            if g:
-                return g
-        except Exception:
-            pass
-    # 3) Fallback to the first guild
+        pass
+    # 3) Fallback to the first connected guild
     try:
         return bot.guilds[0] if bot.guilds else None
     except Exception:
         return None
-
 
 async def _send_watch_command_notice(kind: str):
     """Post a concise status notice to ❖⋅data-vault⋅❖ and replace the previous one.
@@ -2480,6 +2476,23 @@ async def cache_stats(interaction: discord.Interaction):
             )
     else:
         last_flush_str = "Never"
+    # Format the user stats cache built timestamp into a single string
+    try:
+        ts = stats.get("user_stats_cache_built_ts")
+        if ts:
+            try:
+                user_stats_built_str = datetime.datetime.fromtimestamp(
+                    ts, tz=timezone.utc
+                ).astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+            except Exception:
+                user_stats_built_str = datetime.datetime.utcfromtimestamp(ts).strftime(
+                    "%Y-%m-%d %H:%M:%S UTC"
+                )
+        else:
+            user_stats_built_str = "Never"
+    except Exception:
+        user_stats_built_str = "Never"
+
     msg = (
         f"```ansi\n"
         f"\u001b[32m==============================================================================\n"
@@ -2491,11 +2504,7 @@ async def cache_stats(interaction: discord.Interaction):
         f"  Dirty AAR Records:            {stats['dirty_records']}\n"
         f"  Dirty Processed IDs:          {stats['dirty_ids']}\n"
         f"  Last Flush Time:              {last_flush_str}\n"
-        f"  User Stats Cache Built:       {(
-            datetime.datetime.fromtimestamp(stats.get('user_stats_cache_built_ts'), tz=timezone.utc).astimezone(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S %Z')
-            if stats.get('user_stats_cache_built_ts')
-            else 'Never'
-        )}\n"
+        f"  User Stats Cache Built:       {user_stats_built_str}\n"
         f"==============================================================================\n"
         f"\u001b[0m```"
     )
