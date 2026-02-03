@@ -3709,10 +3709,18 @@ async def combat_bonds(
 
     pair_counts = _build_pair_counts(missions)
     # Build multi-size groups (3..5) weighted by pair AAR points
-    triples = _build_group_bonds(pair_counts, all_bros)
+    # Offload expensive combinatorial group building to a background thread
+    try:
+        triples = await asyncio.to_thread(_build_group_bonds, pair_counts, all_bros)
+    except Exception:
+        # Fallback to synchronous call if to_thread is unavailable
+        triples = _build_group_bonds(pair_counts, all_bros)
     # Active members in the window: those who appeared in at least one AAR
     active_count = len(all_bros)
-    spreads = _build_spread_counts(pair_counts, active_count=active_count)
+    try:
+        spreads = await asyncio.to_thread(_build_spread_counts, pair_counts, active_count=active_count)
+    except Exception:
+        spreads = _build_spread_counts(pair_counts, active_count=active_count)
 
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
@@ -4103,7 +4111,7 @@ def parse_aar(message: discord.Message):
                                 brother_names.append(user.nick)
                             except AttributeError:
                                 logger.debug(
-                                    f"Failed to get nickname for user/ID {user.name}\/{uid}"
+                                    f"Failed to get nickname for user/ID {user.name}/{uid}"
                                 )
                 # Try to parse per-brother waves from the same line, expecting an integer
                 try:
