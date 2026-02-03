@@ -3690,7 +3690,13 @@ async def combat_bonds(
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    # No defer: send a direct response to clear the interaction state
+    # Defer the interaction to allow longer processing time on slower hosts
+    interaction_deferred = False
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        interaction_deferred = True
+    except Exception:
+        interaction_deferred = False
 
     # Default to last 30 days; if provided, interpret `window` as days
     span_days = window if (isinstance(window, int) and window > 0) else 30
@@ -3730,7 +3736,17 @@ async def combat_bonds(
             spreads=spreads,
         )
         view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
-        await interaction.response.send_message(content=text, view=view, ephemeral=True)
+        # Use followup when we've deferred, fallback to response if not
+        try:
+            if interaction_deferred:
+                await interaction.followup.send(content=text, view=view, ephemeral=True)
+            else:
+                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+        except Exception:
+            try:
+                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+            except Exception:
+                logger.exception("combat_bonds: failed to send response or followup")
     else:
         target_id = str(brother.id)
         personal = _select_personal_bonds(triples, target_id, max_n=3)
@@ -3753,7 +3769,16 @@ async def combat_bonds(
             spreads=spreads,
         )
         view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
-        await interaction.response.send_message(content=text, view=view, ephemeral=True)
+        try:
+            if interaction_deferred:
+                await interaction.followup.send(content=text, view=view, ephemeral=True)
+            else:
+                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+        except Exception:
+            try:
+                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+            except Exception:
+                logger.exception("combat_bonds: failed to send response or followup")
 
 
 def classify_difficulty(difficulty: str | None):
