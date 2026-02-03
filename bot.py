@@ -1500,7 +1500,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
     text = (
         f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
     )
-    await interaction.response.send_message(text)
+    await interaction.response.send_message(text, ephemeral=True)
 
 
 # Forge rite command group
