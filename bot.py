@@ -6199,15 +6199,30 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         return sorted(data.items(), key=key_fn)
 
     # Individual picks
+    # Determine dynamic minimum ops required for the reporting window so
+    # individual distinctions use the same thresholds as chapter doctrines.
+    if period_days == 7:
+        min_ops_required = 7
+    elif period_days >= 28:
+        min_ops_required = 28
+    else:
+        min_ops_required = max(3, int(period_days * 0.3))
+
+    # Filter users to those meeting the minimum ops requirement; if none
+    # meet the threshold, fall back to including all users.
+    users_for_eval = {k: v for k, v in users.items() if v.get("ops", 0) >= min_ops_required}
+    if not users_for_eval:
+        users_for_eval = users
+
     # Operational Tempo -> ops
-    ops_sorted = sort_entities(users, "ops")
+    ops_sorted = sort_entities(users_for_eval, "ops")
     tempo_name = ops_sorted[0][0] if ops_sorted else ""
 
     # Veteran Lethality -> avg points per op
     for uid, v in users.items():
         v["avg"] = (v["points"] / v["ops"]) if v["ops"] else 0.0
     leth_sorted = sort_entities(
-        {k: {**v, **{"avg": v["avg"]}} for k, v in users.items()}, "avg"
+        {k: {**v, **{"avg": v["avg"]}} for k, v in users_for_eval.items()}, "avg"
     )
     lethal_name = leth_sorted[0][0] if leth_sorted else ""
 
@@ -6219,17 +6234,17 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
             else 0.0
         )
     gene_sorted = sort_entities(
-        {k: {**v, **{"gene_rate": v["gene_rate"]}} for k, v in users.items()},
+        {k: {**v, **{"gene_rate": v["gene_rate"]}} for k, v in users_for_eval.items()},
         "gene_rate",
     )
     gene_name = gene_sorted[0][0] if gene_sorted else ""
 
     # Vault Reclaimer -> armory
-    arm_sorted = sort_entities(users, "armory")
+    arm_sorted = sort_entities(users_for_eval, "armory")
     arm_name = arm_sorted[0][0] if arm_sorted else ""
 
     # High-Risk Operator -> high_risk, include omega_kia
-    high_sorted = sort_entities(users, "high_risk")
+    high_sorted = sort_entities(users_for_eval, "high_risk")
     high_name = high_sorted[0][0] if high_sorted else ""
 
     # Kill team picks (use ops, avg, armory/gene, high risk)
@@ -6445,7 +6460,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     if period_days == 7:
         min_ops_required = 7
     elif period_days >= 28:
-        min_ops_required = 30
+        min_ops_required = 28
     else:
         # fallback proportional floor (30% of window) with a sensible min
         min_ops_required = max(3, int(period_days * 0.3))
@@ -6592,45 +6607,43 @@ async def _scheduled_honours_runner():
         now_et = datetime.now(ZoneInfo("America/New_York"))
         today = now_et.date()
         global LAST_WEEKLY_POST_DATE, LAST_MONTHLY_POST_DATE
-        # Weekly: Friday
-        # Weekly: Friday at 20:00 ET
-        if (
-            today.weekday() == 4
-            and now_et.hour == 20
-            and LAST_WEEKLY_POST_DATE != str(today)
-        ):
-            honour_line, ansi = await _build_honours(guild, 7, include_mentions=True)
-            # If returned as split (honour_line, ansi) where honour_line only and ansi full, send two messages
+        # Determine whether weekly and/or monthly honours are due. If both are
+        # due at the same hour (collision), post both (monthly first) with a
+        # short pause between posts to reduce likelihood of rate-limit issues.
+        weekly_due = (
+            today.weekday() == 4 and now_et.hour == 20 and LAST_WEEKLY_POST_DATE != str(today)
+        )
+        monthly_due = (
+            today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today)
+        )
+
+        # Helper to send honours content respecting Discord message length
+        async def _send_honours(line, block):
             try:
-                content = honour_line + "\\n" + ansi
+                content = line + "\\n" + block
                 if len(content) <= 2000:
                     await channel.send(
                         content,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                     )
                 else:
                     await channel.send(
-                        honour_line,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
+                        line,
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                     )
-                    await channel.send(ansi)
+                    await channel.send(block)
             except Exception:
-                logger.exception("Failed to post weekly honours")
-            LAST_WEEKLY_POST_DATE = str(today)
+                logger.exception("Failed to post honours")
 
-        # Monthly: day 1 -> use previous calendar month
-        # Monthly: day 1 at 20:00 ET -> cover previous calendar month
-        if (
-            today.day == 1
-            and now_et.hour == 20
-            and LAST_MONTHLY_POST_DATE != str(today)
-        ):
+        if weekly_due and monthly_due:
+            # Weekly first, then monthly on collision
+            # Post weekly honours
+            line, block = await _build_honours(guild, 7, include_mentions=True)
+            await _send_honours(line, block)
+            LAST_WEEKLY_POST_DATE = str(today)
+            # small pause before posting monthly
+            await asyncio.sleep(1)
             # Compute first day of current month and previous month (UTC naive)
-            # Use ET-local month boundaries, convert to UTC-naive datetimes
             now_local = now_et
             first_of_current_local = datetime(
                 now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
@@ -6644,39 +6657,47 @@ async def _scheduled_honours_runner():
             prev_start_local = datetime(
                 prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York")
             )
-            # convert to UTC naive datetimes expected by _build_honours
             try:
-                prev_start = prev_start_local.astimezone(timezone.utc).replace(
-                    tzinfo=None
-                )
-                prev_end = first_of_current_local.astimezone(timezone.utc).replace(
-                    tzinfo=None
-                )
+                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
             except Exception:
-                # fallback to naive local dates if conversion fails
                 prev_start = datetime(prev_year, prev_month, 1)
                 prev_end = datetime(now_local.year, now_local.month, 1)
 
-            honour_line, ansi = await _build_honours(
-                guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
-            )
+            line, block = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            await _send_honours(line, block)
+            LAST_MONTHLY_POST_DATE = str(today)
+
+        elif weekly_due:
+            line, block = await _build_honours(guild, 7, include_mentions=True)
             try:
-                content = honour_line + "\\n" + ansi
-                if len(content) <= 2000:
-                    await channel.send(
-                        content,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
-                    )
-                else:
-                    await channel.send(
-                        honour_line,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
-                    )
-                    await channel.send(ansi)
+                await _send_honours(line, block)
+            except Exception:
+                logger.exception("Failed to post weekly honours")
+            LAST_WEEKLY_POST_DATE = str(today)
+
+        elif monthly_due:
+            now_local = now_et
+            first_of_current_local = datetime(
+                now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
+            )
+            if now_local.month == 1:
+                prev_month = 12
+                prev_year = now_local.year - 1
+            else:
+                prev_month = now_local.month - 1
+                prev_year = now_local.year
+            prev_start_local = datetime(prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York"))
+            try:
+                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                prev_start = datetime(prev_year, prev_month, 1)
+                prev_end = datetime(now_local.year, now_local.month, 1)
+
+            line, block = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            try:
+                await _send_honours(line, block)
             except Exception:
                 logger.exception("Failed to post monthly honours")
             LAST_MONTHLY_POST_DATE = str(today)
