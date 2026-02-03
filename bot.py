@@ -444,11 +444,14 @@ HOME_CHAPTERS = [
     "Dark Angels",
     "Dark Krakens",
     "Death Spectres",
+    "Exorcists",
     "Flesh Eaters",
     "Flesh Tearers",
+    "Genesis Chapter",
     "Hawk Lords",
     "Imperial Fists",
     "Iron Hands",
+    "Iron Hounds",
     "Lamenters",
     "Mentors",
     "Minotaurs",
@@ -1630,6 +1633,253 @@ async def reconcile_records(
         await _reconciliation_core(interaction, span_days)
     finally:
         RECONCILE_LOCK.release()
+
+
+@bot.tree.command(
+    name="record_of_blood",
+    description="Scan Watch Brothers' home chapters and cross-reference records in the record-of-blood channel.",
+)
+async def record_of_blood(interaction: discord.Interaction):
+    # Restrict to Watch Master or Forgemaster only
+    try:
+        names = _canonical_role_names(interaction.user)
+    except Exception:
+        names = set()
+    if not ("Watch Master" in names or "Forgemaster" in names):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+    except Exception:
+        pass
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.followup.send("Unable to resolve guild.", ephemeral=True)
+        return
+
+    # Resolve Watch Brother role and members
+    wb_role = discord.utils.get(guild.roles, name="Watch Brother")
+    watch_brothers = []
+    if wb_role:
+        try:
+            watch_brothers = list(getattr(wb_role, "members", []) or [])
+        except Exception:
+            watch_brothers = []
+    # If role exists but members cache is empty, or role wasn't present, scan guild members as a fallback
+    if not watch_brothers:
+        try:
+            for m in getattr(guild, "members", []) or []:
+                try:
+                    if "Watch Brother" in _canonical_role_names(m):
+                        watch_brothers.append(m)
+                except Exception:
+                    continue
+        except Exception:
+            watch_brothers = watch_brothers or []
+
+    # Map member id -> resolved home chapter role (from their roles)
+    member_home: dict[str, str] = {}
+    members_with_noncanonical_home: list[tuple[str, str]] = []
+    for m in watch_brothers:
+        chap = ""
+        try:
+            member_role_names = {
+                (getattr(r, "name", "") or "").strip() for r in m.roles if getattr(r, "name", None)
+            }
+            match = next((hc for hc in HOME_CHAPTERS if any(rn.lower() == hc.lower() for rn in member_role_names)), None)
+            if match:
+                chap = match
+            else:
+                # Try datastore fallback if available
+                try:
+                    if DATASTORE:
+                        ds_val = DATASTORE.get_home_chapter(str(getattr(m, "id", "")))
+                        if ds_val:
+                            chap = ds_val
+                except Exception:
+                    pass
+        except Exception:
+            chap = ""
+        member_home[str(getattr(m, "id", ""))] = chap or ""
+        if chap and chap not in HOME_CHAPTERS:
+            members_with_noncanonical_home.append((m.display_name or m.name, chap))
+
+    # Channel to cross-reference (from the provided URL)
+    # URL: https://discord.com/channels/1429264578440597517/1446926555732250674
+    target_channel_id = 1446926555732250674
+    target_channel = bot.get_channel(target_channel_id) or guild.get_channel(target_channel_id)
+    if not target_channel:
+        await interaction.followup.send(
+            f"Unable to find target channel <#{target_channel_id}>.", ephemeral=True
+        )
+        return
+
+    # Scan messages for mentions of HOME_CHAPTERS (and any guild role names not in HOME_CHAPTERS)
+    chapter_mentions_by_msg: list[dict] = []
+    noncanonical_mentioned: set[str] = set()
+    logger.info(f"/record_of_blood: scanning channel {target_channel_id} for {len(watch_brothers)} watch brothers")
+    try:
+        async for msg in target_channel.history(limit=2000):
+            content = (msg.content or "")
+            if not content:
+                continue
+            low = content.lower()
+            # Detect chapter declared on first line in format ":emoji: ⋅ chaptername:".
+            first_line = content.splitlines()[0].strip() if content.splitlines() else ""
+            first_chap = None
+            try:
+                m = re.match(r"^:[^:]+:\s*⋅\s*(.+?):", first_line)
+                if m:
+                    first_chap = m.group(1).strip()
+            except Exception:
+                first_chap = None
+
+            # Find explicit canonical chapter mentions in the body
+            found = [hc for hc in HOME_CHAPTERS if hc.lower() in low]
+
+            # Only consider messages that tag members — ignore others entirely
+            mentions = getattr(msg, "mentions", []) or []
+            if not mentions:
+                continue
+
+            # If a first-line chapter was declared, treat it as a referenced chapter
+            if first_chap:
+                if all(first_chap.lower() != hc.lower() for hc in found):
+                    found.append(first_chap)
+                if all(first_chap.lower() != hc.lower() for hc in HOME_CHAPTERS):
+                    noncanonical_mentioned.add(first_chap)
+
+            # Also detect guild role names mentioned that are not in HOME_CHAPTERS
+            extra = [r.name for r in guild.roles if r.name and r.name.lower() in low and r.name not in HOME_CHAPTERS]
+            if extra:
+                for e in extra:
+                    noncanonical_mentioned.add(e)
+
+            if not found and not extra:
+                continue
+
+            # Record for each mentioned member which chapters the message referenced
+            rec = {"msg": msg, "chapters": found or extra, "mentions": [], "first_chap": first_chap}
+            for mm in mentions:
+                try:
+                    rec["mentions"].append({"id": str(getattr(mm, "id", "")), "display": mm.display_name or mm.name})
+                except Exception:
+                    continue
+            chapter_mentions_by_msg.append(rec)
+    except Exception as e:
+        logger.debug(f"Failed scanning channel history: {e}")
+
+    # Build report
+    lines: list[str] = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // RECORD-OF-BLOOD AUDIT")
+    lines.append("==============================================================================")
+    lines.append(f"  Watch Brothers scanned: {len(watch_brothers)}")
+    lines.append("")
+
+    # Members whose home chapter is absent or non-canonical
+    if members_with_noncanonical_home:
+        lines.append("Members with home chapter not in canonical HOME_CHAPTERS:")
+        for nm, ch in members_with_noncanonical_home:
+            lines.append(f"  - {nm}: {ch}")
+        lines.append("")
+
+    # Chapters mentioned in channel but not canonical
+    if noncanonical_mentioned:
+        lines.append("Chapters/roles mentioned in channel not found in HOME_CHAPTERS:")
+        for ch in sorted(noncanonical_mentioned):
+            lines.append(f"  - {ch}")
+        lines.append("")
+
+    # Per-message findings
+    if chapter_mentions_by_msg:
+        lines.append("Channel message cross-references:")
+        for rec in chapter_mentions_by_msg:
+            try:
+                msg = rec.get("msg")
+                mids = rec.get("mentions", [])
+                chs = rec.get("chapters", [])
+                first_claim = rec.get("first_chap")
+                first_claim_noncanonical = bool(first_claim and all(first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS))
+
+                # Build concise one-line issues for each mismatch
+                issues: list[str] = []
+                for mrec in mids:
+                    mid = mrec.get("id")
+                    disp = mrec.get("display")
+                    actual = member_home.get(mid, "")
+                    claimed = first_claim or (chs[0] if chs else "")
+                    is_match = bool(claimed and claimed.lower() == (actual or "").lower())
+                    if not is_match:
+                        issues.append(
+                            f"Message {getattr(msg, 'id', 'unknown')} | {disp}: record_of_blood='{claimed or ', '.join(chs)}' role='{actual or 'UNKNOWN'}'"
+                        )
+
+                # If declared chapter is non-canonical, add an issue for it
+                if first_claim_noncanonical:
+                    issues.insert(0, f"Message {getattr(msg, 'id', 'unknown')} | Declared chapter not in HOME_CHAPTERS: '{first_claim}'")
+
+                # Append only the concise issue lines (one per mismatch/issue)
+                for it in issues:
+                    lines.append(it)
+            except Exception:
+                continue
+        lines.append("")
+
+    if not members_with_noncanonical_home and not noncanonical_mentioned and not chapter_mentions_by_msg:
+        lines.append("No discrepancies or chapter mentions found in target channel.")
+
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
+
+    report = "\n".join(lines)
+    try:
+        # Send as followup (deferred earlier). If the report is too large
+        # for a single message, attach it as a file instead.
+        if len(report) > 1900:
+            import io
+
+            fp = io.BytesIO(report.encode("utf-8"))
+            fp.seek(0)
+            try:
+                await interaction.followup.send(
+                    "Report too large; attached as file.",
+                    file=discord.File(fp, filename="record_of_blood.txt"),
+                    ephemeral=True,
+                )
+            finally:
+                try:
+                    fp.close()
+                except Exception:
+                    pass
+        else:
+            await interaction.followup.send(report, ephemeral=True)
+    except Exception as e:
+        logger.exception(f"record_of_blood: followup.send failed: {e}")
+        try:
+            if len(report) > 1900:
+                import io
+
+                fp = io.BytesIO(report.encode("utf-8"))
+                fp.seek(0)
+                try:
+                    await interaction.response.send_message(
+                        "Report attached.",
+                        file=discord.File(fp, filename="record_of_blood.txt"),
+                        ephemeral=True,
+                    )
+                finally:
+                    try:
+                        fp.close()
+                    except Exception:
+                        pass
+            else:
+                await interaction.response.send_message(report, ephemeral=True)
+        except Exception as e2:
+            logger.exception(f"record_of_blood: response.send_message fallback failed: {e2}")
 
 
 @bot.tree.command(
