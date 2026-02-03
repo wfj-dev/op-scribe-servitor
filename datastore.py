@@ -339,7 +339,6 @@ class DataStore:
             "dirty_records": self._dirty_records,
             "dirty_ids": self._dirty_ids,
             "last_flush_time": self._last_flush_time,
-            "user_stats_cache_built_ts": self._user_stats_cache_built_ts,
         }
 
     async def _background_flush(self):
