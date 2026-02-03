@@ -470,7 +470,7 @@ HOME_CHAPTERS = [
 
 KILL_TEAMS = [
     "Kill Team Solomon",
-    "Kill Team WiFi",
+    "Kill Team Psycho",
     "Kill Team Atom",
     "Kill Team Falcon",
     "Kill Team Raelyn",
@@ -2487,12 +2487,16 @@ async def cache_stats(interaction: discord.Interaction):
         f"  WATCH FORTRESS JERICHO // SERVITOR CACHE DIAGNOSTICS\n"
         f"==============================================================================\n"
         f"  User Stats Cache Size:        {stats['user_stats_cache_size']}\n"
-        f"  Home Chapter Cache Size:      {stats['home_chapter_cache_size']}\n"
+        f"  Combat Cache Size:            {stats.get('combat_cache_size', 0)}\n"
+        f"  Combat Cache Spans:           {', '.join(stats.get('combat_cache_spans', [])) if stats.get('combat_cache_spans') else 'None'}\n"
         f"  Dirty AAR Records:            {stats['dirty_records']}\n"
         f"  Dirty Processed IDs:          {stats['dirty_ids']}\n"
         f"  Last Flush Time:              {last_flush_str}\n"
-        f"  Home Chapter Cache Hits:      {stats['home_chapter_cache_hits']}\n"
-        f"  Home Chapter Cache Misses:    {stats['home_chapter_cache_misses']}\n"
+        f"  User Stats Cache Built:       {(
+            datetime.datetime.fromtimestamp(stats.get('user_stats_cache_built_ts'), tz=timezone.utc).astimezone(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S %Z')
+            if stats.get('user_stats_cache_built_ts')
+            else 'Never'
+        )}\n"
         f"==============================================================================\n"
         f"\u001b[0m```"
     )
@@ -3707,20 +3711,47 @@ async def combat_bonds(
         all_bros.extend([str(b) for b in (rec.get("brother_ids") or [])])
     all_bros = sorted(set(all_bros))
 
-    pair_counts = _build_pair_counts(missions)
-    # Build multi-size groups (3..5) weighted by pair AAR points
-    # Offload expensive combinatorial group building to a background thread
+    pair_counts = None
+    triples = None
+    spreads = None
+    # Prefer using cached combat computations from DataStore if available
     try:
-        triples = await asyncio.to_thread(_build_group_bonds, pair_counts, all_bros)
+        if DATASTORE:
+            cached = DATASTORE.get_combat_cache(span_days)
+            if cached and isinstance(cached.get("data"), dict):
+                pdata = cached.get("data")
+                pair_counts = pdata.get("pair_counts")
+                triples = pdata.get("triples")
+                spreads = pdata.get("spreads")
     except Exception:
-        # Fallback to synchronous call if to_thread is unavailable
-        triples = _build_group_bonds(pair_counts, all_bros)
-    # Active members in the window: those who appeared in at least one AAR
-    active_count = len(all_bros)
-    try:
-        spreads = await asyncio.to_thread(_build_spread_counts, pair_counts, active_count=active_count)
-    except Exception:
-        spreads = _build_spread_counts(pair_counts, active_count=active_count)
+        pair_counts = None
+
+    if pair_counts is None:
+        # compute pair_counts off the event loop
+        try:
+            pair_counts = await asyncio.to_thread(_build_pair_counts, missions)
+        except Exception:
+            pair_counts = _build_pair_counts(missions)
+
+        # Build multi-size groups (3..5) weighted by pair AAR points
+        try:
+            triples = await asyncio.to_thread(_build_group_bonds, pair_counts, all_bros)
+        except Exception:
+            triples = _build_group_bonds(pair_counts, all_bros)
+
+        # Active members in the window: those who appeared in at least one AAR
+        active_count = len(all_bros)
+        try:
+            spreads = await asyncio.to_thread(_build_spread_counts, pair_counts, active_count=active_count)
+        except Exception:
+            spreads = _build_spread_counts(pair_counts, active_count=active_count)
+
+        # Store in DataStore cache if available
+        try:
+            if DATASTORE:
+                await DATASTORE.set_combat_cache(span_days, {"pair_counts": pair_counts, "triples": triples, "spreads": spreads})
+        except Exception:
+            pass
 
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
