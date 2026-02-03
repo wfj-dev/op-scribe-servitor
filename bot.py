@@ -1418,6 +1418,39 @@ def _load_home_chapter_rotation() -> dict:
     return {"remaining": HOME_CHAPTERS.copy(), "selected": {}}
 
 
+def _active_home_chapters(window_days: int = 28) -> List[str]:
+    """Return a sorted list of canonical `HOME_CHAPTERS` that have at least
+    one AAR record in the last `window_days` days. Falls back to the full
+    `HOME_CHAPTERS` list if the DataStore is unavailable or on error.
+    """
+    try:
+        if DATASTORE is None:
+            return HOME_CHAPTERS.copy()
+        cutoff = datetime.utcnow() - timedelta(days=window_days)
+        found: set[str] = set()
+        for rec in DATASTORE.iter_records():
+            try:
+                ts = rec.get("timestamp")
+                if not ts:
+                    continue
+                try:
+                    t = datetime.fromisoformat(ts)
+                except Exception:
+                    # If parsing fails, skip this record
+                    continue
+                if t >= cutoff:
+                    ch = rec.get("home_chapter")
+                    if ch and ch in HOME_CHAPTERS:
+                        found.add(ch)
+            except Exception:
+                continue
+        if not found:
+            return HOME_CHAPTERS.copy()
+        return sorted(found)
+    except Exception:
+        return HOME_CHAPTERS.copy()
+
+
 def _save_home_chapter_rotation(state: dict):
     tmp = ROTATION_STATE_PATH + ".tmp"
     bak = ROTATION_STATE_PATH + ".bak"
@@ -1447,15 +1480,90 @@ async def _select_home_chapters_for_month(offset: int = 0) -> Tuple[str, str]:
     random chapters from the current `remaining` pool (resetting if needed),
     remove them from the pool, cache the pair under that month, and persist.
     """
+    def _days_until_month_start(offset: int = 0) -> float:
+        from datetime import datetime
+
+        now = datetime.utcnow()
+        # target month first day
+        year = now.year
+        month = now.month - 1 + offset
+        new_year = year + (month // 12)
+        new_month = (month % 12) + 1
+        target_dt = datetime(new_year, new_month, 1)
+        delta = target_dt - now
+        return delta.total_seconds() / 86400.0
+
+    def _chapter_has_recent_activity(chapter: str, window_days: int = 28) -> bool:
+        try:
+            if DATASTORE is None:
+                return True
+            cutoff = datetime.utcnow() - timedelta(days=window_days)
+            for rec in DATASTORE.iter_records():
+                try:
+                    ch = rec.get("home_chapter")
+                    if not ch or ch != chapter:
+                        continue
+                    ts = rec.get("timestamp")
+                    if not ts:
+                        continue
+                    try:
+                        t = datetime.fromisoformat(ts)
+                    except Exception:
+                        continue
+                    if t >= cutoff:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return True
+
     async with ROTATION_LOCK:
         state = _load_home_chapter_rotation()
         target = _month_key_for_offset(offset)
         selected = state.get("selected", {}) or {}
         if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
-            return selected[target][0], selected[target][1]
+            # Determine whether we should validate the cached pick now.
+            validate_now = False
+            # Always validate when returning current month's pick.
+            if offset == 0:
+                validate_now = True
+            # For next month, validate if we're within 1 day of its start.
+            elif offset == 1:
+                try:
+                    days = _days_until_month_start(1)
+                    if days <= 1.0:
+                        validate_now = True
+                except Exception:
+                    validate_now = False
 
-        remaining = [r for r in (state.get("remaining") or []) if r in HOME_CHAPTERS]
+            if not validate_now:
+                return selected[target][0], selected[target][1]
+
+            # Perform activity validation: if both chapters still active, keep cached.
+            try:
+                a_cached, b_cached = selected[target][0], selected[target][1]
+                a_ok = _chapter_has_recent_activity(a_cached, window_days=28)
+                b_ok = _chapter_has_recent_activity(b_cached, window_days=28)
+                if a_ok and b_ok:
+                    return a_cached, b_cached
+                # otherwise fall through to choose replacements
+            except Exception:
+                # if validation fails unexpectedly, return cached as safe fallback
+                try:
+                    return selected[target][0], selected[target][1]
+                except Exception:
+                    pass
+
+        # Prefer chapters represented by active members (recent AARs).
+        active = _active_home_chapters(window_days=28)
+        # Filter saved remaining by only those active chapters
+        remaining = [r for r in (state.get("remaining") or []) if r in active]
         if len(remaining) < 2:
+            # If not enough remaining active chapters, start from the active pool
+            remaining = active.copy()
+        if len(remaining) < 2:
+            # If still not enough (very small guild), fall back to canonical list
             remaining = HOME_CHAPTERS.copy()
 
         try:
@@ -3189,7 +3297,7 @@ async def tally_deeds(
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
 
-        # Determine Active/Inactive status: Active if any AAR in last 30 days.
+        # Determine Active/Inactive status: Active if any AAR in last 4 weeks (28 days).
 
         try:
             # Use in-memory records from DATASTORE
@@ -3213,7 +3321,7 @@ async def tally_deeds(
             if timestamps:
                 timestamps.sort(reverse=True)
                 now = datetime.utcnow()
-                cutoff = now - timedelta(days=30)
+                cutoff = now - timedelta(days=28)
                 for t in timestamps:
                     if t >= cutoff:
                         status = "Active"
