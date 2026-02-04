@@ -6615,16 +6615,12 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 continue
         except Exception:
             pass
-        # Special mappings: Jericho High Command -> role 'High Command'
+        # Special mappings: any 'High Command' label -> explicit role-id mention
         try:
-            if str(t).strip().lower() == "jericho high command":
-                for r in guild.roles:
-                    rn = (r.name or "").lower()
-                    if rn == "high command" or "high command" in rn:
-                        team_mentions.append(f"<@&{r.id}>")
-                        raise StopIteration
-        except StopIteration:
-            continue
+            if isinstance(t, str) and ("high command" in str(t).strip().lower()):
+                # Force the exact role id mention desired for High Command
+                team_mentions.append("<@&1452913063970865203>")
+                continue
         except Exception:
             pass
         # Special mapping: '<Company> Command' -> 'Watch Company <Company>' role
