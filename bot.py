@@ -445,7 +445,6 @@ HOME_CHAPTERS = [
     "Dark Krakens",
     "Death Spectres",
     "Exorcists",
-    "Flesh Eaters",
     "Flesh Tearers",
     "Genesis Chapter",
     "Hawk Lords",
@@ -1453,63 +1452,41 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
         selected = state.get("selected", {}) or {}
 
         def _active_for_month(month_key: str, days: int = 28) -> List[str]:
-            """Compute active canonical HOME_CHAPTERS for the 28 days before month_key starts.
+            """Determine active HOME_CHAPTERS for the month using guild roles only.
 
-            Active determination: users who appear in AARs in the window are "active"; a chapter
-            is active for the month if at least one active user holds the guild role whose name
-            matches the canonical chapter name.
+            Active determination (new behavior): a chapter is active if at least one
+            guild member holds the chapter role and that member does NOT have any
+            role whose name contains 'reserve' (case-insensitive). This ignores
+            AAR activity entirely as requested.
             """
             try:
-                if DATASTORE is None:
-                    return HOME_CHAPTERS.copy()
-                from datetime import datetime, timedelta
-
-                # Resolve guild to use
                 g = guild or _resolve_notification_guild()
                 if g is None:
                     return HOME_CHAPTERS.copy()
 
-                y, m = month_key.split("-")
-                month_start = datetime(int(y), int(m), 1)
-                cutoff = month_start - timedelta(days=days)
-
-                # Collect active user ids from AAR records in the window
-                active_uids: set[str] = set()
-                for rec in DATASTORE.iter_records():
-                    try:
-                        ts = rec.get("timestamp")
-                        if not ts:
-                            continue
-                        t = datetime.fromisoformat(ts)
-                        if cutoff <= t < month_start:
-                            for uid in rec.get("brother_ids", []) or []:
-                                active_uids.add(str(uid))
-                    except Exception:
-                        continue
-
-                if not active_uids:
-                    return HOME_CHAPTERS.copy()
-
-                # Map role name lower -> canonical chapter
                 canon_map = {hc.lower(): hc for hc in HOME_CHAPTERS}
                 active_chapters = set()
+                members = getattr(g, "members", []) or []
 
-                # Inspect guild members/roles to find members with matching chapter roles
-                try:
-                    members = getattr(g, "members", []) or []
+                for canon in HOME_CHAPTERS:
+                    canon_low = canon.lower()
+                    total_with_role = 0
+                    non_reserve_count = 0
                     for mbr in members:
                         try:
-                            if str(getattr(mbr, "id", "")) not in active_uids:
+                            # Check if member has the exact chapter role name
+                            has_chap = any((getattr(r, "name", "") or "").strip().lower() == canon_low for r in getattr(mbr, "roles", []) or [])
+                            if not has_chap:
                                 continue
-                            for r in getattr(mbr, "roles", []) or []:
-                                rn = (getattr(r, "name", "") or "").strip().lower()
-                                canon = canon_map.get(rn)
-                                if canon:
-                                    active_chapters.add(canon)
+                            total_with_role += 1
+                            # If member has any role with 'reserve' in its name, treat as reserve
+                            has_reserve = any((getattr(rr, "name", "") or "").lower().find("reserve") >= 0 for rr in getattr(mbr, "roles", []) or [])
+                            if not has_reserve:
+                                non_reserve_count += 1
                         except Exception:
                             continue
-                except Exception:
-                    return HOME_CHAPTERS.copy()
+                    if total_with_role > 0 and non_reserve_count > 0:
+                        active_chapters.add(canon)
 
                 active_list = sorted(active_chapters)
                 return active_list if active_list else HOME_CHAPTERS.copy()
@@ -1563,50 +1540,31 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
         # Build active pool: chapters with at least one AAR in the last 28 days.
         def _get_active_home_chapters(days: int = 28) -> List[str]:
             try:
-                if DATASTORE is None:
-                    return HOME_CHAPTERS.copy()
-                from datetime import datetime, timedelta
-
                 g = guild or _resolve_notification_guild()
                 if g is None:
                     return HOME_CHAPTERS.copy()
 
-                cutoff = datetime.utcnow() - timedelta(days=days)
-
-                # Collect active user ids from AAR records in the window
-                active_uids: set[str] = set()
-                for rec in DATASTORE.iter_records():
-                    try:
-                        ts = rec.get("timestamp")
-                        if not ts:
-                            continue
-                        t = datetime.fromisoformat(ts)
-                        if t >= cutoff:
-                            for uid in rec.get("brother_ids", []) or []:
-                                active_uids.add(str(uid))
-                    except Exception:
-                        continue
-
-                if not active_uids:
-                    return HOME_CHAPTERS.copy()
-
-                canon_map = {hc.lower(): hc for hc in HOME_CHAPTERS}
+                # Determine chapters based solely on guild membership/reserves status
                 active_chapters = set()
-                try:
-                    members = getattr(g, "members", []) or []
+                members = getattr(g, "members", []) or []
+
+                for canon in HOME_CHAPTERS:
+                    canon_low = canon.lower()
+                    total_with_role = 0
+                    non_reserve_count = 0
                     for mbr in members:
                         try:
-                            if str(getattr(mbr, "id", "")) not in active_uids:
+                            has_chap = any((getattr(r, "name", "") or "").strip().lower() == canon_low for r in getattr(mbr, "roles", []) or [])
+                            if not has_chap:
                                 continue
-                            for r in getattr(mbr, "roles", []) or []:
-                                rn = (getattr(r, "name", "") or "").strip().lower()
-                                canon = canon_map.get(rn)
-                                if canon:
-                                    active_chapters.add(canon)
+                            total_with_role += 1
+                            has_reserve = any((getattr(rr, "name", "") or "").lower().find("reserve") >= 0 for rr in getattr(mbr, "roles", []) or [])
+                            if not has_reserve:
+                                non_reserve_count += 1
                         except Exception:
                             continue
-                except Exception:
-                    return HOME_CHAPTERS.copy()
+                    if total_with_role > 0 and non_reserve_count > 0:
+                        active_chapters.add(canon)
 
                 active_list = sorted(active_chapters)
                 return active_list if active_list else HOME_CHAPTERS.copy()
@@ -1673,6 +1631,56 @@ async def pick_home_chapters(interaction: discord.Interaction):
     text = (
         f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
     )
+    # Print membership and reserves status for selected chapters to terminal
+    try:
+        selected_chapters = [a1, b1, a2, b2]
+        # dedupe while preserving order
+        seen = set()
+        selected_unique = [c for c in selected_chapters if c and (c not in seen and not seen.add(c))]
+        print("Selected home chapters:")
+        for chap in selected_unique:
+            print(f"Chapter: {chap}")
+            if g is None:
+                print("  [no guild available]")
+                continue
+            # Find members who have a role matching this chapter name (case-insensitive substring)
+            members_with_chap = []
+            try:
+                for m in getattr(g, "members", []) or []:
+                    try:
+                        for r in getattr(m, "roles", []) or []:
+                            rn = (getattr(r, "name", "") or "").lower()
+                            if chap.lower() in rn:
+                                members_with_chap.append(m)
+                                break
+                    except Exception:
+                        continue
+            except Exception:
+                members_with_chap = []
+
+            if not members_with_chap:
+                print("  No members with this chapter role found.")
+                continue
+
+            for m in members_with_chap:
+                try:
+                    display = getattr(m, "display_name", getattr(m, "name", str(getattr(m, "id", ""))))
+                except Exception:
+                    display = str(getattr(m, "id", ""))
+                # Determine if member has a reserves-type role (substring 'reserve')
+                has_reserves = False
+                try:
+                    for r in getattr(m, "roles", []) or []:
+                        rn = (getattr(r, "name", "") or "").lower()
+                        if "reserve" in rn:
+                            has_reserves = True
+                            break
+                except Exception:
+                    has_reserves = False
+                print(f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}")
+    except Exception:
+        print("Failed to enumerate chapter members for pick_home_chapters")
+
     await interaction.response.send_message(text, ephemeral=True)
 
 
@@ -2054,6 +2062,23 @@ async def record_of_blood(interaction: discord.Interaction):
     except Exception as e:
         logger.debug(f"Failed scanning channel history: {e}")
 
+    # Determine which canonical HOME_CHAPTERS were mentioned in the channel
+    try:
+        mentioned_canonical: set[str] = set()
+        for rec in chapter_mentions_by_msg:
+            try:
+                for ch in rec.get("chapters", []) or []:
+                    # normalize against canonical list
+                    for hc in HOME_CHAPTERS:
+                        if ch and ch.lower() == hc.lower():
+                            mentioned_canonical.add(hc)
+            except Exception:
+                continue
+        missing_home_chapters = [hc for hc in HOME_CHAPTERS if hc not in mentioned_canonical]
+    except Exception:
+        mentioned_canonical = set()
+        missing_home_chapters = []
+
     # Build report
     lines: list[str] = []
     lines.append("```ansi")
@@ -2076,6 +2101,16 @@ async def record_of_blood(interaction: discord.Interaction):
         for ch in sorted(noncanonical_mentioned):
             lines.append(f"  - {ch}")
         lines.append("")
+
+    # HOME_CHAPTERS that were not mentioned in the scanned channel
+    try:
+        if missing_home_chapters:
+            lines.append("Home chapters not mentioned in target channel:")
+            for ch in missing_home_chapters:
+                lines.append(f"  - {ch}")
+            lines.append("")
+    except Exception:
+        pass
 
     # Per-message findings
     if chapter_mentions_by_msg:
