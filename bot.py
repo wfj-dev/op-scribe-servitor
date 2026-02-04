@@ -1578,6 +1578,15 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
         # the cycle (reset remaining) when we exhaust available active ones.
         if len(pool) >= 2:
             remaining = [r for r in (state.get("remaining") or []) if r in pool]
+            # Merge newly-active chapters into the remaining rotation immediately
+            # so that members who become active again have their chapters
+            # re-enter the rotation without waiting for the cycle to reset.
+            for r in pool:
+                try:
+                    if r not in remaining:
+                        remaining.append(r)
+                except Exception:
+                    continue
             if len(remaining) < 2:
                 # restart cycle among active chapters
                 remaining = pool.copy()
