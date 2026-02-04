@@ -38,6 +38,10 @@ PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
+ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
+
+# Channel ID for activity status change notifications
+ACTIVITY_STATUS_CHANNEL_ID = 1430203472669835415
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -58,6 +62,9 @@ RITES_LOCK = asyncio.Lock()
 
 # Lock for rotation state operations
 ROTATION_LOCK = asyncio.Lock()
+
+# Lock for activity status operations
+ACTIVITY_STATUS_LOCK = asyncio.Lock()
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -409,6 +416,342 @@ try:
 except Exception:
     BROADCAST_STATUS = True
     DEBUG_MODE = False
+
+
+# ---------------------------------------------------------------------------
+# Activity status tracking: persist last known activity state per member
+# ---------------------------------------------------------------------------
+
+def _load_activity_status() -> Dict[str, str]:
+    """Load stored activity status mapping: user_id -> 'active' or 'inactive'."""
+    try:
+        if os.path.exists(ACTIVITY_STATUS_PATH):
+            with open(ACTIVITY_STATUS_PATH, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_activity_status(status_map: Dict[str, str]):
+    """Persist activity status mapping to disk with backup."""
+    try:
+        tmp_path = ACTIVITY_STATUS_PATH + ".tmp"
+        bak_path = ACTIVITY_STATUS_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(status_map, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(ACTIVITY_STATUS_PATH):
+            try:
+                os.replace(ACTIVITY_STATUS_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, ACTIVITY_STATUS_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save activity status: {e}")
+
+
+def _compute_member_activity_status(user_id: str) -> str:
+    """Return 'active' if user has any AAR in the last 28 days, else 'inactive'."""
+    if DATASTORE is None:
+        return "inactive"
+    try:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(days=28)
+        for rec in DATASTORE.iter_records():
+            if str(user_id) not in (rec.get("brother_ids") or []):
+                continue
+            ts = rec.get("timestamp")
+            if not ts:
+                continue
+            try:
+                t = datetime.fromisoformat(ts)
+                if t.tzinfo is not None:
+                    t = t.astimezone(tz=None).replace(tzinfo=None)
+                if t >= cutoff:
+                    return "active"
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return "inactive"
+
+
+def _get_member_company_name(member: discord.Member) -> Optional[str]:
+    """Return the Watch Company name for a member (e.g., 'Watch Company Primus'), or None."""
+    company_roles = {
+        "Watch Company Primus",
+        "Watch Company Secundus",
+        "Watch Company Tertius",
+        "Watch Company Quartus",
+        "Watch Company Quintus",
+    }
+    try:
+        for r in getattr(member, "roles", []) or []:
+            rn = (getattr(r, "name", "") or "").strip()
+            if rn in company_roles:
+                return rn
+    except Exception:
+        pass
+    return None
+
+
+def _extract_company_short_name(company_role_name: str) -> str:
+    """Extract short name from 'Watch Company Primus' -> 'Primus'."""
+    try:
+        return company_role_name.replace("Watch Company", "").strip()
+    except Exception:
+        return company_role_name
+
+
+def _find_company_command_staff(
+    guild: discord.Guild, company_name: str
+) -> Tuple[List[discord.Member], List[discord.Member]]:
+    """Find the Captain(s) and Lieutenant(s) for a company.
+
+    Returns (captains_list, lieutenants_list).
+    A Captain/Lieutenant is a member who has both the Watch Captain/Lieutenant rank
+    AND the specified company role.
+    """
+    captains: List[discord.Member] = []
+    lieutenants: List[discord.Member] = []
+    try:
+        for member in guild.members:
+            roles = getattr(member, "roles", []) or []
+            role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
+            if company_name not in role_names:
+                continue
+            if "Watch Captain" in role_names:
+                captains.append(member)
+            if "Watch Lieutenant" in role_names:
+                lieutenants.append(member)
+    except Exception:
+        pass
+    return captains, lieutenants
+
+
+def _find_kt_sergeant(guild: discord.Guild, kt_name: str) -> Optional[discord.Member]:
+    """Find the Sergeant for a Kill Team.
+
+    A Sergeant is a member who has both Watch Sergeant rank AND the specified KT role.
+    Returns the first match or None.
+    """
+    try:
+        for member in guild.members:
+            roles = getattr(member, "roles", []) or []
+            role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
+            if kt_name not in role_names:
+                continue
+            if "Watch Sergeant" in role_names:
+                return member
+    except Exception:
+        pass
+    return None
+
+
+def _find_all_captains_and_lieutenants(
+    guild: discord.Guild,
+) -> Tuple[List[discord.Member], List[discord.Member]]:
+    """Find all Captains and Lieutenants in the guild.
+
+    Returns (all_captains, all_lieutenants).
+    """
+    captains: List[discord.Member] = []
+    lieutenants: List[discord.Member] = []
+    try:
+        for member in guild.members:
+            roles = getattr(member, "roles", []) or []
+            role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
+            if "Watch Captain" in role_names:
+                captains.append(member)
+            if "Watch Lieutenant" in role_names:
+                lieutenants.append(member)
+    except Exception:
+        pass
+    return captains, lieutenants
+
+
+def _find_watch_master(guild: discord.Guild) -> Optional[discord.Member]:
+    """Find the Watch Master in the guild."""
+    try:
+        for member in guild.members:
+            roles = getattr(member, "roles", []) or []
+            role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
+            if "Watch Master" in role_names:
+                return member
+    except Exception:
+        pass
+    return None
+
+
+def _get_member_display_name(member: discord.Member) -> str:
+    """Get member's nickname or display name."""
+    try:
+        return member.nick or member.display_name or member.name or str(member.id)
+    except Exception:
+        return str(getattr(member, "id", "Unknown"))
+
+
+async def _send_activity_status_notification(
+    guild: discord.Guild,
+    member: discord.Member,
+    old_status: str,
+    new_status: str,
+):
+    """Send a notification to the activity status channel when a member's status changes."""
+    try:
+        channel = guild.get_channel(ACTIVITY_STATUS_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await bot.fetch_channel(ACTIVITY_STATUS_CHANNEL_ID)
+            except Exception:
+                logger.warning(f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found")
+                return
+        if not channel:
+            return
+
+        member_name = _get_member_display_name(member)
+        mentions: List[str] = []
+
+        if new_status == "inactive":
+            # Active -> Inactive: tag captain, LT of member's company, and sergeant of KT
+            company_name = _get_member_company_name(member)
+            if company_name:
+                captains, lieutenants = _find_company_command_staff(guild, company_name)
+                for c in captains:
+                    mentions.append(f"<@{c.id}>")
+                for lt in lieutenants:
+                    mentions.append(f"<@{lt.id}>")
+
+            # Find KT sergeant if member is in a KT
+            kt_name = _resolve_killteam_for_member(member)
+            if kt_name:
+                sgt = _find_kt_sergeant(guild, kt_name)
+                if sgt:
+                    mentions.append(f"<@{sgt.id}>")
+
+            company_short = _extract_company_short_name(company_name) if company_name else "Unknown"
+            kt_short = kt_name.replace("Kill Team ", "") if kt_name else None
+
+            location_info = f"({company_short}"
+            if kt_short:
+                location_info += f" / {kt_short}"
+            location_info += ")"
+
+            message = f"⚠️ **{member_name}** {location_info} has become **INACTIVE** (no AAR in 28 days)."
+
+        else:
+            # Inactive -> Active: tag watch master, all captains, all LTs
+            watch_master = _find_watch_master(guild)
+            if watch_master:
+                mentions.append(f"<@{watch_master.id}>")
+
+            all_captains, all_lieutenants = _find_all_captains_and_lieutenants(guild)
+            for c in all_captains:
+                mentions.append(f"<@{c.id}>")
+            for lt in all_lieutenants:
+                mentions.append(f"<@{lt.id}>")
+
+            message = f"✅ **{member_name}** has become **ACTIVE** again!"
+
+        # Dedupe mentions while preserving order
+        seen = set()
+        unique_mentions = []
+        for m in mentions:
+            if m not in seen:
+                seen.add(m)
+                unique_mentions.append(m)
+
+        if unique_mentions:
+            mention_str = " ".join(unique_mentions)
+            content = f"{mention_str}\n{message}"
+        else:
+            content = message
+
+        await channel.send(
+            content,
+            allowed_mentions=discord.AllowedMentions(users=True),
+        )
+        logger.info(f"Activity status notification sent for {member_name}: {old_status} -> {new_status}")
+
+    except Exception as e:
+        logger.exception(f"Failed to send activity status notification: {e}")
+
+
+async def _check_activity_status_changes():
+    """Check all guild members for activity status changes and send notifications."""
+    async with ACTIVITY_STATUS_LOCK:
+        try:
+            guild = _resolve_notification_guild()
+            if not guild:
+                logger.debug("Activity status check: no guild available")
+                return
+
+            if DATASTORE is None:
+                logger.debug("Activity status check: DATASTORE not initialized")
+                return
+
+            # Load previous status
+            prev_status = _load_activity_status()
+            new_status_map: Dict[str, str] = {}
+            changes: List[Tuple[discord.Member, str, str]] = []
+
+            # Check all members
+            for member in guild.members:
+                try:
+                    # Skip bots
+                    if member.bot:
+                        continue
+
+                    user_id = str(member.id)
+                    current_status = _compute_member_activity_status(user_id)
+                    new_status_map[user_id] = current_status
+
+                    old = prev_status.get(user_id)
+                    if old and old != current_status:
+                        changes.append((member, old, current_status))
+
+                except Exception:
+                    continue
+
+            # Save updated status map
+            _save_activity_status(new_status_map)
+
+            # Send notifications for changes
+            for member, old, new in changes:
+                try:
+                    await _send_activity_status_notification(guild, member, old, new)
+                    # Small delay between notifications to avoid rate limits
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logger.exception(f"Failed to notify activity change for {member.id}: {e}")
+
+            if changes:
+                logger.info(f"Activity status check complete: {len(changes)} change(s) detected")
+            else:
+                logger.debug("Activity status check complete: no changes")
+
+        except Exception as e:
+            logger.exception(f"Activity status check failed: {e}")
+
+
+@tasks.loop(hours=24)
+async def _activity_status_check_loop():
+    """Daily loop to check for activity status changes."""
+    try:
+        # Delay the first run so startup does not trigger an immediate check
+        if not getattr(_activity_status_check_loop, "_first_run_done", False):
+            setattr(_activity_status_check_loop, "_first_run_done", True)
+            # Sleep 1 hour after startup before first check
+            await asyncio.sleep(3600)
+
+        await _check_activity_status_changes()
+    except Exception:
+        logger.exception("Error running activity status check loop")
+
 
 # Global rank priority list (highest -> lowest)
 RANK_ROLES_PRIORITY = [
@@ -1245,6 +1588,14 @@ async def on_ready():
                 logger.exception("Failed to start monthly audit loop")
     except Exception:
         logger.debug("Error checking/starting scheduled audit loop")
+
+    # Start activity status check loop (always enabled)
+    try:
+        if not _activity_status_check_loop.is_running():
+            _activity_status_check_loop.start()
+            logger.info("Activity status check loop started (24h interval).")
+    except Exception:
+        logger.exception("Failed to start activity status check loop")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
