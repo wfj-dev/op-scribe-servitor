@@ -2,7 +2,6 @@
   "remaining": [
     "Black Templars",
     "Blood Angels",
-    "Blood Ravens",
     "Carcharodons",
     "Cowled Wardens",
     "Crimson Fists",
@@ -10,9 +9,7 @@
     "Dark Krakens",
     "Death Spectres",
     "Exorcists",
-    "Flesh Eaters",
     "Flesh Tearers",
-    "Genesis Chapter",
     "Hawk Lords",
     "Imperial Fists",
     "Iron Hands",
@@ -26,7 +23,6 @@
     "Sons of Medusa",
     "Space Wolves",
     "Storm Giants",
-    "Ultramarines",
     "White Scars",
     "Black Shield"
   ],
@@ -34,6 +30,10 @@
     "2026-02": [
       "Red Templars",
       "Salamanders"
+    ],
+    "2026-03": [
+      "Blood Ravens",
+      "Genesis Chapter"
     ]
   }
 }
