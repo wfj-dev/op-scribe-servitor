@@ -1418,39 +1418,6 @@ def _load_home_chapter_rotation() -> dict:
     return {"remaining": HOME_CHAPTERS.copy(), "selected": {}}
 
 
-def _active_home_chapters(window_days: int = 28) -> List[str]:
-    """Return a sorted list of canonical `HOME_CHAPTERS` that have at least
-    one AAR record in the last `window_days` days. Falls back to the full
-    `HOME_CHAPTERS` list if the DataStore is unavailable or on error.
-    """
-    try:
-        if DATASTORE is None:
-            return HOME_CHAPTERS.copy()
-        cutoff = datetime.utcnow() - timedelta(days=window_days)
-        found: set[str] = set()
-        for rec in DATASTORE.iter_records():
-            try:
-                ts = rec.get("timestamp")
-                if not ts:
-                    continue
-                try:
-                    t = datetime.fromisoformat(ts)
-                except Exception:
-                    # If parsing fails, skip this record
-                    continue
-                if t >= cutoff:
-                    ch = rec.get("home_chapter")
-                    if ch and ch in HOME_CHAPTERS:
-                        found.add(ch)
-            except Exception:
-                continue
-        if not found:
-            return HOME_CHAPTERS.copy()
-        return sorted(found)
-    except Exception:
-        return HOME_CHAPTERS.copy()
-
-
 def _save_home_chapter_rotation(state: dict):
     tmp = ROTATION_STATE_PATH + ".tmp"
     bak = ROTATION_STATE_PATH + ".bak"
@@ -1473,103 +1440,200 @@ def _save_home_chapter_rotation(state: dict):
         pass
 
 
-async def _select_home_chapters_for_month(offset: int = 0) -> Tuple[str, str]:
+async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[discord.Guild] = None) -> Tuple[str, str]:
     """Select (and cache) two chapters for a month specified by offset from now.
 
     If a selection for that month already exists, return it. Otherwise pick two
     random chapters from the current `remaining` pool (resetting if needed),
     remove them from the pool, cache the pair under that month, and persist.
     """
-    def _days_until_month_start(offset: int = 0) -> float:
-        from datetime import datetime
-
-        now = datetime.utcnow()
-        # target month first day
-        year = now.year
-        month = now.month - 1 + offset
-        new_year = year + (month // 12)
-        new_month = (month % 12) + 1
-        target_dt = datetime(new_year, new_month, 1)
-        delta = target_dt - now
-        return delta.total_seconds() / 86400.0
-
-    def _chapter_has_recent_activity(chapter: str, window_days: int = 28) -> bool:
-        try:
-            if DATASTORE is None:
-                return True
-            cutoff = datetime.utcnow() - timedelta(days=window_days)
-            for rec in DATASTORE.iter_records():
-                try:
-                    ch = rec.get("home_chapter")
-                    if not ch or ch != chapter:
-                        continue
-                    ts = rec.get("timestamp")
-                    if not ts:
-                        continue
-                    try:
-                        t = datetime.fromisoformat(ts)
-                    except Exception:
-                        continue
-                    if t >= cutoff:
-                        return True
-                except Exception:
-                    continue
-            return False
-        except Exception:
-            return True
-
     async with ROTATION_LOCK:
         state = _load_home_chapter_rotation()
         target = _month_key_for_offset(offset)
         selected = state.get("selected", {}) or {}
-        if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
-            # Determine whether we should validate the cached pick now.
-            validate_now = False
-            # Always validate when returning current month's pick.
-            if offset == 0:
-                validate_now = True
-            # For next month, validate if we're within 1 day of its start.
-            elif offset == 1:
-                try:
-                    days = _days_until_month_start(1)
-                    if days <= 1.0:
-                        validate_now = True
-                except Exception:
-                    validate_now = False
 
-            if not validate_now:
-                return selected[target][0], selected[target][1]
+        def _active_for_month(month_key: str, days: int = 28) -> List[str]:
+            """Compute active canonical HOME_CHAPTERS for the 28 days before month_key starts.
 
-            # Perform activity validation: if both chapters still active, keep cached.
+            Active determination: users who appear in AARs in the window are "active"; a chapter
+            is active for the month if at least one active user holds the guild role whose name
+            matches the canonical chapter name.
+            """
             try:
-                a_cached, b_cached = selected[target][0], selected[target][1]
-                a_ok = _chapter_has_recent_activity(a_cached, window_days=28)
-                b_ok = _chapter_has_recent_activity(b_cached, window_days=28)
-                if a_ok and b_ok:
-                    return a_cached, b_cached
-                # otherwise fall through to choose replacements
-            except Exception:
-                # if validation fails unexpectedly, return cached as safe fallback
+                if DATASTORE is None:
+                    return HOME_CHAPTERS.copy()
+                from datetime import datetime, timedelta
+
+                # Resolve guild to use
+                g = guild or _resolve_notification_guild()
+                if g is None:
+                    return HOME_CHAPTERS.copy()
+
+                y, m = month_key.split("-")
+                month_start = datetime(int(y), int(m), 1)
+                cutoff = month_start - timedelta(days=days)
+
+                # Collect active user ids from AAR records in the window
+                active_uids: set[str] = set()
+                for rec in DATASTORE.iter_records():
+                    try:
+                        ts = rec.get("timestamp")
+                        if not ts:
+                            continue
+                        t = datetime.fromisoformat(ts)
+                        if cutoff <= t < month_start:
+                            for uid in rec.get("brother_ids", []) or []:
+                                active_uids.add(str(uid))
+                    except Exception:
+                        continue
+
+                if not active_uids:
+                    return HOME_CHAPTERS.copy()
+
+                # Map role name lower -> canonical chapter
+                canon_map = {hc.lower(): hc for hc in HOME_CHAPTERS}
+                active_chapters = set()
+
+                # Inspect guild members/roles to find members with matching chapter roles
                 try:
-                    return selected[target][0], selected[target][1]
+                    members = getattr(g, "members", []) or []
+                    for mbr in members:
+                        try:
+                            if str(getattr(mbr, "id", "")) not in active_uids:
+                                continue
+                            for r in getattr(mbr, "roles", []) or []:
+                                rn = (getattr(r, "name", "") or "").strip().lower()
+                                canon = canon_map.get(rn)
+                                if canon:
+                                    active_chapters.add(canon)
+                        except Exception:
+                            continue
+                except Exception:
+                    return HOME_CHAPTERS.copy()
+
+                active_list = sorted(active_chapters)
+                return active_list if active_list else HOME_CHAPTERS.copy()
+            except Exception:
+                return HOME_CHAPTERS.copy()
+
+        # If we have a cached pair for the target month, validate activity.
+        if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
+            pair = selected[target]
+            month_active = _active_for_month(target, 28)
+            # If both are active for that month, return cached pair
+            if pair[0] in month_active and pair[1] in month_active:
+                return pair[0], pair[1]
+            # Otherwise we need to replace any inactive entries
+            pool = set(month_active)
+            # Ensure at least two options
+            if len(pool) < 2:
+                pool = set(HOME_CHAPTERS)
+
+            # Keep any still-active picks, replace inactive ones
+            kept = [p for p in pair if p in pool]
+            needed = 2 - len(kept)
+            # Build candidate list excluding already-kept and excluding other months' selected entries
+            candidates = [c for c in pool if c not in kept]
+            if len(candidates) < needed:
+                candidates = [c for c in HOME_CHAPTERS if c not in kept]
+
+            try:
+                new_picks = random.sample(candidates, needed) if needed > 0 else []
+            except Exception:
+                # Fallback to any remaining
+                new_picks = (candidates + HOME_CHAPTERS)[:needed]
+
+            new_pair = kept + new_picks
+            # Ensure two items and deterministic order
+            new_pair = new_pair[:2]
+            selected[target] = new_pair
+            # Also remove replacements from remaining pool if present
+            remaining = [r for r in (state.get("remaining") or []) if r in HOME_CHAPTERS]
+            for p in new_pair:
+                try:
+                    if p in remaining:
+                        remaining.remove(p)
                 except Exception:
                     pass
+            state["remaining"] = remaining
+            state["selected"] = selected
+            _save_home_chapter_rotation(state)
+            return new_pair[0], new_pair[1]
 
-        # Prefer chapters represented by active members (recent AARs).
-        active = _active_home_chapters(window_days=28)
-        # Filter saved remaining by only those active chapters
-        remaining = [r for r in (state.get("remaining") or []) if r in active]
-        if len(remaining) < 2:
-            # If not enough remaining active chapters, start from the active pool
-            remaining = active.copy()
-        if len(remaining) < 2:
-            # If still not enough (very small guild), fall back to canonical list
-            remaining = HOME_CHAPTERS.copy()
+        # Build active pool: chapters with at least one AAR in the last 28 days.
+        def _get_active_home_chapters(days: int = 28) -> List[str]:
+            try:
+                if DATASTORE is None:
+                    return HOME_CHAPTERS.copy()
+                from datetime import datetime, timedelta
+
+                g = guild or _resolve_notification_guild()
+                if g is None:
+                    return HOME_CHAPTERS.copy()
+
+                cutoff = datetime.utcnow() - timedelta(days=days)
+
+                # Collect active user ids from AAR records in the window
+                active_uids: set[str] = set()
+                for rec in DATASTORE.iter_records():
+                    try:
+                        ts = rec.get("timestamp")
+                        if not ts:
+                            continue
+                        t = datetime.fromisoformat(ts)
+                        if t >= cutoff:
+                            for uid in rec.get("brother_ids", []) or []:
+                                active_uids.add(str(uid))
+                    except Exception:
+                        continue
+
+                if not active_uids:
+                    return HOME_CHAPTERS.copy()
+
+                canon_map = {hc.lower(): hc for hc in HOME_CHAPTERS}
+                active_chapters = set()
+                try:
+                    members = getattr(g, "members", []) or []
+                    for mbr in members:
+                        try:
+                            if str(getattr(mbr, "id", "")) not in active_uids:
+                                continue
+                            for r in getattr(mbr, "roles", []) or []:
+                                rn = (getattr(r, "name", "") or "").strip().lower()
+                                canon = canon_map.get(rn)
+                                if canon:
+                                    active_chapters.add(canon)
+                        except Exception:
+                            continue
+                except Exception:
+                    return HOME_CHAPTERS.copy()
+
+                active_list = sorted(active_chapters)
+                return active_list if active_list else HOME_CHAPTERS.copy()
+            except Exception:
+                return HOME_CHAPTERS.copy()
+
+        pool = _get_active_home_chapters(28)
+
+        # Prefer selecting only from active chapters. If there are at least two
+        # active chapters, treat inactive chapters as not present and restart
+        # the cycle (reset remaining) when we exhaust available active ones.
+        if len(pool) >= 2:
+            remaining = [r for r in (state.get("remaining") or []) if r in pool]
+            if len(remaining) < 2:
+                # restart cycle among active chapters
+                remaining = pool.copy()
+        else:
+            # Too few active chapters to choose from: fall back to full canonical list
+            pool = HOME_CHAPTERS.copy()
+            remaining = [r for r in (state.get("remaining") or []) if r in pool]
+            if len(remaining) < 2:
+                remaining = pool.copy()
 
         try:
             pick = random.sample(remaining, 2)
         except Exception:
-            pick = random.sample(HOME_CHAPTERS, 2)
+            pick = random.sample(pool, 2)
 
         for p in pick:
             try:
@@ -1595,8 +1659,9 @@ async def pick_home_chapters(interaction: discord.Interaction):
     # Compute current and next month keys and selections
     this_key = _month_key_for_offset(0)
     next_key = _month_key_for_offset(1)
-    a1, b1 = await _select_home_chapters_for_month(0)
-    a2, b2 = await _select_home_chapters_for_month(1)
+    g = interaction.guild or _resolve_notification_guild()
+    a1, b1 = await _select_home_chapters_for_month(0, guild=g)
+    a2, b2 = await _select_home_chapters_for_month(1, guild=g)
     # Format human-friendly month names
     from datetime import datetime
 
@@ -3297,7 +3362,7 @@ async def tally_deeds(
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
 
-        # Determine Active/Inactive status: Active if any AAR in last 4 weeks (28 days).
+        # Determine Active/Inactive status: Active if any AAR in last 30 days.
 
         try:
             # Use in-memory records from DATASTORE
