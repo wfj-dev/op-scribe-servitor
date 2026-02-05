@@ -12,7 +12,6 @@ from discord.ext import tasks
 import uuid
 import re
 import itertools
-from collections import Counter
 from typing import Dict, List, Tuple, Optional
 import hashlib
 import logging
@@ -817,6 +816,13 @@ KILL_TEAMS = [
     "Kill Team Raelyn",
 ]
 
+# Command-level teams (company commands and high command)
+COMMAND_TEAMS = [
+    "Primus Command",
+    "Secundus Command",
+    "High Command",
+]
+
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {"❖⋅data-vault⋅❖"}
 
@@ -1065,12 +1071,7 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
 
     Rules:
     - Include any canonical Kill Team from `KILL_TEAMS` the member holds.
-    - If member has a company role (name contains 'Watch Company'), and the
-      member's rank is Lieutenant/Captain/Company Champion or they hold a
-      specialist role (apothecary/techmarine/librarian/etc.), include a
-      derived "<Company> Command" team (e.g., 'Primus Command').
-    - If member is in High Command (matches `HIGH_COMMAND_ROLES`), include
-      'High Command'.
+    - Include any command team from `COMMAND_TEAMS` the member holds as a role.
     - A member may contribute to multiple teams simultaneously.
     """
     out: List[str] = []
@@ -1083,51 +1084,12 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
         except Exception:
             pass
 
-        # 2) high command
+        # 2) command teams (check for actual roles matching COMMAND_TEAMS)
         try:
             names = _canonical_role_names(member)
-            if any(r in names for r in HIGH_COMMAND_ROLES):
-                out.append("High Command")
-        except Exception:
-            pass
-
-        # 3) company command: detect 'Watch Company X' roles
-        try:
-            comp_roles = [
-                r
-                for r in getattr(member, "roles", []) or []
-                if (getattr(r, "name", "") or "").lower().startswith("watch company")
-            ]
-            if comp_roles:
-                # Determine if member qualifies by rank or specialist role
-                qualifies = False
-                try:
-                    # Only these exact roles qualify a member for Company Command
-                    allowed = {
-                        "Watch Techmarine",
-                        "Watch Apothecary",
-                        "Watch Librarian",
-                        "Watch Chaplain",
-                        "Company Champion",
-                        "Watch Lieutenant",
-                        "Watch Captain",
-                    }
-                    names = _canonical_role_names(member)
-                    # If the member holds any of the allowed roles exactly, they qualify
-                    if any(n in allowed for n in names):
-                        qualifies = True
-                except Exception:
-                    qualifies = False
-
-                if qualifies:
-                    for r in comp_roles:
-                        rn = (getattr(r, "name", "") or "").strip()
-                        # Extract trailing token as company name
-                        parts = rn.split()
-                        if parts:
-                            company = parts[-1]
-                            team_name = f"{company} Command"
-                            out.append(team_name)
+            for cmd_team in COMMAND_TEAMS:
+                if cmd_team in names and cmd_team not in out:
+                    out.append(cmd_team)
         except Exception:
             pass
     except Exception:
@@ -1991,55 +1953,56 @@ async def pick_home_chapters(interaction: discord.Interaction):
     text = (
         f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
     )
-    # Print membership and reserves status for selected chapters to terminal
-    try:
-        selected_chapters = [a1, b1, a2, b2]
-        # dedupe while preserving order
-        seen = set()
-        selected_unique = [c for c in selected_chapters if c and (c not in seen and not seen.add(c))]
-        print("Selected home chapters:")
-        for chap in selected_unique:
-            print(f"Chapter: {chap}")
-            if g is None:
-                print("  [no guild available]")
-                continue
-            # Find members who have a role matching this chapter name (case-insensitive substring)
-            members_with_chap = []
-            try:
-                for m in getattr(g, "members", []) or []:
+    # Print membership and reserves status for selected chapters to terminal (only in debug mode)
+    if DEBUG_MODE:
+        try:
+            selected_chapters = [a1, b1, a2, b2]
+            # dedupe while preserving order
+            seen = set()
+            selected_unique = [c for c in selected_chapters if c and (c not in seen and not seen.add(c))]
+            print("Selected home chapters:")
+            for chap in selected_unique:
+                print(f"Chapter: {chap}")
+                if g is None:
+                    print("  [no guild available]")
+                    continue
+                # Find members who have a role matching this chapter name (case-insensitive substring)
+                members_with_chap = []
+                try:
+                    for m in getattr(g, "members", []) or []:
+                        try:
+                            for r in getattr(m, "roles", []) or []:
+                                rn = (getattr(r, "name", "") or "").lower()
+                                if chap.lower() in rn:
+                                    members_with_chap.append(m)
+                                    break
+                        except Exception:
+                            continue
+                except Exception:
+                    members_with_chap = []
+
+                if not members_with_chap:
+                    print("  No members with this chapter role found.")
+                    continue
+
+                for m in members_with_chap:
+                    try:
+                        display = getattr(m, "display_name", getattr(m, "name", str(getattr(m, "id", ""))))
+                    except Exception:
+                        display = str(getattr(m, "id", ""))
+                    # Determine if member has a reserves-type role (substring 'reserve')
+                    has_reserves = False
                     try:
                         for r in getattr(m, "roles", []) or []:
                             rn = (getattr(r, "name", "") or "").lower()
-                            if chap.lower() in rn:
-                                members_with_chap.append(m)
+                            if "reserve" in rn:
+                                has_reserves = True
                                 break
                     except Exception:
-                        continue
-            except Exception:
-                members_with_chap = []
-
-            if not members_with_chap:
-                print("  No members with this chapter role found.")
-                continue
-
-            for m in members_with_chap:
-                try:
-                    display = getattr(m, "display_name", getattr(m, "name", str(getattr(m, "id", ""))))
-                except Exception:
-                    display = str(getattr(m, "id", ""))
-                # Determine if member has a reserves-type role (substring 'reserve')
-                has_reserves = False
-                try:
-                    for r in getattr(m, "roles", []) or []:
-                        rn = (getattr(r, "name", "") or "").lower()
-                        if "reserve" in rn:
-                            has_reserves = True
-                            break
-                except Exception:
-                    has_reserves = False
-                print(f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}")
-    except Exception:
-        print("Failed to enumerate chapter members for pick_home_chapters")
+                        has_reserves = False
+                    print(f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}")
+        except Exception:
+            print("Failed to enumerate chapter members for pick_home_chapters")
 
     await interaction.response.send_message(text, ephemeral=True)
 
@@ -3792,7 +3755,8 @@ async def tally_deeds(
         # Determine Company and Kill Team visibility and values per rank/command rules
         show_company = False
         show_killteam = False
-        company = "Unknown"
+        # Default company: "Reserves" if inactive, "Unknown" otherwise
+        company = "Reserves" if status == "Inactive" else "Unknown"
         kt_name = "Unknown"
         try:
             role_names = _canonical_role_names(target)
@@ -4182,139 +4146,107 @@ async def tally_deeds(
             # Continue even if roster formatting fails
             pass
 
-        count = len(members)
         span_days = 7
-        recent_records = _get_missions_last_days(span_days)
-        member_ids = {
-            str(getattr(m, "id", "")) for m in members if getattr(m, "id", None)
-        }
 
-        ops_count = 0
-        aar_vals: List[float] = []
-        gene_vals: List[float] = []
-        armory_vals: List[float] = []
-        waves_vals: List[float] = []  # siege-only
-        per_capita_vals: List[float] = []
-        ops_types: Counter = Counter()
-
-        for rec in recent_records:
-            try:
-                bros = [str(b) for b in (rec.get("brother_ids") or [])]
-                participants_in_team = sum(1 for b in bros if b in member_ids)
-                if participants_in_team <= 0:
-                    continue
-                # Track mission types for top-N breakdown (e.g., Inferno, Decapitation)
-                try:
-                    mission_raw = rec.get("mission") or ""
-                    # strip role mentions like <@&12345>
-                    mission_clean = re.sub(r"<@&\d+>", "", mission_raw).strip()
-                    # Use the first token or the whole cleaned string if single-word missions
-                    mission_key = (
-                        mission_clean.split()[0] if mission_clean else "Unknown"
-                    )
-                    ops_types[mission_key] += 1
-                except Exception:
-                    pass
-                ops_count += 1
-                aar = float(rec.get("points_for_op", 0) or 0)
-                armory = float(
-                    rec.get("armory_challenge_points", rec.get("armory_data", 0) or 0)
-                    or 0
-                )
-                gene = 0.0
-                if (rec.get("gene_seed_status") or "").lower() == "carried":
-                    gene = float(rec.get("gene_seed_base_points_for_carrier", 0) or 0)
-                aar_vals.append(aar)
-                armory_vals.append(armory)
-                gene_vals.append(gene)
-                dclass = (rec.get("difficulty_class") or "").lower()
-                if "siege" in dclass:
-                    waves_vals.append(float(rec.get("waves", 0) or 0))
-                # Per-capita AAR for force multiplier
-                try:
-                    if participants_in_team > 0:
-                        per_capita_vals.append(aar / float(participants_in_team))
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-        def _mean(vals: List[float]) -> float:
-            return (sum(vals) / len(vals)) if vals else 0.0
-
-        avg_aar = _mean(aar_vals)
-        avg_gene = _mean(gene_vals)
-        avg_armory = _mean(armory_vals)
-        avg_waves = _mean(waves_vals)
-        # Reliability and Force Multiplier (single-team context)
-        total_scores: List[float] = [
-            a + g + r for a, g, r in zip(aar_vals, gene_vals, armory_vals)
-        ]
-
-        def _pstdev(vals: List[float]) -> float:
-            return statistics.pstdev(vals) if len(vals) >= 2 else 0.0
-
-        reliability = (
-            (_mean(total_scores) / (1.0 + _pstdev(total_scores)))
-            if total_scores
-            else 0.0
-        )
-        force_multiplier = _mean(per_capita_vals)
-
-        # Build top-3 operation type breakdown for Operational Tempo
+        # Compute fortress-wide rankings for kill team honours display
         try:
-            top_ops = ops_types.most_common(3)
-            if top_ops:
-                top_ops_str = ", ".join(f"{k} {v}" for k, v in top_ops)
-            else:
-                top_ops_str = ""
+            rankings = await _compute_fortress_rankings(interaction.guild, span_days)
         except Exception:
-            top_ops_str = ""
+            rankings = {"teams": {}, "imperial_date": _format_imperial_date(datetime.utcnow()), "span_days": span_days}
 
-        # Format a compact ANSI-styled summary similar to individual tally output
-        stat_rows_summary = [
-            ("Window", f"Last {span_days} Days"),
-            ("Kill Team", _extract_killteam_name(getattr(killteam, "name", "Unknown"))),
-            ("Members", str(count)),
-            ("Veteran Lethality Index", f"Avg AAR {avg_aar:.2f}"),
-            (
-                "Operational Tempo",
-                f"Ops {int(ops_count)}"
-                + (f" (top: {top_ops_str})" if top_ops_str else ""),
-            ),
-            ("Siegebreaker Rating", f"Avg Waves {avg_waves:.2f}"),
-            ("Preservation — Gene", f"Avg {avg_gene:.2f}"),
-            ("Preservation — Armory", f"Avg {avg_armory:.2f}"),
-            ("Kill Team Reliability Index", f"Score {reliability:.2f}"),
-            ("Force Multiplier Rating", f"Avg AAR/Member {force_multiplier:.2f}"),
-        ]
-        label_width = max(len(label) for label, _ in stat_rows_summary) + 2
+        imperial_date = rankings.get("imperial_date", "")
+        team_rankings = rankings.get("teams", {})
+
+        # Resolve the queried kill team name to match ranking keys
+        kt_name_raw = getattr(killteam, "name", "Unknown")
+        kt_display = _extract_killteam_name(kt_name_raw)
+
+        # Try to find the matching team key in rankings
+        queried_team_key = None
+        for possible_key in [kt_name_raw, kt_display, f"Kill Team {kt_display}"]:
+            for tk in team_rankings.get("ops", {}).keys():
+                if tk.lower() == possible_key.lower() or possible_key.lower() in tk.lower() or tk.lower() in possible_key.lower():
+                    queried_team_key = tk
+                    break
+            if queried_team_key:
+                break
+
+        # Helper to format rank display
+        def fmt_rank(metric_key: str, team_key: str) -> str:
+            try:
+                val, rank, total = team_rankings.get(metric_key, {}).get(team_key, (0, 0, 0))
+                return f"#{rank}/{total}"
+            except Exception:
+                return "—"
+
+        def fmt_val_rank(metric_key: str, team_key: str, val_fmt: str = "") -> str:
+            try:
+                val, rank, total = team_rankings.get(metric_key, {}).get(team_key, (0, 0, 0))
+                if val_fmt:
+                    return f"{val_fmt.format(val)} (#{rank}/{total})"
+                return f"{val} (#{rank}/{total})"
+            except Exception:
+                return "—"
+
+        # Build the new honours-style output for kill team
         s_lines = []
         s_lines.append("```ansi")
         s_lines.append(
             "\u001b[32m=============================================================================="
         )
-        s_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
-        s_lines.append("  OPERATION-SCRIBE SERVITOR — KILL TEAM SUMMARY")
+        s_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
+        s_lines.append("  OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS")
+        s_lines.append(f"  Date: {imperial_date}")
+        s_lines.append(f"  Kill Team: {kt_display}")
         s_lines.append(
             "=============================================================================="
         )
-        for label, value in stat_rows_summary:
-            s_lines.append(f"  {label:<{label_width}} {value}")
+        s_lines.append("")
+        s_lines.append("KILL TEAM DISTINCTIONS")
+
+        if queried_team_key:
+            # Get values and ranks for each metric
+            ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
+            avg_data = team_rankings.get("avg", {}).get(queried_team_key, (0.0, 0, 0))
+            pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
+            armory_data = team_rankings.get("armory", {}).get(queried_team_key, (0, 0, 0))
+            gene_data = team_rankings.get("gene_carried", {}).get(queried_team_key, (0, 0, 0))
+            risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
+            force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
+
+            s_lines.append(f"Highest Tempo Team       (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
+            s_lines.append(f"Most Reliable Team       (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+            s_lines.append(f"Best Preservation Team   (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
+            s_lines.append(f"Highest Risk Team        (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
+            s_lines.append(f"Force Multiplier Team    (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
+        else:
+            s_lines.append(f"  No ranking data available")
+
+        s_lines.append("")
         s_lines.append(
             "=============================================================================="
         )
         s_lines.append("\u001b[0m```")
         summary_text = "\n".join(s_lines)
+
         try:
             # Structured summary embed with concise inline fields
             embed = discord.Embed(
-                title="Kill Team Summary",
-                description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))} — Last {span_days} Days",
+                title="Kill Team Weekly Honours",
+                description=f"{kt_display} — Last {span_days} Days",
                 color=0x2ECC71,
             )
-            for label, value in stat_rows_summary:
-                embed.add_field(name=label, value=value, inline=True)
+            if queried_team_key:
+                ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
+                avg_data = team_rankings.get("avg", {}).get(queried_team_key, (0.0, 0, 0))
+                pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
+                risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
+                force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
+                embed.add_field(name="Highest Tempo", value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}", inline=True)
+                embed.add_field(name="Most Reliable", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
+                embed.add_field(name="Best Preservation", value=f"#{pres_data[1]}/{pres_data[2]}", inline=True)
+                embed.add_field(name="Highest Risk", value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}", inline=True)
+                embed.add_field(name="Force Multiplier", value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}", inline=True)
             view = ToggleFormatView(
                 text_content=summary_text, embed=embed, default="ansi"
             )
@@ -4367,6 +4299,109 @@ async def tally_deeds(
             content=reply_text, embed=None, view=view, ephemeral=True
         )
 
+        # Send Weekly Honours as a separate additional message
+        if len(members) == 1:
+            try:
+                rankings = await _compute_fortress_rankings(interaction.guild, 7)
+            except Exception:
+                rankings = {"individuals": {}, "chapters": {}, "chapters_map": {}, "imperial_date": _format_imperial_date(datetime.utcnow()), "span_days": 7}
+
+            imperial_date = rankings.get("imperial_date", "")
+            individual_rankings = rankings.get("individuals", {})
+            chapter_rankings = rankings.get("chapters", {})
+            resolved_chapters_map = rankings.get("chapters_map", {})
+
+            target = members[0]
+            target_id = str(target.id)
+            target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
+            home_chapter = resolved_chapters_map.get(target_id, chapters_map.get(target_id, "Unknown"))
+
+            # Get individual ranking data
+            ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
+            avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
+            gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
+            armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
+            risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
+            omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
+
+            # Get chapter ranking data
+            ch_armory_data = chapter_rankings.get("avg_armory", {}).get(home_chapter, (0.0, 0, 0))
+            ch_ops_data = chapter_rankings.get("avg_ops", {}).get(home_chapter, (0.0, 0, 0))
+            ch_per_member_data = chapter_rankings.get("ops_per_member", {}).get(home_chapter, (0.0, 0, 0))
+            ch_gene_data = chapter_rankings.get("gene_rate", {}).get(home_chapter, (0.0, 0, 0))
+
+            # Build honours ANSI block
+            h_lines = []
+            h_lines.append("```ansi")
+            h_lines.append(
+                "\u001b[32m=============================================================================="
+            )
+            h_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
+            h_lines.append("  OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS")
+            h_lines.append(f"  Date: {imperial_date}")
+            h_lines.append(f"  Brother: {target_name}")
+            h_lines.append(f"  Home Chapter: {home_chapter}")
+            h_lines.append(
+                "=============================================================================="
+            )
+            h_lines.append("")
+            h_lines.append("INDIVIDUAL DISTINCTIONS")
+
+            if ops_data[2] > 0:  # Has ranking data
+                h_lines.append(f"Operational Tempo        (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
+                h_lines.append(f"Veteran Lethality        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+                h_lines.append(f"Reliquary Bearer         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
+                h_lines.append(f"Vault Reclaimer          (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
+                omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
+                h_lines.append(f"High-Risk Operator       (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}")
+            else:
+                h_lines.append(f"  No ranking data available")
+
+            h_lines.append("")
+            h_lines.append("CHAPTER DOCTRINES")
+
+            if ch_armory_data[2] > 0:  # Has chapter ranking data
+                h_lines.append(f"Forge Doctrine           (Avg ArmoryPts {ch_armory_data[0]:.1f}) — Rank #{ch_armory_data[1]}/{ch_armory_data[2]}")
+                h_lines.append(f"Codex Discipline         (Avg Ops {ch_ops_data[0]:.1f}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
+                h_lines.append(f"Relentless Doctrine      (Ops/Member {ch_per_member_data[0]:.1f}) — Rank #{ch_per_member_data[1]}/{ch_per_member_data[2]}")
+                h_lines.append(f"Reliquary Doctrine       (GeneseedPts Rate {ch_gene_data[0]:.1f}) — Rank #{ch_gene_data[1]}/{ch_gene_data[2]}")
+            else:
+                h_lines.append(f"  Chapter does not meet minimum threshold for ranking")
+
+            h_lines.append("")
+            h_lines.append(
+                "=============================================================================="
+            )
+            h_lines.append("\u001b[0m```")
+            honours_text = "\n".join(h_lines)
+
+            # Build embed for honours
+            try:
+                honours_embed = discord.Embed(
+                    title=f"Weekly Honours — {target_name}",
+                    color=0x2ECC71,
+                )
+                honours_embed.add_field(name="─── Individual Rankings ───", value="\u200b", inline=False)
+                if ops_data[2] > 0:
+                    honours_embed.add_field(name="Operational Tempo", value=f"#{ops_data[1]}/{ops_data[2]}", inline=True)
+                    honours_embed.add_field(name="Veteran Lethality", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
+                    honours_embed.add_field(name="Reliquary Bearer", value=f"#{gene_data[1]}/{gene_data[2]}", inline=True)
+                    honours_embed.add_field(name="Vault Reclaimer", value=f"#{armory_data[1]}/{armory_data[2]}", inline=True)
+                    honours_embed.add_field(name="High-Risk Operator", value=f"#{risk_data[1]}/{risk_data[2]}", inline=True)
+                honours_embed.add_field(name=f"─── {home_chapter} Rankings ───", value="\u200b", inline=False)
+                if ch_armory_data[2] > 0:
+                    honours_embed.add_field(name="Forge Doctrine", value=f"#{ch_armory_data[1]}/{ch_armory_data[2]}", inline=True)
+                    honours_embed.add_field(name="Codex Discipline", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
+                    honours_embed.add_field(name="Relentless Doctrine", value=f"#{ch_per_member_data[1]}/{ch_per_member_data[2]}", inline=True)
+                    honours_embed.add_field(name="Reliquary Doctrine", value=f"#{ch_gene_data[1]}/{ch_gene_data[2]}", inline=True)
+            except Exception:
+                honours_embed = _embed_from_ansi("Weekly Honours", honours_text)
+
+            honours_view = ToggleFormatView(text_content=honours_text, embed=honours_embed, default="ansi")
+            await interaction.followup.send(
+                content=honours_text, embed=None, view=honours_view, ephemeral=True
+            )
+
 
 @bot.tree.command(
     name="combat_bonds", description="Show top Combat Bonds (global or for a Brother)."
@@ -4393,8 +4428,8 @@ async def combat_bonds(
     except Exception:
         interaction_deferred = False
 
-    # Default to last 30 days; if provided, interpret `window` as days
-    span_days = window if (isinstance(window, int) and window > 0) else 30
+    # Default to last 28 days; if provided, interpret `window` as days
+    span_days = window if (isinstance(window, int) and window > 0) else 28
     missions = _get_missions_last_days(span_days)
     # Collect all brothers seen in window
     all_bros: List[str] = []
@@ -6516,6 +6551,304 @@ HIGH_COMMAND_ROLES = {
     "Void Warden",
     "Forgemaster",
 }
+
+
+# --- Fortress-wide rankings for tally_deeds honours display ---------------
+
+
+async def _compute_fortress_rankings(
+    guild: discord.Guild,
+    span_days: int = 7,
+) -> dict:
+    """Compute fortress-wide rankings for individuals, kill teams, and chapters.
+
+    Returns a dict with:
+      - 'individuals': dict mapping user_id -> {metric: (value, rank, total)}
+      - 'teams': dict mapping team_name -> {metric: (value, rank, total)}
+      - 'chapters': dict mapping chapter_name -> {metric: (value, rank, total)}
+      - 'imperial_date': formatted imperial date string
+    """
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    start = now - timedelta(days=span_days)
+    end = now
+
+    # Data aggregation structures
+    users: Dict[str, dict] = {}
+    teams: Dict[str, dict] = {}
+    chapters: Dict[str, dict] = {}
+    chapters_members: Dict[str, set] = {}
+
+    if DATASTORE is None:
+        return {
+            "individuals": {},
+            "teams": {},
+            "chapters": {},
+            "imperial_date": _format_imperial_date(now),
+        }
+
+    # Collect records in window
+    recs_in_window: List[tuple] = []
+    all_user_ids: set = set()
+    for rec in DATASTORE.iter_records():
+        ts = _parse_iso_ts_to_utc_naive(rec.get("timestamp") or "")
+        if not ts:
+            continue
+        if ts < start or ts >= end:
+            continue
+        recs_in_window.append((ts, rec))
+        for uid in rec.get("brother_ids") or []:
+            all_user_ids.add(str(uid))
+
+    # Resolve home chapters
+    chapters_map: Dict[str, str] = {}
+    try:
+        if all_user_ids and guild:
+            chapters_map = await _resolve_home_chapters(guild, sorted(all_user_ids))
+    except Exception:
+        chapters_map = {}
+
+    # Build set of valid Watch Brother+ members in guild
+    watch_brother_plus_ids: set = set()
+    try:
+        for member in guild.members:
+            names = _canonical_role_names(member)
+            # Check if member has any rank in RANK_ROLES_PRIORITY
+            if any(r in names for r in RANK_ROLES_PRIORITY):
+                watch_brother_plus_ids.add(str(member.id))
+    except Exception:
+        pass
+
+    # Process each record
+    for ts, rec in recs_in_window:
+        difficulty = rec.get("difficulty_class")
+        is_high_risk = difficulty in ("hard_stratagem", "omega_ops")
+        omega_kia = (
+            int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
+        )
+        brother_ids = [str(x) for x in (rec.get("brother_ids") or [])]
+
+        # Aggregate user-level stats (only for Watch Brother+ members)
+        for uid in brother_ids:
+            if uid not in watch_brother_plus_ids:
+                continue
+            u = users.setdefault(
+                uid,
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "omega_kia": 0,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                },
+            )
+            u["ops"] += 1
+            u["points"] += int(rec.get("points_for_op") or 0)
+            u["armory"] += int(rec.get("armory_challenge_points") or 0)
+            if is_high_risk:
+                u["high_risk"] += 1
+            if difficulty == "omega_ops":
+                u["omega_kia"] += omega_kia
+            try:
+                if (
+                    str(rec.get("gene_seed_carrier_id")) == str(uid)
+                    and (rec.get("gene_seed_status") or "") == "carried"
+                ):
+                    u["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
+                u["gene_participated"] += 1
+            except Exception:
+                pass
+
+        # Team aggregation: attribute to member's teams
+        for uid in brother_ids:
+            try:
+                member = guild.get_member(int(uid)) if guild else None
+            except Exception:
+                member = None
+            if member is None and guild:
+                try:
+                    member = await guild.fetch_member(int(uid))
+                except Exception:
+                    member = None
+            if not member:
+                continue
+
+            resolved_teams: List[str] = []
+            try:
+                member_teams = _resolve_killteams_for_member(member)
+                for mt in member_teams:
+                    if mt not in resolved_teams:
+                        resolved_teams.append(mt)
+            except Exception:
+                pass
+
+            for resolved_team in resolved_teams:
+                t = teams.setdefault(
+                    str(resolved_team),
+                    {
+                        "ops": 0,
+                        "points": 0,
+                        "armory": 0,
+                        "high_risk": 0,
+                        "gene_carried": 0,
+                        "gene_participated": 0,
+                        "members": set(),
+                    },
+                )
+                t["ops"] += 1
+                t["points"] += int(rec.get("points_for_op") or 0)
+                t["armory"] += int(rec.get("armory_challenge_points") or 0)
+                if is_high_risk:
+                    t["high_risk"] += 1
+                try:
+                    if rec.get("gene_seed_status") == "carried":
+                        t["gene_carried"] += int(
+                            rec.get("gene_seed_base_points_for_carrier") or 0
+                        )
+                    t["gene_participated"] += 1
+                    t["members"].add(str(uid))
+                except Exception:
+                    pass
+
+        # Chapter aggregation
+        for uid in brother_ids:
+            ch = chapters_map.get(str(uid))
+            if ch:
+                c = chapters.setdefault(
+                    ch,
+                    {
+                        "ops": 0,
+                        "points": 0,
+                        "armory": 0,
+                        "gene_carried": 0,
+                        "gene_participated": 0,
+                    },
+                )
+                c["ops"] += 1
+                c["points"] += int(rec.get("points_for_op") or 0)
+                c["armory"] += int(rec.get("armory_challenge_points") or 0)
+                if rec.get("gene_seed_status") == "carried":
+                    c["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
+                c["gene_participated"] += 1
+                chapters_members.setdefault(ch, set()).add(str(uid))
+
+    # Compute derived metrics for users
+    for uid, v in users.items():
+        v["avg"] = (v["points"] / v["ops"]) if v["ops"] else 0.0
+        v["gene_rate"] = (
+            (v["gene_carried"] / v["gene_participated"])
+            if v["gene_participated"]
+            else 0.0
+        )
+
+    # Compute derived metrics for teams
+    for tid, tv in teams.items():
+        tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
+        tv["gene_rate"] = (
+            (tv.get("gene_carried", 0) / tv.get("gene_participated", 1))
+            if tv.get("gene_participated", 0)
+            else 0.0
+        )
+        members_count = len(tv.get("members") or set())
+        tv["avg_aar_per_member"] = (tv["ops"] / members_count) if members_count else 0.0
+        tv["pres"] = tv.get("armory", 0) + tv.get("gene_carried", 0)
+
+    # Compute derived metrics for chapters
+    # Minimum ops threshold for chapter eligibility
+    if span_days == 7:
+        min_ops_required = 7
+    elif span_days >= 28:
+        min_ops_required = 28
+    else:
+        min_ops_required = max(3, int(span_days * 0.3))
+
+    eligible_chapters = [
+        ch
+        for ch, d in chapters.items()
+        if len(chapters_members.get(ch, set())) >= 1
+        and d.get("ops", 0) >= min_ops_required
+    ]
+
+    for ch, c in chapters.items():
+        c["avg_armory"] = (c["armory"] / c["ops"]) if c["ops"] else 0.0
+        c["avg_ops"] = (c["points"] / c["ops"]) if c["ops"] else 0.0
+        members_count = len(chapters_members.get(ch, set()))
+        c["ops_per_member"] = (c["ops"] / members_count) if members_count else 0.0
+        c["gene_rate"] = (
+            (c["gene_carried"] / c["gene_participated"])
+            if c["gene_participated"]
+            else 0.0
+        )
+
+    # Build ranking functions
+    def rank_users(metric_key: str, higher_is_better: bool = True):
+        items = [(uid, v.get(metric_key, 0)) for uid, v in users.items()]
+        items.sort(key=lambda x: x[1], reverse=higher_is_better)
+        rankings = {}
+        for idx, (uid, val) in enumerate(items, 1):
+            rankings[uid] = (val, idx, len(items))
+        return rankings
+
+    def rank_teams(metric_key: str, higher_is_better: bool = True):
+        items = [(tid, v.get(metric_key, 0)) for tid, v in teams.items()]
+        items.sort(key=lambda x: x[1], reverse=higher_is_better)
+        rankings = {}
+        for idx, (tid, val) in enumerate(items, 1):
+            rankings[tid] = (val, idx, len(items))
+        return rankings
+
+    def rank_chapters(metric_key: str, higher_is_better: bool = True):
+        items = [(ch, c.get(metric_key, 0)) for ch in eligible_chapters for c in [chapters.get(ch, {})] if c]
+        items.sort(key=lambda x: x[1], reverse=higher_is_better)
+        rankings = {}
+        for idx, (ch, val) in enumerate(items, 1):
+            rankings[ch] = (val, idx, len(items))
+        return rankings
+
+    # Compute individual rankings
+    individual_rankings = {
+        "ops": rank_users("ops"),
+        "avg": rank_users("avg"),
+        "gene_carried": rank_users("gene_carried"),
+        "armory": rank_users("armory"),
+        "high_risk": rank_users("high_risk"),
+        "omega_kia": rank_users("omega_kia"),
+    }
+
+    # Compute team rankings
+    team_rankings = {
+        "ops": rank_teams("ops"),
+        "avg": rank_teams("avg"),
+        "pres": rank_teams("pres"),
+        "armory": rank_teams("armory"),
+        "gene_carried": rank_teams("gene_carried"),
+        "high_risk": rank_teams("high_risk"),
+        "avg_aar_per_member": rank_teams("avg_aar_per_member"),
+    }
+
+    # Compute chapter rankings
+    chapter_rankings = {
+        "avg_armory": rank_chapters("avg_armory"),
+        "avg_ops": rank_chapters("avg_ops"),
+        "ops_per_member": rank_chapters("ops_per_member"),
+        "gene_rate": rank_chapters("gene_rate"),
+    }
+
+    return {
+        "individuals": individual_rankings,
+        "teams": team_rankings,
+        "chapters": chapter_rankings,
+        "chapters_map": chapters_map,
+        "imperial_date": _format_imperial_date(now),
+        "span_days": span_days,
+    }
 
 
 # --- Honours leaderboard generation and scheduled posting -----------------
