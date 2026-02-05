@@ -1806,9 +1806,14 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
             except Exception:
                 return HOME_CHAPTERS.copy()
 
-        # If we have a cached pair for the target month, validate activity.
+        # If we have a cached pair for the target month, check if we should return it as-is.
         if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
             pair = selected[target]
+            # CURRENT MONTH (offset=0): always return cached pair, never replace.
+            # The event is happening this month so selections are locked in.
+            if offset == 0:
+                return pair[0], pair[1]
+            # FUTURE MONTHS (offset>0): validate activity and replace inactive chapters.
             month_active = _active_for_month(target, 28)
             # If both are active for that month, return cached pair
             if pair[0] in month_active and pair[1] in month_active:
