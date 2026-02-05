@@ -7386,14 +7386,13 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
                 continue
         except Exception:
             pass
-        # Special mapping: '<Company> Command' -> 'Watch Company <Company>' role
+        # Special mapping: '<Company> Command' -> '<Company> Command' role (not Watch Company)
         try:
             if isinstance(t, str) and t.strip().endswith(" Command"):
-                comp = t.strip()[:-8].strip()  # remove ' Command'
-                target_name = f"Watch Company {comp}"
+                target_name = t.strip()  # e.g. "Primus Command"
                 for r in guild.roles:
-                    rn = (r.name or "").lower()
-                    if rn == target_name.lower() or (target_name.lower() in rn):
+                    rn = (r.name or "").strip()
+                    if rn.lower() == target_name.lower():
                         team_mentions.append(f"<@&{r.id}>")
                         raise StopIteration
         except StopIteration:
