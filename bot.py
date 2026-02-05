@@ -6787,6 +6787,29 @@ async def _compute_fortress_rankings(
             else 0.0
         )
 
+    # Compute median active member count for chapter dampening (same logic as honours)
+    _active_counts = [len(chapters_members.get(ch, set())) for ch in eligible_chapters]
+    _median_members = statistics.median(_active_counts) if _active_counts else 1.0
+
+    def _apply_chapter_dampening(raw_vals: Dict[str, float]) -> Dict[str, float]:
+        """Apply member-count-distance dampening to chapter metric values.
+
+        Chapters with active member counts far from the median get their
+        scores pulled toward the global mean, reducing the impact of very
+        small or very large chapters on rankings.
+        """
+        if not raw_vals:
+            return {}
+        global_mean = statistics.mean(raw_vals.values())
+        dampened = {}
+        for ch, raw in raw_vals.items():
+            members = len(chapters_members.get(ch, set()))
+            distance = abs(members - _median_members)
+            dampening_factor = distance / _median_members if _median_members else 0.0
+            weight = 1.0 / (1.0 + dampening_factor)
+            dampened[ch] = weight * raw + (1.0 - weight) * global_mean
+        return dampened
+
     # Build ranking functions
     def rank_users(metric_key: str, higher_is_better: bool = True):
         items = [(uid, v.get(metric_key, 0)) for uid, v in users.items()]
@@ -6805,11 +6828,18 @@ async def _compute_fortress_rankings(
         return rankings
 
     def rank_chapters(metric_key: str, higher_is_better: bool = True):
-        items = [(ch, c.get(metric_key, 0)) for ch in eligible_chapters for c in [chapters.get(ch, {})] if c]
+        # Build raw values for eligible chapters
+        raw_vals = {ch: chapters.get(ch, {}).get(metric_key, 0) for ch in eligible_chapters}
+        # Apply member-count-distance dampening before ranking
+        dampened_vals = _apply_chapter_dampening(raw_vals)
+        # Sort by dampened values
+        items = [(ch, dampened_vals.get(ch, 0)) for ch in eligible_chapters]
         items.sort(key=lambda x: x[1], reverse=higher_is_better)
+        # Return rankings with RAW values for display, but rank order from dampened
         rankings = {}
-        for idx, (ch, val) in enumerate(items, 1):
-            rankings[ch] = (val, idx, len(items))
+        for idx, (ch, _) in enumerate(items, 1):
+            raw_val = raw_vals.get(ch, 0)
+            rankings[ch] = (raw_val, idx, len(items))
         return rankings
 
     # Compute individual rankings
