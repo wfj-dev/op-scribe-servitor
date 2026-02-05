@@ -6532,7 +6532,7 @@ def _main():
 BATTLE_LINE_ORDER = [
     "Watch Brother",
     "Watch Veteran",
-    "Watch Knight",
+    "Oathsworn",
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
@@ -7495,18 +7495,47 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         # fallback to top-chapters (display list) if no chapters meet thresholds
         eligible = [ch for ch, _ in top_chapters] if top_chapters else []
 
+    # Compute median active member count for dampening outlier-sized chapters
+    _active_counts = [len(chapters_members.get(ch, set())) for ch in eligible]
+    _median_members = statistics.median(_active_counts) if _active_counts else 1.0
+
+    def _apply_member_dampening(raw_vals: Dict[str, float]) -> Dict[str, float]:
+        """Apply member-count-distance dampening to raw metric values.
+
+        Chapters with active member counts far from the median get their
+        scores pulled toward the global mean, reducing the impact of very
+        small or very large chapters on doctrine rankings.
+        """
+        if not raw_vals:
+            return {}
+        global_mean = statistics.mean(raw_vals.values())
+        dampened = {}
+        for ch, raw in raw_vals.items():
+            members = len(chapters_members.get(ch, set()))
+            distance = abs(members - _median_members)
+            # Normalize distance by median; chapters at median have 0 dampening
+            dampening_factor = distance / _median_members if _median_members else 0.0
+            # Weight: 1.0 at median, decreasing as distance grows
+            weight = 1.0 / (1.0 + dampening_factor)
+            dampened[ch] = weight * raw + (1.0 - weight) * global_mean
+        return dampened
+
     def _pick_by_zscore(metric_fn):
+        # Compute raw values for all eligible chapters
         try:
-            vals = [(ch, float(metric_fn(ch))) for ch in eligible]
+            raw_vals = {ch: float(metric_fn(ch)) for ch in eligible}
         except Exception:
-            vals = []
-        if not vals:
+            raw_vals = {}
+        if not raw_vals:
             return "Chapter"
+        # Apply member-count-distance dampening before z-score ranking
+        dampened_vals = _apply_member_dampening(raw_vals)
+        vals = list(dampened_vals.items())
         nums = [v for _, v in vals]
         mean = statistics.mean(nums)
         stdev = statistics.pstdev(nums) if len(nums) >= 2 else 0.0
         if stdev == 0.0:
-            # no spread; pick highest raw metric
+            # no spread; pick highest dampened metric
             return max(vals, key=lambda it: it[1])[0]
         zscores = [(ch, (v - mean) / stdev) for ch, v in vals]
         return max(zscores, key=lambda it: it[1])[0]
