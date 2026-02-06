@@ -4237,7 +4237,7 @@ async def tally_deeds(
             force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
 
             s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-            s_lines.append(f"Avg Points per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+            s_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
             s_lines.append(f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
             s_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
             s_lines.append(f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
@@ -4374,7 +4374,7 @@ async def tally_deeds(
 
             if ops_data[2] > 0:  # Has ranking data
                 h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-                h_lines.append(f"Avg Points per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+                h_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
                 h_lines.append(f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
                 h_lines.append(f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
                 omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
@@ -7059,14 +7059,14 @@ async def _build_honours(
 
 INDIVIDUAL DISTINCTIONS
 Total Operations         Name (Ops X)
-Avg Points per Op         Name (Avg Op X.X)
+Avg Points per Op        Name (Avg Op X.X)
 Gene-seed Points         Name (Geneseed X)
 Armory Points            Name (Armory X)
 High-Risk Ops            Name (Hard-Strat+Omega X | Omega KIA X)
 
 KILL TEAM DISTINCTIONS
 Total Operations         Team (Ops X)
-Avg Points per Op         Team (Avg Op X.X)
+Avg Points per Op        Team (Avg Op X.X)
 Armory + Gene-seed       Team (Armory X.X | Gene X.X)
 High-Risk Ops            Team (Hard-Strat+Omega X)
 
@@ -7911,13 +7911,13 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         "==============================================================================\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
         f"Total Operations         {tempo_disp} (Ops {tempo_val})\n"
-        f"Avg Points per Op         {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
+        f"Avg Points per Op        {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
         f"Gene-seed Points         {gene_disp} (GeneseedPts {gene_val})\n"
         f"Armory Points            {arm_disp} (ArmoryPts {arm_val})\n"
         f"High-Risk Ops            {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
         "KILL TEAM DISTINCTIONS\n"
         f"Total Operations         {kt_ops_name} (Ops {kt_ops_val})\n"
-        f"Avg Points per Op         {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
+        f"Avg Points per Op        {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
         f"Armory + Gene-seed       {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
         f"High-Risk Ops            {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
         f"AARs per Member          {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
