@@ -41,7 +41,7 @@ RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
 
 # Channel ID for activity status change notifications
-ACTIVITY_STATUS_CHANNEL_ID = 1430203472669835415
+ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -701,6 +701,23 @@ def _get_member_display_name(member: discord.Member) -> str:
         return str(getattr(member, "id", "Unknown"))
 
 
+def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
+    """Return the member's highest rank role object, or None if no rank."""
+    roles = getattr(member, "roles", []) or []
+    best_idx: Optional[int] = None
+    best_role: Optional[discord.Role] = None
+    for role in roles:
+        name = getattr(role, "name", None)
+        if not name:
+            continue
+        idx = _role_index(name)
+        if idx is not None:
+            if best_idx is None or idx < best_idx:
+                best_idx = idx
+                best_role = role
+    return best_role
+
+
 async def _send_activity_status_notification(
     guild: discord.Guild,
     member: discord.Member,
@@ -720,66 +737,70 @@ async def _send_activity_status_notification(
             return
 
         member_name = _get_member_display_name(member)
-        mentions: List[str] = []
 
         if new_status == "inactive":
-            # Active -> Inactive: tag captain, LT of member's company, and sergeant of KT
+            # Active -> Inactive: format as transfer to Reserves
+            # Get member's rank role
+            rank_role = _get_member_rank_role(member)
+            rank_mention = rank_role.mention if rank_role else member_name
+
+            # Get company role
             company_name = _get_member_company_name(member)
-            if company_name:
-                captains, lieutenants = _find_company_command_staff(guild, company_name)
-                for c in captains:
-                    mentions.append(f"<@{c.id}>")
-                for lt in lieutenants:
-                    mentions.append(f"<@{lt.id}>")
+            company_role = discord.utils.get(guild.roles, name=company_name) if company_name else None
+            company_mention = company_role.mention if company_role else (company_name or "Unknown")
 
-            # Find KT sergeant if member is in a KT
-            kt_name = _resolve_killteam_for_member(member)
-            if kt_name:
-                sgt = _find_kt_sergeant(guild, kt_name)
-                if sgt:
-                    mentions.append(f"<@{sgt.id}>")
+            # Get Reserves role
+            reserves_role = discord.utils.get(guild.roles, name="Reserves")
+            reserves_mention = reserves_role.mention if reserves_role else "Reserves"
 
-            company_short = _extract_company_short_name(company_name) if company_name else "Unknown"
-            kt_short = kt_name.replace("Kill Team ", "") if kt_name else None
+            # Get Watch Captain and Watch Lieutenant roles
+            captain_role = discord.utils.get(guild.roles, name="Watch Captain")
+            lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
+            command_mentions = []
+            if captain_role:
+                command_mentions.append(captain_role.mention)
+            if lt_role:
+                command_mentions.append(lt_role.mention)
+            command_str = " / ".join(command_mentions) if command_mentions else ""
 
-            location_info = f"({company_short}"
-            if kt_short:
-                location_info += f" / {kt_short}"
-            location_info += ")"
+            lines = [
+                f"᛭⋅ {rank_mention} {member.mention}",
+                f"᛭⋅ Transfer from: {company_mention}",
+                f"᛭⋅ To: {reserves_mention}",
+            ]
+            if command_str:
+                lines.append(f"᛭⋅ {command_str}")
+            lines.append("⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯")
 
-            message = f"⚠️ **{member_name}** {location_info} has become **INACTIVE** (no AAR in 28 days)."
+            content = "\n".join(lines)
 
         else:
-            # Inactive -> Active: tag watch master, all captains, all LTs
-            watch_master = _find_watch_master(guild)
-            if watch_master:
-                mentions.append(f"<@{watch_master.id}>")
+            # Inactive -> Active: in-universe message about returning to duty
+            # Tag Watch Master, Watch Captain, Watch Lieutenant roles
+            watch_master_role = discord.utils.get(guild.roles, name="Watch Master")
+            captain_role = discord.utils.get(guild.roles, name="Watch Captain")
+            lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
 
-            all_captains, all_lieutenants = _find_all_captains_and_lieutenants(guild)
-            for c in all_captains:
-                mentions.append(f"<@{c.id}>")
-            for lt in all_lieutenants:
-                mentions.append(f"<@{lt.id}>")
+            role_mentions = []
+            if watch_master_role:
+                role_mentions.append(watch_master_role.mention)
+            if captain_role:
+                role_mentions.append(captain_role.mention)
+            if lt_role:
+                role_mentions.append(lt_role.mention)
 
-            message = f"✅ **{member_name}** has become **ACTIVE** again!"
+            mention_str = " ".join(role_mentions) if role_mentions else ""
 
-        # Dedupe mentions while preserving order
-        seen = set()
-        unique_mentions = []
-        for m in mentions:
-            if m not in seen:
-                seen.add(m)
-                unique_mentions.append(m)
+            message = f"⚔️ **{member_name}** has returned from the Reserves and stands ready for duty once more."
 
-        if unique_mentions:
-            mention_str = " ".join(unique_mentions)
-            content = f"{mention_str}\n{message}"
-        else:
-            content = message
+            if mention_str:
+                content = f"{mention_str}\n{message}"
+            else:
+                content = message
 
         await channel.send(
             content,
-            allowed_mentions=discord.AllowedMentions(users=True),
+            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
         )
         logger.info(f"Activity status notification sent for {member_name}: {old_status} -> {new_status}")
 
