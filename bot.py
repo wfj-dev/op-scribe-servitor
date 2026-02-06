@@ -3689,7 +3689,7 @@ async def tally_deeds(
 
         # Use in-memory records from DATASTORE
         ops_trials = 0
-        siege_inductions = 0
+        siege_waves = 0
         initiation_event_times: List[datetime] = []
         for rec in DATASTORE.iter_records():
             try:
@@ -3698,8 +3698,16 @@ async def tally_deeds(
                     continue
                 if not bool(rec.get("initiation_trial")):
                     continue
-                # Do not count a user's own initiation as a sanctioned induction
-                if rec.get("initiate_id") == str(target.id):
+                # Count inductees (excluding self) - each inductee counts separately
+                initiate_ids_list = rec.get("initiate_ids") or []
+                legacy_initiate_id = rec.get("initiate_id")
+                # Build full list of inductees from both new and legacy fields
+                all_inductees = list(initiate_ids_list)
+                if legacy_initiate_id and legacy_initiate_id not in all_inductees:
+                    all_inductees.append(legacy_initiate_id)
+                # Remove self from count
+                inductee_count = sum(1 for uid in all_inductees if uid != str(target.id))
+                if inductee_count == 0:
                     continue
                 ts = rec.get("timestamp")
                 try:
@@ -3715,12 +3723,19 @@ async def tally_deeds(
                     pass
                 dclass = (rec.get("difficulty_class") or "").lower()
                 if "siege" in dclass:
-                    siege_inductions += 1
+                    # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
+                    rec_waves = rec.get("waves") or 0
+                    try:
+                        rec_waves = int(rec_waves)
+                    except Exception:
+                        rec_waves = 0
+                    siege_waves += rec_waves * inductee_count
                 else:
-                    ops_trials += 1
+                    # Ops: each inductee counts as 1 trial (3 trials = 1 induction)
+                    ops_trials += inductee_count
             except Exception:
                 pass
-        trials_reported = siege_inductions + (ops_trials // 3)
+        trials_reported = (siege_waves // 15) + (ops_trials // 3)
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -4675,9 +4690,9 @@ def parse_aar(message: discord.Message):
     waves = 0
     # Siege per-brother waves participation (parsed from Team lines as '@Brother N')
     brother_waves: Dict[str, int] = {}
-    # Initiation Trial (legacy boolean) and initiate id
+    # Initiation Trial (legacy boolean) and initiate ids (list, max 2)
     initiation_trial = False
-    initiate_id = None
+    initiate_ids: List[str] = []
     # KIA count (Killed In Action)
     kia_count = 0
     # Chapter Approved tag present (role mention)
@@ -4762,29 +4777,39 @@ def parse_aar(message: discord.Message):
                 # If a Brother is tagged here, treat as carried regardless of wording
                 gene_seed_status = "carried"
 
+        # Check if any Initiation Trial or Neophyte role is mentioned ON THIS LINE
         for role in message.role_mentions:
-            if role.name == "Initiation Trial":
+            # Only process if role mention is actually on this line
+            role_pattern = f"<@&{role.id}>"
+            if role_pattern not in raw_line:
+                continue
+            # Detect Initiation Trial role or Neophyte role (ID 1434942334914662501)
+            if role.name == "Initiation Trial" or role.id == 1434942334914662501:
                 initiation_trial = True
-                # Only accept an initiate mention if it's on the same line
+                # Capture up to 2 initiate mentions on the same line
                 ids_here = get_user_ids_in_line(raw_line, message)
-                if ids_here:
-                    initiate_id = ids_here[0]
+                for uid in ids_here[:2]:
+                    if uid not in initiate_ids:
+                        initiate_ids.append(uid)
+                    if len(initiate_ids) >= 2:
+                        break
 
-        # Detect explicit "Initiation Trial:" header and capture an initiate mention
-        if lower.startswith("initiation trial:"):
+        # Detect explicit "Initiation Trial:" header and capture initiate mentions
+        # This handles text like "@Initiation Trial: @inductee1 @inductee2" after role resolution
+        if "initiation trial" in lower:
             initiation_trial = True
-            # Only capture an initiate if mentioned on the same line as the header
+            # Capture up to 2 initiates on the same line as the header
             ids_here = get_user_ids_in_line(raw_line, message)
-            if ids_here:
-                initiate_id = ids_here[0]
+            for uid in ids_here[:2]:
+                if uid not in initiate_ids:
+                    initiate_ids.append(uid)
+                if len(initiate_ids) >= 2:
+                    break
 
-        # Detect Trial: lines (e.g. 'Trial: 1/1' or 'Trial: -/3') and try to extract an initiate
+        # Detect Trial: lines (e.g. 'Trial: 1/1' or 'Trial: -/3') - just marks the trial flag
+        # Don't capture inductees here since they're on the @Initiation Trial line
         if lower.startswith("trial:"):
-            # Mark legacy flag; only accept an initiate mention if on the same line
             initiation_trial = True
-            ids_here = get_user_ids_in_line(raw_line, message)
-            if ids_here:
-                initiate_id = ids_here[0]
 
         # Watch Command marker sometimes present on trial templates (deprecated persistence)
         if "watch command" in lower:
@@ -4912,7 +4937,9 @@ def parse_aar(message: discord.Message):
         else None,
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
-        "initiate_id": initiate_id,
+        "initiate_ids": initiate_ids,
+        # Legacy field for backward compat with old records
+        "initiate_id": initiate_ids[0] if initiate_ids else None,
         "chapter_approved": chapter_approved,
         "chapter_approved_extra_point_applied": chapter_approved_extra_point_applied,
         # Link back to the original Discord message (if available)
@@ -5056,7 +5083,9 @@ def validate_aar(record: dict):
 
     # 6) Initiation Trial placement rules (simplified)
     if record.get("initiation_trial"):
-        if not record.get("initiate_id"):
+        # Check both initiate_ids (new) and initiate_id (legacy) for backward compat
+        has_initiates = bool(record.get("initiate_ids")) or bool(record.get("initiate_id"))
+        if not has_initiates:
             errors.append(
                 "Initiation Trial present but no initiate mention found; include the person being initiated."
             )
@@ -5510,15 +5539,17 @@ def compute_stats_for_user(user_id: str):
 
 def _induction_count_for_user(user_id: str) -> int:
     """Compute total inductions a brother participated in across all AARs.
-    Rule: Siege initiation counts immediately as one induction.
-          Operation initiation requires three trials to count as one induction.
+    Rule: Siege initiation: 15 waves per inductee = 1 induction.
+          Operation initiation: 3 trials per inductee = 1 induction.
+          Each inductee in an AAR counts separately.
+          Your own induction is excluded.
     """
     try:
         data = load_aar_data(AAR_RECORDS_PATH)
     except Exception:
         data = {}
     ops_trials = 0
-    siege_inductions = 0
+    siege_waves = 0
     for rec in data.values():
         try:
             brother_ids = rec.get("brother_ids") or []
@@ -5526,18 +5557,33 @@ def _induction_count_for_user(user_id: str) -> int:
                 continue
             if not bool(rec.get("initiation_trial")):
                 continue
-            # Exclude records where the user is the initiate (their own induction)
-            if rec.get("initiate_id") == str(user_id):
+            # Count inductees (excluding self) - each inductee counts separately
+            initiate_ids_list = rec.get("initiate_ids") or []
+            legacy_initiate_id = rec.get("initiate_id")
+            # Build full list of inductees from both new and legacy fields
+            all_inductees = list(initiate_ids_list)
+            if legacy_initiate_id and legacy_initiate_id not in all_inductees:
+                all_inductees.append(legacy_initiate_id)
+            # Remove self from count
+            inductee_count = sum(1 for uid in all_inductees if uid != str(user_id))
+            if inductee_count == 0:
                 continue
             dclass = (rec.get("difficulty_class") or "").lower()
             if "siege" in dclass:
-                siege_inductions += 1
+                # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
+                rec_waves = rec.get("waves") or 0
+                try:
+                    rec_waves = int(rec_waves)
+                except Exception:
+                    rec_waves = 0
+                siege_waves += rec_waves * inductee_count
             else:
-                ops_trials += 1
+                # Ops: each inductee counts as 1 trial (3 trials = 1 induction)
+                ops_trials += inductee_count
         except Exception:
             # Be resilient to malformed records
             pass
-    return int(siege_inductions + (ops_trials // 3))
+    return int((siege_waves // 15) + (ops_trials // 3))
 
 
 def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
@@ -7016,6 +7062,7 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
 
 ==============================================================================
 """,
+            "",  # Empty top_rankings_block when no data
         )
 
     # Collect relevant records first, then resolve member chapters in bulk
@@ -7345,6 +7392,58 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         "force",
     )
 
+    # --- Compute Top 5 rankings by average rank across all metrics ---
+    def _compute_dense_ranks(sorted_items: list, value_key: str) -> Dict[str, int]:
+        """Given a sorted list, return dense ranks (ties get same rank)."""
+        ranks = {}
+        prev_val = None
+        current_rank = 0
+        for idx, (entity_id, data) in enumerate(sorted_items):
+            val = data.get(value_key, 0)
+            if val != prev_val:
+                current_rank = idx + 1
+            ranks[entity_id] = current_rank
+            prev_val = val
+        return ranks
+
+    # Individual rankings across 5 metrics: ops, avg, gene_rate, armory, high_risk
+    ind_metrics = [
+        (ops_sorted, "ops"),
+        (leth_sorted, "avg"),
+        (gene_sorted, "gene_rate"),
+        (arm_sorted, "armory"),
+        (high_sorted, "high_risk"),
+    ]
+    ind_all_ranks: Dict[str, List[int]] = {}
+    for sorted_list, key in ind_metrics:
+        dense = _compute_dense_ranks(sorted_list, key)
+        for uid, rank in dense.items():
+            ind_all_ranks.setdefault(uid, []).append(rank)
+
+    ind_avg_ranks = {
+        uid: sum(ranks) / len(ranks) for uid, ranks in ind_all_ranks.items() if ranks
+    }
+    ind_top5 = sorted(ind_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+
+    # Kill Team rankings across 5 metrics: ops, avg, pres, high_risk, force
+    kt_metrics = [
+        (kt_ops, "ops"),
+        (kt_avg, "avg"),
+        (kt_pres, "pres"),
+        (kt_risk, "high_risk"),
+        (kt_force, "force"),
+    ]
+    kt_all_ranks: Dict[str, List[int]] = {}
+    for sorted_list, key in kt_metrics:
+        dense = _compute_dense_ranks(sorted_list, key)
+        for tid, rank in dense.items():
+            kt_all_ranks.setdefault(tid, []).append(rank)
+
+    kt_avg_ranks = {
+        tid: sum(ranks) / len(ranks) for tid, ranks in kt_all_ranks.items() if ranks
+    }
+    kt_top5 = sorted(kt_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+
     # Build mention line
     honoured_parts: List[str] = []
 
@@ -7586,6 +7685,163 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
     ch4_val = _chap_gene_rate(ch4)
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
+    # --- Chapter rankings across 4 doctrine metrics ---
+    def _compute_chapter_ranks_by_metric(metric_fn, reverse: bool = True) -> Dict[str, int]:
+        """Compute dense ranks for chapters based on a metric function."""
+        if not eligible:
+            return {}
+        raw_vals = [(ch, metric_fn(ch)) for ch in eligible]
+        # Sort: higher is better if reverse=True
+        sorted_by_val = sorted(raw_vals, key=lambda x: (-x[1] if reverse else x[1], x[0]))
+        ranks = {}
+        prev_val = None
+        current_rank = 0
+        for idx, (ch, val) in enumerate(sorted_by_val):
+            if val != prev_val:
+                current_rank = idx + 1
+            ranks[ch] = current_rank
+            prev_val = val
+        return ranks
+
+    ch_metrics = [_chap_avg_armory, _chap_avg_ops, _chap_ops_per_member, _chap_gene_rate]
+    ch_all_ranks: Dict[str, List[int]] = {}
+    for metric_fn in ch_metrics:
+        dense = _compute_chapter_ranks_by_metric(metric_fn)
+        for ch, rank in dense.items():
+            ch_all_ranks.setdefault(ch, []).append(rank)
+
+    ch_avg_ranks = {
+        ch: sum(ranks) / len(ranks) for ch, ranks in ch_all_ranks.items() if ranks
+    }
+    ch_top5 = sorted(ch_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+
+    # --- Build Top 5 Rankings block ---
+    def _format_rank_display(rank_num: int, prev_rank: float, curr_rank: float) -> str:
+        """Format rank number with tie handling."""
+        if prev_rank is not None and curr_rank == prev_rank:
+            return "  "  # Same rank as previous, show no number
+        return f"{rank_num}."
+
+    def _build_top5_block():
+        period_label = "WEEKLY" if period_days == 7 else "MONTHLY"
+        display_dt = end if end is not None else now
+        date_str = display_dt.strftime("%m/%d/%y") if period_days == 7 else display_dt.strftime("%B %Y").upper()
+
+        # Collect mentions for TOP RANKED line
+        top_mentions = []
+
+        # Individual mentions
+        for uid, _ in ind_top5:
+            if include_mentions:
+                top_mentions.append(f"<@{uid}>")
+
+        # Kill Team mentions (find roles)
+        for tid, _ in kt_top5:
+            if not include_mentions:
+                continue
+            # Try to interpret tid as role id
+            try:
+                rid = int(tid)
+                r = guild.get_role(rid)
+                if r:
+                    top_mentions.append(f"<@&{r.id}>")
+                    continue
+            except Exception:
+                pass
+            # Special mapping: 'High Command'
+            try:
+                if isinstance(tid, str) and "high command" in str(tid).strip().lower():
+                    top_mentions.append("<@&1452913063970865203>")
+                    continue
+            except Exception:
+                pass
+            # Special mapping: '<Company> Command'
+            try:
+                if isinstance(tid, str) and tid.strip().endswith(" Command"):
+                    target_name = tid.strip()
+                    for r in guild.roles:
+                        rn = (r.name or "").strip()
+                        if rn.lower() == target_name.lower():
+                            top_mentions.append(f"<@&{r.id}>")
+                            break
+                    continue
+            except Exception:
+                pass
+            # Fallback: search role by name containing team string
+            try:
+                for r in guild.roles:
+                    if (tid or "").lower() in (r.name or "").lower():
+                        top_mentions.append(f"<@&{r.id}>")
+                        break
+            except Exception:
+                pass
+
+        # Chapter mentions
+        for ch, _ in ch_top5:
+            if not include_mentions:
+                continue
+            try:
+                r = _role_for_chapter_mention(guild, ch)
+                if r:
+                    top_mentions.append(f"<@&{r.id}>")
+            except Exception:
+                pass
+
+        # Dedupe mentions while preserving order
+        seen = set()
+        deduped_mentions = []
+        for m in top_mentions:
+            if m not in seen:
+                seen.add(m)
+                deduped_mentions.append(m)
+
+        lines = []
+        lines.append(f"{date_str} {period_label} LEADERBOARDS")
+        if deduped_mentions:
+            lines.append("TOP RANKED: " + " ".join(deduped_mentions))
+        lines.append("")
+        lines.append("```ansi")
+        lines.append("\u001b[32m==============================================================================")
+        lines.append("TOP 5 BROTHERS")
+
+        prev_rank = None
+        display_rank = 0
+        for idx, (uid, avg_rank) in enumerate(ind_top5):
+            curr_rank = avg_rank
+            if prev_rank is None or curr_rank != prev_rank:
+                display_rank = idx + 1
+            name = _member_display_name(guild, uid)
+            lines.append(f"{display_rank}. {name} (Avg Rank {avg_rank:.1f})")
+            prev_rank = curr_rank
+
+        lines.append("")
+        lines.append("TOP 5 KILL TEAMS")
+        prev_rank = None
+        display_rank = 0
+        for idx, (tid, avg_rank) in enumerate(kt_top5):
+            curr_rank = avg_rank
+            if prev_rank is None or curr_rank != prev_rank:
+                display_rank = idx + 1
+            lines.append(f"{display_rank}. {tid} (Avg Rank {avg_rank:.1f})")
+            prev_rank = curr_rank
+
+        lines.append("")
+        lines.append("TOP 5 CHAPTERS")
+        prev_rank = None
+        display_rank = 0
+        for idx, (ch, avg_rank) in enumerate(ch_top5):
+            curr_rank = avg_rank
+            if prev_rank is None or curr_rank != prev_rank:
+                display_rank = idx + 1
+            lines.append(f"{display_rank}. {ch} (Avg Rank {avg_rank:.1f})")
+            prev_rank = curr_rank
+
+        lines.append("==============================================================================")
+        lines.append("\u001b[0m```")
+        return "\n".join(lines)
+
+    top_rankings_block = _build_top5_block()
+
     # Build chapter mentions from doctrine winners only (preserve order and
     # dedupe). Only include winners that are non-empty and not the placeholder.
     chapter_mentions = []
@@ -7658,9 +7914,9 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         content = honour_line + "\n" + ansi_no_kia
     if len(content) > 2000:
         # 3) Fallback to two messages (mentions first, ANSI block second)
-        return honour_line, ansi
+        return honour_line, ansi, top_rankings_block
 
-    return honour_line, ansi
+    return honour_line, ansi, top_rankings_block
 
 
 @tasks.loop(minutes=60)
@@ -7701,9 +7957,15 @@ async def _scheduled_honours_runner():
         )
 
         # Helper to send honours content respecting Discord message length
-        async def _send_honours(line, block):
+        async def _send_honours(line, block, top_rankings=None):
             try:
-                content = line + "\\n" + block
+                # First send the Top 5 rankings block if provided
+                if top_rankings and top_rankings.strip():
+                    await channel.send(top_rankings)
+                    await asyncio.sleep(0.5)  # Small pause between messages
+
+                # Then send the honours content
+                content = line + "\n" + block
                 if len(content) <= 2000:
                     await channel.send(
                         content,
@@ -7721,8 +7983,8 @@ async def _scheduled_honours_runner():
         if weekly_due and monthly_due:
             # Weekly first, then monthly on collision
             # Post weekly honours
-            line, block = await _build_honours(guild, 7, include_mentions=True)
-            await _send_honours(line, block)
+            line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
+            await _send_honours(line, block, top_rankings)
             LAST_WEEKLY_POST_DATE = str(today)
             # small pause before posting monthly
             await asyncio.sleep(1)
@@ -7747,14 +8009,14 @@ async def _scheduled_honours_runner():
                 prev_start = datetime(prev_year, prev_month, 1)
                 prev_end = datetime(now_local.year, now_local.month, 1)
 
-            line, block = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
-            await _send_honours(line, block)
+            line, block, top_rankings = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            await _send_honours(line, block, top_rankings)
             LAST_MONTHLY_POST_DATE = str(today)
 
         elif weekly_due:
-            line, block = await _build_honours(guild, 7, include_mentions=True)
+            line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
             try:
-                await _send_honours(line, block)
+                await _send_honours(line, block, top_rankings)
             except Exception:
                 logger.exception("Failed to post weekly honours")
             LAST_WEEKLY_POST_DATE = str(today)
@@ -7778,9 +8040,9 @@ async def _scheduled_honours_runner():
                 prev_start = datetime(prev_year, prev_month, 1)
                 prev_end = datetime(now_local.year, now_local.month, 1)
 
-            line, block = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            line, block, top_rankings = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
             try:
-                await _send_honours(line, block)
+                await _send_honours(line, block, top_rankings)
             except Exception:
                 logger.exception("Failed to post monthly honours")
             LAST_MONTHLY_POST_DATE = str(today)
@@ -7822,18 +8084,30 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     guild = interaction.guild
     if (period or "").lower().startswith("w"):
         days = 7
-        honour_line, ansi = await _build_honours(guild, days, include_mentions=True)
+        honour_line, ansi, top_rankings = await _build_honours(guild, days, include_mentions=True)
     else:
         # Monthly preview: show current partial month (from 1st of current month to now)
         now = datetime.utcnow()
         first_of_current = datetime(now.year, now.month, 1)
         prev_start = first_of_current
         prev_end = now
-        honour_line, ansi = await _build_honours(
+        honour_line, ansi, top_rankings = await _build_honours(
             guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
         )
-    # Include mentions in preview so Forgemasters can test tagging; send honour_line
-    # before ANSI block and respect Discord message length limits.
+    # Include mentions in preview so Forgemasters can test tagging; send top_rankings first,
+    # then honour_line before ANSI block and respect Discord message length limits.
+
+    # Send top rankings first if available
+    try:
+        if top_rankings and top_rankings.strip():
+            if deferred:
+                await interaction.followup.send(top_rankings, ephemeral=True)
+            else:
+                await interaction.response.send_message(top_rankings, ephemeral=True)
+                deferred = True  # Now we must use followups for subsequent messages
+    except Exception:
+        pass
+
     content = honour_line + "\n" + ansi
     try:
         if len(content) <= 2000:
