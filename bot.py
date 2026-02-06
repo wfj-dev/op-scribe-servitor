@@ -804,6 +804,7 @@ HOME_CHAPTERS = [
     "Sons of Medusa",
     "Space Wolves",
     "Storm Giants",
+    "The Drakes",
     "Ultramarines",
     "White Scars",
     "Black Shield",
@@ -7802,6 +7803,11 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         lines.append("")
         lines.append("```ansi")
         lines.append("\u001b[32m==============================================================================")
+        lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
+        lines.append(f"  OPERATION-SCRIBE SERVITOR — {period_label} LEADERBOARDS")
+        lines.append(f"  Date: {_format_imperial_date(display_dt)}")
+        lines.append("==============================================================================")
+        lines.append("")
         lines.append("TOP 5 BROTHERS")
 
         prev_rank = None
