@@ -73,6 +73,13 @@ SHUTDOWN_INITIATED = False
 SCHEDULE_DAILY_AUDIT_ENABLED = False
 SCHEDULE_DAILY_AUDIT_SPAN_DAYS = 1
 
+# Weekly maintenance settings (Tuesday 3 AM ET by default)
+# Runs sanctify (45-day span) + full audit (no span) to catch stragglers
+SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = True
+SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
+SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
+SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 3  # Hour in ET (America/New_York)
+
 
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
@@ -353,6 +360,88 @@ async def _monthly_audit_loop():
         logger.exception("Error running monthly audit loop")
 
 
+# Track last weekly maintenance run date to prevent duplicate runs
+LAST_WEEKLY_MAINTENANCE_DATE: Optional[str] = None
+
+
+@tasks.loop(minutes=60)
+async def _scheduled_weekly_maintenance_loop():
+    """Run hourly; on configured day/hour run sanctify + full audit.
+
+    Default: Tuesday 3 AM ET. Runs sanctify (45-day span) to catch missed AARs,
+    then a full audit (no span limit) to retry all known errors.
+    """
+    global LAST_WEEKLY_MAINTENANCE_DATE
+    try:
+        if DATASTORE is None:
+            return
+        # Use ET for scheduling consistency with honours runner
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        today = now_et.date()
+
+        # Check if it's the right day and hour
+        if (
+            now_et.weekday() != SCHEDULE_WEEKLY_MAINTENANCE_DAY
+            or now_et.hour != SCHEDULE_WEEKLY_MAINTENANCE_HOUR
+        ):
+            return
+
+        # Prevent duplicate runs on same date
+        if LAST_WEEKLY_MAINTENANCE_DATE == str(today):
+            return
+
+        logger.info(
+            f"Weekly maintenance starting: sanctify ({SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span) + full audit"
+        )
+
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.warning("Weekly maintenance: no guild available; skipping.")
+            return
+
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
+        if not aar_channel:
+            logger.warning("Weekly maintenance: AAR channel not found; skipping.")
+            return
+
+        # Acquire lock to prevent concurrent reconciliations
+        if RECONCILE_LOCK.locked():
+            logger.info("Weekly maintenance: reconcile lock held; skipping.")
+            return
+
+        await RECONCILE_LOCK.acquire()
+        try:
+            # 1) Run sanctify with configured span
+            logger.info(
+                f"Weekly maintenance: Running ingest for last {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS} days"
+            )
+            ingested, rejected = await _run_ingest_new(
+                aar_channel, SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS
+            )
+            logger.info(f"Weekly maintenance: Ingested {ingested}, rejected {rejected}")
+
+            # 2) Run full audit (no span limit) to catch all fixed errors
+            logger.info("Weekly maintenance: Running full audit (no span limit)")
+            fixed, still_broken = await _run_recheck_errors(aar_channel, None)
+            logger.info(
+                f"Weekly maintenance: Fixed {fixed}, still broken {still_broken}"
+            )
+
+            LAST_WEEKLY_MAINTENANCE_DATE = str(today)
+            logger.info("Weekly maintenance completed successfully.")
+        finally:
+            RECONCILE_LOCK.release()
+    except Exception:
+        logger.exception("Weekly maintenance failed")
+
+
+@_scheduled_weekly_maintenance_loop.before_loop
+async def _before_weekly_maintenance_loop():
+    await bot.wait_until_ready()
+
+
 # Config load
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
@@ -371,6 +460,23 @@ try:
     SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(
         schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS
     )
+    # Weekly maintenance settings
+    if "weekly_maintenance_enabled" in schedules_cfg:
+        SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = _is_truthy(
+            schedules_cfg.get("weekly_maintenance_enabled")
+        )
+    if schedules_cfg.get("weekly_maintenance_ingest_span_days"):
+        SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = int(
+            schedules_cfg.get("weekly_maintenance_ingest_span_days")
+        )
+    if schedules_cfg.get("weekly_maintenance_day") is not None:
+        SCHEDULE_WEEKLY_MAINTENANCE_DAY = int(
+            schedules_cfg.get("weekly_maintenance_day")
+        )
+    if schedules_cfg.get("weekly_maintenance_hour") is not None:
+        SCHEDULE_WEEKLY_MAINTENANCE_HOUR = int(
+            schedules_cfg.get("weekly_maintenance_hour")
+        )
 except Exception:
     pass
 
@@ -1560,6 +1666,20 @@ async def on_ready():
             logger.info("Activity status check loop started (24h interval).")
     except Exception:
         logger.exception("Failed to start activity status check loop")
+
+    # Start weekly maintenance loop if enabled (default: enabled)
+    try:
+        if SCHEDULE_WEEKLY_MAINTENANCE_ENABLED:
+            if not _scheduled_weekly_maintenance_loop.is_running():
+                _scheduled_weekly_maintenance_loop.start()
+                day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                day_name = day_names[SCHEDULE_WEEKLY_MAINTENANCE_DAY]
+                logger.info(
+                    f"Weekly maintenance loop started ({day_name} {SCHEDULE_WEEKLY_MAINTENANCE_HOUR}:00 ET, "
+                    f"sanctify {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span + full audit)."
+                )
+    except Exception:
+        logger.exception("Failed to start weekly maintenance loop")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
