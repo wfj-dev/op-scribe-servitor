@@ -3904,9 +3904,13 @@ async def tally_deeds(
                             t = t.replace(tzinfo=None)
                     timestamps.append(t)
             status = "Inactive"
+            last_aar_date: Optional[datetime] = None
+            days_since_aar: Optional[int] = None
             if timestamps:
                 timestamps.sort(reverse=True)
+                last_aar_date = timestamps[0]
                 now = datetime.utcnow()
+                days_since_aar = (now - last_aar_date).days
                 cutoff = now - timedelta(days=28)
                 for t in timestamps:
                     if t >= cutoff:
@@ -3914,6 +3918,8 @@ async def tally_deeds(
                         break
         except Exception:
             status = "Inactive"
+            last_aar_date = None
+            days_since_aar = None
 
         # Determine Company and Kill Team visibility and values per rank/command rules
         show_company = False
@@ -3968,8 +3974,22 @@ async def tally_deeds(
             pass
 
         # Column-aligned stats
+        # Format last AAR display
+        if last_aar_date is not None and days_since_aar is not None:
+            try:
+                if last_aar_date.tzinfo is None:
+                    last_aar_date = last_aar_date.replace(tzinfo=timezone.utc)
+                aar_et = last_aar_date.astimezone(ZoneInfo("America/New_York"))
+                aar_date_str = aar_et.strftime("%Y-%m-%d")
+            except Exception:
+                aar_date_str = last_aar_date.strftime("%Y-%m-%d")
+            last_aar_display = f"{aar_date_str} ({days_since_aar}d ago)"
+        else:
+            last_aar_display = "None on record"
+
         stat_rows = [
             ("Status", status),
+            ("Last AAR", last_aar_display),
             ("Induction", joined_str),
             ("Service Studs", studs_display),
         ]
