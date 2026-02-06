@@ -24,8 +24,12 @@
   },
   "debug": false,
   "schedules": {
-    "daily_audit_enabled": true,
-    "daily_audit_span_days": 1
+    "daily_audit_enabled": false,
+    "daily_audit_span_days": 1,
+    "weekly_maintenance_enabled": true,
+    "weekly_maintenance_day": 1,
+    "weekly_maintenance_hour": 3,
+    "weekly_maintenance_ingest_span_days": 45
   },
   "honours_channel_id": 1467699484581691414
 }
