@@ -4236,11 +4236,11 @@ async def tally_deeds(
             risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
             force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
 
-            s_lines.append(f"Highest Tempo Team       (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-            s_lines.append(f"Most Reliable Team       (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
-            s_lines.append(f"Best Preservation Team   (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
-            s_lines.append(f"Highest Risk Team        (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
-            s_lines.append(f"Force Multiplier Team    (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
+            s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
+            s_lines.append(f"Avg Kills per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+            s_lines.append(f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
+            s_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
+            s_lines.append(f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
         else:
             s_lines.append(f"  No ranking data available")
 
@@ -4264,11 +4264,11 @@ async def tally_deeds(
                 pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
                 risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
                 force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
-                embed.add_field(name="Highest Tempo", value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}", inline=True)
-                embed.add_field(name="Most Reliable", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
-                embed.add_field(name="Best Preservation", value=f"#{pres_data[1]}/{pres_data[2]}", inline=True)
-                embed.add_field(name="Highest Risk", value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}", inline=True)
-                embed.add_field(name="Force Multiplier", value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}", inline=True)
+                embed.add_field(name="Total Operations", value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}", inline=True)
+                embed.add_field(name="Avg Kills per Op", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
+                embed.add_field(name="Armory + Gene-seed", value=f"#{pres_data[1]}/{pres_data[2]}", inline=True)
+                embed.add_field(name="High-Risk Ops", value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}", inline=True)
+                embed.add_field(name="AARs per Member", value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}", inline=True)
             view = ToggleFormatView(
                 text_content=summary_text, embed=embed, default="ansi"
             )
@@ -4370,12 +4370,12 @@ async def tally_deeds(
             h_lines.append("INDIVIDUAL DISTINCTIONS")
 
             if ops_data[2] > 0:  # Has ranking data
-                h_lines.append(f"Operational Tempo        (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-                h_lines.append(f"Veteran Lethality        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
-                h_lines.append(f"Reliquary Bearer         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
-                h_lines.append(f"Vault Reclaimer          (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
+                h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
+                h_lines.append(f"Avg Kills per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+                h_lines.append(f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
+                h_lines.append(f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
                 omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                h_lines.append(f"High-Risk Operator       (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}")
+                h_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}")
             else:
                 h_lines.append(f"  No ranking data available")
 
@@ -4383,10 +4383,10 @@ async def tally_deeds(
             h_lines.append("CHAPTER DOCTRINES")
 
             if ch_armory_data[2] > 0:  # Has chapter ranking data
-                h_lines.append(f"Forge Doctrine           (Avg ArmoryPts {ch_armory_data[0]:.1f}) — Rank #{ch_armory_data[1]}/{ch_armory_data[2]}")
-                h_lines.append(f"Codex Discipline         (Avg Ops {ch_ops_data[0]:.1f}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
-                h_lines.append(f"Relentless Doctrine      (Ops/Member {ch_per_member_data[0]:.1f}) — Rank #{ch_per_member_data[1]}/{ch_per_member_data[2]}")
-                h_lines.append(f"Reliquary Doctrine       (GeneseedPts Rate {ch_gene_data[0]:.1f}) — Rank #{ch_gene_data[1]}/{ch_gene_data[2]}")
+                h_lines.append(f"Avg Armory Points        (Avg ArmoryPts {ch_armory_data[0]:.1f}) — Rank #{ch_armory_data[1]}/{ch_armory_data[2]}")
+                h_lines.append(f"Avg Operations           (Avg Ops {ch_ops_data[0]:.1f}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
+                h_lines.append(f"Ops per Member           (Ops/Member {ch_per_member_data[0]:.1f}) — Rank #{ch_per_member_data[1]}/{ch_per_member_data[2]}")
+                h_lines.append(f"Gene-seed Rate           (GeneseedPts Rate {ch_gene_data[0]:.1f}) — Rank #{ch_gene_data[1]}/{ch_gene_data[2]}")
             else:
                 h_lines.append(f"  Chapter does not meet minimum threshold for ranking")
 
@@ -4405,17 +4405,17 @@ async def tally_deeds(
                 )
                 honours_embed.add_field(name="─── Individual Rankings ───", value="\u200b", inline=False)
                 if ops_data[2] > 0:
-                    honours_embed.add_field(name="Operational Tempo", value=f"#{ops_data[1]}/{ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Veteran Lethality", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
-                    honours_embed.add_field(name="Reliquary Bearer", value=f"#{gene_data[1]}/{gene_data[2]}", inline=True)
-                    honours_embed.add_field(name="Vault Reclaimer", value=f"#{armory_data[1]}/{armory_data[2]}", inline=True)
-                    honours_embed.add_field(name="High-Risk Operator", value=f"#{risk_data[1]}/{risk_data[2]}", inline=True)
+                    honours_embed.add_field(name="Total Operations", value=f"#{ops_data[1]}/{ops_data[2]}", inline=True)
+                    honours_embed.add_field(name="Avg Kills per Op", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
+                    honours_embed.add_field(name="Gene-seed Points", value=f"#{gene_data[1]}/{gene_data[2]}", inline=True)
+                    honours_embed.add_field(name="Armory Points", value=f"#{armory_data[1]}/{armory_data[2]}", inline=True)
+                    honours_embed.add_field(name="High-Risk Ops", value=f"#{risk_data[1]}/{risk_data[2]}", inline=True)
                 honours_embed.add_field(name=f"─── {home_chapter} Rankings ───", value="\u200b", inline=False)
                 if ch_armory_data[2] > 0:
-                    honours_embed.add_field(name="Forge Doctrine", value=f"#{ch_armory_data[1]}/{ch_armory_data[2]}", inline=True)
-                    honours_embed.add_field(name="Codex Discipline", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Relentless Doctrine", value=f"#{ch_per_member_data[1]}/{ch_per_member_data[2]}", inline=True)
-                    honours_embed.add_field(name="Reliquary Doctrine", value=f"#{ch_gene_data[1]}/{ch_gene_data[2]}", inline=True)
+                    honours_embed.add_field(name="Avg Armory Points", value=f"#{ch_armory_data[1]}/{ch_armory_data[2]}", inline=True)
+                    honours_embed.add_field(name="Avg Operations", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
+                    honours_embed.add_field(name="Ops per Member", value=f"#{ch_per_member_data[1]}/{ch_per_member_data[2]}", inline=True)
+                    honours_embed.add_field(name="Gene-seed Rate", value=f"#{ch_gene_data[1]}/{ch_gene_data[2]}", inline=True)
             except Exception:
                 honours_embed = _embed_from_ansi("Weekly Honours", honours_text)
 
@@ -7044,23 +7044,23 @@ async def _build_honours(
 ==============================================================================
 
 INDIVIDUAL DISTINCTIONS
-Operational Tempo        Name (Ops X)
-Veteran Lethality        Name (Avg Op X.X)
-Reliquary Bearer         Name (Geneseed X)
-Vault Reclaimer          Name (Armory X)
-High-Risk Operator       Name (Hard-Strat+Omega X | Omega KIA X)
+Total Operations         Name (Ops X)
+Avg Kills per Op         Name (Avg Op X.X)
+Gene-seed Points         Name (Geneseed X)
+Armory Points            Name (Armory X)
+High-Risk Ops            Name (Hard-Strat+Omega X | Omega KIA X)
 
 KILL TEAM DISTINCTIONS
-Highest Tempo Team       Team (Ops X)
-Most Reliable Team       Team (Avg Op X.X)
-Best Preservation Team   Team (Armory X.X | Gene X.X)
-Highest Risk Team        Team (Hard-Strat+Omega X)
+Total Operations         Team (Ops X)
+Avg Kills per Op         Team (Avg Op X.X)
+Armory + Gene-seed       Team (Armory X.X | Gene X.X)
+High-Risk Ops            Team (Hard-Strat+Omega X)
 
 CHAPTER DOCTRINES
-Forge Doctrine           Chapter (highest avg armory)
-Codex Discipline         Chapter (highest avg op)
-Relentless Doctrine      Chapter (highest ops per member
-Reliquary Doctrine       Chapter (highest geneseed rate)
+Avg Armory Points        Chapter (highest avg armory)
+Avg Operations           Chapter (highest avg op)
+Ops per Member           Chapter (highest ops per member
+Gene-seed Rate           Chapter (highest geneseed rate)
 
 ==============================================================================
 """,
@@ -7882,22 +7882,22 @@ Reliquary Doctrine       Chapter (highest geneseed rate)
         f"  Date: {_format_imperial_date(display_dt)}\n"
         "==============================================================================\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
-        f"Operational Tempo        {tempo_disp} (Ops {tempo_val})\n"
-        f"Veteran Lethality        {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
-        f"Reliquary Bearer         {gene_disp} (GeneseedPts {gene_val})\n"
-        f"Vault Reclaimer          {arm_disp} (ArmoryPts {arm_val})\n"
-        f"High-Risk Operator       {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
+        f"Total Operations         {tempo_disp} (Ops {tempo_val})\n"
+        f"Avg Kills per Op         {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
+        f"Gene-seed Points         {gene_disp} (GeneseedPts {gene_val})\n"
+        f"Armory Points            {arm_disp} (ArmoryPts {arm_val})\n"
+        f"High-Risk Ops            {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
         "KILL TEAM DISTINCTIONS\n"
-        f"Highest Tempo Team       {kt_ops_name} (Ops {kt_ops_val})\n"
-        f"Most Reliable Team       {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
-        f"Best Preservation Team   {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
-        f"Highest Risk Team        {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
-        f"Force Multiplier Team    {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
+        f"Total Operations         {kt_ops_name} (Ops {kt_ops_val})\n"
+        f"Avg Kills per Op         {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
+        f"Armory + Gene-seed       {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
+        f"High-Risk Ops            {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
+        f"AARs per Member          {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DOCTRINES\n"
-        f"Forge Doctrine           {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
-        f"Codex Discipline         {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
-        f"Relentless Doctrine      {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
-        f"Reliquary Doctrine       {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
+        f"Avg Armory Points        {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
+        f"Avg Operations           {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
+        f"Ops per Member           {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
+        f"Gene-seed Rate           {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
         "=============================================================================="
     )
 
