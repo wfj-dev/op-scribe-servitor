@@ -4,6 +4,7 @@
 import os
 import asyncio
 import json
+import calendar
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
@@ -7986,7 +7987,49 @@ async def _scheduled_honours_runner():
             except Exception:
                 logger.exception("Failed to post honours")
 
+        # Helper to run pre-audit (ingest + recheck) before posting honours
+        async def _run_pre_audit(span_days: int):
+            """Run sanctify_battle_records and audit_archive_discrepancies for the given window."""
+            try:
+                aar_channel = discord.utils.get(
+                    guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+                )
+                if not aar_channel:
+                    logger.warning("Pre-audit: AAR channel not found, skipping audit")
+                    return
+                # Acquire lock to prevent concurrent reconciliations
+                if RECONCILE_LOCK.locked():
+                    logger.info("Pre-audit: Reconcile lock held, skipping audit")
+                    return
+                await RECONCILE_LOCK.acquire()
+                try:
+                    # Run ingest (sanctify battle records)
+                    logger.info(f"Pre-audit: Running ingest for last {span_days} days")
+                    ingested, rejected = await _run_ingest_new(aar_channel, span_days)
+                    logger.info(f"Pre-audit: Ingested {ingested}, rejected {rejected}")
+                    # Run recheck (audit archive discrepancies)
+                    logger.info(f"Pre-audit: Running recheck for last {span_days} days")
+                    fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
+                    logger.info(f"Pre-audit: Fixed {fixed}, still broken {still_broken}")
+                finally:
+                    RECONCILE_LOCK.release()
+            except Exception:
+                logger.exception("Pre-audit failed")
+
         if weekly_due and monthly_due:
+            # Both due - run pre-audit for the monthly window (covers weekly too)
+            # Calculate days in previous month
+            now_local = now_et
+            if now_local.month == 1:
+                prev_month = 12
+                prev_year = now_local.year - 1
+            else:
+                prev_month = now_local.month - 1
+                prev_year = now_local.year
+            # Days in previous month
+            monthly_days = calendar.monthrange(prev_year, prev_month)[1]
+            await _run_pre_audit(monthly_days)
+
             # Weekly first, then monthly on collision
             # Post weekly honours
             line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
@@ -7995,16 +8038,9 @@ async def _scheduled_honours_runner():
             # small pause before posting monthly
             await asyncio.sleep(1)
             # Compute first day of current month and previous month (UTC naive)
-            now_local = now_et
             first_of_current_local = datetime(
                 now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
             )
-            if now_local.month == 1:
-                prev_month = 12
-                prev_year = now_local.year - 1
-            else:
-                prev_month = now_local.month - 1
-                prev_year = now_local.year
             prev_start_local = datetime(
                 prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York")
             )
@@ -8020,6 +8056,8 @@ async def _scheduled_honours_runner():
             LAST_MONTHLY_POST_DATE = str(today)
 
         elif weekly_due:
+            # Run pre-audit for weekly window (7 days)
+            await _run_pre_audit(7)
             line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
             try:
                 await _send_honours(line, block, top_rankings)
@@ -8038,6 +8076,10 @@ async def _scheduled_honours_runner():
             else:
                 prev_month = now_local.month - 1
                 prev_year = now_local.year
+            # Run pre-audit for monthly window (days in previous month)
+            monthly_days = calendar.monthrange(prev_year, prev_month)[1]
+            await _run_pre_audit(monthly_days)
+
             prev_start_local = datetime(prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York"))
             try:
                 prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
