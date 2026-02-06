@@ -4237,7 +4237,7 @@ async def tally_deeds(
             force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
 
             s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-            s_lines.append(f"Avg Kills per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+            s_lines.append(f"Avg Points per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
             s_lines.append(f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
             s_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
             s_lines.append(f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
@@ -4265,7 +4265,7 @@ async def tally_deeds(
                 risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
                 force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
                 embed.add_field(name="Total Operations", value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}", inline=True)
-                embed.add_field(name="Avg Kills per Op", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
+                embed.add_field(name="Avg Points per Op", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
                 embed.add_field(name="Armory + Gene-seed", value=f"#{pres_data[1]}/{pres_data[2]}", inline=True)
                 embed.add_field(name="High-Risk Ops", value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}", inline=True)
                 embed.add_field(name="AARs per Member", value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}", inline=True)
@@ -4346,11 +4346,14 @@ async def tally_deeds(
             risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
             omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
 
-            # Get chapter ranking data
-            ch_armory_data = chapter_rankings.get("avg_armory", {}).get(home_chapter, (0.0, 0, 0))
-            ch_ops_data = chapter_rankings.get("avg_ops", {}).get(home_chapter, (0.0, 0, 0))
-            ch_per_member_data = chapter_rankings.get("ops_per_member", {}).get(home_chapter, (0.0, 0, 0))
-            ch_gene_data = chapter_rankings.get("gene_rate", {}).get(home_chapter, (0.0, 0, 0))
+            # Get chapter ranking data (matching kill team metrics)
+            ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
+            ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
+            ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
+            ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
+            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
+            ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
+            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
 
             # Build honours ANSI block
             h_lines = []
@@ -4371,7 +4374,7 @@ async def tally_deeds(
 
             if ops_data[2] > 0:  # Has ranking data
                 h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-                h_lines.append(f"Avg Kills per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
+                h_lines.append(f"Avg Points per Op         (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
                 h_lines.append(f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
                 h_lines.append(f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
                 omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
@@ -4380,13 +4383,14 @@ async def tally_deeds(
                 h_lines.append(f"  No ranking data available")
 
             h_lines.append("")
-            h_lines.append("CHAPTER DOCTRINES")
+            h_lines.append("CHAPTER DISTINCTIONS")
 
-            if ch_armory_data[2] > 0:  # Has chapter ranking data
-                h_lines.append(f"Avg Armory Points        (Avg ArmoryPts {ch_armory_data[0]:.1f}) — Rank #{ch_armory_data[1]}/{ch_armory_data[2]}")
-                h_lines.append(f"Avg Operations           (Avg Ops {ch_ops_data[0]:.1f}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
-                h_lines.append(f"Ops per Member           (Ops/Member {ch_per_member_data[0]:.1f}) — Rank #{ch_per_member_data[1]}/{ch_per_member_data[2]}")
-                h_lines.append(f"Gene-seed Rate           (GeneseedPts Rate {ch_gene_data[0]:.1f}) — Rank #{ch_gene_data[1]}/{ch_gene_data[2]}")
+            if ch_ops_data[2] > 0:  # Has chapter ranking data
+                h_lines.append(f"Total Operations         (Ops {int(ch_ops_data[0])}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
+                h_lines.append(f"Avg Points per Op        (Avg Op {ch_avg_data[0]:.1f}) — Rank #{ch_avg_data[1]}/{ch_avg_data[2]}")
+                h_lines.append(f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}")
+                h_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}")
+                h_lines.append(f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}")
             else:
                 h_lines.append(f"  Chapter does not meet minimum threshold for ranking")
 
@@ -4406,16 +4410,17 @@ async def tally_deeds(
                 honours_embed.add_field(name="─── Individual Rankings ───", value="\u200b", inline=False)
                 if ops_data[2] > 0:
                     honours_embed.add_field(name="Total Operations", value=f"#{ops_data[1]}/{ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Avg Kills per Op", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
+                    honours_embed.add_field(name="Avg Points per Op", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
                     honours_embed.add_field(name="Gene-seed Points", value=f"#{gene_data[1]}/{gene_data[2]}", inline=True)
                     honours_embed.add_field(name="Armory Points", value=f"#{armory_data[1]}/{armory_data[2]}", inline=True)
                     honours_embed.add_field(name="High-Risk Ops", value=f"#{risk_data[1]}/{risk_data[2]}", inline=True)
                 honours_embed.add_field(name=f"─── {home_chapter} Rankings ───", value="\u200b", inline=False)
-                if ch_armory_data[2] > 0:
-                    honours_embed.add_field(name="Avg Armory Points", value=f"#{ch_armory_data[1]}/{ch_armory_data[2]}", inline=True)
-                    honours_embed.add_field(name="Avg Operations", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Ops per Member", value=f"#{ch_per_member_data[1]}/{ch_per_member_data[2]}", inline=True)
-                    honours_embed.add_field(name="Gene-seed Rate", value=f"#{ch_gene_data[1]}/{ch_gene_data[2]}", inline=True)
+                if ch_ops_data[2] > 0:
+                    honours_embed.add_field(name="Total Operations", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
+                    honours_embed.add_field(name="Avg Points per Op", value=f"#{ch_avg_data[1]}/{ch_avg_data[2]}", inline=True)
+                    honours_embed.add_field(name="Armory + Gene-seed", value=f"#{ch_pres_data[1]}/{ch_pres_data[2]}", inline=True)
+                    honours_embed.add_field(name="High-Risk Ops", value=f"#{ch_risk_data[1]}/{ch_risk_data[2]}", inline=True)
+                    honours_embed.add_field(name="AARs per Member", value=f"#{ch_aar_data[1]}/{ch_aar_data[2]}", inline=True)
             except Exception:
                 honours_embed = _embed_from_ansi("Weekly Honours", honours_text)
 
@@ -6778,6 +6783,7 @@ async def _compute_fortress_rankings(
                         "ops": 0,
                         "points": 0,
                         "armory": 0,
+                        "high_risk": 0,
                         "gene_carried": 0,
                         "gene_participated": 0,
                     },
@@ -6785,6 +6791,8 @@ async def _compute_fortress_rankings(
                 c["ops"] += 1
                 c["points"] += int(rec.get("points_for_op") or 0)
                 c["armory"] += int(rec.get("armory_challenge_points") or 0)
+                if is_high_risk:
+                    c["high_risk"] += 1
                 if rec.get("gene_seed_status") == "carried":
                     c["gene_carried"] += int(
                         rec.get("gene_seed_base_points_for_carrier") or 0
@@ -6832,8 +6840,11 @@ async def _compute_fortress_rankings(
     for ch, c in chapters.items():
         c["avg_armory"] = (c["armory"] / c["ops"]) if c["ops"] else 0.0
         c["avg_ops"] = (c["points"] / c["ops"]) if c["ops"] else 0.0
+        c["avg"] = c["avg_ops"]  # Alias for consistency with kill teams
+        c["pres"] = c["armory"] + c["gene_carried"]  # Combined preservation
         members_count = len(chapters_members.get(ch, set()))
         c["ops_per_member"] = (c["ops"] / members_count) if members_count else 0.0
+        c["avg_aar_per_member"] = c["ops_per_member"]  # Alias for consistency
         c["gene_rate"] = (
             (c["gene_carried"] / c["gene_participated"])
             if c["gene_participated"]
@@ -6916,12 +6927,15 @@ async def _compute_fortress_rankings(
         "avg_aar_per_member": rank_teams("avg_aar_per_member"),
     }
 
-    # Compute chapter rankings
+    # Compute chapter rankings (matching kill team metrics)
     chapter_rankings = {
-        "avg_armory": rank_chapters("avg_armory"),
-        "avg_ops": rank_chapters("avg_ops"),
-        "ops_per_member": rank_chapters("ops_per_member"),
-        "gene_rate": rank_chapters("gene_rate"),
+        "ops": rank_chapters("ops"),
+        "avg": rank_chapters("avg"),
+        "pres": rank_chapters("pres"),
+        "armory": rank_chapters("armory"),
+        "gene_carried": rank_chapters("gene_carried"),
+        "high_risk": rank_chapters("high_risk"),
+        "avg_aar_per_member": rank_chapters("avg_aar_per_member"),
     }
 
     return {
@@ -7045,22 +7059,23 @@ async def _build_honours(
 
 INDIVIDUAL DISTINCTIONS
 Total Operations         Name (Ops X)
-Avg Kills per Op         Name (Avg Op X.X)
+Avg Points per Op         Name (Avg Op X.X)
 Gene-seed Points         Name (Geneseed X)
 Armory Points            Name (Armory X)
 High-Risk Ops            Name (Hard-Strat+Omega X | Omega KIA X)
 
 KILL TEAM DISTINCTIONS
 Total Operations         Team (Ops X)
-Avg Kills per Op         Team (Avg Op X.X)
+Avg Points per Op         Team (Avg Op X.X)
 Armory + Gene-seed       Team (Armory X.X | Gene X.X)
 High-Risk Ops            Team (Hard-Strat+Omega X)
 
-CHAPTER DOCTRINES
-Avg Armory Points        Chapter (highest avg armory)
-Avg Operations           Chapter (highest avg op)
-Ops per Member           Chapter (highest ops per member
-Gene-seed Rate           Chapter (highest geneseed rate)
+CHAPTER DISTINCTIONS
+Total Operations         Chapter (Ops X)
+Avg Points per Op        Chapter (Avg Op X.X)
+Armory + Gene-seed       Chapter (Armory X.X | Gene X.X)
+High-Risk Ops            Chapter (Hard-Strat+Omega X)
+AARs per Member          Chapter (Avg AAR/Member X.X)
 
 ==============================================================================
 """,
@@ -7563,22 +7578,17 @@ Gene-seed Rate           Chapter (highest geneseed rate)
     kt_force_name = kt_force[0][0] if kt_force else "Team"
     kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
 
-    # doctrine winners (ch1..ch4) will be computed after metric helpers below
-    ch1 = ch2 = ch3 = ch4 = "Chapter"
+    # doctrine winners (ch1..ch5) will be computed after metric helpers below
+    ch1 = ch2 = ch3 = ch4 = ch5 = "Chapter"
 
-    # Compute chapter doctrine values to display
-    def _chap_avg_armory(ch):
+    # Compute chapter metric values to display (matching kill team stats)
+    def _chap_ops(ch):
         try:
-            d = chapters.get(ch, {})
-            return (
-                (d.get("armory", 0) / float(d.get("ops", 1)))
-                if d.get("ops", 0)
-                else 0.0
-            )
+            return chapters.get(ch, {}).get("ops", 0)
         except Exception:
-            return 0.0
+            return 0
 
-    def _chap_avg_ops(ch):
+    def _chap_avg(ch):
         try:
             d = chapters.get(ch, {})
             return (
@@ -7589,22 +7599,36 @@ Gene-seed Rate           Chapter (highest geneseed rate)
         except Exception:
             return 0.0
 
-    def _chap_ops_per_member(ch):
+    def _chap_pres(ch):
+        try:
+            d = chapters.get(ch, {})
+            return d.get("armory", 0) + d.get("gene_carried", 0)
+        except Exception:
+            return 0
+
+    def _chap_pres_armory(ch):
+        try:
+            return chapters.get(ch, {}).get("armory", 0)
+        except Exception:
+            return 0
+
+    def _chap_pres_gene(ch):
+        try:
+            return chapters.get(ch, {}).get("gene_carried", 0)
+        except Exception:
+            return 0
+
+    def _chap_high_risk(ch):
+        try:
+            return chapters.get(ch, {}).get("high_risk", 0)
+        except Exception:
+            return 0
+
+    def _chap_avg_aar(ch):
         try:
             ops = chapters.get(ch, {}).get("ops", 0)
             members = len(chapters_members.get(ch, set()))
             return (ops / float(members)) if members else 0.0
-        except Exception:
-            return 0.0
-
-    def _chap_gene_rate(ch):
-        try:
-            d = chapters.get(ch, {})
-            return (
-                (d.get("gene_carried", 0) / float(d.get("gene_participated", 1)))
-                if d.get("gene_participated", 0)
-                else 0.0
-            )
         except Exception:
             return 0.0
 
@@ -7675,19 +7699,23 @@ Gene-seed Rate           Chapter (highest geneseed rate)
         zscores = [(ch, (v - mean) / stdev) for ch, v in vals]
         return max(zscores, key=lambda it: it[1])[0]
 
-    # Select doctrine winners across eligible chapters
-    ch1 = _pick_by_zscore(_chap_avg_armory)
-    ch2 = _pick_by_zscore(_chap_avg_ops)
-    ch3 = _pick_by_zscore(_chap_ops_per_member)
-    ch4 = _pick_by_zscore(_chap_gene_rate)
+    # Select distinction winners across eligible chapters (matching kill team metrics)
+    ch1 = _pick_by_zscore(_chap_ops)
+    ch2 = _pick_by_zscore(_chap_avg)
+    ch3 = _pick_by_zscore(_chap_pres)
+    ch4 = _pick_by_zscore(_chap_high_risk)
+    ch5 = _pick_by_zscore(_chap_avg_aar)
 
-    ch1_val = _chap_avg_armory(ch1)
-    ch2_val = _chap_avg_ops(ch2)
-    ch3_val = _chap_ops_per_member(ch3)
-    ch4_val = _chap_gene_rate(ch4)
+    ch1_val = _chap_ops(ch1)
+    ch2_val = _chap_avg(ch2)
+    ch3_val = _chap_pres(ch3)
+    ch3_arm = _chap_pres_armory(ch3)
+    ch3_gene = _chap_pres_gene(ch3)
+    ch4_val = _chap_high_risk(ch4)
+    ch5_val = _chap_avg_aar(ch5)
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
-    # --- Chapter rankings across 4 doctrine metrics ---
+    # --- Chapter rankings across 5 distinction metrics ---
     def _compute_chapter_ranks_by_metric(metric_fn, reverse: bool = True) -> Dict[str, int]:
         """Compute dense ranks for chapters based on a metric function."""
         if not eligible:
@@ -7705,7 +7733,7 @@ Gene-seed Rate           Chapter (highest geneseed rate)
             prev_val = val
         return ranks
 
-    ch_metrics = [_chap_avg_armory, _chap_avg_ops, _chap_ops_per_member, _chap_gene_rate]
+    ch_metrics = [_chap_ops, _chap_avg, _chap_pres, _chap_high_risk, _chap_avg_aar]
     ch_all_ranks: Dict[str, List[int]] = {}
     for metric_fn in ch_metrics:
         dense = _compute_chapter_ranks_by_metric(metric_fn)
@@ -7883,21 +7911,22 @@ Gene-seed Rate           Chapter (highest geneseed rate)
         "==============================================================================\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
         f"Total Operations         {tempo_disp} (Ops {tempo_val})\n"
-        f"Avg Kills per Op         {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
+        f"Avg Points per Op         {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
         f"Gene-seed Points         {gene_disp} (GeneseedPts {gene_val})\n"
         f"Armory Points            {arm_disp} (ArmoryPts {arm_val})\n"
         f"High-Risk Ops            {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
         "KILL TEAM DISTINCTIONS\n"
         f"Total Operations         {kt_ops_name} (Ops {kt_ops_val})\n"
-        f"Avg Kills per Op         {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
+        f"Avg Points per Op         {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
         f"Armory + Gene-seed       {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
         f"High-Risk Ops            {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
         f"AARs per Member          {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
-        "CHAPTER DOCTRINES\n"
-        f"Avg Armory Points        {ch1} (Avg ArmoryPts {fmt_avg(ch1_val)})\n"
-        f"Avg Operations           {ch2} (Avg Ops {fmt_avg(ch2_val)})\n"
-        f"Ops per Member           {ch3} (Ops/Member {fmt_avg(ch3_val)})\n"
-        f"Gene-seed Rate           {ch4} (GeneseedPts Rate {fmt_avg(ch4_val)})\n\n"
+        "CHAPTER DISTINCTIONS\n"
+        f"Total Operations         {ch1} (Ops {ch1_val})\n"
+        f"Avg Points per Op        {ch2} (Avg Op {fmt_avg(ch2_val)})\n"
+        f"Armory + Gene-seed       {ch3} (ArmoryPts {fmt_avg(ch3_arm)} | GenePts {fmt_avg(ch3_gene)})\n"
+        f"High-Risk Ops            {ch4} (Hard-Strat+Omega {ch4_val})\n"
+        f"AARs per Member          {ch5} (Avg AAR/Member {fmt_avg(ch5_val)})\n\n"
         "=============================================================================="
     )
 
@@ -7909,7 +7938,7 @@ Gene-seed Rate           Chapter (highest geneseed rate)
     if len(content) > 2000:
         # 1) Remove chapter doctrine block from inner
         inner_no_doctrine = (
-            ansi_inner.split("CHAPTER DOCTRINES")[0]
+            ansi_inner.split("CHAPTER DISTINCTIONS")[0]
             + "==============================================================================\n"
         )
         ansi_no_doctrine = f"```ansi\n\u001b[32m{inner_no_doctrine}\n\u001b[0m```"
