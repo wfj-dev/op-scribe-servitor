@@ -8,7 +8,6 @@ import calendar
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from discord.ext import tasks
 import uuid
 import re
@@ -73,12 +72,12 @@ SHUTDOWN_INITIATED = False
 SCHEDULE_DAILY_AUDIT_ENABLED = False
 SCHEDULE_DAILY_AUDIT_SPAN_DAYS = 1
 
-# Weekly maintenance settings (Tuesday 3 AM ET by default)
+# Weekly maintenance settings (Tuesday 8 AM UTC by default)
 # Runs sanctify (45-day span) + full audit (no span) to catch stragglers
 SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = True
 SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
-SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 3  # Hour in ET (America/New_York)
+SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -368,21 +367,21 @@ LAST_WEEKLY_MAINTENANCE_DATE: Optional[str] = None
 async def _scheduled_weekly_maintenance_loop():
     """Run hourly; on configured day/hour run sanctify + full audit.
 
-    Default: Tuesday 3 AM ET. Runs sanctify (45-day span) to catch missed AARs,
+    Default: Tuesday 8 AM UTC. Runs sanctify (45-day span) to catch missed AARs,
     then a full audit (no span limit) to retry all known errors.
     """
     global LAST_WEEKLY_MAINTENANCE_DATE
     try:
         if DATASTORE is None:
             return
-        # Use ET for scheduling consistency with honours runner
-        now_et = datetime.now(ZoneInfo("America/New_York"))
-        today = now_et.date()
+        # Use UTC for consistent scheduling
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
 
         # Check if it's the right day and hour
         if (
-            now_et.weekday() != SCHEDULE_WEEKLY_MAINTENANCE_DAY
-            or now_et.hour != SCHEDULE_WEEKLY_MAINTENANCE_HOUR
+            now_utc.weekday() != SCHEDULE_WEEKLY_MAINTENANCE_DAY
+            or now_utc.hour != SCHEDULE_WEEKLY_MAINTENANCE_HOUR
         ):
             return
 
@@ -483,7 +482,9 @@ except Exception:
 # Logging setup
 log_level_str = ((CONFIG.get("logging") or {}).get("level") or "INFO").upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
+# Configure logging to use UTC timestamps
 logging.basicConfig(level=log_level, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.Formatter.converter = time.gmtime  # Force UTC timestamps
 logger = logging.getLogger("op-scribe-servitor")
 _CMD_INVOCATIONS: dict[int, float] = {}
 
@@ -505,7 +506,9 @@ try:
             path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
         )
         fh.setLevel(log_level)
-        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        formatter.converter = time.gmtime  # Force UTC timestamps for file handler
+        fh.setFormatter(formatter)
         logger.addHandler(fh)
 except Exception as e:
     try:
@@ -1706,7 +1709,7 @@ async def on_ready():
     try:
         if not _scheduled_honours_runner.is_running():
             _scheduled_honours_runner.start()
-            logger.info("Honours runner loop started (15-min interval, posts at 8 PM ET on Fridays/1st of month).")
+            logger.info("Honours runner loop started (15-min interval, posts at 1 AM UTC on Saturdays/1st of month).")
     except Exception:
         logger.exception("Failed to start honours runner loop")
 
@@ -3268,9 +3271,7 @@ async def cache_stats(interaction: discord.Interaction):
     last_flush = stats["last_flush_time"]
     if last_flush:
         try:
-            lf = datetime.fromtimestamp(last_flush, tz=timezone.utc).astimezone(
-                ZoneInfo("America/New_York")
-            )
+            lf = datetime.fromtimestamp(last_flush, tz=timezone.utc)
             last_flush_str = lf.strftime("%Y-%m-%d %H:%M:%S %Z")
         except Exception:
             last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime(
@@ -3285,7 +3286,7 @@ async def cache_stats(interaction: discord.Interaction):
             try:
                 user_stats_built_str = datetime.datetime.fromtimestamp(
                     ts, tz=timezone.utc
-                ).astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+                ).strftime("%Y-%m-%d %H:%M:%S %Z")
             except Exception:
                 user_stats_built_str = datetime.datetime.utcfromtimestamp(ts).strftime(
                     "%Y-%m-%d %H:%M:%S UTC"
@@ -3738,8 +3739,8 @@ async def tally_deeds(
                     # Ensure joined_at is timezone-aware, defaulting to UTC
                     if joined_at.tzinfo is None:
                         joined_at = joined_at.replace(tzinfo=timezone.utc)
-                    ja_et = joined_at.astimezone(ZoneInfo("America/New_York"))
-                    joined_str = ja_et.strftime("%Y-%m-%d %H:%M %Z")
+                    ja_utc = joined_at.astimezone(timezone.utc)
+                    joined_str = ja_utc.strftime("%Y-%m-%d %H:%M %Z")
                 except Exception:
                     joined_str = joined_at.strftime("%Y-%m-%d %H:%M UTC")
             else:
@@ -3987,8 +3988,8 @@ async def tally_deeds(
             try:
                 if last_aar_date.tzinfo is None:
                     last_aar_date = last_aar_date.replace(tzinfo=timezone.utc)
-                aar_et = last_aar_date.astimezone(ZoneInfo("America/New_York"))
-                aar_date_str = aar_et.strftime("%Y-%m-%d")
+                aar_utc = last_aar_date.astimezone(timezone.utc)
+                aar_date_str = aar_utc.strftime("%Y-%m-%d")
             except Exception:
                 aar_date_str = last_aar_date.strftime("%Y-%m-%d")
             last_aar_display = f"{aar_date_str} ({days_since_aar}d ago)"
@@ -7453,6 +7454,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
                         "ops": 0,
                         "points": 0,
                         "armory": 0,
+                        "high_risk": 0,
                         "gene_carried": 0,
                         "gene_participated": 0,
                     },
@@ -7460,6 +7462,8 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
                 c["ops"] += 1
                 c["points"] += int(rec.get("points_for_op") or 0)
                 c["armory"] += int(rec.get("armory_challenge_points") or 0)
+                if is_high_risk:
+                    c["high_risk"] += 1
                 if rec.get("gene_seed_status") == "carried":
                     c["gene_carried"] += int(
                         rec.get("gene_seed_base_points_for_carrier") or 0
@@ -7922,13 +7926,13 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     def _build_top5_block():
         period_label = "WEEKLY" if period_days == 7 else "MONTHLY"
-        # Use ET for display date (so 8 PM ET on Friday shows Friday's date, not Saturday UTC)
+        # Use UTC for display date consistency  
         display_dt_utc = end if end is not None else now
         try:
-            display_dt_et = display_dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/New_York"))
+            display_dt_utc = display_dt_utc.replace(tzinfo=timezone.utc)
         except Exception:
-            display_dt_et = display_dt_utc
-        date_str = display_dt_et.strftime("%m/%d/%y") if period_days == 7 else display_dt_et.strftime("%B %Y").upper()
+            display_dt_utc = display_dt_utc
+        date_str = display_dt_utc.strftime("%m/%d/%y") if period_days == 7 else display_dt_utc.strftime("%B %Y").upper()
 
         # Collect mentions for TOP RANKED line
         top_mentions = []
@@ -8007,7 +8011,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         lines.append("\u001b[32m==============================================================================")
         lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
         lines.append(f"  OPERATION-SCRIBE SERVITOR — {period_label} LEADERBOARDS")
-        lines.append(f"  Date: {_format_imperial_date(display_dt_et)}")
+        lines.append(f"  Date: {_format_imperial_date(display_dt_utc)}")
         lines.append("==============================================================================")
         lines.append("")
         lines.append("TOP 5 BROTHERS")
@@ -8123,22 +8127,171 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         content = honour_line + "\n" + ansi_no_kia
     if len(content) > 2000:
         # 3) Fallback to two messages (mentions first, ANSI block second)
-        return honour_line, ansi, top_rankings_block
+        mobile_embed = _build_mobile_honours_embed(
+            period_days, tempo_disp, tempo_val, lethal_disp, lethal_val,
+            gene_disp, gene_val, arm_disp, arm_val, high_disp, high_val, high_kia,
+            kt_ops_name, kt_ops_val, kt_avg_name, kt_avg_val, kt_pres_name, kt_pres_arm, kt_pres_gene,
+            kt_risk_name, kt_risk_val, kt_force_name, kt_force_val,
+            ch1, ch1_val, ch2, ch2_val, ch3, ch3_arm, ch3_gene, ch4, ch4_val, ch5, ch5_val,
+            now
+        )
+        mobile_top_rankings_embed = _build_mobile_top_rankings_embed(
+            period_days, ind_top5, kt_top5, ch_top5, now, guild
+        )
+        return honour_line, ansi, top_rankings_block, mobile_embed, mobile_top_rankings_embed
 
-    return honour_line, ansi, top_rankings_block
+    mobile_embed = _build_mobile_honours_embed(
+        period_days, tempo_disp, tempo_val, lethal_disp, lethal_val,
+        gene_disp, gene_val, arm_disp, arm_val, high_disp, high_val, high_kia,
+        kt_ops_name, kt_ops_val, kt_avg_name, kt_avg_val, kt_pres_name, kt_pres_arm, kt_pres_gene,
+        kt_risk_name, kt_risk_val, kt_force_name, kt_force_val,
+        ch1, ch1_val, ch2, ch2_val, ch3, ch3_arm, ch3_gene, ch4, ch4_val, ch5, ch5_val,
+        now
+    )
+    mobile_top_rankings_embed = _build_mobile_top_rankings_embed(
+        period_days, ind_top5, kt_top5, ch_top5, now, guild
+    )
+    return honour_line, ansi, top_rankings_block, mobile_embed, mobile_top_rankings_embed
+
+
+def _build_mobile_top_rankings_embed(
+    period_days: int,
+    ind_top5: List[Tuple[str, float]], 
+    kt_top5: List[Tuple[str, float]], 
+    ch_top5: List[Tuple[str, float]],
+    now: datetime,
+    guild: discord.Guild = None
+) -> discord.Embed:
+    """Build a mobile-friendly embed for the top 5 rankings."""
+    period_label = "Weekly" if period_days == 7 else "Monthly"
+    
+    embed = discord.Embed(
+        title=f"{period_label} Leaderboards",
+        description=f"📅 **Date:** {_format_imperial_date(now)}",
+        color=0x2ECC71
+    )
+    
+    # Top 5 Brothers
+    brothers_text = ""
+    prev_rank = None
+    display_rank = 0
+    for idx, (uid, avg_rank) in enumerate(ind_top5):
+        curr_rank = avg_rank
+        if prev_rank is None or curr_rank != prev_rank:
+            display_rank = idx + 1
+        name = _member_display_name(guild, uid)
+        brothers_text += f"{display_rank}. {name} (Avg Rank {avg_rank:.1f})\n"
+        prev_rank = curr_rank
+    
+    if brothers_text:
+        embed.add_field(name="🏆 Top 5 Brothers", value=brothers_text.strip(), inline=False)
+    
+    # Top 5 Kill Teams  
+    teams_text = ""
+    prev_rank = None
+    display_rank = 0
+    for idx, (tid, avg_rank) in enumerate(kt_top5):
+        curr_rank = avg_rank
+        if prev_rank is None or curr_rank != prev_rank:
+            display_rank = idx + 1
+        teams_text += f"{display_rank}. {tid} (Avg Rank {avg_rank:.1f})\n"
+        prev_rank = curr_rank
+        
+    if teams_text:
+        embed.add_field(name="⚔️ Top 5 Kill Teams", value=teams_text.strip(), inline=False)
+    
+    # Top 5 Chapters
+    chapters_text = ""
+    prev_rank = None
+    display_rank = 0
+    for idx, (ch, avg_rank) in enumerate(ch_top5):
+        curr_rank = avg_rank
+        if prev_rank is None or curr_rank != prev_rank:
+            display_rank = idx + 1
+        chapters_text += f"{display_rank}. {ch} (Avg Rank {avg_rank:.1f})\n"
+        prev_rank = curr_rank
+        
+    if chapters_text:
+        embed.add_field(name="🛡️ Top 5 Chapters", value=chapters_text.strip(), inline=False)
+    
+    embed.set_footer(text="🖥️ Use 'PC/Console' button for detailed ANSI view")
+    return embed
+
+
+def _build_mobile_honours_embed(
+    period_days: int,
+    tempo_disp: str, tempo_val: int,
+    lethal_disp: str, lethal_val: float,
+    gene_disp: str, gene_val: int,
+    arm_disp: str, arm_val: int,
+    high_disp: str, high_val: int, high_kia: int,
+    kt_ops_name: str, kt_ops_val: int,
+    kt_avg_name: str, kt_avg_val: float,
+    kt_pres_name: str, kt_pres_arm: int, kt_pres_gene: int,
+    kt_risk_name: str, kt_risk_val: int,
+    kt_force_name: str, kt_force_val: float,
+    ch1: str, ch1_val: int,
+    ch2: str, ch2_val: float,
+    ch3: str, ch3_arm: int, ch3_gene: int,
+    ch4: str, ch4_val: int,
+    ch5: str, ch5_val: float,
+    now: datetime
+) -> discord.Embed:
+    """Build a mobile-friendly embed version of the honours data."""
+    period_label = "Weekly" if period_days == 7 else "Monthly"
+    
+    # Create embed with date
+    embed = discord.Embed(
+        title=f"{period_label} Honours",
+        description=f"📅 **Date:** {_format_imperial_date(now)}",
+        color=0x2ECC71
+    )
+    
+    # Individual Distinctions
+    omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
+    individual_text = (
+        f"**Total Operations:** {tempo_disp} ({tempo_val} ops)\n"
+        f"**Avg Points per Op:** {lethal_disp} ({lethal_val:.1f})\n"
+        f"**Gene-seed Points:** {gene_disp} ({gene_val} pts)\n"
+        f"**Armory Points:** {arm_disp} ({arm_val} pts)\n"
+        f"**High-Risk Ops:** {high_disp} ({high_val} ops{omega_suffix})"
+    )
+    embed.add_field(name="🏆 Individual Distinctions", value=individual_text, inline=False)
+    
+    # Kill Team Distinctions
+    killteam_text = (
+        f"**Total Operations:** {kt_ops_name} ({kt_ops_val} ops)\n"
+        f"**Avg Points per Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"**Armory + Gene-seed:** {kt_pres_name} ({kt_pres_arm} | {kt_pres_gene})\n"
+        f"**High-Risk Ops:** {kt_risk_name} ({kt_risk_val} ops)\n"
+        f"**AARs per Member:** {kt_force_name} ({kt_force_val:.1f})"
+    )
+    embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
+    
+    # Chapter Distinctions
+    chapter_text = (
+        f"**Total Operations:** {ch1} ({ch1_val} ops)\n"
+        f"**Avg Points per Op:** {ch2} ({ch2_val:.1f})\n"
+        f"**Armory + Gene-seed:** {ch3} ({ch3_arm} | {ch3_gene})\n"
+        f"**High-Risk Ops:** {ch4} ({ch4_val} ops)\n"
+        f"**AARs per Member:** {ch5} ({ch5_val:.1f})"
+    )
+    embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
+    
+    embed.set_footer(text="🖥️ Use 'PC/Console' button for detailed ANSI view")
+    return embed
 
 
 @tasks.loop(minutes=15)
 async def _scheduled_honours_runner():
-    """Run hourly and post weekly/monthly honours when appropriate (UTC).
-    Weekly posts on Fridays (weekday==4). Monthly posts on day 1.
+    """Run every 15 minutes and post weekly/monthly honours when appropriate (UTC).
+    Weekly posts on Saturdays at 1 AM UTC. Monthly posts on 1st at 1 AM UTC.
     """
     try:
-        # Use America/New_York (ET) for scheduling checks so posts occur at
-        # a fixed local hour for the majority US audience.
-        now_et = datetime.now(ZoneInfo("America/New_York"))
-        today = now_et.date()
-        logger.info(f"Honours runner tick: {now_et.isoformat()} weekday={today.weekday()} hour={now_et.hour}")
+        # Use UTC for consistent scheduling
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
+        logger.info(f"Honours runner tick: {now_utc.isoformat()} weekday={today.weekday()} hour={now_utc.hour}")
 
         if DATASTORE is None:
             logger.warning("Honours runner: DATASTORE is None, skipping")
@@ -8164,34 +8317,52 @@ async def _scheduled_honours_runner():
         # due at the same hour (collision), post both (monthly first) with a
         # short pause between posts to reduce likelihood of rate-limit issues.
         weekly_due = (
-            today.weekday() == 4 and now_et.hour == 20 and LAST_WEEKLY_POST_DATE != str(today)
+            today.weekday() == 5 and now_utc.hour == 1 and LAST_WEEKLY_POST_DATE != str(today)
         )
         monthly_due = (
-            today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today)
+            today.day == 1 and now_utc.hour == 1 and LAST_MONTHLY_POST_DATE != str(today)
         )
         logger.info(f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}")
 
         # Helper to send honours content respecting Discord message length
-        async def _send_honours(line, block, top_rankings=None):
+        async def _send_honours(line, block, top_rankings=None, mobile_embed=None, mobile_top_rankings_embed=None):
             try:
                 # First send the Top 5 rankings block if provided
                 if top_rankings and top_rankings.strip():
-                    await channel.send(top_rankings)
+                    if mobile_top_rankings_embed:
+                        view = ToggleFormatView(text_content=top_rankings, embed=mobile_top_rankings_embed, default="ansi")
+                        await channel.send(top_rankings, view=view)
+                    else:
+                        await channel.send(top_rankings)
                     await asyncio.sleep(0.5)  # Small pause between messages
 
-                # Then send the honours content
+                # Then send the honours content with mobile toggle
                 content = line + "\n" + block
-                if len(content) <= 2000:
+                if mobile_embed and len(content) <= 2000:
+                    # Use ToggleFormatView for PC/Mobile toggle
+                    view = ToggleFormatView(text_content=content, embed=mobile_embed, default="ansi")
+                    await channel.send(
+                        content,
+                        view=view,
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                    )
+                elif len(content) <= 2000:
+                    # Fallback without mobile view if no embed provided
                     await channel.send(
                         content,
                         allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                     )
                 else:
+                    # Split messages for long content
                     await channel.send(
                         line,
                         allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                     )
-                    await channel.send(block)
+                    if mobile_embed:
+                        view = ToggleFormatView(text_content=block, embed=mobile_embed, default="ansi")
+                        await channel.send(block, view=view)
+                    else:
+                        await channel.send(block)
             except Exception:
                 logger.exception("Failed to post honours")
 
@@ -8227,78 +8398,83 @@ async def _scheduled_honours_runner():
         if weekly_due and monthly_due:
             # Both due - run pre-audit for the monthly window (covers weekly too)
             # Calculate days in previous month
-            now_local = now_et
-            if now_local.month == 1:
+            if now_utc.month == 1:
                 prev_month = 12
-                prev_year = now_local.year - 1
+                prev_year = now_utc.year - 1
             else:
-                prev_month = now_local.month - 1
-                prev_year = now_local.year
+                prev_month = now_utc.month - 1
+                prev_year = now_utc.year
             # Days in previous month
             monthly_days = calendar.monthrange(prev_year, prev_month)[1]
             await _run_pre_audit(monthly_days)
 
             # Weekly first, then monthly on collision
             # Post weekly honours
-            line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
-            await _send_honours(line, block, top_rankings)
+            line, block, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(guild, 7, include_mentions=True)
+            await _send_honours(line, block, top_rankings, mobile_embed, mobile_top_rankings_embed)
             LAST_WEEKLY_POST_DATE = str(today)
             # small pause before posting monthly
             await asyncio.sleep(1)
-            # Compute first day of current month and previous month (UTC naive)
-            first_of_current_local = datetime(
-                now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
+            # Compute first day of current month and previous month (UTC)
+            first_of_current_utc = datetime(
+                now_utc.year, now_utc.month, 1
             )
-            prev_start_local = datetime(
-                prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York")
+            if now_utc.month == 1:
+                prev_month = 12
+                prev_year = now_utc.year - 1
+            else:
+                prev_month = now_utc.month - 1
+                prev_year = now_utc.year
+            prev_start_utc = datetime(
+                prev_year, prev_month, 1
             )
             try:
-                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
-                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_start = prev_start_utc
+                prev_end = first_of_current_utc
             except Exception:
                 prev_start = datetime(prev_year, prev_month, 1)
-                prev_end = datetime(now_local.year, now_local.month, 1)
+                prev_end = datetime(now_utc.year, now_utc.month, 1)
 
-            line, block, top_rankings = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
-            await _send_honours(line, block, top_rankings)
+            line, block, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            await _send_honours(line, block, top_rankings, mobile_embed, mobile_top_rankings_embed)
             LAST_MONTHLY_POST_DATE = str(today)
 
         elif weekly_due:
             # Run pre-audit for weekly window (7 days)
             await _run_pre_audit(7)
-            line, block, top_rankings = await _build_honours(guild, 7, include_mentions=True)
+            line, block, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(guild, 7, include_mentions=True)
             try:
-                await _send_honours(line, block, top_rankings)
+                await _send_honours(line, block, top_rankings, mobile_embed, mobile_top_rankings_embed)
             except Exception:
                 logger.exception("Failed to post weekly honours")
             LAST_WEEKLY_POST_DATE = str(today)
 
         elif monthly_due:
-            now_local = now_et
-            first_of_current_local = datetime(
-                now_local.year, now_local.month, 1, tzinfo=ZoneInfo("America/New_York")
+            # Compute previous month boundaries in UTC
+            first_of_current_utc = datetime(
+                now_utc.year, now_utc.month, 1
             )
-            if now_local.month == 1:
+            if now_utc.month == 1:
                 prev_month = 12
-                prev_year = now_local.year - 1
+                prev_year = now_utc.year - 1
             else:
-                prev_month = now_local.month - 1
-                prev_year = now_local.year
+                prev_month = now_utc.month - 1
+                prev_year = now_utc.year
             # Run pre-audit for monthly window (days in previous month)
             monthly_days = calendar.monthrange(prev_year, prev_month)[1]
             await _run_pre_audit(monthly_days)
 
-            prev_start_local = datetime(prev_year, prev_month, 1, tzinfo=ZoneInfo("America/New_York"))
+            prev_start_utc = datetime(prev_year, prev_month, 1)
             try:
-                prev_start = prev_start_local.astimezone(timezone.utc).replace(tzinfo=None)
-                prev_end = first_of_current_local.astimezone(timezone.utc).replace(tzinfo=None)
+                prev_start = prev_start_utc
+                prev_end = first_of_current_utc
             except Exception:
                 prev_start = datetime(prev_year, prev_month, 1)
-                prev_end = datetime(now_local.year, now_local.month, 1)
+                prev_end = datetime(now_utc.year, now_utc.month, 1)
 
-            line, block, top_rankings = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            line, block, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
             try:
-                await _send_honours(line, block, top_rankings)
+                await _send_honours(line, block, top_rankings, mobile_embed, mobile_top_rankings_embed)
             except Exception:
                 logger.exception("Failed to post monthly honours")
             LAST_MONTHLY_POST_DATE = str(today)
@@ -8340,14 +8516,14 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     guild = interaction.guild
     if (period or "").lower().startswith("w"):
         days = 7
-        honour_line, ansi, top_rankings = await _build_honours(guild, days, include_mentions=True)
+        honour_line, ansi, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(guild, days, include_mentions=True)
     else:
         # Monthly preview: show current partial month (from 1st of current month to now)
         now = datetime.utcnow()
         first_of_current = datetime(now.year, now.month, 1)
         prev_start = first_of_current
         prev_end = now
-        honour_line, ansi, top_rankings = await _build_honours(
+        honour_line, ansi, top_rankings, mobile_embed, mobile_top_rankings_embed = await _build_honours(
             guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
         )
     # Include mentions in preview so Forgemasters can test tagging; send top_rankings first,
@@ -8356,17 +8532,42 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     # Send top rankings first if available
     try:
         if top_rankings and top_rankings.strip():
-            if deferred:
-                await interaction.followup.send(top_rankings, ephemeral=True)
+            if mobile_top_rankings_embed:
+                view = ToggleFormatView(text_content=top_rankings, embed=mobile_top_rankings_embed, default="ansi")
+                if deferred:
+                    await interaction.followup.send(top_rankings, view=view, ephemeral=True)
+                else:
+                    await interaction.response.send_message(top_rankings, view=view, ephemeral=True)
+                    deferred = True  # Now we must use followups for subsequent messages
             else:
-                await interaction.response.send_message(top_rankings, ephemeral=True)
-                deferred = True  # Now we must use followups for subsequent messages
+                if deferred:
+                    await interaction.followup.send(top_rankings, ephemeral=True)
+                else:
+                    await interaction.response.send_message(top_rankings, ephemeral=True)
+                    deferred = True  # Now we must use followups for subsequent messages
     except Exception:
         pass
 
     content = honour_line + "\n" + ansi
     try:
-        if len(content) <= 2000:
+        if len(content) <= 2000 and mobile_embed:
+            # Use ToggleFormatView for preview
+            view = ToggleFormatView(text_content=content, embed=mobile_embed, default="ansi")
+            if deferred:
+                await interaction.followup.send(
+                    content,
+                    view=view,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+            else:
+                await interaction.response.send_message(
+                    content,
+                    view=view,
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+        elif len(content) <= 2000:
             if deferred:
                 await interaction.followup.send(
                     content,
@@ -8389,7 +8590,11 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
-                await interaction.followup.send(ansi, ephemeral=True)
+                if mobile_embed:
+                    view = ToggleFormatView(text_content=ansi, embed=mobile_embed, default="ansi")
+                    await interaction.followup.send(ansi, view=view, ephemeral=True)
+                else:
+                    await interaction.followup.send(ansi, ephemeral=True)
             else:
                 await interaction.response.send_message(
                     honour_line,
@@ -8399,20 +8604,35 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                 try:
                     ch = interaction.channel
                     if ch:
-                        await ch.send(ansi)
+                        if mobile_embed:
+                            view = ToggleFormatView(text_content=ansi, embed=mobile_embed, default="ansi")
+                            await ch.send(ansi, view=view)
+                        else:
+                            await ch.send(ansi)
                 except Exception:
                     # last-resort: attempt to send ANSI as a normal followup
                     try:
-                        await interaction.followup.send(ansi)
+                        if mobile_embed:
+                            view = ToggleFormatView(text_content=ansi, embed=mobile_embed, default="ansi")
+                            await interaction.followup.send(ansi, view=view)
+                        else:
+                            await interaction.followup.send(ansi)
                     except Exception:
                         pass
     except Exception:
         # Fallback: try to send ANSI block without mentions
         try:
-            if deferred:
-                await interaction.followup.send(ansi, ephemeral=True)
+            if mobile_embed:
+                view = ToggleFormatView(text_content=ansi, embed=mobile_embed, default="ansi")
+                if deferred:
+                    await interaction.followup.send(ansi, view=view, ephemeral=True)
+                else:
+                    await interaction.response.send_message(ansi, view=view, ephemeral=True)
             else:
-                await interaction.response.send_message(ansi, ephemeral=True)
+                if deferred:
+                    await interaction.followup.send(ansi, ephemeral=True)
+                else:
+                    await interaction.response.send_message(ansi, ephemeral=True)
         except Exception:
             # give up silently; command already logged
             pass
