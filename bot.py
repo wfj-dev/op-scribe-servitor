@@ -1706,7 +1706,7 @@ async def on_ready():
     try:
         if not _scheduled_honours_runner.is_running():
             _scheduled_honours_runner.start()
-            logger.info("Honours runner loop started (hourly, posts at 8 PM ET on Fridays/1st of month).")
+            logger.info("Honours runner loop started (15-min interval, posts at 8 PM ET on Fridays/1st of month).")
     except Exception:
         logger.exception("Failed to start honours runner loop")
 
@@ -8129,7 +8129,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     return honour_line, ansi, top_rankings_block
 
 
-@tasks.loop(minutes=60)
+@tasks.loop(minutes=15)
 async def _scheduled_honours_runner():
     """Run hourly and post weekly/monthly honours when appropriate (UTC).
     Weekly posts on Fridays (weekday==4). Monthly posts on day 1.
