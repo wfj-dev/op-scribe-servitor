@@ -1706,7 +1706,7 @@ async def on_ready():
     try:
         if not _scheduled_honours_runner.is_running():
             _scheduled_honours_runner.start()
-            logger.info("Honours runner loop started (5-min interval, posts at 9 PM ET on Fridays/1st of month).")
+            logger.info("Honours runner loop started (hourly, posts at 8 PM ET on Fridays/1st of month).")
     except Exception:
         logger.exception("Failed to start honours runner loop")
 
@@ -7923,8 +7923,13 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     def _build_top5_block():
         period_label = "WEEKLY" if period_days == 7 else "MONTHLY"
-        display_dt = end if end is not None else now
-        date_str = display_dt.strftime("%m/%d/%y") if period_days == 7 else display_dt.strftime("%B %Y").upper()
+        # Use ET for display date (so 8 PM ET on Friday shows Friday's date, not Saturday UTC)
+        display_dt_utc = end if end is not None else now
+        try:
+            display_dt_et = display_dt_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("America/New_York"))
+        except Exception:
+            display_dt_et = display_dt_utc
+        date_str = display_dt_et.strftime("%m/%d/%y") if period_days == 7 else display_dt_et.strftime("%B %Y").upper()
 
         # Collect mentions for TOP RANKED line
         top_mentions = []
@@ -8124,7 +8129,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     return honour_line, ansi, top_rankings_block
 
 
-@tasks.loop(minutes=5)  # TEMP: reduced from 60 for debugging
+@tasks.loop(minutes=60)
 async def _scheduled_honours_runner():
     """Run hourly and post weekly/monthly honours when appropriate (UTC).
     Weekly posts on Fridays (weekday==4). Monthly posts on day 1.
@@ -8160,10 +8165,10 @@ async def _scheduled_honours_runner():
         # due at the same hour (collision), post both (monthly first) with a
         # short pause between posts to reduce likelihood of rate-limit issues.
         weekly_due = (
-            today.weekday() == 4 and now_et.hour == 21 and LAST_WEEKLY_POST_DATE != str(today)
+            today.weekday() == 4 and now_et.hour == 20 and LAST_WEEKLY_POST_DATE != str(today)
         )
         monthly_due = (
-            today.day == 1 and now_et.hour == 21 and LAST_MONTHLY_POST_DATE != str(today)
+            today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today)
         )
         logger.info(f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}")
 
