@@ -7581,7 +7581,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         "force",
     )
 
-    # --- Compute Top 5 rankings by average rank across all metrics ---
+    # --- Compute Top 5 rankings by median rank across all metrics ---
     def _compute_dense_ranks(sorted_items: list, value_key: str) -> Dict[str, int]:
         """Given a sorted list, return dense ranks (ties get same rank)."""
         ranks = {}
@@ -7609,10 +7609,10 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         for uid, rank in dense.items():
             ind_all_ranks.setdefault(uid, []).append(rank)
 
-    ind_avg_ranks = {
-        uid: sum(ranks) / len(ranks) for uid, ranks in ind_all_ranks.items() if ranks
+    ind_median_ranks = {
+        uid: statistics.median(ranks) for uid, ranks in ind_all_ranks.items() if ranks
     }
-    ind_top5 = sorted(ind_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+    ind_top5 = sorted(ind_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
 
     # Kill Team rankings across 5 metrics: ops, avg, pres, high_risk, force
     kt_metrics = [
@@ -7628,10 +7628,10 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         for tid, rank in dense.items():
             kt_all_ranks.setdefault(tid, []).append(rank)
 
-    kt_avg_ranks = {
-        tid: sum(ranks) / len(ranks) for tid, ranks in kt_all_ranks.items() if ranks
+    kt_median_ranks = {
+        tid: statistics.median(ranks) for tid, ranks in kt_all_ranks.items() if ranks
     }
-    kt_top5 = sorted(kt_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+    kt_top5 = sorted(kt_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
 
     # Build mention line
     honoured_parts: List[str] = []
@@ -7912,10 +7912,10 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         for ch, rank in dense.items():
             ch_all_ranks.setdefault(ch, []).append(rank)
 
-    ch_avg_ranks = {
-        ch: sum(ranks) / len(ranks) for ch, ranks in ch_all_ranks.items() if ranks
+    ch_median_ranks = {
+        ch: statistics.median(ranks) for ch, ranks in ch_all_ranks.items() if ranks
     }
-    ch_top5 = sorted(ch_avg_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+    ch_top5 = sorted(ch_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
 
     # --- Build Top 5 Rankings block ---
     def _format_rank_display(rank_num: int, prev_rank: float, curr_rank: float) -> str:
@@ -8018,34 +8018,34 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
         prev_rank = None
         display_rank = 0
-        for idx, (uid, avg_rank) in enumerate(ind_top5):
-            curr_rank = avg_rank
+        for idx, (uid, median_rank) in enumerate(ind_top5):
+            curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
             name = _member_display_name(guild, uid)
-            lines.append(f"{display_rank}. {name} (Avg Rank {avg_rank:.1f})")
+            lines.append(f"{display_rank}. {name} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
         lines.append("")
         lines.append("TOP 5 KILL TEAMS")
         prev_rank = None
         display_rank = 0
-        for idx, (tid, avg_rank) in enumerate(kt_top5):
-            curr_rank = avg_rank
+        for idx, (tid, median_rank) in enumerate(kt_top5):
+            curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
-            lines.append(f"{display_rank}. {tid} (Avg Rank {avg_rank:.1f})")
+            lines.append(f"{display_rank}. {tid} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
         lines.append("")
         lines.append("TOP 5 CHAPTERS")
         prev_rank = None
         display_rank = 0
-        for idx, (ch, avg_rank) in enumerate(ch_top5):
-            curr_rank = avg_rank
+        for idx, (ch, median_rank) in enumerate(ch_top5):
+            curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
-            lines.append(f"{display_rank}. {ch} (Avg Rank {avg_rank:.1f})")
+            lines.append(f"{display_rank}. {ch} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
         lines.append("==============================================================================")
@@ -8175,12 +8175,12 @@ def _build_mobile_top_rankings_embed(
     brothers_text = ""
     prev_rank = None
     display_rank = 0
-    for idx, (uid, avg_rank) in enumerate(ind_top5):
-        curr_rank = avg_rank
+    for idx, (uid, median_rank) in enumerate(ind_top5):
+        curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
         name = _member_display_name(guild, uid)
-        brothers_text += f"{display_rank}. {name} (Avg Rank {avg_rank:.1f})\n"
+        brothers_text += f"{display_rank}. {name} (Median Rank {median_rank:.1f})\n"
         prev_rank = curr_rank
     
     if brothers_text:
@@ -8190,11 +8190,11 @@ def _build_mobile_top_rankings_embed(
     teams_text = ""
     prev_rank = None
     display_rank = 0
-    for idx, (tid, avg_rank) in enumerate(kt_top5):
-        curr_rank = avg_rank
+    for idx, (tid, median_rank) in enumerate(kt_top5):
+        curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        teams_text += f"{display_rank}. {tid} (Avg Rank {avg_rank:.1f})\n"
+        teams_text += f"{display_rank}. {tid} (Median Rank {median_rank:.1f})\n"
         prev_rank = curr_rank
         
     if teams_text:
@@ -8204,11 +8204,11 @@ def _build_mobile_top_rankings_embed(
     chapters_text = ""
     prev_rank = None
     display_rank = 0
-    for idx, (ch, avg_rank) in enumerate(ch_top5):
-        curr_rank = avg_rank
+    for idx, (ch, median_rank) in enumerate(ch_top5):
+        curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        chapters_text += f"{display_rank}. {ch} (Avg Rank {avg_rank:.1f})\n"
+        chapters_text += f"{display_rank}. {ch} (Median Rank {median_rank:.1f})\n"
         prev_rank = curr_rank
         
     if chapters_text:
