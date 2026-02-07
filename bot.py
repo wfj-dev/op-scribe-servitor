@@ -1702,6 +1702,14 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
 
+    # Start honours runner loop (posts weekly/monthly honours)
+    try:
+        if not _scheduled_honours_runner.is_running():
+            _scheduled_honours_runner.start()
+            logger.info("Honours runner loop started (5-min interval, posts at 9 PM ET on Fridays/1st of month).")
+    except Exception:
+        logger.exception("Failed to start honours runner loop")
+
 
 def _user_label(u: discord.User | discord.Member) -> str:
     try:
@@ -8405,12 +8413,6 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
             # give up silently; command already logged
             pass
 
-
-# Start scheduled runner if possible
-try:
-    _scheduled_honours_runner.start()
-except Exception:
-    pass
 
 if __name__ == "__main__":
     _main()
