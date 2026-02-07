@@ -8116,42 +8116,48 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     return honour_line, ansi, top_rankings_block
 
 
-@tasks.loop(minutes=60)
+@tasks.loop(minutes=5)  # TEMP: reduced from 60 for debugging
 async def _scheduled_honours_runner():
     """Run hourly and post weekly/monthly honours when appropriate (UTC).
     Weekly posts on Fridays (weekday==4). Monthly posts on day 1.
     """
     try:
+        # Use America/New_York (ET) for scheduling checks so posts occur at
+        # a fixed local hour for the majority US audience.
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        today = now_et.date()
+        logger.info(f"Honours runner tick: {now_et.isoformat()} weekday={today.weekday()} hour={now_et.hour}")
+
         if DATASTORE is None:
+            logger.warning("Honours runner: DATASTORE is None, skipping")
             return
         # Resolve target guild and channel
         guild = _resolve_notification_guild()
         if not guild:
+            logger.warning("Honours runner: Could not resolve guild, skipping")
             return
         ch_id = CONFIG.get("honours_channel_id")
         if not ch_id:
+            logger.warning("Honours runner: honours_channel_id not set, skipping")
             return
         try:
             channel = guild.get_channel(int(ch_id)) or await bot.fetch_channel(
                 int(ch_id)
             )
         except Exception:
+            logger.exception("Honours runner: Could not resolve honours channel")
             return
-
-        # Use America/New_York (ET) for scheduling checks so posts occur at
-        # a fixed local hour for the majority US audience.
-        now_et = datetime.now(ZoneInfo("America/New_York"))
-        today = now_et.date()
         global LAST_WEEKLY_POST_DATE, LAST_MONTHLY_POST_DATE
         # Determine whether weekly and/or monthly honours are due. If both are
         # due at the same hour (collision), post both (monthly first) with a
         # short pause between posts to reduce likelihood of rate-limit issues.
         weekly_due = (
-            today.weekday() == 4 and now_et.hour == 20 and LAST_WEEKLY_POST_DATE != str(today)
+            today.weekday() == 4 and now_et.hour == 21 and LAST_WEEKLY_POST_DATE != str(today)
         )
         monthly_due = (
-            today.day == 1 and now_et.hour == 20 and LAST_MONTHLY_POST_DATE != str(today)
+            today.day == 1 and now_et.hour == 21 and LAST_MONTHLY_POST_DATE != str(today)
         )
+        logger.info(f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}")
 
         # Helper to send honours content respecting Discord message length
         async def _send_honours(line, block, top_rankings=None):
