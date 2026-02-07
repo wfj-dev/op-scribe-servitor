@@ -7273,6 +7273,21 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     except Exception:
         chapters_map = {}
 
+    # Pre-fetch all members in bulk to avoid repeated API calls in the processing loop
+    members_cache: Dict[str, Optional[discord.Member]] = {}
+    if guild and all_user_ids:
+        for uid in all_user_ids:
+            try:
+                member = guild.get_member(int(uid))
+            except Exception:
+                member = None
+            if member is None:
+                try:
+                    member = await guild.fetch_member(int(uid))
+                except Exception:
+                    member = None
+            members_cache[str(uid)] = member
+
     # Process each record with resolved chapters and infer kill team from member roles when missing
     for ts, rec in recs_in_window:
         # Determine teams: try a few keys first
@@ -7308,15 +7323,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         if not team_key and guild and brother_ids:
             role_count: Dict[str, int] = {}
             for uid in brother_ids:
-                try:
-                    member = guild.get_member(int(uid))
-                except Exception:
-                    member = None
-                if member is None:
-                    try:
-                        member = await guild.fetch_member(int(uid))
-                    except Exception:
-                        member = None
+                member = members_cache.get(str(uid))
                 if not member:
                     continue
                 try:
@@ -7370,15 +7377,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
         # Team aggregation: attribute contributions per brother to their own Kill Team
         for uid in brother_ids:
-            try:
-                member = guild.get_member(int(uid)) if guild else None
-            except Exception:
-                member = None
-            if member is None and guild:
-                try:
-                    member = await guild.fetch_member(int(uid))
-                except Exception:
-                    member = None
+            member = members_cache.get(str(uid)) if guild else None
             # Build list of teams this member contributes to for this record
             resolved_teams: List[str] = []
             try:
@@ -8008,7 +8007,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         lines.append("\u001b[32m==============================================================================")
         lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
         lines.append(f"  OPERATION-SCRIBE SERVITOR — {period_label} LEADERBOARDS")
-        lines.append(f"  Date: {_format_imperial_date(display_dt)}")
+        lines.append(f"  Date: {_format_imperial_date(display_dt_et)}")
         lines.append("==============================================================================")
         lines.append("")
         lines.append("TOP 5 BROTHERS")
