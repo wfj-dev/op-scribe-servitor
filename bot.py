@@ -4749,21 +4749,22 @@ def classify_difficulty(difficulty: str | None):
 
     lower = difficulty.lower()
 
-    if "ruthless" in lower:
+    # Use word boundaries to match only complete difficulty terms
+    if re.search(r'\bruthless\b', lower):
         return "ruthless_ops"
-    if "lethal" in lower:
+    if re.search(r'\blethal\b', lower):
         return "lethal_ops"
-    if "absolute" in lower:
+    if re.search(r'\babsolute\b', lower):
         return "absolute_ops"
-    if "normal-stratagem" in lower:
+    if re.search(r'\bnormal-stratagem\b', lower):
         return "normal_stratagem"
-    if "hard-stratagem" in lower:
+    if re.search(r'\bhard-stratagem\b', lower):
         return "hard_stratagem"
-    if "normal-siege" in lower:
+    if re.search(r'\bnormal-siege\b', lower):
         return "normal_siege"
-    if "hard-siege" in lower:
+    if re.search(r'\bhard-siege\b', lower):
         return "hard_siege"
-    if "omega" in lower:
+    if re.search(r'\bomega\b', lower):
         return "omega_ops"
     return None
 
