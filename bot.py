@@ -908,6 +908,7 @@ RANK_ROLES_PRIORITY = [
 
 # Canonical list of known home chapters for lookup
 HOME_CHAPTERS = [
+    "Angels of Vengeance",
     "Black Templars",
     "Blood Angels",
     "Blood Ravens",
