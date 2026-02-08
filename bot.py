@@ -7890,12 +7890,36 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     # --- Chapter rankings across 5 distinction metrics ---
     def _compute_chapter_ranks_by_metric(metric_fn, reverse: bool = True) -> Dict[str, int]:
-        """Compute dense ranks for chapters based on a metric function."""
+        """Compute dense ranks for chapters based on a metric function with dampening."""
         if not eligible:
             return {}
-        raw_vals = [(ch, metric_fn(ch)) for ch in eligible]
-        # Sort: higher is better if reverse=True
-        sorted_by_val = sorted(raw_vals, key=lambda x: (-x[1] if reverse else x[1], x[0]))
+        
+        # Calculate median member count for dampening
+        _active_counts = [len(chapters_members.get(ch, set())) for ch in eligible]
+        _median_members = statistics.median(_active_counts) if _active_counts else 1.0
+        
+        # Build raw values for eligible chapters
+        raw_vals = {ch: metric_fn(ch) for ch in eligible}
+        
+        # Apply member-count-distance dampening before ranking
+        if raw_vals:
+            global_mean = statistics.mean(raw_vals.values())
+            dampened_vals = {}
+            for ch, raw in raw_vals.items():
+                members = len(chapters_members.get(ch, set()))
+                distance = abs(members - _median_members)
+                dampening_factor = distance / _median_members if _median_members else 0.0
+                weight = 1.0 / (1.0 + dampening_factor)
+                dampened_vals[ch] = weight * raw + (1.0 - weight) * global_mean
+        else:
+            dampened_vals = {}
+        
+        # Sort by dampened values
+        sorted_by_val = sorted(
+            [(ch, dampened_vals.get(ch, 0)) for ch in eligible], 
+            key=lambda x: (-x[1] if reverse else x[1], x[0])
+        )
+        
         ranks = {}
         prev_val = None
         current_rank = 0
