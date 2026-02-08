@@ -38,6 +38,7 @@ TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
+ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(DATA_DIR, "activity_status_last_check.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -544,6 +545,81 @@ def _load_activity_status() -> Dict[str, str]:
     return {}
 
 
+def _load_member_last_post_times() -> Dict[str, str]:
+    """Load mapping of member_id -> ISO timestamp of their last AAR post."""
+    try:
+        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
+            with open(ACTIVITY_STATUS_LAST_CHECK_PATH, "r") as f:
+                data = json.load(f)
+                return data.get("member_last_posts", {})
+    except Exception as e:
+        logger.debug(f"Failed to load member last post times: {e}")
+    return {}
+
+
+def _save_member_last_post_times(member_times: Dict[str, str]):
+    """Save mapping of member_id -> ISO timestamp of their last AAR post."""
+    try:
+        tmp_path = ACTIVITY_STATUS_LAST_CHECK_PATH + ".tmp"
+        # Load existing data to preserve other fields
+        existing_data = {}
+        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
+            try:
+                with open(ACTIVITY_STATUS_LAST_CHECK_PATH, "r") as f:
+                    existing_data = json.load(f)
+            except Exception:
+                pass
+        
+        existing_data["member_last_posts"] = member_times
+        existing_data["last_check_time"] = datetime.utcnow().isoformat()
+        
+        with open(tmp_path, "w") as f:
+            json.dump(existing_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        
+        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
+            try:
+                os.replace(ACTIVITY_STATUS_LAST_CHECK_PATH, ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak")
+            except Exception:
+                pass
+        os.replace(tmp_path, ACTIVITY_STATUS_LAST_CHECK_PATH)
+    except Exception as e:
+        logger.debug(f"Failed to save member last post times: {e}")
+
+
+def _load_activity_status_last_check() -> Optional[datetime]:
+    """Load the timestamp of the last activity status check."""
+    try:
+        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
+            with open(ACTIVITY_STATUS_LAST_CHECK_PATH, "r") as f:
+                data = json.load(f)
+                ts_str = data.get("last_check_time")
+                if ts_str:
+                    return datetime.fromisoformat(ts_str)
+    except Exception as e:
+        logger.debug(f"Failed to load activity status last check: {e}")
+    return None
+
+
+def _save_activity_status_last_check(check_time: datetime):
+    """Save the timestamp of the last activity status check."""
+    try:
+        tmp_path = ACTIVITY_STATUS_LAST_CHECK_PATH + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump({"last_check_time": check_time.isoformat()}, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
+            try:
+                os.replace(ACTIVITY_STATUS_LAST_CHECK_PATH, ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak")
+            except Exception:
+                pass
+        os.replace(tmp_path, ACTIVITY_STATUS_LAST_CHECK_PATH)
+    except Exception as e:
+        logger.debug(f"Failed to save activity status last check: {e}")
+
+
 def _save_activity_status(status_map: Dict[str, str]):
     """Persist activity status mapping to disk with backup."""
     try:
@@ -561,32 +637,6 @@ def _save_activity_status(status_map: Dict[str, str]):
         os.replace(tmp_path, ACTIVITY_STATUS_PATH)
     except Exception as e:
         logger.exception(f"Failed to save activity status: {e}")
-
-
-def _compute_member_activity_status(user_id: str) -> str:
-    """Return 'active' if user has any AAR in the last 28 days, else 'inactive'."""
-    if DATASTORE is None:
-        return "inactive"
-    try:
-        now = datetime.utcnow()
-        cutoff = now - timedelta(days=28)
-        for rec in DATASTORE.iter_records():
-            if str(user_id) not in (rec.get("brother_ids") or []):
-                continue
-            ts = rec.get("timestamp")
-            if not ts:
-                continue
-            try:
-                t = datetime.fromisoformat(ts)
-                if t.tzinfo is not None:
-                    t = t.astimezone(tz=None).replace(tzinfo=None)
-                if t >= cutoff:
-                    return "active"
-            except Exception:
-                continue
-    except Exception:
-        pass
-    return "inactive"
 
 
 def _get_member_company_name(member: discord.Member) -> Optional[str]:
@@ -812,7 +862,11 @@ async def _send_activity_status_notification(
 
 
 async def _check_activity_status_changes():
-    """Check all guild members for activity status changes and send notifications."""
+    """Check guild members for activity status changes with optimized scanning.
+    
+    First run: Scans all records to build baseline of member last-post times.
+    Subsequent runs: Only scans recent records + checks 28-day threshold against saved times.
+    """
     async with ACTIVITY_STATUS_LOCK:
         try:
             guild = _resolve_notification_guild()
@@ -824,53 +878,142 @@ async def _check_activity_status_changes():
                 logger.debug("Activity status check: DATASTORE not initialized")
                 return
 
-            # Load previous status
+            # Load previous status and member last post times
             prev_status = _load_activity_status()
+            member_last_posts = _load_member_last_post_times()  # Dict[user_id] -> ISO timestamp string
+            last_check_time = _load_activity_status_last_check()
+            check_start_time = datetime.utcnow()
+            
+            is_first_check = len(member_last_posts) == 0
+            cutoff_days = 28
+
             new_status_map: Dict[str, str] = {}
+            new_member_last_posts: Dict[str, str] = {}
             changes: List[Tuple[discord.Member, str, str]] = []
 
-            # Check all members
-            for member in guild.members:
-                try:
-                    # Skip bots
-                    if member.bot:
+            # Step 1: Build/update member last post times
+            if is_first_check:
+                # First run: scan ALL records to establish baseline
+                logger.info("Activity status check: first run, building baseline of member last posts")
+                for rec in DATASTORE.iter_records():
+                    ts = rec.get("timestamp")
+                    if not ts:
+                        continue
+                    try:
+                        t = datetime.fromisoformat(ts)
+                        if t.tzinfo is not None:
+                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                        for uid in (rec.get("brother_ids") or []):
+                            uid_str = str(uid)
+                            # Keep the most recent timestamp for each member
+                            if uid_str not in new_member_last_posts or ts > new_member_last_posts[uid_str]:
+                                new_member_last_posts[uid_str] = ts
+                    except Exception:
+                        continue
+                member_last_posts = new_member_last_posts
+            else:
+                # Subsequent runs: scan only recent records and update timestamps
+                logger.debug(f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}")
+                recent_cutoff = last_check_time or (check_start_time - timedelta(days=365))
+                
+                for rec in DATASTORE.iter_records():
+                    ts = rec.get("timestamp")
+                    if not ts:
+                        continue
+                    try:
+                        t = datetime.fromisoformat(ts)
+                        if t.tzinfo is not None:
+                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                        # Only update timestamps for recent records
+                        if t >= recent_cutoff:
+                            for uid in (rec.get("brother_ids") or []):
+                                uid_str = str(uid)
+                                # Keep the most recent timestamp
+                                if uid_str not in member_last_posts or ts > member_last_posts.get(uid_str, ""):
+                                    member_last_posts[uid_str] = ts
+                    except Exception:
                         continue
 
-                    user_id = str(member.id)
-                    current_status = _compute_member_activity_status(user_id)
-                    new_status_map[user_id] = current_status
+            # Step 2: Determine which members to check and compute their status
+            cutoff_datetime = check_start_time - timedelta(days=cutoff_days)
+            users_to_check: Set[str] = set(member_last_posts.keys()) if is_first_check else set()
+            
+            # Add members who had recent activity
+            for uid, last_post_str in member_last_posts.items():
+                try:
+                    last_post_dt = datetime.fromisoformat(last_post_str)
+                    if last_post_dt.tzinfo is not None:
+                        last_post_dt = last_post_dt.astimezone(tz=None).replace(tzinfo=None)
+                    # Check if record is recent (within 4 hours) or if member was previously active and is now at/past 28 days
+                    is_recent = last_post_dt >= recent_cutoff if not is_first_check else False
+                    is_at_threshold = last_post_dt < cutoff_datetime  # At or past 28-day threshold
+                    
+                    if is_recent or is_at_threshold or prev_status.get(uid) == "active":
+                        users_to_check.add(uid)
+                except Exception:
+                    users_to_check.add(uid)
+            
+            logger.debug(f"Activity status check: checking {len(users_to_check)} members")
 
+            # Step 3: Compute status for identified members
+            for user_id in users_to_check:
+                try:
+                    last_post_str = member_last_posts.get(user_id)
+                    if last_post_str:
+                        last_post_dt = datetime.fromisoformat(last_post_str)
+                        if last_post_dt.tzinfo is not None:
+                            last_post_dt = last_post_dt.astimezone(tz=None).replace(tzinfo=None)
+                        # Status is active if last post is within 28 days, else inactive
+                        current_status = "active" if last_post_dt >= cutoff_datetime else "inactive"
+                    else:
+                        current_status = "inactive"
+                    
+                    new_status_map[user_id] = current_status
+                    
                     old = prev_status.get(user_id)
                     if old and old != current_status:
-                        changes.append((member, old, current_status))
-
+                        # Status changed; find member in guild
+                        try:
+                            member = guild.get_member(int(user_id))
+                            if not member:
+                                member = await guild.fetch_member(int(user_id))
+                            if member and not member.bot:
+                                changes.append((member, old, current_status))
+                        except Exception:
+                            pass
                 except Exception:
                     continue
 
-            # Save updated status map
+            # Step 4: Preserve status for members not rechecked
+            for uid, status in prev_status.items():
+                if uid not in new_status_map:
+                    new_status_map[uid] = status
+
+            # Save updated data
             _save_activity_status(new_status_map)
+            _save_member_last_post_times(member_last_posts)
+            _save_activity_status_last_check(check_start_time)
 
             # Send notifications for changes
             for member, old, new in changes:
                 try:
                     await _send_activity_status_notification(guild, member, old, new)
-                    # Small delay between notifications to avoid rate limits
                     await asyncio.sleep(0.5)
                 except Exception as e:
                     logger.exception(f"Failed to notify activity change for {member.id}: {e}")
 
             if changes:
-                logger.info(f"Activity status check complete: {len(changes)} change(s) detected")
+                logger.info(f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked")
             else:
-                logger.debug("Activity status check complete: no changes")
+                logger.debug(f"Activity status check complete: no changes ({len(users_to_check)} members checked)")
 
         except Exception as e:
             logger.exception(f"Activity status check failed: {e}")
 
 
-@tasks.loop(hours=24)
+@tasks.loop(hours=4)
 async def _activity_status_check_loop():
-    """Daily loop to check for activity status changes."""
+    """4-hourly loop to check for activity status changes."""
     try:
         # Delay the first run so startup does not trigger an immediate check
         if not getattr(_activity_status_check_loop, "_first_run_done", False):
@@ -7709,10 +7852,67 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     # selected from all eligible chapters below using normalized ranking to
     # reduce bias from chapter size.
 
-    # Construct HONOURED line
-    honour_line = "HONOURED: " + " ".join(
-        dict.fromkeys([p for p in honoured_parts if p])
-    )
+    # Add all Top 5 individuals to mentions
+    top5_individual_mentions: List[str] = []
+    for uid, _ in ind_top5:
+        if uid:
+            top5_individual_mentions.append(user_mention(uid))
+    honoured_parts.extend(top5_individual_mentions)
+
+    # Add all Top 5 kill teams to mentions (using same role mapping logic as before)
+    top5_team_mentions: List[str] = []
+    for team_id, _ in kt_top5:
+        if not team_id:
+            continue
+        # Try to interpret team_id as role id
+        try:
+            rid = int(team_id)
+            r = guild.get_role(rid)
+            if r:
+                top5_team_mentions.append(f"<@&{r.id}>")
+                continue
+        except Exception:
+            pass
+        # Special mappings: any 'High Command' label -> explicit role-id mention
+        try:
+            if isinstance(team_id, str) and ("high command" in str(team_id).strip().lower()):
+                top5_team_mentions.append("<@&1452913063970865203>")
+                continue
+        except Exception:
+            pass
+        # Special mapping: '<Company> Command' -> '<Company> Command' role
+        try:
+            if isinstance(team_id, str) and team_id.strip().endswith(" Command"):
+                target_name = team_id.strip()
+                for r in guild.roles:
+                    rn = (r.name or "").strip()
+                    if rn.lower() == target_name.lower():
+                        top5_team_mentions.append(f"<@&{r.id}>")
+                        raise StopIteration
+        except StopIteration:
+            continue
+        except Exception:
+            pass
+        # Fallback: search role by name containing team string
+        mentioned = False
+        try:
+            for r in guild.roles:
+                if (team_id or "").lower() in (r.name or "").lower():
+                    top5_team_mentions.append(f"<@&{r.id}>")
+                    mentioned = True
+                    break
+        except Exception:
+            pass
+        # Final fallback: if no role found, add team name as text
+        if not mentioned and include_mentions:
+            top5_team_mentions.append(f"@{team_id}")
+    honoured_parts.extend(top5_team_mentions)
+
+    # Chapters: placeholder - will be filled after ch_top5 is computed below
+    top5_chapter_mentions: List[str] = []
+
+    # Construct HONOURED line (will be finalized after chapters are processed)
+    # honour_line placeholder - will be fully constructed after ch_top5 is computed
 
     # Build ANSI block exactly as requested, inserting selected display names and values
     def display_name_for(uid_key: str) -> str:
@@ -7942,6 +8142,30 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         ch: statistics.median(ranks) for ch, ranks in ch_all_ranks.items() if ranks
     }
     ch_top5 = sorted(ch_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
+
+    # Add all Top 5 chapters to mentions (using role mapping logic)
+    for chapter_name, _ in ch_top5:
+        if not chapter_name:
+            continue
+        # Try to find role matching chapter name
+        mentioned = False
+        try:
+            for r in guild.roles:
+                if chapter_name.lower() in (r.name or "").lower():
+                    top5_chapter_mentions.append(f"<@&{r.id}>")
+                    mentioned = True
+                    break
+        except Exception:
+            pass
+        # Final fallback: if no role found, add chapter name as text
+        if not mentioned and include_mentions:
+            top5_chapter_mentions.append(f"@{chapter_name}")
+    honoured_parts.extend(top5_chapter_mentions)
+
+    # Construct HONOURED line
+    honour_line = "HONOURED: " + " ".join(
+        dict.fromkeys([p for p in honoured_parts if p])
+    )
 
     # --- Build Top 5 Rankings block ---
     def _format_rank_display(rank_num: int, prev_rank: float, curr_rank: float) -> str:
