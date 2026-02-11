@@ -8744,7 +8744,9 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         "  WATCH FORTRESS JERICHO // LEDGER-CAST\n"
         f"  OPERATION-SCRIBE SERVITOR — {'WEEKLY' if period_days == 7 else 'MONTHLY'} LEADERBOARDS\n"
         f"  Date: {_format_imperial_date(display_dt)}\n"
-        "==============================================================================\n\n"
+        "==============================================================================\n"
+        + _format_top_rankings_horizontal()
+        + "\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
         f"Total Operations         {tempo_disp} (Ops {tempo_val})\n"
         f"Avg Points per Op        {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
@@ -8763,8 +8765,6 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         f"Armory + Gene-seed       {ch3} (ArmoryPts {fmt_avg(ch3_arm)} | GenePts {fmt_avg(ch3_gene)})\n"
         f"High-Risk Ops            {ch4} (Hard-Strat+Omega {ch4_val})\n"
         f"AARs per Member          {ch5} (Avg AAR/Member {fmt_avg(ch5_val)})\n"
-        + _format_top_rankings_horizontal()
-        + "\n"
         "=============================================================================="
     )
 
@@ -8803,39 +8803,6 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         description=f"📅 **Date:** {_format_imperial_date(display_dt)}",
         color=0x2ECC71,
     )
-
-    # Individual Distinctions
-    omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
-    individual_text = (
-        f"**Total Operations:** {tempo_disp} ({tempo_val})\n"
-        f"**Avg Points per Op:** {lethal_disp} ({lethal_val:.1f})\n"
-        f"**Gene-seed Points:** {gene_disp} ({gene_val})\n"
-        f"**Armory Points:** {arm_disp} ({arm_val})\n"
-        f"**High-Risk Ops:** {high_disp} ({high_val}{omega_suffix})"
-    )
-    embed.add_field(
-        name="🏆 Individual Distinctions", value=individual_text, inline=False
-    )
-
-    # Kill Team Distinctions
-    killteam_text = (
-        f"**Total Operations:** {kt_ops_name} ({kt_ops_val})\n"
-        f"**Avg Points per Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
-        f"**Armory + Gene-seed:** {kt_pres_name} ({kt_pres_arm} | {kt_pres_gene})\n"
-        f"**High-Risk Ops:** {kt_risk_name} ({kt_risk_val})\n"
-        f"**AARs per Member:** {kt_force_name} ({kt_force_val:.1f})"
-    )
-    embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
-
-    # Chapter Distinctions
-    chapter_text = (
-        f"**Total Operations:** {ch1} ({ch1_val})\n"
-        f"**Avg Points per Op:** {ch2} ({ch2_val:.1f})\n"
-        f"**Armory + Gene-seed:** {ch3} ({ch3_arm} | {ch3_gene})\n"
-        f"**High-Risk Ops:** {ch4} ({ch4_val})\n"
-        f"**AARs per Member:** {ch5} ({ch5_val:.1f})"
-    )
-    embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
 
     # Top 5 Brothers
     brothers_text = ""
@@ -8885,6 +8852,39 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         embed.add_field(
             name="fortress Top 5 Chapters", value=chapters_text.strip(), inline=False
         )
+
+    # Individual Distinctions
+    omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
+    individual_text = (
+        f"**Total Operations:** {tempo_disp} ({tempo_val})\n"
+        f"**Avg Points per Op:** {lethal_disp} ({lethal_val:.1f})\n"
+        f"**Gene-seed Points:** {gene_disp} ({gene_val})\n"
+        f"**Armory Points:** {arm_disp} ({arm_val})\n"
+        f"**High-Risk Ops:** {high_disp} ({high_val}{omega_suffix})"
+    )
+    embed.add_field(
+        name="🏆 Individual Distinctions", value=individual_text, inline=False
+    )
+
+    # Kill Team Distinctions
+    killteam_text = (
+        f"**Total Operations:** {kt_ops_name} ({kt_ops_val})\n"
+        f"**Avg Points per Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"**Armory + Gene-seed:** {kt_pres_name} ({kt_pres_arm} | {kt_pres_gene})\n"
+        f"**High-Risk Ops:** {kt_risk_name} ({kt_risk_val})\n"
+        f"**AARs per Member:** {kt_force_name} ({kt_force_val:.1f})"
+    )
+    embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
+
+    # Chapter Distinctions
+    chapter_text = (
+        f"**Total Operations:** {ch1} ({ch1_val})\n"
+        f"**Avg Points per Op:** {ch2} ({ch2_val:.1f})\n"
+        f"**Armory + Gene-seed:** {ch3} ({ch3_arm} | {ch3_gene})\n"
+        f"**High-Risk Ops:** {ch4} ({ch4_val})\n"
+        f"**AARs per Member:** {ch5} ({ch5_val:.1f})"
+    )
+    embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
 
     embed.set_footer(text="Use PC/Console button for detailed ANSI view")
 
