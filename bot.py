@@ -2114,6 +2114,23 @@ def _save_home_chapter_rotation(state: dict):
         pass
 
 
+def _get_saturdays_for_month(month_key: str) -> List[datetime]:
+    """Get all Saturdays in a month (YYYY-MM format). Returns list of datetime objects."""
+    try:
+        year, month = map(int, month_key.split('-'))
+        saturdays = []
+        for day in range(1, 32):
+            try:
+                d = datetime(year, month, day)
+                if d.weekday() == 5:  # Saturday
+                    saturdays.append(d)
+            except ValueError:
+                break
+        return saturdays
+    except Exception:
+        return []
+
+
 async def _select_home_chapters_for_month(
     offset: int = 0, guild: Optional[discord.Guild] = None
 ) -> Tuple[str, str]:
@@ -2185,9 +2202,44 @@ async def _select_home_chapters_for_month(
             and len(selected[target]) == 2
         ):
             pair = selected[target]
-            # CURRENT MONTH (offset=0): always return cached pair, never replace.
-            # The event is happening this month so selections are locked in.
+            # CURRENT MONTH (offset=0): validate chapters and only replace if their Saturday hasn't passed yet
             if offset == 0:
+                # Get Saturdays for the current month: assume pair[0] on 1st Saturday, pair[1] on 3rd Saturday
+                saturdays = _get_saturdays_for_month(target)
+                now = datetime.utcnow().date()
+                
+                # Build list of (chapter_index, saturday_date) for scheduled events
+                scheduled_events = []
+                if len(saturdays) > 0:
+                    scheduled_events.append((0, saturdays[0]))
+                if len(saturdays) > 2:
+                    scheduled_events.append((1, saturdays[2]))
+                
+                month_active = _active_for_month(target, 28)
+                new_pair = list(pair)
+                
+                # Check each scheduled event
+                for chap_idx, saturday_date in scheduled_events:
+                    if chap_idx >= len(pair):
+                        continue
+                    chapter = pair[chap_idx]
+                    
+                    # If Saturday hasn't passed yet and chapter is inactive, replace it
+                    if saturday_date.date() > now and chapter not in month_active:
+                        # Find a replacement from active chapters
+                        candidates = [c for c in month_active if c not in new_pair]
+                        if not candidates:
+                            candidates = [c for c in HOME_CHAPTERS if c not in new_pair]
+                        if candidates:
+                            new_pair[chap_idx] = candidates[0]
+                
+                # Save if changed
+                if new_pair != list(pair):
+                    selected[target] = new_pair
+                    state["selected"] = selected
+                    _save_home_chapter_rotation(state)
+                    pair = new_pair
+                
                 return pair[0], pair[1]
             # FUTURE MONTHS (offset>0): validate activity and replace inactive chapters.
             month_active = _active_for_month(target, 28)
