@@ -13,7 +13,22 @@
     "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "preview_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
+    "preview_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "roster_audit": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
+  },
+  "companies": {
+    "primus": {
+      "name": "Primus",
+      "rosterChannelId": "1433351509722267658",
+      "companyRoleId": "1433373544179306609",
+      "companyCommandRoleId": "1468794571889709248"
+    },
+    "secundus": {
+      "name": "Secundus",
+      "rosterChannelId": "1458255466189684999",
+      "companyRoleId": "1458254417152184477",
+      "companyCommandRoleId": "1468797860014325902"
+    }
   },
   "logging": {
     "level": "INFO",

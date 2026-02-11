@@ -8841,5 +8841,806 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
             pass
 
 
+# ============================================================================
+# ROSTER AUDIT COMMAND
+# ============================================================================
+
+# Static mappings for position labels to required roles
+POSITION_LABEL_MAP = {
+    "WatchMaster": "Watch Master",
+    "LordExecutioner": "Lord Executioner",
+    "ChiefApothecary": "Chief Apothecary",
+    "HighChaplain": "High Chaplain",
+    "Forgemaster": "Forgemaster",
+    "VoidWarden": "Void Warden",
+    "Venerable": "Venerable",
+    "WatchCaptain": "Watch Captain",
+    "WatchLieutenant": "Watch Lieutenant",
+    "CompanyChampion": "Company Champion",
+    "WatchApothecary": "Watch Apothecary",
+    "WatchChaplain": "Watch Chaplain",
+    "WatchLibrarian": "Watch Librarian",
+    "WatchTechmarine": "Watch Techmarine",
+    "WatchSergeant": "Watch Sergeant",
+    "KillTeamChampion": "Kill Team Champion",
+    "Oathsworn": "Oathsworn",
+    "WatchVeteran": "Watch Veteran",
+    "WatchBrother": "Watch Brother",
+}
+
+
+def can_roster_audit(user: discord.User | discord.Member) -> bool:
+    """Check if user has permission to run roster_audit."""
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    uid = str(getattr(user, "id", None))
+    if uid in admin_ids:
+        return True
+    
+    perms = CONFIG.get("permissions", {}) or {}
+    block = perms.get("roster_audit", {}) or {}
+    
+    for r in block.get("roles") or []:
+        role_names = _canonical_role_names(user)
+        if str(r) in role_names:
+            return True
+    
+    for i in block.get("user_ids") or []:
+        if uid == str(i):
+            return True
+    
+    # Fallback: check if user has Watch Master or Forgemaster role
+    names = _canonical_role_names(user)
+    return any(n in ("Watch Master", "Forgemaster") for n in names)
+
+
+def _extract_mentions_from_text(text: str) -> List[int]:
+    """Extract user IDs from Discord mention strings like <@123456> or <@!123456>."""
+    try:
+        # Match <@123456> or <@!123456>
+        pattern = r"<@!?(\d+)>"
+        matches = re.findall(pattern, text)
+        return [int(m) for m in matches]
+    except Exception:
+        return []
+
+
+def _extract_role_mention_from_text(text: str) -> Optional[int]:
+    """Extract a role ID from either:
+    - Role mention format: <@&123456>
+    - Custom emoji format: <:EmojiName:123456>
+    Returns the role ID or None."""
+    try:
+        # Try role mention format first: <@&123456>
+        pattern = r"<@&(\d+)>"
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+        
+        # Try emoji format: <:NAME:123456>
+        pattern = r"<:\w+:(\d+)>"
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    except Exception:
+        pass
+    return None
+
+
+def _extract_position_label(line: str) -> Optional[str]:
+    """Extract position label from emoji code like :WatchMaster: or :WatchCaptain:.
+    Returns the label (without colons) or None."""
+    try:
+        # Match :LabelText: at start of line (emoji format)
+        match = re.search(r':([A-Za-z]+):', line)
+        if match:
+            label = match.group(1)
+            if label in POSITION_LABEL_MAP:
+                return label
+    except Exception:
+        pass
+    return None
+
+
+async def _find_roster_messages(
+    guild: discord.Guild, roster_channel_id: int
+) -> Tuple[Optional[discord.Message], Optional[discord.Message], List[discord.Message]]:
+    """Find the roster messages by position.
+    
+    - Skip first 4 messages (newest)
+    - 5th message (index 4) = High Command
+    - 6th message (index 5) = Company Command
+    - 7th+ (index 6+) = Kill Teams (multiple messages possible)
+    
+    Returns (high_command_msg, company_command_msg, kill_teams_msgs_list).
+    """
+    try:
+        channel = guild.get_channel(roster_channel_id)
+        if not channel:
+            return None, None, []
+        
+        # Fetch messages (returns in reverse chronological order - newest first)
+        messages = []
+        try:
+            async for msg in channel.history(limit=100):  # Fetch enough to be safe
+                messages.append(msg)
+        except Exception as e:
+            logger.debug(f"Error fetching channel history: {e}")
+            return None, None, []
+        
+        # Reverse to get oldest first, so indexing is intuitive
+        messages.reverse()
+        
+        # Extract based on position
+        high_cmd = messages[4] if len(messages) > 4 else None
+        company_cmd = messages[5] if len(messages) > 5 else None
+        kill_teams = messages[6:] if len(messages) > 6 else []
+        
+        logger.debug(f"Found {len(messages)} messages in roster channel")
+        logger.debug(f"HC: msg {4}, CC: msg {5}, KTs: msgs {6}+")
+        
+        return high_cmd, company_cmd, kill_teams
+    except Exception:
+        logger.exception("Error finding roster messages")
+        return None, None, []
+
+
+def _parse_roster_section(content: str) -> Dict[int, List[str]]:
+    """Parse a roster section (High Command or Company Command).
+    Format: <:PositionEmoji:ID> ⋅⋅ [Chapter] <@USER_ID>
+    Returns dict: user_id -> list of role names extracted from position label."""
+    members = {}
+    try:
+        lines = content.split('\n')
+        for line in lines:
+            # Skip vacant, separators, headers, and empty lines
+            if not line.strip() or "[Vacant]" in line or "###" in line or "⎯" in line or "__" in line:
+                continue
+            
+            # Extract position label from emoji code
+            label = _extract_position_label(line)
+            position_role = POSITION_LABEL_MAP.get(label) if label else None
+            
+            # Extract user mention from end of line
+            user_ids = _extract_mentions_from_text(line)
+            
+            if user_ids:
+                for user_id in user_ids:
+                    if user_id not in members:
+                        members[user_id] = []
+                    if position_role and position_role not in members[user_id]:
+                        members[user_id].append(position_role)
+    except Exception:
+        logger.exception("Error parsing roster section")
+    
+    return members
+
+
+def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any]]]:
+    """Parse Kill Teams section (all teams in one message).
+    
+    Format:
+    ### <:KTEmoji:ID>  ᛭⋅ __@[Kill Team]__ ⋅᛭ <:KTEmoji:ID>
+    **Sergeant:**
+    - [Chapter Emoji] <@USER_ID>
+    **Champion:**
+    - [Chapter Emoji] <@USER_ID>
+    - [Chapter Emoji] <@USER_ID>
+    
+    Returns dict: kill_team_role_id -> {user_id -> {"rank": "Sergeant|Champion|Member"}}.
+    """
+    kill_teams = {}
+    try:
+        lines = content.split('\n')
+        logger.debug(f"Parsing {len(lines)} lines from kill teams section")
+        logger.debug(f"Content preview: {content[:300]}")
+        current_kt_role_id = None
+        current_kt_members = {}
+        current_rank = "Member"  # Default rank for unlabeled members
+        
+        for line_num, line in enumerate(lines):
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+            
+            # Check if this is a Kill Team header (contains "###" and a role mention like <@&ID>)
+            if "###" in line and "<@&" in line:
+                logger.debug(f"Line {line_num}: Possible KT header: {line[:100]}")
+                # Extract role mention for kill team
+                role_id = _extract_role_mention_from_text(line)
+                if role_id:
+                    logger.info(f"Found KT role ID: {role_id} from line: {line[:80]}")
+                    # Save previous team if exists
+                    if current_kt_role_id is not None and current_kt_members:
+                        kill_teams[current_kt_role_id] = current_kt_members
+                    # Start new team
+                    current_kt_role_id = role_id
+                    current_kt_members = {}
+                    current_rank = "Member"
+                    continue
+                else:
+                    logger.debug(f"Could not extract role ID from line: {line[:80]}")
+            
+            # Check if this is a rank marker (e.g., "**Sergeant:**" or "**Champion:**")
+            if "**Sergeant:**" in line:
+                current_rank = "Sergeant"
+                logger.debug(f"Line {line_num}: Switching to Sergeant rank (applies to next member only)")
+                continue
+            elif "**Champion:**" in line:
+                current_rank = "Champion"
+                logger.debug(f"Line {line_num}: Switching to Champion rank (applies to next member only)")
+                continue
+            
+            # Skip separators and headers
+            if "###" in line or "⎯" in line or "__" in line:
+                continue
+            
+            # If we have a current kill team, parse members
+            if current_kt_role_id is not None:
+                # Check if this is an empty member slot (just "- " with no mentions)
+                user_ids = _extract_mentions_from_text(line)
+                
+                if user_ids:
+                    # Has members - apply current rank and then reset to Member for next lines
+                    logger.debug(f"Line {line_num}: Found {len(user_ids)} users with rank {current_rank}: {line[:80]}")
+                    for user_id in user_ids:
+                        if user_id not in current_kt_members:
+                            current_kt_members[user_id] = {"rank": current_rank}
+                        else:
+                            # Update rank if this is the first time we're seeing this user with a rank
+                            if current_rank != "Member":
+                                current_kt_members[user_id]["rank"] = current_rank
+                    # Reset to Member for next lines (rank labels only apply to immediate next member)
+                    current_rank = "Member"
+                elif line.strip().startswith("-"):
+                    # Empty slot (just "- " with nothing) - reset rank to Member
+                    logger.debug(f"Line {line_num}: Empty rank slot, resetting to Member")
+                    current_rank = "Member"
+        
+        # Save last team
+        if current_kt_role_id is not None and current_kt_members:
+            kill_teams[current_kt_role_id] = current_kt_members
+            logger.info(f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members")
+        logger.debug(f"Finished parsing kill teams: {len(kill_teams)} teams found")
+        if not kill_teams:
+            logger.debug("No kill teams found - checking if we ever entered a KT block")
+    except Exception:
+        logger.exception("Error parsing kill teams section")
+    
+    return kill_teams
+
+
+async def _get_user_roles_by_id(guild: discord.Guild, user_id: int) -> set[str]:
+    """Get the set of role names for a user in the guild."""
+    try:
+        member = await guild.fetch_member(user_id)
+        if member:
+            return {r.name for r in member.roles}
+    except Exception:
+        pass
+    return set()
+
+
+def _validate_high_command_roles(
+    expected_position_roles: List[str],
+    actual_roles: set[str]
+) -> Tuple[bool, set[str], set[str]]:
+    """Validate High Command member roles.
+    
+    Required: High Command role + Watch Command role + title/position role
+    Returns (is_valid, missing_roles, extra_roles).
+    """
+    expected = set(expected_position_roles) | {"High Command", "Watch Command"}
+    missing = expected - actual_roles
+    extra = set()
+    
+    return len(missing) == 0, missing, extra
+
+
+async def _validate_company_command_roles(
+    guild: discord.Guild,
+    company_role_id: int,
+    company_command_role_id: int,
+    expected_position_roles: List[str],
+    actual_roles: set[str]
+) -> Tuple[bool, set[str], set[str]]:
+    """Validate Company Command member roles.
+    
+    Required: companyRoleId + companyCommandRoleId + Watch Command role + position role
+    Returns (is_valid, missing_roles, extra_roles).
+    """
+    expected = set(expected_position_roles) | {"Watch Command"}
+    
+    try:
+        company_role = guild.get_role(company_role_id)
+        if company_role:
+            expected.add(company_role.name)
+    except Exception:
+        pass
+    
+    try:
+        company_cmd_role = guild.get_role(company_command_role_id)
+        if company_cmd_role:
+            expected.add(company_cmd_role.name)
+    except Exception:
+        pass
+    
+    missing = expected - actual_roles
+    extra = set()
+    
+    return len(missing) == 0, missing, extra
+
+
+async def _validate_kill_team_member_roles(
+    guild: discord.Guild,
+    company_role_id: int,
+    kill_team_role_id: int,
+    rank: str,
+    actual_roles: set[str]
+) -> Tuple[bool, set[str], set[str]]:
+    """Validate Kill Team member roles.
+    
+    Required:
+    - All: companyRoleId + killTeamRoleId
+    - Sergeant: + Watch Sergeant
+    - Champion: + Kill Team Champion
+    - Member: + at least ONE of (Watch Brother, Watch Veteran, Oathsworn)
+    
+    Returns (is_valid, missing_roles, extra_roles).
+    """
+    expected = set()
+    
+    # Add company and kill team role names
+    try:
+        company_role = guild.get_role(company_role_id)
+        if company_role:
+            expected.add(company_role.name)
+    except Exception:
+        pass
+    
+    try:
+        kt_role = guild.get_role(kill_team_role_id)
+        if kt_role:
+            expected.add(kt_role.name)
+    except Exception:
+        pass
+    
+    if rank == "Sergeant":
+        expected.add("Watch Sergeant")
+    elif rank == "Champion":
+        expected.add("Kill Team Champion")
+    else:  # Member
+        member_ranks = {"Watch Brother", "Watch Veteran", "Oathsworn"}
+        # At least one member rank required
+        if not (member_ranks & actual_roles):
+            return False, member_ranks, set()
+    
+    missing = expected - actual_roles
+    extra = set()
+    
+    return len(missing) == 0, missing, extra
+
+
+async def _audit_company_roster(
+    guild: discord.Guild,
+    company_key: str,
+    company_config: dict,
+    high_cmd_roster: Dict[int, List[str]],
+) -> Dict[str, any]:
+    """Audit a single company.
+    
+    high_cmd_roster: shared High Command roster (parsed once globally).
+    
+    Returns dict with structure:
+    {
+        "company_name": str,
+        "missing": [{"user_id": int, "location": str, "expected": [roles], "actual": [roles]}],
+        "extra": [...],
+        "mismatch": [...],
+    }
+    """
+    result = {
+        "company_name": company_config.get("name", "Unknown"),
+        "missing": [],
+        "extra": [],
+        "mismatch": [],
+    }
+    
+    try:
+        roster_channel_id = int(company_config.get("rosterChannelId"))
+        company_role_id = int(company_config.get("companyRoleId", 0) or 0)
+        company_command_role_id = int(company_config.get("companyCommandRoleId", 0) or 0)
+        
+        # Find roster messages
+        high_cmd_msg, company_cmd_msg, kill_teams_msgs = await _find_roster_messages(
+            guild, roster_channel_id
+        )
+        
+        # Debug logging
+        logger.info(f"\n=== AUDITING {company_config.get('name', 'Unknown')} ===")
+        logger.info(f"Roster Channel ID: {roster_channel_id}")
+        logger.info(f"High Command Message: {high_cmd_msg.id if high_cmd_msg else 'NOT FOUND'}")
+        logger.info(f"Company Command Message: {company_cmd_msg.id if company_cmd_msg else 'NOT FOUND'}")
+        logger.info(f"Kill Teams Messages: {len(kill_teams_msgs)} found")
+        
+        # Parse Company Command and Kill Teams (High Command is passed in as shared)
+        company_cmd_roster = (
+            _parse_roster_section(company_cmd_msg.content)
+            if company_cmd_msg
+            else {}
+        )
+        
+        # Parse all kill team messages and merge
+        kill_teams_roster = {}
+        for kt_msg in kill_teams_msgs:
+            kt_data = _parse_kill_teams_section(kt_msg.content)
+            kill_teams_roster.update(kt_data)
+        
+        # Debug logging
+        logger.info(f"=== AUDITING {company_config.get('name', 'Unknown')} ===")
+        logger.info(f"High Command members: {list(high_cmd_roster.keys())}")
+        logger.info(f"Company Command members: {list(company_cmd_roster.keys())}")
+        logger.info(f"Kill Teams roster dict: {kill_teams_roster}")
+        if kill_teams_msgs:
+            logger.info(f"Kill Teams messages: {len(kill_teams_msgs)} messages")
+            for kt_msg in kill_teams_msgs:
+                logger.info(f"  KT Message {kt_msg.id}: {len(kt_msg.content)} chars")
+        for kt_id, kt_members in kill_teams_roster.items():
+            kt_role = guild.get_role(kt_id)
+            kt_name = kt_role.name if kt_role else f"KT-{kt_id}"
+            logger.info(f"Kill Team {kt_name} (ID: {kt_id}): {list(kt_members.keys())}")
+        
+        # Collect all users from this company's rosters (not including shared High Command)
+        company_roster_users = (
+            set(company_cmd_roster.keys())
+            | {uid for kt in kill_teams_roster.values() for uid in kt.keys()}
+        )
+        
+        # All roster users for this company (High Command + company-specific)
+        all_roster_users = set(high_cmd_roster.keys()) | company_roster_users
+        logger.info(f"Total roster users: {list(all_roster_users)}")
+        
+        # Check each roster member for missing roles
+        for user_id in all_roster_users:
+            actual_roles = await _get_user_roles_by_id(guild, user_id)
+            
+            if user_id in high_cmd_roster:
+                # High Command validation (always required if in High Command)
+                expected_roles = high_cmd_roster[user_id]
+                is_valid, missing, extra = _validate_high_command_roles(expected_roles, actual_roles)
+                if not is_valid or missing:
+                    result["missing"].append({
+                        "user_id": user_id,
+                        "location": "High Command",
+                        "expected": sorted(missing or []),
+                        "actual": sorted(actual_roles),
+                    })
+            
+            if user_id in company_cmd_roster:
+                # Company Command validation
+                expected_roles = company_cmd_roster[user_id]
+                is_valid, missing, extra = await _validate_company_command_roles(
+                    guild,
+                    company_role_id,
+                    company_command_role_id,
+                    expected_roles,
+                    actual_roles,
+                )
+                if not is_valid or missing:
+                    result["missing"].append({
+                        "user_id": user_id,
+                        "location": "Company Command",
+                        "expected": sorted(missing or []),
+                        "actual": sorted(actual_roles),
+                    })
+            
+            # Check Kill Teams
+            for kt_role_id, kt_members in kill_teams_roster.items():
+                if user_id in kt_members:
+                    rank = kt_members[user_id].get("rank", "Member")
+                    try:
+                        kt_role = guild.get_role(kt_role_id)
+                        kt_role_name = kt_role.name if kt_role else f"KT-{kt_role_id}"
+                    except Exception:
+                        kt_role_name = f"KT-{kt_role_id}"
+                    
+                    is_valid, missing, extra = await _validate_kill_team_member_roles(
+                        guild,
+                        company_role_id,
+                        kt_role_id,
+                        rank,
+                        actual_roles,
+                    )
+                    if not is_valid or missing:
+                        result["missing"].append({
+                            "user_id": user_id,
+                            "location": f"Kill Team ({kt_role_name})",
+                            "rank": rank,
+                            "expected": sorted(missing or []),
+                            "actual": sorted(actual_roles),
+                        })
+        
+        # Check for extra: users with company roles but not in roster
+        try:
+            company_role_obj = guild.get_role(company_role_id) if company_role_id else None
+            company_cmd_role_obj = guild.get_role(company_command_role_id) if company_command_role_id else None
+            
+            # Build set of all kill team role IDs that exist
+            kt_roles = set(kill_teams_roster.keys())
+            
+            # Scan all members with company role
+            if company_role_obj:
+                for member in company_role_obj.members:
+                    if member.id not in all_roster_users:
+                        # Check if they have kill team or company command roles
+                        member_role_ids = {r.id for r in member.roles}
+                        if company_cmd_role_obj and company_cmd_role_obj.id in member_role_ids:
+                            result["extra"].append({
+                                "user_id": member.id,
+                                "location": "Company Command (should be removed)",
+                                "actual": sorted([r.name for r in member.roles]),
+                            })
+                        elif kt_roles & member_role_ids:
+                            kt_in_member = [guild.get_role(rid).name if guild.get_role(rid) else f"KT-{rid}" for rid in (kt_roles & member_role_ids)]
+                            kt_names = ', '.join(kt_in_member)
+                            possession = "'s" if len(kt_in_member) == 1 else "s'"
+                            result["extra"].append({
+                                "user_id": member.id,
+                                "location": f"not in {kt_names}{possession} roster",
+                                "actual": sorted([r.name for r in member.roles]),
+                            })
+        except Exception:
+            logger.exception("Error checking for extra users")
+        
+        # Check for mismatches: multiple company roles, multiple kill team roles, conflicting ranks
+        # Also check if someone appears in multiple roster sections
+        for user_id in all_roster_users:
+            actual_roles = await _get_user_roles_by_id(guild, user_id)
+            
+            # Track where this user appears in the roster
+            appears_in = []
+            if user_id in high_cmd_roster:
+                appears_in.append("High Command")
+            if user_id in company_cmd_roster:
+                appears_in.append("Company Command")
+            
+            # Check which kill teams they're in
+            kt_names = []
+            for kt_id, kt_members in kill_teams_roster.items():
+                if user_id in kt_members:
+                    kt_role = guild.get_role(kt_id)
+                    kt_name = kt_role.name if kt_role else f"KT-{kt_id}"
+                    kt_names.append(kt_name)
+            
+            if len(kt_names) > 1:
+                result["mismatch"].append({
+                    "user_id": user_id,
+                    "issue": f"Multiple kill teams: {', '.join(kt_names)}",
+                    "actual": sorted(actual_roles),
+                })
+            elif kt_names:
+                appears_in.append(f"Kill Team ({kt_names[0]})")
+            
+            # Check if user appears in multiple roster sections
+            if len(appears_in) > 1:
+                result["mismatch"].append({
+                    "user_id": user_id,
+                    "issue": f"Listed in multiple sections: {', '.join(appears_in)}",
+                    "actual": sorted(actual_roles),
+                })
+            
+            # Multiple company roles check
+            company_role_count = 0
+            for company in (CONFIG.get("companies") or {}).values():
+                crole_id = int(company.get("companyRoleId", 0) or 0)
+                if crole_id:
+                    crole = guild.get_role(crole_id)
+                    if crole and crole.name in actual_roles:
+                        company_role_count += 1
+            if company_role_count > 1:
+                result["mismatch"].append({
+                    "user_id": user_id,
+                    "issue": "Multiple company roles",
+                    "actual": sorted(actual_roles),
+                })
+    
+    except Exception:
+        logger.exception(f"Error auditing company {company_key}")
+    
+    return result
+
+
+def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
+    """Format audit results as summary."""
+    lines = ["**ROSTER AUDIT — SUMMARY**\n"]
+    
+    for result in audit_results:
+        company = result.get("company_name", "Unknown")
+        missing_count = len(result.get("missing", []))
+        extra_count = len(result.get("extra", []))
+        mismatch_count = len(result.get("mismatch", []))
+        
+        lines.append(f"**{company}**")
+        lines.append(f"  Missing roles: {missing_count}")
+        lines.append(f"  Extra (not in roster): {extra_count}")
+        lines.append(f"  Mismatches: {mismatch_count}")
+        lines.append("")
+    
+    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
+        lines.append("✅ No discrepancies found.")
+    
+    return "\n".join(lines)
+
+
+def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
+    """Format audit results as full detail."""
+    lines = ["**ROSTER AUDIT — FULL REPORT**\n"]
+    
+    for result in audit_results:
+        company = result.get("company_name", "Unknown")
+        lines.append(f"**{company}**\n")
+        
+        missing = result.get("missing", [])
+        if missing:
+            lines.append("**Missing Roles:**")
+            for item in missing:
+                user_id = item.get("user_id")
+                location = item.get("location", "Unknown")
+                expected = item.get("expected", [])
+                rank = item.get("rank", "")
+                rank_str = f" [{rank}]" if rank else ""
+                lines.append(f"  <@{user_id}> ({location}){rank_str}")
+                lines.append(f"    Expected: {', '.join(expected)}")
+            lines.append("")
+        
+        extra = result.get("extra", [])
+        if extra:
+            lines.append("**Extra (Not in Roster):**")
+            for item in extra:
+                user_id = item.get("user_id")
+                location = item.get("location", "Unknown")
+                lines.append(f"  <@{user_id}> ({location})")
+            lines.append("")
+        
+        mismatch = result.get("mismatch", [])
+        if mismatch:
+            lines.append("**Mismatches:**")
+            for item in mismatch:
+                user_id = item.get("user_id")
+                issue = item.get("issue", "Unknown")
+                actual = item.get("actual", [])
+                lines.append(f"  <@{user_id}>: {issue}")
+                lines.append(f"    Roles: {', '.join(actual)}")
+            lines.append("")
+    
+    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
+        lines.append("✅ No discrepancies found.")
+    
+    return "\n".join(lines)
+
+
+@bot.tree.command(
+    name="roster_audit",
+    description="Audit company rosters for discrepancies.",
+)
+@app_commands.describe(
+    scope="Type of discrepancies to show: all, missing, extra, or mismatch",
+    format="Output format: summary or full",
+)
+async def roster_audit(
+    interaction: discord.Interaction,
+    scope: str = "all",
+    format: str = "full",
+):
+    """Audit company rosters.
+    
+    scope: all|missing|extra|mismatch
+    format: summary|full
+    
+    Permission: Forgemaster OR Watch Master only.
+    """
+    if not (can_roster_audit(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    
+    # Defer for long-running operation
+    try:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+    except Exception:
+        logger.debug("Could not defer interaction; continuing")
+    
+    try:
+        scope = (scope or "all").lower()
+        format = (format or "summary").lower()
+        
+        if scope not in ("all", "missing", "extra", "mismatch"):
+            scope = "all"
+        if format not in ("summary", "full"):
+            format = "summary"
+        
+        guild = interaction.guild
+        if not guild:
+            await interaction.followup.send("Guild not found.", ephemeral=True)
+            return
+        
+        # Determine which companies to audit
+        companies = CONFIG.get("companies") or {}
+        
+        # Check if invoked in a roster channel
+        channel_id = getattr(interaction.channel, "id", None) if interaction.channel else None
+        audit_companies = {}
+        
+        if channel_id:
+            # Find company by roster channel ID
+            for key, config in companies.items():
+                if int(config.get("rosterChannelId", 0)) == channel_id:
+                    audit_companies[key] = config
+                    break
+        
+        # If no specific company found, audit all
+        if not audit_companies:
+            audit_companies = companies
+        
+        if not audit_companies:
+            await interaction.followup.send(
+                "No companies configured. Add entries to `companies` in config.json.",
+                ephemeral=True
+            )
+            return
+        
+        # Parse High Command once (it's shared across all companies)
+        # Use the first company's roster channel to find High Command
+        high_cmd_roster = {}
+        try:
+            first_company_config = next(iter(audit_companies.values()))
+            roster_channel_id = int(first_company_config.get("rosterChannelId"))
+            high_cmd_msg, _, _ = await _find_roster_messages(guild, roster_channel_id)
+            if high_cmd_msg:
+                high_cmd_roster = _parse_roster_section(high_cmd_msg.content)
+        except Exception:
+            logger.exception("Error parsing shared High Command")
+        
+        # Run audits
+        results = []
+        for company_key, company_config in audit_companies.items():
+            result = await _audit_company_roster(guild, company_key, company_config, high_cmd_roster)
+            results.append(result)
+        
+        # Filter by scope
+        if scope == "missing":
+            for r in results:
+                r["extra"] = []
+                r["mismatch"] = []
+        elif scope == "extra":
+            for r in results:
+                r["missing"] = []
+                r["mismatch"] = []
+        elif scope == "mismatch":
+            for r in results:
+                r["missing"] = []
+                r["extra"] = []
+        
+        # Format output
+        if format == "summary":
+            output = _format_audit_summary(results)
+        else:
+            output = _format_audit_full(results)
+        
+        # Send output, split if needed
+        if len(output) <= 2000:
+            await interaction.followup.send(output, ephemeral=True)
+        else:
+            # Split into chunks
+            chunks = [output[i:i+2000] for i in range(0, len(output), 2000)]
+            for chunk in chunks:
+                await interaction.followup.send(chunk, ephemeral=True)
+    
+    except Exception:
+        logger.exception("Error in roster_audit command")
+        await interaction.followup.send(
+            "An error occurred during the audit. Check logs for details.",
+            ephemeral=True
+        )
+
+
 if __name__ == "__main__":
     _main()
