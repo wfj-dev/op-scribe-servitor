@@ -12,7 +12,7 @@ from discord.ext import tasks
 import uuid
 import re
 import itertools
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional
 import hashlib
 import logging
 import time
@@ -38,7 +38,9 @@ TROPHY_HALL_INDEX_PATH = os.path.join(DATA_DIR, "trophy_hall_index.json")
 OATHS_INDEX_PATH = os.path.join(DATA_DIR, "oaths_index.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
-ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(DATA_DIR, "activity_status_last_check.json")
+ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
+    DATA_DIR, "activity_status_last_check.json"
+)
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -130,6 +132,7 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
         return bot.guilds[0] if bot.guilds else None
     except Exception:
         return None
+
 
 async def _send_watch_command_notice(kind: str):
     """Post a concise status notice to ❖⋅data-vault⋅❖ and replace the previous one.
@@ -532,6 +535,7 @@ except Exception:
 # Activity status tracking: persist last known activity state per member
 # ---------------------------------------------------------------------------
 
+
 def _load_activity_status() -> Dict[str, str]:
     """Load stored activity status mapping: user_id -> 'active' or 'inactive'."""
     try:
@@ -569,18 +573,21 @@ def _save_member_last_post_times(member_times: Dict[str, str]):
                     existing_data = json.load(f)
             except Exception:
                 pass
-        
+
         existing_data["member_last_posts"] = member_times
         existing_data["last_check_time"] = datetime.utcnow().isoformat()
-        
+
         with open(tmp_path, "w") as f:
             json.dump(existing_data, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        
+
         if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
             try:
-                os.replace(ACTIVITY_STATUS_LAST_CHECK_PATH, ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak")
+                os.replace(
+                    ACTIVITY_STATUS_LAST_CHECK_PATH,
+                    ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak",
+                )
             except Exception:
                 pass
         os.replace(tmp_path, ACTIVITY_STATUS_LAST_CHECK_PATH)
@@ -612,7 +619,10 @@ def _save_activity_status_last_check(check_time: datetime):
             os.fsync(f.fileno())
         if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
             try:
-                os.replace(ACTIVITY_STATUS_LAST_CHECK_PATH, ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak")
+                os.replace(
+                    ACTIVITY_STATUS_LAST_CHECK_PATH,
+                    ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak",
+                )
             except Exception:
                 pass
         os.replace(tmp_path, ACTIVITY_STATUS_LAST_CHECK_PATH)
@@ -784,7 +794,9 @@ async def _send_activity_status_notification(
             try:
                 channel = await bot.fetch_channel(ACTIVITY_STATUS_CHANNEL_ID)
             except Exception:
-                logger.warning(f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found")
+                logger.warning(
+                    f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found"
+                )
                 return
         if not channel:
             return
@@ -799,8 +811,14 @@ async def _send_activity_status_notification(
 
             # Get company role
             company_name = _get_member_company_name(member)
-            company_role = discord.utils.get(guild.roles, name=company_name) if company_name else None
-            company_mention = company_role.mention if company_role else (company_name or "Unknown")
+            company_role = (
+                discord.utils.get(guild.roles, name=company_name)
+                if company_name
+                else None
+            )
+            company_mention = (
+                company_role.mention if company_role else (company_name or "Unknown")
+            )
 
             # Get Reserves role
             reserves_role = discord.utils.get(guild.roles, name="Reserves")
@@ -855,7 +873,9 @@ async def _send_activity_status_notification(
             content,
             allowed_mentions=discord.AllowedMentions(users=True, roles=True),
         )
-        logger.info(f"Activity status notification sent for {member_name}: {old_status} -> {new_status}")
+        logger.info(
+            f"Activity status notification sent for {member_name}: {old_status} -> {new_status}"
+        )
 
     except Exception as e:
         logger.exception(f"Failed to send activity status notification: {e}")
@@ -863,7 +883,7 @@ async def _send_activity_status_notification(
 
 async def _check_activity_status_changes():
     """Check guild members for activity status changes with optimized scanning.
-    
+
     First run: Scans all records to build baseline of member last-post times.
     Subsequent runs: Only scans recent records + checks 28-day threshold against saved times.
     """
@@ -880,10 +900,12 @@ async def _check_activity_status_changes():
 
             # Load previous status and member last post times
             prev_status = _load_activity_status()
-            member_last_posts = _load_member_last_post_times()  # Dict[user_id] -> ISO timestamp string
+            member_last_posts = (
+                _load_member_last_post_times()
+            )  # Dict[user_id] -> ISO timestamp string
             last_check_time = _load_activity_status_last_check()
             check_start_time = datetime.utcnow()
-            
+
             is_first_check = len(member_last_posts) == 0
             cutoff_days = 28
 
@@ -894,7 +916,9 @@ async def _check_activity_status_changes():
             # Step 1: Build/update member last post times
             if is_first_check:
                 # First run: scan ALL records to establish baseline
-                logger.info("Activity status check: first run, building baseline of member last posts")
+                logger.info(
+                    "Activity status check: first run, building baseline of member last posts"
+                )
                 for rec in DATASTORE.iter_records():
                     ts = rec.get("timestamp")
                     if not ts:
@@ -903,19 +927,26 @@ async def _check_activity_status_changes():
                         t = datetime.fromisoformat(ts)
                         if t.tzinfo is not None:
                             t = t.astimezone(tz=None).replace(tzinfo=None)
-                        for uid in (rec.get("brother_ids") or []):
+                        for uid in rec.get("brother_ids") or []:
                             uid_str = str(uid)
                             # Keep the most recent timestamp for each member
-                            if uid_str not in new_member_last_posts or ts > new_member_last_posts[uid_str]:
+                            if (
+                                uid_str not in new_member_last_posts
+                                or ts > new_member_last_posts[uid_str]
+                            ):
                                 new_member_last_posts[uid_str] = ts
                     except Exception:
                         continue
                 member_last_posts = new_member_last_posts
             else:
                 # Subsequent runs: scan only recent records and update timestamps
-                logger.debug(f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}")
-                recent_cutoff = last_check_time or (check_start_time - timedelta(days=365))
-                
+                logger.debug(
+                    f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}"
+                )
+                recent_cutoff = last_check_time or (
+                    check_start_time - timedelta(days=365)
+                )
+
                 for rec in DATASTORE.iter_records():
                     ts = rec.get("timestamp")
                     if not ts:
@@ -926,34 +957,47 @@ async def _check_activity_status_changes():
                             t = t.astimezone(tz=None).replace(tzinfo=None)
                         # Only update timestamps for recent records
                         if t >= recent_cutoff:
-                            for uid in (rec.get("brother_ids") or []):
+                            for uid in rec.get("brother_ids") or []:
                                 uid_str = str(uid)
                                 # Keep the most recent timestamp
-                                if uid_str not in member_last_posts or ts > member_last_posts.get(uid_str, ""):
+                                if (
+                                    uid_str not in member_last_posts
+                                    or ts > member_last_posts.get(uid_str, "")
+                                ):
                                     member_last_posts[uid_str] = ts
                     except Exception:
                         continue
 
             # Step 2: Determine which members to check and compute their status
             cutoff_datetime = check_start_time - timedelta(days=cutoff_days)
-            users_to_check: Set[str] = set(member_last_posts.keys()) if is_first_check else set()
-            
+            users_to_check: Set[str] = (
+                set(member_last_posts.keys()) if is_first_check else set()
+            )
+
             # Add members who had recent activity
             for uid, last_post_str in member_last_posts.items():
                 try:
                     last_post_dt = datetime.fromisoformat(last_post_str)
                     if last_post_dt.tzinfo is not None:
-                        last_post_dt = last_post_dt.astimezone(tz=None).replace(tzinfo=None)
+                        last_post_dt = last_post_dt.astimezone(tz=None).replace(
+                            tzinfo=None
+                        )
                     # Check if record is recent (within 4 hours) or if member was previously active and is now at/past 28 days
-                    is_recent = last_post_dt >= recent_cutoff if not is_first_check else False
-                    is_at_threshold = last_post_dt < cutoff_datetime  # At or past 28-day threshold
-                    
+                    is_recent = (
+                        last_post_dt >= recent_cutoff if not is_first_check else False
+                    )
+                    is_at_threshold = (
+                        last_post_dt < cutoff_datetime
+                    )  # At or past 28-day threshold
+
                     if is_recent or is_at_threshold or prev_status.get(uid) == "active":
                         users_to_check.add(uid)
                 except Exception:
                     users_to_check.add(uid)
-            
-            logger.debug(f"Activity status check: checking {len(users_to_check)} members")
+
+            logger.debug(
+                f"Activity status check: checking {len(users_to_check)} members"
+            )
 
             # Step 3: Compute status for identified members
             for user_id in users_to_check:
@@ -962,14 +1006,18 @@ async def _check_activity_status_changes():
                     if last_post_str:
                         last_post_dt = datetime.fromisoformat(last_post_str)
                         if last_post_dt.tzinfo is not None:
-                            last_post_dt = last_post_dt.astimezone(tz=None).replace(tzinfo=None)
+                            last_post_dt = last_post_dt.astimezone(tz=None).replace(
+                                tzinfo=None
+                            )
                         # Status is active if last post is within 28 days, else inactive
-                        current_status = "active" if last_post_dt >= cutoff_datetime else "inactive"
+                        current_status = (
+                            "active" if last_post_dt >= cutoff_datetime else "inactive"
+                        )
                     else:
                         current_status = "inactive"
-                    
+
                     new_status_map[user_id] = current_status
-                    
+
                     old = prev_status.get(user_id)
                     if old and old != current_status:
                         # Status changed; find member in guild
@@ -1000,12 +1048,18 @@ async def _check_activity_status_changes():
                     await _send_activity_status_notification(guild, member, old, new)
                     await asyncio.sleep(0.5)
                 except Exception as e:
-                    logger.exception(f"Failed to notify activity change for {member.id}: {e}")
+                    logger.exception(
+                        f"Failed to notify activity change for {member.id}: {e}"
+                    )
 
             if changes:
-                logger.info(f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked")
+                logger.info(
+                    f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked"
+                )
             else:
-                logger.debug(f"Activity status check complete: no changes ({len(users_to_check)} members checked)")
+                logger.debug(
+                    f"Activity status check complete: no changes ({len(users_to_check)} members checked)"
+                )
 
         except Exception as e:
             logger.exception(f"Activity status check failed: {e}")
@@ -1840,7 +1894,15 @@ async def on_ready():
         if SCHEDULE_WEEKLY_MAINTENANCE_ENABLED:
             if not _scheduled_weekly_maintenance_loop.is_running():
                 _scheduled_weekly_maintenance_loop.start()
-                day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                day_names = [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ]
                 day_name = day_names[SCHEDULE_WEEKLY_MAINTENANCE_DAY]
                 logger.info(
                     f"Weekly maintenance loop started ({day_name} {SCHEDULE_WEEKLY_MAINTENANCE_HOUR}:00 ET, "
@@ -1853,7 +1915,9 @@ async def on_ready():
     try:
         if not _scheduled_honours_runner.is_running():
             _scheduled_honours_runner.start()
-            logger.info("Honours runner loop started (15-min interval, posts at 1 AM UTC on Saturdays/1st of month).")
+            logger.info(
+                "Honours runner loop started (15-min interval, posts at 1 AM UTC on Saturdays/1st of month)."
+            )
     except Exception:
         logger.exception("Failed to start honours runner loop")
 
@@ -2050,7 +2114,9 @@ def _save_home_chapter_rotation(state: dict):
         pass
 
 
-async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[discord.Guild] = None) -> Tuple[str, str]:
+async def _select_home_chapters_for_month(
+    offset: int = 0, guild: Optional[discord.Guild] = None
+) -> Tuple[str, str]:
     """Select (and cache) two chapters for a month specified by offset from now.
 
     If a selection for that month already exists, return it. Otherwise pick two
@@ -2086,12 +2152,20 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
                     for mbr in members:
                         try:
                             # Check if member has the exact chapter role name
-                            has_chap = any((getattr(r, "name", "") or "").strip().lower() == canon_low for r in getattr(mbr, "roles", []) or [])
+                            has_chap = any(
+                                (getattr(r, "name", "") or "").strip().lower()
+                                == canon_low
+                                for r in getattr(mbr, "roles", []) or []
+                            )
                             if not has_chap:
                                 continue
                             total_with_role += 1
                             # If member has any role with 'reserve' in its name, treat as reserve
-                            has_reserve = any((getattr(rr, "name", "") or "").lower().find("reserve") >= 0 for rr in getattr(mbr, "roles", []) or [])
+                            has_reserve = any(
+                                (getattr(rr, "name", "") or "").lower().find("reserve")
+                                >= 0
+                                for rr in getattr(mbr, "roles", []) or []
+                            )
                             if not has_reserve:
                                 non_reserve_count += 1
                         except Exception:
@@ -2105,7 +2179,11 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
                 return HOME_CHAPTERS.copy()
 
         # If we have a cached pair for the target month, check if we should return it as-is.
-        if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
+        if (
+            target in selected
+            and isinstance(selected[target], list)
+            and len(selected[target]) == 2
+        ):
             pair = selected[target]
             # CURRENT MONTH (offset=0): always return cached pair, never replace.
             # The event is happening this month so selections are locked in.
@@ -2141,7 +2219,9 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
             new_pair = new_pair[:2]
             selected[target] = new_pair
             # Also remove replacements from remaining pool if present
-            remaining = [r for r in (state.get("remaining") or []) if r in HOME_CHAPTERS]
+            remaining = [
+                r for r in (state.get("remaining") or []) if r in HOME_CHAPTERS
+            ]
             for p in new_pair:
                 try:
                     if p in remaining:
@@ -2170,11 +2250,19 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
                     non_reserve_count = 0
                     for mbr in members:
                         try:
-                            has_chap = any((getattr(r, "name", "") or "").strip().lower() == canon_low for r in getattr(mbr, "roles", []) or [])
+                            has_chap = any(
+                                (getattr(r, "name", "") or "").strip().lower()
+                                == canon_low
+                                for r in getattr(mbr, "roles", []) or []
+                            )
                             if not has_chap:
                                 continue
                             total_with_role += 1
-                            has_reserve = any((getattr(rr, "name", "") or "").lower().find("reserve") >= 0 for rr in getattr(mbr, "roles", []) or [])
+                            has_reserve = any(
+                                (getattr(rr, "name", "") or "").lower().find("reserve")
+                                >= 0
+                                for rr in getattr(mbr, "roles", []) or []
+                            )
                             if not has_reserve:
                                 non_reserve_count += 1
                         except Exception:
@@ -2253,16 +2341,18 @@ async def pick_home_chapters(interaction: discord.Interaction):
         dt = datetime(int(y), int(m), 1)
         return dt.strftime("%B %Y")
 
-    text = (
-        f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
-    )
+    text = f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
     # Print membership and reserves status for selected chapters to terminal (only in debug mode)
     if DEBUG_MODE:
         try:
             selected_chapters = [a1, b1, a2, b2]
             # dedupe while preserving order
             seen = set()
-            selected_unique = [c for c in selected_chapters if c and (c not in seen and not seen.add(c))]
+            selected_unique = [
+                c
+                for c in selected_chapters
+                if c and (c not in seen and not seen.add(c))
+            ]
             print("Selected home chapters:")
             for chap in selected_unique:
                 print(f"Chapter: {chap}")
@@ -2290,7 +2380,11 @@ async def pick_home_chapters(interaction: discord.Interaction):
 
                 for m in members_with_chap:
                     try:
-                        display = getattr(m, "display_name", getattr(m, "name", str(getattr(m, "id", ""))))
+                        display = getattr(
+                            m,
+                            "display_name",
+                            getattr(m, "name", str(getattr(m, "id", ""))),
+                        )
                     except Exception:
                         display = str(getattr(m, "id", ""))
                     # Determine if member has a reserves-type role (substring 'reserve')
@@ -2303,7 +2397,9 @@ async def pick_home_chapters(interaction: discord.Interaction):
                                 break
                     except Exception:
                         has_reserves = False
-                    print(f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}")
+                    print(
+                        f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}"
+                    )
         except Exception:
             print("Failed to enumerate chapter members for pick_home_chapters")
 
@@ -2603,9 +2699,18 @@ async def record_of_blood(interaction: discord.Interaction):
         chap = ""
         try:
             member_role_names = {
-                (getattr(r, "name", "") or "").strip() for r in m.roles if getattr(r, "name", None)
+                (getattr(r, "name", "") or "").strip()
+                for r in m.roles
+                if getattr(r, "name", None)
             }
-            match = next((hc for hc in HOME_CHAPTERS if any(rn.lower() == hc.lower() for rn in member_role_names)), None)
+            match = next(
+                (
+                    hc
+                    for hc in HOME_CHAPTERS
+                    if any(rn.lower() == hc.lower() for rn in member_role_names)
+                ),
+                None,
+            )
             if match:
                 chap = match
             else:
@@ -2626,7 +2731,9 @@ async def record_of_blood(interaction: discord.Interaction):
     # Channel to cross-reference (from the provided URL)
     # URL: https://discord.com/channels/1429264578440597517/1446926555732250674
     target_channel_id = 1446926555732250674
-    target_channel = bot.get_channel(target_channel_id) or guild.get_channel(target_channel_id)
+    target_channel = bot.get_channel(target_channel_id) or guild.get_channel(
+        target_channel_id
+    )
     if not target_channel:
         await interaction.followup.send(
             f"Unable to find target channel <#{target_channel_id}>.", ephemeral=True
@@ -2636,10 +2743,12 @@ async def record_of_blood(interaction: discord.Interaction):
     # Scan messages for mentions of HOME_CHAPTERS (and any guild role names not in HOME_CHAPTERS)
     chapter_mentions_by_msg: list[dict] = []
     noncanonical_mentioned: set[str] = set()
-    logger.info(f"/record_of_blood: scanning channel {target_channel_id} for {len(watch_brothers)} watch brothers")
+    logger.info(
+        f"/record_of_blood: scanning channel {target_channel_id} for {len(watch_brothers)} watch brothers"
+    )
     try:
         async for msg in target_channel.history(limit=2000):
-            content = (msg.content or "")
+            content = msg.content or ""
             if not content:
                 continue
             low = content.lower()
@@ -2669,7 +2778,11 @@ async def record_of_blood(interaction: discord.Interaction):
                     noncanonical_mentioned.add(first_chap)
 
             # Also detect guild role names mentioned that are not in HOME_CHAPTERS
-            extra = [r.name for r in guild.roles if r.name and r.name.lower() in low and r.name not in HOME_CHAPTERS]
+            extra = [
+                r.name
+                for r in guild.roles
+                if r.name and r.name.lower() in low and r.name not in HOME_CHAPTERS
+            ]
             if extra:
                 for e in extra:
                     noncanonical_mentioned.add(e)
@@ -2678,10 +2791,20 @@ async def record_of_blood(interaction: discord.Interaction):
                 continue
 
             # Record for each mentioned member which chapters the message referenced
-            rec = {"msg": msg, "chapters": found or extra, "mentions": [], "first_chap": first_chap}
+            rec = {
+                "msg": msg,
+                "chapters": found or extra,
+                "mentions": [],
+                "first_chap": first_chap,
+            }
             for mm in mentions:
                 try:
-                    rec["mentions"].append({"id": str(getattr(mm, "id", "")), "display": mm.display_name or mm.name})
+                    rec["mentions"].append(
+                        {
+                            "id": str(getattr(mm, "id", "")),
+                            "display": mm.display_name or mm.name,
+                        }
+                    )
                 except Exception:
                     continue
             chapter_mentions_by_msg.append(rec)
@@ -2700,7 +2823,9 @@ async def record_of_blood(interaction: discord.Interaction):
                             mentioned_canonical.add(hc)
             except Exception:
                 continue
-        missing_home_chapters = [hc for hc in HOME_CHAPTERS if hc not in mentioned_canonical]
+        missing_home_chapters = [
+            hc for hc in HOME_CHAPTERS if hc not in mentioned_canonical
+        ]
     except Exception:
         mentioned_canonical = set()
         missing_home_chapters = []
@@ -2708,9 +2833,13 @@ async def record_of_blood(interaction: discord.Interaction):
     # Build report
     lines: list[str] = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // RECORD-OF-BLOOD AUDIT")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append(f"  Watch Brothers scanned: {len(watch_brothers)}")
     lines.append("")
 
@@ -2747,7 +2876,10 @@ async def record_of_blood(interaction: discord.Interaction):
                 mids = rec.get("mentions", [])
                 chs = rec.get("chapters", [])
                 first_claim = rec.get("first_chap")
-                first_claim_noncanonical = bool(first_claim and all(first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS))
+                first_claim_noncanonical = bool(
+                    first_claim
+                    and all(first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS)
+                )
 
                 # Build concise one-line issues for each mismatch
                 issues: list[str] = []
@@ -2756,7 +2888,9 @@ async def record_of_blood(interaction: discord.Interaction):
                     disp = mrec.get("display")
                     actual = member_home.get(mid, "")
                     claimed = first_claim or (chs[0] if chs else "")
-                    is_match = bool(claimed and claimed.lower() == (actual or "").lower())
+                    is_match = bool(
+                        claimed and claimed.lower() == (actual or "").lower()
+                    )
                     if not is_match:
                         issues.append(
                             f"Message {getattr(msg, 'id', 'unknown')} | {disp}: record_of_blood='{claimed or ', '.join(chs)}' role='{actual or 'UNKNOWN'}'"
@@ -2764,7 +2898,10 @@ async def record_of_blood(interaction: discord.Interaction):
 
                 # If declared chapter is non-canonical, add an issue for it
                 if first_claim_noncanonical:
-                    issues.insert(0, f"Message {getattr(msg, 'id', 'unknown')} | Declared chapter not in HOME_CHAPTERS: '{first_claim}'")
+                    issues.insert(
+                        0,
+                        f"Message {getattr(msg, 'id', 'unknown')} | Declared chapter not in HOME_CHAPTERS: '{first_claim}'",
+                    )
 
                 # Append only the concise issue lines (one per mismatch/issue)
                 for it in issues:
@@ -2773,10 +2910,16 @@ async def record_of_blood(interaction: discord.Interaction):
                 continue
         lines.append("")
 
-    if not members_with_noncanonical_home and not noncanonical_mentioned and not chapter_mentions_by_msg:
+    if (
+        not members_with_noncanonical_home
+        and not noncanonical_mentioned
+        and not chapter_mentions_by_msg
+    ):
         lines.append("No discrepancies or chapter mentions found in target channel.")
 
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     report = "\n".join(lines)
@@ -2823,7 +2966,9 @@ async def record_of_blood(interaction: discord.Interaction):
             else:
                 await interaction.response.send_message(report, ephemeral=True)
         except Exception as e2:
-            logger.exception(f"record_of_blood: response.send_message fallback failed: {e2}")
+            logger.exception(
+                f"record_of_blood: response.send_message fallback failed: {e2}"
+            )
 
 
 @bot.tree.command(
@@ -3533,7 +3678,7 @@ async def audit_service_studs(interaction: discord.Interaction):
         return
 
     # Build an ANSI-styled, column-aligned report (green text)
-    mismatches.sort(key=lambda t: (t[1] - t[2]), reverse=True)
+    mismatches.sort(key=lambda t: t[1] - t[2], reverse=True)
 
     # Prepare printable rows and compute column widths
     rows: list[tuple[str, str, str, str]] = []
@@ -4002,7 +4147,9 @@ async def tally_deeds(
                 if legacy_initiate_id and legacy_initiate_id not in all_inductees:
                     all_inductees.append(legacy_initiate_id)
                 # Remove self from count
-                inductee_count = sum(1 for uid in all_inductees if uid != str(target.id))
+                inductee_count = sum(
+                    1 for uid in all_inductees if uid != str(target.id)
+                )
                 if inductee_count == 0:
                     continue
                 ts = rec.get("timestamp")
@@ -4488,7 +4635,11 @@ async def tally_deeds(
         try:
             rankings = await _compute_fortress_rankings(interaction.guild, span_days)
         except Exception:
-            rankings = {"teams": {}, "imperial_date": _format_imperial_date(datetime.utcnow()), "span_days": span_days}
+            rankings = {
+                "teams": {},
+                "imperial_date": _format_imperial_date(datetime.utcnow()),
+                "span_days": span_days,
+            }
 
         imperial_date = rankings.get("imperial_date", "")
         team_rankings = rankings.get("teams", {})
@@ -4501,7 +4652,11 @@ async def tally_deeds(
         queried_team_key = None
         for possible_key in [kt_name_raw, kt_display, f"Kill Team {kt_display}"]:
             for tk in team_rankings.get("ops", {}).keys():
-                if tk.lower() == possible_key.lower() or possible_key.lower() in tk.lower() or tk.lower() in possible_key.lower():
+                if (
+                    tk.lower() == possible_key.lower()
+                    or possible_key.lower() in tk.lower()
+                    or tk.lower() in possible_key.lower()
+                ):
                     queried_team_key = tk
                     break
             if queried_team_key:
@@ -4510,14 +4665,18 @@ async def tally_deeds(
         # Helper to format rank display
         def fmt_rank(metric_key: str, team_key: str) -> str:
             try:
-                val, rank, total = team_rankings.get(metric_key, {}).get(team_key, (0, 0, 0))
+                val, rank, total = team_rankings.get(metric_key, {}).get(
+                    team_key, (0, 0, 0)
+                )
                 return f"#{rank}/{total}"
             except Exception:
                 return "—"
 
         def fmt_val_rank(metric_key: str, team_key: str, val_fmt: str = "") -> str:
             try:
-                val, rank, total = team_rankings.get(metric_key, {}).get(team_key, (0, 0, 0))
+                val, rank, total = team_rankings.get(metric_key, {}).get(
+                    team_key, (0, 0, 0)
+                )
                 if val_fmt:
                     return f"{val_fmt.format(val)} (#{rank}/{total})"
                 return f"{val} (#{rank}/{total})"
@@ -4545,16 +4704,34 @@ async def tally_deeds(
             ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
             avg_data = team_rankings.get("avg", {}).get(queried_team_key, (0.0, 0, 0))
             pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
-            armory_data = team_rankings.get("armory", {}).get(queried_team_key, (0, 0, 0))
-            gene_data = team_rankings.get("gene_carried", {}).get(queried_team_key, (0, 0, 0))
-            risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
-            force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
+            armory_data = team_rankings.get("armory", {}).get(
+                queried_team_key, (0, 0, 0)
+            )
+            gene_data = team_rankings.get("gene_carried", {}).get(
+                queried_team_key, (0, 0, 0)
+            )
+            risk_data = team_rankings.get("high_risk", {}).get(
+                queried_team_key, (0, 0, 0)
+            )
+            force_data = team_rankings.get("avg_aar_per_member", {}).get(
+                queried_team_key, (0.0, 0, 0)
+            )
 
-            s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-            s_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
-            s_lines.append(f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}")
-            s_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}")
-            s_lines.append(f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}")
+            s_lines.append(
+                f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}"
+            )
+            s_lines.append(
+                f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}"
+            )
+            s_lines.append(
+                f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}"
+            )
+            s_lines.append(
+                f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}"
+            )
+            s_lines.append(
+                f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}"
+            )
         else:
             s_lines.append(f"  No ranking data available")
 
@@ -4574,15 +4751,43 @@ async def tally_deeds(
             )
             if queried_team_key:
                 ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
-                avg_data = team_rankings.get("avg", {}).get(queried_team_key, (0.0, 0, 0))
-                pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
-                risk_data = team_rankings.get("high_risk", {}).get(queried_team_key, (0, 0, 0))
-                force_data = team_rankings.get("avg_aar_per_member", {}).get(queried_team_key, (0.0, 0, 0))
-                embed.add_field(name="Total Operations", value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}", inline=True)
-                embed.add_field(name="Avg Points per Op", value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}", inline=True)
-                embed.add_field(name="Armory + Gene-seed", value=f"#{pres_data[1]}/{pres_data[2]}", inline=True)
-                embed.add_field(name="High-Risk Ops", value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}", inline=True)
-                embed.add_field(name="AARs per Member", value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}", inline=True)
+                avg_data = team_rankings.get("avg", {}).get(
+                    queried_team_key, (0.0, 0, 0)
+                )
+                pres_data = team_rankings.get("pres", {}).get(
+                    queried_team_key, (0, 0, 0)
+                )
+                risk_data = team_rankings.get("high_risk", {}).get(
+                    queried_team_key, (0, 0, 0)
+                )
+                force_data = team_rankings.get("avg_aar_per_member", {}).get(
+                    queried_team_key, (0.0, 0, 0)
+                )
+                embed.add_field(
+                    name="Total Operations",
+                    value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="Avg Points per Op",
+                    value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="Armory + Gene-seed",
+                    value=f"#{pres_data[1]}/{pres_data[2]}",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="High-Risk Ops",
+                    value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="AARs per Member",
+                    value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}",
+                    inline=True,
+                )
             view = ToggleFormatView(
                 text_content=summary_text, embed=embed, default="ansi"
             )
@@ -4640,7 +4845,13 @@ async def tally_deeds(
             try:
                 rankings = await _compute_fortress_rankings(interaction.guild, 7)
             except Exception:
-                rankings = {"individuals": {}, "chapters": {}, "chapters_map": {}, "imperial_date": _format_imperial_date(datetime.utcnow()), "span_days": 7}
+                rankings = {
+                    "individuals": {},
+                    "chapters": {},
+                    "chapters_map": {},
+                    "imperial_date": _format_imperial_date(datetime.utcnow()),
+                    "span_days": 7,
+                }
 
             imperial_date = rankings.get("imperial_date", "")
             individual_rankings = rankings.get("individuals", {})
@@ -4649,25 +4860,45 @@ async def tally_deeds(
 
             target = members[0]
             target_id = str(target.id)
-            target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
-            home_chapter = resolved_chapters_map.get(target_id, chapters_map.get(target_id, "Unknown"))
+            target_name = getattr(
+                target, "display_name", getattr(target, "name", "Unknown")
+            )
+            home_chapter = resolved_chapters_map.get(
+                target_id, chapters_map.get(target_id, "Unknown")
+            )
 
             # Get individual ranking data
             ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
             avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
-            gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
-            armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
-            risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
-            omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
+            gene_data = individual_rankings.get("gene_carried", {}).get(
+                target_id, (0, 0, 0)
+            )
+            armory_data = individual_rankings.get("armory", {}).get(
+                target_id, (0, 0, 0)
+            )
+            risk_data = individual_rankings.get("high_risk", {}).get(
+                target_id, (0, 0, 0)
+            )
+            omega_kia_data = individual_rankings.get("omega_kia", {}).get(
+                target_id, (0, 0, 0)
+            )
 
             # Get chapter ranking data (matching kill team metrics)
             ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
             ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
             ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
-            ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
-            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
-            ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
-            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
+            ch_armory_val = chapter_rankings.get("armory", {}).get(
+                home_chapter, (0, 0, 0)
+            )[0]
+            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(
+                home_chapter, (0, 0, 0)
+            )[0]
+            ch_risk_data = chapter_rankings.get("high_risk", {}).get(
+                home_chapter, (0, 0, 0)
+            )
+            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
+                home_chapter, (0.0, 0, 0)
+            )
 
             # Build honours ANSI block
             h_lines = []
@@ -4687,12 +4918,26 @@ async def tally_deeds(
             h_lines.append("INDIVIDUAL DISTINCTIONS")
 
             if ops_data[2] > 0:  # Has ranking data
-                h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-                h_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
-                h_lines.append(f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}")
-                h_lines.append(f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}")
-                omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                h_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}")
+                h_lines.append(
+                    f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}"
+                )
+                h_lines.append(
+                    f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}"
+                )
+                h_lines.append(
+                    f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}"
+                )
+                h_lines.append(
+                    f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}"
+                )
+                omega_suffix = (
+                    f" | Omega KIA {int(omega_kia_data[0])}"
+                    if omega_kia_data[0] > 0
+                    else ""
+                )
+                h_lines.append(
+                    f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
+                )
             else:
                 h_lines.append(f"  No ranking data available")
 
@@ -4700,11 +4945,21 @@ async def tally_deeds(
             h_lines.append("CHAPTER DISTINCTIONS")
 
             if ch_ops_data[2] > 0:  # Has chapter ranking data
-                h_lines.append(f"Total Operations         (Ops {int(ch_ops_data[0])}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}")
-                h_lines.append(f"Avg Points per Op        (Avg Op {ch_avg_data[0]:.1f}) — Rank #{ch_avg_data[1]}/{ch_avg_data[2]}")
-                h_lines.append(f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}")
-                h_lines.append(f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}")
-                h_lines.append(f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}")
+                h_lines.append(
+                    f"Total Operations         (Ops {int(ch_ops_data[0])}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}"
+                )
+                h_lines.append(
+                    f"Avg Points per Op        (Avg Op {ch_avg_data[0]:.1f}) — Rank #{ch_avg_data[1]}/{ch_avg_data[2]}"
+                )
+                h_lines.append(
+                    f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}"
+                )
+                h_lines.append(
+                    f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}"
+                )
+                h_lines.append(
+                    f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}"
+                )
             else:
                 h_lines.append(f"  Chapter does not meet minimum threshold for ranking")
 
@@ -4721,24 +4976,72 @@ async def tally_deeds(
                     title=f"Weekly Honours — {target_name}",
                     color=0x2ECC71,
                 )
-                honours_embed.add_field(name="─── Individual Rankings ───", value="\u200b", inline=False)
+                honours_embed.add_field(
+                    name="─── Individual Rankings ───", value="\u200b", inline=False
+                )
                 if ops_data[2] > 0:
-                    honours_embed.add_field(name="Total Operations", value=f"#{ops_data[1]}/{ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Avg Points per Op", value=f"#{avg_data[1]}/{avg_data[2]}", inline=True)
-                    honours_embed.add_field(name="Gene-seed Points", value=f"#{gene_data[1]}/{gene_data[2]}", inline=True)
-                    honours_embed.add_field(name="Armory Points", value=f"#{armory_data[1]}/{armory_data[2]}", inline=True)
-                    honours_embed.add_field(name="High-Risk Ops", value=f"#{risk_data[1]}/{risk_data[2]}", inline=True)
-                honours_embed.add_field(name=f"─── {home_chapter} Rankings ───", value="\u200b", inline=False)
+                    honours_embed.add_field(
+                        name="Total Operations",
+                        value=f"#{ops_data[1]}/{ops_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="Avg Points per Op",
+                        value=f"#{avg_data[1]}/{avg_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="Gene-seed Points",
+                        value=f"#{gene_data[1]}/{gene_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="Armory Points",
+                        value=f"#{armory_data[1]}/{armory_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="High-Risk Ops",
+                        value=f"#{risk_data[1]}/{risk_data[2]}",
+                        inline=True,
+                    )
+                honours_embed.add_field(
+                    name=f"─── {home_chapter} Rankings ───",
+                    value="\u200b",
+                    inline=False,
+                )
                 if ch_ops_data[2] > 0:
-                    honours_embed.add_field(name="Total Operations", value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}", inline=True)
-                    honours_embed.add_field(name="Avg Points per Op", value=f"#{ch_avg_data[1]}/{ch_avg_data[2]}", inline=True)
-                    honours_embed.add_field(name="Armory + Gene-seed", value=f"#{ch_pres_data[1]}/{ch_pres_data[2]}", inline=True)
-                    honours_embed.add_field(name="High-Risk Ops", value=f"#{ch_risk_data[1]}/{ch_risk_data[2]}", inline=True)
-                    honours_embed.add_field(name="AARs per Member", value=f"#{ch_aar_data[1]}/{ch_aar_data[2]}", inline=True)
+                    honours_embed.add_field(
+                        name="Total Operations",
+                        value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="Avg Points per Op",
+                        value=f"#{ch_avg_data[1]}/{ch_avg_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="Armory + Gene-seed",
+                        value=f"#{ch_pres_data[1]}/{ch_pres_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="High-Risk Ops",
+                        value=f"#{ch_risk_data[1]}/{ch_risk_data[2]}",
+                        inline=True,
+                    )
+                    honours_embed.add_field(
+                        name="AARs per Member",
+                        value=f"#{ch_aar_data[1]}/{ch_aar_data[2]}",
+                        inline=True,
+                    )
             except Exception:
                 honours_embed = _embed_from_ansi("Weekly Honours", honours_text)
 
-            honours_view = ToggleFormatView(text_content=honours_text, embed=honours_embed, default="ansi")
+            honours_view = ToggleFormatView(
+                text_content=honours_text, embed=honours_embed, default="ansi"
+            )
             await interaction.followup.send(
                 content=honours_text, embed=None, view=honours_view, ephemeral=True
             )
@@ -4809,14 +5112,23 @@ async def combat_bonds(
         # Active members in the window: those who appeared in at least one AAR
         active_count = len(all_bros)
         try:
-            spreads = await asyncio.to_thread(_build_spread_counts, pair_counts, active_count=active_count)
+            spreads = await asyncio.to_thread(
+                _build_spread_counts, pair_counts, active_count=active_count
+            )
         except Exception:
             spreads = _build_spread_counts(pair_counts, active_count=active_count)
 
         # Store in DataStore cache if available
         try:
             if DATASTORE:
-                await DATASTORE.set_combat_cache(span_days, {"pair_counts": pair_counts, "triples": triples, "spreads": spreads})
+                await DATASTORE.set_combat_cache(
+                    span_days,
+                    {
+                        "pair_counts": pair_counts,
+                        "triples": triples,
+                        "spreads": spreads,
+                    },
+                )
         except Exception:
             pass
 
@@ -4847,10 +5159,14 @@ async def combat_bonds(
             if interaction_deferred:
                 await interaction.followup.send(content=text, view=view, ephemeral=True)
             else:
-                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+                await interaction.response.send_message(
+                    content=text, view=view, ephemeral=True
+                )
         except Exception:
             try:
-                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+                await interaction.response.send_message(
+                    content=text, view=view, ephemeral=True
+                )
             except Exception:
                 logger.exception("combat_bonds: failed to send response or followup")
     else:
@@ -4879,10 +5195,14 @@ async def combat_bonds(
             if interaction_deferred:
                 await interaction.followup.send(content=text, view=view, ephemeral=True)
             else:
-                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+                await interaction.response.send_message(
+                    content=text, view=view, ephemeral=True
+                )
         except Exception:
             try:
-                await interaction.response.send_message(content=text, view=view, ephemeral=True)
+                await interaction.response.send_message(
+                    content=text, view=view, ephemeral=True
+                )
             except Exception:
                 logger.exception("combat_bonds: failed to send response or followup")
 
@@ -4894,21 +5214,21 @@ def classify_difficulty(difficulty: str | None):
     lower = difficulty.lower()
 
     # Use word boundaries to match only complete difficulty terms
-    if re.search(r'\bruthless\b', lower):
+    if re.search(r"\bruthless\b", lower):
         return "ruthless_ops"
-    if re.search(r'\blethal\b', lower):
+    if re.search(r"\blethal\b", lower):
         return "lethal_ops"
-    if re.search(r'\babsolute\b', lower):
+    if re.search(r"\babsolute\b", lower):
         return "absolute_ops"
-    if re.search(r'\bnormal-stratagem\b', lower):
+    if re.search(r"\bnormal-stratagem\b", lower):
         return "normal_stratagem"
-    if re.search(r'\bhard-stratagem\b', lower):
+    if re.search(r"\bhard-stratagem\b", lower):
         return "hard_stratagem"
-    if re.search(r'\bnormal-siege\b', lower):
+    if re.search(r"\bnormal-siege\b", lower):
         return "normal_siege"
-    if re.search(r'\bhard-siege\b', lower):
+    if re.search(r"\bhard-siege\b", lower):
         return "hard_siege"
-    if re.search(r'\bomega\b', lower):
+    if re.search(r"\bomega\b", lower):
         return "omega_ops"
     return None
 
@@ -5406,7 +5726,9 @@ def validate_aar(record: dict):
     # 6) Initiation Trial placement rules (simplified)
     if record.get("initiation_trial"):
         # Check both initiate_ids (new) and initiate_id (legacy) for backward compat
-        has_initiates = bool(record.get("initiate_ids")) or bool(record.get("initiate_id"))
+        has_initiates = bool(record.get("initiate_ids")) or bool(
+            record.get("initiate_id")
+        )
         if not has_initiates:
             errors.append(
                 "Initiation Trial present but no initiate mention found; include the person being initiated."
@@ -6127,8 +6449,10 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
         c = [float(pair_counts.get(p, 0) or 0.0) for p in pairs]
         c_ab, c_ac, c_bc = c
         # Eligibility: all pairs must meet minimum count
-        if (c_ab < float(min_pair)) or (c_ac < float(min_pair)) or (
-            c_bc < float(min_pair)
+        if (
+            (c_ab < float(min_pair))
+            or (c_ac < float(min_pair))
+            or (c_bc < float(min_pair))
         ):
             continue
         # Optional balance gate: require min/max ratio
@@ -6170,7 +6494,9 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
 
 
 def _build_group_bonds(
-    pair_counts: Dict[Tuple[str, str], int], brothers: List[str], sizes: Optional[List[int]] = None
+    pair_counts: Dict[Tuple[str, str], int],
+    brothers: List[str],
+    sizes: Optional[List[int]] = None,
 ):
     """Create group bonds for sizes in `sizes` (default 3..5) and score them.
 
@@ -6214,7 +6540,9 @@ def _build_group_bonds(
                 # Coerce to str and sort to avoid mixed-type compare errors
                 pair_keys.append(tuple(sorted((str(a), str(b)))))
             # gather counts (weights)
-            c_vals: List[float] = [float(pair_counts.get(k, 0) or 0.0) for k in pair_keys]
+            c_vals: List[float] = [
+                float(pair_counts.get(k, 0) or 0.0) for k in pair_keys
+            ]
             if not c_vals:
                 continue
             # Eligibility: each internal pair must meet minimum
@@ -6548,13 +6876,17 @@ def _format_bonds_for_discord(
     )
     lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
     lines.append("  SUB-ROUTINE: BATTLE-LITANY INDEX")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     if window_days is not None:
         lines.append(f"  Auspex Window: Last {window_days} day(s)")
     else:
         lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     # Veneration key (compact) — per-bond output will include only the tier label
-    lines.append("  Veneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE\n")
+    lines.append(
+        "  Veneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE\n"
+    )
     scores_for_cutoffs = [score for _tri, score in bonds]
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
     ordinal_labels = {
@@ -6587,7 +6919,9 @@ def _format_bonds_for_discord(
             if member:
                 try:
                     member_role_names = {
-                        (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                        (getattr(r, "name", "") or "").strip()
+                        for r in member.roles
+                        if getattr(r, "name", None)
                     }
                     match = next(
                         (
@@ -6631,7 +6965,11 @@ def _format_bonds_for_discord(
 
     # Assemble full text, dropping QUINARY (5) then QUATERNARY (4) if over limit
     header = "\n".join(lines)
-    footer = "\n" + "==============================================================================" + "\n\u001b[0m```"
+    footer = (
+        "\n"
+        + "=============================================================================="
+        + "\n\u001b[0m```"
+    )
 
     def assemble(blocks: List[Tuple[int, str]]):
         return header + "\n" + "\n".join(b for _i, b in blocks) + footer
@@ -6679,7 +7017,9 @@ def _format_bonds_embed(
 
     # Compact veneration key in the embed description
     try:
-        embed.description = (embed.description or "") + "\n\nVeneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE"
+        embed.description = (
+            embed.description or ""
+        ) + "\n\nVeneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE"
     except Exception:
         pass
 
@@ -6708,7 +7048,9 @@ def _format_bonds_embed(
         if member:
             try:
                 member_role_names = {
-                    (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
+                    (getattr(r, "name", "") or "").strip()
+                    for r in member.roles
+                    if getattr(r, "name", None)
                 }
                 match = next(
                     (
@@ -6748,7 +7090,9 @@ def _format_bonds_embed(
             break
         tier = _bond_tier_dynamic(score, cutoffs)
         members_in_group = list(triple)
-        name = f"{ordinal_labels.get(rank, 'BOND')} — {tier} ({len(members_in_group)}-man)"
+        name = (
+            f"{ordinal_labels.get(rank, 'BOND')} — {tier} ({len(members_in_group)}-man)"
+        )
         value = "\n".join(f"• {_member_label(uid)}" for uid in members_in_group)
         embed.add_field(name=name, value=value, inline=False)
         rank += 1
@@ -7208,7 +7552,9 @@ async def _compute_fortress_rankings(
 
     def rank_chapters(metric_key: str, higher_is_better: bool = True):
         # Build raw values for eligible chapters
-        raw_vals = {ch: chapters.get(ch, {}).get(metric_key, 0) for ch in eligible_chapters}
+        raw_vals = {
+            ch: chapters.get(ch, {}).get(metric_key, 0) for ch in eligible_chapters
+        }
         # Apply member-count-distance dampening before ranking
         dampened_vals = _apply_chapter_dampening(raw_vals)
         # Sort by dampened values
@@ -7650,7 +7996,9 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     # Filter users to those meeting the minimum ops requirement; if none
     # meet the threshold, fall back to including all users.
-    users_for_eval = {k: v for k, v in users.items() if v.get("ops", 0) >= min_ops_required}
+    users_for_eval = {
+        k: v for k, v in users.items() if v.get("ops", 0) >= min_ops_required
+    }
     if not users_for_eval:
         users_for_eval = users
 
@@ -7875,7 +8223,9 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             pass
         # Special mappings: any 'High Command' label -> explicit role-id mention
         try:
-            if isinstance(team_id, str) and ("high command" in str(team_id).strip().lower()):
+            if isinstance(team_id, str) and (
+                "high command" in str(team_id).strip().lower()
+            ):
                 top5_team_mentions.append("<@&1452913063970865203>")
                 continue
         except Exception:
@@ -8090,18 +8440,20 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
     # --- Chapter rankings across 5 distinction metrics ---
-    def _compute_chapter_ranks_by_metric(metric_fn, reverse: bool = True) -> Dict[str, int]:
+    def _compute_chapter_ranks_by_metric(
+        metric_fn, reverse: bool = True
+    ) -> Dict[str, int]:
         """Compute dense ranks for chapters based on a metric function with dampening."""
         if not eligible:
             return {}
-        
+
         # Calculate median member count for dampening
         _active_counts = [len(chapters_members.get(ch, set())) for ch in eligible]
         _median_members = statistics.median(_active_counts) if _active_counts else 1.0
-        
+
         # Build raw values for eligible chapters
         raw_vals = {ch: metric_fn(ch) for ch in eligible}
-        
+
         # Apply member-count-distance dampening before ranking
         if raw_vals:
             global_mean = statistics.mean(raw_vals.values())
@@ -8109,18 +8461,20 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             for ch, raw in raw_vals.items():
                 members = len(chapters_members.get(ch, set()))
                 distance = abs(members - _median_members)
-                dampening_factor = distance / _median_members if _median_members else 0.0
+                dampening_factor = (
+                    distance / _median_members if _median_members else 0.0
+                )
                 weight = 1.0 / (1.0 + dampening_factor)
                 dampened_vals[ch] = weight * raw + (1.0 - weight) * global_mean
         else:
             dampened_vals = {}
-        
+
         # Sort by dampened values
         sorted_by_val = sorted(
-            [(ch, dampened_vals.get(ch, 0)) for ch in eligible], 
-            key=lambda x: (-x[1] if reverse else x[1], x[0])
+            [(ch, dampened_vals.get(ch, 0)) for ch in eligible],
+            key=lambda x: (-x[1] if reverse else x[1], x[0]),
         )
-        
+
         ranks = {}
         prev_val = None
         current_rank = 0
@@ -8176,13 +8530,17 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     def _build_top5_block():
         period_label = "WEEKLY" if period_days == 7 else "MONTHLY"
-        # Use UTC for display date consistency  
+        # Use UTC for display date consistency
         display_dt_utc = end if end is not None else now
         try:
             display_dt_utc = display_dt_utc.replace(tzinfo=timezone.utc)
         except Exception:
             display_dt_utc = display_dt_utc
-        date_str = display_dt_utc.strftime("%m/%d/%y") if period_days == 7 else display_dt_utc.strftime("%B %Y").upper()
+        date_str = (
+            display_dt_utc.strftime("%m/%d/%y")
+            if period_days == 7
+            else display_dt_utc.strftime("%B %Y").upper()
+        )
 
         # Collect mentions for TOP RANKED line
         top_mentions = []
@@ -8258,11 +8616,15 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             lines.append("TOP RANKED: " + " ".join(deduped_mentions))
         lines.append("")
         lines.append("```ansi")
-        lines.append("\u001b[32m==============================================================================")
+        lines.append(
+            "\u001b[32m=============================================================================="
+        )
         lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
         lines.append(f"  OPERATION-SCRIBE SERVITOR — {period_label} LEADERBOARDS")
         lines.append(f"  Date: {_format_imperial_date(display_dt_utc)}")
-        lines.append("==============================================================================")
+        lines.append(
+            "=============================================================================="
+        )
         lines.append("")
         lines.append("TOP 5 BROTHERS")
 
@@ -8298,7 +8660,9 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             lines.append(f"{display_rank}. {ch} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
-        lines.append("==============================================================================")
+        lines.append(
+            "=============================================================================="
+        )
         lines.append("\u001b[0m```")
         return "\n".join(lines)
 
@@ -8331,32 +8695,35 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     # Build unified ANSI block with distinctions + horizontal top 5 rankings
     def _format_top_rankings_horizontal():
         """Format top 5 rankings as three columns: Brothers | Kill Teams | Chapters."""
+
         def truncate_name(name: str, max_len: int = 25) -> str:
             try:
                 return str(name)[:max_len].ljust(max_len)
             except Exception:
                 return "Unknown".ljust(max_len)
-        
+
         # Build column data
         bro_col = ["BROTHERS"]
         for idx, (uid, _) in enumerate(ind_top5):
             name = _member_display_name(guild, uid)
-            bro_col.append(f"{idx+1}.{truncate_name(name)}")
-        
+            bro_col.append(f"{idx + 1}.{truncate_name(name)}")
+
         kt_col = ["KILL TEAMS"]
         for idx, (tid, _) in enumerate(kt_top5):
-            kt_col.append(f"{idx+1}.{truncate_name(tid)}")
-        
+            kt_col.append(f"{idx + 1}.{truncate_name(tid)}")
+
         ch_col = ["CHAPTERS"]
         for idx, (ch, _) in enumerate(ch_top5):
-            ch_col.append(f"{idx+1}.{truncate_name(ch)}")
-        
+            ch_col.append(f"{idx + 1}.{truncate_name(ch)}")
+
         # Build 3-column layout with padding
         lines = []
         lines.append("")
         lines.append("TOP 5 RANKINGS")
-        lines.append("──────────────────────────────────────────────────────────────────────────────")
-        
+        lines.append(
+            "──────────────────────────────────────────────────────────────────────────────"
+        )
+
         # Header + 5 data rows
         for i in range(6):
             bro_str = bro_col[i] if i < len(bro_col) else ""
@@ -8365,9 +8732,11 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             # Each column gets ~28 chars width for better spacing
             line = f"{bro_str:<28}  {kt_str:<28}  {ch_str:<28}"
             lines.append(line.rstrip())
-        
-        lines.append("──────────────────────────────────────────────────────────────────────────────")
-        
+
+        lines.append(
+            "──────────────────────────────────────────────────────────────────────────────"
+        )
+
         return "\n".join(lines)
 
     ansi_inner = (
@@ -8394,7 +8763,8 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         f"Armory + Gene-seed       {ch3} (ArmoryPts {fmt_avg(ch3_arm)} | GenePts {fmt_avg(ch3_gene)})\n"
         f"High-Risk Ops            {ch4} (Hard-Strat+Omega {ch4_val})\n"
         f"AARs per Member          {ch5} (Avg AAR/Member {fmt_avg(ch5_val)})\n"
-        + _format_top_rankings_horizontal() + "\n"
+        + _format_top_rankings_horizontal()
+        + "\n"
         "=============================================================================="
     )
 
@@ -8427,13 +8797,13 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     # Create unified mobile embed combining both distinctions and top 5 rankings
     period_label = "Weekly" if period_days == 7 else "Monthly"
-    
+
     embed = discord.Embed(
         title=f"{period_label} Leaderboards",
         description=f"📅 **Date:** {_format_imperial_date(display_dt)}",
-        color=0x2ECC71
+        color=0x2ECC71,
     )
-    
+
     # Individual Distinctions
     omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
     individual_text = (
@@ -8443,8 +8813,10 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         f"**Armory Points:** {arm_disp} ({arm_val})\n"
         f"**High-Risk Ops:** {high_disp} ({high_val}{omega_suffix})"
     )
-    embed.add_field(name="🏆 Individual Distinctions", value=individual_text, inline=False)
-    
+    embed.add_field(
+        name="🏆 Individual Distinctions", value=individual_text, inline=False
+    )
+
     # Kill Team Distinctions
     killteam_text = (
         f"**Total Operations:** {kt_ops_name} ({kt_ops_val})\n"
@@ -8454,7 +8826,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         f"**AARs per Member:** {kt_force_name} ({kt_force_val:.1f})"
     )
     embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
-    
+
     # Chapter Distinctions
     chapter_text = (
         f"**Total Operations:** {ch1} ({ch1_val})\n"
@@ -8464,7 +8836,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         f"**AARs per Member:** {ch5} ({ch5_val:.1f})"
     )
     embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
-    
+
     # Top 5 Brothers
     brothers_text = ""
     prev_rank = None
@@ -8476,10 +8848,12 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         name = _member_display_name(guild, uid)
         brothers_text += f"{display_rank}. {name}\n"
         prev_rank = curr_rank
-    
+
     if brothers_text:
-        embed.add_field(name="🏃 Top 5 Brothers", value=brothers_text.strip(), inline=False)
-    
+        embed.add_field(
+            name="🏃 Top 5 Brothers", value=brothers_text.strip(), inline=False
+        )
+
     # Top 5 Kill Teams
     teams_text = ""
     prev_rank = None
@@ -8490,10 +8864,12 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             display_rank = idx + 1
         teams_text += f"{display_rank}. {tid}\n"
         prev_rank = curr_rank
-    
+
     if teams_text:
-        embed.add_field(name="⚡ Top 5 Kill Teams", value=teams_text.strip(), inline=False)
-    
+        embed.add_field(
+            name="⚡ Top 5 Kill Teams", value=teams_text.strip(), inline=False
+        )
+
     # Top 5 Chapters
     chapters_text = ""
     prev_rank = None
@@ -8504,10 +8880,12 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             display_rank = idx + 1
         chapters_text += f"{display_rank}. {ch}\n"
         prev_rank = curr_rank
-    
+
     if chapters_text:
-        embed.add_field(name="fortress Top 5 Chapters", value=chapters_text.strip(), inline=False)
-    
+        embed.add_field(
+            name="fortress Top 5 Chapters", value=chapters_text.strip(), inline=False
+        )
+
     embed.set_footer(text="Use PC/Console button for detailed ANSI view")
 
     return honour_line, ansi, embed
@@ -8522,7 +8900,9 @@ async def _scheduled_honours_runner():
         # Use UTC for consistent scheduling
         now_utc = datetime.now(timezone.utc)
         today = now_utc.date()
-        logger.info(f"Honours runner tick: {now_utc.isoformat()} weekday={today.weekday()} hour={now_utc.hour}")
+        logger.info(
+            f"Honours runner tick: {now_utc.isoformat()} weekday={today.weekday()} hour={now_utc.hour}"
+        )
 
         if DATASTORE is None:
             logger.warning("Honours runner: DATASTORE is None, skipping")
@@ -8548,12 +8928,18 @@ async def _scheduled_honours_runner():
         # due at the same hour (collision), post both (monthly first) with a
         # short pause between posts to reduce likelihood of rate-limit issues.
         weekly_due = (
-            today.weekday() == 5 and now_utc.hour == 1 and LAST_WEEKLY_POST_DATE != str(today)
+            today.weekday() == 5
+            and now_utc.hour == 1
+            and LAST_WEEKLY_POST_DATE != str(today)
         )
         monthly_due = (
-            today.day == 1 and now_utc.hour == 1 and LAST_MONTHLY_POST_DATE != str(today)
+            today.day == 1
+            and now_utc.hour == 1
+            and LAST_MONTHLY_POST_DATE != str(today)
         )
-        logger.info(f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}")
+        logger.info(
+            f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}"
+        )
 
         # Helper to send honours content respecting Discord message length
         async def _send_honours(line, block, embed=None):
@@ -8562,26 +8948,36 @@ async def _scheduled_honours_runner():
                 content = line + "\n" + block
                 if embed and len(content) <= 2000:
                     # Use ToggleFormatView for PC/Console vs Mobile toggle
-                    view = ToggleFormatView(text_content=content, embed=embed, default="ansi")
+                    view = ToggleFormatView(
+                        text_content=content, embed=embed, default="ansi"
+                    )
                     await channel.send(
                         content,
                         view=view,
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
                     )
                 elif len(content) <= 2000:
                     # Fallback without embed if none provided
                     await channel.send(
                         content,
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
                     )
                 else:
                     # Content still too long; send mentions + block separately
                     await channel.send(
                         line,
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
                     )
                     if embed:
-                        view = ToggleFormatView(text_content=block, embed=embed, default="ansi")
+                        view = ToggleFormatView(
+                            text_content=block, embed=embed, default="ansi"
+                        )
                         await channel.send(block, view=view)
                     else:
                         await channel.send(block)
@@ -8610,8 +9006,12 @@ async def _scheduled_honours_runner():
                     logger.info(f"Pre-audit: Ingested {ingested}, rejected {rejected}")
                     # Run recheck (audit archive discrepancies)
                     logger.info(f"Pre-audit: Running recheck for last {span_days} days")
-                    fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
-                    logger.info(f"Pre-audit: Fixed {fixed}, still broken {still_broken}")
+                    fixed, still_broken = await _run_recheck_errors(
+                        aar_channel, span_days
+                    )
+                    logger.info(
+                        f"Pre-audit: Fixed {fixed}, still broken {still_broken}"
+                    )
                 finally:
                     RECONCILE_LOCK.release()
             except Exception:
@@ -8638,18 +9038,14 @@ async def _scheduled_honours_runner():
             # small pause before posting monthly
             await asyncio.sleep(1)
             # Compute first day of current month and previous month (UTC)
-            first_of_current_utc = datetime(
-                now_utc.year, now_utc.month, 1
-            )
+            first_of_current_utc = datetime(now_utc.year, now_utc.month, 1)
             if now_utc.month == 1:
                 prev_month = 12
                 prev_year = now_utc.year - 1
             else:
                 prev_month = now_utc.month - 1
                 prev_year = now_utc.year
-            prev_start_utc = datetime(
-                prev_year, prev_month, 1
-            )
+            prev_start_utc = datetime(prev_year, prev_month, 1)
             try:
                 prev_start = prev_start_utc
                 prev_end = first_of_current_utc
@@ -8657,7 +9053,9 @@ async def _scheduled_honours_runner():
                 prev_start = datetime(prev_year, prev_month, 1)
                 prev_end = datetime(now_utc.year, now_utc.month, 1)
 
-            line, block, embed = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            line, block, embed = await _build_honours(
+                guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+            )
             await _send_honours(line, block, embed)
             LAST_MONTHLY_POST_DATE = str(today)
 
@@ -8673,9 +9071,7 @@ async def _scheduled_honours_runner():
 
         elif monthly_due:
             # Compute previous month boundaries in UTC
-            first_of_current_utc = datetime(
-                now_utc.year, now_utc.month, 1
-            )
+            first_of_current_utc = datetime(now_utc.year, now_utc.month, 1)
             if now_utc.month == 1:
                 prev_month = 12
                 prev_year = now_utc.year - 1
@@ -8694,7 +9090,9 @@ async def _scheduled_honours_runner():
                 prev_start = datetime(prev_year, prev_month, 1)
                 prev_end = datetime(now_utc.year, now_utc.month, 1)
 
-            line, block, embed = await _build_honours(guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end)
+            line, block, embed = await _build_honours(
+                guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+            )
             try:
                 await _send_honours(line, block, embed)
             except Exception:
@@ -8738,7 +9136,9 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     guild = interaction.guild
     if (period or "").lower().startswith("w"):
         days = 7
-        honour_line, ansi, embed = await _build_honours(guild, days, include_mentions=True)
+        honour_line, ansi, embed = await _build_honours(
+            guild, days, include_mentions=True
+        )
     else:
         # Monthly preview: show current partial month (from 1st of current month to now)
         now = datetime.utcnow()
@@ -8794,7 +9194,9 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
                 if embed:
-                    view = ToggleFormatView(text_content=ansi, embed=embed, default="ansi")
+                    view = ToggleFormatView(
+                        text_content=ansi, embed=embed, default="ansi"
+                    )
                     await interaction.followup.send(ansi, view=view, ephemeral=True)
                 else:
                     await interaction.followup.send(ansi, ephemeral=True)
@@ -8808,7 +9210,9 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                     ch = interaction.channel
                     if ch:
                         if embed:
-                            view = ToggleFormatView(text_content=ansi, embed=embed, default="ansi")
+                            view = ToggleFormatView(
+                                text_content=ansi, embed=embed, default="ansi"
+                            )
                             await ch.send(ansi, view=view)
                         else:
                             await ch.send(ansi)
@@ -8816,7 +9220,9 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                     # last-resort: attempt to send ANSI as a normal followup
                     try:
                         if embed:
-                            view = ToggleFormatView(text_content=ansi, embed=embed, default="ansi")
+                            view = ToggleFormatView(
+                                text_content=ansi, embed=embed, default="ansi"
+                            )
                             await interaction.followup.send(ansi, view=view)
                         else:
                             await interaction.followup.send(ansi)
@@ -8830,7 +9236,9 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
                 if deferred:
                     await interaction.followup.send(ansi, view=view, ephemeral=True)
                 else:
-                    await interaction.response.send_message(ansi, view=view, ephemeral=True)
+                    await interaction.response.send_message(
+                        ansi, view=view, ephemeral=True
+                    )
             else:
                 if deferred:
                     await interaction.followup.send(ansi, ephemeral=True)
@@ -8875,19 +9283,19 @@ def can_roster_audit(user: discord.User | discord.Member) -> bool:
     uid = str(getattr(user, "id", None))
     if uid in admin_ids:
         return True
-    
+
     perms = CONFIG.get("permissions", {}) or {}
     block = perms.get("roster_audit", {}) or {}
-    
+
     for r in block.get("roles") or []:
         role_names = _canonical_role_names(user)
         if str(r) in role_names:
             return True
-    
+
     for i in block.get("user_ids") or []:
         if uid == str(i):
             return True
-    
+
     # Fallback: check if user has Watch Master or Forgemaster role
     names = _canonical_role_names(user)
     return any(n in ("Watch Master", "Forgemaster") for n in names)
@@ -8915,7 +9323,7 @@ def _extract_role_mention_from_text(text: str) -> Optional[int]:
         match = re.search(pattern, text)
         if match:
             return int(match.group(1))
-        
+
         # Try emoji format: <:NAME:123456>
         pattern = r"<:\w+:(\d+)>"
         match = re.search(pattern, text)
@@ -8931,7 +9339,7 @@ def _extract_position_label(line: str) -> Optional[str]:
     Returns the label (without colons) or None."""
     try:
         # Match :LabelText: at start of line (emoji format)
-        match = re.search(r':([A-Za-z]+):', line)
+        match = re.search(r":([A-Za-z]+):", line)
         if match:
             label = match.group(1)
             if label in POSITION_LABEL_MAP:
@@ -8945,19 +9353,19 @@ async def _find_roster_messages(
     guild: discord.Guild, roster_channel_id: int
 ) -> Tuple[Optional[discord.Message], Optional[discord.Message], List[discord.Message]]:
     """Find the roster messages by position.
-    
+
     - Skip first 4 messages (newest)
     - 5th message (index 4) = High Command
     - 6th message (index 5) = Company Command
     - 7th+ (index 6+) = Kill Teams (multiple messages possible)
-    
+
     Returns (high_command_msg, company_command_msg, kill_teams_msgs_list).
     """
     try:
         channel = guild.get_channel(roster_channel_id)
         if not channel:
             return None, None, []
-        
+
         # Fetch messages (returns in reverse chronological order - newest first)
         messages = []
         try:
@@ -8966,18 +9374,18 @@ async def _find_roster_messages(
         except Exception as e:
             logger.debug(f"Error fetching channel history: {e}")
             return None, None, []
-        
+
         # Reverse to get oldest first, so indexing is intuitive
         messages.reverse()
-        
+
         # Extract based on position
         high_cmd = messages[4] if len(messages) > 4 else None
         company_cmd = messages[5] if len(messages) > 5 else None
         kill_teams = messages[6:] if len(messages) > 6 else []
-        
+
         logger.debug(f"Found {len(messages)} messages in roster channel")
         logger.debug(f"HC: msg {4}, CC: msg {5}, KTs: msgs {6}+")
-        
+
         return high_cmd, company_cmd, kill_teams
     except Exception:
         logger.exception("Error finding roster messages")
@@ -8990,19 +9398,25 @@ def _parse_roster_section(content: str) -> Dict[int, List[str]]:
     Returns dict: user_id -> list of role names extracted from position label."""
     members = {}
     try:
-        lines = content.split('\n')
+        lines = content.split("\n")
         for line in lines:
             # Skip vacant, separators, headers, and empty lines
-            if not line.strip() or "[Vacant]" in line or "###" in line or "⎯" in line or "__" in line:
+            if (
+                not line.strip()
+                or "[Vacant]" in line
+                or "###" in line
+                or "⎯" in line
+                or "__" in line
+            ):
                 continue
-            
+
             # Extract position label from emoji code
             label = _extract_position_label(line)
             position_role = POSITION_LABEL_MAP.get(label) if label else None
-            
+
             # Extract user mention from end of line
             user_ids = _extract_mentions_from_text(line)
-            
+
             if user_ids:
                 for user_id in user_ids:
                     if user_id not in members:
@@ -9011,13 +9425,13 @@ def _parse_roster_section(content: str) -> Dict[int, List[str]]:
                         members[user_id].append(position_role)
     except Exception:
         logger.exception("Error parsing roster section")
-    
+
     return members
 
 
 def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any]]]:
     """Parse Kill Teams section (all teams in one message).
-    
+
     Format:
     ### <:KTEmoji:ID>  ᛭⋅ __@[Kill Team]__ ⋅᛭ <:KTEmoji:ID>
     **Sergeant:**
@@ -9025,23 +9439,23 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
     **Champion:**
     - [Chapter Emoji] <@USER_ID>
     - [Chapter Emoji] <@USER_ID>
-    
+
     Returns dict: kill_team_role_id -> {user_id -> {"rank": "Sergeant|Champion|Member"}}.
     """
     kill_teams = {}
     try:
-        lines = content.split('\n')
+        lines = content.split("\n")
         logger.debug(f"Parsing {len(lines)} lines from kill teams section")
         logger.debug(f"Content preview: {content[:300]}")
         current_kt_role_id = None
         current_kt_members = {}
         current_rank = "Member"  # Default rank for unlabeled members
-        
+
         for line_num, line in enumerate(lines):
             line_stripped = line.strip()
             if not line_stripped:
                 continue
-            
+
             # Check if this is a Kill Team header (contains "###" and a role mention like <@&ID>)
             if "###" in line and "<@&" in line:
                 logger.debug(f"Line {line_num}: Possible KT header: {line[:100]}")
@@ -9059,29 +9473,35 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
                     continue
                 else:
                     logger.debug(f"Could not extract role ID from line: {line[:80]}")
-            
+
             # Check if this is a rank marker (e.g., "**Sergeant:**" or "**Champion:**")
             if "**Sergeant:**" in line:
                 current_rank = "Sergeant"
-                logger.debug(f"Line {line_num}: Switching to Sergeant rank (applies to next member only)")
+                logger.debug(
+                    f"Line {line_num}: Switching to Sergeant rank (applies to next member only)"
+                )
                 continue
             elif "**Champion:**" in line:
                 current_rank = "Champion"
-                logger.debug(f"Line {line_num}: Switching to Champion rank (applies to next member only)")
+                logger.debug(
+                    f"Line {line_num}: Switching to Champion rank (applies to next member only)"
+                )
                 continue
-            
+
             # Skip separators and headers
             if "###" in line or "⎯" in line or "__" in line:
                 continue
-            
+
             # If we have a current kill team, parse members
             if current_kt_role_id is not None:
                 # Check if this is an empty member slot (just "- " with no mentions)
                 user_ids = _extract_mentions_from_text(line)
-                
+
                 if user_ids:
                     # Has members - apply current rank and then reset to Member for next lines
-                    logger.debug(f"Line {line_num}: Found {len(user_ids)} users with rank {current_rank}: {line[:80]}")
+                    logger.debug(
+                        f"Line {line_num}: Found {len(user_ids)} users with rank {current_rank}: {line[:80]}"
+                    )
                     for user_id in user_ids:
                         if user_id not in current_kt_members:
                             current_kt_members[user_id] = {"rank": current_rank}
@@ -9093,19 +9513,23 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
                     current_rank = "Member"
                 elif line.strip().startswith("-"):
                     # Empty slot (just "- " with nothing) - reset rank to Member
-                    logger.debug(f"Line {line_num}: Empty rank slot, resetting to Member")
+                    logger.debug(
+                        f"Line {line_num}: Empty rank slot, resetting to Member"
+                    )
                     current_rank = "Member"
-        
+
         # Save last team
         if current_kt_role_id is not None and current_kt_members:
             kill_teams[current_kt_role_id] = current_kt_members
-            logger.info(f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members")
+            logger.info(
+                f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members"
+            )
         logger.debug(f"Finished parsing kill teams: {len(kill_teams)} teams found")
         if not kill_teams:
             logger.debug("No kill teams found - checking if we ever entered a KT block")
     except Exception:
         logger.exception("Error parsing kill teams section")
-    
+
     return kill_teams
 
 
@@ -9121,18 +9545,17 @@ async def _get_user_roles_by_id(guild: discord.Guild, user_id: int) -> set[str]:
 
 
 def _validate_high_command_roles(
-    expected_position_roles: List[str],
-    actual_roles: set[str]
+    expected_position_roles: List[str], actual_roles: set[str]
 ) -> Tuple[bool, set[str], set[str]]:
     """Validate High Command member roles.
-    
+
     Required: High Command role + Watch Command role + title/position role
     Returns (is_valid, missing_roles, extra_roles).
     """
     expected = set(expected_position_roles) | {"High Command", "Watch Command"}
     missing = expected - actual_roles
     extra = set()
-    
+
     return len(missing) == 0, missing, extra
 
 
@@ -9141,32 +9564,32 @@ async def _validate_company_command_roles(
     company_role_id: int,
     company_command_role_id: int,
     expected_position_roles: List[str],
-    actual_roles: set[str]
+    actual_roles: set[str],
 ) -> Tuple[bool, set[str], set[str]]:
     """Validate Company Command member roles.
-    
+
     Required: companyRoleId + companyCommandRoleId + Watch Command role + position role
     Returns (is_valid, missing_roles, extra_roles).
     """
     expected = set(expected_position_roles) | {"Watch Command"}
-    
+
     try:
         company_role = guild.get_role(company_role_id)
         if company_role:
             expected.add(company_role.name)
     except Exception:
         pass
-    
+
     try:
         company_cmd_role = guild.get_role(company_command_role_id)
         if company_cmd_role:
             expected.add(company_cmd_role.name)
     except Exception:
         pass
-    
+
     missing = expected - actual_roles
     extra = set()
-    
+
     return len(missing) == 0, missing, extra
 
 
@@ -9175,20 +9598,20 @@ async def _validate_kill_team_member_roles(
     company_role_id: int,
     kill_team_role_id: int,
     rank: str,
-    actual_roles: set[str]
+    actual_roles: set[str],
 ) -> Tuple[bool, set[str], set[str]]:
     """Validate Kill Team member roles.
-    
+
     Required:
     - All: companyRoleId + killTeamRoleId
     - Sergeant: + Watch Sergeant
     - Champion: + Kill Team Champion
     - Member: + at least ONE of (Watch Brother, Watch Veteran, Oathsworn)
-    
+
     Returns (is_valid, missing_roles, extra_roles).
     """
     expected = set()
-    
+
     # Add company and kill team role names
     try:
         company_role = guild.get_role(company_role_id)
@@ -9196,14 +9619,14 @@ async def _validate_kill_team_member_roles(
             expected.add(company_role.name)
     except Exception:
         pass
-    
+
     try:
         kt_role = guild.get_role(kill_team_role_id)
         if kt_role:
             expected.add(kt_role.name)
     except Exception:
         pass
-    
+
     if rank == "Sergeant":
         expected.add("Watch Sergeant")
     elif rank == "Champion":
@@ -9213,10 +9636,10 @@ async def _validate_kill_team_member_roles(
         # At least one member rank required
         if not (member_ranks & actual_roles):
             return False, member_ranks, set()
-    
+
     missing = expected - actual_roles
     extra = set()
-    
+
     return len(missing) == 0, missing, extra
 
 
@@ -9227,9 +9650,9 @@ async def _audit_company_roster(
     high_cmd_roster: Dict[int, List[str]],
 ) -> Dict[str, any]:
     """Audit a single company.
-    
+
     high_cmd_roster: shared High Command roster (parsed once globally).
-    
+
     Returns dict with structure:
     {
         "company_name": str,
@@ -9244,37 +9667,41 @@ async def _audit_company_roster(
         "extra": [],
         "mismatch": [],
     }
-    
+
     try:
         roster_channel_id = int(company_config.get("rosterChannelId"))
         company_role_id = int(company_config.get("companyRoleId", 0) or 0)
-        company_command_role_id = int(company_config.get("companyCommandRoleId", 0) or 0)
-        
+        company_command_role_id = int(
+            company_config.get("companyCommandRoleId", 0) or 0
+        )
+
         # Find roster messages
         high_cmd_msg, company_cmd_msg, kill_teams_msgs = await _find_roster_messages(
             guild, roster_channel_id
         )
-        
+
         # Debug logging
         logger.info(f"\n=== AUDITING {company_config.get('name', 'Unknown')} ===")
         logger.info(f"Roster Channel ID: {roster_channel_id}")
-        logger.info(f"High Command Message: {high_cmd_msg.id if high_cmd_msg else 'NOT FOUND'}")
-        logger.info(f"Company Command Message: {company_cmd_msg.id if company_cmd_msg else 'NOT FOUND'}")
+        logger.info(
+            f"High Command Message: {high_cmd_msg.id if high_cmd_msg else 'NOT FOUND'}"
+        )
+        logger.info(
+            f"Company Command Message: {company_cmd_msg.id if company_cmd_msg else 'NOT FOUND'}"
+        )
         logger.info(f"Kill Teams Messages: {len(kill_teams_msgs)} found")
-        
+
         # Parse Company Command and Kill Teams (High Command is passed in as shared)
         company_cmd_roster = (
-            _parse_roster_section(company_cmd_msg.content)
-            if company_cmd_msg
-            else {}
+            _parse_roster_section(company_cmd_msg.content) if company_cmd_msg else {}
         )
-        
+
         # Parse all kill team messages and merge
         kill_teams_roster = {}
         for kt_msg in kill_teams_msgs:
             kt_data = _parse_kill_teams_section(kt_msg.content)
             kill_teams_roster.update(kt_data)
-        
+
         # Debug logging
         logger.info(f"=== AUDITING {company_config.get('name', 'Unknown')} ===")
         logger.info(f"High Command members: {list(high_cmd_roster.keys())}")
@@ -9288,33 +9715,36 @@ async def _audit_company_roster(
             kt_role = guild.get_role(kt_id)
             kt_name = kt_role.name if kt_role else f"KT-{kt_id}"
             logger.info(f"Kill Team {kt_name} (ID: {kt_id}): {list(kt_members.keys())}")
-        
+
         # Collect all users from this company's rosters (not including shared High Command)
-        company_roster_users = (
-            set(company_cmd_roster.keys())
-            | {uid for kt in kill_teams_roster.values() for uid in kt.keys()}
-        )
-        
+        company_roster_users = set(company_cmd_roster.keys()) | {
+            uid for kt in kill_teams_roster.values() for uid in kt.keys()
+        }
+
         # All roster users for this company (High Command + company-specific)
         all_roster_users = set(high_cmd_roster.keys()) | company_roster_users
         logger.info(f"Total roster users: {list(all_roster_users)}")
-        
+
         # Check each roster member for missing roles
         for user_id in all_roster_users:
             actual_roles = await _get_user_roles_by_id(guild, user_id)
-            
+
             if user_id in high_cmd_roster:
                 # High Command validation (always required if in High Command)
                 expected_roles = high_cmd_roster[user_id]
-                is_valid, missing, extra = _validate_high_command_roles(expected_roles, actual_roles)
+                is_valid, missing, extra = _validate_high_command_roles(
+                    expected_roles, actual_roles
+                )
                 if not is_valid or missing:
-                    result["missing"].append({
-                        "user_id": user_id,
-                        "location": "High Command",
-                        "expected": sorted(missing or []),
-                        "actual": sorted(actual_roles),
-                    })
-            
+                    result["missing"].append(
+                        {
+                            "user_id": user_id,
+                            "location": "High Command",
+                            "expected": sorted(missing or []),
+                            "actual": sorted(actual_roles),
+                        }
+                    )
+
             if user_id in company_cmd_roster:
                 # Company Command validation
                 expected_roles = company_cmd_roster[user_id]
@@ -9326,13 +9756,15 @@ async def _audit_company_roster(
                     actual_roles,
                 )
                 if not is_valid or missing:
-                    result["missing"].append({
-                        "user_id": user_id,
-                        "location": "Company Command",
-                        "expected": sorted(missing or []),
-                        "actual": sorted(actual_roles),
-                    })
-            
+                    result["missing"].append(
+                        {
+                            "user_id": user_id,
+                            "location": "Company Command",
+                            "expected": sorted(missing or []),
+                            "actual": sorted(actual_roles),
+                        }
+                    )
+
             # Check Kill Teams
             for kt_role_id, kt_members in kill_teams_roster.items():
                 if user_id in kt_members:
@@ -9342,7 +9774,7 @@ async def _audit_company_roster(
                         kt_role_name = kt_role.name if kt_role else f"KT-{kt_role_id}"
                     except Exception:
                         kt_role_name = f"KT-{kt_role_id}"
-                    
+
                     is_valid, missing, extra = await _validate_kill_team_member_roles(
                         guild,
                         company_role_id,
@@ -9351,58 +9783,78 @@ async def _audit_company_roster(
                         actual_roles,
                     )
                     if not is_valid or missing:
-                        result["missing"].append({
-                            "user_id": user_id,
-                            "location": f"Kill Team ({kt_role_name})",
-                            "rank": rank,
-                            "expected": sorted(missing or []),
-                            "actual": sorted(actual_roles),
-                        })
-        
+                        result["missing"].append(
+                            {
+                                "user_id": user_id,
+                                "location": f"Kill Team ({kt_role_name})",
+                                "rank": rank,
+                                "expected": sorted(missing or []),
+                                "actual": sorted(actual_roles),
+                            }
+                        )
+
         # Check for extra: users with company roles but not in roster
         try:
-            company_role_obj = guild.get_role(company_role_id) if company_role_id else None
-            company_cmd_role_obj = guild.get_role(company_command_role_id) if company_command_role_id else None
-            
+            company_role_obj = (
+                guild.get_role(company_role_id) if company_role_id else None
+            )
+            company_cmd_role_obj = (
+                guild.get_role(company_command_role_id)
+                if company_command_role_id
+                else None
+            )
+
             # Build set of all kill team role IDs that exist
             kt_roles = set(kill_teams_roster.keys())
-            
+
             # Scan all members with company role
             if company_role_obj:
                 for member in company_role_obj.members:
                     if member.id not in all_roster_users:
                         # Check if they have kill team or company command roles
                         member_role_ids = {r.id for r in member.roles}
-                        if company_cmd_role_obj and company_cmd_role_obj.id in member_role_ids:
-                            result["extra"].append({
-                                "user_id": member.id,
-                                "location": "Company Command (should be removed)",
-                                "actual": sorted([r.name for r in member.roles]),
-                            })
+                        if (
+                            company_cmd_role_obj
+                            and company_cmd_role_obj.id in member_role_ids
+                        ):
+                            result["extra"].append(
+                                {
+                                    "user_id": member.id,
+                                    "location": "Company Command (should be removed)",
+                                    "actual": sorted([r.name for r in member.roles]),
+                                }
+                            )
                         elif kt_roles & member_role_ids:
-                            kt_in_member = [guild.get_role(rid).name if guild.get_role(rid) else f"KT-{rid}" for rid in (kt_roles & member_role_ids)]
-                            kt_names = ', '.join(kt_in_member)
+                            kt_in_member = [
+                                guild.get_role(rid).name
+                                if guild.get_role(rid)
+                                else f"KT-{rid}"
+                                for rid in (kt_roles & member_role_ids)
+                            ]
+                            kt_names = ", ".join(kt_in_member)
                             possession = "'s" if len(kt_in_member) == 1 else "s'"
-                            result["extra"].append({
-                                "user_id": member.id,
-                                "location": f"not in {kt_names}{possession} roster",
-                                "actual": sorted([r.name for r in member.roles]),
-                            })
+                            result["extra"].append(
+                                {
+                                    "user_id": member.id,
+                                    "location": f"not in {kt_names}{possession} roster",
+                                    "actual": sorted([r.name for r in member.roles]),
+                                }
+                            )
         except Exception:
             logger.exception("Error checking for extra users")
-        
+
         # Check for mismatches: multiple company roles, multiple kill team roles, conflicting ranks
         # Also check if someone appears in multiple roster sections
         for user_id in all_roster_users:
             actual_roles = await _get_user_roles_by_id(guild, user_id)
-            
+
             # Track where this user appears in the roster
             appears_in = []
             if user_id in high_cmd_roster:
                 appears_in.append("High Command")
             if user_id in company_cmd_roster:
                 appears_in.append("Company Command")
-            
+
             # Check which kill teams they're in
             kt_names = []
             for kt_id, kt_members in kill_teams_roster.items():
@@ -9410,24 +9862,28 @@ async def _audit_company_roster(
                     kt_role = guild.get_role(kt_id)
                     kt_name = kt_role.name if kt_role else f"KT-{kt_id}"
                     kt_names.append(kt_name)
-            
+
             if len(kt_names) > 1:
-                result["mismatch"].append({
-                    "user_id": user_id,
-                    "issue": f"Multiple kill teams: {', '.join(kt_names)}",
-                    "actual": sorted(actual_roles),
-                })
+                result["mismatch"].append(
+                    {
+                        "user_id": user_id,
+                        "issue": f"Multiple kill teams: {', '.join(kt_names)}",
+                        "actual": sorted(actual_roles),
+                    }
+                )
             elif kt_names:
                 appears_in.append(f"Kill Team ({kt_names[0]})")
-            
+
             # Check if user appears in multiple roster sections
             if len(appears_in) > 1:
-                result["mismatch"].append({
-                    "user_id": user_id,
-                    "issue": f"Listed in multiple sections: {', '.join(appears_in)}",
-                    "actual": sorted(actual_roles),
-                })
-            
+                result["mismatch"].append(
+                    {
+                        "user_id": user_id,
+                        "issue": f"Listed in multiple sections: {', '.join(appears_in)}",
+                        "actual": sorted(actual_roles),
+                    }
+                )
+
             # Multiple company roles check
             company_role_count = 0
             for company in (CONFIG.get("companies") or {}).values():
@@ -9437,48 +9893,52 @@ async def _audit_company_roster(
                     if crole and crole.name in actual_roles:
                         company_role_count += 1
             if company_role_count > 1:
-                result["mismatch"].append({
-                    "user_id": user_id,
-                    "issue": "Multiple company roles",
-                    "actual": sorted(actual_roles),
-                })
-    
+                result["mismatch"].append(
+                    {
+                        "user_id": user_id,
+                        "issue": "Multiple company roles",
+                        "actual": sorted(actual_roles),
+                    }
+                )
+
     except Exception:
         logger.exception(f"Error auditing company {company_key}")
-    
+
     return result
 
 
 def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as summary."""
     lines = ["**ROSTER AUDIT — SUMMARY**\n"]
-    
+
     for result in audit_results:
         company = result.get("company_name", "Unknown")
         missing_count = len(result.get("missing", []))
         extra_count = len(result.get("extra", []))
         mismatch_count = len(result.get("mismatch", []))
-        
+
         lines.append(f"**{company}**")
         lines.append(f"  Missing roles: {missing_count}")
         lines.append(f"  Extra (not in roster): {extra_count}")
         lines.append(f"  Mismatches: {mismatch_count}")
         lines.append("")
-    
-    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
+
+    if not any(
+        r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
+    ):
         lines.append("✅ No discrepancies found.")
-    
+
     return "\n".join(lines)
 
 
 def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as full detail."""
     lines = ["**ROSTER AUDIT — FULL REPORT**\n"]
-    
+
     for result in audit_results:
         company = result.get("company_name", "Unknown")
         lines.append(f"**{company}**\n")
-        
+
         missing = result.get("missing", [])
         if missing:
             lines.append("**Missing Roles:**")
@@ -9491,7 +9951,7 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
                 lines.append(f"  <@{user_id}> ({location}){rank_str}")
                 lines.append(f"    Expected: {', '.join(expected)}")
             lines.append("")
-        
+
         extra = result.get("extra", [])
         if extra:
             lines.append("**Extra (Not in Roster):**")
@@ -9500,7 +9960,7 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
                 location = item.get("location", "Unknown")
                 lines.append(f"  <@{user_id}> ({location})")
             lines.append("")
-        
+
         mismatch = result.get("mismatch", [])
         if mismatch:
             lines.append("**Mismatches:**")
@@ -9511,10 +9971,12 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
                 lines.append(f"  <@{user_id}>: {issue}")
                 lines.append(f"    Roles: {', '.join(actual)}")
             lines.append("")
-    
-    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
+
+    if not any(
+        r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
+    ):
         lines.append("✅ No discrepancies found.")
-    
+
     return "\n".join(lines)
 
 
@@ -9532,61 +9994,63 @@ async def roster_audit(
     format: str = "full",
 ):
     """Audit company rosters.
-    
+
     scope: all|missing|extra|mismatch
     format: summary|full
-    
+
     Permission: Forgemaster OR Watch Master only.
     """
     if not (can_roster_audit(interaction.user) and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    
+
     # Defer for long-running operation
     try:
         await interaction.response.defer(ephemeral=True, thinking=True)
     except Exception:
         logger.debug("Could not defer interaction; continuing")
-    
+
     try:
         scope = (scope or "all").lower()
         format = (format or "summary").lower()
-        
+
         if scope not in ("all", "missing", "extra", "mismatch"):
             scope = "all"
         if format not in ("summary", "full"):
             format = "summary"
-        
+
         guild = interaction.guild
         if not guild:
             await interaction.followup.send("Guild not found.", ephemeral=True)
             return
-        
+
         # Determine which companies to audit
         companies = CONFIG.get("companies") or {}
-        
+
         # Check if invoked in a roster channel
-        channel_id = getattr(interaction.channel, "id", None) if interaction.channel else None
+        channel_id = (
+            getattr(interaction.channel, "id", None) if interaction.channel else None
+        )
         audit_companies = {}
-        
+
         if channel_id:
             # Find company by roster channel ID
             for key, config in companies.items():
                 if int(config.get("rosterChannelId", 0)) == channel_id:
                     audit_companies[key] = config
                     break
-        
+
         # If no specific company found, audit all
         if not audit_companies:
             audit_companies = companies
-        
+
         if not audit_companies:
             await interaction.followup.send(
                 "No companies configured. Add entries to `companies` in config.json.",
-                ephemeral=True
+                ephemeral=True,
             )
             return
-        
+
         # Parse High Command once (it's shared across all companies)
         # Use the first company's roster channel to find High Command
         high_cmd_roster = {}
@@ -9598,13 +10062,15 @@ async def roster_audit(
                 high_cmd_roster = _parse_roster_section(high_cmd_msg.content)
         except Exception:
             logger.exception("Error parsing shared High Command")
-        
+
         # Run audits
         results = []
         for company_key, company_config in audit_companies.items():
-            result = await _audit_company_roster(guild, company_key, company_config, high_cmd_roster)
+            result = await _audit_company_roster(
+                guild, company_key, company_config, high_cmd_roster
+            )
             results.append(result)
-        
+
         # Filter by scope
         if scope == "missing":
             for r in results:
@@ -9618,27 +10084,27 @@ async def roster_audit(
             for r in results:
                 r["missing"] = []
                 r["extra"] = []
-        
+
         # Format output
         if format == "summary":
             output = _format_audit_summary(results)
         else:
             output = _format_audit_full(results)
-        
+
         # Send output, split if needed
         if len(output) <= 2000:
             await interaction.followup.send(output, ephemeral=True)
         else:
             # Split into chunks
-            chunks = [output[i:i+2000] for i in range(0, len(output), 2000)]
+            chunks = [output[i : i + 2000] for i in range(0, len(output), 2000)]
             for chunk in chunks:
                 await interaction.followup.send(chunk, ephemeral=True)
-    
+
     except Exception:
         logger.exception("Error in roster_audit command")
         await interaction.followup.send(
             "An error occurred during the audit. Check logs for details.",
-            ephemeral=True
+            ephemeral=True,
         )
 
 
