@@ -9850,72 +9850,12 @@ async def _audit_company_roster(
             # Build set of all kill team role IDs that exist
             kt_roles = set(kill_teams_roster.keys())
 
-            # Ranks above Sergeant that should not have Kill Team roles
-            ranks_above_sergeant = {
-                "Watch Lieutenant",
-                "Watch Captain",
-                "Company Champion",
-                "Lord Executioner",
-                "Watch Chaplain",
-                "Watch Apothecary",
-                "Watch Librarian",
-                "Watch Techmarine",
-                "Watch Master",
-                "High Chaplain",
-                "Chief Apothecary",
-                "Void Warden",
-                "Forgemaster",
-            }
-
             # Scan all members with company role
             if company_role_obj:
                 for member in company_role_obj.members:
-                    member_role_names = {r.name for r in member.roles}
-                    member_role_ids = {r.id for r in member.roles}
-
-                    # Check: ranks above Sergeant with KT roles (check ALL company members)
-                    has_rank_above_sgt = any(
-                        r in ranks_above_sergeant for r in member_role_names
-                    )
-                    kt_roles_held = [
-                        r
-                        for r in member_role_names
-                        if r.startswith("Kill Team") and r != "Kill Team Champion"
-                    ]
-                    if has_rank_above_sgt and kt_roles_held:
-                        user_rank = next(
-                            (r for r in member_role_names if r in ranks_above_sergeant),
-                            "Unknown",
-                        )
-                        result["mismatch"].append(
-                            {
-                                "user_id": member.id,
-                                "issue": f"{user_rank} should not have KT role: {', '.join(kt_roles_held)}",
-                                "actual": sorted(member_role_names),
-                            }
-                        )
-
-                    # Check: Sergeant or below without Reserves AND (missing Company or missing KT)
-                    if not has_rank_above_sgt:
-                        has_reserves = "Reserves" in member_role_names
-                        has_company_cmd = (
-                            company_cmd_role_obj
-                            and company_cmd_role_obj.id in member_role_ids
-                        )
-                        has_kt = bool(kt_roles_held)
-                        # Flag if no Reserves AND (no Company OR no KT)
-                        if not has_reserves and (not has_company_cmd or not has_kt):
-                            result["mismatch"].append(
-                                {
-                                    "user_id": member.id,
-                                    "issue": "Sergeant or below: missing Reserves and (Company role or Kill Team role)",
-                                    "actual": sorted(member_role_names),
-                                }
-                            )
-
-                    # Existing check: members not in roster
                     if member.id not in all_roster_users:
                         # Check if they have kill team or company command roles
+                        member_role_ids = {r.id for r in member.roles}
                         if (
                             company_cmd_role_obj
                             and company_cmd_role_obj.id in member_role_ids
@@ -9924,7 +9864,7 @@ async def _audit_company_roster(
                                 {
                                     "user_id": member.id,
                                     "location": "Company Command (should be removed)",
-                                    "actual": sorted(member_role_names),
+                                    "actual": sorted([r.name for r in member.roles]),
                                 }
                             )
                         elif kt_roles & member_role_ids:
@@ -9940,7 +9880,7 @@ async def _audit_company_roster(
                                 {
                                     "user_id": member.id,
                                     "location": f"not in {kt_names}{possession} roster",
-                                    "actual": sorted(member_role_names),
+                                    "actual": sorted([r.name for r in member.roles]),
                                 }
                             )
         except Exception:
@@ -10003,43 +9943,6 @@ async def _audit_company_roster(
                         "actual": sorted(actual_roles),
                     }
                 )
-
-            # Check for ranks above Sergeant having Kill Team roles (only for High Command,
-            # since company members are checked in the company members loop below)
-            if user_id in high_cmd_roster:
-                ranks_above_sergeant = {
-                    "Watch Lieutenant",
-                    "Watch Captain",
-                    "Company Champion",
-                    "Lord Executioner",
-                    "Watch Chaplain",
-                    "Watch Apothecary",
-                    "Watch Librarian",
-                    "Watch Techmarine",
-                    "Watch Master",
-                    "High Chaplain",
-                    "Chief Apothecary",
-                    "Void Warden",
-                    "Forgemaster",
-                }
-                has_rank_above_sgt = any(r in ranks_above_sergeant for r in actual_roles)
-                # Check for Kill Team roles (pattern: "Kill Team *" but NOT "Kill Team Champion")
-                kt_roles_held = [
-                    r for r in actual_roles
-                    if r.startswith("Kill Team") and r != "Kill Team Champion"
-                ]
-                if has_rank_above_sgt and kt_roles_held:
-                    # Find which rank they have
-                    user_rank = next(
-                        (r for r in actual_roles if r in ranks_above_sergeant), "Unknown"
-                    )
-                    result["mismatch"].append(
-                        {
-                            "user_id": user_id,
-                            "issue": f"{user_rank} should not have KT role: {', '.join(kt_roles_held)}",
-                            "actual": sorted(actual_roles),
-                        }
-                    )
 
     except Exception:
         logger.exception(f"Error auditing company {company_key}")
