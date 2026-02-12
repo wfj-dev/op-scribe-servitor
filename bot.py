@@ -2558,7 +2558,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Build attestation
     # Warhammer 40k-style date: check.dayOfYear(3-digit).yearWithinMillennium(3-digit).Millennium
     try:
-        now = datetime.now()
+        now = datetime.utcnow()
         year = now.year
         day_of_year = now.timetuple().tm_yday
         # Check digit (usually 0)
@@ -2567,8 +2567,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         millennium = (year - 1) // 1000 + 1
         ts = f"{check}.{day_of_year:03d}.{year_within_millennium:03d}.M{millennium}"
     except Exception:
-        ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    ledger = uuid.uuid4().hex[:12].upper()
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     # Authority
     if role_key == "forgemaster":
         authority = "Jericho High Command"
@@ -2633,7 +2632,6 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append(f"Attesting Techmarine = {attester}")
     lines.append(f"Authority = {authority}")
     lines.append(f"Timestamp = {ts}")
-    lines.append(f"Ledger Reference = {ledger}")
     lines.append("")
     if rite_text:
         lines.append("Consecration Rite:")
