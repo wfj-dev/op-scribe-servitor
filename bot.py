@@ -536,14 +536,25 @@ except Exception:
 # ---------------------------------------------------------------------------
 
 
-def _load_activity_status() -> Dict[str, str]:
-    """Load stored activity status mapping: user_id -> 'active' or 'inactive'."""
+def _load_activity_status() -> Dict[str, Dict]:
+    """Load stored activity status mapping: user_id -> {'status': 'active'|'inactive', 'updated_at': ISO timestamp}.
+    
+    For backwards compatibility, if status is a string, convert to new format.
+    """
     try:
         if os.path.exists(ACTIVITY_STATUS_PATH):
             with open(ACTIVITY_STATUS_PATH, "r") as f:
                 data = json.load(f)
                 if isinstance(data, dict):
-                    return data
+                    result = {}
+                    for uid, val in data.items():
+                        if isinstance(val, str):
+                            # Old format: just the status string
+                            result[uid] = {"status": val, "updated_at": None}
+                        elif isinstance(val, dict):
+                            # New format: already has status and updated_at
+                            result[uid] = val
+                    return result
     except Exception:
         pass
     return {}
@@ -630,13 +641,25 @@ def _save_activity_status_last_check(check_time: datetime):
         logger.debug(f"Failed to save activity status last check: {e}")
 
 
-def _save_activity_status(status_map: Dict[str, str]):
-    """Persist activity status mapping to disk with backup."""
+def _save_activity_status(status_map: Dict[str, Dict]):
+    """Persist activity status mapping to disk with backup.
+    
+    Each entry is now {user_id: {'status': 'active'|'inactive', 'updated_at': ISO timestamp}}
+    """
     try:
         tmp_path = ACTIVITY_STATUS_PATH + ".tmp"
         bak_path = ACTIVITY_STATUS_PATH + ".bak"
+        # Ensure all entries have updated_at timestamp
+        normalized_map = {}
+        for uid, entry in status_map.items():
+            if isinstance(entry, dict):
+                normalized_map[uid] = entry
+            else:
+                # Shouldn't happen but handle gracefully
+                normalized_map[uid] = {"status": entry, "updated_at": datetime.utcnow().isoformat()}
+        
         with open(tmp_path, "w") as f:
-            json.dump(status_map, f, indent=2)
+            json.dump(normalized_map, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         if os.path.exists(ACTIVITY_STATUS_PATH):
@@ -990,7 +1013,7 @@ async def _check_activity_status_changes():
                         last_post_dt < cutoff_datetime
                     )  # At or past 28-day threshold
 
-                    if is_recent or is_at_threshold or prev_status.get(uid) == "active":
+                    if is_recent or is_at_threshold or (isinstance(prev_status.get(uid), dict) and prev_status.get(uid, {}).get("status") == "active"):
                         users_to_check.add(uid)
                 except Exception:
                     users_to_check.add(uid)
@@ -1016,17 +1039,51 @@ async def _check_activity_status_changes():
                     else:
                         current_status = "inactive"
 
-                    new_status_map[user_id] = current_status
+                    new_status_entry = {
+                        "status": current_status,
+                        "updated_at": check_start_time.isoformat()
+                    }
+                    new_status_map[user_id] = new_status_entry
 
-                    old = prev_status.get(user_id)
-                    if old and old != current_status:
+                    # Extract old status (handling both new dict format and legacy string format)
+                    old_entry = prev_status.get(user_id)
+                    old_status = None
+                    old_updated_at = None
+                    if isinstance(old_entry, dict):
+                        old_status = old_entry.get("status")
+                        old_updated_at = old_entry.get("updated_at")
+                    elif isinstance(old_entry, str):
+                        old_status = old_entry
+
+                    # Only notify for status changes if not first check and member is transitioning to a new state
+                    # For inactive->active, only notify if they were marked inactive at least 7 days ago
+                    # (prevents notifying brand-new members found in old records)
+                    should_notify = False
+                    if not is_first_check and old_status and old_status != current_status:
+                        if current_status == "active" and old_status == "inactive":
+                            # inactive->active: only notify if member was inactive for a while
+                            # (i.e., marked inactive at least 7 days ago)
+                            if old_updated_at:
+                                try:
+                                    last_update = datetime.fromisoformat(old_updated_at)
+                                    if last_update.tzinfo is not None:
+                                        last_update = last_update.astimezone(tz=None).replace(tzinfo=None)
+                                    days_inactive = (check_start_time - last_update).days
+                                    should_notify = days_inactive >= 7
+                                except Exception:
+                                    should_notify = False
+                        else:
+                            # active->inactive: always notify (these are real departures)
+                            should_notify = True
+                    
+                    if should_notify:
                         # Status changed; find member in guild
                         try:
                             member = guild.get_member(int(user_id))
                             if not member:
                                 member = await guild.fetch_member(int(user_id))
                             if member and not member.bot:
-                                changes.append((member, old, current_status))
+                                changes.append((member, old_status, current_status))
                         except Exception:
                             pass
                 except Exception:
