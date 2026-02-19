@@ -41,9 +41,19 @@ ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
 ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
     DATA_DIR, "activity_status_last_check.json"
 )
+PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
+
+# Channel ID for veteran promotion notifications
+VETERAN_PROMOTION_CHANNEL_ID = 1443813516979994634
+
+# Channel ID for service stud milestone notifications
+SERVICE_STUDS_CHANNEL_ID = 1430203472669835415
+
+# Channel ID for Black Laurels eligibility notifications
+BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -82,6 +92,21 @@ SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
+# Black Laurels strict enforcement begins on Feb 20, 2026 at 00:00 UTC
+BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc)
+# Black Laurels role ID for parsing
+BLACK_LAURELS_ROLE_ID = 1440108298115485716
+# Required missions for Black Laurels eligibility
+BLACK_LAURELS_REQUIRED_MISSIONS = {
+    "inferno",
+    "decapitation",
+    "vox liberatis",
+    "ballistic engine",
+    "exfiltration",
+    "termination",
+    "reclamation",
+    "disruption",
+}
 
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
@@ -672,6 +697,39 @@ def _save_activity_status(status_map: Dict[str, Dict]):
         logger.exception(f"Failed to save activity status: {e}")
 
 
+def _load_promotion_tracking() -> Dict[str, Dict]:
+    """Load promotion tracking data: user_id -> {'veteran_notified': bool, 'last_studs_count': int}.
+    
+    Tracks which milestones have already been notified for each member.
+    """
+    try:
+        if os.path.exists(PROMOTION_TRACKING_PATH):
+            with open(PROMOTION_TRACKING_PATH, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
+    """Persist promotion tracking data to disk with backup."""
+    try:
+        tmp_path = PROMOTION_TRACKING_PATH + ".tmp"
+        bak_path = PROMOTION_TRACKING_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(tracking_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(PROMOTION_TRACKING_PATH):
+            try:
+                os.replace(PROMOTION_TRACKING_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, PROMOTION_TRACKING_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save promotion tracking: {e}")
+
+
 def _get_member_company_name(member: discord.Member) -> Optional[str]:
     """Return the Watch Company name for a member (e.g., 'Watch Company Primus'), or None."""
     company_roles = {
@@ -1095,9 +1153,11 @@ async def _check_activity_status_changes():
                     new_status_map[uid] = status
 
             # Save updated data
+            # Note: _save_member_last_post_times already saves last_check_time,
+            # so we don't call _save_activity_status_last_check separately
+            # (that would overwrite and destroy member_last_posts data)
             _save_activity_status(new_status_map)
             _save_member_last_post_times(member_last_posts)
-            _save_activity_status_last_check(check_start_time)
 
             # Send notifications for changes
             for member, old, new in changes:
@@ -1122,9 +1182,249 @@ async def _check_activity_status_changes():
             logger.exception(f"Activity status check failed: {e}")
 
 
+async def _check_promotion_milestones():
+    """Check guild members for promotion eligibility milestones and send notifications.
+    
+    Checks for:
+    - Watch Veteran eligibility: 200 AAR points AND 2 weeks in server
+    - Service Studs milestones: new studs earned (1 per 4 weeks AND 400 AAR points)
+    """
+    try:
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.debug("Promotion check: no guild available")
+            return
+
+        if DATASTORE is None:
+            logger.debug("Promotion check: DATASTORE not initialized")
+            return
+
+        # Get veteran promotion channel
+        veteran_channel = guild.get_channel(VETERAN_PROMOTION_CHANNEL_ID)
+        if not veteran_channel:
+            try:
+                veteran_channel = await bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
+            except Exception:
+                logger.warning(f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found")
+                veteran_channel = None
+
+        # Get service studs channel
+        studs_channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+        if not studs_channel:
+            try:
+                studs_channel = await bot.fetch_channel(SERVICE_STUDS_CHANNEL_ID)
+            except Exception:
+                logger.warning(f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found")
+                studs_channel = None
+
+        # Get Black Laurels notification channel
+        black_laurels_channel = guild.get_channel(BLACK_LAURELS_CHANNEL_ID)
+        if not black_laurels_channel:
+            try:
+                black_laurels_channel = await bot.fetch_channel(BLACK_LAURELS_CHANNEL_ID)
+            except Exception:
+                logger.warning(f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found")
+                black_laurels_channel = None
+
+        if not veteran_channel and not studs_channel and not black_laurels_channel:
+            logger.warning("No promotion channels available")
+            return
+
+        # Load tracking data
+        tracking = _load_promotion_tracking()
+        notifications_sent = 0
+
+        # Get Watch Command role for mentions
+        watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
+        watch_command_mention = watch_command_role.mention if watch_command_role else "@Watch Command"
+
+        # Get Watch Veteran role for mentions
+        watch_veteran_role = discord.utils.get(guild.roles, name="Watch Veteran")
+        watch_veteran_mention = watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
+
+        # Get Black Laurels role for mentions
+        black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
+        black_laurels_mention = black_laurels_role.mention if black_laurels_role else "@Black Laurels"
+
+        # Build a map of user_id -> set of completed Black Laurels missions
+        user_bl_missions: Dict[str, set] = {}
+        for rec in DATASTORE.iter_records():
+            difficulty = (rec.get("difficulty") or "").lower()
+            black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
+            black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
+            
+            # Check grace period
+            is_in_grace_period = True
+            try:
+                timestamp_str = rec.get("timestamp", "")
+                if timestamp_str:
+                    message_created_at = datetime.fromisoformat(timestamp_str)
+                    if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
+                        is_in_grace_period = False
+            except Exception:
+                pass
+            
+            if is_in_grace_period:
+                has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
+            else:
+                has_black_laurels = black_laurels_in_difficulty
+            
+            if not has_black_laurels:
+                continue
+            
+            # Check @Absolute
+            if "absolute" not in difficulty:
+                continue
+            
+            mission = rec.get("mission")
+            if not mission:
+                continue
+            
+            mission_lower = mission.strip().lower()
+            if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                continue
+            
+            for uid in rec.get("brother_ids") or []:
+                uid_str = str(uid)
+                if uid_str not in user_bl_missions:
+                    user_bl_missions[uid_str] = set()
+                user_bl_missions[uid_str].add(mission_lower)
+
+        # Check all members with Watch Brother rank (candidates for Veteran promotion)
+        # and Watch Veteran+ (candidates for service studs)
+        for member in guild.members:
+            if member.bot:
+                continue
+
+            try:
+                role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+                is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
+                is_veteran_or_higher = any(
+                    r in role_names for r in [
+                        "Watch Veteran", "Oathsworn", "Kill Team Champion", "Watch Sergeant",
+                        "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
+                        "Company Champion", "Watch Lieutenant", "Watch Captain", "Venerable",
+                        "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
+                        "Lord Executioner", "Watch Master"
+                    ]
+                )
+
+                if not (is_watch_brother or is_veteran_or_higher):
+                    continue
+
+                user_id = str(member.id)
+                user_tracking = tracking.get(user_id, {})
+
+                # Get member stats
+                stats = compute_stats_for_user(user_id)
+                aar_points = int(stats.get("aar_points", 0) or 0)
+
+                # Get member join time
+                joined_at = getattr(member, "joined_at", None)
+                if joined_at:
+                    if joined_at.tzinfo is not None:
+                        joined_at = joined_at.replace(tzinfo=None)
+                    weeks_in_server = max(0, (datetime.utcnow() - joined_at).days // 7)
+                else:
+                    weeks_in_server = 0
+
+                # Get member's home chapter from roles
+                member_chapter = "Unknown"
+                for role in getattr(member, "roles", []):
+                    role_name = getattr(role, "name", "")
+                    if role_name in HOME_CHAPTERS:
+                        member_chapter = role_name
+                        break
+
+                # Check Watch Veteran eligibility (200 AAR + 2 weeks)
+                if is_watch_brother and not user_tracking.get("veteran_notified") and veteran_channel:
+                    if aar_points >= 200 and weeks_in_server >= 2:
+                        # Send notification in the specified format
+                        msg = (
+                            f"᛭⋅ {member.display_name}\n"
+                            f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
+                            f"᛭⋅ {member_chapter}\n"
+                            f"᛭⋅ {watch_command_mention}\n"
+                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                        )
+                        await veteran_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(users=False, roles=True),
+                        )
+                        user_tracking["veteran_notified"] = True
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
+
+                # Check Service Studs milestones (only for Watch Veteran or higher)
+                if is_veteran_or_higher and studs_channel:
+                    # Calculate current studs entitlement
+                    studs_time = weeks_in_server // 4
+                    studs_aar = aar_points // 400
+                    current_studs = min(studs_time, studs_aar)
+
+                    last_notified_studs = user_tracking.get("last_studs_count", 0)
+                    if current_studs > last_notified_studs:
+                        # New stud earned
+                        new_studs = current_studs - last_notified_studs
+                        stud_word = "Stud" if new_studs == 1 else "Studs"
+                        msg = (
+                            f"{watch_command_mention}\n"
+                            f"🎖️ **{member.display_name}** has earned {new_studs} new Service {stud_word}!\n"
+                            f"᛭⋅ Total Service Studs: {current_studs}"
+                        )
+                        await studs_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(users=False, roles=True),
+                        )
+                        user_tracking["last_studs_count"] = current_studs
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
+
+                # Check Black Laurels eligibility (all 8 required missions completed)
+                if black_laurels_channel and not user_tracking.get("black_laurels_notified"):
+                    completed_bl = user_bl_missions.get(user_id, set())
+                    is_bl_eligible = len(completed_bl) >= len(BLACK_LAURELS_REQUIRED_MISSIONS) and \
+                                     completed_bl >= BLACK_LAURELS_REQUIRED_MISSIONS
+                    # Only notify if eligible and doesn't already have the role
+                    has_bl_role = black_laurels_role and black_laurels_role in member.roles
+                    if is_bl_eligible and not has_bl_role:
+                        msg = (
+                            f"᛭⋅ {member.mention}\n"
+                            f"᛭⋅ <:Deathwatch:1433161009106780170> {black_laurels_mention} <:Deathwatch:1433161009106780170>\n"
+                            f"᛭⋅ {watch_command_mention}\n"
+                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                        )
+                        await black_laurels_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                        )
+                        user_tracking["black_laurels_notified"] = True
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
+
+                # Update tracking
+                if user_tracking:
+                    tracking[user_id] = user_tracking
+
+            except Exception as e:
+                logger.debug(f"Promotion check failed for member {member.id}: {e}")
+                continue
+
+        # Save tracking data
+        _save_promotion_tracking(tracking)
+
+        if notifications_sent > 0:
+            logger.info(f"Promotion check complete: {notifications_sent} notification(s) sent")
+        else:
+            logger.debug("Promotion check complete: no new milestones")
+
+    except Exception as e:
+        logger.exception(f"Promotion check failed: {e}")
+
+
 @tasks.loop(hours=4)
 async def _activity_status_check_loop():
-    """4-hourly loop to check for activity status changes."""
+    """4-hourly loop to check for activity status changes and promotion milestones."""
     try:
         # Delay the first run so startup does not trigger an immediate check
         if not getattr(_activity_status_check_loop, "_first_run_done", False):
@@ -1133,6 +1433,7 @@ async def _activity_status_check_loop():
             await asyncio.sleep(3600)
 
         await _check_activity_status_changes()
+        await _check_promotion_milestones()
     except Exception:
         logger.exception("Error running activity status check loop")
 
@@ -1179,6 +1480,7 @@ HOME_CHAPTERS = [
     "Imperial Fists",
     "Iron Hands",
     "Iron Hounds",
+    "Knights of the Raven",
     "Lamenters",
     "Mentors",
     "Minotaurs",
@@ -2113,6 +2415,7 @@ async def litany_of_function(interaction: discord.Interaction):
         "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
         "/cache_stats — Show DataStore cache and flush stats (admin).",
         "/audit_service_studs — List service-stud mismatches (Watch Command only).",
+        "/librarian_audit — Check Black Laurels role discrepancies (Watch Command only).",
         "",
         "Notes: Some commands are restricted by role/config; outputs are capped or paginated.",
     ]
@@ -3119,11 +3422,11 @@ async def audit_archive_discrepancies(
             return
         fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
 
-        author_summaries = summarize_error_authors()
+        author_summaries, stale_count = summarize_error_authors(max_age_weeks=4)
         author_lines = []
         for a in author_summaries:
             label = a.get("nickname") or a.get("username") or a.get("id") or "Unknown"
-            author_lines.append(f"- {label}: {a['count']}")
+            author_lines.append(f"  {label}: {a['count']}")
 
         report = (
             "```ansi\n"
@@ -3131,19 +3434,17 @@ async def audit_archive_discrepancies(
             "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
             "  OPERATION-SCRIBE SERVITOR — ERROR RECHECK RITE\n"
             "==============================================================================\n"
-            f"  Restored Entries Returned to the Annals: {fixed}\n"
-            f"  Faulted Reports Under Quarantine: {still_broken}\n"
+            f"  Restored: {fixed}\n"
+            f"  Still Broken: {still_broken}\n"
         )
+        if stale_count > 0:
+            report += f"  Stale AARs (>4 weeks): {stale_count}\n"
         if author_lines:
             report += "-----------------------------------------------\n"
-            report += "Entries Rejected Due to Authorial Deviation:\n"
+            report += "  Errors by Author (last 4 weeks):\n"
             for line in author_lines:
-                report += f"  {line}\n"
+                report += f"{line}\n"
         report += (
-            "==============================================================================\n"
-            "  Machine-Spirit Addendum:\n"
-            "  These Records are logged for future deployment rites\n"
-            "  and may be invoked by decree of Watch Command alone.\n"
             "==============================================================================\n"
             "\u001b[0m```"
         )
@@ -3252,12 +3553,8 @@ async def sanctify_battle_records(
                 if span_days
                 else "  Scan Window: Full history\n"
             )
-            + f"  Sanctioned Operational Records: {ingested}\n"
-            + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
-            + "==============================================================================\n"
-            + "  Machine-Spirit Addendum:\n"
-            + "  These Records are logged for future deployment rites\n"
-            + "  and may be invoked by decree of Watch Command alone.\n"
+            + f"  Sanctioned: {ingested}\n"
+            + f"  Rejected: {rejected}\n"
             + "==============================================================================\n"
             + "\u001b[0m```"
         )
@@ -3848,6 +4145,164 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     report = "\n".join(lines)
     await interaction.followup.send(report, ephemeral=True)
+
+
+@bot.tree.command(
+    name="librarian_audit",
+    description="Check Black Laurels role discrepancies (Watch Command only).",
+)
+async def librarian_audit(interaction: discord.Interaction):
+    """Check for discrepancies in Black Laurels role assignment.
+    
+    A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
+    an AAR with the @Black_Laurels mention on each of the required maps at least once.
+    """
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.followup.send("Guild not available.", ephemeral=True)
+        return
+
+    if DATASTORE is None:
+        await interaction.followup.send("DATASTORE not available.", ephemeral=True)
+        return
+
+    # Get the Black Laurels role
+    black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
+    if not black_laurels_role:
+        await interaction.followup.send(
+            "Black Laurels role not found in guild.", ephemeral=True
+        )
+        return
+
+    # Build a map of user_id -> set of completed Black Laurels missions
+    user_bl_missions: Dict[str, set] = {}
+
+    for rec in DATASTORE.iter_records():
+        difficulty = (rec.get("difficulty") or "").lower()
+        black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
+        black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
+        
+        # Check if we're in the grace period (before Feb 20, 2026)
+        is_in_grace_period = True
+        try:
+            timestamp_str = rec.get("timestamp", "")
+            if timestamp_str:
+                message_created_at = datetime.fromisoformat(timestamp_str)
+                if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
+                    is_in_grace_period = False
+        except Exception:
+            pass
+        
+        # Check if Black Laurels is present (difficulty only after grace period, either location during)
+        if is_in_grace_period:
+            has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
+        else:
+            has_black_laurels = black_laurels_in_difficulty
+        
+        if not has_black_laurels:
+            continue
+        
+        mission = rec.get("mission")
+        if not mission:
+            continue
+        
+        mission_lower = mission.strip().lower()
+        # Only track required missions
+        if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
+            continue
+        
+        # Add this mission to each brother's completed set
+        for uid in rec.get("brother_ids") or []:
+            uid_str = str(uid)
+            if uid_str not in user_bl_missions:
+                user_bl_missions[uid_str] = set()
+            user_bl_missions[uid_str].add(mission_lower)
+
+    # Check each member for discrepancies
+    missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
+
+    for member in getattr(guild, "members", []) or []:
+        if member.bot:
+            continue
+
+        try:
+            # Check if member is Watch Brother+ (has any rank role)
+            member_role_names = _canonical_role_names(member)
+            if not any(r in member_role_names for r in RANK_ROLES_PRIORITY):
+                continue
+
+            user_id = str(member.id)
+            completed = user_bl_missions.get(user_id, set())
+            has_role = black_laurels_role in member.roles
+            should_have_role = len(completed) >= len(BLACK_LAURELS_REQUIRED_MISSIONS) and \
+                               completed >= BLACK_LAURELS_REQUIRED_MISSIONS
+
+            if should_have_role and not has_role:
+                missing_role.append((member, completed))
+            # Note: We no longer flag people who have the role but aren't eligible.
+            # Anyone with the role is assumed to have earned it legitimately.
+
+        except Exception:
+            continue
+
+    if not missing_role:
+        await interaction.followup.send(
+            "No Black Laurels discrepancies found.", ephemeral=True
+        )
+        return
+
+    # Build report
+    lines: List[str] = []
+    lines.append("```ansi")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
+    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUM AUDIT")
+    lines.append("  BLACK LAURELS DISCREPANCY REPORT")
+    lines.append(
+        "=============================================================================="
+    )
+
+    lines.append("")
+    lines.append(f"  ELIGIBLE BUT MISSING ROLE ({len(missing_role)}):")
+    lines.append("  " + "-" * 72)
+    for member, completed in missing_role:
+        name = getattr(member, "display_name", str(member.id))
+        lines.append(f"    ✓ {name}")
+        lines.append(f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions")
+
+    lines.append("")
+    lines.append(
+        "=============================================================================="
+    )
+    lines.append("\u001b[0m```")
+
+    report = "\n".join(lines)
+    
+    # Handle long reports
+    if len(report) <= 2000:
+        await interaction.followup.send(report, ephemeral=True)
+    else:
+        # Split into chunks
+        chunks = []
+        current_chunk = "```ansi\n\u001b[32m"
+        for line in lines[1:-1]:  # Skip opening/closing backticks
+            if len(current_chunk) + len(line) + 15 > 1900:
+                current_chunk += "\u001b[0m```"
+                chunks.append(current_chunk)
+                current_chunk = "```ansi\n\u001b[32m"
+            current_chunk += line + "\n"
+        current_chunk += "\u001b[0m```"
+        chunks.append(current_chunk)
+        
+        for chunk in chunks:
+            await interaction.followup.send(chunk, ephemeral=True)
 
 
 @bot.tree.command(
@@ -5447,6 +5902,10 @@ def parse_aar(message: discord.Message):
     # Chapter Approved tag present (role mention)
     chapter_approved = False
     chapter_approved_extra_point_applied = False
+    # Black Laurels tracking
+    black_laurels_in_difficulty = False
+    black_laurels_in_mission = False
+    black_laurels_mentioned_elsewhere = False
 
     brothers_start_idx = None
 
@@ -5456,6 +5915,10 @@ def parse_aar(message: discord.Message):
 
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
+            # Check if Black Laurels is in mission line (role ID or resolved name)
+            if f"<@&{BLACK_LAURELS_ROLE_ID}>" in mission or \
+               ("black" in mission.lower() and "laurel" in mission.lower()):
+                black_laurels_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
                 import re
@@ -5470,7 +5933,9 @@ def parse_aar(message: discord.Message):
                 mention = f"<@&{role.id}>"
                 after_colon = after_colon.replace(mention, role.name)
             difficulty = after_colon.strip()
-            # No longer persisting difficulty_tags or black_laurels_active
+            # Check if Black Laurels is in difficulty line
+            if "black" in after_colon.lower() and "laurel" in after_colon.lower():
+                black_laurels_in_difficulty = True
 
         # Armory / Armoury Data in any order, any capitalization
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
@@ -5610,6 +6075,22 @@ def parse_aar(message: discord.Message):
     except Exception:
         chapter_approved = False
 
+    # Detect Black Laurels role mention anywhere in the message.
+    # Track if it's in difficulty/mission lines OR mentioned as a role elsewhere.
+    try:
+        for role in message.role_mentions:
+            try:
+                rn = (getattr(role, "name", "") or "").strip().lower()
+                if "black" in rn and "laurel" in rn:
+                    # If it's not already in difficulty or mission line, flag it as elsewhere
+                    if not black_laurels_in_difficulty and not black_laurels_in_mission:
+                        black_laurels_mentioned_elsewhere = True
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     # If Chapter Approved tag present, apply +1 point only when the AAR
     # is recorded on the 1st or 3rd Saturday of the month.
     try:
@@ -5691,6 +6172,10 @@ def parse_aar(message: discord.Message):
         "initiate_id": initiate_ids[0] if initiate_ids else None,
         "chapter_approved": chapter_approved,
         "chapter_approved_extra_point_applied": chapter_approved_extra_point_applied,
+        # Black Laurels tracking for validation
+        "black_laurels_in_difficulty": black_laurels_in_difficulty,
+        "black_laurels_in_mission": black_laurels_in_mission,
+        "black_laurels_mentioned_elsewhere": black_laurels_mentioned_elsewhere,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
@@ -5720,6 +6205,8 @@ def validate_aar(record: dict):
     brothers = record.get("brother_ids") or []
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
+    black_laurels_in_difficulty = record.get("black_laurels_in_difficulty", False)
+    black_laurels_mentioned_elsewhere = record.get("black_laurels_mentioned_elsewhere", False)
 
     # 1) Mission required (except Siege templates where Mission may be omitted)
     dlower = (record.get("difficulty") or "").lower()
@@ -5785,13 +6272,65 @@ def validate_aar(record: dict):
             "@Hard-Stratagem, @Normal-Siege, @Hard-Siege)."
         )
     else:
-        # Only allow Black Laurels on Difficulty when Absolute is present
-        has_black_laurels = "black" in dlower and "laurel" in dlower
+        # Check if we're in the grace period (before Feb 20, 2026)
+        is_in_grace_period = True
+        try:
+            timestamp_str = record.get("timestamp", "")
+            if timestamp_str:
+                # Parse ISO format timestamp
+                message_created_at = datetime.fromisoformat(timestamp_str)
+                if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
+                    is_in_grace_period = False
+        except Exception:
+            # If we can't parse timestamp, assume grace period is still active
+            pass
+
+        # Black Laurels validation
+        has_black_laurels_difficulty = "black" in dlower and "laurel" in dlower
+        has_black_laurels_mission = record.get("black_laurels_in_mission", False)
         has_absolute = "absolute" in dlower
-        if has_black_laurels and not has_absolute:
-            errors.append(
-                "@Black_Laurels may only be present when @Absolute is selected on the Difficulty line."
-            )
+
+        if has_black_laurels_difficulty or has_black_laurels_mission:
+            if is_in_grace_period:
+                # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
+                # Only check: must have @Absolute when Black Laurels is present
+                if not has_absolute:
+                    errors.append(
+                        "@Black_Laurels requires @Absolute on the Difficulty line."
+                    )
+                # Check eligible missions
+                mission_lower = (mission or "").lower().strip()
+                mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+                if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                    errors.append(
+                        f"@Black_Laurels may only be used on eligible missions: "
+                        f"Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                        f"Exfiltration, Termination, Reclamation, Disruption."
+                    )
+            else:
+                # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Difficulty with @Absolute
+                if has_black_laurels_mission and not has_black_laurels_difficulty:
+                    errors.append(
+                        "@Black_Laurels must be placed on the Difficulty line only."
+                    )
+                if not has_absolute:
+                    errors.append(
+                        "@Black_Laurels may only be present when @Absolute is selected on the Difficulty line."
+                    )
+                # Check eligible missions
+                mission_lower = (mission or "").lower().strip()
+                mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+                if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                    errors.append(
+                        f"@Black_Laurels may only be used on eligible missions: "
+                        f"Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                        f"Exfiltration, Termination, Reclamation, Disruption."
+                    )
+                # Black Laurels cannot be mentioned elsewhere in strict mode
+                if record.get("black_laurels_mentioned_elsewhere", False):
+                    errors.append(
+                        "@Black_Laurels must be placed on the Difficulty line, not elsewhere in the AAR."
+                    )
 
     # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
     if "normal-siege" in dlower or "hard-siege" in dlower:
@@ -5818,11 +6357,11 @@ def validate_aar(record: dict):
             errors.append("Armory/Armoury Data must be an integer (e.g. 3).")
 
     # 5) At least two Brothers
-    # Special-case: Omega requires 3-5 brothers
+    # Special-case: Omega requires 2-5 brothers
     if "omega" in dlower:
-        if not (3 <= len(brothers) <= 5):
+        if not (2 <= len(brothers) <= 5):
             errors.append(
-                "Omega difficulty requires between 3 and 5 Brothers listed under the 'Brothers:' section."
+                "Omega difficulty requires between 2 and 5 Brothers listed under the 'Brothers:' section."
             )
     else:
         if len(brothers) < 2:
@@ -6204,13 +6743,38 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
             pass
 
 
-def summarize_error_authors():
-    """Return a list of author summaries from the error log.
-    Each entry: {"id": str, "username": str|None, "nickname": str|None, "count": int}
+def _snowflake_to_datetime(snowflake_id: int) -> datetime:
+    """Extract the creation datetime from a Discord snowflake ID."""
+    # Discord epoch: January 1, 2015 00:00:00 UTC
+    discord_epoch = 1420070400000
+    timestamp_ms = (snowflake_id >> 22) + discord_epoch
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+
+
+def summarize_error_authors(max_age_weeks: int = 4):
+    """Return a tuple: (list of author summaries for recent errors, stale_count).
+    
+    Recent errors are those from the last max_age_weeks.
+    Stale errors are older than max_age_weeks.
+    
+    Each author entry: {"id": str, "username": str|None, "nickname": str|None, "count": int}
     """
     data = _load_json_dict(AAR_ERRORS_PATH)
     by_author: dict[str, dict] = {}
-    for _aar_id, entry in data.items():
+    stale_count = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(weeks=max_age_weeks)
+    
+    for aar_id_str, entry in data.items():
+        # Check if this error is stale (older than cutoff)
+        try:
+            aar_id = int(aar_id_str)
+            msg_time = _snowflake_to_datetime(aar_id)
+            if msg_time < cutoff:
+                stale_count += 1
+                continue  # Skip stale entries from author breakdown
+        except (ValueError, TypeError):
+            pass  # If we can't parse ID, include it in recent
+        
         author = entry.get("author", {})
         aid = str(author.get("id", ""))
         if not aid:
@@ -6235,7 +6799,7 @@ def summarize_error_authors():
     summaries.sort(
         key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower())
     )
-    return summaries
+    return summaries, stale_count
 
 
 async def _set_aar_reaction(msg: discord.Message, status: str):
@@ -7717,7 +8281,6 @@ async def _compute_fortress_rankings(
 
 
 # --- Honours leaderboard generation and scheduled posting -----------------
-LAST_WEEKLY_POST_DATE: Optional[str] = None
 LAST_MONTHLY_POST_DATE: Optional[str] = None
 
 
@@ -9021,22 +9584,15 @@ async def _scheduled_honours_runner():
         except Exception:
             logger.exception("Honours runner: Could not resolve honours channel")
             return
-        global LAST_WEEKLY_POST_DATE, LAST_MONTHLY_POST_DATE
-        # Determine whether weekly and/or monthly honours are due. If both are
-        # due at the same hour (collision), post both (monthly first) with a
-        # short pause between posts to reduce likelihood of rate-limit issues.
-        weekly_due = (
-            today.weekday() == 5
-            and now_utc.hour == 1
-            and LAST_WEEKLY_POST_DATE != str(today)
-        )
+        global LAST_MONTHLY_POST_DATE
+        # Determine whether monthly honours posting is due (1st of month at 1 AM UTC)
         monthly_due = (
             today.day == 1
             and now_utc.hour == 1
             and LAST_MONTHLY_POST_DATE != str(today)
         )
         logger.info(
-            f"Honours runner: weekly_due={weekly_due} monthly_due={monthly_due} LAST_WEEKLY={LAST_WEEKLY_POST_DATE} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}"
+            f"Honours runner: monthly_due={monthly_due} LAST_MONTHLY={LAST_MONTHLY_POST_DATE}"
         )
 
         # Helper to send honours content respecting Discord message length
@@ -9115,59 +9671,7 @@ async def _scheduled_honours_runner():
             except Exception:
                 logger.exception("Pre-audit failed")
 
-        if weekly_due and monthly_due:
-            # Both due - run pre-audit for the monthly window (covers weekly too)
-            # Calculate days in previous month
-            if now_utc.month == 1:
-                prev_month = 12
-                prev_year = now_utc.year - 1
-            else:
-                prev_month = now_utc.month - 1
-                prev_year = now_utc.year
-            # Days in previous month
-            monthly_days = calendar.monthrange(prev_year, prev_month)[1]
-            await _run_pre_audit(monthly_days)
-
-            # Weekly first, then monthly on collision
-            # Post weekly honours
-            line, block, embed = await _build_honours(guild, 7, include_mentions=True)
-            await _send_honours(line, block, embed)
-            LAST_WEEKLY_POST_DATE = str(today)
-            # small pause before posting monthly
-            await asyncio.sleep(1)
-            # Compute first day of current month and previous month (UTC)
-            first_of_current_utc = datetime(now_utc.year, now_utc.month, 1)
-            if now_utc.month == 1:
-                prev_month = 12
-                prev_year = now_utc.year - 1
-            else:
-                prev_month = now_utc.month - 1
-                prev_year = now_utc.year
-            prev_start_utc = datetime(prev_year, prev_month, 1)
-            try:
-                prev_start = prev_start_utc
-                prev_end = first_of_current_utc
-            except Exception:
-                prev_start = datetime(prev_year, prev_month, 1)
-                prev_end = datetime(now_utc.year, now_utc.month, 1)
-
-            line, block, embed = await _build_honours(
-                guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
-            )
-            await _send_honours(line, block, embed)
-            LAST_MONTHLY_POST_DATE = str(today)
-
-        elif weekly_due:
-            # Run pre-audit for weekly window (7 days)
-            await _run_pre_audit(7)
-            line, block, embed = await _build_honours(guild, 7, include_mentions=True)
-            try:
-                await _send_honours(line, block, embed)
-            except Exception:
-                logger.exception("Failed to post weekly honours")
-            LAST_WEEKLY_POST_DATE = str(today)
-
-        elif monthly_due:
+        if monthly_due:
             # Compute previous month boundaries in UTC
             first_of_current_utc = datetime(now_utc.year, now_utc.month, 1)
             if now_utc.month == 1:
