@@ -96,7 +96,7 @@ SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc)
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
-# Required missions for Black Laurels eligibility
+# Required missions for Black Laurels eligibility (all required for new earners)
 BLACK_LAURELS_REQUIRED_MISSIONS = {
     "inferno",
     "decapitation",
@@ -106,6 +106,17 @@ BLACK_LAURELS_REQUIRED_MISSIONS = {
     "termination",
     "reclamation",
     "disruption",
+}
+# Grandfathered missions - users who already have the role are assumed to have completed these
+# Any NEW missions added to BLACK_LAURELS_REQUIRED_MISSIONS must be explicitly completed
+BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
+    "inferno",
+    "decapitation",
+    "vox liberatis",
+    "ballistic engine",
+    "exfiltration",
+    "termination",
+    "reclamation",
 }
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -4226,6 +4237,10 @@ async def librarian_audit(interaction: discord.Interaction):
 
     # Check each member for discrepancies
     missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
+    needs_new_missions: List[Tuple[discord.Member, set, set]] = []  # Has role but missing new missions
+
+    # Missions added after grandfathering (must be explicitly completed by existing role holders)
+    new_missions = BLACK_LAURELS_REQUIRED_MISSIONS - BLACK_LAURELS_GRANDFATHERED_MISSIONS
 
     for member in getattr(guild, "members", []) or []:
         if member.bot:
@@ -4245,13 +4260,16 @@ async def librarian_audit(interaction: discord.Interaction):
 
             if should_have_role and not has_role:
                 missing_role.append((member, completed))
-            # Note: We no longer flag people who have the role but aren't eligible.
-            # Anyone with the role is assumed to have earned it legitimately.
+            elif has_role:
+                # Grandfathered role holders - check if they're missing any NEW missions
+                missing_new = new_missions - completed
+                if missing_new:
+                    needs_new_missions.append((member, completed, missing_new))
 
         except Exception:
             continue
 
-    if not missing_role:
+    if not missing_role and not needs_new_missions:
         await interaction.followup.send(
             "No Black Laurels discrepancies found.", ephemeral=True
         )
@@ -4269,13 +4287,24 @@ async def librarian_audit(interaction: discord.Interaction):
         "=============================================================================="
     )
 
-    lines.append("")
-    lines.append(f"  ELIGIBLE BUT MISSING ROLE ({len(missing_role)}):")
-    lines.append("  " + "-" * 72)
-    for member, completed in missing_role:
-        name = getattr(member, "display_name", str(member.id))
-        lines.append(f"    ✓ {name}")
-        lines.append(f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions")
+    if missing_role:
+        lines.append("")
+        lines.append(f"  ELIGIBLE BUT MISSING ROLE ({len(missing_role)}):")
+        lines.append("  " + "-" * 72)
+        for member, completed in missing_role:
+            name = getattr(member, "display_name", str(member.id))
+            lines.append(f"    ✓ {name}")
+            lines.append(f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions")
+
+    if needs_new_missions:
+        lines.append("")
+        lines.append(f"  HAS ROLE BUT NEEDS NEW MISSIONS ({len(needs_new_missions)}):")
+        lines.append("  " + "-" * 72)
+        for member, completed, missing in needs_new_missions:
+            name = getattr(member, "display_name", str(member.id))
+            missing_list = ", ".join(sorted(m.title() for m in missing))
+            lines.append(f"    ⚠ {name}")
+            lines.append(f"      Missing: {missing_list}")
 
     lines.append("")
     lines.append(
