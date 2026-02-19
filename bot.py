@@ -1319,8 +1319,10 @@ async def _check_promotion_milestones():
                         "Lord Executioner", "Watch Master"
                     ]
                 )
+                # Watch Brother ONLY = has Watch Brother but NOT any higher rank
+                is_watch_brother_only = is_watch_brother and not is_veteran_or_higher
 
-                if not (is_watch_brother or is_veteran_or_higher):
+                if not (is_watch_brother_only or is_veteran_or_higher):
                     continue
 
                 user_id = str(member.id)
@@ -1348,7 +1350,8 @@ async def _check_promotion_milestones():
                         break
 
                 # Check Watch Veteran eligibility (200 AAR + 2 weeks)
-                if is_watch_brother and not user_tracking.get("veteran_notified") and veteran_channel:
+                # Only for Watch Brother ONLY (not already promoted to Veteran+)
+                if is_watch_brother_only and not user_tracking.get("veteran_notified") and veteran_channel:
                     if aar_points >= 200 and weeks_in_server >= 2:
                         # Send notification in the specified format
                         msg = (
@@ -1367,27 +1370,39 @@ async def _check_promotion_milestones():
                         await asyncio.sleep(0.5)
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
+                # Only notify if: 1) earned NEW studs since last check, 2) not displaying all earned
                 if is_veteran_or_higher and studs_channel:
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
                     studs_aar = aar_points // 400
-                    current_studs = min(studs_time, studs_aar)
+                    earned_studs = min(studs_time, studs_aar)
 
-                    last_notified_studs = user_tracking.get("last_studs_count", 0)
-                    if current_studs > last_notified_studs:
-                        # New stud earned
-                        new_studs = current_studs - last_notified_studs
+                    # Count currently displayed studs from nickname
+                    dn = str(member.nick or member.display_name or "")
+                    displayed_cer = dn.count("◆")
+                    displayed_elec = dn.count("●")
+                    displayed_plas = dn.count("○")
+                    displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+
+                    # First run: initialize tracking without notifying
+                    if "last_studs_earned" not in user_tracking:
+                        user_tracking["last_studs_earned"] = earned_studs
+                    last_notified_earned = user_tracking["last_studs_earned"]
+                    # Only notify if they earned NEW studs AND are owed studs
+                    if earned_studs > last_notified_earned and earned_studs > displayed_studs:
+                        new_studs = earned_studs - last_notified_earned
+                        owed_studs = earned_studs - displayed_studs
                         stud_word = "Stud" if new_studs == 1 else "Studs"
                         msg = (
                             f"{watch_command_mention}\n"
                             f"🎖️ **{member.display_name}** has earned {new_studs} new Service {stud_word}!\n"
-                            f"᛭⋅ Total Service Studs: {current_studs}"
+                            f"᛭⋅ Total Earned: {earned_studs} | Displaying: {displayed_studs} | Owed: {owed_studs}"
                         )
                         await studs_channel.send(
                             msg,
                             allowed_mentions=discord.AllowedMentions(users=False, roles=True),
                         )
-                        user_tracking["last_studs_count"] = current_studs
+                        user_tracking["last_studs_earned"] = earned_studs
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
 
