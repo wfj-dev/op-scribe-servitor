@@ -6357,14 +6357,14 @@ def validate_aar(record: dict):
                         f"Exfiltration, Termination, Reclamation, Disruption."
                     )
             else:
-                # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Difficulty with @Absolute
-                if has_black_laurels_mission and not has_black_laurels_difficulty:
+                # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute on Difficulty
+                if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append(
-                        "@Black_Laurels must be placed on the Difficulty line only."
+                        "@Black_Laurels must be placed on the Mission line only."
                     )
                 if not has_absolute:
                     errors.append(
-                        "@Black_Laurels may only be present when @Absolute is selected on the Difficulty line."
+                        "@Black_Laurels requires @Absolute on the Difficulty line."
                     )
                 # Check eligible missions
                 mission_lower = (mission or "").lower().strip()
@@ -6378,7 +6378,7 @@ def validate_aar(record: dict):
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
                     errors.append(
-                        "@Black_Laurels must be placed on the Difficulty line, not elsewhere in the AAR."
+                        "@Black_Laurels must be placed on the Mission line, not elsewhere in the AAR."
                     )
 
     # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
