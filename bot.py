@@ -4243,8 +4243,13 @@ async def librarian_audit(interaction: discord.Interaction):
         if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
             continue
         
+        # For black laurels, missions must have exactly 3 members to be valid
+        brother_ids = rec.get("brother_ids") or []
+        if len(brother_ids) != 3:
+            continue
+        
         # Add this mission to each brother's completed set
-        for uid in rec.get("brother_ids") or []:
+        for uid in brother_ids:
             uid_str = str(uid)
             if uid_str not in user_bl_missions:
                 user_bl_missions[uid_str] = set()
