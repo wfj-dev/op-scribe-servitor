@@ -3294,10 +3294,15 @@ async def record_of_blood(interaction: discord.Interaction):
         lines.append("")
 
     # HOME_CHAPTERS that were not mentioned in the scanned channel
+    # BUT only report if we have brothers who rep that chapter
     try:
-        if missing_home_chapters:
-            lines.append("Home chapters not mentioned in target channel:")
-            for ch in missing_home_chapters:
+        missing_with_members = [
+            ch for ch in missing_home_chapters
+            if any(member_home.get(mid, "").lower() == ch.lower() for mid in member_home)
+        ]
+        if missing_with_members:
+            lines.append("Home chapters not mentioned in target channel (but have members):")
+            for ch in missing_with_members:
                 lines.append(f"  - {ch}")
             lines.append("")
     except Exception:
