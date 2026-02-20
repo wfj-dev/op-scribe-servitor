@@ -1370,7 +1370,7 @@ async def _check_promotion_milestones():
                         await asyncio.sleep(0.5)
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
-                # Only notify if: 1) earned NEW studs since last check, 2) not displaying all earned
+                # Only notify if: 1) displayed studs increased since last check, 2) still owe more studs
                 if is_veteran_or_higher and studs_channel:
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
@@ -1385,12 +1385,12 @@ async def _check_promotion_milestones():
                     displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
 
                     # First run: initialize tracking without notifying
-                    if "last_studs_earned" not in user_tracking:
-                        user_tracking["last_studs_earned"] = earned_studs
-                    last_notified_earned = user_tracking["last_studs_earned"]
-                    # Only notify if they earned NEW studs AND are owed studs
-                    if earned_studs > last_notified_earned and earned_studs > displayed_studs:
-                        new_studs = earned_studs - last_notified_earned
+                    if "last_studs_displayed" not in user_tracking:
+                        user_tracking["last_studs_displayed"] = displayed_studs
+                    last_displayed_studs = user_tracking["last_studs_displayed"]
+                    # Only notify if they displayed NEW studs AND still owe more studs
+                    if displayed_studs > last_displayed_studs and displayed_studs < earned_studs:
+                        new_studs = displayed_studs - last_displayed_studs
                         owed_studs = earned_studs - displayed_studs
                         stud_word = "Stud" if new_studs == 1 else "Studs"
                         msg = (
@@ -1402,7 +1402,7 @@ async def _check_promotion_milestones():
                             msg,
                             allowed_mentions=discord.AllowedMentions(users=False, roles=True),
                         )
-                        user_tracking["last_studs_earned"] = earned_studs
+                        user_tracking["last_studs_displayed"] = displayed_studs
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
 
