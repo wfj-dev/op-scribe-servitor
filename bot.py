@@ -1351,8 +1351,16 @@ async def _check_promotion_milestones():
 
                 # Check Watch Veteran eligibility (200 AAR + 2 weeks)
                 # Only for Watch Brother ONLY (not already promoted to Veteran+)
-                if is_watch_brother_only and not user_tracking.get("veteran_notified") and veteran_channel:
-                    if aar_points >= 200 and weeks_in_server >= 2:
+                if is_watch_brother_only and veteran_channel:
+                    is_eligible = aar_points >= 200 and weeks_in_server >= 2
+                    # Initialize tracking if needed
+                    if "last_veteran_eligible" not in user_tracking:
+                        user_tracking["last_veteran_eligible"] = is_eligible
+                    last_eligible = user_tracking["last_veteran_eligible"]
+                    
+                    # Notify if newly eligible or newly checked while eligible (once per eligibility session)
+                    # Similar to service studs: notify if is_eligible and last wasn't or is same
+                    if is_eligible and is_eligible >= last_eligible:
                         # Send notification in the specified format
                         msg = (
                             f"᛭⋅ {member.display_name}\n"
@@ -1365,9 +1373,11 @@ async def _check_promotion_milestones():
                             msg,
                             allowed_mentions=discord.AllowedMentions(users=False, roles=True),
                         )
-                        user_tracking["veteran_notified"] = True
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
+                    
+                    # Always update tracking with current state
+                    user_tracking["last_veteran_eligible"] = is_eligible
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
                 # Only notify if: 1) displayed studs increased since last check, 2) still owe more studs
@@ -1388,8 +1398,8 @@ async def _check_promotion_milestones():
                     if "last_studs_displayed" not in user_tracking:
                         user_tracking["last_studs_displayed"] = displayed_studs
                     last_displayed_studs = user_tracking["last_studs_displayed"]
-                    # Only notify if they displayed NEW studs AND still owe more studs
-                    if displayed_studs > last_displayed_studs and displayed_studs < earned_studs:
+                    # Only notify if they displayed studs (new or same) AND still owe more studs
+                    if displayed_studs >= last_displayed_studs and displayed_studs < earned_studs:
                         new_studs = displayed_studs - last_displayed_studs
                         owed_studs = earned_studs - displayed_studs
                         stud_word = "Stud" if new_studs == 1 else "Studs"
