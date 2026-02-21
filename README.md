@@ -14,7 +14,7 @@ Commands
 - `/reparse_records [limit:int]` — Re-parse stored AARs from message URLs (admin-only).
 - `/cache_stats` — Show DataStore cache and flush stats (admin-only).
 - `/audit_service_studs` — List brothers whose displayed service studs differ from entitlement (Watch Command only).
-- `/preview_honours period` — Preview weekly or monthly honours (Forgemaster only).
+- `/preview_honours` — Preview monthly honours (Forgemaster only).
 
 Quick notes
 - Permissions: Several commands are restricted by roles and admin IDs defined in the bot configuration (`config/config.json`). If a command is denied, check role aliases and configured admin IDs.
@@ -75,8 +75,8 @@ Detailed command descriptions
 	- Purpose: List members whose displayed service studs do not match computed entitlement.
 	- Who can run: Watch Command only. Use this to find and correct display mismatches.
 
-- `/preview_honours period`
-	- Purpose: Produce a preview of weekly or monthly honours (leaderboard-like summary of service).
+- `/preview_honours`
+	- Purpose: Produce a preview of monthly honours (leaderboard-like summary of service).
 	- Who can run: Forgemaster-only.
 
 How to interpret outputs
