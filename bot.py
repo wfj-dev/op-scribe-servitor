@@ -8394,8 +8394,8 @@ def _format_imperial_date(dt: datetime) -> str:
         # Compute millennium number (1-based): years 1-1000 -> M1, 1001-2000 -> M2, etc.
         millennium_num = ((year - 1) // 1000) + 1
         mill = f"M{millennium_num}"
-        # Format real date as "Feb 21, 2026"
-        real_date = dt.strftime("%b %d, %Y")
+        # Format real date compactly as "2/21/26"
+        real_date = dt.strftime("%-m/%-d/%y")
         return f"0 {frac_s} {year_s}.{mill} ({real_date})"
     except Exception:
         return ""
@@ -8452,32 +8452,32 @@ async def _build_honours(
             """
 ==============================================================================
   WATCH FORTRESS JERICHO // LEDGER-CAST
-  OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS
+  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS
 ==============================================================================
 
 INDIVIDUAL DISTINCTIONS
-Total Operations         Name (Ops X)
-Avg Points per Op        Name (Avg Op X.X)
-Gene-seed Points         Name (Geneseed X)
-Armory Points            Name (Armory X)
-High-Risk Ops            Name (Hard-Strat+Omega X | Omega KIA X)
+Operations               Name (X)
+Avg Pts/Op               Name (X.X)
+Gene-seed Pts            Name (X)
+Armory Pts               Name (X)
+Hard-Strat+Omega         Name (X)
 
 KILL TEAM DISTINCTIONS
-Total Operations         Team (Ops X)
-Avg Points per Op        Team (Avg Op X.X)
-Armory + Gene-seed       Team (Armory X.X | Gene X.X)
-High-Risk Ops            Team (Hard-Strat+Omega X)
+Operations               Team (X)
+Avg Pts/Op               Team (X.X)
+Armory+Gene-seed         Team (X|X)
+Hard-Strat+Omega         Team (X)
 
 CHAPTER DISTINCTIONS
-Total Operations         Chapter (Ops X)
-Avg Points per Op        Chapter (Avg Op X.X)
-Armory + Gene-seed       Chapter (Armory X.X | Gene X.X)
-High-Risk Ops            Chapter (Hard-Strat+Omega X)
-AARs per Member          Chapter (Avg AAR/Member X.X)
+Operations               Chapter (X)
+Avg Pts/Op               Chapter (X.X)
+Armory+Gene-seed         Chapter (X|X)
+Hard-Strat+Omega         Chapter (X)
+AARs/Member              Chapter (X.X)
 
 ==============================================================================
 """,
-            "",  # Empty top_rankings_block when no data
+            None,  # No embed when no data
         )
 
     # Collect relevant records first, then resolve member chapters in bulk
@@ -9478,23 +9478,23 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         + _format_top_rankings_horizontal()
         + "\n\n"
         "INDIVIDUAL DISTINCTIONS\n"
-        f"Total Operations         {tempo_disp} (Ops {tempo_val})\n"
-        f"Avg Points per Op        {lethal_disp} (Avg Op {fmt_avg(lethal_val)})\n"
-        f"Gene-seed Points         {gene_disp} (GeneseedPts {gene_val})\n"
-        f"Armory Points            {arm_disp} (ArmoryPts {arm_val})\n"
-        f"High-Risk Ops            {high_disp} (Hard-Strat+Omega {high_val}{omega_kia_seg})\n\n"
+        f"Operations               {tempo_disp} ({tempo_val})\n"
+        f"Avg Pts/Op               {lethal_disp} ({fmt_avg(lethal_val)})\n"
+        f"Gene-seed Pts            {gene_disp} ({gene_val})\n"
+        f"Armory Pts               {arm_disp} ({arm_val})\n"
+        f"Hard-Strat+Omega         {high_disp} ({high_val}{omega_kia_seg})\n\n"
         "KILL TEAM DISTINCTIONS\n"
-        f"Total Operations         {kt_ops_name} (Ops {kt_ops_val})\n"
-        f"Avg Points per Op        {kt_avg_name} (Avg Op {fmt_avg(kt_avg_val)})\n"
-        f"Armory + Gene-seed       {kt_pres_name} (ArmoryPts {fmt_avg(kt_pres_arm)} | GenePts {fmt_avg(kt_pres_gene)})\n"
-        f"High-Risk Ops            {kt_risk_name} (Hard-Strat+Omega {kt_risk_val})\n"
-        f"AARs per Member          {kt_force_name} (Avg AAR/Member {fmt_avg(kt_force_val)})\n\n"
+        f"Operations               {kt_ops_name} ({kt_ops_val})\n"
+        f"Avg Pts/Op               {kt_avg_name} ({fmt_avg(kt_avg_val)})\n"
+        f"Armory+Gene-seed         {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"Hard-Strat+Omega         {kt_risk_name} ({kt_risk_val})\n"
+        f"AARs/Member              {kt_force_name} ({fmt_avg(kt_force_val)})\n\n"
         "CHAPTER DISTINCTIONS\n"
-        f"Total Operations         {ch1} (Ops {ch1_val})\n"
-        f"Avg Points per Op        {ch2} (Avg Op {fmt_avg(ch2_val)})\n"
-        f"Armory + Gene-seed       {ch3} (ArmoryPts {fmt_avg(ch3_arm)} | GenePts {fmt_avg(ch3_gene)})\n"
-        f"High-Risk Ops            {ch4} (Hard-Strat+Omega {ch4_val})\n"
-        f"AARs per Member          {ch5} (Avg AAR/Member {fmt_avg(ch5_val)})\n"
+        f"Operations               {ch1} ({ch1_val})\n"
+        f"Avg Pts/Op               {ch2} ({fmt_avg(ch2_val)})\n"
+        f"Armory+Gene-seed         {ch3} ({ch3_arm}|{ch3_gene})\n"
+        f"Hard-Strat+Omega         {ch4} ({ch4_val})\n"
+        f"AARs/Member              {ch5} ({fmt_avg(ch5_val)})\n"
         "=============================================================================="
     )
 
@@ -9586,11 +9586,11 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     # Individual Distinctions
     omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
     individual_text = (
-        f"**Total Operations:** {tempo_disp} ({tempo_val})\n"
-        f"**Avg Points per Op:** {lethal_disp} ({lethal_val:.1f})\n"
-        f"**Gene-seed Points:** {gene_disp} ({gene_val})\n"
-        f"**Armory Points:** {arm_disp} ({arm_val})\n"
-        f"**High-Risk Ops:** {high_disp} ({high_val}{omega_suffix})"
+        f"**Operations:** {tempo_disp} ({tempo_val})\n"
+        f"**Avg Pts/Op:** {lethal_disp} ({lethal_val:.1f})\n"
+        f"**Gene-seed Pts:** {gene_disp} ({gene_val})\n"
+        f"**Armory Pts:** {arm_disp} ({arm_val})\n"
+        f"**Hard-Strat+Omega:** {high_disp} ({high_val}{omega_suffix})"
     )
     embed.add_field(
         name="🏆 Individual Distinctions", value=individual_text, inline=False
@@ -9598,21 +9598,21 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
     # Kill Team Distinctions
     killteam_text = (
-        f"**Total Operations:** {kt_ops_name} ({kt_ops_val})\n"
-        f"**Avg Points per Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
-        f"**Armory + Gene-seed:** {kt_pres_name} ({kt_pres_arm} | {kt_pres_gene})\n"
-        f"**High-Risk Ops:** {kt_risk_name} ({kt_risk_val})\n"
-        f"**AARs per Member:** {kt_force_name} ({kt_force_val:.1f})"
+        f"**Operations:** {kt_ops_name} ({kt_ops_val})\n"
+        f"**Avg Pts/Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"**Armory+Gene-seed:** {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"**Hard-Strat+Omega:** {kt_risk_name} ({kt_risk_val})\n"
+        f"**AARs/Member:** {kt_force_name} ({kt_force_val:.1f})"
     )
     embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
 
     # Chapter Distinctions
     chapter_text = (
-        f"**Total Operations:** {ch1} ({ch1_val})\n"
-        f"**Avg Points per Op:** {ch2} ({ch2_val:.1f})\n"
-        f"**Armory + Gene-seed:** {ch3} ({ch3_arm} | {ch3_gene})\n"
-        f"**High-Risk Ops:** {ch4} ({ch4_val})\n"
-        f"**AARs per Member:** {ch5} ({ch5_val:.1f})"
+        f"**Operations:** {ch1} ({ch1_val})\n"
+        f"**Avg Pts/Op:** {ch2} ({ch2_val:.1f})\n"
+        f"**Armory+Gene-seed:** {ch3} ({ch3_arm}|{ch3_gene})\n"
+        f"**Hard-Strat+Omega:** {ch4} ({ch4_val})\n"
+        f"**AARs/Member:** {ch5} ({ch5_val:.1f})"
     )
     embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
 
@@ -9801,7 +9801,8 @@ async def preview_honours(interaction: discord.Interaction):
     try:
         await interaction.response.defer(ephemeral=True)
         deferred = True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"preview_honours: defer failed: {e}")
         deferred = False
     guild = interaction.guild
     # Monthly preview: show current partial month (from 1st of current month to now)
@@ -9809,9 +9810,19 @@ async def preview_honours(interaction: discord.Interaction):
     first_of_current = datetime(now.year, now.month, 1)
     prev_start = first_of_current
     prev_end = now
-    honour_line, ansi, embed = await _build_honours(
-        guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
-    )
+    logger.info(f"preview_honours: building honours for {prev_start} to {prev_end}")
+    try:
+        honour_line, ansi, embed = await _build_honours(
+            guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+        )
+        logger.info(f"preview_honours: built honours, line len={len(honour_line)}, ansi len={len(ansi)}, embed={type(embed)}")
+    except Exception as e:
+        logger.exception(f"preview_honours: _build_honours failed: {e}")
+        if deferred:
+            await interaction.followup.send(f"Error building honours: {e}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"Error building honours: {e}", ephemeral=True)
+        return
     # Include mentions in preview so Forgemasters can test tagging; send unified message
     # with PC/Mobile toggle and respect Discord message length limits.
 
