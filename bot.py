@@ -9264,13 +9264,13 @@ AARs/Member              Chapter (X.X)
 
     def _build_top5_block():
         period_label = "MONTHLY"
-        # Use UTC for display date consistency
-        display_dt_utc = end if end is not None else now
+        # Use start date for the month title (since end_dt is first of next month)
+        title_dt = start if start is not None else now
         try:
-            display_dt_utc = display_dt_utc.replace(tzinfo=timezone.utc)
+            title_dt = title_dt.replace(tzinfo=timezone.utc)
         except Exception:
-            display_dt_utc = display_dt_utc
-        date_str = display_dt_utc.strftime("%B %Y").upper()
+            pass
+        date_str = title_dt.strftime("%B %Y").upper()
 
         # Collect mentions for TOP RANKED line
         top_mentions = []
@@ -9418,9 +9418,9 @@ AARs/Member              Chapter (X.X)
         dict.fromkeys([p for p in honoured_parts if p])
     )
 
-    # Choose display date for the honours header: prefer end of window when
-    # provided, otherwise use `now`.
-    display_dt = end if end is not None else now
+    # Choose display date for the honours header: use start of window (the actual
+    # reporting month) rather than end (which is first of next month).
+    display_dt = start if start is not None else now
 
     # Build unified ANSI block with distinctions + horizontal top 5 rankings
     def _format_top_rankings_horizontal():
