@@ -2306,12 +2306,12 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
 
-    # Start honours runner loop (posts weekly/monthly honours)
+    # Start honours runner loop (posts monthly honours)
     try:
         if not _scheduled_honours_runner.is_running():
             _scheduled_honours_runner.start()
             logger.info(
-                "Honours runner loop started (15-min interval, posts at 1 AM UTC on Saturdays/1st of month)."
+                "Honours runner loop started (15-min interval, posts at 1 AM UTC on 1st of month)."
             )
     except Exception:
         logger.exception("Failed to start honours runner loop")
@@ -8369,12 +8369,13 @@ def _member_display_name(guild: discord.Guild, user_id: str) -> str:
 
 
 def _format_imperial_date(dt: datetime) -> str:
-    """Return Imperial date string like '0 123 456.M41' based on UTC datetime.
+    """Return Imperial date string like '0 123 456.M41 (Feb 21, 2026)' based on UTC datetime.
 
     - Check number: use 0 (event on Terra)
     - Year fraction: 3-digit fraction through the year (001..999)
     - Year: year within millennium (001..000 where 000 == 1000th year)
     - Millennium: M3
+    - Real date appended in parentheses
     """
     try:
         # Use UTC date/time for determinism
@@ -8393,7 +8394,9 @@ def _format_imperial_date(dt: datetime) -> str:
         # Compute millennium number (1-based): years 1-1000 -> M1, 1001-2000 -> M2, etc.
         millennium_num = ((year - 1) // 1000) + 1
         mill = f"M{millennium_num}"
-        return f"0 {frac_s} {year_s}.{mill}"
+        # Format real date as "Feb 21, 2026"
+        real_date = dt.strftime("%b %d, %Y")
+        return f"0 {frac_s} {year_s}.{mill} ({real_date})"
     except Exception:
         return ""
 
@@ -8721,9 +8724,8 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     # Individual picks
     # Determine dynamic minimum ops required for the reporting window so
     # individual distinctions use the same thresholds as chapter doctrines.
-    if period_days == 7:
-        min_ops_required = 7
-    elif period_days >= 28:
+    # Monthly leaderboards always use 28 ops minimum.
+    if period_days >= 28:
         min_ops_required = 28
     else:
         min_ops_required = max(3, int(period_days * 0.3))
@@ -8778,23 +8780,32 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
             )
         except Exception:
             tv["avg_aar_per_member"] = 0.0
-    kt_ops = sort_entities(teams, "ops")
+
+    # Filter kill teams to those meeting the minimum ops requirement; if none
+    # meet the threshold, fall back to including all teams.
+    teams_for_eval = {
+        k: v for k, v in teams.items() if v.get("ops", 0) >= min_ops_required
+    }
+    if not teams_for_eval:
+        teams_for_eval = teams
+
+    kt_ops = sort_entities(teams_for_eval, "ops")
     kt_avg = sort_entities(
-        {k: {**v, **{"avg": v["avg"]}} for k, v in teams.items()}, "avg"
+        {k: {**v, **{"avg": v["avg"]}} for k, v in teams_for_eval.items()}, "avg"
     )
     kt_pres = sort_entities(
         {
             k: {**v, **{"pres": v.get("armory", 0) + v.get("gene_carried", 0)}}
-            for k, v in teams.items()
+            for k, v in teams_for_eval.items()
         },
         "pres",
     )
-    kt_risk = sort_entities(teams, "high_risk")
+    kt_risk = sort_entities(teams_for_eval, "high_risk")
     # Force multiplier: average AAR per unique member
     kt_force = sort_entities(
         {
             k: {**v, **{"force": v.get("avg_aar_per_member", 0.0)}}
-            for k, v in teams.items()
+            for k, v in teams_for_eval.items()
         },
         "force",
     )
@@ -9084,10 +9095,8 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     # Determine eligible chapters for doctrine evaluation to avoid noisy
     # single-member spikes; use z-score normalization to pick winners.
     MIN_CHAPTER_MEMBERS = 1
-    # Dynamic min ops based on reporting window: weekly/monthly tuned.
-    if period_days == 7:
-        min_ops_required = 7
-    elif period_days >= 28:
+    # Dynamic min ops based on reporting window: monthly uses 28 ops minimum.
+    if period_days >= 28:
         min_ops_required = 28
     else:
         # fallback proportional floor (30% of window) with a sensible min
@@ -9254,18 +9263,14 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         return f"{rank_num}."
 
     def _build_top5_block():
-        period_label = "WEEKLY" if period_days == 7 else "MONTHLY"
+        period_label = "MONTHLY"
         # Use UTC for display date consistency
         display_dt_utc = end if end is not None else now
         try:
             display_dt_utc = display_dt_utc.replace(tzinfo=timezone.utc)
         except Exception:
             display_dt_utc = display_dt_utc
-        date_str = (
-            display_dt_utc.strftime("%m/%d/%y")
-            if period_days == 7
-            else display_dt_utc.strftime("%B %Y").upper()
-        )
+        date_str = display_dt_utc.strftime("%B %Y").upper()
 
         # Collect mentions for TOP RANKED line
         top_mentions = []
@@ -9467,7 +9472,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
     ansi_inner = (
         "==============================================================================\n"
         "  WATCH FORTRESS JERICHO // LEDGER-CAST\n"
-        f"  OPERATION-SCRIBE SERVITOR — {'WEEKLY' if period_days == 7 else 'MONTHLY'} LEADERBOARDS\n"
+        "  OPERATION-SCRIBE SERVITOR — MONTHLY LEADERBOARDS\n"
         f"  Date: {_format_imperial_date(display_dt)}\n"
         "==============================================================================\n"
         + _format_top_rankings_horizontal()
@@ -9521,7 +9526,7 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
         content = honour_line + "\n" + ansi_compact
 
     # Create unified mobile embed combining both distinctions and top 5 rankings
-    period_label = "Weekly" if period_days == 7 else "Monthly"
+    period_label = "Monthly"
 
     embed = discord.Embed(
         title=f"{period_label} Leaderboards",
@@ -9618,8 +9623,8 @@ AARs per Member          Chapter (Avg AAR/Member X.X)
 
 @tasks.loop(minutes=15)
 async def _scheduled_honours_runner():
-    """Run every 15 minutes and post weekly/monthly honours when appropriate (UTC).
-    Weekly posts on Saturdays at 1 AM UTC. Monthly posts on 1st at 1 AM UTC.
+    """Run every 15 minutes and post monthly honours when appropriate (UTC).
+    Monthly posts on 1st of each month at 1 AM UTC.
     """
     try:
         # Use UTC for consistent scheduling
@@ -9783,10 +9788,9 @@ def _user_is_forgemaster(user: discord.User | discord.Member) -> bool:
 
 @bot.tree.command(
     name="preview_honours",
-    description="Preview weekly/monthly honours (Forgemaster only)",
+    description="Preview monthly honours (Forgemaster only)",
 )
-@app_commands.describe(period="weekly or monthly")
-async def preview_honours(interaction: discord.Interaction, period: str = "weekly"):
+async def preview_honours(interaction: discord.Interaction):
     # Forgemaster-only
     if not _user_is_forgemaster(interaction.user):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
@@ -9800,20 +9804,14 @@ async def preview_honours(interaction: discord.Interaction, period: str = "weekl
     except Exception:
         deferred = False
     guild = interaction.guild
-    if (period or "").lower().startswith("w"):
-        days = 7
-        honour_line, ansi, embed = await _build_honours(
-            guild, days, include_mentions=True
-        )
-    else:
-        # Monthly preview: show current partial month (from 1st of current month to now)
-        now = datetime.utcnow()
-        first_of_current = datetime(now.year, now.month, 1)
-        prev_start = first_of_current
-        prev_end = now
-        honour_line, ansi, embed = await _build_honours(
-            guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
-        )
+    # Monthly preview: show current partial month (from 1st of current month to now)
+    now = datetime.utcnow()
+    first_of_current = datetime(now.year, now.month, 1)
+    prev_start = first_of_current
+    prev_end = now
+    honour_line, ansi, embed = await _build_honours(
+        guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+    )
     # Include mentions in preview so Forgemasters can test tagging; send unified message
     # with PC/Mobile toggle and respect Discord message length limits.
 
