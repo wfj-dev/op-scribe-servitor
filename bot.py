@@ -1736,8 +1736,12 @@ def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
     If no match, returns the original name (or 'Unknown' if empty).
+    Ignores role names like 'Kill Team Champion' that aren't actual kill teams.
     """
     try:
+        # Skip non-KT role names that start with "Kill Team"
+        if name and name.lower().strip() == "kill team champion":
+            return name or "Unknown"
         m = re.match(r"(?i)\s*kill\s*team\s*[:\-]?\s*(.+)", (name or ""))
         if m:
             return m.group(1).strip()
@@ -2908,24 +2912,24 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
 # Higher ranks should be checked first since members often have multiple rank roles
 RANK_HONORIFICS: Dict[str, str] = {
     # High Command (check first)
-    "Watch Master": "Watch Master, Lord of the Long Watch",
-    "High Chaplain": "High Chaplain, Voice of the Emperor",
-    "Chief Apothecary": "Chief Apothecary, Keeper of Purity",
-    "Void Warden": "Void Warden, Guardian of the Fortress",
-    "Forgemaster": "Forgemaster, Hand of the Machine God",
-    "Lord Executioner": "Lord Executioner, whose sentence is death",
+    "Watch Master": "Lord of the Long Watch, Watch Master",
+    "High Chaplain": "Voice of the Emperor, High Chaplain",
+    "Chief Apothecary": "Keeper of Purity, Chief Apothecary",
+    "Void Warden": "Guardian of the Fortress, Void Warden",
+    "Forgemaster": "Hand of the Machine God, Forgemaster",
+    "Lord Executioner": "Blade of the Fortress, Lord Executioner",
     # Specialists
-    "Watch Chaplain": "Chaplain, keeper of the faith",
-    "Watch Apothecary": "Apothecary, guardian of the gene-seed",
-    "Watch Librarian": "Librarian, warden of the Immaterium",
-    "Watch Techmarine": "Brother Techmarine, servant of the Omnissiah",
+    "Watch Chaplain": "Keeper of the faith, Chaplain",
+    "Watch Apothecary": "Guardian of the gene-seed, Apothecary",
+    "Watch Librarian": "Warden of the Immaterium, Librarian",
+    "Watch Techmarine": "Servant of the Omnissiah, Brother Techmarine",
     # Champions
-    "Company Champion": "Champion, blade of the Company",
-    "Kill Team Champion": "Champion, blade of the Kill Team",
+    "Company Champion": "Blade of the Company, Champion",
+    "Kill Team Champion": "Blade of the Kill Team, Champion",
     # Battle line (highest to lowest)
     "Watch Captain": "Captain, whose word is law",
-    "Watch Lieutenant": "Lieutenant, shield of the Watch",
-    "Watch Sergeant": "Sergeant, bearer of command",
+    "Watch Lieutenant": "Shield of the Watch, Lieutenant",
+    "Watch Sergeant": "Bearer of command, Sergeant",
     "Oathsworn": "Oathsworn Warrior",
     "Watch Veteran": "Honored Veteran",
     "Watch Brother": "Brother",
@@ -2971,12 +2975,76 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
     role_names = [getattr(r, "name", "") for r in roles]
     role_names_set = {rn.lower() for rn in role_names}
 
+    # Determine Kill Team and Company first (needed for dynamic champion honorifics)
+    kill_team = None
+    company = None
+    command_team = None
+    for rn in role_names:
+        if rn in KILL_TEAMS and not kill_team:
+            kill_team = rn
+        if "Watch Company" in rn and not company:
+            company = rn
+        if rn in COMMAND_TEAMS and not command_team:
+            command_team = rn
+
     # Determine rank honorific and which rank was matched
     honorific = "Brother"
     matched_rank = None
     for rank_name, hon in RANK_HONORIFICS.items():
         if rank_name.lower() in role_names_set:
-            honorific = hon
+            # Handle dynamic Lord Executioner honorific
+            if rank_name == "Lord Executioner":
+                # Find the Watch Master and use their name
+                guild = getattr(member, "guild", None)
+                watchmaster_name = None
+                if guild:
+                    try:
+                        wm = _find_watch_master(guild)
+                        if wm:
+                            wm_name = wm.display_name
+                            # Strip "Watch Master" prefix
+                            if wm_name.lower().startswith("watch master"):
+                                wm_name = wm_name[len("Watch Master"):].lstrip()
+                            watchmaster_name = wm_name
+                    except Exception:
+                        pass
+                if watchmaster_name:
+                    honorific = f"Blade of {watchmaster_name}, Lord Executioner"
+                else:
+                    # Fallback to fortress
+                    honorific = "Blade of the Fortress, Lord Executioner"
+            # Handle dynamic champion honorifics
+            elif rank_name == "Kill Team Champion" and kill_team:
+                # Extract KT short name: "Kill Team Falcon" -> "Falcon"
+                kt_short = _extract_killteam_name(kill_team)
+                honorific = f"Blade of {kt_short}, Champion"
+            elif rank_name == "Company Champion" and company:
+                # Find the captain of this company and use their name
+                guild = getattr(member, "guild", None)
+                captain_name = None
+                if guild:
+                    try:
+                        captains, _ = _find_company_command_staff(guild, company)
+                        if captains:
+                            # Use first captain's display name, stripped of rank prefix
+                            cap = captains[0]
+                            cap_name = cap.display_name
+                            # Strip "Watch Captain" or "Captain" prefix
+                            for prefix in ["Watch Captain", "Captain"]:
+                                if cap_name.lower().startswith(prefix.lower()):
+                                    cap_name = cap_name[len(prefix):].lstrip()
+                                    break
+                            captain_name = cap_name
+                    except Exception:
+                        pass
+                if captain_name:
+                    honorific = f"Blade of {captain_name}, Champion"
+                else:
+                    # Fallback to company short name
+                    company_short = _extract_company_short_name(company)
+                    honorific = f"Blade of {company_short}, Champion"
+            else:
+                honorific = hon
             matched_rank = rank_name
             break
 
@@ -3011,21 +3079,16 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
             display_name = display_name[len(prefix):].lstrip()
             break
 
-    # Determine title (Kill Team or Company)
-    title = None
-    for rn in role_names:
-        # Kill Team match
-        if rn in KILL_TEAMS:
-            title = rn
-            break
-        # Company match
-        if "Watch Company" in rn:
-            title = rn
-            break
-        # Command team match
-        if rn in COMMAND_TEAMS:
-            title = rn
-            break
+    # Build combined title: prefer "Kill Team X, Company Y" format
+    title_parts = []
+    if kill_team:
+        title_parts.append(kill_team)
+    if company:
+        title_parts.append(company)
+    if not title_parts and command_team:
+        title_parts.append(command_team)
+    
+    title = ", ".join(title_parts) if title_parts else None
 
     return honorific, display_name, title
 
@@ -3109,6 +3172,20 @@ class ForgeRiteToggleView(discord.ui.View):
                 )
             except Exception:
                 pass
+
+
+def _get_bearer_home_chapter(user: discord.User | discord.Member) -> Optional[str]:
+    """Return the bearer's home chapter only (not company). Used for chapter blessings."""
+    try:
+        roles = getattr(user, "roles", []) or []
+        hc_lower = {hc.lower(): hc for hc in HOME_CHAPTERS}
+        for r in roles:
+            rn = (getattr(r, "name", "") or "").strip()
+            if rn and rn.lower() in hc_lower:
+                return hc_lower[rn.lower()]  # Return canonical name
+    except Exception:
+        pass
+    return None
 
 
 def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[str]:
@@ -3256,8 +3333,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Bearer info: rank honorific, display name, and Kill Team/Company title
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
 
-    # Bearer's home chapter for chapter-specific blessing
-    bearer_chapter = _find_company_or_chapter(member)
+    # Bearer's home chapter for chapter-specific blessing (use dedicated function)
+    bearer_chapter = _get_bearer_home_chapter(member)
     chapter_blessing = None
     if bearer_chapter and bearer_chapter in CHAPTER_BLESSINGS:
         chapter_blessing = CHAPTER_BLESSINGS[bearer_chapter]
@@ -3414,10 +3491,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             default="ansi",
         )
         content = f"{member.mention}\n{ansi_content}"
+        # In debug mode, send ephemeral to avoid channel spam during testing
         await interaction.response.send_message(
             content,
             view=view,
             allowed_mentions=discord.AllowedMentions(users=True),
+            ephemeral=DEBUG_MODE,
         )
     except Exception:
         try:
