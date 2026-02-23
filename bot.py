@@ -5106,7 +5106,8 @@ async def tally_deeds(
                     if joined_at.tzinfo is None:
                         joined_at = joined_at.replace(tzinfo=timezone.utc)
                     ja_utc = joined_at.astimezone(timezone.utc)
-                    joined_str = ja_utc.strftime("%Y-%m-%d %H:%M %Z")
+                    days_since_join = (datetime.now(timezone.utc) - ja_utc).days
+                    joined_str = f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
                 except Exception:
                     joined_str = joined_at.strftime("%Y-%m-%d %H:%M UTC")
             else:
