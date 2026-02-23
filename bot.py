@@ -2904,26 +2904,31 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Black Shield": "Your past is forgotten; your armor serves only the Long Watch.",
 }
 
-# Rank-based honorifics and phrases
+# Rank-based honorifics and phrases (ordered from highest to lowest priority)
+# Higher ranks should be checked first since members often have multiple rank roles
 RANK_HONORIFICS: Dict[str, str] = {
-    "Watch Brother": "Brother",
-    "Watch Veteran": "Honored Veteran",
-    "Oathsworn": "Oathsworn Warrior",
-    "Watch Sergeant": "Sergeant, bearer of command",
-    "Watch Lieutenant": "Lieutenant, shield of the Watch",
-    "Watch Captain": "Captain, whose word is law",
-    "Watch Chaplain": "Chaplain, keeper of the faith",
-    "Watch Apothecary": "Apothecary, guardian of the gene-seed",
-    "Watch Librarian": "Librarian, warden of the Immaterium",
-    "Watch Techmarine": "Brother Techmarine, servant of the Omnissiah",
+    # High Command (check first)
     "Watch Master": "Watch Master, Lord of the Long Watch",
     "High Chaplain": "High Chaplain, Voice of the Emperor",
     "Chief Apothecary": "Chief Apothecary, Keeper of Purity",
     "Void Warden": "Void Warden, Guardian of the Fortress",
     "Forgemaster": "Forgemaster, Hand of the Machine God",
-    "Kill Team Champion": "Champion, blade of the Kill Team",
-    "Company Champion": "Champion, blade of the Company",
     "Lord Executioner": "Lord Executioner, whose sentence is death",
+    # Specialists
+    "Watch Chaplain": "Chaplain, keeper of the faith",
+    "Watch Apothecary": "Apothecary, guardian of the gene-seed",
+    "Watch Librarian": "Librarian, warden of the Immaterium",
+    "Watch Techmarine": "Brother Techmarine, servant of the Omnissiah",
+    # Champions
+    "Company Champion": "Champion, blade of the Company",
+    "Kill Team Champion": "Champion, blade of the Kill Team",
+    # Battle line (highest to lowest)
+    "Watch Captain": "Captain, whose word is law",
+    "Watch Lieutenant": "Lieutenant, shield of the Watch",
+    "Watch Sergeant": "Sergeant, bearer of command",
+    "Oathsworn": "Oathsworn Warrior",
+    "Watch Veteran": "Honored Veteran",
+    "Watch Brother": "Brother",
 }
 
 # Techmarine signature variation phrases (randomly chosen)
@@ -3022,7 +3027,7 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
             title = rn
             break
 
-    return honorific, member.display_name, title
+    return honorific, display_name, title
 
 
 class ForgeRiteToggleView(discord.ui.View):
