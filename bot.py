@@ -2858,6 +2858,221 @@ async def pick_home_chapters(interaction: discord.Interaction):
 # top-level commands: /forge_rite and /set_rite (not a command group)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Dynamic Forge Rite Components
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Maximum character limit for consecration rites
+# Calculated based on worst-case forge_rite output (~1100 chars overhead)
+# to stay under Discord's 2000 char message limit
+MAX_RITE_LENGTH = 700
+
+# Chapter-specific blessings keyed by home chapter name
+CHAPTER_BLESSINGS: Dict[str, str] = {
+    "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
+    "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
+    "Blood Angels": "By the Blood of Sanguinius, your armor is sanctified.",
+    "Blood Ravens": "Knowledge is power; guard it well within these sacred plates.",
+    "Carcharodons": "From the void you came, and to the void your enemies shall fall.",
+    "Cowled Wardens": "In shadow you watch, from shadow you strike—your armor bears witness.",
+    "Crimson Fists": "The fist of Dorn strikes true; let your armor be unyielding.",
+    "Dark Angels": "The secrets of the First are woven into your warplate's spirit.",
+    "Dark Krakens": "From the abyssal depths, your armor rises to crush the foe.",
+    "Death Spectres": "The shroud of death clings to your armor; let enemies despair.",
+    "Exorcists": "Thrice-bound against the Warp, your armor stands inviolate.",
+    "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
+    "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
+    "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
+    "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
+    "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
+    "Iron Hounds": "Relentless as the hound, your armor knows no surrender.",
+    "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
+    "Lamenters": "Though cursed, your armor shall not fail—for those we cherish, we die.",
+    "Mentors": "Precision and wisdom are encoded in your warplate's machine-spirit.",
+    "Minotaurs": "The fury of the bull charges forth; your armor is wrath incarnate.",
+    "Raptors": "Silent and lethal, your armor whispers death to the enemies of Man.",
+    "Raven Guard": "In the shadow of the Raven, your armor moves unseen.",
+    "Red Scorpions": "Purity above all; your armor meets the Apothecary's exacting standards.",
+    "Red Templars": "Speed and fury—your armor is the storm upon the enemy.",
+    "Salamanders": "Into the fires of battle, your armor shields the innocent.",
+    "Sons of Medusa": "Steel and logic strengthen your armor against all adversity.",
+    "Space Wolves": "The spirit of Fenris howls within your blessed warplate.",
+    "Storm Giants": "Thunder rolls and tempests rage; your armor channels the storm.",
+    "The Drakes": "Fire cleanses all—your armor emerges purified and ready.",
+    "Ultramarines": "The Codex guides us; your armor upholds Guilliman's legacy.",
+    "White Scars": "The wind of Chogoris propels your armor to swift victory.",
+    "Black Shield": "Your past is forgotten; your armor serves only the Long Watch.",
+}
+
+# Rank-based honorifics and phrases
+RANK_HONORIFICS: Dict[str, str] = {
+    "Watch Brother": "Brother",
+    "Watch Veteran": "Honored Veteran",
+    "Oathsworn": "Oathsworn Warrior",
+    "Watch Sergeant": "Sergeant, bearer of command",
+    "Watch Lieutenant": "Lieutenant, shield of the Watch",
+    "Watch Captain": "Captain, whose word is law",
+    "Watch Chaplain": "Chaplain, keeper of the faith",
+    "Watch Apothecary": "Apothecary, guardian of the gene-seed",
+    "Watch Librarian": "Librarian, warden of the Immaterium",
+    "Watch Techmarine": "Brother Techmarine, servant of the Omnissiah",
+    "Watch Master": "Watch Master, Lord of the Long Watch",
+    "High Chaplain": "High Chaplain, Voice of the Emperor",
+    "Chief Apothecary": "Chief Apothecary, Keeper of Purity",
+    "Void Warden": "Void Warden, Guardian of the Fortress",
+    "Forgemaster": "Forgemaster, Hand of the Machine God",
+    "Kill Team Champion": "Champion, blade of the Kill Team",
+    "Company Champion": "Champion, blade of the Company",
+    "Lord Executioner": "Lord Executioner, whose sentence is death",
+}
+
+# Techmarine signature variation phrases (randomly chosen)
+TECHMARINE_SIGNATURES: List[str] = [
+    "I speak the Rites of Activation, and the machine-spirit awakens.",
+    "With sacred oils and binharic prayer, this work is sanctified.",
+    "The Motive Force flows through my hands into this blessed armor.",
+    "By cog and gear, by circuit and servo, I seal this consecration.",
+    "The Omnissiah's blessing descends through my ministrations.",
+    "Through the Litany of Ignition, the war-spirit stirs.",
+    "I have communed with the machine-spirit; it is at peace.",
+    "The holy unguents are applied; the rites are complete.",
+    "In nomine Machinae, this armor is bound to sacred purpose.",
+    "The data-hymns are sung; the spirit-core is awakened.",
+]
+
+# Random sacred Mechanicus phrases to include in attestations
+SACRED_MECHANICUS_PHRASES: List[str] = [
+    "Praise the Omnissiah.",
+    "The Machine God watches over this work.",
+    "Data is sacred. Knowledge is power.",
+    "From iron, cometh strength.",
+    "The spirit of the machine is willing.",
+    "Let the blessed cogitator record this deed.",
+    "The Motive Force guides all.",
+    "In the name of the Machine God, so it is done.",
+    "Blessed is the machine that serves.",
+    "By the grace of the Fabricator-General.",
+    "The Quest for Knowledge continues.",
+    "Steel and silicon, blessed and true.",
+    "The Cant Mechanicus sanctifies this moment.",
+    "May your augmetics never falter.",
+    "The Void Dragon stirs not against this work.",
+]
+
+
+def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Optional[str]]:
+    """Extract bearer's rank honorific, display title, and optional Kill Team/Company."""
+    roles = getattr(member, "roles", []) or []
+    role_names = [getattr(r, "name", "") for r in roles]
+    role_names_set = {rn.lower() for rn in role_names}
+
+    # Determine rank honorific
+    honorific = "Brother"
+    for rank_name, hon in RANK_HONORIFICS.items():
+        if rank_name.lower() in role_names_set:
+            honorific = hon
+            break
+
+    # Determine title (Kill Team or Company)
+    title = None
+    for rn in role_names:
+        # Kill Team match
+        if rn in KILL_TEAMS:
+            title = rn
+            break
+        # Company match
+        if "Watch Company" in rn:
+            title = rn
+            break
+        # Command team match
+        if rn in COMMAND_TEAMS:
+            title = rn
+            break
+
+    return honorific, member.display_name, title
+
+
+class ForgeRiteToggleView(discord.ui.View):
+    """Toggle view for Forge Rite attestation: PC/Console (ANSI) vs Mobile (Embed)."""
+
+    def __init__(
+        self,
+        text_content: str,
+        embed: discord.Embed,
+        bearer_mention: str,
+        default: str = "ansi",
+    ):
+        super().__init__(timeout=900)
+        self.text_content = text_content
+        self.embed_obj = embed
+        self.bearer_mention = bearer_mention
+        self.current = default if default in ("ansi", "embed") else "ansi"
+        self._ansi_max_len = 1900
+        self._update_buttons()
+
+    def _update_buttons(self):
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.custom_id == "forge_show_ansi":
+                    too_long = len(self.text_content) > self._ansi_max_len
+                    child.disabled = (self.current == "ansi") or too_long
+                elif child.custom_id == "forge_show_embed":
+                    child.disabled = self.current == "embed"
+
+    @discord.ui.button(
+        label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="forge_show_ansi"
+    )
+    async def show_ansi(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        if len(self.text_content) > self._ansi_max_len:
+            try:
+                await interaction.response.send_message(
+                    "PC/Console view exceeds message limit; showing Mobile view instead.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+            return
+        self.current = "ansi"
+        self._update_buttons()
+        try:
+            await interaction.response.edit_message(
+                content=f"{self.bearer_mention}\n{self.text_content}",
+                embed=None,
+                view=self,
+            )
+        except Exception:
+            try:
+                await interaction.followup.send(
+                    "Unable to switch to PC/Console view.", ephemeral=True
+                )
+            except Exception:
+                pass
+
+    @discord.ui.button(
+        label="Mobile", style=discord.ButtonStyle.primary, custom_id="forge_show_embed"
+    )
+    async def show_embed(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        self.current = "embed"
+        self._update_buttons()
+        try:
+            await interaction.response.edit_message(
+                content=self.bearer_mention,
+                embed=self.embed_obj,
+                view=self,
+            )
+        except Exception:
+            try:
+                await interaction.followup.send(
+                    "Unable to switch to Mobile view.", ephemeral=True
+                )
+            except Exception:
+                pass
+
+
 def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[str]:
     try:
         roles = getattr(user, "roles", []) or []
@@ -2920,10 +3135,18 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
             return
     except Exception:
         pass
+    # Check rite length to avoid exceeding Discord's message limit in forge_rite
+    if len(rite_text) > MAX_RITE_LENGTH:
+        await interaction.response.send_message(
+            f"Your consecration rite is too long ({len(rite_text)} chars). "
+            f"The Machine God requires brevity—keep it under {MAX_RITE_LENGTH} characters.",
+            ephemeral=True,
+        )
+        return
     try:
         await _set_user_rite(int(interaction.user.id), rite_text)
         await interaction.response.send_message(
-            "Consecration rite saved.", ephemeral=True
+            f"Consecration rite saved ({len(rite_text)}/{MAX_RITE_LENGTH} chars).", ephemeral=True
         )
     except Exception:
         await interaction.response.send_message("Failed to save rite.", ephemeral=True)
@@ -2935,6 +3158,8 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 )
 @app_commands.describe(member="Member to attest")
 async def _attest(interaction: discord.Interaction, member: discord.Member):
+    import random
+
     allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
@@ -2964,6 +3189,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         ts = f"{check}.{day_of_year:03d}.{year_within_millennium:03d}.M{millennium}"
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
     # Authority
     if role_key == "forgemaster":
         authority = "Jericho High Command"
@@ -2979,19 +3205,45 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Optional personal rite
     try:
         rite_text = await _get_user_rite(int(interaction.user.id))
+        # Safety truncation for legacy rites that may exceed the limit
+        if rite_text and len(rite_text) > MAX_RITE_LENGTH:
+            rite_text = rite_text[:MAX_RITE_LENGTH - 3] + "..."
     except Exception:
         rite_text = None
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Dynamic personalization
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Bearer info: rank honorific, display name, and Kill Team/Company title
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
+
+    # Bearer's home chapter for chapter-specific blessing
+    bearer_chapter = _find_company_or_chapter(member)
+    chapter_blessing = None
+    if bearer_chapter and bearer_chapter in CHAPTER_BLESSINGS:
+        chapter_blessing = CHAPTER_BLESSINGS[bearer_chapter]
+    elif bearer_chapter:
+        # Check case-insensitive fallback
+        for chap_name, blessing in CHAPTER_BLESSINGS.items():
+            if chap_name.lower() == bearer_chapter.lower():
+                chapter_blessing = blessing
+                break
+
+    # Random Techmarine signature variation
+    techmarine_signature = random.choice(TECHMARINE_SIGNATURES)
+
+    # Random sacred Mechanicus phrase
+    sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
 
     # Auto-sign: prefer Forgemaster or Techmarine mention
     try:
         company = _find_company_or_chapter(interaction.user)
-        # Use the attester (display name) and avoid duplicating the role/token
         if role_key == "forgemaster":
             signer = f"{attester}, Jericho High Command"
         elif role_key == "techmarine":
             signer = f"{attester}, {company or 'Unknown Company'}"
         else:
-            # fallback: include top role (if any) or just the display name
             top_role = None
             try:
                 roles = [
@@ -3006,7 +3258,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     except Exception:
         signer = attester
 
-    # Assemble block
+    # ─────────────────────────────────────────────────────────────────────────
+    # Assemble ANSI block (PC/Console view)
+    # ─────────────────────────────────────────────────────────────────────────
     lines = []
     lines.append("```ansi")
     lines.append(
@@ -3017,35 +3271,115 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append(
         "=============================================================================="
     )
-    bearer_name = getattr(member, "display_name", None) or getattr(
-        member, "name", str(member.id)
-    )
-    lines.append(f"Bearer: {bearer_name}")
+
+    # Bearer section
+    lines.append("▸ BEARER DESIGNATION")
+    bearer_line = f"  {bearer_honorific} {bearer_name}"
+    if bearer_title:
+        bearer_line += f" • {bearer_title}"
+    lines.append(bearer_line)
+    if bearer_chapter:
+        lines.append(f"  Lineage: {bearer_chapter}")
     lines.append("")
-    lines.append("Inspection Status = PASSED")
-    lines.append("Regulation Compliance = CONFIRMED")
+
+    # Chapter blessing (prominent placement)
+    if chapter_blessing:
+        lines.append("▸ BLESSING OF THE CHAPTER")
+        lines.append(f"  \"{chapter_blessing}\"")
+        lines.append("")
+
+    # Status
+    lines.append("▸ MACHINE-SPIRIT STATUS")
+    lines.append("  Inspection ............ PASSED")
+    lines.append("  Compliance ............ CONFIRMED")
+    lines.append("  Warplate Integrity .... SANCTIFIED")
     lines.append("")
-    lines.append(f"Attesting Techmarine = {attester}")
-    lines.append(f"Authority = {authority}")
-    lines.append(f"Timestamp = {ts}")
-    lines.append("")
+
+    # Consecration rite (if present)
     if rite_text:
-        lines.append("Consecration Rite:")
+        lines.append("▸ RITE OF CONSECRATION")
         for line in str(rite_text).splitlines():
             lines.append(f"  {line}")
         lines.append("")
-    lines.append(f"WITNESSED AND SEALED: {signer}")
-    lines.append(
-        "=============================================================================="
-    )
+
+    # Techmarine's affirmation
+    lines.append("▸ TECHMARINE'S AFFIRMATION")
+    lines.append(f"  \"{techmarine_signature}\"")
+    lines.append("")
+
+    # Authority block
+    lines.append("▸ ATTESTATION AUTHORITY")
+    lines.append(f"  Officiant: {attester}")
+    lines.append(f"  Mandate: {authority}")
+    lines.append(f"  Timestamp: {ts}")
+    lines.append("")
+
+    # Sacred phrase and seal
+    lines.append(f"  {sacred_phrase}")
+    lines.append("")
+    lines.append(f"+ + + WITNESSED AND SEALED: {signer} + + +")
     lines.append("\u001b[0m```")
 
+    ansi_content = "\n".join(lines)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Build Mobile embed (condensed format)
+    # ─────────────────────────────────────────────────────────────────────────
+    embed = discord.Embed(
+        title="⚙️ COGITATOR RITE — FORGE ATTESTATION",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0x2ECC71,
+    )
+
+    # Bearer field (condensed)
+    bearer_value = f"**{bearer_honorific} {bearer_name}**"
+    if bearer_title:
+        bearer_value += f"\n*{bearer_title}*"
+    if bearer_chapter:
+        bearer_value += f"\nLineage: {bearer_chapter}"
+    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+
+    # Status field
+    embed.add_field(
+        name="▸ Machine-Spirit",
+        value="✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
+        inline=True,
+    )
+
+    # Chapter blessing (if available)
+    if chapter_blessing:
+        embed.add_field(name="▸ Blessing of the Chapter", value=f"*\"{chapter_blessing}\"*", inline=False)
+
+    # Consecration rite (if present)
+    if rite_text:
+        rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
+        embed.add_field(name="▸ Rite of Consecration", value=f"*{rite_display}*", inline=False)
+
+    # Affirmation
+    embed.add_field(name="▸ Techmarine's Affirmation", value=f"*\"{techmarine_signature}\"*", inline=False)
+
+    # Techmarine & Authority
+    tech_value = f"**{attester}**\n{authority} • {ts}"
+    embed.add_field(name="▸ Attestation Authority", value=tech_value, inline=False)
+
+    # Sacred phrase and signer in footer
+    embed.set_footer(text=f"{sacred_phrase}\n— Witnessed and Sealed: {signer}")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Send with toggle view
+    # ─────────────────────────────────────────────────────────────────────────
     try:
-        # Ping the bearer (so they receive a notification) but keep the
-        # formatted attestation block separate so the display remains intact.
-        content = f"{member.mention}\n" + "\n".join(lines)
+        view = ForgeRiteToggleView(
+            text_content=ansi_content,
+            embed=embed,
+            bearer_mention=member.mention,
+            default="ansi",
+        )
+        content = f"{member.mention}\n{ansi_content}"
         await interaction.response.send_message(
-            content, allowed_mentions=discord.AllowedMentions(users=True)
+            content,
+            view=view,
+            allowed_mentions=discord.AllowedMentions(users=True),
         )
     except Exception:
         try:
@@ -9351,7 +9685,7 @@ AARs/Member              Chapter (X.X)
         )
         lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
         lines.append(f"  OPERATION-SCRIBE SERVITOR — {period_label} LEADERBOARDS")
-        lines.append(f"  Date: {_format_imperial_date(display_dt_utc)}")
+        lines.append(f"  Date: {_format_imperial_date(display_dt)}")
         lines.append(
             "=============================================================================="
         )
