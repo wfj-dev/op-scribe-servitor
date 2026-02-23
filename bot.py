@@ -3103,7 +3103,7 @@ class ForgeRiteToggleView(discord.ui.View):
         bearer_mention: str,
         default: str = "ansi",
     ):
-        super().__init__(timeout=900)
+        super().__init__(timeout=None)  # No timeout - buttons work until bot restart
         self.text_content = text_content
         self.embed_obj = embed
         self.bearer_mention = bearer_mention
