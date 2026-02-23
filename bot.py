@@ -2966,11 +2966,44 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
     role_names = [getattr(r, "name", "") for r in roles]
     role_names_set = {rn.lower() for rn in role_names}
 
-    # Determine rank honorific
+    # Determine rank honorific and which rank was matched
     honorific = "Brother"
+    matched_rank = None
     for rank_name, hon in RANK_HONORIFICS.items():
         if rank_name.lower() in role_names_set:
             honorific = hon
+            matched_rank = rank_name
+            break
+
+    # Get display name and strip rank prefix if present to avoid "Brother Watch Brother X"
+    display_name = member.display_name
+    if matched_rank:
+        # Strip the rank prefix from display name (case-insensitive)
+        name_lower = display_name.lower()
+        rank_lower = matched_rank.lower()
+        if name_lower.startswith(rank_lower):
+            # Remove the rank prefix and any leading whitespace
+            display_name = display_name[len(matched_rank):].lstrip()
+    
+    # Also strip any other rank prefixes that might be in the name
+    # (in case they have a different rank in their name than their role)
+    for rank_name in RANK_HONORIFICS.keys():
+        rank_lower = rank_name.lower()
+        if display_name.lower().startswith(rank_lower):
+            display_name = display_name[len(rank_name):].lstrip()
+            break
+
+    # Also strip honorific-style prefixes from display name to avoid
+    # "Brother Brother X" when someone has "Brother X" as their nickname
+    honorific_prefixes = [
+        "Brother", "Honored Veteran", "Veteran", "Oathsworn Warrior", "Oathsworn",
+        "Sergeant", "Lieutenant", "Captain", "Chaplain", "Apothecary", "Librarian",
+        "Techmarine", "Watch Master", "High Chaplain", "Chief Apothecary",
+        "Void Warden", "Forgemaster", "Champion", "Lord Executioner",
+    ]
+    for prefix in honorific_prefixes:
+        if display_name.lower().startswith(prefix.lower()):
+            display_name = display_name[len(prefix):].lstrip()
             break
 
     # Determine title (Kill Team or Company)
