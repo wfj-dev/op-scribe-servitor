@@ -6953,10 +6953,10 @@ def validate_aar(record: dict):
         has_absolute = "absolute" in dlower
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
-            # Black Laurels requires minimum 3 brothers (fireteam requirement)
-            if len(brothers) < 3:
+            # Black Laurels requires exactly 3 brothers (fireteam requirement)
+            if len(brothers) != 3:
                 errors.append(
-                    "@Black_Laurels requires at least 3 Brothers (a full fireteam)."
+                    "@Black_Laurels requires exactly 3 Brothers (a full fireteam)."
                 )
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
