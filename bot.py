@@ -2968,6 +2968,134 @@ SACRED_MECHANICUS_PHRASES: List[str] = [
     "The Void Dragon stirs not against this work.",
 ]
 
+# Service studs veneration phrases - tiered by studs count
+# In 40k lore, service studs mark decades/centuries of service; marines with many
+# are highly venerated veterans whose experience commands respect
+# Tiers: 0 (none), 1-4 (proven), 5-25 (venerated), 26+ (legendary)
+SERVICE_STUDS_VENERATIONS_TIER1: List[str] = [
+    # 1-4 studs - Proven Warrior
+    "Your service studs gleam with the promise of deeds yet to come.",
+    "The marks upon your brow attest to proven commitment.",
+    "Your service studs speak of steadfast duty to the Long Watch.",
+    "The studs upon your temple record battles won and trials endured.",
+    "Your marks of service command respect among your brothers.",
+    "Each stud tells of campaigns fought and enemies destroyed.",
+    "The machine-spirit recognizes one whose service is proven.",
+    "Your studs speak of dedication to the Emperor's will.",
+    "The Long Watch has marked you as a warrior of worth.",
+    "Your service is recorded in adamantium upon your brow.",
+]
+
+SERVICE_STUDS_VENERATIONS_TIER2: List[str] = [
+    # 5-25 studs - Venerated Elder
+    "Your service studs proclaim a warrior whose experience shapes the Watch itself.",
+    "Few bear such marks of enduring service—honor is yours by right.",
+    "The weight of your studs reflects the weight of your deeds.",
+    "Younger brothers look to your studs and see their own path illuminated.",
+    "Your marks of service are a legacy etched in adamantium and honor.",
+    "The Watch is strengthened by warriors such as you.",
+    "Your service studs tell tales that will echo through the centuries.",
+    "The machine-spirit bows before one whose service spans so many campaigns.",
+    "Your studs speak of war without end, and duty without question.",
+    "Veterans of the Long Watch look upon your marks with reverence.",
+    "The annals of Jericho record your deeds with each gleaming stud.",
+    "Your studs are a chronicle of the Emperor's wrath made manifest.",
+    "The fortress itself knows the tread of one so long in service.",
+    "Your experience is a weapon as mighty as any bolter or blade.",
+    "The studs upon your brow have witnessed the fall of countless xenos.",
+]
+
+SERVICE_STUDS_VENERATIONS_TIER3: List[str] = [
+    # 26+ studs - Legendary Status
+    "Your service studs rival those of the Ancients themselves.",
+    "The studs upon your brow are a saga written in silver and blood.",
+    "Even the machine-spirits whisper reverence for one so marked by duty.",
+    "Your service marks proclaim a living legend of the Deathwatch.",
+    "Generations of brothers have fought under the shadow of your example.",
+    "The Watch Fortress trembles with honor at your presence.",
+    "Your studs are beyond counting—a testament to duty eternal.",
+    "The very stones of Jericho remember when your service began.",
+    "Your marks of service would humble the most storied of veterans.",
+    "The Omnissiah himself takes note of such devotion to duty.",
+    "Legends are spoken of you in whispers throughout the Long Watch.",
+    "Your studs are a constellation of glory upon your brow.",
+    "To serve beside you is to walk with a demigod of war.",
+    "The weight of your studs anchors the fortress in times of doubt.",
+    "None who look upon your marks can question your commitment.",
+    "Your service is measured not in studs, but in epochs.",
+    "The Machine God records your deeds in the holiest of data-vaults.",
+    "Your name shall be sung in the halls of Jericho for eternity.",
+]
+
+
+def _compute_member_service_studs(member: discord.Member) -> int:
+    """Compute the number of service studs a member has earned.
+    
+    Service studs are earned at 1 per 4 weeks AND 400 AAR points (minimum of both).
+    Only Watch Veteran rank and above are eligible.
+    """
+    try:
+        idx_veteran = _role_index("Watch Veteran")
+        highest_idx = get_highest_rank_index(member)
+        
+        # Must be Watch Veteran or higher
+        if idx_veteran is None or highest_idx is None:
+            return 0
+        if highest_idx > idx_veteran:
+            return 0
+        
+        now = datetime.utcnow()
+        joined_at = getattr(member, "joined_at", None)
+        
+        if not joined_at:
+            return 0
+        
+        # Normalize to naive UTC
+        ja = joined_at
+        if ja.tzinfo is not None:
+            try:
+                ja = ja.astimezone(tz=None).replace(tzinfo=None)
+            except Exception:
+                ja = ja.replace(tzinfo=None)
+        
+        weeks = max(0, (now - ja).days // 7)
+        studs_time = weeks // 4
+        
+        # Get AAR points
+        stats = compute_stats_for_user(str(getattr(member, "id", "")))
+        try:
+            aar_points = int(round(float(stats.get("aar_points", 0) or 0)))
+        except Exception:
+            aar_points = 0
+        
+        studs_aar = aar_points // 400
+        
+        # Studs are the minimum of time-based and points-based
+        return min(studs_time, studs_aar)
+    except Exception:
+        return 0
+
+
+def _get_studs_veneration(studs_count: int) -> Optional[str]:
+    """Get a random veneration phrase appropriate for the service studs count.
+    
+    Tiers:
+    - 0: No veneration (newly promoted)
+    - 1-4: Proven warrior
+    - 5-25: Venerated elder  
+    - 26+: Legendary status
+    """
+    import random
+    
+    if studs_count <= 0:
+        return None
+    elif studs_count <= 4:
+        return random.choice(SERVICE_STUDS_VENERATIONS_TIER1)
+    elif studs_count <= 25:
+        return random.choice(SERVICE_STUDS_VENERATIONS_TIER2)
+    else:
+        return random.choice(SERVICE_STUDS_VENERATIONS_TIER3)
+
 
 def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Optional[str]]:
     """Extract bearer's rank honorific, display title, and optional Kill Team/Company."""
@@ -3345,6 +3473,10 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
                 chapter_blessing = blessing
                 break
 
+    # Service studs computation and veneration
+    bearer_studs = _compute_member_service_studs(member)
+    studs_veneration = _get_studs_veneration(bearer_studs)
+
     # Random Techmarine signature variation
     techmarine_signature = random.choice(TECHMARINE_SIGNATURES)
 
@@ -3395,12 +3527,20 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append(bearer_line)
     if bearer_chapter:
         lines.append(f"  Lineage: {bearer_chapter}")
+    if bearer_studs > 0:
+        lines.append(f"  Service Studs: {bearer_studs}")
     lines.append("")
 
     # Chapter blessing (prominent placement)
     if chapter_blessing:
         lines.append("▸ BLESSING OF THE CHAPTER")
         lines.append(f"  \"{chapter_blessing}\"")
+        lines.append("")
+
+    # Service studs veneration (if earned)
+    if studs_veneration:
+        lines.append("▸ MARK OF LONG SERVICE")
+        lines.append(f"  \"{studs_veneration}\"")
         lines.append("")
 
     # Status
@@ -3452,6 +3592,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
         bearer_value += f"\nLineage: {bearer_chapter}"
+    if bearer_studs > 0:
+        bearer_value += f"\nService Studs: {bearer_studs}"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Status field
@@ -3464,6 +3606,10 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Chapter blessing (if available)
     if chapter_blessing:
         embed.add_field(name="▸ Blessing of the Chapter", value=f"*\"{chapter_blessing}\"*", inline=False)
+
+    # Service studs veneration (if earned)
+    if studs_veneration:
+        embed.add_field(name="▸ Mark of Long Service", value=f"*\"{studs_veneration}\"*", inline=False)
 
     # Consecration rite (if present)
     if rite_text:
@@ -6807,6 +6953,11 @@ def validate_aar(record: dict):
         has_absolute = "absolute" in dlower
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
+            # Black Laurels requires minimum 3 brothers (fireteam requirement)
+            if len(brothers) < 3:
+                errors.append(
+                    "@Black_Laurels requires at least 3 Brothers (a full fireteam)."
+                )
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute when Black Laurels is present
