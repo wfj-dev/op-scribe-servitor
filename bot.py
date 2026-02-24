@@ -9,7 +9,6 @@ import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
-import uuid
 import re
 import itertools
 from typing import Dict, List, Set, Tuple, Optional
@@ -93,7 +92,9 @@ SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
 # Black Laurels strict enforcement begins on Feb 20, 2026 at 00:00 UTC
-BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc)
+BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
+    2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc
+)
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Required missions for Black Laurels eligibility (all required for new earners)
@@ -574,7 +575,7 @@ except Exception:
 
 def _load_activity_status() -> Dict[str, Dict]:
     """Load stored activity status mapping: user_id -> {'status': 'active'|'inactive', 'updated_at': ISO timestamp}.
-    
+
     For backwards compatibility, if status is a string, convert to new format.
     """
     try:
@@ -679,7 +680,7 @@ def _save_activity_status_last_check(check_time: datetime):
 
 def _save_activity_status(status_map: Dict[str, Dict]):
     """Persist activity status mapping to disk with backup.
-    
+
     Each entry is now {user_id: {'status': 'active'|'inactive', 'updated_at': ISO timestamp}}
     """
     try:
@@ -692,8 +693,11 @@ def _save_activity_status(status_map: Dict[str, Dict]):
                 normalized_map[uid] = entry
             else:
                 # Shouldn't happen but handle gracefully
-                normalized_map[uid] = {"status": entry, "updated_at": datetime.utcnow().isoformat()}
-        
+                normalized_map[uid] = {
+                    "status": entry,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+
         with open(tmp_path, "w") as f:
             json.dump(normalized_map, f, indent=2)
             f.flush()
@@ -710,7 +714,7 @@ def _save_activity_status(status_map: Dict[str, Dict]):
 
 def _load_promotion_tracking() -> Dict[str, Dict]:
     """Load promotion tracking data: user_id -> {'veteran_notified': bool, 'last_studs_count': int}.
-    
+
     Tracks which milestones have already been notified for each member.
     """
     try:
@@ -1082,7 +1086,14 @@ async def _check_activity_status_changes():
                         last_post_dt < cutoff_datetime
                     )  # At or past 28-day threshold
 
-                    if is_recent or is_at_threshold or (isinstance(prev_status.get(uid), dict) and prev_status.get(uid, {}).get("status") == "active"):
+                    if (
+                        is_recent
+                        or is_at_threshold
+                        or (
+                            isinstance(prev_status.get(uid), dict)
+                            and prev_status.get(uid, {}).get("status") == "active"
+                        )
+                    ):
                         users_to_check.add(uid)
                 except Exception:
                     users_to_check.add(uid)
@@ -1110,7 +1121,7 @@ async def _check_activity_status_changes():
 
                     new_status_entry = {
                         "status": current_status,
-                        "updated_at": check_start_time.isoformat()
+                        "updated_at": check_start_time.isoformat(),
                     }
                     new_status_map[user_id] = new_status_entry
 
@@ -1128,7 +1139,11 @@ async def _check_activity_status_changes():
                     # For inactive->active, only notify if they were marked inactive at least 7 days ago
                     # (prevents notifying brand-new members found in old records)
                     should_notify = False
-                    if not is_first_check and old_status and old_status != current_status:
+                    if (
+                        not is_first_check
+                        and old_status
+                        and old_status != current_status
+                    ):
                         if current_status == "active" and old_status == "inactive":
                             # inactive->active: only notify if member was inactive for a while
                             # (i.e., marked inactive at least 7 days ago)
@@ -1136,15 +1151,19 @@ async def _check_activity_status_changes():
                                 try:
                                     last_update = datetime.fromisoformat(old_updated_at)
                                     if last_update.tzinfo is not None:
-                                        last_update = last_update.astimezone(tz=None).replace(tzinfo=None)
-                                    days_inactive = (check_start_time - last_update).days
+                                        last_update = last_update.astimezone(
+                                            tz=None
+                                        ).replace(tzinfo=None)
+                                    days_inactive = (
+                                        check_start_time - last_update
+                                    ).days
                                     should_notify = days_inactive >= 7
                                 except Exception:
                                     should_notify = False
                         else:
                             # active->inactive: always notify (these are real departures)
                             should_notify = True
-                    
+
                     if should_notify:
                         # Status changed; find member in guild
                         try:
@@ -1195,7 +1214,7 @@ async def _check_activity_status_changes():
 
 async def _check_promotion_milestones():
     """Check guild members for promotion eligibility milestones and send notifications.
-    
+
     Checks for:
     - Watch Veteran eligibility: 200 AAR points AND 2 weeks in server
     - Service Studs milestones: new studs earned (1 per 4 weeks AND 400 AAR points)
@@ -1216,7 +1235,9 @@ async def _check_promotion_milestones():
             try:
                 veteran_channel = await bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
             except Exception:
-                logger.warning(f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found")
+                logger.warning(
+                    f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found"
+                )
                 veteran_channel = None
 
         # Get service studs channel
@@ -1225,16 +1246,22 @@ async def _check_promotion_milestones():
             try:
                 studs_channel = await bot.fetch_channel(SERVICE_STUDS_CHANNEL_ID)
             except Exception:
-                logger.warning(f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found")
+                logger.warning(
+                    f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found"
+                )
                 studs_channel = None
 
         # Get Black Laurels notification channel
         black_laurels_channel = guild.get_channel(BLACK_LAURELS_CHANNEL_ID)
         if not black_laurels_channel:
             try:
-                black_laurels_channel = await bot.fetch_channel(BLACK_LAURELS_CHANNEL_ID)
+                black_laurels_channel = await bot.fetch_channel(
+                    BLACK_LAURELS_CHANNEL_ID
+                )
             except Exception:
-                logger.warning(f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found")
+                logger.warning(
+                    f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found"
+                )
                 black_laurels_channel = None
 
         if not veteran_channel and not studs_channel and not black_laurels_channel:
@@ -1247,23 +1274,31 @@ async def _check_promotion_milestones():
 
         # Get Watch Command role for mentions
         watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
-        watch_command_mention = watch_command_role.mention if watch_command_role else "@Watch Command"
+        watch_command_mention = (
+            watch_command_role.mention if watch_command_role else "@Watch Command"
+        )
 
         # Get Watch Veteran role for mentions
         watch_veteran_role = discord.utils.get(guild.roles, name="Watch Veteran")
-        watch_veteran_mention = watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
+        watch_veteran_mention = (
+            watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
+        )
 
         # Get Black Laurels role for mentions
         black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
-        black_laurels_mention = black_laurels_role.mention if black_laurels_role else "@Black Laurels"
+        black_laurels_mention = (
+            black_laurels_role.mention if black_laurels_role else "@Black Laurels"
+        )
 
         # Build a map of user_id -> set of completed Black Laurels missions
         user_bl_missions: Dict[str, set] = {}
         for rec in DATASTORE.iter_records():
             difficulty = (rec.get("difficulty") or "").lower()
-            black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
+            black_laurels_in_difficulty = (
+                "black" in difficulty and "laurel" in difficulty
+            )
             black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
-            
+
             # Check grace period
             is_in_grace_period = True
             try:
@@ -1274,27 +1309,29 @@ async def _check_promotion_milestones():
                         is_in_grace_period = False
             except Exception:
                 pass
-            
+
             if is_in_grace_period:
-                has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
+                has_black_laurels = (
+                    black_laurels_in_difficulty or black_laurels_in_mission
+                )
             else:
                 has_black_laurels = black_laurels_in_difficulty
-            
+
             if not has_black_laurels:
                 continue
-            
+
             # Check @Absolute
             if "absolute" not in difficulty:
                 continue
-            
+
             mission = rec.get("mission")
             if not mission:
                 continue
-            
+
             mission_lower = mission.strip().lower()
             if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
                 continue
-            
+
             for uid in rec.get("brother_ids") or []:
                 uid_str = str(uid)
                 if uid_str not in user_bl_missions:
@@ -1308,15 +1345,33 @@ async def _check_promotion_milestones():
                 continue
 
             try:
-                role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
-                is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
+                role_names = {
+                    getattr(r, "name", "") for r in getattr(member, "roles", [])
+                }
+                is_watch_brother = (
+                    "Watch Brother" in role_names or "Watch Sister" in role_names
+                )
                 is_veteran_or_higher = any(
-                    r in role_names for r in [
-                        "Watch Veteran", "Oathsworn", "Kill Team Champion", "Watch Sergeant",
-                        "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
-                        "Company Champion", "Watch Lieutenant", "Watch Captain", "Venerable",
-                        "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
-                        "Lord Executioner", "Watch Master"
+                    r in role_names
+                    for r in [
+                        "Watch Veteran",
+                        "Oathsworn",
+                        "Kill Team Champion",
+                        "Watch Sergeant",
+                        "Watch Techmarine",
+                        "Watch Librarian",
+                        "Watch Apothecary",
+                        "Watch Chaplain",
+                        "Company Champion",
+                        "Watch Lieutenant",
+                        "Watch Captain",
+                        "Venerable",
+                        "Forgemaster",
+                        "Void Warden",
+                        "High Chaplain",
+                        "Chief Apothecary",
+                        "Lord Executioner",
+                        "Watch Master",
                     ]
                 )
                 # Watch Brother ONLY = has Watch Brother but NOT any higher rank
@@ -1357,7 +1412,7 @@ async def _check_promotion_milestones():
                     if "last_veteran_eligible" not in user_tracking:
                         user_tracking["last_veteran_eligible"] = is_eligible
                     last_eligible = user_tracking["last_veteran_eligible"]
-                    
+
                     # Notify if newly eligible or newly checked while eligible (once per eligibility session)
                     # Similar to service studs: notify if is_eligible and last wasn't or is same
                     if is_eligible and is_eligible >= last_eligible:
@@ -1371,11 +1426,13 @@ async def _check_promotion_milestones():
                         )
                         await veteran_channel.send(
                             msg,
-                            allowed_mentions=discord.AllowedMentions(users=False, roles=True),
+                            allowed_mentions=discord.AllowedMentions(
+                                users=False, roles=True
+                            ),
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
-                    
+
                     # Always update tracking with current state
                     user_tracking["last_veteran_eligible"] = is_eligible
 
@@ -1392,14 +1449,19 @@ async def _check_promotion_milestones():
                     displayed_cer = dn.count("◆")
                     displayed_elec = dn.count("●")
                     displayed_plas = dn.count("○")
-                    displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+                    displayed_studs = (
+                        displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+                    )
 
                     # First run: initialize tracking without notifying
                     if "last_studs_displayed" not in user_tracking:
                         user_tracking["last_studs_displayed"] = displayed_studs
                     last_displayed_studs = user_tracking["last_studs_displayed"]
                     # Only notify if they displayed studs (new or same) AND still owe more studs
-                    if displayed_studs >= last_displayed_studs and displayed_studs < earned_studs:
+                    if (
+                        displayed_studs >= last_displayed_studs
+                        and displayed_studs < earned_studs
+                    ):
                         new_studs = displayed_studs - last_displayed_studs
                         owed_studs = earned_studs - displayed_studs
                         stud_word = "Stud" if new_studs == 1 else "Studs"
@@ -1410,19 +1472,27 @@ async def _check_promotion_milestones():
                         )
                         await studs_channel.send(
                             msg,
-                            allowed_mentions=discord.AllowedMentions(users=False, roles=True),
+                            allowed_mentions=discord.AllowedMentions(
+                                users=False, roles=True
+                            ),
                         )
                         user_tracking["last_studs_displayed"] = displayed_studs
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
-                if black_laurels_channel and not user_tracking.get("black_laurels_notified"):
+                if black_laurels_channel and not user_tracking.get(
+                    "black_laurels_notified"
+                ):
                     completed_bl = user_bl_missions.get(user_id, set())
-                    is_bl_eligible = len(completed_bl) >= len(BLACK_LAURELS_REQUIRED_MISSIONS) and \
-                                     completed_bl >= BLACK_LAURELS_REQUIRED_MISSIONS
+                    is_bl_eligible = (
+                        len(completed_bl) >= len(BLACK_LAURELS_REQUIRED_MISSIONS)
+                        and completed_bl >= BLACK_LAURELS_REQUIRED_MISSIONS
+                    )
                     # Only notify if eligible and doesn't already have the role
-                    has_bl_role = black_laurels_role and black_laurels_role in member.roles
+                    has_bl_role = (
+                        black_laurels_role and black_laurels_role in member.roles
+                    )
                     if is_bl_eligible and not has_bl_role:
                         msg = (
                             f"᛭⋅ {member.mention}\n"
@@ -1432,7 +1502,9 @@ async def _check_promotion_milestones():
                         )
                         await black_laurels_channel.send(
                             msg,
-                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
                         )
                         user_tracking["black_laurels_notified"] = True
                         notifications_sent += 1
@@ -1450,7 +1522,9 @@ async def _check_promotion_milestones():
         _save_promotion_tracking(tracking)
 
         if notifications_sent > 0:
-            logger.info(f"Promotion check complete: {notifications_sent} notification(s) sent")
+            logger.info(
+                f"Promotion check complete: {notifications_sent} notification(s) sent"
+            )
         else:
             logger.debug("Promotion check complete: no new milestones")
 
@@ -2517,7 +2591,7 @@ def _save_home_chapter_rotation(state: dict):
 def _get_saturdays_for_month(month_key: str) -> List[datetime]:
     """Get all Saturdays in a month (YYYY-MM format). Returns list of datetime objects."""
     try:
-        year, month = map(int, month_key.split('-'))
+        year, month = map(int, month_key.split("-"))
         saturdays = []
         for day in range(1, 32):
             try:
@@ -2607,23 +2681,23 @@ async def _select_home_chapters_for_month(
                 # Get Saturdays for the current month: assume pair[0] on 1st Saturday, pair[1] on 3rd Saturday
                 saturdays = _get_saturdays_for_month(target)
                 now = datetime.utcnow().date()
-                
+
                 # Build list of (chapter_index, saturday_date) for scheduled events
                 scheduled_events = []
                 if len(saturdays) > 0:
                     scheduled_events.append((0, saturdays[0]))
                 if len(saturdays) > 2:
                     scheduled_events.append((1, saturdays[2]))
-                
+
                 month_active = _active_for_month(target, 28)
                 new_pair = list(pair)
-                
+
                 # Check each scheduled event
                 for chap_idx, saturday_date in scheduled_events:
                     if chap_idx >= len(pair):
                         continue
                     chapter = pair[chap_idx]
-                    
+
                     # If Saturday hasn't passed yet and chapter is inactive, replace it
                     if saturday_date.date() > now and chapter not in month_active:
                         # Find a replacement from active chapters
@@ -2632,14 +2706,14 @@ async def _select_home_chapters_for_month(
                             candidates = [c for c in HOME_CHAPTERS if c not in new_pair]
                         if candidates:
                             new_pair[chap_idx] = candidates[0]
-                
+
                 # Save if changed
                 if new_pair != list(pair):
                     selected[target] = new_pair
                     state["selected"] = selected
                     _save_home_chapter_rotation(state)
                     pair = new_pair
-                
+
                 return pair[0], pair[1]
             # FUTURE MONTHS (offset>0): validate activity and replace inactive chapters.
             month_active = _active_for_month(target, 28)
@@ -3030,26 +3104,26 @@ SERVICE_STUDS_VENERATIONS_TIER3: List[str] = [
 
 def _compute_member_service_studs(member: discord.Member) -> int:
     """Compute the number of service studs a member has earned.
-    
+
     Service studs are earned at 1 per 4 weeks AND 400 AAR points (minimum of both).
     Only Watch Veteran rank and above are eligible.
     """
     try:
         idx_veteran = _role_index("Watch Veteran")
         highest_idx = get_highest_rank_index(member)
-        
+
         # Must be Watch Veteran or higher
         if idx_veteran is None or highest_idx is None:
             return 0
         if highest_idx > idx_veteran:
             return 0
-        
+
         now = datetime.utcnow()
         joined_at = getattr(member, "joined_at", None)
-        
+
         if not joined_at:
             return 0
-        
+
         # Normalize to naive UTC
         ja = joined_at
         if ja.tzinfo is not None:
@@ -3057,19 +3131,19 @@ def _compute_member_service_studs(member: discord.Member) -> int:
                 ja = ja.astimezone(tz=None).replace(tzinfo=None)
             except Exception:
                 ja = ja.replace(tzinfo=None)
-        
+
         weeks = max(0, (now - ja).days // 7)
         studs_time = weeks // 4
-        
+
         # Get AAR points
         stats = compute_stats_for_user(str(getattr(member, "id", "")))
         try:
             aar_points = int(round(float(stats.get("aar_points", 0) or 0)))
         except Exception:
             aar_points = 0
-        
+
         studs_aar = aar_points // 400
-        
+
         # Studs are the minimum of time-based and points-based
         return min(studs_time, studs_aar)
     except Exception:
@@ -3078,15 +3152,15 @@ def _compute_member_service_studs(member: discord.Member) -> int:
 
 def _get_studs_veneration(studs_count: int) -> Optional[str]:
     """Get a random veneration phrase appropriate for the service studs count.
-    
+
     Tiers:
     - 0: No veneration (newly promoted)
     - 1-4: Proven warrior
-    - 5-25: Venerated elder  
+    - 5-25: Venerated elder
     - 26+: Legendary status
     """
     import random
-    
+
     if studs_count <= 0:
         return None
     elif studs_count <= 4:
@@ -3097,7 +3171,9 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
         return random.choice(SERVICE_STUDS_VENERATIONS_TIER3)
 
 
-def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Optional[str]]:
+def _get_bearer_rank_and_title(
+    member: discord.Member,
+) -> Tuple[str, str, Optional[str]]:
     """Extract bearer's rank honorific, display title, and optional Kill Team/Company."""
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
@@ -3132,7 +3208,7 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
                             wm_name = wm.display_name
                             # Strip "Watch Master" prefix
                             if wm_name.lower().startswith("watch master"):
-                                wm_name = wm_name[len("Watch Master"):].lstrip()
+                                wm_name = wm_name[len("Watch Master") :].lstrip()
                             watchmaster_name = wm_name
                     except Exception:
                         pass
@@ -3160,7 +3236,7 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
                             # Strip "Watch Captain" or "Captain" prefix
                             for prefix in ["Watch Captain", "Captain"]:
                                 if cap_name.lower().startswith(prefix.lower()):
-                                    cap_name = cap_name[len(prefix):].lstrip()
+                                    cap_name = cap_name[len(prefix) :].lstrip()
                                     break
                             captain_name = cap_name
                     except Exception:
@@ -3184,27 +3260,42 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
         rank_lower = matched_rank.lower()
         if name_lower.startswith(rank_lower):
             # Remove the rank prefix and any leading whitespace
-            display_name = display_name[len(matched_rank):].lstrip()
-    
+            display_name = display_name[len(matched_rank) :].lstrip()
+
     # Also strip any other rank prefixes that might be in the name
     # (in case they have a different rank in their name than their role)
     for rank_name in RANK_HONORIFICS.keys():
         rank_lower = rank_name.lower()
         if display_name.lower().startswith(rank_lower):
-            display_name = display_name[len(rank_name):].lstrip()
+            display_name = display_name[len(rank_name) :].lstrip()
             break
 
     # Also strip honorific-style prefixes from display name to avoid
     # "Brother Brother X" when someone has "Brother X" as their nickname
     honorific_prefixes = [
-        "Brother", "Honored Veteran", "Veteran", "Oathsworn Warrior", "Oathsworn",
-        "Sergeant", "Lieutenant", "Captain", "Chaplain", "Apothecary", "Librarian",
-        "Techmarine", "Watch Master", "High Chaplain", "Chief Apothecary",
-        "Void Warden", "Forgemaster", "Champion", "Lord Executioner",
+        "Brother",
+        "Honored Veteran",
+        "Veteran",
+        "Oathsworn Warrior",
+        "Oathsworn",
+        "Sergeant",
+        "Lieutenant",
+        "Captain",
+        "Chaplain",
+        "Apothecary",
+        "Librarian",
+        "Techmarine",
+        "Watch Master",
+        "High Chaplain",
+        "Chief Apothecary",
+        "Void Warden",
+        "Forgemaster",
+        "Champion",
+        "Lord Executioner",
     ]
     for prefix in honorific_prefixes:
         if display_name.lower().startswith(prefix.lower()):
-            display_name = display_name[len(prefix):].lstrip()
+            display_name = display_name[len(prefix) :].lstrip()
             break
 
     # Build combined title: prefer "Kill Team X, Company Y" format
@@ -3215,7 +3306,7 @@ def _get_bearer_rank_and_title(member: discord.Member) -> Tuple[str, str, Option
         title_parts.append(company)
     if not title_parts and command_team:
         title_parts.append(command_team)
-    
+
     title = ", ".join(title_parts) if title_parts else None
 
     return honorific, display_name, title
@@ -3249,7 +3340,9 @@ class ForgeRiteToggleView(discord.ui.View):
                     child.disabled = self.current == "embed"
 
     @discord.ui.button(
-        label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="forge_show_ansi"
+        label="PC/Console",
+        style=discord.ButtonStyle.secondary,
+        custom_id="forge_show_ansi",
     )
     async def show_ansi(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -3389,7 +3482,8 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
     try:
         await _set_user_rite(int(interaction.user.id), rite_text)
         await interaction.response.send_message(
-            f"Consecration rite saved ({len(rite_text)}/{MAX_RITE_LENGTH} chars).", ephemeral=True
+            f"Consecration rite saved ({len(rite_text)}/{MAX_RITE_LENGTH} chars).",
+            ephemeral=True,
         )
     except Exception:
         await interaction.response.send_message("Failed to save rite.", ephemeral=True)
@@ -3450,7 +3544,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         rite_text = await _get_user_rite(int(interaction.user.id))
         # Safety truncation for legacy rites that may exceed the limit
         if rite_text and len(rite_text) > MAX_RITE_LENGTH:
-            rite_text = rite_text[:MAX_RITE_LENGTH - 3] + "..."
+            rite_text = rite_text[: MAX_RITE_LENGTH - 3] + "..."
     except Exception:
         rite_text = None
 
@@ -3534,13 +3628,13 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Chapter blessing (prominent placement)
     if chapter_blessing:
         lines.append("▸ BLESSING OF THE CHAPTER")
-        lines.append(f"  \"{chapter_blessing}\"")
+        lines.append(f'  "{chapter_blessing}"')
         lines.append("")
 
     # Service studs veneration (if earned)
     if studs_veneration:
         lines.append("▸ MARK OF LONG SERVICE")
-        lines.append(f"  \"{studs_veneration}\"")
+        lines.append(f'  "{studs_veneration}"')
         lines.append("")
 
     # Status
@@ -3559,7 +3653,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Techmarine's affirmation
     lines.append("▸ TECHMARINE'S AFFIRMATION")
-    lines.append(f"  \"{techmarine_signature}\"")
+    lines.append(f'  "{techmarine_signature}"')
     lines.append("")
 
     # Authority block
@@ -3605,19 +3699,31 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Chapter blessing (if available)
     if chapter_blessing:
-        embed.add_field(name="▸ Blessing of the Chapter", value=f"*\"{chapter_blessing}\"*", inline=False)
+        embed.add_field(
+            name="▸ Blessing of the Chapter",
+            value=f'*"{chapter_blessing}"*',
+            inline=False,
+        )
 
     # Service studs veneration (if earned)
     if studs_veneration:
-        embed.add_field(name="▸ Mark of Long Service", value=f"*\"{studs_veneration}\"*", inline=False)
+        embed.add_field(
+            name="▸ Mark of Long Service", value=f'*"{studs_veneration}"*', inline=False
+        )
 
     # Consecration rite (if present)
     if rite_text:
         rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
-        embed.add_field(name="▸ Rite of Consecration", value=f"*{rite_display}*", inline=False)
+        embed.add_field(
+            name="▸ Rite of Consecration", value=f"*{rite_display}*", inline=False
+        )
 
     # Affirmation
-    embed.add_field(name="▸ Techmarine's Affirmation", value=f"*\"{techmarine_signature}\"*", inline=False)
+    embed.add_field(
+        name="▸ Techmarine's Affirmation",
+        value=f'*"{techmarine_signature}"*',
+        inline=False,
+    )
 
     # Techmarine & Authority
     tech_value = f"**{attester}**\n{authority} • {ts}"
@@ -3904,11 +4010,16 @@ async def record_of_blood(interaction: discord.Interaction):
     # BUT only report if we have brothers who rep that chapter
     try:
         missing_with_members = [
-            ch for ch in missing_home_chapters
-            if any(member_home.get(mid, "").lower() == ch.lower() for mid in member_home)
+            ch
+            for ch in missing_home_chapters
+            if any(
+                member_home.get(mid, "").lower() == ch.lower() for mid in member_home
+            )
         ]
         if missing_with_members:
-            lines.append("Home chapters not mentioned in target channel (but have members):")
+            lines.append(
+                "Home chapters not mentioned in target channel (but have members):"
+            )
             for ch in missing_with_members:
                 lines.append(f"  - {ch}")
             lines.append("")
@@ -4791,7 +4902,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 )
 async def librarian_audit(interaction: discord.Interaction):
     """Check for discrepancies in Black Laurels role assignment.
-    
+
     A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
     an AAR with the @Black_Laurels mention on each of the required maps at least once.
     """
@@ -4825,7 +4936,7 @@ async def librarian_audit(interaction: discord.Interaction):
         difficulty = (rec.get("difficulty") or "").lower()
         black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
         black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
-        
+
         # Check if we're in the grace period (before Feb 20, 2026)
         is_in_grace_period = True
         try:
@@ -4836,30 +4947,30 @@ async def librarian_audit(interaction: discord.Interaction):
                     is_in_grace_period = False
         except Exception:
             pass
-        
+
         # Check if Black Laurels is present (difficulty only after grace period, either location during)
         if is_in_grace_period:
             has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
         else:
             has_black_laurels = black_laurels_in_difficulty
-        
+
         if not has_black_laurels:
             continue
-        
+
         mission = rec.get("mission")
         if not mission:
             continue
-        
+
         mission_lower = mission.strip().lower()
         # Only track required missions
         if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
             continue
-        
+
         # For black laurels, missions must have exactly 3 members to be valid
         brother_ids = rec.get("brother_ids") or []
         if len(brother_ids) != 3:
             continue
-        
+
         # Add this mission to each brother's completed set
         for uid in brother_ids:
             uid_str = str(uid)
@@ -4869,10 +4980,14 @@ async def librarian_audit(interaction: discord.Interaction):
 
     # Check each member for discrepancies
     missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
-    needs_new_missions: List[Tuple[discord.Member, set, set]] = []  # Has role but missing new missions
+    needs_new_missions: List[
+        Tuple[discord.Member, set, set]
+    ] = []  # Has role but missing new missions
 
     # Missions added after grandfathering (must be explicitly completed by existing role holders)
-    new_missions = BLACK_LAURELS_REQUIRED_MISSIONS - BLACK_LAURELS_GRANDFATHERED_MISSIONS
+    new_missions = (
+        BLACK_LAURELS_REQUIRED_MISSIONS - BLACK_LAURELS_GRANDFATHERED_MISSIONS
+    )
 
     for member in getattr(guild, "members", []) or []:
         if member.bot:
@@ -4887,8 +5002,10 @@ async def librarian_audit(interaction: discord.Interaction):
             user_id = str(member.id)
             completed = user_bl_missions.get(user_id, set())
             has_role = black_laurels_role in member.roles
-            should_have_role = len(completed) >= len(BLACK_LAURELS_REQUIRED_MISSIONS) and \
-                               completed >= BLACK_LAURELS_REQUIRED_MISSIONS
+            should_have_role = (
+                len(completed) >= len(BLACK_LAURELS_REQUIRED_MISSIONS)
+                and completed >= BLACK_LAURELS_REQUIRED_MISSIONS
+            )
 
             if should_have_role and not has_role:
                 missing_role.append((member, completed))
@@ -4926,7 +5043,9 @@ async def librarian_audit(interaction: discord.Interaction):
         for member, completed in missing_role:
             name = getattr(member, "display_name", str(member.id))
             lines.append(f"    ✓ {name}")
-            lines.append(f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions")
+            lines.append(
+                f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions"
+            )
 
     if needs_new_missions:
         lines.append("")
@@ -4945,7 +5064,7 @@ async def librarian_audit(interaction: discord.Interaction):
     lines.append("\u001b[0m```")
 
     report = "\n".join(lines)
-    
+
     # Handle long reports
     if len(report) <= 2000:
         await interaction.followup.send(report, ephemeral=True)
@@ -4961,7 +5080,7 @@ async def librarian_audit(interaction: discord.Interaction):
             current_chunk += line + "\n"
         current_chunk += "\u001b[0m```"
         chunks.append(current_chunk)
-        
+
         for chunk in chunks:
             await interaction.followup.send(chunk, ephemeral=True)
 
@@ -5957,7 +6076,7 @@ async def tally_deeds(
                 f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}"
             )
         else:
-            s_lines.append(f"  No ranking data available")
+            s_lines.append("  No ranking data available")
 
         s_lines.append("")
         s_lines.append(
@@ -6163,7 +6282,7 @@ async def tally_deeds(
                     f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
                 )
             else:
-                h_lines.append(f"  No ranking data available")
+                h_lines.append("  No ranking data available")
 
             h_lines.append("")
             h_lines.append("CHAPTER DISTINCTIONS")
@@ -6185,7 +6304,7 @@ async def tally_deeds(
                     f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}"
                 )
             else:
-                h_lines.append(f"  Chapter does not meet minimum threshold for ranking")
+                h_lines.append("  Chapter does not meet minimum threshold for ranking")
 
             h_lines.append("")
             h_lines.append(
@@ -6578,8 +6697,9 @@ def parse_aar(message: discord.Message):
         if lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
             # Check if Black Laurels is in mission line (role ID or resolved name)
-            if f"<@&{BLACK_LAURELS_ROLE_ID}>" in mission or \
-               ("black" in mission.lower() and "laurel" in mission.lower()):
+            if f"<@&{BLACK_LAURELS_ROLE_ID}>" in mission or (
+                "black" in mission.lower() and "laurel" in mission.lower()
+            ):
                 black_laurels_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
@@ -6868,7 +6988,9 @@ def validate_aar(record: dict):
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
     black_laurels_in_difficulty = record.get("black_laurels_in_difficulty", False)
-    black_laurels_mentioned_elsewhere = record.get("black_laurels_mentioned_elsewhere", False)
+    black_laurels_mentioned_elsewhere = record.get(
+        "black_laurels_mentioned_elsewhere", False
+    )
 
     # 1) Mission required (except Siege templates where Mission may be omitted)
     dlower = (record.get("difficulty") or "").lower()
@@ -6968,11 +7090,14 @@ def validate_aar(record: dict):
                 # Check eligible missions
                 mission_lower = (mission or "").lower().strip()
                 mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                if (
+                    mission_clean
+                    and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
+                ):
                     errors.append(
-                        f"@Black_Laurels may only be used on eligible missions: "
-                        f"Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                        f"Exfiltration, Termination, Reclamation, Disruption."
+                        "@Black_Laurels may only be used on eligible missions: "
+                        "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                        "Exfiltration, Termination, Reclamation, Disruption."
                     )
             else:
                 # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute on Difficulty
@@ -6987,11 +7112,14 @@ def validate_aar(record: dict):
                 # Check eligible missions
                 mission_lower = (mission or "").lower().strip()
                 mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                if (
+                    mission_clean
+                    and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
+                ):
                     errors.append(
-                        f"@Black_Laurels may only be used on eligible missions: "
-                        f"Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                        f"Exfiltration, Termination, Reclamation, Disruption."
+                        "@Black_Laurels may only be used on eligible missions: "
+                        "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                        "Exfiltration, Termination, Reclamation, Disruption."
                     )
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
@@ -7420,17 +7548,17 @@ def _snowflake_to_datetime(snowflake_id: int) -> datetime:
 
 def summarize_error_authors(max_age_weeks: int = 4):
     """Return a tuple: (list of author summaries for recent errors, stale_count).
-    
+
     Recent errors are those from the last max_age_weeks.
     Stale errors are older than max_age_weeks.
-    
+
     Each author entry: {"id": str, "username": str|None, "nickname": str|None, "count": int}
     """
     data = _load_json_dict(AAR_ERRORS_PATH)
     by_author: dict[str, dict] = {}
     stale_count = 0
     cutoff = datetime.now(timezone.utc) - timedelta(weeks=max_age_weeks)
-    
+
     for aar_id_str, entry in data.items():
         # Check if this error is stale (older than cutoff)
         try:
@@ -7441,7 +7569,7 @@ def summarize_error_authors(max_age_weeks: int = 4):
                 continue  # Skip stale entries from author breakdown
         except (ValueError, TypeError):
             pass  # If we can't parse ID, include it in recent
-        
+
         author = entry.get("author", {})
         aid = str(author.get("id", ""))
         if not aid:
@@ -10418,13 +10546,19 @@ async def preview_honours(interaction: discord.Interaction):
         honour_line, ansi, embed = await _build_honours(
             guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
         )
-        logger.info(f"preview_honours: built honours, line len={len(honour_line)}, ansi len={len(ansi)}, embed={type(embed)}")
+        logger.info(
+            f"preview_honours: built honours, line len={len(honour_line)}, ansi len={len(ansi)}, embed={type(embed)}"
+        )
     except Exception as e:
         logger.exception(f"preview_honours: _build_honours failed: {e}")
         if deferred:
-            await interaction.followup.send(f"Error building honours: {e}", ephemeral=True)
+            await interaction.followup.send(
+                f"Error building honours: {e}", ephemeral=True
+            )
         else:
-            await interaction.response.send_message(f"Error building honours: {e}", ephemeral=True)
+            await interaction.response.send_message(
+                f"Error building honours: {e}", ephemeral=True
+            )
         return
     # Include mentions in preview so Forgemasters can test tagging; send unified message
     # with PC/Mobile toggle and respect Discord message length limits.
