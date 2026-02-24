@@ -3513,17 +3513,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     except Exception:
         pass
 
-    # Build attestation
-    # Warhammer 40k-style date: check.dayOfYear(3-digit).yearWithinMillennium(3-digit).Millennium
+    # Build attestation using standardized Imperial date format
     try:
-        now = datetime.utcnow()
-        year = now.year
-        day_of_year = now.timetuple().tm_yday
-        # Check digit (usually 0)
-        check = 0
-        year_within_millennium = year % 1000
-        millennium = (year - 1) // 1000 + 1
-        ts = f"{check}.{day_of_year:03d}.{year_within_millennium:03d}.M{millennium}"
+        ts = _format_imperial_date(datetime.utcnow())
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
