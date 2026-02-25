@@ -3331,13 +3331,12 @@ class ForgeRiteToggleView(discord.ui.View):
         self._update_buttons()
 
     def _update_buttons(self):
+        # Only PC/Console button remains; disable if ANSI too long
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.custom_id == "forge_show_ansi":
                     too_long = len(self.text_content) > self._ansi_max_len
-                    child.disabled = (self.current == "ansi") or too_long
-                elif child.custom_id == "forge_show_embed":
-                    child.disabled = self.current == "embed"
+                    child.disabled = too_long
 
     @discord.ui.button(
         label="PC/Console",
@@ -3350,49 +3349,28 @@ class ForgeRiteToggleView(discord.ui.View):
         if len(self.text_content) > self._ansi_max_len:
             try:
                 await interaction.response.send_message(
-                    "PC/Console view exceeds message limit; showing Mobile view instead.",
+                    "PC/Console view exceeds message limit.",
                     ephemeral=True,
                 )
             except Exception:
                 pass
             return
-        self.current = "ansi"
-        self._update_buttons()
+        # Send ANSI view as ephemeral message (only the clicker sees it)
         try:
-            await interaction.response.edit_message(
+            await interaction.response.send_message(
                 content=f"{self.bearer_mention}\n{self.text_content}",
-                embed=None,
-                view=self,
+                ephemeral=True,
             )
         except Exception:
             try:
                 await interaction.followup.send(
-                    "Unable to switch to PC/Console view.", ephemeral=True
+                    "Unable to show PC/Console view.", ephemeral=True
                 )
             except Exception:
                 pass
 
-    @discord.ui.button(
-        label="Mobile", style=discord.ButtonStyle.primary, custom_id="forge_show_embed"
-    )
-    async def show_embed(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        self.current = "embed"
-        self._update_buttons()
-        try:
-            await interaction.response.edit_message(
-                content=self.bearer_mention,
-                embed=self.embed_obj,
-                view=self,
-            )
-        except Exception:
-            try:
-                await interaction.followup.send(
-                    "Unable to switch to Mobile view.", ephemeral=True
-                )
-            except Exception:
-                pass
+    # Mobile button removed - embed is now the default public view.
+    # Users can click PC/Console to get an ephemeral ANSI view.
 
 
 def _get_bearer_home_chapter(user: discord.User | discord.Member) -> Optional[str]:
@@ -3732,12 +3710,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             text_content=ansi_content,
             embed=embed,
             bearer_mention=member.mention,
-            default="ansi",
+            default="embed",
         )
-        content = f"{member.mention}\n{ansi_content}"
-        # In debug mode, send ephemeral to avoid channel spam during testing
+        # Default to embed view (mobile-friendly); PC/Console button sends ephemeral ANSI
         await interaction.response.send_message(
-            content,
+            content=member.mention,
+            embed=embed,
             view=view,
             allowed_mentions=discord.AllowedMentions(users=True),
             ephemeral=DEBUG_MODE,
@@ -8611,18 +8589,12 @@ class ToggleFormatView(discord.ui.View):
         self._update_buttons()
 
     def _update_buttons(self):
-        # Ensure children exist before setting states (created by decorators)
+        # Only PC/Console button remains; disable if ANSI too long or unavailable
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.custom_id == "show_ansi":
                     too_long = len(self.text_content) > self._ansi_max_len
-                    child.disabled = (
-                        (self.current == "ansi") or (not self.text_content) or too_long
-                    )
-                elif child.custom_id == "show_embed":
-                    child.disabled = (self.current == "embed") or (
-                        self.embed_obj is None
-                    )
+                    child.disabled = (not self.text_content) or too_long
 
     @discord.ui.button(
         label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi"
@@ -8639,45 +8611,28 @@ class ToggleFormatView(discord.ui.View):
                 pass
             return
         if len(self.text_content) > self._ansi_max_len:
-            # Graceful fallback: keep embed and notify
-            note = "PC/Console view exceeds message limit; showing Mobile view instead."
             try:
-                await interaction.response.send_message(note, ephemeral=True)
+                await interaction.response.send_message(
+                    "PC/Console view exceeds message limit.", ephemeral=True
+                )
             except Exception:
-                try:
-                    await interaction.response.defer()
-                except Exception:
-                    pass
+                pass
             return
-        self.current = "ansi"
-        self._update_buttons()
+        # Send ANSI view as ephemeral message (only the clicker sees it)
         try:
-            await interaction.response.edit_message(
-                content=self.text_content, embed=None, view=self
+            await interaction.response.send_message(
+                content=self.text_content, ephemeral=True
             )
         except Exception:
-            # Fallback notify if edit fails (e.g., stale interaction)
             try:
                 await interaction.followup.send(
-                    "Unable to switch to PC/Console view.", ephemeral=True
+                    "Unable to show PC/Console view.", ephemeral=True
                 )
             except Exception:
                 pass
 
-    @discord.ui.button(
-        label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed"
-    )
-    async def show_embed(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        if self.embed_obj is None:
-            await interaction.response.defer()
-            return
-        self.current = "embed"
-        self._update_buttons()
-        await interaction.response.edit_message(
-            content=None, embed=self.embed_obj, view=self
-        )
+    # Mobile button removed - embed is now the default public view.
+    # Users can click PC/Console to get an ephemeral ANSI view.
 
 
 def _embed_from_ansi(
@@ -10435,12 +10390,12 @@ async def _scheduled_honours_runner():
                 # Send unified honours content with PC/Mobile toggle
                 content = line + "\n" + block
                 if embed and len(content) <= 2000:
-                    # Use ToggleFormatView for PC/Console vs Mobile toggle
+                    # Use ToggleFormatView - default to embed (mobile-friendly)
                     view = ToggleFormatView(
-                        text_content=content, embed=embed, default="ansi"
+                        text_content=content, embed=embed, default="embed"
                     )
                     await channel.send(
-                        content,
+                        embed=embed,
                         view=view,
                         allowed_mentions=discord.AllowedMentions(
                             users=True, roles=True
@@ -10455,7 +10410,7 @@ async def _scheduled_honours_runner():
                         ),
                     )
                 else:
-                    # Content still too long; send mentions + block separately
+                    # Content still too long; send mentions + embed separately
                     await channel.send(
                         line,
                         allowed_mentions=discord.AllowedMentions(
@@ -10464,9 +10419,9 @@ async def _scheduled_honours_runner():
                     )
                     if embed:
                         view = ToggleFormatView(
-                            text_content=block, embed=embed, default="ansi"
+                            text_content=block, embed=embed, default="embed"
                         )
-                        await channel.send(block, view=view)
+                        await channel.send(embed=embed, view=view)
                     else:
                         await channel.send(block)
             except Exception:
