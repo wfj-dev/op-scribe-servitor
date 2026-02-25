@@ -5964,53 +5964,79 @@ async def tally_deeds(
             # Continue even if roster formatting fails
             pass
 
-        span_days = 7
+        # Use month-to-date time period (matching preview_honours)
+        now_mtd = datetime.utcnow()
+        first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
+        span_days = max(1, (now_mtd - first_of_month).days)
+
+        # Check if the killteam role is actually a home chapter
+        kt_name_raw = getattr(killteam, "name", "Unknown")
+        kt_display = _extract_killteam_name(kt_name_raw)
+        is_chapter_role = kt_name_raw in HOME_CHAPTERS
 
         # Compute fortress-wide rankings for kill team honours display
         try:
-            rankings = await _compute_fortress_rankings(interaction.guild, span_days)
+            rankings = await _compute_fortress_rankings(
+                interaction.guild,
+                span_days,
+                start_dt=first_of_month,
+                end_dt=now_mtd,
+            )
         except Exception:
             rankings = {
                 "teams": {},
+                "chapters": {},
                 "imperial_date": _format_imperial_date(datetime.utcnow()),
                 "span_days": span_days,
             }
 
         imperial_date = rankings.get("imperial_date", "")
         team_rankings = rankings.get("teams", {})
+        chapter_rankings = rankings.get("chapters", {})
 
-        # Resolve the queried kill team name to match ranking keys
-        kt_name_raw = getattr(killteam, "name", "Unknown")
-        kt_display = _extract_killteam_name(kt_name_raw)
-
-        # Try to find the matching team key in rankings
-        queried_team_key = None
-        for possible_key in [kt_name_raw, kt_display, f"Kill Team {kt_display}"]:
-            for tk in team_rankings.get("ops", {}).keys():
-                if (
-                    tk.lower() == possible_key.lower()
-                    or possible_key.lower() in tk.lower()
-                    or tk.lower() in possible_key.lower()
-                ):
-                    queried_team_key = tk
+        # If this is a chapter role, look up chapter stats; otherwise look up team stats
+        if is_chapter_role:
+            # Find the matching chapter key in rankings
+            queried_key = None
+            for ch in chapter_rankings.get("ops", {}).keys():
+                if ch.lower() == kt_name_raw.lower():
+                    queried_key = ch
                     break
-            if queried_team_key:
-                break
+            active_rankings = chapter_rankings
+            display_type = "CHAPTER"
+            display_label = kt_name_raw
+        else:
+            # Try to find the matching team key in rankings
+            queried_key = None
+            for possible_key in [kt_name_raw, kt_display, f"Kill Team {kt_display}"]:
+                for tk in team_rankings.get("ops", {}).keys():
+                    if (
+                        tk.lower() == possible_key.lower()
+                        or possible_key.lower() in tk.lower()
+                        or tk.lower() in possible_key.lower()
+                    ):
+                        queried_key = tk
+                        break
+                if queried_key:
+                    break
+            active_rankings = team_rankings
+            display_type = "KILL TEAM"
+            display_label = kt_display
 
         # Helper to format rank display
-        def fmt_rank(metric_key: str, team_key: str) -> str:
+        def fmt_rank(metric_key: str, key: str) -> str:
             try:
-                val, rank, total = team_rankings.get(metric_key, {}).get(
-                    team_key, (0, 0, 0)
+                val, rank, total = active_rankings.get(metric_key, {}).get(
+                    key, (0, 0, 0)
                 )
                 return f"#{rank}/{total}"
             except Exception:
                 return "—"
 
-        def fmt_val_rank(metric_key: str, team_key: str, val_fmt: str = "") -> str:
+        def fmt_val_rank(metric_key: str, key: str, val_fmt: str = "") -> str:
             try:
-                val, rank, total = team_rankings.get(metric_key, {}).get(
-                    team_key, (0, 0, 0)
+                val, rank, total = active_rankings.get(metric_key, {}).get(
+                    key, (0, 0, 0)
                 )
                 if val_fmt:
                     return f"{val_fmt.format(val)} (#{rank}/{total})"
@@ -6018,38 +6044,34 @@ async def tally_deeds(
             except Exception:
                 return "—"
 
-        # Build the new honours-style output for kill team
+        # Build the new honours-style output for kill team or chapter
         s_lines = []
         s_lines.append("```ansi")
         s_lines.append(
             "\u001b[32m=============================================================================="
         )
         s_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
-        s_lines.append("  OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS")
+        s_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
         s_lines.append(f"  Date: {imperial_date}")
-        s_lines.append(f"  Kill Team: {kt_display}")
+        s_lines.append(f"  {display_type}: {display_label}")
         s_lines.append(
             "=============================================================================="
         )
         s_lines.append("")
-        s_lines.append("KILL TEAM DISTINCTIONS")
+        s_lines.append(f"{display_type} DISTINCTIONS")
 
-        if queried_team_key:
+        if queried_key:
             # Get values and ranks for each metric
-            ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
-            avg_data = team_rankings.get("avg", {}).get(queried_team_key, (0.0, 0, 0))
-            pres_data = team_rankings.get("pres", {}).get(queried_team_key, (0, 0, 0))
-            armory_data = team_rankings.get("armory", {}).get(
-                queried_team_key, (0, 0, 0)
+            ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
+            avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
+            pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
+            armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
+            gene_data = active_rankings.get("gene_carried", {}).get(
+                queried_key, (0, 0, 0)
             )
-            gene_data = team_rankings.get("gene_carried", {}).get(
-                queried_team_key, (0, 0, 0)
-            )
-            risk_data = team_rankings.get("high_risk", {}).get(
-                queried_team_key, (0, 0, 0)
-            )
-            force_data = team_rankings.get("avg_aar_per_member", {}).get(
-                queried_team_key, (0.0, 0, 0)
+            risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
+            force_data = active_rankings.get("avg_aar_per_member", {}).get(
+                queried_key, (0.0, 0, 0)
             )
 
             s_lines.append(
@@ -6079,24 +6101,21 @@ async def tally_deeds(
 
         try:
             # Structured summary embed with concise inline fields
+            title_type = "Chapter" if is_chapter_role else "Kill Team"
             embed = discord.Embed(
-                title="Kill Team Weekly Honours",
-                description=f"{kt_display} — Last {span_days} Days",
+                title=f"{title_type} Monthly Honours",
+                description=f"{display_label} — Month to Date ({span_days} Days)",
                 color=0x2ECC71,
             )
-            if queried_team_key:
-                ops_data = team_rankings.get("ops", {}).get(queried_team_key, (0, 0, 0))
-                avg_data = team_rankings.get("avg", {}).get(
-                    queried_team_key, (0.0, 0, 0)
+            if queried_key:
+                ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
+                avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
+                pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
+                risk_data = active_rankings.get("high_risk", {}).get(
+                    queried_key, (0, 0, 0)
                 )
-                pres_data = team_rankings.get("pres", {}).get(
-                    queried_team_key, (0, 0, 0)
-                )
-                risk_data = team_rankings.get("high_risk", {}).get(
-                    queried_team_key, (0, 0, 0)
-                )
-                force_data = team_rankings.get("avg_aar_per_member", {}).get(
-                    queried_team_key, (0.0, 0, 0)
+                force_data = active_rankings.get("avg_aar_per_member", {}).get(
+                    queried_key, (0.0, 0, 0)
                 )
                 embed.add_field(
                     name="Total Operations",
@@ -6132,7 +6151,10 @@ async def tally_deeds(
         except Exception:
             # ignore send errors and proceed to attach full file
             try:
-                embed = _embed_from_ansi("Kill Team Summary", summary_text)
+                fallback_title = (
+                    "Chapter Summary" if is_chapter_role else "Kill Team Summary"
+                )
+                embed = _embed_from_ansi(fallback_title, summary_text)
                 view = ToggleFormatView(
                     text_content=summary_text, embed=embed, default="ansi"
                 )
@@ -6175,17 +6197,26 @@ async def tally_deeds(
             content=reply_text, embed=None, view=view, ephemeral=True
         )
 
-        # Send Weekly Honours as a separate additional message
+        # Send Monthly Honours as a separate additional message
         if len(members) == 1:
+            # Use month-to-date time period (matching preview_honours)
+            now_mtd = datetime.utcnow()
+            first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
+            mtd_span_days = max(1, (now_mtd - first_of_month).days)
             try:
-                rankings = await _compute_fortress_rankings(interaction.guild, 7)
+                rankings = await _compute_fortress_rankings(
+                    interaction.guild,
+                    mtd_span_days,
+                    start_dt=first_of_month,
+                    end_dt=now_mtd,
+                )
             except Exception:
                 rankings = {
                     "individuals": {},
                     "chapters": {},
                     "chapters_map": {},
                     "imperial_date": _format_imperial_date(datetime.utcnow()),
-                    "span_days": 7,
+                    "span_days": mtd_span_days,
                 }
 
             imperial_date = rankings.get("imperial_date", "")
@@ -6242,7 +6273,7 @@ async def tally_deeds(
                 "\u001b[32m=============================================================================="
             )
             h_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
-            h_lines.append("  OPERATION-SCRIBE SERVITOR — WEEKLY HONOURS")
+            h_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
             h_lines.append(f"  Date: {imperial_date}")
             h_lines.append(f"  Brother: {target_name}")
             h_lines.append(f"  Home Chapter: {home_chapter}")
@@ -6308,7 +6339,7 @@ async def tally_deeds(
             # Build embed for honours
             try:
                 honours_embed = discord.Embed(
-                    title=f"Weekly Honours — {target_name}",
+                    title=f"Monthly Honours — {target_name}",
                     color=0x2ECC71,
                 )
                 honours_embed.add_field(
@@ -6372,7 +6403,7 @@ async def tally_deeds(
                         inline=True,
                     )
             except Exception:
-                honours_embed = _embed_from_ansi("Weekly Honours", honours_text)
+                honours_embed = _embed_from_ansi("Monthly Honours", honours_text)
 
             honours_view = ToggleFormatView(
                 text_content=honours_text, embed=honours_embed, default="ansi"
@@ -8734,6 +8765,9 @@ HIGH_COMMAND_ROLES = {
 async def _compute_fortress_rankings(
     guild: discord.Guild,
     span_days: int = 7,
+    *,
+    start_dt: Optional[datetime] = None,
+    end_dt: Optional[datetime] = None,
 ) -> dict:
     """Compute fortress-wide rankings for individuals, kill teams, and chapters.
 
@@ -8742,12 +8776,20 @@ async def _compute_fortress_rankings(
       - 'teams': dict mapping team_name -> {metric: (value, rank, total)}
       - 'chapters': dict mapping chapter_name -> {metric: (value, rank, total)}
       - 'imperial_date': formatted imperial date string
+
+    If start_dt and end_dt are provided, they override the span_days calculation.
     """
     from datetime import datetime, timedelta
 
     now = datetime.utcnow()
-    start = now - timedelta(days=span_days)
-    end = now
+    if start_dt is not None and end_dt is not None:
+        start = start_dt
+        end = end_dt
+        # Compute span_days from the provided window for threshold calculation
+        span_days = max(1, (end - start).days)
+    else:
+        start = now - timedelta(days=span_days)
+        end = now
 
     # Data aggregation structures
     users: Dict[str, dict] = {}
