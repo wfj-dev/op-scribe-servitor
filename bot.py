@@ -3001,7 +3001,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Company Champion": "Blade of the Company, Champion",
     "Kill Team Champion": "Blade of the Kill Team, Champion",
     # Battle line (highest to lowest)
-    "Watch Captain": "Captain, whose word is law",
+    "Watch Captain": "Warden of the Company, Captain",
     "Watch Lieutenant": "Shield of the Watch, Lieutenant",
     "Watch Sergeant": "Bearer of command, Sergeant",
     "Oathsworn": "Oathsworn Warrior",
