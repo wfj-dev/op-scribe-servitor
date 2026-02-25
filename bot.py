@@ -4052,6 +4052,47 @@ async def record_of_blood(interaction: discord.Interaction):
     lines.append("\u001b[0m```")
 
     report = "\n".join(lines)
+
+    # Build mobile-friendly embed
+    embed = discord.Embed(
+        title="Record-of-Blood Audit",
+        description=f"Watch Brothers scanned: {len(watch_brothers)}",
+        color=0x2ECC71,
+    )
+
+    if members_with_noncanonical_home:
+        noncanon_text = "\n".join(f"• {nm}: {ch}" for nm, ch in members_with_noncanonical_home[:10])
+        if len(members_with_noncanonical_home) > 10:
+            noncanon_text += f"\n... and {len(members_with_noncanonical_home) - 10} more"
+        embed.add_field(name="Non-canonical Home Chapters", value=noncanon_text, inline=False)
+
+    if noncanonical_mentioned:
+        noncm_text = ", ".join(sorted(noncanonical_mentioned)[:10])
+        if len(noncanonical_mentioned) > 10:
+            noncm_text += f" (+{len(noncanonical_mentioned) - 10} more)"
+        embed.add_field(name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False)
+
+    # Count issues
+    issue_count = 0
+    for rec in chapter_mentions_by_msg:
+        mids = rec.get("mentions", [])
+        first_claim = rec.get("first_chap")
+        for mrec in mids:
+            mid = mrec.get("id")
+            actual = member_home.get(mid, "")
+            claimed = first_claim or (rec.get("chapters", [])[0] if rec.get("chapters") else "")
+            if claimed and claimed.lower() != (actual or "").lower():
+                issue_count += 1
+        if first_claim and all(first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS):
+            issue_count += 1
+
+    if issue_count > 0:
+        embed.add_field(name="Discrepancies Found", value=str(issue_count), inline=True)
+    else:
+        embed.add_field(name="Status", value="No discrepancies found", inline=False)
+
+    embed.set_footer(text="Use PC/Console button for detailed ANSI view")
+
     try:
         # Send as followup (deferred earlier). If the report is too large
         # for a single message, attach it as a file instead.
@@ -4062,7 +4103,8 @@ async def record_of_blood(interaction: discord.Interaction):
             fp.seek(0)
             try:
                 await interaction.followup.send(
-                    "Report too large; attached as file.",
+                    "Report too large for toggle view; attached as file.",
+                    embed=embed,
                     file=discord.File(fp, filename="record_of_blood.txt"),
                     ephemeral=True,
                 )
@@ -4072,7 +4114,8 @@ async def record_of_blood(interaction: discord.Interaction):
                 except Exception:
                     pass
         else:
-            await interaction.followup.send(report, ephemeral=True)
+            view = ToggleFormatView(text_content=report, embed=embed, default="embed")
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     except Exception as e:
         logger.exception(f"record_of_blood: followup.send failed: {e}")
         try:
@@ -4863,7 +4906,39 @@ async def audit_service_studs(interaction: discord.Interaction):
     lines.append("\u001b[0m```")
 
     report = "\n".join(lines)
-    await interaction.followup.send(report, ephemeral=True)
+
+    # Build mobile-friendly embed
+    embed = discord.Embed(
+        title="Service-Studs Audit",
+        description=f"Found {len(mismatches)} discrepancies",
+        color=0x2ECC71,
+    )
+
+    # Add up to 10 mismatches to embed fields
+    awards_needed = [(name, scomp, sdisp, action) for name, scomp, sdisp, action in rows if "AWARD" in action]
+    removals_needed = [(name, scomp, sdisp, action) for name, scomp, sdisp, action in rows if "REMOVE" in action]
+
+    if awards_needed:
+        award_text = "\n".join(f"• {name}: {action}" for name, _, _, action in awards_needed[:8])
+        if len(awards_needed) > 8:
+            award_text += f"\n... and {len(awards_needed) - 8} more"
+        embed.add_field(name=f"Need Awards ({len(awards_needed)})", value=award_text, inline=False)
+
+    if removals_needed:
+        remove_text = "\n".join(f"• {name}: {action}" for name, _, _, action in removals_needed[:8])
+        if len(removals_needed) > 8:
+            remove_text += f"\n... and {len(removals_needed) - 8} more"
+        embed.add_field(name=f"Need Removal ({len(removals_needed)})", value=remove_text, inline=False)
+
+    embed.set_footer(text="Use PC/Console button for detailed ANSI table")
+
+    # Send with toggle view
+    if len(report) <= 1900:
+        view = ToggleFormatView(text_content=report, embed=embed, default="embed")
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    else:
+        # Report too long for toggle, send embed only
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(
@@ -5035,24 +5110,53 @@ async def librarian_audit(interaction: discord.Interaction):
 
     report = "\n".join(lines)
 
-    # Handle long reports
-    if len(report) <= 2000:
-        await interaction.followup.send(report, ephemeral=True)
-    else:
-        # Split into chunks
-        chunks = []
-        current_chunk = "```ansi\n\u001b[32m"
-        for line in lines[1:-1]:  # Skip opening/closing backticks
-            if len(current_chunk) + len(line) + 15 > 1900:
-                current_chunk += "\u001b[0m```"
-                chunks.append(current_chunk)
-                current_chunk = "```ansi\n\u001b[32m"
-            current_chunk += line + "\n"
-        current_chunk += "\u001b[0m```"
-        chunks.append(current_chunk)
+    # Build mobile-friendly embed
+    embed = discord.Embed(
+        title="Librarium Audit — Black Laurels",
+        color=0x2ECC71,
+    )
 
-        for chunk in chunks:
-            await interaction.followup.send(chunk, ephemeral=True)
+    if missing_role:
+        missing_text = "\n".join(f"✓ {getattr(m, 'display_name', str(m.id))}" for m, _ in missing_role[:10])
+        if len(missing_role) > 10:
+            missing_text += f"\n... and {len(missing_role) - 10} more"
+        embed.add_field(name=f"Eligible but Missing Role ({len(missing_role)})", value=missing_text, inline=False)
+
+    if needs_new_missions:
+        needs_text = ""
+        for member, _, missing in needs_new_missions[:8]:
+            name = getattr(member, "display_name", str(member.id))
+            missing_list = ", ".join(sorted(m.title() for m in missing))
+            needs_text += f"⚠ {name}\n  Missing: {missing_list}\n"
+        if len(needs_new_missions) > 8:
+            needs_text += f"... and {len(needs_new_missions) - 8} more"
+        embed.add_field(name=f"Needs New Missions ({len(needs_new_missions)})", value=needs_text.strip(), inline=False)
+
+    if not missing_role and not needs_new_missions:
+        embed.description = "No discrepancies found"
+
+    embed.set_footer(text="Use PC/Console button for detailed ANSI view")
+
+    # Handle long reports
+    if len(report) <= 1900:
+        view = ToggleFormatView(text_content=report, embed=embed, default="embed")
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    else:
+        # Report too long for toggle, send embed with file attachment
+        import io
+        fp = io.BytesIO(report.encode("utf-8"))
+        fp.seek(0)
+        try:
+            await interaction.followup.send(
+                embed=embed,
+                file=discord.File(fp, filename="librarian_audit.txt"),
+                ephemeral=True,
+            )
+        finally:
+            try:
+                fp.close()
+            except Exception:
+                pass
 
 
 @bot.tree.command(
@@ -8576,6 +8680,7 @@ class ToggleFormatView(discord.ui.View):
         text_content: Optional[str] = None,
         embed: Optional[discord.Embed] = None,
         default: str = "ansi",
+        ephemeral_context: bool = True,
     ):
         # Extend lifetime to reduce 'Interaction failed' after short delays
         super().__init__(timeout=900)
@@ -8584,17 +8689,33 @@ class ToggleFormatView(discord.ui.View):
         self.current = default if default in ("ansi", "embed") else "ansi"
         # Soft safety margin for Discord's 2000-char content limit
         self._ansi_max_len = 1900
+        # If True, buttons toggle the message in place (for ephemeral messages)
+        # If False, PC/Console sends ephemeral instead of editing (for public messages)
+        self.ephemeral_context = ephemeral_context
 
         # Initialize button states based on available formats
         self._update_buttons()
 
     def _update_buttons(self):
-        # Only PC/Console button remains; disable if ANSI too long or unavailable
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.custom_id == "show_ansi":
                     too_long = len(self.text_content) > self._ansi_max_len
-                    child.disabled = (not self.text_content) or too_long
+                    if self.ephemeral_context:
+                        # Disable if currently showing ANSI or if ANSI unavailable
+                        child.disabled = (
+                            (self.current == "ansi")
+                            or (not self.text_content)
+                            or too_long
+                        )
+                    else:
+                        # For public context, disable only if ANSI unavailable
+                        child.disabled = (not self.text_content) or too_long
+                elif child.custom_id == "show_embed":
+                    # Only relevant in ephemeral context
+                    child.disabled = (self.current == "embed") or (
+                        self.embed_obj is None
+                    )
 
     @discord.ui.button(
         label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi"
@@ -8618,21 +8739,50 @@ class ToggleFormatView(discord.ui.View):
             except Exception:
                 pass
             return
-        # Send ANSI view as ephemeral message (only the clicker sees it)
-        try:
-            await interaction.response.send_message(
-                content=self.text_content, ephemeral=True
-            )
-        except Exception:
+
+        if self.ephemeral_context:
+            # Toggle the message in place (for ephemeral messages)
+            self.current = "ansi"
+            self._update_buttons()
             try:
-                await interaction.followup.send(
-                    "Unable to show PC/Console view.", ephemeral=True
+                await interaction.response.edit_message(
+                    content=self.text_content, embed=None, view=self
                 )
             except Exception:
-                pass
+                try:
+                    await interaction.followup.send(
+                        "Unable to switch to PC/Console view.", ephemeral=True
+                    )
+                except Exception:
+                    pass
+        else:
+            # Send ANSI view as ephemeral message (for public messages)
+            try:
+                await interaction.response.send_message(
+                    content=self.text_content, ephemeral=True
+                )
+            except Exception:
+                try:
+                    await interaction.followup.send(
+                        "Unable to show PC/Console view.", ephemeral=True
+                    )
+                except Exception:
+                    pass
 
-    # Mobile button removed - embed is now the default public view.
-    # Users can click PC/Console to get an ephemeral ANSI view.
+    @discord.ui.button(
+        label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed"
+    )
+    async def show_embed(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        if self.embed_obj is None:
+            await interaction.response.defer()
+            return
+        self.current = "embed"
+        self._update_buttons()
+        await interaction.response.edit_message(
+            content=None, embed=self.embed_obj, view=self
+        )
 
 
 def _embed_from_ansi(
@@ -10300,7 +10450,7 @@ AARs/Member              Chapter (X.X)
 
     if chapters_text:
         embed.add_field(
-            name="fortress Top 5 Chapters", value=chapters_text.strip(), inline=False
+            name="🛡️ Top 5 Chapters", value=chapters_text.strip(), inline=False
         )
 
     # Individual Distinctions
@@ -10391,8 +10541,9 @@ async def _scheduled_honours_runner():
                 content = line + "\n" + block
                 if embed and len(content) <= 2000:
                     # Use ToggleFormatView - default to embed (mobile-friendly)
+                    # ephemeral_context=False: PC button sends ephemeral, public message stays embed
                     view = ToggleFormatView(
-                        text_content=content, embed=embed, default="embed"
+                        text_content=content, embed=embed, default="embed", ephemeral_context=False
                     )
                     await channel.send(
                         embed=embed,
@@ -10419,7 +10570,7 @@ async def _scheduled_honours_runner():
                     )
                     if embed:
                         view = ToggleFormatView(
-                            text_content=block, embed=embed, default="embed"
+                            text_content=block, embed=embed, default="embed", ephemeral_context=False
                         )
                         await channel.send(embed=embed, view=view)
                     else:
@@ -11126,6 +11277,16 @@ async def _audit_company_roster(
         all_roster_users = set(high_cmd_roster.keys()) | company_roster_users
         logger.info(f"Total roster users: {list(all_roster_users)}")
 
+        # Helper to get display name for a user ID
+        def _get_display_name(uid: int) -> str:
+            try:
+                member = guild.get_member(uid)
+                if member:
+                    return member.display_name or member.name
+            except Exception:
+                pass
+            return f"User-{uid}"
+
         # Check each roster member for missing roles
         for user_id in all_roster_users:
             actual_roles = await _get_user_roles_by_id(guild, user_id)
@@ -11140,6 +11301,7 @@ async def _audit_company_roster(
                     result["missing"].append(
                         {
                             "user_id": user_id,
+                            "display_name": _get_display_name(user_id),
                             "location": "High Command",
                             "expected": sorted(missing or []),
                             "actual": sorted(actual_roles),
@@ -11160,6 +11322,7 @@ async def _audit_company_roster(
                     result["missing"].append(
                         {
                             "user_id": user_id,
+                            "display_name": _get_display_name(user_id),
                             "location": "Company Command",
                             "expected": sorted(missing or []),
                             "actual": sorted(actual_roles),
@@ -11187,6 +11350,7 @@ async def _audit_company_roster(
                         result["missing"].append(
                             {
                                 "user_id": user_id,
+                                "display_name": _get_display_name(user_id),
                                 "location": f"Kill Team ({kt_role_name})",
                                 "rank": rank,
                                 "expected": sorted(missing or []),
@@ -11221,6 +11385,7 @@ async def _audit_company_roster(
                             result["extra"].append(
                                 {
                                     "user_id": member.id,
+                                    "display_name": member.display_name or member.name,
                                     "location": "Company Command (should be removed)",
                                     "actual": sorted([r.name for r in member.roles]),
                                 }
@@ -11237,6 +11402,7 @@ async def _audit_company_roster(
                             result["extra"].append(
                                 {
                                     "user_id": member.id,
+                                    "display_name": member.display_name or member.name,
                                     "location": f"not in {kt_names}{possession} roster",
                                     "actual": sorted([r.name for r in member.roles]),
                                 }
@@ -11268,6 +11434,7 @@ async def _audit_company_roster(
                 result["mismatch"].append(
                     {
                         "user_id": user_id,
+                        "display_name": _get_display_name(user_id),
                         "issue": f"Multiple kill teams: {', '.join(kt_names)}",
                         "actual": sorted(actual_roles),
                     }
@@ -11280,6 +11447,7 @@ async def _audit_company_roster(
                 result["mismatch"].append(
                     {
                         "user_id": user_id,
+                        "display_name": _get_display_name(user_id),
                         "issue": f"Listed in multiple sections: {', '.join(appears_in)}",
                         "actual": sorted(actual_roles),
                     }
@@ -11297,6 +11465,7 @@ async def _audit_company_roster(
                 result["mismatch"].append(
                     {
                         "user_id": user_id,
+                        "display_name": _get_display_name(user_id),
                         "issue": "Multiple company roles",
                         "actual": sorted(actual_roles),
                     }
@@ -11309,8 +11478,12 @@ async def _audit_company_roster(
 
 
 def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
-    """Format audit results as summary."""
-    lines = ["**ROSTER AUDIT — SUMMARY**\n"]
+    """Format audit results as ANSI summary."""
+    lines = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — SUMMARY")
+    lines.append("==============================================================================")
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
@@ -11318,65 +11491,84 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
         extra_count = len(result.get("extra", []))
         mismatch_count = len(result.get("mismatch", []))
 
-        lines.append(f"**{company}**")
-        lines.append(f"  Missing roles: {missing_count}")
-        lines.append(f"  Extra (not in roster): {extra_count}")
-        lines.append(f"  Mismatches: {mismatch_count}")
-        lines.append("")
+        lines.append(f"")
+        lines.append(f"  {company}")
+        lines.append(f"    Missing roles: {missing_count}")
+        lines.append(f"    Extra (not in roster): {extra_count}")
+        lines.append(f"    Mismatches: {mismatch_count}")
 
     if not any(
         r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
     ):
-        lines.append("✅ No discrepancies found.")
+        lines.append("")
+        lines.append("  No discrepancies found.")
+
+    lines.append("")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
 
     return "\n".join(lines)
 
 
 def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
-    """Format audit results as full detail."""
-    lines = ["**ROSTER AUDIT — FULL REPORT**\n"]
+    """Format audit results as full ANSI detail."""
+    lines = []
+    lines.append("```ansi")
+    lines.append("\u001b[32m==============================================================================")
+    lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — FULL REPORT")
+    lines.append("==============================================================================")
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
-        lines.append(f"**{company}**\n")
+        lines.append(f"")
+        lines.append(f"  {company}")
+        lines.append("  " + "-" * 72)
 
         missing = result.get("missing", [])
         if missing:
-            lines.append("**Missing Roles:**")
+            lines.append("")
+            lines.append("  MISSING ROLES:")
             for item in missing:
                 user_id = item.get("user_id")
+                display_name = item.get("display_name", f"<@{user_id}>")
                 location = item.get("location", "Unknown")
                 expected = item.get("expected", [])
                 rank = item.get("rank", "")
                 rank_str = f" [{rank}]" if rank else ""
-                lines.append(f"  <@{user_id}> ({location}){rank_str}")
-                lines.append(f"    Expected: {', '.join(expected)}")
-            lines.append("")
+                lines.append(f"    {display_name} ({location}){rank_str}")
+                lines.append(f"      Expected: {', '.join(expected)}")
 
         extra = result.get("extra", [])
         if extra:
-            lines.append("**Extra (Not in Roster):**")
+            lines.append("")
+            lines.append("  EXTRA (NOT IN ROSTER):")
             for item in extra:
                 user_id = item.get("user_id")
+                display_name = item.get("display_name", f"<@{user_id}>")
                 location = item.get("location", "Unknown")
-                lines.append(f"  <@{user_id}> ({location})")
-            lines.append("")
+                lines.append(f"    {display_name} ({location})")
 
         mismatch = result.get("mismatch", [])
         if mismatch:
-            lines.append("**Mismatches:**")
+            lines.append("")
+            lines.append("  MISMATCHES:")
             for item in mismatch:
                 user_id = item.get("user_id")
+                display_name = item.get("display_name", f"<@{user_id}>")
                 issue = item.get("issue", "Unknown")
                 actual = item.get("actual", [])
-                lines.append(f"  <@{user_id}>: {issue}")
-                lines.append(f"    Roles: {', '.join(actual)}")
-            lines.append("")
+                lines.append(f"    {display_name}: {issue}")
+                lines.append(f"      Roles: {', '.join(actual)}")
 
     if not any(
         r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
     ):
-        lines.append("✅ No discrepancies found.")
+        lines.append("")
+        lines.append("  No discrepancies found.")
+
+    lines.append("")
+    lines.append("==============================================================================")
+    lines.append("\u001b[0m```")
 
     return "\n".join(lines)
 
@@ -11492,14 +11684,86 @@ async def roster_audit(
         else:
             output = _format_audit_full(results)
 
-        # Send output, split if needed
-        if len(output) <= 2000:
-            await interaction.followup.send(output, ephemeral=True)
+        # Build mobile-friendly embed with user mentions
+        embed = discord.Embed(
+            title="Roster Audit",
+            color=0x2ECC71,
+        )
+
+        total_missing = sum(len(r.get("missing", [])) for r in results)
+        total_extra = sum(len(r.get("extra", [])) for r in results)
+        total_mismatch = sum(len(r.get("mismatch", [])) for r in results)
+
+        if total_missing == 0 and total_extra == 0 and total_mismatch == 0:
+            embed.description = "✅ No discrepancies found."
         else:
-            # Split into chunks
-            chunks = [output[i : i + 2000] for i in range(0, len(output), 2000)]
-            for chunk in chunks:
-                await interaction.followup.send(chunk, ephemeral=True)
+            embed.description = (
+                f"**Scope:** {scope}\n\n"
+                f"• **Need Roles** — Listed in roster but missing required Discord roles\n"
+                f"• **Not Listed** — Have company role but not in roster channel\n"
+                f"• **Conflicts** — Multiple teams, sections, or company roles"
+            )
+            for result in results:
+                company = result.get("company_name", "Unknown")
+                missing = result.get("missing", [])
+                extra = result.get("extra", [])
+                mismatch = result.get("mismatch", [])
+
+                if not missing and not extra and not mismatch:
+                    continue
+
+                # Build field text with actual user mentions (up to limits)
+                field_parts = []
+                if missing:
+                    missing_users = [f"<@{item.get('user_id')}>" for item in missing[:5]]
+                    # These users are in the roster but missing required roles
+                    missing_text = "**Need Roles** (in roster, missing roles):\n" + ", ".join(missing_users)
+                    if len(missing) > 5:
+                        missing_text += f" (+{len(missing) - 5} more)"
+                    field_parts.append(missing_text)
+                if extra:
+                    extra_users = [f"<@{item.get('user_id')}>" for item in extra[:5]]
+                    # These users have company role but aren't listed in the roster
+                    extra_text = "**Not Listed** (have role, not in roster):\n" + ", ".join(extra_users)
+                    if len(extra) > 5:
+                        extra_text += f" (+{len(extra) - 5} more)"
+                    field_parts.append(extra_text)
+                if mismatch:
+                    mismatch_users = [f"<@{item.get('user_id')}>" for item in mismatch[:5]]
+                    # These users have conflicting assignments (multiple teams, etc.)
+                    mismatch_text = "**Conflicts** (multiple teams, sections):\n" + ", ".join(mismatch_users)
+                    if len(mismatch) > 5:
+                        mismatch_text += f" (+{len(mismatch) - 5} more)"
+                    field_parts.append(mismatch_text)
+
+                field_value = "\n".join(field_parts) if field_parts else "—"
+                # Truncate if too long for embed field
+                if len(field_value) > 1024:
+                    field_value = field_value[:1020] + "..."
+                embed.add_field(name=company, value=field_value, inline=False)
+
+        embed.set_footer(text="Use PC/Console button for detailed ANSI view")
+
+        # Send output with toggle view
+        if len(output) <= 1900:
+            view = ToggleFormatView(text_content=output, embed=embed, default="embed")
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        else:
+            # Output too long for toggle, send embed with file attachment
+            import io
+            fp = io.BytesIO(output.encode("utf-8"))
+            fp.seek(0)
+            try:
+                await interaction.followup.send(
+                    embed=embed,
+                    file=discord.File(fp, filename="roster_audit.txt"),
+                    ephemeral=True,
+                )
+            finally:
+                try:
+                    fp.close()
+                except Exception:
+                    pass
 
     except Exception:
         logger.exception("Error in roster_audit command")
