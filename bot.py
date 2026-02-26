@@ -1416,9 +1416,16 @@ async def _check_promotion_milestones():
                     # Notify if newly eligible or newly checked while eligible (once per eligibility session)
                     # Similar to service studs: notify if is_eligible and last wasn't or is same
                     if is_eligible and is_eligible >= last_eligible:
+                        # Get Watch Brother role for fallback mention
+                        watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+                        # Format: user mention, or if not mentionable use rank role + name
+                        if watch_brother_role:
+                            member_line = f"{watch_brother_role.mention} {member.display_name}"
+                        else:
+                            member_line = f"{member.mention}"
                         # Send notification in the specified format
                         msg = (
-                            f"᛭⋅ {member.display_name}\n"
+                            f"᛭⋅ {member_line}\n"
                             f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
                             f"᛭⋅ {member_chapter}\n"
                             f"᛭⋅ {watch_command_mention}\n"
@@ -1427,7 +1434,7 @@ async def _check_promotion_milestones():
                         await veteran_channel.send(
                             msg,
                             allowed_mentions=discord.AllowedMentions(
-                                users=False, roles=True
+                                users=True, roles=True
                             ),
                         )
                         notifications_sent += 1
@@ -1464,20 +1471,24 @@ async def _check_promotion_milestones():
                     ):
                         new_studs = displayed_studs - last_displayed_studs
                         owed_studs = earned_studs - displayed_studs
-                        stud_word = "Stud" if new_studs == 1 else "Studs"
-                        # Get tier-appropriate veneration phrase
-                        studs_veneration = _get_studs_veneration(displayed_studs)
-                        msg_lines = [
-                            f"{watch_command_mention}",
-                            f"🎖️ **{member.display_name}** has earned {new_studs} new Service {stud_word}!",
-                            f"᛭⋅ Total Earned: {earned_studs} | Displaying: {displayed_studs} | Owed: {owed_studs}",
-                        ]
-                        if studs_veneration:
-                            msg_lines.append(f'*"{studs_veneration}"*')
+
+                        # Generate the flavorful announcement
+                        content, embed = _get_service_studs_announcement(
+                            member=member,
+                            member_chapter=member_chapter,
+                            displayed_studs=displayed_studs,
+                            new_studs=new_studs,
+                            earned_studs=earned_studs,
+                            owed_studs=owed_studs,
+                            guild=guild,
+                        )
+
+                        # Send the announcement (content has mentions, embed has details)
                         await studs_channel.send(
-                            "\n".join(msg_lines),
+                            content,
+                            embed=embed,
                             allowed_mentions=discord.AllowedMentions(
-                                users=False, roles=True
+                                users=True, roles=True
                             ),
                         )
                         notifications_sent += 1
@@ -3046,10 +3057,255 @@ SACRED_MECHANICUS_PHRASES: List[str] = [
     "The Void Dragon stirs not against this work.",
 ]
 
-# Service studs veneration phrases - tiered by studs count
-# In 40k lore, service studs mark decades/centuries of service; marines with many
-# are highly venerated veterans whose experience commands respect
-# Tiers: 0 (none), 1-4 (proven), 5-25 (venerated), 26+ (legendary)
+# ─────────────────────────────────────────────────────────────────────────────
+# Service Studs Announcement Components
+# ─────────────────────────────────────────────────────────────────────────────
+# Service studs mark extended service to the Long Watch. Marines earn them
+# through time served AND AAR points accumulated. The announcements are
+# flavorful and RP-oriented, incorporating rank, home chapter, and milestone.
+
+# Chapter-specific service stud flavor - how each chapter views/honors service marks
+CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
+    "Angels of Vengeance": [
+        "Each stud marks another debt repaid to the Lion's memory.",
+        "The Unforgiven count your studs among the honors earned in penance.",
+        "Your service marks shine like the Lion's own resolve.",
+    ],
+    "Black Templars": [
+        "Your studs are earned in the fires of the Eternal Crusade.",
+        "No pity, no remorse—only the marks of endless war upon your brow.",
+        "The Emperor's Champion would nod at such dedication.",
+    ],
+    "Blood Angels": [
+        "By the blood of Sanguinius, your service marks are sanctified.",
+        "Your studs gleam with the nobility of Baal.",
+        "Each mark holds back the darkness within—service is your salvation.",
+    ],
+    "Blood Ravens": [
+        "Knowledge accumulated, service recorded—your studs speak of both.",
+        "The Librarius records your marks alongside your collected wisdom.",
+        "Each stud is a chapter in your quest for knowledge.",
+    ],
+    "Carcharodons": [
+        "From the void's depths, your service marks emerge.",
+        "Silent and relentless—your studs speak where words cannot.",
+        "The Outer Dark has forged these marks upon you.",
+    ],
+    "Cowled Wardens": [
+        "In shadow your service is marked; in shadow it is honored.",
+        "Your studs gleam beneath the cowl of duty.",
+        "Silent watchers know the weight of each mark you bear.",
+    ],
+    "Crimson Fists": [
+        "Rynn's World remembers—your studs honor the fallen.",
+        "The fist of Dorn is strengthened by your service.",
+        "Each mark is a defiant strike against those who would see us fall.",
+    ],
+    "Dark Angels": [
+        "The Inner Circle takes note of your accumulated service.",
+        "Your studs speak of secrets kept and duties fulfilled.",
+        "The Lion watches; your marks do not go unnoticed.",
+    ],
+    "Dark Krakens": [
+        "From the deep places, your service rises to be marked.",
+        "The abyssal void reflects in each earned stud.",
+        "Pressure and darkness forge these marks of honor.",
+    ],
+    "Death Spectres": [
+        "Between life and death, your service is eternal.",
+        "The shroud parts to reveal your accumulated marks.",
+        "Each stud pierces the veil of mortality.",
+    ],
+    "Exorcists": [
+        "Thrice-tested, your studs proclaim purity of service.",
+        "No daemon can claim one whose brow bears such marks.",
+        "Your service is warded against the Warp itself.",
+    ],
+    "Flesh Tearers": [
+        "The Red Thirst is held at bay by such devoted service.",
+        "Fury tempered by discipline—your studs attest to both.",
+        "Amit himself would honor such marks of controlled wrath.",
+    ],
+    "Genesis Chapter": [
+        "Guilliman's purity flows through your earned marks.",
+        "The Codex records such dedication with approval.",
+        "Your studs reflect the Primarch's own commitment to excellence.",
+    ],
+    "Hawk Lords": [
+        "Swift as the raptor, yet enduring—your studs prove both.",
+        "The skies of countless worlds have witnessed your service.",
+        "Each mark a feather in your chapter's proud plumage.",
+    ],
+    "Imperial Fists": [
+        "Dorn's own fortitude is measured in your studs.",
+        "Stone and iron—your service stands unbreakable.",
+        "The walls of Terra themselves honor such marks.",
+    ],
+    "Iron Hands": [
+        "The flesh may be weak, but your service is steel.",
+        "Your studs are data-points of unwavering duty.",
+        "The machine appreciates such logical dedication.",
+    ],
+    "Iron Hounds": [
+        "Relentless as the hunt—your studs mark each pursuit.",
+        "No quarry escapes one whose brow bears such marks.",
+        "The pack honors your enduring service.",
+    ],
+    "Knights of the Raven": [
+        "In cunning and patience, your studs are earned.",
+        "Each mark a stratagem successfully executed.",
+        "The Raven's wisdom shines through your service.",
+    ],
+    "Lamenters": [
+        "Though cursed, your studs shine with undimmed hope.",
+        "For those we cherish—each mark a sacrifice willingly made.",
+        "Your service defies the doom that follows.",
+    ],
+    "Mentors": [
+        "Precision and wisdom mark each earned stud.",
+        "Your service is a lesson to those who follow.",
+        "Each mark encodes tactical excellence.",
+    ],
+    "Minotaurs": [
+        "The fury of the bull is measured in your studs.",
+        "Your marks proclaim wrath harnessed and directed.",
+        "The bronze glare of your service intimidates all foes.",
+    ],
+    "Raptors": [
+        "Silent, lethal, enduring—your studs speak of all three.",
+        "Each mark earned in shadows and patience.",
+        "The pragmatic path leads to these honors.",
+    ],
+    "Raven Guard": [
+        "From shadow, your accumulated service emerges.",
+        "Corax's patience is reflected in your studs.",
+        "Silent duty—each mark speaks louder than words.",
+    ],
+    "Red Scorpions": [
+        "Purity verified—your studs meet the Apothecary's standards.",
+        "Each mark subjected to the most exacting scrutiny.",
+        "Your service is as pure as your gene-seed.",
+    ],
+    "Red Templars": [
+        "Speed and fury—your studs earned at rapid pace.",
+        "The storm of your service accumulates these marks.",
+        "Momentum and dedication drive each stud earned.",
+    ],
+    "Salamanders": [
+        "Vulkan's flame forges each mark upon your brow.",
+        "Into the fires of service, your studs emerge tempered.",
+        "Each mark protects those who cannot protect themselves.",
+    ],
+    "Sons of Medusa": [
+        "Logic and steel calculate your accumulated marks.",
+        "Your studs are precise increments of duty.",
+        "The machine-spirit approves this mathematical devotion.",
+    ],
+    "Space Wolves": [
+        "The Fang howls approval at your accumulated marks!",
+        "Fenrisian sagas will speak of such enduring service.",
+        "Each stud a wolf-tooth in your saga of war.",
+    ],
+    "Storm Giants": [
+        "Thunder rolls with each mark you earn.",
+        "The tempest of your service is measured in these studs.",
+        "Lightning-struck and storm-forged, your marks gleam.",
+    ],
+    "The Drakes": [
+        "Fire-cleansed, your service marks emerge purified.",
+        "Each stud forged in the dragon's flame.",
+        "Your marks burn bright with dedication.",
+    ],
+    "Ultramarines": [
+        "Guilliman's Codex approves such measured service.",
+        "Theoretical and practical unite in your studs.",
+        "Macragge honors your steadfast accumulation of duty.",
+    ],
+    "White Scars": [
+        "The wind of Chogoris carries word of your marks.",
+        "Swift as lightning, yet your service endures.",
+        "Each stud earned on the endless hunt.",
+    ],
+    "Black Shield": [
+        "Your past forgotten, but your service remembered forever.",
+        "These marks speak only of the Long Watch—nothing before.",
+        "Anonymous duty earns marks that speak louder than any lineage.",
+    ],
+}
+
+# Ordo Xenos / Deathwatch-wide honor phrases (combined with chapter-specific flavor)
+ORDO_XENOS_HONORS: List[str] = [
+    "The Ordo Xenos records your vigilance against the alien threat.",
+    "Your service to the Long Watch brings honor to the Deathwatch.",
+    "The Vigil Eternal takes note of your unwavering dedication.",
+    "Watch Fortress Jericho commends your steadfast duty.",
+    "The Inquisition acknowledges your service to humanity.",
+    "By the Vigil Oathstone, your deeds are inscribed.",
+    "The Long Watch is strengthened by your commitment.",
+    "Your vigilance shields the Imperium from the xenos threat.",
+    "The alien recoils before one whose service is so marked.",
+    "Each stud proclaims death to the enemies of Mankind.",
+    "The Deathwatch honors those who stand the Long Vigil.",
+    "Your dedication to the Vigil is beyond question.",
+]
+
+# Rank-specific commentary on service studs - how different ranks view this achievement
+RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
+    # High Command - formal commendations
+    "Watch Master": [
+        "The Watch Master's own ledgers record this milestone.",
+        "From the throne of Jericho, your service is acknowledged.",
+    ],
+    "High Chaplain": [
+        "The Reclusiam's spiritual records mark this devotion.",
+        "Your soul's dedication is measured in these studs.",
+    ],
+    "Chief Apothecary": [
+        "The Apothecarion's archives log another milestone of service.",
+        "Gene-seed purity and service devotion—both are recorded.",
+    ],
+    "Forgemaster": [
+        "The Armorium's cogitators record this data-point of dedication.",
+        "Machine-spirits sing of your accumulated service.",
+    ],
+    # Senior Officers - respectful acknowledgments
+    "Watch Captain": [
+        "Company records reflect this commendable service.",
+        "Your captain's scrolls mark another milestone.",
+    ],
+    "Watch Lieutenant": [
+        "The shield-bearer's service strengthens the Watch.",
+        "Lieutenants of such dedication are the Watch's backbone.",
+    ],
+    # Specialists - domain-specific observations
+    "Watch Chaplain": [
+        "The Emperor witnesses this faithful service.",
+        "Your spiritual fortitude is marked in adamantium.",
+    ],
+    "Watch Apothecary": [
+        "Healer and warrior—your dual service is honored.",
+        "The Narthecium bears witness to your dedication.",
+    ],
+    "Watch Librarian": [
+        "The Warp itself cannot deny such marks of service.",
+        "Psychic focus and duty align in your accumulated studs.",
+    ],
+    "Watch Techmarine": [
+        "The Omnissiah records this devotion in sacred data.",
+        "Your service is a litany of binary perfection.",
+    ],
+    # Line ranks - appropriate recognition
+    "Watch Sergeant": [
+        "A Sergeant whose studs teach by example.",
+        "Leadership tempered by long service.",
+    ],
+    "Watch Veteran": [
+        "Veteran status confirmed in adamantium and honor.",
+        "The marks of a true warrior of the Long Watch.",
+    ],
+}
+
+# Tier-based general venerations (fallback when chapter/rank specific not available)
 SERVICE_STUDS_VENERATIONS_TIER1: List[str] = [
     # 1-4 studs - Proven Warrior
     "Your service studs gleam with the promise of deeds yet to come.",
@@ -3104,6 +3360,306 @@ SERVICE_STUDS_VENERATIONS_TIER3: List[str] = [
     "The Machine God records your deeds in the holiest of data-vaults.",
     "Your name shall be sung in the halls of Jericho for eternity.",
 ]
+
+# Tiered milestone intros based on stud number being earned
+# Tier 1: 1-4 (first marks), Tier 2: 5-24 (seasoned), Tier 3: 25+ (legendary)
+SERVICE_STUDS_MILESTONE_TIER1: List[str] = [
+    "The Apothecarion stands ready to affix your mark of service.",
+    "Your dedication has earned a new stud—seek the Apothecary's ministrations.",
+    "Another mark is earned through steadfast duty.",
+    "The Watch marks your continued service with another stud.",
+    "Your commitment to the Long Watch merits recognition.",
+]
+
+SERVICE_STUDS_MILESTONE_TIER2: List[str] = [
+    "A seasoned warrior earns another mark—the Apothecarion awaits.",
+    "Your growing collection of studs speaks of exceptional dedication.",
+    "The Watch takes note: another stud joins your constellation of service.",
+    "Veterans of the Long Watch honor one whose marks multiply.",
+    "Your brow bears witness to campaigns beyond counting.",
+]
+
+SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
+    "LEGENDARY SERVICE! Even the Armorium's oldest servitors pause to record this.",
+    "A ceramite stud! The highest honor the Watch can bestow!",
+    "The Watch Fortress itself trembles at such monumental service!",
+    "Legends walk among us—your marks proclaim it to all!",
+    "The chronicles of Jericho inscribe this momentous milestone!",
+]
+
+# Special milestone announcements for exact stud numbers
+SERVICE_STUDS_SPECIAL_MILESTONES: Dict[int, str] = {
+    1: "**FIRST SERVICE STUD** — A warrior's journey begins!",
+    5: "**FIFTH SERVICE STUD** — A proven veteran emerges!",
+    10: "**TENTH SERVICE STUD** — A decade of unwavering duty!",
+    25: "**CERAMITE STUD EARNED** — Legendary status achieved!",
+    50: "**FIFTY SERVICE STUDS** — A living saga of war!",
+    75: "**SEVENTY-FIVE STUDS** — The Ancients themselves take note!",
+    100: "**ONE HUNDRED STUDS** — A monument of duty made flesh!",
+}
+
+# Deathwatch-themed opening phrases for service stud announcements
+DEATHWATCH_STUD_OPENINGS: List[str] = [
+    "Hear this, brothers of Watch Fortress Jericho!",
+    "Let it be known throughout the Long Watch!",
+    "The Fortress records a mark of honored service!",
+    "By the Vigil Oathstone, witness this attestation!",
+    "The chronicles of Jericho inscribe a new honor!",
+    "Heed this proclamation, warriors of the Deathwatch!",
+    "The Watch Eternal takes note of devoted service!",
+]
+
+# Deathwatch themed closings
+DEATHWATCH_STUD_CLOSINGS: List[str] = [
+    "Vigilus Aeterna. The Watch endures.",
+    "For the Emperor and the Long Watch!",
+    "The Vigil continues. Ave Imperator.",
+    "By bolt and blade, the Watch persists.",
+    "In Vigilance, Eternal.",
+]
+
+
+def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
+    """Lookup a custom emoji by name from the guild.
+    
+    Returns the emoji string (e.g., '<:HawkLords:123456>') if found, else None.
+    The name should be without colons, e.g., 'HawkLords' not ':HawkLords:'.
+    """
+    if not guild:
+        return None
+    # Normalize: remove spaces and special chars for lookup
+    # e.g., 'Hawk Lords' -> 'HawkLords', 'Watch Brother' -> 'WatchBrother'
+    normalized = name.replace(" ", "").replace("-", "").replace("'", "")
+    for emoji in guild.emojis:
+        if emoji.name.lower() == normalized.lower():
+            return str(emoji)
+    return None
+
+
+def _get_chapter_emoji(guild: discord.Guild, chapter_name: str) -> str:
+    """Get chapter emoji or fallback to just the chapter name."""
+    emoji = _get_emoji_by_name(guild, chapter_name)
+    if emoji:
+        return f"{emoji} {chapter_name}"
+    return chapter_name
+
+
+def _get_rank_emoji(guild: discord.Guild, rank_name: str) -> str:
+    """Get rank emoji or fallback to just the rank name."""
+    # Special mappings where emoji name differs from role name
+    RANK_EMOJI_OVERRIDES = {
+        "Company Champion": "WatchChampion",
+        "Kill Team Champion": "KillteamChampion",
+    }
+    emoji_name = RANK_EMOJI_OVERRIDES.get(rank_name, rank_name)
+    emoji = _get_emoji_by_name(guild, emoji_name)
+    if emoji:
+        return f"{emoji}"
+    return ""
+
+
+def _get_service_studs_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    displayed_studs: int,
+    new_studs: int,
+    earned_studs: int,
+    owed_studs: int,
+    guild: discord.Guild,
+) -> str:
+    """Generate a flavorful, RP-oriented service studs announcement.
+
+    Incorporates the member's rank, home chapter, and which stud they're earning
+    to create a personalized and immersive notification.
+    Mobile-friendly with shorter lines and Deathwatch theming.
+    """
+    import random
+
+    roles = getattr(member, "roles", []) or []
+    role_names = [getattr(r, "name", "") for r in roles]
+
+    # Determine rank honorific and raw rank name for emoji lookup
+    rank_honorific = "Brother"
+    member_rank_name = "Watch Brother"
+    for rank in RANK_ROLES_PRIORITY:
+        if rank in role_names:
+            rank_honorific = RANK_HONORIFICS.get(rank, rank)
+            member_rank_name = rank
+            break
+
+    # Get display name and strip rank prefix to avoid "Forgemaster Forgemaster Jules"
+    display_name = member.display_name
+    # Strip the matched rank from display name
+    if display_name.lower().startswith(member_rank_name.lower()):
+        display_name = display_name[len(member_rank_name):].lstrip()
+    # Also strip any other rank role names that might be in the name
+    for rank_name in RANK_ROLES_PRIORITY:
+        if display_name.lower().startswith(rank_name.lower()):
+            display_name = display_name[len(rank_name):].lstrip()
+            break
+    # Strip common honorific prefixes (Brother, Veteran, etc.)
+    honorific_prefixes = [
+        "Brother", "Honored Veteran", "Veteran", "Oathsworn Warrior", "Oathsworn",
+        "Sergeant", "Lieutenant", "Captain", "Chaplain", "Apothecary", "Librarian",
+        "Techmarine", "Watch Master", "High Chaplain", "Chief Apothecary",
+        "Void Warden", "Forgemaster", "Champion", "Lord Executioner",
+    ]
+    for prefix in honorific_prefixes:
+        if display_name.lower().startswith(prefix.lower()):
+            display_name = display_name[len(prefix):].lstrip()
+            break
+
+    # Strip stud pips from display name (we report studs separately)
+    display_name = display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+
+    stud_word = "Stud" if new_studs == 1 else "Studs"
+
+    # Resolve Kill Team / Company title (like forge_rite)
+    kill_team = None
+    company = None
+    command_team = None
+    for rn in role_names:
+        if rn in KILL_TEAMS and not kill_team:
+            kill_team = rn
+        if "Watch Company" in rn and not company:
+            company = rn
+        if rn in COMMAND_TEAMS and not command_team:
+            command_team = rn
+    
+    title_parts = []
+    if kill_team:
+        title_parts.append(kill_team)
+    if company:
+        title_parts.append(company)
+    if not title_parts and command_team:
+        title_parts.append(command_team)
+    member_title = ", ".join(title_parts) if title_parts else None
+
+    # Determine tier based on displayed studs
+    if displayed_studs <= 4:
+        tier = 1
+    elif displayed_studs <= 24:
+        tier = 2
+    else:
+        tier = 3
+
+    # Get role mentions
+    chief_apothecary_role = discord.utils.get(guild.roles, name="Chief Apothecary")
+    watch_apothecary_role = discord.utils.get(guild.roles, name="Watch Apothecary")
+    watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
+
+    chief_mention = chief_apothecary_role.mention if chief_apothecary_role else "Chief Apothecary"
+    apoth_mention = watch_apothecary_role.mention if watch_apothecary_role else "Watch Apothecary"
+    cmd_mention = watch_command_role.mention if watch_command_role else "Watch Command"
+
+    # Get Watch Brother role for honoring notification
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else "Watch Brother"
+
+    # Get emojis for rank and chapter
+    rank_emoji = _get_rank_emoji(guild, member_rank_name)
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+
+    # Compute stud pips display: ◆=25, ●=5, ○=1
+    ceramite = displayed_studs // 25
+    remainder = displayed_studs % 25
+    electrum = remainder // 5
+    plasteel = remainder % 5
+    studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+    if not studs_pips:
+        studs_pips = "○"  # First stud
+
+    # Build embed similar to forge_rite format
+    embed = discord.Embed(
+        title="᛭⋅ MARK OF SERVICE ⋅᛭",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xC0C0C0,  # Silver for service studs
+    )
+
+    # Bearer field with rank emoji
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    # to put title on one line and rank + name on the next
+    if ", " in rank_honorific:
+        title_part, rank_part = rank_honorific.rsplit(", ", 1)
+        bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
+    else:
+        bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        bearer_value += f"\nLineage: {chapter_prefix}{member_chapter}"
+    bearer_value += f"\nService Studs: **[{studs_pips}]** ({displayed_studs})"
+    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+
+    # Determine stud type being earned based on what pip would be added
+    # If crossing a 25 boundary -> Ceramite, 5 boundary -> Electrum, else Plasteel
+    prev_studs = displayed_studs - new_studs
+    prev_ceramite = prev_studs // 25
+    curr_ceramite = displayed_studs // 25
+    prev_electrum = (prev_studs % 25) // 5
+    curr_electrum = (displayed_studs % 25) // 5
+    
+    if curr_ceramite > prev_ceramite:
+        stud_type = "Ceramite"
+    elif curr_electrum > prev_electrum or (curr_ceramite > prev_ceramite):
+        stud_type = "Electrum"
+    else:
+        stud_type = "Plasteel"
+
+    # Service Record field with stud type
+    record_value = f"**+{new_studs}** {stud_type} {stud_word} Earned\n"
+    record_value += f"Total: **{earned_studs}** | Displayed: **{displayed_studs}**"
+    if owed_studs > 0:
+        record_value += f"\nOwed: **{owed_studs}**"
+    embed.add_field(name="▸ Service Record", value=record_value, inline=True)
+
+    # Special milestone callout (prominent)
+    special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(displayed_studs)
+    if special_milestone:
+        embed.add_field(name="▸ Milestone", value=special_milestone, inline=False)
+
+    # Honor of the Long Watch: Ordo Xenos phrase + chapter-specific flavor
+    ordo_honor = random.choice(ORDO_XENOS_HONORS)
+    if member_chapter in CHAPTER_STUDS_FLAVOR:
+        chapter_flavor = random.choice(CHAPTER_STUDS_FLAVOR[member_chapter])
+        embed.add_field(name="▸ Honor of the Long Watch", value=f'*"{ordo_honor} {chapter_flavor}"*', inline=False)
+    else:
+        # Fallback to tier-based phrase
+        if tier == 1:
+            milestone_phrase = random.choice(SERVICE_STUDS_VENERATIONS_TIER1)
+        elif tier == 2:
+            milestone_phrase = random.choice(SERVICE_STUDS_VENERATIONS_TIER2)
+        else:
+            milestone_phrase = random.choice(SERVICE_STUDS_VENERATIONS_TIER3)
+        embed.add_field(name="▸ Honor of the Long Watch", value=f'*"{ordo_honor} {milestone_phrase}"*', inline=False)
+
+    # Call to action
+    embed.add_field(
+        name="▸ Rite of Marking",
+        value=f"Report to {apoth_mention}, {chief_mention}, or {cmd_mention}",
+        inline=False,
+    )
+
+    # Footer
+    embed.set_footer(text="᛭⋅ Jericho Stands! ⋅᛭")
+
+    # Content line with mentions (outside embed for pings)
+    content = f"{wb_mention} {member.mention}"
+
+    return content, embed
+
+
+def _get_member_rank_title(member: discord.Member) -> str:
+    """Get the rank honorific for a member based on their highest rank role."""
+    roles = getattr(member, "roles", []) or []
+    role_names = [getattr(r, "name", "") for r in roles]
+    # Check ranks in priority order (highest first)
+    for rank in RANK_ROLES_PRIORITY:
+        if rank in role_names:
+            return RANK_HONORIFICS.get(rank, rank)
+    return "Brother"
 
 
 def _compute_member_service_studs(member: discord.Member) -> int:
@@ -3301,6 +3857,9 @@ def _get_bearer_rank_and_title(
         if display_name.lower().startswith(prefix.lower()):
             display_name = display_name[len(prefix) :].lstrip()
             break
+
+    # Strip stud pips from display name (we report studs separately)
+    display_name = display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
 
     # Build combined title: prefer "Kill Team X, Company Y" format
     title_parts = []
@@ -3611,13 +4170,18 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         electrum = remainder // 5
         plasteel = remainder % 5
         studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
-        lines.append(f"  Service Studs: [{studs_pips}]")
+        lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
-    # Chapter blessing (prominent placement)
+    # Honor of the Long Watch: Ordo Xenos phrase + chapter blessing
+    ordo_honor = random.choice(ORDO_XENOS_HONORS)
     if chapter_blessing:
-        lines.append("▸ BLESSING OF THE CHAPTER")
-        lines.append(f'  "{chapter_blessing}"')
+        lines.append("▸ HONOR OF THE LONG WATCH")
+        lines.append(f'  "{ordo_honor} {chapter_blessing}"')
+        lines.append("")
+    else:
+        lines.append("▸ HONOR OF THE LONG WATCH")
+        lines.append(f'  "{ordo_honor}"')
         lines.append("")
 
     # Service studs veneration (if earned)
@@ -3658,18 +4222,39 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # ─────────────────────────────────────────────────────────────────────────
     # Build Mobile embed (condensed format)
     # ─────────────────────────────────────────────────────────────────────────
+    
+    # Get emojis for rank and chapter (mobile embed only - ANSI can't render them)
+    guild = interaction.guild
+    # Extract raw rank name from bearer_honorific by reverse-lookup
+    bearer_rank_name = None
+    for rank, hon in RANK_HONORIFICS.items():
+        if hon == bearer_honorific or rank in bearer_honorific:
+            bearer_rank_name = rank
+            break
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+    
+    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    chapter_emoji_str = _get_chapter_emoji(guild, bearer_chapter) if guild and bearer_chapter else bearer_chapter
+    
     embed = discord.Embed(
         title="⚙️ COGITATOR RITE — FORGE ATTESTATION",
         description="*⌾ Watch Fortress Jericho ⌾*",
         color=0x2ECC71,
     )
 
-    # Bearer field (condensed)
-    bearer_value = f"**{bearer_honorific} {bearer_name}**"
+    # Bearer field (condensed) with emojis
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+    else:
+        bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
     if bearer_title:
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
-        bearer_value += f"\nLineage: {bearer_chapter}"
+        bearer_value += f"\nLineage: {chapter_emoji_str}"
     if bearer_studs > 0:
         # Tiered stud display: ◆=25, ●=5, ○=1
         ceramite = bearer_studs // 25
@@ -3677,7 +4262,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         electrum = remainder // 5
         plasteel = remainder % 5
         studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
-        bearer_value += f"\nService Studs: [{studs_pips}]"
+        bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Status field
@@ -3687,11 +4272,18 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         inline=True,
     )
 
-    # Chapter blessing (if available)
+    # Honor of the Long Watch: Ordo Xenos phrase + chapter blessing
+    ordo_honor_embed = random.choice(ORDO_XENOS_HONORS)
     if chapter_blessing:
         embed.add_field(
-            name="▸ Blessing of the Chapter",
-            value=f'*"{chapter_blessing}"*',
+            name="▸ Honor of the Long Watch",
+            value=f'*"{ordo_honor_embed} {chapter_blessing}"*',
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="▸ Honor of the Long Watch",
+            value=f'*"{ordo_honor_embed}"*',
             inline=False,
         )
 
@@ -3744,6 +4336,96 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             )
         except Exception:
             pass
+
+
+@bot.tree.command(
+    name="preview_stud_announcement",
+    description="[DEBUG] Preview a service stud announcement for a member.",
+)
+@app_commands.describe(
+    member="Member to preview",
+    displayed_studs="Number of studs they're displaying (simulated)",
+    new_studs="Number of new studs earned (simulated)",
+)
+async def _preview_stud_announcement(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    displayed_studs: int = 5,
+    new_studs: int = 1,
+):
+    """Debug command to preview service stud announcement output."""
+    # Only allow in DEBUG_MODE or for admins
+    if not DEBUG_MODE:
+        user_id = str(interaction.user.id)
+        admin_ids = [str(a) for a in CONFIG.get("admin_user_ids", [])]
+        if user_id not in admin_ids:
+            await interaction.response.send_message(
+                "This command is only available in debug mode.", ephemeral=True
+            )
+            return
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message("Must be used in a guild.", ephemeral=True)
+        return
+
+    # Get member's home chapter
+    member_chapter = "Unknown"
+    for role in getattr(member, "roles", []):
+        role_name = getattr(role, "name", "")
+        if role_name in HOME_CHAPTERS:
+            member_chapter = role_name
+            break
+
+    # Calculate actual studs using same logic as activity check
+    user_id = str(member.id)
+    stats = compute_stats_for_user(user_id)
+    aar_points = int(stats.get("aar_points", 0) or 0)
+    
+    # Get weeks in server
+    joined_at = getattr(member, "joined_at", None)
+    if joined_at:
+        if joined_at.tzinfo is not None:
+            joined_at = joined_at.replace(tzinfo=None)
+        weeks_in_server = max(0, (datetime.utcnow() - joined_at).days // 7)
+    else:
+        weeks_in_server = 0
+    
+    # Compute earned studs (min of time-based and AAR-based)
+    studs_time = weeks_in_server // 4
+    studs_aar = aar_points // 400
+    earned_studs = min(studs_time, studs_aar)
+    
+    # Read displayed studs from nickname
+    dn = str(member.nick or member.display_name or "")
+    displayed_cer = dn.count("◆")
+    displayed_elec = dn.count("●")
+    displayed_plas = dn.count("○")
+    actual_displayed = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+    
+    # If user provided displayed_studs param (not default), use that; otherwise use actual
+    if displayed_studs == 5:  # default value, use actual
+        displayed_studs = actual_displayed
+    
+    owed_studs = max(0, earned_studs - displayed_studs)
+
+    content, embed = _get_service_studs_announcement(
+        member=member,
+        member_chapter=member_chapter,
+        displayed_studs=displayed_studs,
+        new_studs=new_studs,
+        earned_studs=earned_studs,
+        owed_studs=owed_studs,
+        guild=guild,
+    )
+
+    # Send ephemeral preview
+    await interaction.response.send_message(
+        f"**[PREVIEW]** Mark of Service Announcement:\n\n{content}",
+        embed=embed,
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
 
 
 # No explicit group registration required for top-level commands
