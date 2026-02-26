@@ -3628,7 +3628,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Status
     lines.append("▸ MACHINE-SPIRIT STATUS")
-    lines.append(f"  Spirit Designation .... {spirit_designation}")
+    lines.append(f" Spirit Designation .... {spirit_designation}")
     lines.append("  Inspection ............ PASSED")
     lines.append("  Compliance ............ CONFIRMED")
     lines.append("  Warplate Integrity .... SANCTIFIED")
@@ -3716,7 +3716,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Techmarine & Authority (consolidated)
-    tech_value = f"**{signer}**\n{authority} • {ts}\n*{sacred_phrase}*"
+    tech_value = f"**{signer}**\n{authority} • {ts}\n*\"{sacred_phrase}\"*"
     embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
