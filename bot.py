@@ -49,7 +49,7 @@ ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
 VETERAN_PROMOTION_CHANNEL_ID = 1443813516979994634
 
 # Channel ID for service stud milestone notifications
-SERVICE_STUDS_CHANNEL_ID = 1430203472669835415
+SERVICE_STUDS_CHANNEL_ID = 1430055064969674777
 
 # Channel ID for Black Laurels eligibility notifications
 BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
@@ -1465,20 +1465,25 @@ async def _check_promotion_milestones():
                         new_studs = displayed_studs - last_displayed_studs
                         owed_studs = earned_studs - displayed_studs
                         stud_word = "Stud" if new_studs == 1 else "Studs"
-                        msg = (
-                            f"{watch_command_mention}\n"
-                            f"🎖️ **{member.display_name}** has earned {new_studs} new Service {stud_word}!\n"
-                            f"᛭⋅ Total Earned: {earned_studs} | Displaying: {displayed_studs} | Owed: {owed_studs}"
-                        )
+                        # Get tier-appropriate veneration phrase
+                        studs_veneration = _get_studs_veneration(displayed_studs)
+                        msg_lines = [
+                            f"{watch_command_mention}",
+                            f"🎖️ **{member.display_name}** has earned {new_studs} new Service {stud_word}!",
+                            f"᛭⋅ Total Earned: {earned_studs} | Displaying: {displayed_studs} | Owed: {owed_studs}",
+                        ]
+                        if studs_veneration:
+                            msg_lines.append(f'*"{studs_veneration}"*')
                         await studs_channel.send(
-                            msg,
+                            "\n".join(msg_lines),
                             allowed_mentions=discord.AllowedMentions(
                                 users=False, roles=True
                             ),
                         )
-                        user_tracking["last_studs_displayed"] = displayed_studs
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
+                    # Always update tracking to reflect current displayed studs
+                    user_tracking["last_studs_displayed"] = displayed_studs
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
                 if black_laurels_channel and not user_tracking.get(
@@ -2632,7 +2637,6 @@ async def _select_home_chapters_for_month(
                 if g is None:
                     return HOME_CHAPTERS.copy()
 
-                canon_map = {hc.lower(): hc for hc in HOME_CHAPTERS}
                 active_chapters = set()
                 members = getattr(g, "members", []) or []
 
@@ -2989,7 +2993,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Watch Master": "Lord of the Long Watch, Watch Master",
     "High Chaplain": "Voice of the Emperor, High Chaplain",
     "Chief Apothecary": "Keeper of Purity, Chief Apothecary",
-    "Void Warden": "Guardian of the Fortress, Void Warden",
+    "Void Warden": "Aegis against the Void, Void Warden",
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
     # Specialists
@@ -4061,16 +4065,24 @@ async def record_of_blood(interaction: discord.Interaction):
     )
 
     if members_with_noncanonical_home:
-        noncanon_text = "\n".join(f"• {nm}: {ch}" for nm, ch in members_with_noncanonical_home[:10])
+        noncanon_text = "\n".join(
+            f"• {nm}: {ch}" for nm, ch in members_with_noncanonical_home[:10]
+        )
         if len(members_with_noncanonical_home) > 10:
-            noncanon_text += f"\n... and {len(members_with_noncanonical_home) - 10} more"
-        embed.add_field(name="Non-canonical Home Chapters", value=noncanon_text, inline=False)
+            noncanon_text += (
+                f"\n... and {len(members_with_noncanonical_home) - 10} more"
+            )
+        embed.add_field(
+            name="Non-canonical Home Chapters", value=noncanon_text, inline=False
+        )
 
     if noncanonical_mentioned:
         noncm_text = ", ".join(sorted(noncanonical_mentioned)[:10])
         if len(noncanonical_mentioned) > 10:
             noncm_text += f" (+{len(noncanonical_mentioned) - 10} more)"
-        embed.add_field(name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False)
+        embed.add_field(
+            name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False
+        )
 
     # Count issues
     issue_count = 0
@@ -4080,10 +4092,14 @@ async def record_of_blood(interaction: discord.Interaction):
         for mrec in mids:
             mid = mrec.get("id")
             actual = member_home.get(mid, "")
-            claimed = first_claim or (rec.get("chapters", [])[0] if rec.get("chapters") else "")
+            claimed = first_claim or (
+                rec.get("chapters", [])[0] if rec.get("chapters") else ""
+            )
             if claimed and claimed.lower() != (actual or "").lower():
                 issue_count += 1
-        if first_claim and all(first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS):
+        if first_claim and all(
+            first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS
+        ):
             issue_count += 1
 
     if issue_count > 0:
@@ -4915,20 +4931,38 @@ async def audit_service_studs(interaction: discord.Interaction):
     )
 
     # Add up to 10 mismatches to embed fields
-    awards_needed = [(name, scomp, sdisp, action) for name, scomp, sdisp, action in rows if "AWARD" in action]
-    removals_needed = [(name, scomp, sdisp, action) for name, scomp, sdisp, action in rows if "REMOVE" in action]
+    awards_needed = [
+        (name, scomp, sdisp, action)
+        for name, scomp, sdisp, action in rows
+        if "AWARD" in action
+    ]
+    removals_needed = [
+        (name, scomp, sdisp, action)
+        for name, scomp, sdisp, action in rows
+        if "REMOVE" in action
+    ]
 
     if awards_needed:
-        award_text = "\n".join(f"• {name}: {action}" for name, _, _, action in awards_needed[:8])
+        award_text = "\n".join(
+            f"• {name}: {action}" for name, _, _, action in awards_needed[:8]
+        )
         if len(awards_needed) > 8:
             award_text += f"\n... and {len(awards_needed) - 8} more"
-        embed.add_field(name=f"Need Awards ({len(awards_needed)})", value=award_text, inline=False)
+        embed.add_field(
+            name=f"Need Awards ({len(awards_needed)})", value=award_text, inline=False
+        )
 
     if removals_needed:
-        remove_text = "\n".join(f"• {name}: {action}" for name, _, _, action in removals_needed[:8])
+        remove_text = "\n".join(
+            f"• {name}: {action}" for name, _, _, action in removals_needed[:8]
+        )
         if len(removals_needed) > 8:
             remove_text += f"\n... and {len(removals_needed) - 8} more"
-        embed.add_field(name=f"Need Removal ({len(removals_needed)})", value=remove_text, inline=False)
+        embed.add_field(
+            name=f"Need Removal ({len(removals_needed)})",
+            value=remove_text,
+            inline=False,
+        )
 
     embed.set_footer(text="Use PC/Console button for detailed ANSI table")
 
@@ -5117,10 +5151,16 @@ async def librarian_audit(interaction: discord.Interaction):
     )
 
     if missing_role:
-        missing_text = "\n".join(f"✓ {getattr(m, 'display_name', str(m.id))}" for m, _ in missing_role[:10])
+        missing_text = "\n".join(
+            f"✓ {getattr(m, 'display_name', str(m.id))}" for m, _ in missing_role[:10]
+        )
         if len(missing_role) > 10:
             missing_text += f"\n... and {len(missing_role) - 10} more"
-        embed.add_field(name=f"Eligible but Missing Role ({len(missing_role)})", value=missing_text, inline=False)
+        embed.add_field(
+            name=f"Eligible but Missing Role ({len(missing_role)})",
+            value=missing_text,
+            inline=False,
+        )
 
     if needs_new_missions:
         needs_text = ""
@@ -5130,7 +5170,11 @@ async def librarian_audit(interaction: discord.Interaction):
             needs_text += f"⚠ {name}\n  Missing: {missing_list}\n"
         if len(needs_new_missions) > 8:
             needs_text += f"... and {len(needs_new_missions) - 8} more"
-        embed.add_field(name=f"Needs New Missions ({len(needs_new_missions)})", value=needs_text.strip(), inline=False)
+        embed.add_field(
+            name=f"Needs New Missions ({len(needs_new_missions)})",
+            value=needs_text.strip(),
+            inline=False,
+        )
 
     if not missing_role and not needs_new_missions:
         embed.description = "No discrepancies found"
@@ -5144,6 +5188,7 @@ async def librarian_audit(interaction: discord.Interaction):
     else:
         # Report too long for toggle, send embed with file attachment
         import io
+
         fp = io.BytesIO(report.encode("utf-8"))
         fp.seek(0)
         try:
@@ -7092,10 +7137,6 @@ def validate_aar(record: dict):
     brothers = record.get("brother_ids") or []
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
-    black_laurels_in_difficulty = record.get("black_laurels_in_difficulty", False)
-    black_laurels_mentioned_elsewhere = record.get(
-        "black_laurels_mentioned_elsewhere", False
-    )
 
     # 1) Mission required (except Siege templates where Mission may be omitted)
     dlower = (record.get("difficulty") or "").lower()
@@ -10036,7 +10077,6 @@ AARs/Member              Chapter (X.X)
 
     ch1_val = _chap_ops(ch1)
     ch2_val = _chap_avg(ch2)
-    ch3_val = _chap_pres(ch3)
     ch3_arm = _chap_pres_armory(ch3)
     ch3_gene = _chap_pres_gene(ch3)
     ch4_val = _chap_high_risk(ch4)
@@ -10543,7 +10583,10 @@ async def _scheduled_honours_runner():
                     # Use ToggleFormatView - default to embed (mobile-friendly)
                     # ephemeral_context=False: PC button sends ephemeral, public message stays embed
                     view = ToggleFormatView(
-                        text_content=content, embed=embed, default="embed", ephemeral_context=False
+                        text_content=content,
+                        embed=embed,
+                        default="embed",
+                        ephemeral_context=False,
                     )
                     await channel.send(
                         embed=embed,
@@ -10570,7 +10613,10 @@ async def _scheduled_honours_runner():
                     )
                     if embed:
                         view = ToggleFormatView(
-                            text_content=block, embed=embed, default="embed", ephemeral_context=False
+                            text_content=block,
+                            embed=embed,
+                            default="embed",
+                            ephemeral_context=False,
                         )
                         await channel.send(embed=embed, view=view)
                     else:
@@ -11481,9 +11527,13 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as ANSI summary."""
     lines = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — SUMMARY")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
@@ -11491,7 +11541,7 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
         extra_count = len(result.get("extra", []))
         mismatch_count = len(result.get("mismatch", []))
 
-        lines.append(f"")
+        lines.append("")
         lines.append(f"  {company}")
         lines.append(f"    Missing roles: {missing_count}")
         lines.append(f"    Extra (not in roster): {extra_count}")
@@ -11504,7 +11554,9 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
         lines.append("  No discrepancies found.")
 
     lines.append("")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     return "\n".join(lines)
@@ -11514,13 +11566,17 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as full ANSI detail."""
     lines = []
     lines.append("```ansi")
-    lines.append("\u001b[32m==============================================================================")
+    lines.append(
+        "\u001b[32m=============================================================================="
+    )
     lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — FULL REPORT")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"  {company}")
         lines.append("  " + "-" * 72)
 
@@ -11567,7 +11623,9 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
         lines.append("  No discrepancies found.")
 
     lines.append("")
-    lines.append("==============================================================================")
+    lines.append(
+        "=============================================================================="
+    )
     lines.append("\u001b[0m```")
 
     return "\n".join(lines)
@@ -11715,23 +11773,36 @@ async def roster_audit(
                 # Build field text with actual user mentions (up to limits)
                 field_parts = []
                 if missing:
-                    missing_users = [f"<@{item.get('user_id')}>" for item in missing[:5]]
+                    missing_users = [
+                        f"<@{item.get('user_id')}>" for item in missing[:5]
+                    ]
                     # These users are in the roster but missing required roles
-                    missing_text = "**Need Roles** (in roster, missing roles):\n" + ", ".join(missing_users)
+                    missing_text = (
+                        "**Need Roles** (in roster, missing roles):\n"
+                        + ", ".join(missing_users)
+                    )
                     if len(missing) > 5:
                         missing_text += f" (+{len(missing) - 5} more)"
                     field_parts.append(missing_text)
                 if extra:
                     extra_users = [f"<@{item.get('user_id')}>" for item in extra[:5]]
                     # These users have company role but aren't listed in the roster
-                    extra_text = "**Not Listed** (have role, not in roster):\n" + ", ".join(extra_users)
+                    extra_text = (
+                        "**Not Listed** (have role, not in roster):\n"
+                        + ", ".join(extra_users)
+                    )
                     if len(extra) > 5:
                         extra_text += f" (+{len(extra) - 5} more)"
                     field_parts.append(extra_text)
                 if mismatch:
-                    mismatch_users = [f"<@{item.get('user_id')}>" for item in mismatch[:5]]
+                    mismatch_users = [
+                        f"<@{item.get('user_id')}>" for item in mismatch[:5]
+                    ]
                     # These users have conflicting assignments (multiple teams, etc.)
-                    mismatch_text = "**Conflicts** (multiple teams, sections):\n" + ", ".join(mismatch_users)
+                    mismatch_text = (
+                        "**Conflicts** (multiple teams, sections):\n"
+                        + ", ".join(mismatch_users)
+                    )
                     if len(mismatch) > 5:
                         mismatch_text += f" (+{len(mismatch) - 5} more)"
                     field_parts.append(mismatch_text)
@@ -11751,6 +11822,7 @@ async def roster_audit(
         else:
             # Output too long for toggle, send embed with file attachment
             import io
+
             fp = io.BytesIO(output.encode("utf-8"))
             fp.seek(0)
             try:
