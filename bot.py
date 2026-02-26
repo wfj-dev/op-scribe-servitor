@@ -3649,8 +3649,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Authority block (consolidated)
     lines.append("▸ ATTESTATION")
     lines.append(f"  {signer}")
-    lines.append(f"  {authority} • {ts}")
-    lines.append(f"  {sacred_phrase}")
+    lines.append(f"  {ts}")
+    lines.append(f"  \"{sacred_phrase}\"")
     lines.append("\u001b[0m```")
 
     ansi_content = "\n".join(lines)
@@ -3716,7 +3716,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Techmarine & Authority (consolidated)
-    tech_value = f"**{signer}**\n{authority} • {ts}\n*\"{sacred_phrase}\"*"
+    tech_value = f"**{signer}**\n{ts}\n*\"{sacred_phrase}\"*"
     embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
