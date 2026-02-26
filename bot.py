@@ -3008,17 +3008,17 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
     # Specialists
-    "Watch Chaplain": "Keeper of the faith, Chaplain",
-    "Watch Apothecary": "Guardian of the gene-seed, Apothecary",
-    "Watch Librarian": "Warden of the Immaterium, Librarian",
-    "Watch Techmarine": "Servant of the Omnissiah, Brother Techmarine",
+    "Watch Chaplain": "Keeper of the faith, Watch Chaplain",
+    "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
+    "Watch Librarian": "Warden of the Immaterium, Watch Librarian",
+    "Watch Techmarine": "Servant of the Omnissiah, Watch Techmarine",
     # Champions
-    "Company Champion": "Blade of the Company, Champion",
-    "Kill Team Champion": "Blade of the Kill Team, Champion",
+    "Company Champion": "Blade of the Company, Company Champion",
+    "Kill Team Champion": "Blade of the Kill Team, Kill Team Champion",
     # Battle line (highest to lowest)
-    "Watch Captain": "Warden of the Company, Captain",
-    "Watch Lieutenant": "Shield of the Watch, Lieutenant",
-    "Watch Sergeant": "Bearer of command, Sergeant",
+    "Watch Captain": "Warden of the Company, Watch Captain",
+    "Watch Lieutenant": "Shield of the Watch, Watch Lieutenant",
+    "Watch Sergeant": "Bearer of command, Watch Sergeant",
     "Oathsworn": "Oathsworn Warrior",
     "Watch Veteran": "Honored Veteran",
     "Watch Brother": "Brother",
@@ -3769,6 +3769,8 @@ def _get_bearer_rank_and_title(
                             # Strip "Watch Master" prefix
                             if wm_name.lower().startswith("watch master"):
                                 wm_name = wm_name[len("Watch Master") :].lstrip()
+                            # Strip stud pips from name
+                            wm_name = wm_name.replace("◆", "").replace("●", "").replace("○", "").strip()
                             watchmaster_name = wm_name
                     except Exception:
                         pass
@@ -3798,6 +3800,8 @@ def _get_bearer_rank_and_title(
                                 if cap_name.lower().startswith(prefix.lower()):
                                     cap_name = cap_name[len(prefix) :].lstrip()
                                     break
+                            # Strip stud pips from name
+                            cap_name = cap_name.replace("◆", "").replace("●", "").replace("○", "").strip()
                             captain_name = cap_name
                     except Exception:
                         pass
@@ -4087,6 +4091,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Bearer info: rank honorific, display name, and Kill Team/Company title
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
+    # Defensive pip stripping - ensure no stud pips in display name
+    bearer_name = bearer_name.replace("◆", "").replace("●", "").replace("○", "").strip()
 
     # Bearer's home chapter for chapter-specific blessing (use dedicated function)
     bearer_chapter = _get_bearer_home_chapter(member)
@@ -4246,6 +4252,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Bearer field (condensed) with emojis
     # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    # Defensive pip stripping in case they survived from display name
+    bearer_name = bearer_name.replace("◆", "").replace("●", "").replace("○", "").strip()
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
         bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
