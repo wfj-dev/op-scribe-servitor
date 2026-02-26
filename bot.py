@@ -12548,5 +12548,282 @@ async def roster_audit(
         )
 
 
+@bot.tree.command(
+    name="promotion_queue",
+    description="Shows who's next in line for service studs and veteran promotions.",
+)
+async def promotion_queue(interaction: discord.Interaction):
+    """Show promotion eligibility queue for service studs and veteran promotions.
+    
+    Groups members into three categories:
+    - AAR met, time not met: waiting on time requirement
+    - AAR not met, time met: waiting on AAR points
+    - AAR not met, time not met: need both
+    """
+    # Permission check: Watch Command only
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.followup.send("Could not resolve guild.", ephemeral=True)
+        return
+
+    now = datetime.utcnow()
+
+    # --- Service Studs Queue (for Watch Veteran or higher) ---
+    # Requirements: 1 stud per 4 weeks AND 400 AAR points (minimum of both)
+    studs_aar_met_time_not: List[Tuple[discord.Member, int, int, int, int, datetime]] = []  # member, aar_pts, weeks, earned, displayed, next_stud_date
+    studs_aar_not_time_met: List[Tuple[discord.Member, int, int, int, int, int]] = []  # member, aar_pts, weeks, earned, displayed, aar_needed
+    studs_aar_not_time_not: List[Tuple[discord.Member, int, int, int, int, datetime, int]] = []  # member, aar_pts, weeks, earned, displayed, next_time_date, aar_needed
+
+    # --- Watch Veteran Queue (for Watch Brother only) ---
+    # Requirements: 200 AAR points AND 2 weeks in server
+    veteran_aar_met_time_not: List[Tuple[discord.Member, int, int, datetime]] = []  # member, aar_pts, weeks, promotion_date
+    veteran_aar_not_time_met: List[Tuple[discord.Member, int, int, int]] = []  # member, aar_pts, weeks, aar_needed
+    veteran_aar_not_time_not: List[Tuple[discord.Member, int, int, datetime, int]] = []  # member, aar_pts, weeks, time_date, aar_needed
+
+    # Track roles that indicate veteran or higher
+    veteran_or_higher_roles = {
+        "Watch Veteran", "Oathsworn", "Kill Team Champion", "Watch Sergeant",
+        "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
+        "Company Champion", "Watch Lieutenant", "Watch Captain", "Venerable",
+        "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
+        "Lord Executioner", "Watch Master",
+    }
+
+    for member in guild.members:
+        if member.bot:
+            continue
+
+        role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+
+        # Skip inactive brothers (Reserves)
+        if "Reserves" in role_names:
+            continue
+
+        is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
+        is_veteran_or_higher = any(r in role_names for r in veteran_or_higher_roles)
+        is_watch_brother_only = is_watch_brother and not is_veteran_or_higher
+
+        # Get join date and calculate weeks
+        joined_at = getattr(member, "joined_at", None)
+        if joined_at:
+            if joined_at.tzinfo is not None:
+                joined_at = joined_at.replace(tzinfo=None)
+            weeks_in_server = max(0, (now - joined_at).days // 7)
+        else:
+            weeks_in_server = 0
+
+        # Get AAR points
+        user_id = str(member.id)
+        stats = compute_stats_for_user(user_id)
+        aar_points = int(stats.get("aar_points", 0) or 0)
+
+        # --- Process Watch Veteran eligibility ---
+        if is_watch_brother_only:
+            aar_met = aar_points >= 200
+            time_met = weeks_in_server >= 2
+
+            if aar_met and time_met:
+                # Already fully eligible - skip
+                pass
+            elif aar_met and not time_met:
+                # AAR met, waiting on time
+                weeks_needed = 2 - weeks_in_server
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                promotion_date = now + timedelta(days=days_until)
+                veteran_aar_met_time_not.append((member, aar_points, weeks_in_server, promotion_date))
+            elif not aar_met and time_met:
+                # Time met, waiting on AAR
+                aar_needed = 200 - aar_points
+                veteran_aar_not_time_met.append((member, aar_points, weeks_in_server, aar_needed))
+            else:
+                # Neither met
+                weeks_needed = 2 - weeks_in_server
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                time_date = now + timedelta(days=days_until)
+                aar_needed = 200 - aar_points
+                veteran_aar_not_time_not.append((member, aar_points, weeks_in_server, time_date, aar_needed))
+
+        # --- Process Service Studs eligibility ---
+        if is_veteran_or_higher:
+            # Calculate current studs entitlement
+            studs_time = weeks_in_server // 4
+            studs_aar = aar_points // 400
+            earned_studs = min(studs_time, studs_aar)
+
+            # Count currently displayed studs from nickname
+            dn = str(member.nick or member.display_name or "")
+            displayed_cer = dn.count("◆")
+            displayed_elec = dn.count("●")
+            displayed_plas = dn.count("○")
+            displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+
+            # Check if they're owed studs (only show those who could earn more)
+            # We want to show people who would be eligible for MORE studs if they meet requirements
+            next_stud_threshold_time = (displayed_studs + 1) * 4  # weeks needed for next stud
+            next_stud_threshold_aar = (displayed_studs + 1) * 400  # AAR needed for next stud
+
+            aar_met_for_next = aar_points >= next_stud_threshold_aar
+            time_met_for_next = weeks_in_server >= next_stud_threshold_time
+
+            if aar_met_for_next and time_met_for_next:
+                # Already eligible for next stud - they just need to display it
+                pass
+            elif aar_met_for_next and not time_met_for_next:
+                # AAR met, waiting on time for next stud
+                weeks_needed = next_stud_threshold_time - weeks_in_server
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                next_stud_date = now + timedelta(days=days_until)
+                studs_aar_met_time_not.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, next_stud_date))
+            elif not aar_met_for_next and time_met_for_next:
+                # Time met, waiting on AAR for next stud
+                aar_needed = next_stud_threshold_aar - aar_points
+                studs_aar_not_time_met.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, aar_needed))
+            else:
+                # Neither met for next stud
+                weeks_needed = next_stud_threshold_time - weeks_in_server
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                next_time_date = now + timedelta(days=days_until)
+                aar_needed = next_stud_threshold_aar - aar_points
+                studs_aar_not_time_not.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, next_time_date, aar_needed))
+
+    # Sort lists by proximity to eligibility
+    # For AAR met, time not: sort by soonest date
+    veteran_aar_met_time_not.sort(key=lambda x: x[3])  # promotion_date
+    studs_aar_met_time_not.sort(key=lambda x: x[5])  # next_stud_date
+    
+    # For AAR not, time met: sort by least AAR needed
+    veteran_aar_not_time_met.sort(key=lambda x: x[3])  # aar_needed
+    studs_aar_not_time_met.sort(key=lambda x: x[5])  # aar_needed
+    
+    # For neither met: sort by soonest time date (they can always grind AAR)
+    veteran_aar_not_time_not.sort(key=lambda x: x[3])  # time_date
+    studs_aar_not_time_not.sort(key=lambda x: x[5])  # next_time_date
+
+    def _build_field_value(lines: List[str], total_count: int, max_shown: int = 10) -> str:
+        """Build a field value that stays under 1024 chars with smart truncation."""
+        result_lines = []
+        char_count = 0
+        shown = 0
+        for line in lines[:max_shown]:
+            # Leave room for "more" suffix
+            if char_count + len(line) + 30 > 1000:
+                break
+            result_lines.append(line)
+            char_count += len(line) + 1  # +1 for newline
+            shown += 1
+        if total_count > shown:
+            result_lines.append(f"*᛭⋅ +{total_count - shown} more...*")
+        return "\n".join(result_lines) if result_lines else "—"
+
+    # Build output embeds
+    embeds = []
+
+    # --- Watch Veteran Promotion Queue ---
+    veteran_embed = discord.Embed(
+        title="᛭⋅ WATCH VETERAN QUEUE ⋅᛭",
+        description="*Requirements: 200 AAR + 2 weeks service*",
+        color=0xFFD700,  # Gold
+    )
+
+    # AAR met, time not
+    if veteran_aar_met_time_not:
+        lines = []
+        for member, aar_pts, weeks, promo_date in veteran_aar_met_time_not:
+            date_str = promo_date.strftime("%b %d")
+            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | **{date_str}**")
+        veteran_embed.add_field(
+            name=f"▸ Ready on Date ({len(veteran_aar_met_time_not)})",
+            value=_build_field_value(lines, len(veteran_aar_met_time_not)),
+            inline=False,
+        )
+
+    # AAR not, time met
+    if veteran_aar_not_time_met:
+        lines = []
+        for member, aar_pts, weeks, aar_needed in veteran_aar_not_time_met:
+            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | needs **{aar_needed}**")
+        veteran_embed.add_field(
+            name=f"▸ Needs AAR ({len(veteran_aar_not_time_met)})",
+            value=_build_field_value(lines, len(veteran_aar_not_time_met)),
+            inline=False,
+        )
+
+    # Neither met
+    if veteran_aar_not_time_not:
+        lines = []
+        for member, aar_pts, weeks, time_date, aar_needed in veteran_aar_not_time_not:
+            date_str = time_date.strftime("%b %d")
+            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | {date_str}, +{aar_needed}")
+        veteran_embed.add_field(
+            name=f"▸ Needs Both ({len(veteran_aar_not_time_not)})",
+            value=_build_field_value(lines, len(veteran_aar_not_time_not)),
+            inline=False,
+        )
+
+    if not (veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not):
+        veteran_embed.add_field(name="▸ Status", value="No Watch Brothers pending.", inline=False)
+
+    total_veterans = len(veteran_aar_met_time_not) + len(veteran_aar_not_time_met) + len(veteran_aar_not_time_not)
+    veteran_embed.set_footer(text=f"᛭⋅ {total_veterans} in queue ⋅᛭")
+    embeds.append(veteran_embed)
+
+    # --- Service Studs Queue ---
+    studs_embed = discord.Embed(
+        title="᛭⋅ SERVICE STUDS QUEUE ⋅᛭",
+        description="*Requirements: 4 weeks + 400 AAR per stud*",
+        color=0xC0C0C0,  # Silver
+    )
+
+    # AAR met, time not
+    if studs_aar_met_time_not:
+        lines = []
+        for member, aar_pts, weeks, earned, displayed, next_date in studs_aar_met_time_not:
+            date_str = next_date.strftime("%b %d")
+            lines.append(f"᛭⋅ {member.mention} | #{displayed+1} | **{date_str}**")
+        studs_embed.add_field(
+            name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
+            value=_build_field_value(lines, len(studs_aar_met_time_not)),
+            inline=False,
+        )
+
+    # AAR not, time met
+    if studs_aar_not_time_met:
+        lines = []
+        for member, aar_pts, weeks, earned, displayed, aar_needed in studs_aar_not_time_met:
+            lines.append(f"᛭⋅ {member.mention} | [{displayed}] | needs **{aar_needed}**")
+        studs_embed.add_field(
+            name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
+            value=_build_field_value(lines, len(studs_aar_not_time_met)),
+            inline=False,
+        )
+
+    # Neither met
+    if studs_aar_not_time_not:
+        lines = []
+        for member, aar_pts, weeks, earned, displayed, next_time, aar_needed in studs_aar_not_time_not:
+            date_str = next_time.strftime("%b %d")
+            lines.append(f"᛭⋅ {member.mention} | [{displayed}] | {date_str}, +{aar_needed}")
+        studs_embed.add_field(
+            name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
+            value=_build_field_value(lines, len(studs_aar_not_time_not)),
+            inline=False,
+        )
+
+    if not (studs_aar_met_time_not or studs_aar_not_time_met or studs_aar_not_time_not):
+        studs_embed.add_field(name="▸ Status", value="No veterans pending.", inline=False)
+
+    total_studs = len(studs_aar_met_time_not) + len(studs_aar_not_time_met) + len(studs_aar_not_time_not)
+    studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
+    embeds.append(studs_embed)
+
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
+
+
 if __name__ == "__main__":
     _main()
