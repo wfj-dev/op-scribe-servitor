@@ -3065,7 +3065,7 @@ SERVICE_STUDS_VENERATIONS_TIER1: List[str] = [
 ]
 
 SERVICE_STUDS_VENERATIONS_TIER2: List[str] = [
-    # 5-25 studs - Venerated Elder
+    # 5-24 studs - Venerated Elder
     "Your service studs proclaim a warrior whose experience shapes the Watch itself.",
     "Few bear such marks of enduring service—honor is yours by right.",
     "The weight of your studs reflects the weight of your deeds.",
@@ -3084,7 +3084,7 @@ SERVICE_STUDS_VENERATIONS_TIER2: List[str] = [
 ]
 
 SERVICE_STUDS_VENERATIONS_TIER3: List[str] = [
-    # 26+ studs - Legendary Status
+    # 25+ studs - Legendary Status
     "Your service studs rival those of the Ancients themselves.",
     "The studs upon your brow are a saga written in silver and blood.",
     "Even the machine-spirits whisper reverence for one so marked by duty.",
@@ -3160,8 +3160,8 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
     Tiers:
     - 0: No veneration (newly promoted)
     - 1-4: Proven warrior
-    - 5-25: Venerated elder
-    - 26+: Legendary status
+    - 5-24: Venerated elder
+    - 25+: Legendary status
     """
     import random
 
@@ -3169,7 +3169,7 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
         return None
     elif studs_count <= 4:
         return random.choice(SERVICE_STUDS_VENERATIONS_TIER1)
-    elif studs_count <= 25:
+    elif studs_count <= 24:
         return random.choice(SERVICE_STUDS_VENERATIONS_TIER2)
     else:
         return random.choice(SERVICE_STUDS_VENERATIONS_TIER3)
@@ -3551,6 +3551,15 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
 
+    # Generate unique machine-spirit designation for the armor
+    # Based on bearer ID + current timestamp to be unique per blessing
+    import hashlib
+    spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
+    # Format: PREFIX-HASH-SUFFIX (e.g., "FURY-A3C7B2-Θ")
+    spirit_prefixes = ["FURY", "AEGIS", "VIGIL", "TALON", "WRATH", "PURITY", "FERRUM", "MORTIS", "VENATOR", "GLADIUS"]
+    spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+    spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
+
     # Auto-sign: prefer Forgemaster or Techmarine mention
     try:
         company = _find_company_or_chapter(interaction.user)
@@ -3596,7 +3605,13 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     if bearer_chapter:
         lines.append(f"  Lineage: {bearer_chapter}")
     if bearer_studs > 0:
-        lines.append(f"  Service Studs: {bearer_studs}")
+        # Tiered stud display: ◆=25, ●=5, ○=1
+        ceramite = bearer_studs // 25
+        remainder = bearer_studs % 25
+        electrum = remainder // 5
+        plasteel = remainder % 5
+        studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+        lines.append(f"  Service Studs: [{studs_pips}]")
     lines.append("")
 
     # Chapter blessing (prominent placement)
@@ -3613,6 +3628,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Status
     lines.append("▸ MACHINE-SPIRIT STATUS")
+    lines.append(f"  Spirit Designation .... {spirit_designation}")
     lines.append("  Inspection ............ PASSED")
     lines.append("  Compliance ............ CONFIRMED")
     lines.append("  Warplate Integrity .... SANCTIFIED")
@@ -3630,17 +3646,11 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append(f'  "{techmarine_signature}"')
     lines.append("")
 
-    # Authority block
-    lines.append("▸ ATTESTATION AUTHORITY")
-    lines.append(f"  Officiant: {attester}")
-    lines.append(f"  Mandate: {authority}")
-    lines.append(f"  Timestamp: {ts}")
-    lines.append("")
-
-    # Sacred phrase and seal
+    # Authority block (consolidated)
+    lines.append("▸ ATTESTATION")
+    lines.append(f"  {signer}")
+    lines.append(f"  {authority} • {ts}")
     lines.append(f"  {sacred_phrase}")
-    lines.append("")
-    lines.append(f"+ + + WITNESSED AND SEALED: {signer} + + +")
     lines.append("\u001b[0m```")
 
     ansi_content = "\n".join(lines)
@@ -3661,13 +3671,19 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     if bearer_chapter:
         bearer_value += f"\nLineage: {bearer_chapter}"
     if bearer_studs > 0:
-        bearer_value += f"\nService Studs: {bearer_studs}"
+        # Tiered stud display: ◆=25, ●=5, ○=1
+        ceramite = bearer_studs // 25
+        remainder = bearer_studs % 25
+        electrum = remainder // 5
+        plasteel = remainder % 5
+        studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+        bearer_value += f"\nService Studs: [{studs_pips}]"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Status field
     embed.add_field(
         name="▸ Machine-Spirit",
-        value="✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
+        value=f"Spirit: `{spirit_designation}`\n✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
         inline=True,
     )
 
@@ -3699,12 +3715,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         inline=False,
     )
 
-    # Techmarine & Authority
-    tech_value = f"**{attester}**\n{authority} • {ts}"
-    embed.add_field(name="▸ Attestation Authority", value=tech_value, inline=False)
-
-    # Sacred phrase and signer in footer
-    embed.set_footer(text=f"{sacred_phrase}\n— Witnessed and Sealed: {signer}")
+    # Techmarine & Authority (consolidated)
+    tech_value = f"**{signer}**\n{authority} • {ts}\n*{sacred_phrase}*"
+    embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Send with toggle view
