@@ -3478,62 +3478,17 @@ def _get_service_studs_announcement(
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
 
-    # Determine rank honorific and raw rank name for emoji lookup
-    rank_honorific = "Brother"
+    # Use shared function for dynamic champion honorifics (same as forge_rite)
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+
+    # Determine raw rank name for emoji lookup
     member_rank_name = "Watch Brother"
     for rank in RANK_ROLES_PRIORITY:
         if rank in role_names:
-            rank_honorific = RANK_HONORIFICS.get(rank, rank)
             member_rank_name = rank
             break
 
-    # Get display name and strip rank prefix to avoid "Forgemaster Forgemaster Jules"
-    display_name = member.display_name
-    # Strip the matched rank from display name
-    if display_name.lower().startswith(member_rank_name.lower()):
-        display_name = display_name[len(member_rank_name):].lstrip()
-    # Also strip any other rank role names that might be in the name
-    for rank_name in RANK_ROLES_PRIORITY:
-        if display_name.lower().startswith(rank_name.lower()):
-            display_name = display_name[len(rank_name):].lstrip()
-            break
-    # Strip common honorific prefixes (Brother, Veteran, etc.)
-    honorific_prefixes = [
-        "Brother", "Honored Veteran", "Veteran", "Oathsworn Warrior", "Oathsworn",
-        "Sergeant", "Lieutenant", "Captain", "Chaplain", "Apothecary", "Librarian",
-        "Techmarine", "Watch Master", "High Chaplain", "Chief Apothecary",
-        "Void Warden", "Forgemaster", "Champion", "Lord Executioner",
-    ]
-    for prefix in honorific_prefixes:
-        if display_name.lower().startswith(prefix.lower()):
-            display_name = display_name[len(prefix):].lstrip()
-            break
-
-    # Strip stud pips from display name (we report studs separately)
-    display_name = display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
-
     stud_word = "Stud" if new_studs == 1 else "Studs"
-
-    # Resolve Kill Team / Company title (like forge_rite)
-    kill_team = None
-    company = None
-    command_team = None
-    for rn in role_names:
-        if rn in KILL_TEAMS and not kill_team:
-            kill_team = rn
-        if "Watch Company" in rn and not company:
-            company = rn
-        if rn in COMMAND_TEAMS and not command_team:
-            command_team = rn
-    
-    title_parts = []
-    if kill_team:
-        title_parts.append(kill_team)
-    if company:
-        title_parts.append(company)
-    if not title_parts and command_team:
-        title_parts.append(command_team)
-    member_title = ", ".join(title_parts) if title_parts else None
 
     # Determine tier based on displayed studs
     if displayed_studs <= 4:
@@ -4071,10 +4026,11 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         comp = _find_company_or_chapter(interaction.user) or "Unknown Company"
         authority = comp
 
-    # Attesting name
+    # Attesting name (strip stud pips)
     attester = getattr(interaction.user, "display_name", None) or getattr(
         interaction.user, "name", str(interaction.user.id)
     )
+    attester = attester.replace("◆", "").replace("●", "").replace("○", "").strip()
 
     # Optional personal rite
     try:
@@ -4372,9 +4328,12 @@ async def _preview_stud_announcement(
             )
             return
 
+    # Defer to avoid interaction timeout during computation
+    await interaction.response.defer(ephemeral=True)
+
     guild = interaction.guild
     if not guild:
-        await interaction.response.send_message("Must be used in a guild.", ephemeral=True)
+        await interaction.followup.send("Must be used in a guild.", ephemeral=True)
         return
 
     # Get member's home chapter
@@ -4428,7 +4387,7 @@ async def _preview_stud_announcement(
     )
 
     # Send ephemeral preview
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"**[PREVIEW]** Mark of Service Announcement:\n\n{content}",
         embed=embed,
         ephemeral=True,
