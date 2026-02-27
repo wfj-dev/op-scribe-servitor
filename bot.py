@@ -7559,7 +7559,11 @@ def parse_aar(message: discord.Message):
             except Exception:
                 kia_count = 0
 
-        # Gene-Seed / Geneseed: lost / carried by @Brother
+        # Gene-Seed / Geneseed: lost / carried by @Brother / @Brother (just tag)
+        # Valid "carried" formats:
+        #   - "Gene-Seed: @Brother" (just a tag, nothing else)
+        #   - "Gene-Seed: carried by @Brother" (explicit "carried by")
+        # Anything else (e.g., random text with a tag) is NOT parsed as carried
         elif ("gene-seed" in lower) or ("geneseed" in lower):
             parts = line.split(":", 1)
             rest = parts[1].strip() if len(parts) > 1 else ""
@@ -7567,23 +7571,30 @@ def parse_aar(message: discord.Message):
 
             if "lost" in rest_lower:
                 gene_seed_status = "lost"
-            elif "carried" in rest_lower:
-                gene_seed_status = "carried"
-
-            ids_here = get_user_ids_in_line(raw_line, message)
-            if ids_here:
-                gene_seed_carrier_id = ids_here[0]
-                # Copilot: also set gene_seed_carried_name to the Discord nickname of the carrier
-                for user in message.mentions:
-                    if str(user.id) == gene_seed_carrier_id:
-                        try:
-                            gene_seed_carried_name = user.nick
-                        except AttributeError:
-                            logger.debug(
-                                f"Failed to get nickname for user ID {gene_seed_carrier_id}"
-                            )
-                # If a Brother is tagged here, treat as carried regardless of wording
-                gene_seed_status = "carried"
+            else:
+                ids_here = get_user_ids_in_line(raw_line, message)
+                if ids_here:
+                    # Check if it's "carried by" format OR just a bare tag
+                    # Remove the mention from rest to see what's left
+                    rest_without_mentions = rest
+                    for uid in ids_here:
+                        rest_without_mentions = rest_without_mentions.replace(f"<@{uid}>", "").replace(f"<@!{uid}>", "")
+                    rest_without_mentions = rest_without_mentions.strip().lower()
+                    
+                    # Valid if: "carried by" OR nothing left (just the tag)
+                    if "carried" in rest_without_mentions or rest_without_mentions == "" or rest_without_mentions == "by":
+                        gene_seed_status = "carried"
+                        gene_seed_carrier_id = ids_here[0]
+                        # Also set gene_seed_carried_name to the Discord nickname of the carrier
+                        for user in message.mentions:
+                            if str(user.id) == gene_seed_carrier_id:
+                                try:
+                                    gene_seed_carried_name = user.nick
+                                except AttributeError:
+                                    logger.debug(
+                                        f"Failed to get nickname for user ID {gene_seed_carrier_id}"
+                                    )
+                    # Otherwise leave as unknown (tag with other random text)
 
         # Check if any Initiation Trial or Neophyte role is mentioned ON THIS LINE
         for role in message.role_mentions:
