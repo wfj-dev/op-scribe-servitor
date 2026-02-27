@@ -5674,32 +5674,11 @@ async def librarian_audit(interaction: discord.Interaction):
     user_bl_missions: Dict[str, set] = {}
 
     for rec in DATASTORE.iter_records():
-        difficulty = (rec.get("difficulty") or "").lower()
-        black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
-        black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
-
-        # Check if we're in the grace period (before Feb 20, 2026)
-        is_in_grace_period = True
-        try:
-            timestamp_str = rec.get("timestamp", "")
-            if timestamp_str:
-                message_created_at = datetime.fromisoformat(timestamp_str)
-                if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
-                    is_in_grace_period = False
-        except Exception:
-            pass
-
-        # Check if Black Laurels is present (difficulty only after grace period, either location during)
-        if is_in_grace_period:
-            has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
-        else:
-            has_black_laurels = black_laurels_in_difficulty
+        mission = rec.get("mission") or ""
+        # Black Laurels is indicated by the role mention in mission field
+        has_black_laurels = "<@&1440108298115485716>" in mission
 
         if not has_black_laurels:
-            continue
-
-        mission = rec.get("mission")
-        if not mission:
             continue
 
         # Strip any Discord role mentions (e.g., "<@&1440108298115485716>") from mission name
