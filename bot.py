@@ -1418,9 +1418,15 @@ async def _check_promotion_milestones():
                     if is_eligible and is_eligible >= last_eligible:
                         # Get Watch Brother role for fallback mention
                         watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+                        # Strip rank prefix from display name to avoid "Watch Brother Watch Brother X"
+                        stripped_name = member.display_name
+                        for prefix in ("Watch Brother", "Watch Sister"):
+                            if stripped_name.lower().startswith(prefix.lower()):
+                                stripped_name = stripped_name[len(prefix):].lstrip()
+                                break
                         # Format: user mention, or if not mentionable use rank role + name
                         if watch_brother_role:
-                            member_line = f"{watch_brother_role.mention} {member.display_name}"
+                            member_line = f"{watch_brother_role.mention} {stripped_name}"
                         else:
                             member_line = f"{member.mention}"
                         # Send notification in the specified format
