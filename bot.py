@@ -7959,8 +7959,8 @@ def validate_aar(record: dict):
         except ValueError:
             errors.append("Armory/Armoury Data must be an integer (e.g. 3).")
 
-    # 5) At least two Brothers
-    # Special-case: Omega requires 2-5 brothers
+    # 5) Brother count requirements
+    # Special-case: Omega requires 2-5 brothers; all others require 2-3
     if "omega" in dlower:
         if not (2 <= len(brothers) <= 5):
             errors.append(
@@ -7970,6 +7970,10 @@ def validate_aar(record: dict):
         if len(brothers) < 2:
             errors.append(
                 "At least two Brothers must be listed under the 'Brothers:' section."
+            )
+        elif len(brothers) > 3:
+            errors.append(
+                "Non-Omega operations allow a maximum of 3 Brothers (a full kill team)."
             )
 
     # 6) Initiation Trial placement rules (simplified)
