@@ -4746,26 +4746,39 @@ async def record_of_blood(interaction: discord.Interaction):
             name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False
         )
 
-    # Count issues
-    issue_count = 0
+    # Collect discrepancy details
+    discrepancy_details: list[str] = []
     for rec in chapter_mentions_by_msg:
         mids = rec.get("mentions", [])
         first_claim = rec.get("first_chap")
         for mrec in mids:
             mid = mrec.get("id")
+            disp = mrec.get("display", "Unknown")
             actual = member_home.get(mid, "")
             claimed = first_claim or (
                 rec.get("chapters", [])[0] if rec.get("chapters") else ""
             )
             if claimed and claimed.lower() != (actual or "").lower():
-                issue_count += 1
+                discrepancy_details.append(
+                    f"• {disp}: claimed **{claimed}**, role **{actual or 'NONE'}**"
+                )
         if first_claim and all(
             first_claim.lower() != hc.lower() for hc in HOME_CHAPTERS
         ):
-            issue_count += 1
+            discrepancy_details.append(
+                f"• Non-canonical chapter declared: **{first_claim}**"
+            )
 
-    if issue_count > 0:
-        embed.add_field(name="Discrepancies Found", value=str(issue_count), inline=True)
+    if discrepancy_details:
+        # Show up to 10 discrepancies in the embed, with a note if there are more
+        disc_text = "\n".join(discrepancy_details[:10])
+        if len(discrepancy_details) > 10:
+            disc_text += f"\n... and {len(discrepancy_details) - 10} more"
+        embed.add_field(
+            name=f"Discrepancies Found ({len(discrepancy_details)})",
+            value=disc_text,
+            inline=False,
+        )
     else:
         embed.add_field(name="Status", value="No discrepancies found", inline=False)
 
@@ -5452,11 +5465,11 @@ async def cache_stats(interaction: discord.Interaction):
     description="List brothers whose displayed service studs differ from computed entitlement (Watch Command only).",
 )
 async def audit_service_studs(interaction: discord.Interaction):
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
     await interaction.response.defer(thinking=False, ephemeral=True)
+
+    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        await interaction.followup.send("Access denied.", ephemeral=True)
+        return
 
     guild = interaction.guild or _resolve_notification_guild()
     if not guild:
