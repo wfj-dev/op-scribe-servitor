@@ -5702,9 +5702,10 @@ async def librarian_audit(interaction: discord.Interaction):
         if not mission:
             continue
 
-        mission_lower = mission.strip().lower()
+        # Strip any Discord role mentions (e.g., "<@&1440108298115485716>") from mission name
+        mission_clean = re.sub(r"<@&\d+>", "", mission).strip().lower()
         # Only track required missions
-        if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
+        if mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
             continue
 
         # For black laurels, missions must have exactly 3 members to be valid
@@ -5717,7 +5718,7 @@ async def librarian_audit(interaction: discord.Interaction):
             uid_str = str(uid)
             if uid_str not in user_bl_missions:
                 user_bl_missions[uid_str] = set()
-            user_bl_missions[uid_str].add(mission_lower)
+            user_bl_missions[uid_str].add(mission_clean)
 
     # Check each member for discrepancies
     missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
