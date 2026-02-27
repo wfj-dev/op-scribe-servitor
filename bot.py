@@ -3554,23 +3554,38 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({displayed_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Determine stud type being earned based on what pip would be added
-    # If crossing a 25 boundary -> Ceramite, 5 boundary -> Electrum, else Plasteel
+    # Calculate visual pip change (what actually gets added to nickname)
     prev_studs = displayed_studs - new_studs
     prev_ceramite = prev_studs // 25
-    curr_ceramite = displayed_studs // 25
     prev_electrum = (prev_studs % 25) // 5
-    curr_electrum = (displayed_studs % 25) // 5
+    prev_plasteel = prev_studs % 5
     
-    if curr_ceramite > prev_ceramite:
-        stud_type = "Ceramite"
-    elif curr_electrum > prev_electrum or (curr_ceramite > prev_ceramite):
-        stud_type = "Electrum"
+    curr_ceramite = displayed_studs // 25
+    curr_electrum = (displayed_studs % 25) // 5
+    curr_plasteel = displayed_studs % 5
+    
+    # Compute net change in each pip type
+    delta_ceramite = curr_ceramite - prev_ceramite
+    delta_electrum = curr_electrum - prev_electrum
+    delta_plasteel = curr_plasteel - prev_plasteel
+    
+    # Build visual pip change string showing what was gained
+    # Show the highest tier pip that increased (the "upgrade")
+    if delta_ceramite > 0:
+        pip_word = "Stud" if delta_ceramite == 1 else "Studs"
+        pip_change = f"+{delta_ceramite}◆ Ceramite {pip_word}"
+    elif delta_electrum > 0:
+        pip_word = "Stud" if delta_electrum == 1 else "Studs"
+        pip_change = f"+{delta_electrum}● Electrum {pip_word}"
+    elif delta_plasteel > 0:
+        pip_word = "Stud" if delta_plasteel == 1 else "Studs"
+        pip_change = f"+{delta_plasteel}○ Plasteel {pip_word}"
     else:
-        stud_type = "Plasteel"
+        # Edge case: earned studs but displayed same (shouldn't happen)
+        pip_change = f"+{new_studs} {stud_word}"
 
-    # Service Record field with stud type
-    record_value = f"**+{new_studs}** {stud_type} {stud_word} Earned\n"
+    # Service Record field with visual pip change
+    record_value = f"**{pip_change}** Earned\n"
     record_value += f"Total: **{earned_studs}** | Displayed: **{displayed_studs}**"
     if owed_studs > 0:
         record_value += f"\nOwed: **{owed_studs}**"
