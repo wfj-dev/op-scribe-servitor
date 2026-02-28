@@ -1630,12 +1630,9 @@ HOME_CHAPTERS = [
     "Black Shield",
 ]
 
-KILL_TEAMS = [
-    "Kill Team Psycho",
-    "Kill Team Atom",
-    "Kill Team Falcon",
-    "Kill Team Raelyn",
-]
+# Kill Teams - dynamically populated from ALLOWED_KT_ROLE_IDS on startup
+# This avoids needing to update names when KT roles are renamed
+KILL_TEAMS: List[str] = []
 
 # Command-level teams (company commands and high command)
 COMMAND_TEAMS = [
@@ -2306,6 +2303,25 @@ def _resolve_company_roles_from_text(
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user}")
+
+    # Dynamically populate KILL_TEAMS from ALLOWED_KT_ROLE_IDS
+    global KILL_TEAMS
+    try:
+        guild = _resolve_notification_guild()
+        if guild and ALLOWED_KT_ROLE_IDS:
+            resolved_kts = []
+            for role_id in ALLOWED_KT_ROLE_IDS:
+                role = guild.get_role(role_id)
+                if role:
+                    resolved_kts.append(role.name)
+            if resolved_kts:
+                KILL_TEAMS = resolved_kts
+                logger.info(f"Populated KILL_TEAMS from role IDs: {KILL_TEAMS}")
+            else:
+                logger.warning("No Kill Team roles resolved from ALLOWED_KT_ROLE_IDS")
+    except Exception as e:
+        logger.debug(f"Failed to populate KILL_TEAMS: {e}")
+
     # Initialize DataStore here so the event loop is running and the
     # background flush task can be started.
     global DATASTORE
