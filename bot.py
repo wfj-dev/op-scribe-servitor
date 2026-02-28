@@ -3603,12 +3603,16 @@ def _get_service_studs_announcement(
     plasteel = remainder % 5
     studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
     if not studs_pips:
-        studs_pips = "○"  # First stud
+        studs_pips = "—"  # No studs displayed yet
 
-    # Build embed similar to forge_rite format
+    # Build embed - distinguish between new studs earned vs reminder for owed
+    if new_studs > 0:
+        embed_description = "*⌾ Watch Fortress Jericho ⌾*"
+    else:
+        embed_description = "*⌾ Studs Owed — Update Display ⌾*"
     embed = discord.Embed(
         title="᛭⋅ MARK OF SERVICE ⋅᛭",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        description=embed_description,
         color=0xC0C0C0,  # Silver for service studs
     )
 
@@ -3659,16 +3663,21 @@ def _get_service_studs_announcement(
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
         pip_changes.append(f"+{delta_plasteel}○ Plasteel {pip_word}")
     
-    if pip_changes:
-        pip_change = ", ".join(pip_changes)
+    # Service Record field: distinguish between new studs earned vs reminder for owed studs
+    if new_studs > 0:
+        # They actually displayed new studs
+        if pip_changes:
+            pip_change = ", ".join(pip_changes)
+        else:
+            pip_change = f"+{new_studs} {stud_word}"
+        record_value = f"**{pip_change}** Earned\n"
     else:
-        # Fallback: just show raw new_studs count
-        pip_change = f"+{new_studs} {stud_word}"
-
-    # Service Record field with visual pip change
-    record_value = f"**{pip_change}** Earned\n"
+        # No new studs displayed - this is a reminder about owed studs
+        owed_word = "Stud" if owed_studs == 1 else "Studs"
+        record_value = f"**{owed_studs} {owed_word} Owed**\n"
     record_value += f"Total: **{earned_studs}** | Displayed: **{displayed_studs}**"
-    if owed_studs > 0:
+    if owed_studs > 0 and new_studs > 0:
+        # Only show "Owed" line if they earned new but still owe more
         record_value += f"\nOwed: **{owed_studs}**"
     embed.add_field(name="▸ Service Record", value=record_value, inline=True)
 
