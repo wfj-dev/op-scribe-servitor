@@ -3555,7 +3555,8 @@ def _get_service_studs_announcement(
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what actually gets added to nickname)
-    prev_studs = displayed_studs - new_studs
+    # Clamp prev_studs to 0 minimum to handle edge cases in preview
+    prev_studs = max(0, displayed_studs - new_studs)
     prev_ceramite = prev_studs // 25
     prev_electrum = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
@@ -3571,17 +3572,22 @@ def _get_service_studs_announcement(
     
     # Build visual pip change string showing what was gained
     # Show the highest tier pip that increased (the "upgrade")
+    # If multiple pip types changed, show all positive deltas
+    pip_changes = []
     if delta_ceramite > 0:
         pip_word = "Stud" if delta_ceramite == 1 else "Studs"
-        pip_change = f"+{delta_ceramite}◆ Ceramite {pip_word}"
-    elif delta_electrum > 0:
+        pip_changes.append(f"+{delta_ceramite}◆ Ceramite {pip_word}")
+    if delta_electrum > 0:
         pip_word = "Stud" if delta_electrum == 1 else "Studs"
-        pip_change = f"+{delta_electrum}● Electrum {pip_word}"
-    elif delta_plasteel > 0:
+        pip_changes.append(f"+{delta_electrum}● Electrum {pip_word}")
+    if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
-        pip_change = f"+{delta_plasteel}○ Plasteel {pip_word}"
+        pip_changes.append(f"+{delta_plasteel}○ Plasteel {pip_word}")
+    
+    if pip_changes:
+        pip_change = ", ".join(pip_changes)
     else:
-        # Edge case: earned studs but displayed same (shouldn't happen)
+        # Fallback: just show raw new_studs count
         pip_change = f"+{new_studs} {stud_word}"
 
     # Service Record field with visual pip change
@@ -4329,14 +4335,16 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 )
 @app_commands.describe(
     member="Member to preview",
-    displayed_studs="Number of studs they're displaying (simulated)",
-    new_studs="Number of new studs earned (simulated)",
+    displayed_studs="Number of studs they're displaying (simulated). Omit to use actual nickname.",
+    new_studs="Number of new studs being added to display (simulated). Omit to auto-calculate.",
+    earned_studs_override="Override earned studs (for testing owed). Omit to use actual.",
 )
 async def _preview_stud_announcement(
     interaction: discord.Interaction,
     member: discord.Member,
-    displayed_studs: int = 5,
-    new_studs: int = 1,
+    displayed_studs: Optional[int] = None,
+    new_studs: Optional[int] = None,
+    earned_studs_override: Optional[int] = None,
 ):
     """Debug command to preview service stud announcement output."""
     # Only allow in DEBUG_MODE or for admins
@@ -4384,6 +4392,10 @@ async def _preview_stud_announcement(
     studs_aar = aar_points // 400
     earned_studs = min(studs_time, studs_aar)
     
+    # Allow override for testing owed studs
+    if earned_studs_override is not None:
+        earned_studs = earned_studs_override
+    
     # Read displayed studs from nickname
     dn = str(member.nick or member.display_name or "")
     displayed_cer = dn.count("◆")
@@ -4391,9 +4403,13 @@ async def _preview_stud_announcement(
     displayed_plas = dn.count("○")
     actual_displayed = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
     
-    # If user provided displayed_studs param (not default), use that; otherwise use actual
-    if displayed_studs == 5:  # default value, use actual
+    # Use provided displayed_studs or fall back to actual
+    if displayed_studs is None:
         displayed_studs = actual_displayed
+    
+    # If new_studs not provided, default to displayed_studs (as if going from 0 to displayed)
+    if new_studs is None:
+        new_studs = displayed_studs
     
     owed_studs = max(0, earned_studs - displayed_studs)
 
@@ -4407,9 +4423,17 @@ async def _preview_stud_announcement(
         guild=guild,
     )
 
-    # Send ephemeral preview
+    # Send ephemeral preview with debug info
+    debug_info = (
+        f"**[PREVIEW DEBUG]**\n"
+        f"• Actual in nickname: {actual_displayed}\n"
+        f"• Displayed (param): {displayed_studs}\n"
+        f"• New (param): {new_studs}\n"
+        f"• Earned: {earned_studs}\n"
+        f"• Owed: {owed_studs}\n\n"
+    )
     await interaction.followup.send(
-        f"**[PREVIEW]** Mark of Service Announcement:\n\n{content}",
+        f"{debug_info}{content}",
         embed=embed,
         ephemeral=True,
         allowed_mentions=discord.AllowedMentions.none(),
