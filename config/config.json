@@ -46,5 +46,20 @@
     "weekly_maintenance_hour": 3,
     "weekly_maintenance_ingest_span_days": 45
   },
-  "honours_channel_id": 1467699484581691414
+  "honours_channel_id": 1467699484581691414,
+  "milestones": {
+    "enabled": true,
+    "channel_id": 1467699484581691414,
+    "check_day": 1,
+    "check_hour": 4,
+    "increments": {
+      "aar_points": 2500,
+      "aar_count": 500,
+      "geneseed_recoveries": 500,
+      "armory_data": 1000,
+      "hive_tyrant_kills": 100,
+      "bio_titan_kills": 100,
+      "tyranid_prime_kills": 100
+    }
+  }
 }

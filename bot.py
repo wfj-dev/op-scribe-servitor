@@ -41,6 +41,7 @@ ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
     DATA_DIR, "activity_status_last_check.json"
 )
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
+MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -90,6 +91,24 @@ SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = True
 SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
+
+# Milestone announcement settings (Tuesday 4 AM UTC by default)
+MILESTONES_ENABLED = True
+MILESTONES_CHANNEL_ID: Optional[int] = None  # Set from config
+MILESTONES_CHECK_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
+MILESTONES_CHECK_HOUR = 4  # Hour in UTC
+MILESTONES_INCREMENTS = {
+    "aar_points": 2500,
+    "aar_count": 500,
+    "geneseed_recoveries": 500,
+    "armory_data": 1000,
+    "hive_tyrant_kills": 100,
+    "bio_titan_kills": 100,
+    "tyranid_prime_kills": 100,
+}
+
+# Track last milestone check date to prevent duplicate runs
+LAST_MILESTONE_CHECK_DATE: Optional[str] = None
 
 # Black Laurels strict enforcement begins on Feb 20, 2026 at 00:00 UTC
 BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
@@ -517,6 +536,25 @@ try:
         SCHEDULE_WEEKLY_MAINTENANCE_HOUR = int(
             schedules_cfg.get("weekly_maintenance_hour")
         )
+except Exception:
+    pass
+
+# Apply milestones configuration if present
+try:
+    milestones_cfg = CONFIG.get("milestones") or {}
+    if "enabled" in milestones_cfg:
+        MILESTONES_ENABLED = _is_truthy(milestones_cfg.get("enabled"))
+    if milestones_cfg.get("channel_id"):
+        MILESTONES_CHANNEL_ID = int(milestones_cfg.get("channel_id"))
+    if milestones_cfg.get("check_day") is not None:
+        MILESTONES_CHECK_DAY = int(milestones_cfg.get("check_day"))
+    if milestones_cfg.get("check_hour") is not None:
+        MILESTONES_CHECK_HOUR = int(milestones_cfg.get("check_hour"))
+    if milestones_cfg.get("increments"):
+        increments_cfg = milestones_cfg.get("increments")
+        for key in MILESTONES_INCREMENTS:
+            if key in increments_cfg:
+                MILESTONES_INCREMENTS[key] = int(increments_cfg[key])
 except Exception:
     pass
 
@@ -2431,6 +2469,27 @@ async def on_ready():
             )
     except Exception:
         logger.exception("Failed to start honours runner loop")
+
+    # Start milestone check loop if enabled (default: enabled)
+    try:
+        if MILESTONES_ENABLED:
+            if not _scheduled_milestone_check.is_running():
+                _scheduled_milestone_check.start()
+                day_names = [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ]
+                day_name = day_names[MILESTONES_CHECK_DAY]
+                logger.info(
+                    f"Milestone check loop started ({day_name} {MILESTONES_CHECK_HOUR}:00 UTC)."
+                )
+    except Exception:
+        logger.exception("Failed to start milestone check loop")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
@@ -11260,6 +11319,301 @@ AARs/Member              Chapter (X.X)
     embed.set_footer(text="Use PC/Console button for detailed ANSI view")
 
     return honour_line, ansi, embed
+
+
+# =============================================================================
+# MILESTONE ANNOUNCEMENTS
+# =============================================================================
+
+def _load_milestone_tracking() -> dict:
+    """Load milestone tracking data from JSON file."""
+    try:
+        if os.path.exists(MILESTONE_TRACKING_PATH):
+            with open(MILESTONE_TRACKING_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load milestone tracking: {e}")
+    return {
+        "last_announced": {
+            "aar_points": 0,
+            "aar_count": 0,
+            "geneseed_recoveries": 0,
+            "armory_data": 0,
+            "hive_tyrant_kills": 0,
+            "bio_titan_kills": 0,
+            "tyranid_prime_kills": 0,
+        },
+        "last_check_date": None,
+    }
+
+
+def _save_milestone_tracking(data: dict) -> None:
+    """Save milestone tracking data to JSON file with atomic write."""
+    try:
+        tmp_path = MILESTONE_TRACKING_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, MILESTONE_TRACKING_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save milestone tracking: {e}")
+
+
+def _calculate_current_milestones() -> dict:
+    """Calculate current totals for all milestone categories from AAR records."""
+    if DATASTORE is None:
+        return {}
+    
+    records = DATASTORE.get_all_records()
+    
+    totals = {
+        "aar_points": 0,
+        "aar_count": len(records),
+        "geneseed_recoveries": 0,
+        "armory_data": 0,
+        "hive_tyrant_kills": 0,
+        "bio_titan_kills": 0,
+        "tyranid_prime_kills": 0,
+    }
+    
+    for aar_id, aar in records.items():
+        # Sum AAR points
+        totals["aar_points"] += aar.get("points_for_op", 0) or 0
+        
+        # Count geneseed recoveries
+        if aar.get("gene_seed_status") == "carried":
+            totals["geneseed_recoveries"] += 1
+        
+        # Sum armory data
+        totals["armory_data"] += aar.get("armory_data", 0) or 0
+        
+        # Count mission types (boss kills)
+        mission = aar.get("mission", "") or ""
+        mission_lower = mission.lower()
+        if "decapitation" in mission_lower:
+            totals["hive_tyrant_kills"] += 1
+        elif "termination" in mission_lower:
+            totals["bio_titan_kills"] += 1
+        elif "reclamation" in mission_lower:
+            totals["tyranid_prime_kills"] += 1
+    
+    return totals
+
+
+def _check_milestone_thresholds(current: dict, last_announced: dict) -> list[tuple[str, int, int]]:
+    """Check which milestones have been crossed since last announcement.
+    
+    Returns list of (metric_name, new_milestone_value, current_value) tuples.
+    """
+    crossed = []
+    
+    for metric, increment in MILESTONES_INCREMENTS.items():
+        current_val = current.get(metric, 0)
+        last_milestone = last_announced.get(metric, 0)
+        
+        # Calculate the next milestone threshold after the last announced one
+        next_milestone = last_milestone + increment
+        
+        # Check if we've crossed one or more milestones
+        while current_val >= next_milestone:
+            crossed.append((metric, next_milestone, current_val))
+            next_milestone += increment
+    
+    return crossed
+
+
+def _get_milestone_display_info(metric: str) -> tuple[str, str, str, int]:
+    """Get display information for a milestone metric.
+    
+    Returns (title, description, emoji_name, color).
+    """
+    info = {
+        "aar_points": (
+            "AAR POINTS MILESTONE",
+            "Total After-Action Report points earned by the Watch",
+            "Deathwatch",
+            0xC0C0C0,  # Silver
+        ),
+        "aar_count": (
+            "OPERATIONS MILESTONE",
+            "Total fortress operations completed by the Watch",
+            "Deathwatch",
+            0xC0C0C0,  # Silver
+        ),
+        "geneseed_recoveries": (
+            "GENE-SEED RECOVERIES",
+            "Precious gene-seed secured from fallen warriors",
+            "Apothecaryicon",
+            0x00FF00,  # Green
+        ),
+        "armory_data": (
+            "ARMORY DATA RECOVERED",
+            "Tactical data fragments recovered for the Forge",
+            "Techmarineicon",
+            0xFF6600,  # Orange
+        ),
+        "hive_tyrant_kills": (
+            "HIVE TYRANTS SLAIN",
+            "Decapitation missions completed - synapse lords destroyed",
+            "Tyranids",
+            0x800080,  # Purple
+        ),
+        "bio_titan_kills": (
+            "BIO-TITANS FELLED",
+            "Termination missions completed - behemoths brought low",
+            "Tyranids",
+            0x800080,  # Purple
+        ),
+        "tyranid_prime_kills": (
+            "TYRANID PRIMES PURGED",
+            "Reclamation missions completed - xenos commanders eliminated",
+            "Tyranids",
+            0x800080,  # Purple
+        ),
+    }
+    return info.get(metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0))
+
+
+def _build_milestone_embed(
+    guild: discord.Guild,
+    metric: str,
+    milestone_value: int,
+    current_value: int,
+) -> discord.Embed:
+    """Build an embed for a milestone announcement."""
+    title, description, emoji_name, color = _get_milestone_display_info(metric)
+    
+    # Get emoji if available
+    emoji = _get_emoji_by_name(guild, emoji_name)
+    emoji_str = f"{emoji} " if emoji else ""
+    
+    embed = discord.Embed(
+        title=f"᛭⋅ {emoji_str}{title} {emoji_str}⋅᛭",
+        description=f"*{description}*",
+        color=color,
+    )
+    
+    # Format the milestone number with commas
+    milestone_str = f"{milestone_value:,}"
+    current_str = f"{current_value:,}"
+    
+    # Add the milestone field
+    embed.add_field(
+        name="▸ Milestone Reached",
+        value=f"**{milestone_str}**",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Current Total",
+        value=f"**{current_str}**",
+        inline=True,
+    )
+    
+    # Add thematic footer based on metric
+    footers = {
+        "aar_points": "The Deathwatch prevails. The Long Vigil continues.",
+        "aar_count": "Each operation brings us closer to victory.",
+        "geneseed_recoveries": "The legacy of our fallen brothers is preserved.",
+        "armory_data": "Knowledge is power. Guard it well.",
+        "hive_tyrant_kills": "Cut off the head, and the body will fall.",
+        "bio_titan_kills": "Even the mightiest xenos fall before the Emperor's wrath.",
+        "tyranid_prime_kills": "The swarm is weakened. Press the advantage.",
+    }
+    embed.set_footer(text=footers.get(metric, "For the Emperor and the Primarchs."))
+    
+    return embed
+
+
+@tasks.loop(hours=1)
+async def _scheduled_milestone_check():
+    """Run hourly; on configured day/hour check and announce milestones.
+    
+    Default: Tuesday 4 AM UTC. Checks all milestone categories and posts
+    announcements for any thresholds that have been crossed.
+    """
+    global LAST_MILESTONE_CHECK_DATE
+    try:
+        if not MILESTONES_ENABLED:
+            return
+        
+        if DATASTORE is None:
+            return
+        
+        # Use UTC for consistent scheduling
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
+        
+        # Check if it's the right day and hour
+        if now_utc.weekday() != MILESTONES_CHECK_DAY or now_utc.hour != MILESTONES_CHECK_HOUR:
+            return
+        
+        # Prevent duplicate runs on same date
+        if LAST_MILESTONE_CHECK_DATE == str(today):
+            return
+        
+        logger.info("Milestone check starting...")
+        
+        # Resolve target guild and channel
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.warning("Milestone check: Could not resolve guild, skipping")
+            return
+        
+        channel_id = MILESTONES_CHANNEL_ID or CONFIG.get("honours_channel_id")
+        if not channel_id:
+            logger.warning("Milestone check: No channel configured, skipping")
+            return
+        
+        try:
+            channel = guild.get_channel(int(channel_id)) or await bot.fetch_channel(int(channel_id))
+        except Exception:
+            logger.exception("Milestone check: Could not resolve channel")
+            return
+        
+        # Load tracking data
+        tracking = _load_milestone_tracking()
+        last_announced = tracking.get("last_announced", {})
+        
+        # Calculate current totals
+        current = _calculate_current_milestones()
+        if not current:
+            logger.warning("Milestone check: Could not calculate current totals")
+            return
+        
+        # Check for crossed milestones
+        crossed = _check_milestone_thresholds(current, last_announced)
+        
+        if not crossed:
+            logger.info("Milestone check complete: no new milestones")
+            LAST_MILESTONE_CHECK_DATE = str(today)
+            return
+        
+        # Post announcements for each crossed milestone
+        announcements_sent = 0
+        for metric, milestone_value, current_value in crossed:
+            try:
+                embed = _build_milestone_embed(guild, metric, milestone_value, current_value)
+                await channel.send(
+                    embed=embed,
+                    allowed_mentions=discord.AllowedMentions(users=False, roles=False),
+                )
+                # Update the last announced value for this metric
+                last_announced[metric] = milestone_value
+                announcements_sent += 1
+                await asyncio.sleep(1)  # Brief delay between announcements
+            except Exception as e:
+                logger.exception(f"Failed to post milestone announcement for {metric}: {e}")
+        
+        # Save updated tracking
+        tracking["last_announced"] = last_announced
+        tracking["last_check_date"] = str(today)
+        _save_milestone_tracking(tracking)
+        
+        LAST_MILESTONE_CHECK_DATE = str(today)
+        logger.info(f"Milestone check complete: {announcements_sent} announcement(s) posted")
+        
+    except Exception as e:
+        logger.exception(f"Milestone check failed: {e}")
 
 
 @tasks.loop(minutes=15)
