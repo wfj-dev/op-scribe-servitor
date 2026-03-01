@@ -1455,16 +1455,20 @@ async def _check_promotion_milestones():
                     # Similar to service studs: notify if is_eligible and last wasn't or is same
                     if is_eligible and is_eligible >= last_eligible:
                         # Get Watch Brother role for fallback mention
-                        watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+                        watch_brother_role = discord.utils.get(
+                            guild.roles, name="Watch Brother"
+                        )
                         # Strip rank prefix from display name to avoid "Watch Brother Watch Brother X"
                         stripped_name = member.display_name
                         for prefix in ("Watch Brother", "Watch Sister"):
                             if stripped_name.lower().startswith(prefix.lower()):
-                                stripped_name = stripped_name[len(prefix):].lstrip()
+                                stripped_name = stripped_name[len(prefix) :].lstrip()
                                 break
                         # Format: user mention, or if not mentionable use rank role + name
                         if watch_brother_role:
-                            member_line = f"{watch_brother_role.mention} {stripped_name}"
+                            member_line = (
+                                f"{watch_brother_role.mention} {stripped_name}"
+                            )
                         else:
                             member_line = f"{member.mention}"
                         # Send notification in the specified format
@@ -3509,7 +3513,7 @@ DEATHWATCH_STUD_CLOSINGS: List[str] = [
 
 def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
     """Lookup a custom emoji by name from the guild.
-    
+
     Returns the emoji string (e.g., '<:HawkLords:123456>') if found, else None.
     The name should be without colons, e.g., 'HawkLords' not ':HawkLords:'.
     """
@@ -3591,8 +3595,12 @@ def _get_service_studs_announcement(
     watch_apothecary_role = discord.utils.get(guild.roles, name="Watch Apothecary")
     watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
 
-    chief_mention = chief_apothecary_role.mention if chief_apothecary_role else "Chief Apothecary"
-    apoth_mention = watch_apothecary_role.mention if watch_apothecary_role else "Watch Apothecary"
+    chief_mention = (
+        chief_apothecary_role.mention if chief_apothecary_role else "Chief Apothecary"
+    )
+    apoth_mention = (
+        watch_apothecary_role.mention if watch_apothecary_role else "Watch Apothecary"
+    )
     cmd_mention = watch_command_role.mention if watch_command_role else "Watch Command"
 
     # Get Watch Brother role for honoring notification
@@ -3601,7 +3609,11 @@ def _get_service_studs_announcement(
 
     # Get emojis for rank and chapter
     rank_emoji = _get_rank_emoji(guild, member_rank_name)
-    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    chapter_emoji = (
+        _get_emoji_by_name(guild, member_chapter)
+        if member_chapter != "Unknown"
+        else None
+    )
 
     # Compute stud pips display: ◆=25, ●=5, ○=1
     ceramite = displayed_studs // 25
@@ -3646,16 +3658,16 @@ def _get_service_studs_announcement(
     prev_ceramite = prev_studs // 25
     prev_electrum = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
-    
+
     curr_ceramite = displayed_studs // 25
     curr_electrum = (displayed_studs % 25) // 5
     curr_plasteel = displayed_studs % 5
-    
+
     # Compute net change in each pip type
     delta_ceramite = curr_ceramite - prev_ceramite
     delta_electrum = curr_electrum - prev_electrum
     delta_plasteel = curr_plasteel - prev_plasteel
-    
+
     # Build visual pip change string showing what was gained
     # Show the highest tier pip that increased (the "upgrade")
     # If multiple pip types changed, show all positive deltas
@@ -3669,7 +3681,7 @@ def _get_service_studs_announcement(
     if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
         pip_changes.append(f"+{delta_plasteel}○ Plasteel {pip_word}")
-    
+
     # Service Record field: distinguish between new studs earned vs reminder for owed studs
     if new_studs > 0:
         # They actually displayed new studs
@@ -3697,7 +3709,11 @@ def _get_service_studs_announcement(
     ordo_honor = random.choice(ORDO_XENOS_HONORS)
     if member_chapter in CHAPTER_STUDS_FLAVOR:
         chapter_flavor = random.choice(CHAPTER_STUDS_FLAVOR[member_chapter])
-        embed.add_field(name="▸ Honor of the Long Watch", value=f'*"{ordo_honor} {chapter_flavor}"*', inline=False)
+        embed.add_field(
+            name="▸ Honor of the Long Watch",
+            value=f'*"{ordo_honor} {chapter_flavor}"*',
+            inline=False,
+        )
     else:
         # Fallback to tier-based phrase
         if tier == 1:
@@ -3706,7 +3722,11 @@ def _get_service_studs_announcement(
             milestone_phrase = random.choice(SERVICE_STUDS_VENERATIONS_TIER2)
         else:
             milestone_phrase = random.choice(SERVICE_STUDS_VENERATIONS_TIER3)
-        embed.add_field(name="▸ Honor of the Long Watch", value=f'*"{ordo_honor} {milestone_phrase}"*', inline=False)
+        embed.add_field(
+            name="▸ Honor of the Long Watch",
+            value=f'*"{ordo_honor} {milestone_phrase}"*',
+            inline=False,
+        )
 
     # Call to action
     embed.add_field(
@@ -3843,7 +3863,12 @@ def _get_bearer_rank_and_title(
                             if wm_name.lower().startswith("watch master"):
                                 wm_name = wm_name[len("Watch Master") :].lstrip()
                             # Strip stud pips from name
-                            wm_name = wm_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+                            wm_name = (
+                                wm_name.replace("◆", "")
+                                .replace("●", "")
+                                .replace("○", "")
+                                .strip()
+                            )
                             watchmaster_name = wm_name
                     except Exception:
                         pass
@@ -3874,7 +3899,12 @@ def _get_bearer_rank_and_title(
                                     cap_name = cap_name[len(prefix) :].lstrip()
                                     break
                             # Strip stud pips from name
-                            cap_name = cap_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+                            cap_name = (
+                                cap_name.replace("◆", "")
+                                .replace("●", "")
+                                .replace("○", "")
+                                .strip()
+                            )
                             captain_name = cap_name
                     except Exception:
                         pass
@@ -3936,7 +3966,9 @@ def _get_bearer_rank_and_title(
             break
 
     # Strip stud pips from display name (we report studs separately)
-    display_name = display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+    display_name = (
+        display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+    )
 
     # Build combined title: prefer "Kill Team X, Company Y" format
     title_parts = []
@@ -4193,9 +4225,25 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Generate unique machine-spirit designation for the armor
     # Based on bearer ID + current timestamp to be unique per blessing
     import hashlib
-    spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
+
+    spirit_hash = (
+        hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
+        .hexdigest()[:6]
+        .upper()
+    )
     # Format: PREFIX-HASH-SUFFIX (e.g., "FURY-A3C7B2-Θ")
-    spirit_prefixes = ["FURY", "AEGIS", "VIGIL", "TALON", "WRATH", "PURITY", "FERRUM", "MORTIS", "VENATOR", "GLADIUS"]
+    spirit_prefixes = [
+        "FURY",
+        "AEGIS",
+        "VIGIL",
+        "TALON",
+        "WRATH",
+        "PURITY",
+        "FERRUM",
+        "MORTIS",
+        "VENATOR",
+        "GLADIUS",
+    ]
     spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
     spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
 
@@ -4294,7 +4342,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append("▸ ATTESTATION")
     lines.append(f"  {attester}")
     lines.append(f"  {authority} • {ts}")
-    lines.append(f"  \"{sacred_phrase}\"")
+    lines.append(f'  "{sacred_phrase}"')
     lines.append("\u001b[0m```")
 
     ansi_content = "\n".join(lines)
@@ -4302,7 +4350,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # ─────────────────────────────────────────────────────────────────────────
     # Build Mobile embed (condensed format)
     # ─────────────────────────────────────────────────────────────────────────
-    
+
     # Get emojis for rank and chapter (mobile embed only - ANSI can't render them)
     guild = interaction.guild
     # Extract raw rank name from bearer_honorific by reverse-lookup
@@ -4313,10 +4361,14 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             break
     if not bearer_rank_name:
         bearer_rank_name = "Watch Brother"
-    
+
     rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
-    chapter_emoji_str = _get_chapter_emoji(guild, bearer_chapter) if guild and bearer_chapter else bearer_chapter
-    
+    chapter_emoji_str = (
+        _get_chapter_emoji(guild, bearer_chapter)
+        if guild and bearer_chapter
+        else bearer_chapter
+    )
+
     embed = discord.Embed(
         title="⚙️ COGITATOR RITE — FORGE ATTESTATION",
         description="*⌾ Watch Fortress Jericho ⌾*",
@@ -4390,7 +4442,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Techmarine & Authority (consolidated)
-    tech_value = f"**{attester}**\n{authority} • {ts}\n*\"{sacred_phrase}\"*"
+    tech_value = f'**{attester}**\n{authority} • {ts}\n*"{sacred_phrase}"*'
     embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -4468,7 +4520,7 @@ async def _preview_stud_announcement(
     user_id = str(member.id)
     stats = compute_stats_for_user(user_id)
     aar_points = int(stats.get("aar_points", 0) or 0)
-    
+
     # Get weeks in server
     joined_at = getattr(member, "joined_at", None)
     if joined_at:
@@ -4477,31 +4529,31 @@ async def _preview_stud_announcement(
         weeks_in_server = max(0, (datetime.utcnow() - joined_at).days // 7)
     else:
         weeks_in_server = 0
-    
+
     # Compute earned studs (min of time-based and AAR-based)
     studs_time = weeks_in_server // 4
     studs_aar = aar_points // 400
     earned_studs = min(studs_time, studs_aar)
-    
+
     # Allow override for testing owed studs
     if earned_studs_override is not None:
         earned_studs = earned_studs_override
-    
+
     # Read displayed studs from nickname
     dn = str(member.nick or member.display_name or "")
     displayed_cer = dn.count("◆")
     displayed_elec = dn.count("●")
     displayed_plas = dn.count("○")
     actual_displayed = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
-    
+
     # Use provided displayed_studs or fall back to actual
     if displayed_studs is None:
         displayed_studs = actual_displayed
-    
+
     # If new_studs not provided, default to displayed_studs (as if going from 0 to displayed)
     if new_studs is None:
         new_studs = displayed_studs
-    
+
     owed_studs = max(0, earned_studs - displayed_studs)
 
     content, embed = _get_service_studs_announcement(
@@ -7707,11 +7759,17 @@ def parse_aar(message: discord.Message):
                     # Remove the mention from rest to see what's left
                     rest_without_mentions = rest
                     for uid in ids_here:
-                        rest_without_mentions = rest_without_mentions.replace(f"<@{uid}>", "").replace(f"<@!{uid}>", "")
+                        rest_without_mentions = rest_without_mentions.replace(
+                            f"<@{uid}>", ""
+                        ).replace(f"<@!{uid}>", "")
                     rest_without_mentions = rest_without_mentions.strip().lower()
-                    
+
                     # Valid if: "carried by" OR nothing left (just the tag)
-                    if "carried" in rest_without_mentions or rest_without_mentions == "" or rest_without_mentions == "by":
+                    if (
+                        "carried" in rest_without_mentions
+                        or rest_without_mentions == ""
+                        or rest_without_mentions == "by"
+                    ):
                         gene_seed_status = "carried"
                         gene_seed_carrier_id = ids_here[0]
                         # Also set gene_seed_carried_name to the Discord nickname of the carrier
@@ -11208,7 +11266,7 @@ AARs/Member              Chapter (X.X)
 
     # Create unified mobile embed combining both distinctions and top 5 rankings
     # Use the same styling as forge_rite and service studs announcements
-    
+
     # Format month name from display date
     month_name = display_dt.strftime("%B %Y").upper()
 
@@ -11330,7 +11388,13 @@ AARs/Member              Chapter (X.X)
         arm_m = f"<@{arm_name}>" if arm_name else arm_disp
         high_m = f"<@{high_name}>" if high_name else high_disp
     else:
-        tempo_m, lethal_m, gene_m, arm_m, high_m = tempo_disp, lethal_disp, gene_disp, arm_disp, high_disp
+        tempo_m, lethal_m, gene_m, arm_m, high_m = (
+            tempo_disp,
+            lethal_disp,
+            gene_disp,
+            arm_disp,
+            high_disp,
+        )
     individual_text = (
         f"Operations: {tempo_m} ({tempo_val})\n"
         f"Avg Pts/Op: {lethal_m} ({lethal_val:.1f})\n"
@@ -11352,7 +11416,13 @@ AARs/Member              Chapter (X.X)
         kt_risk_m = _kt_mention(kt_risk_name)
         kt_force_m = _kt_mention(kt_force_name)
     else:
-        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m = kt_ops_name, kt_avg_name, kt_pres_name, kt_risk_name, kt_force_name
+        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m = (
+            kt_ops_name,
+            kt_avg_name,
+            kt_pres_name,
+            kt_risk_name,
+            kt_force_name,
+        )
     killteam_text = (
         f"Operations: {kt_ops_m} ({kt_ops_val})\n"
         f"Avg Pts/Op: {kt_avg_m} ({kt_avg_val:.1f})\n"
@@ -11388,7 +11458,11 @@ AARs/Member              Chapter (X.X)
 
     # Check total embed length and reduce if needed (Discord limit: 6000 chars)
     def _embed_length(e: discord.Embed) -> int:
-        total = len(e.title or "") + len(e.description or "") + len(e.footer.text if e.footer else "")
+        total = (
+            len(e.title or "")
+            + len(e.description or "")
+            + len(e.footer.text if e.footer else "")
+        )
         for f in e.fields:
             total += len(f.name or "") + len(f.value or "")
         return total
@@ -11406,6 +11480,7 @@ AARs/Member              Chapter (X.X)
 # =============================================================================
 # MILESTONE ANNOUNCEMENTS
 # =============================================================================
+
 
 def _load_milestone_tracking() -> dict:
     """Load milestone tracking data from JSON file."""
@@ -11444,9 +11519,9 @@ def _calculate_current_milestones() -> dict:
     """Calculate current totals for all milestone categories from AAR records."""
     if DATASTORE is None:
         return {}
-    
+
     records = DATASTORE.get_all_records()
-    
+
     totals = {
         "aar_points": 0,
         "aar_count": len(records),
@@ -11456,18 +11531,18 @@ def _calculate_current_milestones() -> dict:
         "bio_titan_kills": 0,
         "tyranid_prime_kills": 0,
     }
-    
+
     for aar_id, aar in records.items():
         # Sum AAR points
         totals["aar_points"] += aar.get("points_for_op", 0) or 0
-        
+
         # Count geneseed recoveries
         if aar.get("gene_seed_status") == "carried":
             totals["geneseed_recoveries"] += 1
-        
+
         # Sum armory data
         totals["armory_data"] += aar.get("armory_data", 0) or 0
-        
+
         # Count mission types (boss kills)
         mission = aar.get("mission", "") or ""
         mission_lower = mission.lower()
@@ -11477,35 +11552,37 @@ def _calculate_current_milestones() -> dict:
             totals["bio_titan_kills"] += 1
         elif "reclamation" in mission_lower:
             totals["tyranid_prime_kills"] += 1
-    
+
     return totals
 
 
-def _check_milestone_thresholds(current: dict, last_announced: dict) -> list[tuple[str, int, int]]:
+def _check_milestone_thresholds(
+    current: dict, last_announced: dict
+) -> list[tuple[str, int, int]]:
     """Check which milestones have been crossed since last announcement.
-    
+
     Returns list of (metric_name, new_milestone_value, current_value) tuples.
     """
     crossed = []
-    
+
     for metric, increment in MILESTONES_INCREMENTS.items():
         current_val = current.get(metric, 0)
         last_milestone = last_announced.get(metric, 0)
-        
+
         # Calculate the next milestone threshold after the last announced one
         next_milestone = last_milestone + increment
-        
+
         # Check if we've crossed one or more milestones
         while current_val >= next_milestone:
             crossed.append((metric, next_milestone, current_val))
             next_milestone += increment
-    
+
     return crossed
 
 
 def _get_milestone_display_info(metric: str) -> tuple[str, str, str, int]:
     """Get display information for a milestone metric.
-    
+
     Returns (title, description, emoji_name, color).
     """
     info = {
@@ -11552,7 +11629,9 @@ def _get_milestone_display_info(metric: str) -> tuple[str, str, str, int]:
             0x800080,  # Purple
         ),
     }
-    return info.get(metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0))
+    return info.get(
+        metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0)
+    )
 
 
 def _build_milestone_embed(
@@ -11563,34 +11642,34 @@ def _build_milestone_embed(
 ) -> discord.Embed:
     """Build an embed for a milestone announcement."""
     title, description, emoji_name, color = _get_milestone_display_info(metric)
-    
+
     # Get emoji if available
     emoji = _get_emoji_by_name(guild, emoji_name)
     emoji_str = f"{emoji} " if emoji else ""
-    
+
     embed = discord.Embed(
         title=f"᛭⋅ {emoji_str}{title} {emoji_str}⋅᛭",
         description=f"*{description}*",
         color=color,
     )
-    
+
     # Format the milestone number with commas
     milestone_str = f"{milestone_value:,}"
     current_str = f"{current_value:,}"
-    
+
     # Add the milestone field
     embed.add_field(
         name="▸ Milestone Reached",
         value=f"**{milestone_str}**",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Current Total",
         value=f"**{current_str}**",
         inline=True,
     )
-    
+
     # Add thematic footer based on metric
     footers = {
         "aar_points": "The Deathwatch prevails. The Long Vigil continues.",
@@ -11602,14 +11681,14 @@ def _build_milestone_embed(
         "tyranid_prime_kills": "The swarm is weakened. Press the advantage.",
     }
     embed.set_footer(text=footers.get(metric, "For the Emperor and the Primarchs."))
-    
+
     return embed
 
 
 @tasks.loop(hours=1)
 async def _scheduled_milestone_check():
     """Run hourly; on configured day/hour check and announce milestones.
-    
+
     Default: Tuesday 4 AM UTC. Checks all milestone categories and posts
     announcements for any thresholds that have been crossed.
     """
@@ -11617,64 +11696,71 @@ async def _scheduled_milestone_check():
     try:
         if not MILESTONES_ENABLED:
             return
-        
+
         if DATASTORE is None:
             return
-        
+
         # Use UTC for consistent scheduling
         now_utc = datetime.now(timezone.utc)
         today = now_utc.date()
-        
+
         # Check if it's the right day and hour
-        if now_utc.weekday() != MILESTONES_CHECK_DAY or now_utc.hour != MILESTONES_CHECK_HOUR:
+        if (
+            now_utc.weekday() != MILESTONES_CHECK_DAY
+            or now_utc.hour != MILESTONES_CHECK_HOUR
+        ):
             return
-        
+
         # Prevent duplicate runs on same date
         if LAST_MILESTONE_CHECK_DATE == str(today):
             return
-        
+
         logger.info("Milestone check starting...")
-        
+
         # Resolve target guild and channel
         guild = _resolve_notification_guild()
         if not guild:
             logger.warning("Milestone check: Could not resolve guild, skipping")
             return
-        
+
         channel_id = MILESTONES_CHANNEL_ID or CONFIG.get("honours_channel_id")
         if not channel_id:
             logger.warning("Milestone check: No channel configured, skipping")
             return
-        
+
         try:
-            channel = guild.get_channel(int(channel_id)) or await bot.fetch_channel(int(channel_id))
+            channel = guild.get_channel(int(channel_id)) or await bot.fetch_channel(
+                int(channel_id)
+            )
         except Exception:
             logger.exception("Milestone check: Could not resolve channel")
             return
-        
+
         # Load tracking data
         tracking = _load_milestone_tracking()
         last_announced = tracking.get("last_announced", {})
-        
+
         # Calculate current totals
         current = _calculate_current_milestones()
         if not current:
             logger.warning("Milestone check: Could not calculate current totals")
             return
-        
+
         # Check for crossed milestones
         crossed = _check_milestone_thresholds(current, last_announced)
-        
+
         if not crossed:
             logger.info("Milestone check complete: no new milestones")
             LAST_MILESTONE_CHECK_DATE = str(today)
             return
-        
+
         # Post announcements for each crossed milestone
         announcements_sent = 0
         for metric, milestone_value, current_value in crossed:
             try:
-                embed = _build_milestone_embed(guild, metric, milestone_value, current_value)
+                embed = _build_milestone_embed(
+                    guild, metric, milestone_value, current_value
+                )
                 await channel.send(
                     embed=embed,
                     allowed_mentions=discord.AllowedMentions(users=False, roles=False),
@@ -11684,16 +11770,20 @@ async def _scheduled_milestone_check():
                 announcements_sent += 1
                 await asyncio.sleep(1)  # Brief delay between announcements
             except Exception as e:
-                logger.exception(f"Failed to post milestone announcement for {metric}: {e}")
-        
+                logger.exception(
+                    f"Failed to post milestone announcement for {metric}: {e}"
+                )
+
         # Save updated tracking
         tracking["last_announced"] = last_announced
         tracking["last_check_date"] = str(today)
         _save_milestone_tracking(tracking)
-        
+
         LAST_MILESTONE_CHECK_DATE = str(today)
-        logger.info(f"Milestone check complete: {announcements_sent} announcement(s) posted")
-        
+        logger.info(
+            f"Milestone check complete: {announcements_sent} announcement(s) posted"
+        )
+
     except Exception as e:
         logger.exception(f"Milestone check failed: {e}")
 
@@ -11744,13 +11834,11 @@ async def _scheduled_honours_runner():
         # Helper to send honours content respecting Discord message length
         async def _send_honours(line, block, embed=None):
             try:
-                # Send unified honours content with PC/Mobile toggle
-                content = line + "\n" + block
-                if embed and len(content) <= 2000:
-                    # Use ToggleFormatView - default to embed (mobile-friendly)
-                    # ephemeral_context=False: PC button sends ephemeral, public message stays embed
+                # Send only the embed with PC/Console toggle (no separate mentions message)
+                # Mentions are included within the embed fields themselves
+                if embed:
                     view = ToggleFormatView(
-                        text_content=content,
+                        text_content=block,
                         embed=embed,
                         default="embed",
                         ephemeral_context=False,
@@ -11762,38 +11850,14 @@ async def _scheduled_honours_runner():
                             users=True, roles=True
                         ),
                     )
-                elif len(content) <= 2000:
-                    # Fallback without embed if none provided
-                    await channel.send(
-                        content,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
-                    )
                 else:
-                    # Content still too long; send mentions + embed separately
+                    # Fallback: send ANSI block only if no embed
                     await channel.send(
-                        line,
+                        block,
                         allowed_mentions=discord.AllowedMentions(
                             users=True, roles=True
                         ),
                     )
-                    if embed:
-                        view = ToggleFormatView(
-                            text_content=block,
-                            embed=embed,
-                            default="embed",
-                            ephemeral_context=False,
-                        )
-                        await channel.send(
-                            embed=embed,
-                            view=view,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
-                        )
-                    else:
-                        await channel.send(block)
             except Exception:
                 logger.exception("Failed to post honours")
                 raise  # Re-raise so caller knows the post failed
@@ -11860,7 +11924,9 @@ async def _scheduled_honours_runner():
                 # Only mark as posted if send succeeded
                 LAST_MONTHLY_POST_DATE = str(today)
             except Exception:
-                logger.exception("Failed to post monthly honours - will retry next tick")
+                logger.exception(
+                    "Failed to post monthly honours - will retry next tick"
+                )
     except Exception:
         logger.exception("Honours runner failed")
 
@@ -11970,7 +12036,9 @@ async def preview_honours(interaction: discord.Interaction):
                     view = ToggleFormatView(
                         text_content=ansi, embed=embed, default="embed"
                     )
-                    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                    await interaction.followup.send(
+                        embed=embed, view=view, ephemeral=True
+                    )
                 else:
                     await interaction.followup.send(ansi, ephemeral=True)
             else:
@@ -12007,7 +12075,9 @@ async def preview_honours(interaction: discord.Interaction):
             if embed:
                 view = ToggleFormatView(text_content=ansi, embed=embed, default="embed")
                 if deferred:
-                    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                    await interaction.followup.send(
+                        embed=embed, view=view, ephemeral=True
+                    )
                 else:
                     await interaction.response.send_message(
                         embed=embed, view=view, ephemeral=True
@@ -12105,9 +12175,7 @@ async def publish_honours(
         else:
             prev_end = datetime(target_year, target_month + 1, 1)
     except Exception as e:
-        await interaction.followup.send(
-            f"Invalid date parameters: {e}", ephemeral=True
-        )
+        await interaction.followup.send(f"Invalid date parameters: {e}", ephemeral=True)
         return
 
     month_name = calendar.month_name[target_month]
@@ -12122,17 +12190,14 @@ async def publish_honours(
         )
     except Exception as e:
         logger.exception(f"publish_honours: _build_honours failed: {e}")
-        await interaction.followup.send(
-            f"Error building honours: {e}", ephemeral=True
-        )
+        await interaction.followup.send(f"Error building honours: {e}", ephemeral=True)
         return
 
-    # Send to honours channel (same logic as scheduled post)
+    # Send to honours channel - only embed with PC/Console toggle (no separate mentions message)
     try:
-        content = line + "\n" + block
-        if embed and len(content) <= 2000:
+        if embed:
             view = ToggleFormatView(
-                text_content=content,
+                text_content=block,
                 embed=embed,
                 default="embed",
                 ephemeral_context=False,
@@ -12142,31 +12207,12 @@ async def publish_honours(
                 view=view,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
             )
-        elif len(content) <= 2000:
-            await channel.send(
-                content,
-                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-            )
         else:
-            # Content too long; send mentions then embed separately
+            # Fallback: send ANSI block only if no embed
             await channel.send(
-                line,
+                block,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
             )
-            if embed:
-                view = ToggleFormatView(
-                    text_content=block,
-                    embed=embed,
-                    default="embed",
-                    ephemeral_context=False,
-                )
-                await channel.send(
-                    embed=embed,
-                    view=view,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                )
-            else:
-                await channel.send(block)
 
         await interaction.followup.send(
             f"Successfully published {month_name} {target_year} honours to <#{ch_id}>.",
@@ -12177,9 +12223,7 @@ async def publish_honours(
         )
     except Exception as e:
         logger.exception(f"publish_honours: Failed to send honours: {e}")
-        await interaction.followup.send(
-            f"Failed to post honours: {e}", ephemeral=True
-        )
+        await interaction.followup.send(f"Failed to post honours: {e}", ephemeral=True)
 
 
 # ============================================================================
@@ -13186,7 +13230,7 @@ async def roster_audit(
 )
 async def promotion_queue(interaction: discord.Interaction):
     """Show promotion eligibility queue for service studs and veteran promotions.
-    
+
     Groups members into three categories:
     - AAR met, time not met: waiting on time requirement
     - AAR not met, time met: waiting on AAR points
@@ -13208,23 +13252,48 @@ async def promotion_queue(interaction: discord.Interaction):
 
     # --- Service Studs Queue (for Watch Veteran or higher) ---
     # Requirements: 1 stud per 4 weeks AND 400 AAR points (minimum of both)
-    studs_aar_met_time_not: List[Tuple[discord.Member, int, int, int, int, datetime]] = []  # member, aar_pts, weeks, earned, displayed, next_stud_date
-    studs_aar_not_time_met: List[Tuple[discord.Member, int, int, int, int, int]] = []  # member, aar_pts, weeks, earned, displayed, aar_needed
-    studs_aar_not_time_not: List[Tuple[discord.Member, int, int, int, int, datetime, int]] = []  # member, aar_pts, weeks, earned, displayed, next_time_date, aar_needed
+    studs_aar_met_time_not: List[
+        Tuple[discord.Member, int, int, int, int, datetime]
+    ] = []  # member, aar_pts, weeks, earned, displayed, next_stud_date
+    studs_aar_not_time_met: List[
+        Tuple[discord.Member, int, int, int, int, int]
+    ] = []  # member, aar_pts, weeks, earned, displayed, aar_needed
+    studs_aar_not_time_not: List[
+        Tuple[discord.Member, int, int, int, int, datetime, int]
+    ] = []  # member, aar_pts, weeks, earned, displayed, next_time_date, aar_needed
 
     # --- Watch Veteran Queue (for Watch Brother only) ---
     # Requirements: 200 AAR points AND 2 weeks in server
-    veteran_aar_met_time_not: List[Tuple[discord.Member, int, int, datetime]] = []  # member, aar_pts, weeks, promotion_date
-    veteran_aar_not_time_met: List[Tuple[discord.Member, int, int, int]] = []  # member, aar_pts, weeks, aar_needed
-    veteran_aar_not_time_not: List[Tuple[discord.Member, int, int, datetime, int]] = []  # member, aar_pts, weeks, time_date, aar_needed
+    veteran_aar_met_time_not: List[
+        Tuple[discord.Member, int, int, datetime]
+    ] = []  # member, aar_pts, weeks, promotion_date
+    veteran_aar_not_time_met: List[
+        Tuple[discord.Member, int, int, int]
+    ] = []  # member, aar_pts, weeks, aar_needed
+    veteran_aar_not_time_not: List[
+        Tuple[discord.Member, int, int, datetime, int]
+    ] = []  # member, aar_pts, weeks, time_date, aar_needed
 
     # Track roles that indicate veteran or higher
     veteran_or_higher_roles = {
-        "Watch Veteran", "Oathsworn", "Kill Team Champion", "Watch Sergeant",
-        "Watch Techmarine", "Watch Librarian", "Watch Apothecary", "Watch Chaplain",
-        "Company Champion", "Watch Lieutenant", "Watch Captain", "Venerable",
-        "Forgemaster", "Void Warden", "High Chaplain", "Chief Apothecary",
-        "Lord Executioner", "Watch Master",
+        "Watch Veteran",
+        "Oathsworn",
+        "Kill Team Champion",
+        "Watch Sergeant",
+        "Watch Techmarine",
+        "Watch Librarian",
+        "Watch Apothecary",
+        "Watch Chaplain",
+        "Company Champion",
+        "Watch Lieutenant",
+        "Watch Captain",
+        "Venerable",
+        "Forgemaster",
+        "Void Warden",
+        "High Chaplain",
+        "Chief Apothecary",
+        "Lord Executioner",
+        "Watch Master",
     }
 
     for member in guild.members:
@@ -13266,20 +13335,34 @@ async def promotion_queue(interaction: discord.Interaction):
             elif aar_met and not time_met:
                 # AAR met, waiting on time
                 weeks_needed = 2 - weeks_in_server
-                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                days_until = (
+                    weeks_needed * 7 - ((now - joined_at).days % 7)
+                    if joined_at
+                    else weeks_needed * 7
+                )
                 promotion_date = now + timedelta(days=days_until)
-                veteran_aar_met_time_not.append((member, aar_points, weeks_in_server, promotion_date))
+                veteran_aar_met_time_not.append(
+                    (member, aar_points, weeks_in_server, promotion_date)
+                )
             elif not aar_met and time_met:
                 # Time met, waiting on AAR
                 aar_needed = 200 - aar_points
-                veteran_aar_not_time_met.append((member, aar_points, weeks_in_server, aar_needed))
+                veteran_aar_not_time_met.append(
+                    (member, aar_points, weeks_in_server, aar_needed)
+                )
             else:
                 # Neither met
                 weeks_needed = 2 - weeks_in_server
-                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                days_until = (
+                    weeks_needed * 7 - ((now - joined_at).days % 7)
+                    if joined_at
+                    else weeks_needed * 7
+                )
                 time_date = now + timedelta(days=days_until)
                 aar_needed = 200 - aar_points
-                veteran_aar_not_time_not.append((member, aar_points, weeks_in_server, time_date, aar_needed))
+                veteran_aar_not_time_not.append(
+                    (member, aar_points, weeks_in_server, time_date, aar_needed)
+                )
 
         # --- Process Service Studs eligibility ---
         if is_veteran_or_higher:
@@ -13297,8 +13380,12 @@ async def promotion_queue(interaction: discord.Interaction):
 
             # Check if they're owed studs (only show those who could earn more)
             # We want to show people who would be eligible for MORE studs if they meet requirements
-            next_stud_threshold_time = (displayed_studs + 1) * 4  # weeks needed for next stud
-            next_stud_threshold_aar = (displayed_studs + 1) * 400  # AAR needed for next stud
+            next_stud_threshold_time = (
+                displayed_studs + 1
+            ) * 4  # weeks needed for next stud
+            next_stud_threshold_aar = (
+                displayed_studs + 1
+            ) * 400  # AAR needed for next stud
 
             aar_met_for_next = aar_points >= next_stud_threshold_aar
             time_met_for_next = weeks_in_server >= next_stud_threshold_time
@@ -13309,35 +13396,73 @@ async def promotion_queue(interaction: discord.Interaction):
             elif aar_met_for_next and not time_met_for_next:
                 # AAR met, waiting on time for next stud
                 weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                days_until = (
+                    weeks_needed * 7 - ((now - joined_at).days % 7)
+                    if joined_at
+                    else weeks_needed * 7
+                )
                 next_stud_date = now + timedelta(days=days_until)
-                studs_aar_met_time_not.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, next_stud_date))
+                studs_aar_met_time_not.append(
+                    (
+                        member,
+                        aar_points,
+                        weeks_in_server,
+                        earned_studs,
+                        displayed_studs,
+                        next_stud_date,
+                    )
+                )
             elif not aar_met_for_next and time_met_for_next:
                 # Time met, waiting on AAR for next stud
                 aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_met.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, aar_needed))
+                studs_aar_not_time_met.append(
+                    (
+                        member,
+                        aar_points,
+                        weeks_in_server,
+                        earned_studs,
+                        displayed_studs,
+                        aar_needed,
+                    )
+                )
             else:
                 # Neither met for next stud
                 weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
+                days_until = (
+                    weeks_needed * 7 - ((now - joined_at).days % 7)
+                    if joined_at
+                    else weeks_needed * 7
+                )
                 next_time_date = now + timedelta(days=days_until)
                 aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_not.append((member, aar_points, weeks_in_server, earned_studs, displayed_studs, next_time_date, aar_needed))
+                studs_aar_not_time_not.append(
+                    (
+                        member,
+                        aar_points,
+                        weeks_in_server,
+                        earned_studs,
+                        displayed_studs,
+                        next_time_date,
+                        aar_needed,
+                    )
+                )
 
     # Sort lists by proximity to eligibility
     # For AAR met, time not: sort by soonest date
     veteran_aar_met_time_not.sort(key=lambda x: x[3])  # promotion_date
     studs_aar_met_time_not.sort(key=lambda x: x[5])  # next_stud_date
-    
+
     # For AAR not, time met: sort by least AAR needed
     veteran_aar_not_time_met.sort(key=lambda x: x[3])  # aar_needed
     studs_aar_not_time_met.sort(key=lambda x: x[5])  # aar_needed
-    
+
     # For neither met: sort by soonest time date (they can always grind AAR)
     veteran_aar_not_time_not.sort(key=lambda x: x[3])  # time_date
     studs_aar_not_time_not.sort(key=lambda x: x[5])  # next_time_date
 
-    def _build_field_value(lines: List[str], total_count: int, max_shown: int = 10) -> str:
+    def _build_field_value(
+        lines: List[str], total_count: int, max_shown: int = 10
+    ) -> str:
         """Build a field value that stays under 1024 chars with smart truncation."""
         result_lines = []
         char_count = 0
@@ -13379,7 +13504,9 @@ async def promotion_queue(interaction: discord.Interaction):
     if veteran_aar_not_time_met:
         lines = []
         for member, aar_pts, weeks, aar_needed in veteran_aar_not_time_met:
-            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | needs **{aar_needed}**")
+            lines.append(
+                f"᛭⋅ {member.mention} | {aar_pts} AAR | needs **{aar_needed}**"
+            )
         veteran_embed.add_field(
             name=f"▸ Needs AAR ({len(veteran_aar_not_time_met)})",
             value=_build_field_value(lines, len(veteran_aar_not_time_met)),
@@ -13391,17 +13518,27 @@ async def promotion_queue(interaction: discord.Interaction):
         lines = []
         for member, aar_pts, weeks, time_date, aar_needed in veteran_aar_not_time_not:
             date_str = time_date.strftime("%b %d")
-            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | {date_str}, +{aar_needed}")
+            lines.append(
+                f"᛭⋅ {member.mention} | {aar_pts} AAR | {date_str}, +{aar_needed}"
+            )
         veteran_embed.add_field(
             name=f"▸ Needs Both ({len(veteran_aar_not_time_not)})",
             value=_build_field_value(lines, len(veteran_aar_not_time_not)),
             inline=False,
         )
 
-    if not (veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not):
-        veteran_embed.add_field(name="▸ Status", value="No Watch Brothers pending.", inline=False)
+    if not (
+        veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not
+    ):
+        veteran_embed.add_field(
+            name="▸ Status", value="No Watch Brothers pending.", inline=False
+        )
 
-    total_veterans = len(veteran_aar_met_time_not) + len(veteran_aar_not_time_met) + len(veteran_aar_not_time_not)
+    total_veterans = (
+        len(veteran_aar_met_time_not)
+        + len(veteran_aar_not_time_met)
+        + len(veteran_aar_not_time_not)
+    )
     veteran_embed.set_footer(text=f"᛭⋅ {total_veterans} in queue ⋅᛭")
     embeds.append(veteran_embed)
 
@@ -13415,9 +13552,16 @@ async def promotion_queue(interaction: discord.Interaction):
     # AAR met, time not
     if studs_aar_met_time_not:
         lines = []
-        for member, aar_pts, weeks, earned, displayed, next_date in studs_aar_met_time_not:
+        for (
+            member,
+            aar_pts,
+            weeks,
+            earned,
+            displayed,
+            next_date,
+        ) in studs_aar_met_time_not:
             date_str = next_date.strftime("%b %d")
-            lines.append(f"᛭⋅ {member.mention} | #{displayed+1} | **{date_str}**")
+            lines.append(f"᛭⋅ {member.mention} | #{displayed + 1} | **{date_str}**")
         studs_embed.add_field(
             name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
             value=_build_field_value(lines, len(studs_aar_met_time_not)),
@@ -13427,8 +13571,17 @@ async def promotion_queue(interaction: discord.Interaction):
     # AAR not, time met
     if studs_aar_not_time_met:
         lines = []
-        for member, aar_pts, weeks, earned, displayed, aar_needed in studs_aar_not_time_met:
-            lines.append(f"᛭⋅ {member.mention} | [{displayed}] | needs **{aar_needed}**")
+        for (
+            member,
+            aar_pts,
+            weeks,
+            earned,
+            displayed,
+            aar_needed,
+        ) in studs_aar_not_time_met:
+            lines.append(
+                f"᛭⋅ {member.mention} | [{displayed}] | needs **{aar_needed}**"
+            )
         studs_embed.add_field(
             name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
             value=_build_field_value(lines, len(studs_aar_not_time_met)),
@@ -13438,9 +13591,19 @@ async def promotion_queue(interaction: discord.Interaction):
     # Neither met
     if studs_aar_not_time_not:
         lines = []
-        for member, aar_pts, weeks, earned, displayed, next_time, aar_needed in studs_aar_not_time_not:
+        for (
+            member,
+            aar_pts,
+            weeks,
+            earned,
+            displayed,
+            next_time,
+            aar_needed,
+        ) in studs_aar_not_time_not:
             date_str = next_time.strftime("%b %d")
-            lines.append(f"᛭⋅ {member.mention} | [{displayed}] | {date_str}, +{aar_needed}")
+            lines.append(
+                f"᛭⋅ {member.mention} | [{displayed}] | {date_str}, +{aar_needed}"
+            )
         studs_embed.add_field(
             name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
             value=_build_field_value(lines, len(studs_aar_not_time_not)),
@@ -13448,9 +13611,15 @@ async def promotion_queue(interaction: discord.Interaction):
         )
 
     if not (studs_aar_met_time_not or studs_aar_not_time_met or studs_aar_not_time_not):
-        studs_embed.add_field(name="▸ Status", value="No veterans pending.", inline=False)
+        studs_embed.add_field(
+            name="▸ Status", value="No veterans pending.", inline=False
+        )
 
-    total_studs = len(studs_aar_met_time_not) + len(studs_aar_not_time_met) + len(studs_aar_not_time_not)
+    total_studs = (
+        len(studs_aar_met_time_not)
+        + len(studs_aar_not_time_met)
+        + len(studs_aar_not_time_not)
+    )
     studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
     embeds.append(studs_embed)
 
