@@ -1679,6 +1679,13 @@ COMMAND_TEAMS = [
     "High Command",
 ]
 
+# Role ID mapping for command-level teams (for mentions)
+COMMAND_TEAM_ROLE_IDS = {
+    "high command": 1452913063970865203,
+    "primus command": 1468794571889709248,
+    "secundus command": 1468797860014325902,
+}
+
 # Restrict commands to a specific channel (demo/training)
 ALLOWED_COMMAND_CHANNELS = {"❖⋅data-vault⋅❖"}
 
@@ -10605,25 +10612,13 @@ AARs/Member              Chapter (X.X)
                 continue
         except Exception:
             pass
-        # Special mappings: any 'High Command' label -> explicit role-id mention
+        # Check COMMAND_TEAM_ROLE_IDS for command teams
         try:
-            if isinstance(t, str) and ("high command" in str(t).strip().lower()):
-                # Force the exact role id mention desired for High Command
-                team_mentions.append("<@&1452913063970865203>")
-                continue
-        except Exception:
-            pass
-        # Special mapping: '<Company> Command' -> '<Company> Command' role (not Watch Company)
-        try:
-            if isinstance(t, str) and t.strip().endswith(" Command"):
-                target_name = t.strip()  # e.g. "Primus Command"
-                for r in guild.roles:
-                    rn = (r.name or "").strip()
-                    if rn.lower() == target_name.lower():
-                        team_mentions.append(f"<@&{r.id}>")
-                        raise StopIteration
-        except StopIteration:
-            continue
+            if isinstance(t, str):
+                t_lower = str(t).strip().lower()
+                if t_lower in COMMAND_TEAM_ROLE_IDS:
+                    team_mentions.append(f"<@&{COMMAND_TEAM_ROLE_IDS[t_lower]}>")
+                    continue
         except Exception:
             pass
         # Fallback: search role by name containing team string
@@ -10667,26 +10662,13 @@ AARs/Member              Chapter (X.X)
                 continue
         except Exception:
             pass
-        # Special mappings: any 'High Command' label -> explicit role-id mention
+        # Check COMMAND_TEAM_ROLE_IDS for command teams
         try:
-            if isinstance(team_id, str) and (
-                "high command" in str(team_id).strip().lower()
-            ):
-                top5_team_mentions.append("<@&1452913063970865203>")
-                continue
-        except Exception:
-            pass
-        # Special mapping: '<Company> Command' -> '<Company> Command' role
-        try:
-            if isinstance(team_id, str) and team_id.strip().endswith(" Command"):
-                target_name = team_id.strip()
-                for r in guild.roles:
-                    rn = (r.name or "").strip()
-                    if rn.lower() == target_name.lower():
-                        top5_team_mentions.append(f"<@&{r.id}>")
-                        raise StopIteration
-        except StopIteration:
-            continue
+            if isinstance(team_id, str):
+                tid_lower = str(team_id).strip().lower()
+                if tid_lower in COMMAND_TEAM_ROLE_IDS:
+                    top5_team_mentions.append(f"<@&{COMMAND_TEAM_ROLE_IDS[tid_lower]}>")
+                    continue
         except Exception:
             pass
         # Fallback: search role by name containing team string
@@ -11002,23 +10984,13 @@ AARs/Member              Chapter (X.X)
                     continue
             except Exception:
                 pass
-            # Special mapping: 'High Command'
+            # Check COMMAND_TEAM_ROLE_IDS for command teams
             try:
-                if isinstance(tid, str) and "high command" in str(tid).strip().lower():
-                    top_mentions.append("<@&1452913063970865203>")
-                    continue
-            except Exception:
-                pass
-            # Special mapping: '<Company> Command'
-            try:
-                if isinstance(tid, str) and tid.strip().endswith(" Command"):
-                    target_name = tid.strip()
-                    for r in guild.roles:
-                        rn = (r.name or "").strip()
-                        if rn.lower() == target_name.lower():
-                            top_mentions.append(f"<@&{r.id}>")
-                            break
-                    continue
+                if isinstance(tid, str):
+                    tid_lower = str(tid).strip().lower()
+                    if tid_lower in COMMAND_TEAM_ROLE_IDS:
+                        top_mentions.append(f"<@&{COMMAND_TEAM_ROLE_IDS[tid_lower]}>")
+                        continue
             except Exception:
                 pass
             # Fallback: search role by name containing team string
@@ -11258,18 +11230,16 @@ AARs/Member              Chapter (X.X)
                     return r.mention
             except (ValueError, TypeError):
                 pass
-            # Special mapping: 'High Command'
-            if isinstance(tid, str) and "high command" in str(tid).strip().lower():
-                r = guild.get_role(1452913063970865203)
-                if r:
-                    return r.mention
-            # Special mapping: '<Company> Command'
-            if isinstance(tid, str) and tid.strip().endswith(" Command"):
-                target_name = tid.strip()
-                for r in guild.roles:
-                    rn = (r.name or "").strip()
-                    if rn.lower() == target_name.lower():
+            # Check COMMAND_TEAM_ROLE_IDS for command teams
+            if isinstance(tid, str):
+                tid_lower = str(tid).strip().lower()
+                if tid_lower in COMMAND_TEAM_ROLE_IDS:
+                    role_id = COMMAND_TEAM_ROLE_IDS[tid_lower]
+                    r = guild.get_role(role_id)
+                    if r:
                         return r.mention
+                    # Fallback to raw mention if role not found in cache
+                    return f"<@&{role_id}>"
             # Fallback: search role by name containing team string
             for r in guild.roles:
                 if (tid or "").lower() in (r.name or "").lower():
