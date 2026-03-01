@@ -1492,7 +1492,7 @@ async def _check_promotion_milestones():
                     user_tracking["last_veteran_eligible"] = is_eligible
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
-                # Only notify if: 1) displayed studs increased since last check, 2) still owe more studs
+                # Only notify when they've EARNED new studs (internal calculation)
                 if is_veteran_or_higher and studs_channel:
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
@@ -1509,15 +1509,12 @@ async def _check_promotion_milestones():
                     )
 
                     # First run: initialize tracking without notifying
-                    if "last_studs_displayed" not in user_tracking:
-                        user_tracking["last_studs_displayed"] = displayed_studs
-                    last_displayed_studs = user_tracking["last_studs_displayed"]
-                    # Only notify if they displayed studs (new or same) AND still owe more studs
-                    if (
-                        displayed_studs >= last_displayed_studs
-                        and displayed_studs < earned_studs
-                    ):
-                        new_studs = displayed_studs - last_displayed_studs
+                    if "last_earned_studs" not in user_tracking:
+                        user_tracking["last_earned_studs"] = earned_studs
+                    last_earned_studs = user_tracking["last_earned_studs"]
+                    # Only notify when they've actually earned NEW studs
+                    if earned_studs > last_earned_studs:
+                        new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
                         # Generate the flavorful announcement
@@ -1541,8 +1538,8 @@ async def _check_promotion_milestones():
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
-                    # Always update tracking to reflect current displayed studs
-                    user_tracking["last_studs_displayed"] = displayed_studs
+                    # Always update tracking to reflect current earned studs
+                    user_tracking["last_earned_studs"] = earned_studs
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
                 if black_laurels_channel and not user_tracking.get(
@@ -3636,14 +3633,10 @@ def _get_service_studs_announcement(
     if not studs_pips:
         studs_pips = "—"  # No studs displayed yet
 
-    # Build embed - distinguish between new studs earned vs reminder for owed
-    if new_studs > 0:
-        embed_description = "*⌾ Watch Fortress Jericho ⌾*"
-    else:
-        embed_description = "*⌾ Studs Owed — Update Display ⌾*"
+    # Build embed
     embed = discord.Embed(
         title="᛭⋅ MARK OF SERVICE ⋅᛭",
-        description=embed_description,
+        description="*⌾ Watch Fortress Jericho ⌾*",
         color=0xC0C0C0,  # Silver for service studs
     )
 
@@ -3694,21 +3687,14 @@ def _get_service_studs_announcement(
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
         pip_changes.append(f"+{delta_plasteel}○ Plasteel {pip_word}")
 
-    # Service Record field: distinguish between new studs earned vs reminder for owed studs
-    if new_studs > 0:
-        # They actually displayed new studs
-        if pip_changes:
-            pip_change = ", ".join(pip_changes)
-        else:
-            pip_change = f"+{new_studs} {stud_word}"
-        record_value = f"**{pip_change}** Earned\n"
+    # Service Record field
+    if pip_changes:
+        pip_change = ", ".join(pip_changes)
     else:
-        # No new studs displayed - this is a reminder about owed studs
-        owed_word = "Stud" if owed_studs == 1 else "Studs"
-        record_value = f"**{owed_studs} {owed_word} Owed**\n"
+        pip_change = f"+{new_studs} {stud_word}"
+    record_value = f"**{pip_change}** Earned\n"
     record_value += f"Total: **{earned_studs}** | Displayed: **{displayed_studs}**"
-    if owed_studs > 0 and new_studs > 0:
-        # Only show "Owed" line if they earned new but still owe more
+    if owed_studs > 0:
         record_value += f"\nOwed: **{owed_studs}**"
     embed.add_field(name="▸ Service Record", value=record_value, inline=True)
 
