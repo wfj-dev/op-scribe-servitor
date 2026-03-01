@@ -6,24 +6,26 @@
     "Crimson Fists",
     "Dark Angels",
     "Dark Krakens",
-    "Death Spectres",
     "Exorcists",
     "Flesh Tearers",
     "Hawk Lords",
     "Imperial Fists",
     "Iron Hands",
-    "Iron Hounds",
     "Lamenters",
     "Mentors",
-    "Minotaurs",
     "Raptors",
     "Raven Guard",
     "Red Scorpions",
-    "Sons of Medusa",
+    "Scythes of the Emperor",
     "Space Wolves",
-    "Storm Giants",
     "White Scars",
-    "Black Shield"
+    "Black Shield",
+    "Angels of Vengeance",
+    "Blood Angels",
+    "Knights of the Raven",
+    "Salamanders",
+    "The Drakes",
+    "Ultramarines"
   ],
   "selected": {
     "2026-02": [
@@ -31,7 +33,7 @@
       "Salamanders"
     ],
     "2026-03": [
-      "Blood Ravens",
+      "Angels of Vengeance",
       "Blood Angels"
     ]
   }
