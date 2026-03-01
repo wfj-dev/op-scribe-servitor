@@ -2919,9 +2919,14 @@ async def _select_home_chapters_for_month(
             # Merge newly-active chapters into the remaining rotation immediately
             # so that members who become active again have their chapters
             # re-enter the rotation without waiting for the cycle to reset.
+            # But exclude chapters already selected in any month to prevent duplicates.
+            already_selected = set()
+            for picks in selected.values():
+                if isinstance(picks, list):
+                    already_selected.update(picks)
             for r in pool:
                 try:
-                    if r not in remaining:
+                    if r not in remaining and r not in already_selected:
                         remaining.append(r)
                 except Exception:
                     continue
