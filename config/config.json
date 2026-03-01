@@ -14,6 +14,7 @@
     "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "preview_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
+    "publish_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
     "roster_audit": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
   },
   "companies": {

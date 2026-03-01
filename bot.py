@@ -11235,15 +11235,58 @@ AARs/Member              Chapter (X.X)
         content = honour_line + "\n" + ansi_compact
 
     # Create unified mobile embed combining both distinctions and top 5 rankings
-    period_label = "Monthly"
+    # Use the same styling as forge_rite and service studs announcements
+    
+    # Format month name from display date
+    month_name = display_dt.strftime("%B %Y").upper()
 
     embed = discord.Embed(
-        title=f"{period_label} Leaderboards",
-        description=f"📅 **Date:** {_format_imperial_date(display_dt)}",
-        color=0x2ECC71,
+        title="᛭⋅ MONTHLY LEADERBOARDS ⋅᛭",
+        description=f"*⌾ Watch Fortress Jericho ⌾*\n**{month_name}**",
+        color=0xC0C0C0,  # Silver to match service studs
     )
 
-    # Top 5 Brothers
+    # Helper to get kill team role mention
+    def _kt_mention(tid) -> str:
+        """Get a role mention for a kill team, falling back to name."""
+        try:
+            # Try to interpret tid as role id
+            try:
+                rid = int(tid)
+                r = guild.get_role(rid)
+                if r:
+                    return r.mention
+            except (ValueError, TypeError):
+                pass
+            # Special mapping: 'High Command'
+            if isinstance(tid, str) and "high command" in str(tid).strip().lower():
+                r = guild.get_role(1452913063970865203)
+                if r:
+                    return r.mention
+            # Special mapping: '<Company> Command'
+            if isinstance(tid, str) and tid.strip().endswith(" Command"):
+                target_name = tid.strip()
+                for r in guild.roles:
+                    rn = (r.name or "").strip()
+                    if rn.lower() == target_name.lower():
+                        return r.mention
+            # Fallback: search role by name containing team string
+            for r in guild.roles:
+                if (tid or "").lower() in (r.name or "").lower():
+                    return r.mention
+        except Exception:
+            pass
+        return str(tid)
+
+    # Helper to get chapter role mention
+    def _ch_mention(ch_name: str) -> str:
+        """Get a role mention for a chapter, falling back to name."""
+        r = _role_for_chapter_mention(guild, ch_name)
+        if r:
+            return r.mention
+        return ch_name
+
+    # Top 5 Brothers (with user mentions if include_mentions)
     brothers_text = ""
     prev_rank = None
     display_rank = 0
@@ -11251,16 +11294,22 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        name = _member_display_name(guild, uid)
-        brothers_text += f"{display_rank}. {name}\n"
+        if include_mentions:
+            brothers_text += f"**{display_rank}.** <@{uid}>\n"
+        else:
+            name = _member_display_name(guild, uid)
+            brothers_text += f"**{display_rank}.** {name}\n"
         prev_rank = curr_rank
 
     if brothers_text:
+        # Truncate if needed (1024 char field limit)
+        if len(brothers_text) > 1024:
+            brothers_text = brothers_text[:1020] + "…"
         embed.add_field(
-            name="🏃 Top 5 Brothers", value=brothers_text.strip(), inline=False
+            name="▸ Top 5 Brothers", value=brothers_text.strip(), inline=True
         )
 
-    # Top 5 Kill Teams
+    # Top 5 Kill Teams (with role mentions if include_mentions)
     teams_text = ""
     prev_rank = None
     display_rank = 0
@@ -11268,15 +11317,20 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        teams_text += f"{display_rank}. {tid}\n"
+        if include_mentions:
+            teams_text += f"**{display_rank}.** {_kt_mention(tid)}\n"
+        else:
+            teams_text += f"**{display_rank}.** {tid}\n"
         prev_rank = curr_rank
 
     if teams_text:
+        if len(teams_text) > 1024:
+            teams_text = teams_text[:1020] + "…"
         embed.add_field(
-            name="⚡ Top 5 Kill Teams", value=teams_text.strip(), inline=False
+            name="▸ Top 5 Kill Teams", value=teams_text.strip(), inline=True
         )
 
-    # Top 5 Chapters
+    # Top 5 Chapters (with role mentions if include_mentions)
     chapters_text = ""
     prev_rank = None
     display_rank = 0
@@ -11284,48 +11338,97 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        chapters_text += f"{display_rank}. {ch}\n"
+        if include_mentions:
+            chapters_text += f"**{display_rank}.** {_ch_mention(ch)}\n"
+        else:
+            chapters_text += f"**{display_rank}.** {ch}\n"
         prev_rank = curr_rank
 
     if chapters_text:
+        if len(chapters_text) > 1024:
+            chapters_text = chapters_text[:1020] + "…"
         embed.add_field(
-            name="🛡️ Top 5 Chapters", value=chapters_text.strip(), inline=False
+            name="▸ Top 5 Chapters", value=chapters_text.strip(), inline=True
         )
 
-    # Individual Distinctions
-    omega_suffix = f" | Omega KIA {high_kia}" if high_kia else ""
+    # Individual Distinctions (with mentions if include_mentions)
+    omega_suffix = f" | Ω KIA {high_kia}" if high_kia else ""
+    if include_mentions:
+        tempo_m = f"<@{tempo_name}>" if tempo_name else tempo_disp
+        lethal_m = f"<@{lethal_name}>" if lethal_name else lethal_disp
+        gene_m = f"<@{gene_name}>" if gene_name else gene_disp
+        arm_m = f"<@{arm_name}>" if arm_name else arm_disp
+        high_m = f"<@{high_name}>" if high_name else high_disp
+    else:
+        tempo_m, lethal_m, gene_m, arm_m, high_m = tempo_disp, lethal_disp, gene_disp, arm_disp, high_disp
     individual_text = (
-        f"**Operations:** {tempo_disp} ({tempo_val})\n"
-        f"**Avg Pts/Op:** {lethal_disp} ({lethal_val:.1f})\n"
-        f"**Gene-seed Pts:** {gene_disp} ({gene_val})\n"
-        f"**Armory Pts:** {arm_disp} ({arm_val})\n"
-        f"**Hard-Strat+Omega:** {high_disp} ({high_val}{omega_suffix})"
+        f"Operations: {tempo_m} ({tempo_val})\n"
+        f"Avg Pts/Op: {lethal_m} ({lethal_val:.1f})\n"
+        f"Gene-seed: {gene_m} ({gene_val})\n"
+        f"Armory: {arm_m} ({arm_val})\n"
+        f"Hard-Strat+Ω: {high_m} ({high_val}{omega_suffix})"
     )
+    if len(individual_text) > 1024:
+        individual_text = individual_text[:1020] + "…"
     embed.add_field(
-        name="🏆 Individual Distinctions", value=individual_text, inline=False
+        name="▸ Individual Distinctions", value=individual_text, inline=False
     )
 
-    # Kill Team Distinctions
+    # Kill Team Distinctions (with mentions if include_mentions)
+    if include_mentions:
+        kt_ops_m = _kt_mention(kt_ops_name)
+        kt_avg_m = _kt_mention(kt_avg_name)
+        kt_pres_m = _kt_mention(kt_pres_name)
+        kt_risk_m = _kt_mention(kt_risk_name)
+        kt_force_m = _kt_mention(kt_force_name)
+    else:
+        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m = kt_ops_name, kt_avg_name, kt_pres_name, kt_risk_name, kt_force_name
     killteam_text = (
-        f"**Operations:** {kt_ops_name} ({kt_ops_val})\n"
-        f"**Avg Pts/Op:** {kt_avg_name} ({kt_avg_val:.1f})\n"
-        f"**Armory+Gene-seed:** {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"**Hard-Strat+Omega:** {kt_risk_name} ({kt_risk_val})\n"
-        f"**AARs/Member:** {kt_force_name} ({kt_force_val:.1f})"
+        f"Operations: {kt_ops_m} ({kt_ops_val})\n"
+        f"Avg Pts/Op: {kt_avg_m} ({kt_avg_val:.1f})\n"
+        f"Armory+Gene: {kt_pres_m} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"Hard-Strat+Ω: {kt_risk_m} ({kt_risk_val})\n"
+        f"AARs/Member: {kt_force_m} ({kt_force_val:.1f})"
     )
-    embed.add_field(name="⚔️ Kill Team Distinctions", value=killteam_text, inline=False)
+    if len(killteam_text) > 1024:
+        killteam_text = killteam_text[:1020] + "…"
+    embed.add_field(name="▸ Kill Team Distinctions", value=killteam_text, inline=False)
 
-    # Chapter Distinctions
+    # Chapter Distinctions (with mentions if include_mentions)
+    if include_mentions:
+        ch1_m = _ch_mention(ch1)
+        ch2_m = _ch_mention(ch2)
+        ch3_m = _ch_mention(ch3)
+        ch4_m = _ch_mention(ch4)
+        ch5_m = _ch_mention(ch5)
+    else:
+        ch1_m, ch2_m, ch3_m, ch4_m, ch5_m = ch1, ch2, ch3, ch4, ch5
     chapter_text = (
-        f"**Operations:** {ch1} ({ch1_val})\n"
-        f"**Avg Pts/Op:** {ch2} ({ch2_val:.1f})\n"
-        f"**Armory+Gene-seed:** {ch3} ({ch3_arm}|{ch3_gene})\n"
-        f"**Hard-Strat+Omega:** {ch4} ({ch4_val})\n"
-        f"**AARs/Member:** {ch5} ({ch5_val:.1f})"
+        f"Operations: {ch1_m} ({ch1_val})\n"
+        f"Avg Pts/Op: {ch2_m} ({ch2_val:.1f})\n"
+        f"Armory+Gene: {ch3_m} ({ch3_arm}|{ch3_gene})\n"
+        f"Hard-Strat+Ω: {ch4_m} ({ch4_val})\n"
+        f"AARs/Member: {ch5_m} ({ch5_val:.1f})"
     )
-    embed.add_field(name="🛡️ Chapter Distinctions", value=chapter_text, inline=False)
+    if len(chapter_text) > 1024:
+        chapter_text = chapter_text[:1020] + "…"
+    embed.add_field(name="▸ Chapter Distinctions", value=chapter_text, inline=False)
 
-    embed.set_footer(text="Use PC/Console button for detailed ANSI view")
+    embed.set_footer(text="For the Emperor and the Primarchs")
+
+    # Check total embed length and reduce if needed (Discord limit: 6000 chars)
+    def _embed_length(e: discord.Embed) -> int:
+        total = len(e.title or "") + len(e.description or "") + len(e.footer.text if e.footer else "")
+        for f in e.fields:
+            total += len(f.name or "") + len(f.value or "")
+        return total
+
+    if _embed_length(embed) > 5800:
+        # Remove chapter distinctions to reduce size
+        embed.remove_field(len(embed.fields) - 1)
+    if _embed_length(embed) > 5800:
+        # Remove kill team distinctions
+        embed.remove_field(len(embed.fields) - 1)
 
     return honour_line, ansi, embed
 
@@ -11712,11 +11815,18 @@ async def _scheduled_honours_runner():
                             default="embed",
                             ephemeral_context=False,
                         )
-                        await channel.send(embed=embed, view=view)
+                        await channel.send(
+                            embed=embed,
+                            view=view,
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
+                        )
                     else:
                         await channel.send(block)
             except Exception:
                 logger.exception("Failed to post honours")
+                raise  # Re-raise so caller knows the post failed
 
         # Helper to run pre-audit (ingest + recheck) before posting honours
         async def _run_pre_audit(span_days: int):
@@ -11777,9 +11887,10 @@ async def _scheduled_honours_runner():
             )
             try:
                 await _send_honours(line, block, embed)
+                # Only mark as posted if send succeeded
+                LAST_MONTHLY_POST_DATE = str(today)
             except Exception:
-                logger.exception("Failed to post monthly honours")
-            LAST_MONTHLY_POST_DATE = str(today)
+                logger.exception("Failed to post monthly honours - will retry next tick")
     except Exception:
         logger.exception("Honours runner failed")
 
@@ -11846,18 +11957,18 @@ async def preview_honours(interaction: discord.Interaction):
     content = honour_line + "\n" + ansi
     try:
         if len(content) <= 2000 and embed:
-            # Use ToggleFormatView for preview with unified embed
-            view = ToggleFormatView(text_content=content, embed=embed, default="ansi")
+            # Use ToggleFormatView for preview with unified embed (default to embed view)
+            view = ToggleFormatView(text_content=content, embed=embed, default="embed")
             if deferred:
                 await interaction.followup.send(
-                    content,
+                    embed=embed,
                     view=view,
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
             else:
                 await interaction.response.send_message(
-                    content,
+                    embed=embed,
                     view=view,
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
@@ -11887,9 +11998,9 @@ async def preview_honours(interaction: discord.Interaction):
                 )
                 if embed:
                     view = ToggleFormatView(
-                        text_content=ansi, embed=embed, default="ansi"
+                        text_content=ansi, embed=embed, default="embed"
                     )
-                    await interaction.followup.send(ansi, view=view, ephemeral=True)
+                    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
                 else:
                     await interaction.followup.send(ansi, ephemeral=True)
             else:
@@ -11903,9 +12014,9 @@ async def preview_honours(interaction: discord.Interaction):
                     if ch:
                         if embed:
                             view = ToggleFormatView(
-                                text_content=ansi, embed=embed, default="ansi"
+                                text_content=ansi, embed=embed, default="embed"
                             )
-                            await ch.send(ansi, view=view)
+                            await ch.send(embed=embed, view=view)
                         else:
                             await ch.send(ansi)
                 except Exception:
@@ -11913,23 +12024,23 @@ async def preview_honours(interaction: discord.Interaction):
                     try:
                         if embed:
                             view = ToggleFormatView(
-                                text_content=ansi, embed=embed, default="ansi"
+                                text_content=ansi, embed=embed, default="embed"
                             )
-                            await interaction.followup.send(ansi, view=view)
+                            await interaction.followup.send(embed=embed, view=view)
                         else:
                             await interaction.followup.send(ansi)
                     except Exception:
                         pass
     except Exception:
-        # Fallback: try to send ANSI block without mentions
+        # Fallback: try to send embed without mentions
         try:
             if embed:
-                view = ToggleFormatView(text_content=ansi, embed=embed, default="ansi")
+                view = ToggleFormatView(text_content=ansi, embed=embed, default="embed")
                 if deferred:
-                    await interaction.followup.send(ansi, view=view, ephemeral=True)
+                    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
                 else:
                     await interaction.response.send_message(
-                        ansi, view=view, ephemeral=True
+                        embed=embed, view=view, ephemeral=True
                     )
             else:
                 if deferred:
@@ -11939,6 +12050,166 @@ async def preview_honours(interaction: discord.Interaction):
         except Exception:
             # give up silently; command already logged
             pass
+
+
+@bot.tree.command(
+    name="publish_honours",
+    description="Manually publish monthly honours to the honours channel (Forgemaster only)",
+)
+@app_commands.describe(
+    month="Month to publish (1-12). Defaults to previous month.",
+    year="Year to publish. Defaults to current/previous year based on month.",
+)
+async def publish_honours(
+    interaction: discord.Interaction,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+):
+    """Manually publish monthly honours to the configured honours channel.
+
+    This command allows Forgemasters to manually trigger a monthly honours post,
+    useful when the automatic post fails or needs to be re-posted.
+    """
+    # Forgemaster-only
+    if not _user_is_forgemaster(interaction.user):
+        await interaction.response.send_message("Not authorized.", ephemeral=True)
+        return
+
+    # Defer since this takes time
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception as e:
+        logger.warning(f"publish_honours: defer failed: {e}")
+        await interaction.response.send_message(
+            "Failed to start command.", ephemeral=True
+        )
+        return
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("Could not resolve guild.", ephemeral=True)
+        return
+
+    # Resolve honours channel
+    ch_id = CONFIG.get("honours_channel_id")
+    if not ch_id:
+        await interaction.followup.send(
+            "honours_channel_id not configured.", ephemeral=True
+        )
+        return
+
+    try:
+        channel = guild.get_channel(int(ch_id)) or await bot.fetch_channel(int(ch_id))
+    except Exception:
+        await interaction.followup.send(
+            "Could not resolve honours channel.", ephemeral=True
+        )
+        return
+
+    # Determine the target month/year
+    now_utc = datetime.now(timezone.utc)
+    if month is None:
+        # Default to previous month
+        if now_utc.month == 1:
+            target_month = 12
+            target_year = now_utc.year - 1
+        else:
+            target_month = now_utc.month - 1
+            target_year = now_utc.year
+    else:
+        target_month = month
+        target_year = year if year else now_utc.year
+
+    # Validate month
+    if target_month < 1 or target_month > 12:
+        await interaction.followup.send(
+            "Invalid month. Must be between 1 and 12.", ephemeral=True
+        )
+        return
+
+    # Compute month boundaries
+    try:
+        prev_start = datetime(target_year, target_month, 1)
+        if target_month == 12:
+            prev_end = datetime(target_year + 1, 1, 1)
+        else:
+            prev_end = datetime(target_year, target_month + 1, 1)
+    except Exception as e:
+        await interaction.followup.send(
+            f"Invalid date parameters: {e}", ephemeral=True
+        )
+        return
+
+    month_name = calendar.month_name[target_month]
+    logger.info(
+        f"publish_honours: User {interaction.user} publishing {month_name} {target_year}"
+    )
+
+    # Build honours
+    try:
+        line, block, embed = await _build_honours(
+            guild, 30, include_mentions=True, start_dt=prev_start, end_dt=prev_end
+        )
+    except Exception as e:
+        logger.exception(f"publish_honours: _build_honours failed: {e}")
+        await interaction.followup.send(
+            f"Error building honours: {e}", ephemeral=True
+        )
+        return
+
+    # Send to honours channel (same logic as scheduled post)
+    try:
+        content = line + "\n" + block
+        if embed and len(content) <= 2000:
+            view = ToggleFormatView(
+                text_content=content,
+                embed=embed,
+                default="embed",
+                ephemeral_context=False,
+            )
+            await channel.send(
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+            )
+        elif len(content) <= 2000:
+            await channel.send(
+                content,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+            )
+        else:
+            # Content too long; send mentions then embed separately
+            await channel.send(
+                line,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+            )
+            if embed:
+                view = ToggleFormatView(
+                    text_content=block,
+                    embed=embed,
+                    default="embed",
+                    ephemeral_context=False,
+                )
+                await channel.send(
+                    embed=embed,
+                    view=view,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+            else:
+                await channel.send(block)
+
+        await interaction.followup.send(
+            f"Successfully published {month_name} {target_year} honours to <#{ch_id}>.",
+            ephemeral=True,
+        )
+        logger.info(
+            f"publish_honours: Successfully posted {month_name} {target_year} honours"
+        )
+    except Exception as e:
+        logger.exception(f"publish_honours: Failed to send honours: {e}")
+        await interaction.followup.send(
+            f"Failed to post honours: {e}", ephemeral=True
+        )
 
 
 # ============================================================================
