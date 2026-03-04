@@ -3685,15 +3685,15 @@ SERVICE_STUDS_SPECIAL_MILESTONES: Dict[int, str] = {
 }
 
 # Deathwatch-themed opening phrases for service stud announcements
-# Note: {wb} and {member} are formatted with actual mentions in _get_service_studs_announcement
+# Note: {name} uses the stripped display name (no rank/studs) in _get_service_studs_announcement
 DEATHWATCH_STUD_OPENINGS: List[str] = [
-    "Hear this, {wb}! {member} is brought before you for marking!",
-    "The Long Watch turns its gaze—{wb}, witness as {member} earns a new stud!",
-    "The Fortress records this honor: {member} stands ready, {wb} shall oversee the marking!",
-    "By the Vigil Oathstone, {member} approaches the Apothecarion. {wb}, guard this sacred rite!",
-    "The chronicles inscribe a new mark. {member}, the path to honor lies before you—{wb} awaits!",
-    "Heed this proclamation, {wb}! The apothecarion stands ready to affix the mark upon {member}!",
-    "The Watch Eternal summons {wb}—{member} has earned another stud through devoted service!",
+    "Hear this, Brothers! **{name}** is brought before you for marking!",
+    "The Long Watch turns its gaze—witness as **{name}** earns a new stud!",
+    "The Fortress records this honor: **{name}** stands ready for the marking!",
+    "By the Vigil Oathstone, **{name}** approaches the Apothecarion for the sacred rite!",
+    "The chronicles inscribe a new mark. **{name}**, the path to honor lies before you!",
+    "Heed this proclamation! The Apothecarion stands ready to affix the mark upon **{name}**!",
+    "The Watch Eternal bears witness—**{name}** has earned another stud through devoted service!",
 ]
 
 # Deathwatch themed closings
@@ -4016,9 +4016,9 @@ def _get_service_studs_announcement(
     else:
         tier = 3
 
-    # Get Watch Brother role for honoring notification
+    # Get Watch Brother role for pinging in content (outside embed)
     watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-    wb_mention = watch_brother_role.mention if watch_brother_role else "Watch Brother"
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
 
     # Get emojis for rank and chapter
     rank_emoji = _get_rank_emoji(guild, member_rank_name)
@@ -4045,9 +4045,9 @@ def _get_service_studs_announcement(
     )
 
     # Generate opening and milestone intro (for first embed field)
-    # Format opening with actual mentions woven in
+    # Format opening with stripped display name (no rank/studs)
     opening_template = random.choice(DEATHWATCH_STUD_OPENINGS)
-    opening = opening_template.format(wb=wb_mention, member=member.mention)
+    opening = opening_template.format(name=display_name)
     
     if tier == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER1)
@@ -4170,8 +4170,9 @@ def _get_service_studs_announcement(
     closing_phrase = random.choice(DEATHWATCH_STUD_CLOSINGS)
     embed.set_footer(text=f"᛭⋅ {closing_phrase} Jericho Stands! ⋅᛭")
 
-    # Content is empty; mentions are woven into the embed proclamation
-    return "", embed
+    # Content has @Watch Brother and member mention for actual pings (outside embed)
+    content = f"{wb_mention} {member.mention}" if wb_mention else member.mention
+    return content, embed
 
 
 def _get_member_rank_title(member: discord.Member) -> str:
@@ -10179,12 +10180,12 @@ def _main():
         DEBUG_MODE = bool(debug_flag)
     except Exception as e:
         logger.debug(f"Failed to parse CLI args: {e}")
-    try:
-        token = os.getenv("DISCORD_TOKEN")
-    except Exception as e:
-        print(e)
+    token = os.getenv("DISCORD_TOKEN")
     if not token:
-        raise RuntimeError("DISCORD_TOKEN environment variable not set")
+        raise RuntimeError(
+            "DISCORD_TOKEN environment variable not set. "
+            "Please set it before running the bot: export DISCORD_TOKEN='your_token'"
+        )
     bot.run(token)
 
 
