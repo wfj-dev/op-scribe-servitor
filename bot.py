@@ -4078,7 +4078,8 @@ def _get_service_studs_announcement(
         bearer_value += f"\n*{member_title}*"
     if member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        bearer_value += f"\nLineage: {chapter_prefix}{member_chapter}"
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -4752,7 +4753,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_line += f" • {bearer_title}"
     lines.append(bearer_line)
     if bearer_chapter:
-        lines.append(f"  Lineage: {bearer_chapter}")
+        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
         # Tiered stud display: ◆=25, ●=5, ○=1
         ceramite = bearer_studs // 25
@@ -4857,7 +4859,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     if bearer_title:
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
-        bearer_value += f"\nLineage: {chapter_emoji_str}"
+        lineage_text = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        lineage_value = f"{chapter_emoji_str} {lineage_text}" if chapter_emoji_str != bearer_chapter else lineage_text
+        bearer_value += f"\nLineage: {lineage_value}"
     if bearer_studs > 0:
         # Tiered stud display: ◆=25, ●=5, ○=1
         ceramite = bearer_studs // 25
