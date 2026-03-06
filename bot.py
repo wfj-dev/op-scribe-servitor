@@ -53,6 +53,9 @@ SERVICE_STUDS_CHANNEL_ID = 1430055064969674777
 # Channel ID for Black Laurels eligibility notifications
 BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 
+# Channel ID for Oathsworn eligibility notifications
+OATHSWORN_CHANNEL_ID = 1430203472669835415
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -1299,7 +1302,18 @@ async def _check_promotion_milestones():
                 )
                 black_laurels_channel = None
 
-        if not veteran_channel and not studs_channel and not black_laurels_channel:
+        # Get Oathsworn eligibility notification channel
+        oathsworn_channel = guild.get_channel(OATHSWORN_CHANNEL_ID)
+        if not oathsworn_channel:
+            try:
+                oathsworn_channel = await bot.fetch_channel(OATHSWORN_CHANNEL_ID)
+            except Exception:
+                logger.warning(
+                    f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found"
+                )
+                oathsworn_channel = None
+
+        if not veteran_channel and not studs_channel and not black_laurels_channel and not oathsworn_channel:
             logger.warning("No promotion channels available")
             return
 
@@ -1567,6 +1581,68 @@ async def _check_promotion_milestones():
                         user_tracking["black_laurels_notified"] = True
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
+
+                # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
+                # Only Watch Veteran rank exactly - not higher, not lower
+                if oathsworn_channel and not user_tracking.get("oathsworn_notified"):
+                    is_watch_veteran_only = "Watch Veteran" in role_names and not any(
+                        r in role_names
+                        for r in [
+                            "Oathsworn",
+                            "Kill Team Champion",
+                            "Watch Sergeant",
+                            "Watch Techmarine",
+                            "Watch Librarian",
+                            "Watch Apothecary",
+                            "Watch Chaplain",
+                            "Company Champion",
+                            "Watch Lieutenant",
+                            "Watch Captain",
+                            "Venerable",
+                            "Forgemaster",
+                            "Void Warden",
+                            "High Chaplain",
+                            "Chief Apothecary",
+                            "Lord Executioner",
+                            "Watch Master",
+                        ]
+                    )
+                    if is_watch_veteran_only:
+                        # Calculate earned studs (same formula as service studs check)
+                        studs_time = weeks_in_server // 4
+                        studs_aar = aar_points // 400
+                        oathsworn_earned_studs = min(studs_time, studs_aar)
+
+                        # Eligible if they have 3+ plasteel studs (earned >= 3)
+                        is_oathsworn_eligible = oathsworn_earned_studs >= 3
+
+                        # Check they don't already have Oathsworn role
+                        oathsworn_role = discord.utils.get(guild.roles, name="Oathsworn")
+                        has_oathsworn_role = (
+                            oathsworn_role and oathsworn_role in member.roles
+                        )
+
+                        if is_oathsworn_eligible and not has_oathsworn_role:
+                            # Generate flavorful announcement with embed and poll
+                            content, embed, poll = _get_oathsworn_announcement(
+                                member=member,
+                                member_chapter=member_chapter,
+                                earned_studs=oathsworn_earned_studs,
+                                guild=guild,
+                            )
+
+                            # Send the announcement with embed and poll
+                            await oathsworn_channel.send(
+                                content,
+                                embed=embed,
+                                poll=poll,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["oathsworn_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Update tracking
                 if user_tracking:
@@ -3705,6 +3781,26 @@ DEATHWATCH_STUD_CLOSINGS: List[str] = [
     "In Vigilance, Eternal.",
 ]
 
+# Oathsworn eligibility flavor text
+# Openings declare a Watch Veteran has earned the right to be considered for Oathsworn
+OATHSWORN_OPENINGS: List[str] = [
+    "The Vigil Oathstone trembles! **{name}** has proven worthy of elevation!",
+    "The Watch Eternal bears witness—**{name}** stands ready for the sacred oath!",
+    "Hearken, Brothers! **{name}** has walked the Long Watch and earned the right to swear!",
+    "The chronicles blaze with glory! **{name}** approaches the threshold of the Oathsworn!",
+    "By bolt, blade, and blood, **{name}** has earned a seat among the Oathsworn!",
+    "The machine-spirits whisper reverence—**{name}** is called to take the Oath!",
+]
+
+# Proclamations about what it means to become Oathsworn
+OATHSWORN_PROCLAMATIONS: List[str] = [
+    "Three marks of service gleam upon their brow, testament to campaigns beyond counting.",
+    "Plasteel studs proclaim unwavering devotion to the Long Watch and the Emperor's cause.",
+    "Through countless engagements, they have proven their value to the Watch Eternal.",
+    "Their service studs speak louder than any proclamation—duty fulfilled, honor earned.",
+    "The Watch has weighed their deeds and found them worthy of this sacred consideration.",
+    "Steadfast service and proven valor have brought them to this threshold of honor.",
+]
 
 def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
     """Lookup a custom emoji by name from the guild.
@@ -4174,6 +4270,122 @@ def _get_service_studs_announcement(
     # Content has @Watch Brother and member mention for actual pings (outside embed)
     content = f"{wb_mention} {member.mention}" if wb_mention else member.mention
     return content, embed
+
+
+def _get_oathsworn_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    earned_studs: int,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, discord.Poll]:
+    """Generate a flavorful Oathsworn eligibility announcement with embed and poll.
+
+    Called when a Watch Veteran has earned 3+ service studs and is eligible
+    for consideration to become Oathsworn. Returns content (mentions), embed
+    (flavorful announcement), and a 48-hour poll for voting.
+    """
+    import random
+
+    # Extract bearer info using shared function
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+
+    # Get emojis
+    rank_emoji = _get_rank_emoji(guild, "Watch Veteran")
+    chapter_emoji = (
+        _get_emoji_by_name(guild, member_chapter)
+        if member_chapter != "Unknown"
+        else None
+    )
+    oathsworn_emoji = _get_emoji_by_name(guild, "Oathsworn")
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+
+    # Compute stud pips display
+    ceramite = earned_studs // 25
+    remainder = earned_studs % 25
+    electrum = remainder // 5
+    plasteel = remainder % 5
+    studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+    if not studs_pips:
+        studs_pips = "—"
+
+    # Generate opening and proclamation
+    opening_template = random.choice(OATHSWORN_OPENINGS)
+    opening = opening_template.format(name=display_name)
+    proclamation = random.choice(OATHSWORN_PROCLAMATIONS)
+
+    # Build embed
+    dw_emoji_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    oath_emoji_str = f"{oathsworn_emoji} " if oathsworn_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_emoji_str}᛭⋅ OATHSWORN CONSIDERATION ⋅᛭{dw_emoji_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xFFD700,  # Gold for Oathsworn consideration
+    )
+
+    # Proclamation field
+    proclamation_value = f"{opening}\n\n{proclamation}"
+    embed.add_field(
+        name="▸ Watch's Proclamation",
+        value=proclamation_value,
+        inline=False,
+    )
+
+    # Candidate field (same format as Bearer in service studs/forge_rite)
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    # to put title on one line and rank + name on the next
+    if ", " in rank_honorific:
+        title_part, rank_part = rank_honorific.rsplit(", ", 1)
+        candidate_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
+    else:
+        candidate_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        candidate_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        candidate_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    candidate_value += f"\nService Studs: **[{studs_pips}]** ({earned_studs})"
+    embed.add_field(name="▸ Candidate", value=candidate_value, inline=True)
+
+    # Eligibility field
+    eligibility_value = (
+        f"Rank: **Watch Veteran** ✓\n"
+        f"Service Studs: **{earned_studs}** (3 required) ✓\n"
+        f"Eligible for: {oath_emoji_str}**Oathsworn**"
+    )
+    embed.add_field(name="▸ Eligibility", value=eligibility_value, inline=True)
+
+    # Call to action
+    embed.add_field(
+        name="▸ Rite of Elevation",
+        value=(
+            "The Watch awaits your judgment, Brothers.\n"
+            "Cast your vote below to determine if this warrior shall take the Oath."
+        ),
+        inline=False,
+    )
+
+    # Footer
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+
+    # Create poll - 48 hour duration
+    poll = discord.Poll(
+        question=f"Shall {display_name} be elevated to Oathsworn?",
+        duration=timedelta(hours=48),
+        multiple=False,
+    )
+    poll.add_answer(text="Aye, elevate to Oathsworn", emoji="⚔️")
+    poll.add_answer(text="Nay, more service required", emoji="🛡️")
+
+    # Content with mentions (Watch Command for visibility)
+    watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
+    watch_command_mention = (
+        watch_command_role.mention if watch_command_role else "@Watch Command"
+    )
+    content = f"{watch_command_mention} {member.mention}"
+
+    return content, embed, poll
 
 
 def _get_member_rank_title(member: discord.Member) -> str:
@@ -4834,10 +5046,10 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_rank_name = "Watch Brother"
 
     rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
-    chapter_emoji_str = (
-        _get_chapter_emoji(guild, bearer_chapter)
+    chapter_emoji = (
+        _get_emoji_by_name(guild, bearer_chapter)
         if guild and bearer_chapter
-        else bearer_chapter
+        else None
     )
 
     embed = discord.Embed(
@@ -4859,9 +5071,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     if bearer_title:
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
-        lineage_text = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
-        lineage_value = f"{chapter_emoji_str} {lineage_text}" if chapter_emoji_str != bearer_chapter else lineage_text
-        bearer_value += f"\nLineage: {lineage_value}"
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
         # Tiered stud display: ◆=25, ●=5, ○=1
         ceramite = bearer_studs // 25
@@ -7364,47 +7576,53 @@ async def tally_deeds(
             for fl in footer_lines:
                 r_lines.append(fl)
             roster_text = "\n".join(r_lines)
-            # Build a structured embed to minimize wrapping
+            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
             try:
+                kt_display_name = _extract_killteam_name(getattr(killteam, 'name', 'Unknown'))
                 roster_embed = discord.Embed(
-                    title="Kill Team Roster",
-                    description=f"{_extract_killteam_name(getattr(killteam, 'name', 'Unknown'))}",
+                    title="᛭⋅ KILL TEAM ROSTER ⋅᛭",
+                    description=f"*⌾ {kt_display_name} ⌾*",
                     color=0x2ECC71,
                 )
-                # Chunk rows into fields to avoid long single blocks
-                chunk_size = 15
-                for i in range(0, len(formatted_rows), chunk_size):
-                    chunk = formatted_rows[i : i + chunk_size]
-                    # keep lines short using earlier truncation
-                    field_value = "\n".join(f"• {row}" for row in chunk)
+
+                # Build roster entries as compact lines
+                roster_lines = []
+                for it in sorted_items:
+                    nm = str(it.get("name", "") or "")[:20]
+                    studs = str(it.get("studs_symbols", "") or "")
+                    st = str(it.get("status", ""))
+                    aar_v = int(it.get("aar", 0) or 0)
+                    gene_v = int(it.get("gene", 0) or 0)
+                    armory_v = int(it.get("armory", 0) or 0)
+                    status_icon = "✅" if st.lower() == "active" else "⏸️"
+                    studs_str = f" {studs}" if studs else ""
+                    roster_lines.append(
+                        f"{status_icon} **{nm}**{studs_str}\n"
+                        f"AAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
+                    )
+
+                # Chunk into fields (max ~5 members per field to avoid overflow)
+                chunk_size = 5
+                for i in range(0, len(roster_lines), chunk_size):
+                    chunk = roster_lines[i : i + chunk_size]
+                    field_value = "\n".join(chunk)
                     roster_embed.add_field(
-                        name=f"Members {i + 1}–{min(i + chunk_size, len(formatted_rows))}",
+                        name=f"▸ Members {i + 1}–{min(i + chunk_size, len(roster_lines))}",
                         value=field_value or "—",
                         inline=False,
                     )
+
                 roster_embed.set_footer(
-                    text="Roster generated from recent service records."
+                    text="᛭⋅ Roster generated from recent service records ⋅᛭"
                 )
 
-                roster_view = ToggleFormatView(
-                    text_content=roster_text, embed=roster_embed, default="ansi"
-                )
-                await interaction.followup.send(
-                    content=roster_text, embed=None, view=roster_view, ephemeral=True
-                )
+                # Send embed only (clean output)
+                await interaction.followup.send(embed=roster_embed, ephemeral=True)
             except Exception:
-                # Fallback to ANSI block with toggle
+                # Fallback to simple embed
                 try:
                     roster_embed = _embed_from_ansi("Kill Team Roster", roster_text)
-                    roster_view = ToggleFormatView(
-                        text_content=roster_text, embed=roster_embed, default="ansi"
-                    )
-                    await interaction.followup.send(
-                        content=roster_text,
-                        embed=None,
-                        view=roster_view,
-                        ephemeral=True,
-                    )
+                    await interaction.followup.send(embed=roster_embed, ephemeral=True)
                 except Exception:
                     await interaction.followup.send(roster_text, ephemeral=True)
         except Exception:
@@ -7547,102 +7765,158 @@ async def tally_deeds(
         summary_text = "\n".join(s_lines)
 
         try:
-            # Structured summary embed with concise inline fields
+            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
             title_type = "Chapter" if is_chapter_role else "Kill Team"
             embed = discord.Embed(
-                title=f"{title_type} Monthly Honours",
-                description=f"{display_label} — Month to Date ({span_days} Days)",
+                title=f"᛭⋅ {title_type.upper()} MONTHLY HONOURS ⋅᛭",
+                description=f"*⌾ {display_label} ⌾*\nMonth to Date ({span_days} Days)",
                 color=0x2ECC71,
             )
             if queried_key:
                 ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
                 avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
                 pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
+                armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
+                gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
                 risk_data = active_rankings.get("high_risk", {}).get(
                     queried_key, (0, 0, 0)
                 )
                 force_data = active_rankings.get("avg_aar_per_member", {}).get(
                     queried_key, (0.0, 0, 0)
                 )
-                embed.add_field(
-                    name="Total Operations",
-                    value=f"Ops {int(ops_data[0])} — #{ops_data[1]}/{ops_data[2]}",
-                    inline=True,
+                # ▸ Distinctions field with consolidated stats
+                distinctions = (
+                    f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
+                    f"**Avg Points/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
+                    f"**High-Risk Ops:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
+                    f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})"
                 )
                 embed.add_field(
-                    name="Avg Points per Op",
-                    value=f"Avg Op {avg_data[0]:.1f} — #{avg_data[1]}/{avg_data[2]}",
-                    inline=True,
+                    name=f"▸ {title_type} Distinctions",
+                    value=distinctions,
+                    inline=False,
+                )
+                # ▸ Preservation field
+                preservation = (
+                    f"**Armory:** {armory_data[0]:.1f} pts\n"
+                    f"**Gene-seed:** {gene_data[0]:.1f} pts\n"
+                    f"Combined Rank: #{pres_data[1]}/{pres_data[2]}"
                 )
                 embed.add_field(
-                    name="Armory + Gene-seed",
-                    value=f"#{pres_data[1]}/{pres_data[2]}",
+                    name="▸ Preservation",
+                    value=preservation,
                     inline=True,
                 )
+            else:
                 embed.add_field(
-                    name="High-Risk Ops",
-                    value=f"Hard-Strat+Omega {int(risk_data[0])} — #{risk_data[1]}/{risk_data[2]}",
-                    inline=True,
+                    name="▸ Distinctions",
+                    value="No ranking data available",
+                    inline=False,
                 )
-                embed.add_field(
-                    name="AARs per Member",
-                    value=f"Avg AAR/Member {force_data[0]:.1f} — #{force_data[1]}/{force_data[2]}",
-                    inline=True,
-                )
-            view = ToggleFormatView(
-                text_content=summary_text, embed=embed, default="ansi"
-            )
-            await interaction.followup.send(
-                content=summary_text, embed=None, view=view, ephemeral=True
-            )
+            embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
+
+            # Send embed only (clean output)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
-            # ignore send errors and proceed to attach full file
+            # Fallback to simple embed
             try:
                 fallback_title = (
                     "Chapter Summary" if is_chapter_role else "Kill Team Summary"
                 )
                 embed = _embed_from_ansi(fallback_title, summary_text)
-                view = ToggleFormatView(
-                    text_content=summary_text, embed=embed, default="ansi"
-                )
-                await interaction.followup.send(
-                    content=summary_text, embed=None, view=view, ephemeral=True
-                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception:
                 pass
 
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
-        # If this was a single-brother request, provide a dramatically simpler
-        # mobile-friendly embed (the Mobile button will show this). Otherwise
-        # fall back to converting the ANSI text into an embed.
+        # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
         try:
             if (len(members) == 1) and member_stat_rows_list:
-                # Use the structured stat rows we captured earlier to build
-                # a compact, easy-to-read embed for mobile.
+                target = members[0]
                 name_val = (
-                    roster_items[0].get("name") if roster_items else "Deeds Ledger"
+                    roster_items[0].get("name") if roster_items else "Unknown"
                 )
+                stat_dict = {k: v for k, v in member_stat_rows_list[0]}
+
+                # Get rank emoji for display
+                guild = interaction.guild
+                member_rank_name = "Watch Brother"
+                for rank in RANK_ROLES_PRIORITY:
+                    if rank in [getattr(r, "name", "") for r in target.roles]:
+                        member_rank_name = rank
+                        break
+                rank_emoji = _get_rank_emoji(guild, member_rank_name) if guild else ""
+
+                # Get home chapter emoji
+                home_ch = stat_dict.get("Home Chapter", "Unknown")
+                chapter_emoji = (
+                    _get_emoji_by_name(guild, home_ch)
+                    if guild and home_ch and home_ch not in ("Unknown", "REDACTED")
+                    else None
+                )
+
                 embed = discord.Embed(
-                    title=f"Deeds Ledger — {name_val}",
+                    title="᛭⋅ DEEDS LEDGER ⋅᛭",
+                    description="*⌾ Watch Fortress Jericho ⌾*",
                     color=0x2ECC71,
                 )
-                # Add fields non-inline so mobile clients render them vertically
-                for label, value in member_stat_rows_list[0]:
-                    try:
-                        embed.add_field(name=label, value=value or "—", inline=False)
-                    except Exception:
-                        # fallback to a single combined field if something goes wrong
-                        pass
+
+                # ▸ Bearer field (styled like forge_rite/stud announcement)
+                rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+                bearer_value = f"{rank_prefix}**{name_val}**"
+                if home_ch and home_ch != "Unknown":
+                    chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+                    lineage_display = "REDACTED" if home_ch == "Black Shield" else home_ch
+                    bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+                studs_val = stat_dict.get("Service Studs", "—")
+                bearer_value += f"\nService Studs: **{studs_val}**"
+                embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+
+                # ▸ Status field
+                status_val = stat_dict.get("Status", "Unknown")
+                last_aar_val = stat_dict.get("Last AAR", "—")
+                company_val = stat_dict.get("Company")
+                kt_val = stat_dict.get("Kill Team")
+                status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
+                if company_val:
+                    status_lines.append(f"Company: {company_val}")
+                if kt_val:
+                    status_lines.append(f"Kill Team: {kt_val}")
+                embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
+
+                # ▸ Service Record field
+                induction_val = stat_dict.get("Induction", "—")
+                embed.add_field(
+                    name="▸ Induction",
+                    value=f"{induction_val}",
+                    inline=False,
+                )
+
+                # ▸ Deeds Tallied field (consolidated stats)
+                ops_val = stat_dict.get("Total Operations", "0")
+                waves_val = stat_dict.get("Total Siege Waves", "0")
+                sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
+                aar_val = stat_dict.get("AAR Commendations", "0")
+                gene_val = stat_dict.get("Gene-seed Secured", "0")
+                armory_val = stat_dict.get("Armory Data Recovered", "0")
+
+                deeds_value = (
+                    f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
+                    f"Brothers Sanctioned: **{sanctioned_val}**\n"
+                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
+                )
+                embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
+
+                # Footer
+                embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
             else:
                 embed = _embed_from_ansi("Deeds Ledger", reply_text)
         except Exception:
             embed = _embed_from_ansi("Deeds Ledger", reply_text)
 
-        view = ToggleFormatView(text_content=reply_text, embed=embed, default="ansi")
-        await interaction.followup.send(
-            content=reply_text, embed=None, view=view, ephemeral=True
-        )
+        # Send embed only (clean output like forge_rite/stud announcement)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         # Send Monthly Honours as a separate additional message
         if len(members) == 1:
@@ -7783,81 +8057,64 @@ async def tally_deeds(
             h_lines.append("\u001b[0m```")
             honours_text = "\n".join(h_lines)
 
-            # Build embed for honours
+            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
             try:
+                # Get chapter emoji for display
+                guild = interaction.guild
+                chapter_emoji = (
+                    _get_emoji_by_name(guild, home_chapter)
+                    if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
+                    else None
+                )
+                chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+
                 honours_embed = discord.Embed(
-                    title=f"Monthly Honours — {target_name}",
+                    title="᛭⋅ MONTHLY HONOURS ⋅᛭",
+                    description=f"*⌾ {target_name} ⌾*\nMonth to Date ({mtd_span_days} Days)",
                     color=0x2ECC71,
                 )
-                honours_embed.add_field(
-                    name="─── Individual Rankings ───", value="\u200b", inline=False
-                )
+
+                # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
-                    honours_embed.add_field(
-                        name="Total Operations",
-                        value=f"#{ops_data[1]}/{ops_data[2]}",
-                        inline=True,
+                    individual_value = (
+                        f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
+                        f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
+                        f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
+                        f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
+                        f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})"
                     )
-                    honours_embed.add_field(
-                        name="Avg Points per Op",
-                        value=f"#{avg_data[1]}/{avg_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="Gene-seed Points",
-                        value=f"#{gene_data[1]}/{gene_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="Armory Points",
-                        value=f"#{armory_data[1]}/{armory_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="High-Risk Ops",
-                        value=f"#{risk_data[1]}/{risk_data[2]}",
-                        inline=True,
-                    )
+                else:
+                    individual_value = "No ranking data available"
                 honours_embed.add_field(
-                    name=f"─── {home_chapter} Rankings ───",
-                    value="\u200b",
+                    name="▸ Individual Distinctions",
+                    value=individual_value,
                     inline=False,
                 )
+
+                # ▸ Chapter Distinctions field
+                lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
                 if ch_ops_data[2] > 0:
-                    honours_embed.add_field(
-                        name="Total Operations",
-                        value=f"#{ch_ops_data[1]}/{ch_ops_data[2]}",
-                        inline=True,
+                    chapter_value = (
+                        f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
+                        f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
+                        f"**Armory + Gene:** #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
+                        f"**High-Risk:** {int(ch_risk_data[0])} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
+                        f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
                     )
-                    honours_embed.add_field(
-                        name="Avg Points per Op",
-                        value=f"#{ch_avg_data[1]}/{ch_avg_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="Armory + Gene-seed",
-                        value=f"#{ch_pres_data[1]}/{ch_pres_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="High-Risk Ops",
-                        value=f"#{ch_risk_data[1]}/{ch_risk_data[2]}",
-                        inline=True,
-                    )
-                    honours_embed.add_field(
-                        name="AARs per Member",
-                        value=f"#{ch_aar_data[1]}/{ch_aar_data[2]}",
-                        inline=True,
-                    )
+                else:
+                    chapter_value = "Below minimum threshold"
+                honours_embed.add_field(
+                    name=f"▸ {chapter_prefix}{lineage_display} Chapter",
+                    value=chapter_value,
+                    inline=False,
+                )
+
+                honours_embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
             except Exception:
                 honours_embed = _embed_from_ansi("Monthly Honours", honours_text)
 
-            honours_view = ToggleFormatView(
-                text_content=honours_text, embed=honours_embed, default="ansi"
-            )
-            await interaction.followup.send(
-                content=honours_text, embed=None, view=honours_view, ephemeral=True
-            )
+            # Send embed only (clean output like forge_rite/stud announcement)
+            await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
 
 @bot.tree.command(
