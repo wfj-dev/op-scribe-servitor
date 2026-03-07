@@ -6830,18 +6830,89 @@ async def reparse_records(interaction: discord.Interaction, limit: int | None = 
         RECONCILE_LOCK.release()
 
 
+async def _forum_post_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> List[app_commands.Choice[str]]:
+    """Autocomplete for forum posts (threads within forum channels)."""
+    choices = []
+    if not interaction.guild:
+        return choices
+
+    current_lower = current.lower()
+    try:
+        # Fetch all active threads in the guild
+        active_threads = await interaction.guild.active_threads()
+        for thread in active_threads:
+            # Only include threads from forum channels
+            parent = thread.parent
+            if isinstance(parent, discord.ForumChannel):
+                if not current or current_lower in thread.name.lower():
+                    # Show forum name for context
+                    display = f"{thread.name} ({parent.name})"
+                    if len(display) > 100:
+                        display = display[:97] + "..."
+                    choices.append(
+                        app_commands.Choice(name=display, value=str(thread.id))
+                    )
+                    if len(choices) >= 25:
+                        return choices
+    except Exception:
+        pass
+    return choices
+
+
 @bot.tree.command(
     name="tally_deeds", description="Display the Deeds Ledger for a Brother."
 )
 @app_commands.describe(
     brother="The Watch Brother to query.",
     killteam="Role: tally every member of this kill team (mutually exclusive with brother)",
+    send_to="Forum post to send results to (non-ephemeral). If omitted, sends privately to you.",
 )
+@app_commands.autocomplete(send_to=_forum_post_autocomplete)
 async def tally_deeds(
     interaction: discord.Interaction,
     brother: Optional[discord.Member] = None,
     killteam: Optional[discord.Role] = None,
+    send_to: Optional[str] = None,
 ):
+    # Resolve send_to string to an actual channel/thread
+    send_to_channel = None
+    if send_to is not None:
+        # Try to parse as channel ID
+        try:
+            channel_id = int(send_to.strip())
+            send_to_channel = interaction.guild.get_channel_or_thread(channel_id)
+            if send_to_channel is None:
+                send_to_channel = await bot.fetch_channel(channel_id)
+        except ValueError:
+            # Not an ID, try to find by name across forum threads
+            for channel in interaction.guild.channels:
+                if isinstance(channel, discord.ForumChannel):
+                    for thread in channel.threads:
+                        if thread.name.lower() == send_to.lower():
+                            send_to_channel = thread
+                            break
+                    if send_to_channel:
+                        break
+        except Exception:
+            pass
+
+        if send_to_channel is None:
+            await interaction.response.send_message(
+                f"Could not find forum post '{send_to}'. Make sure it's an active post.",
+                ephemeral=True,
+            )
+            return
+
+        # Validate it's messageable
+        if not isinstance(send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
+            await interaction.response.send_message(
+                "send_to must be a thread or forum post — not a forum channel itself.",
+                ephemeral=True,
+            )
+            return
+
     # Special-case: if this is a Kill Team forum/thread post, use KT-specific
     # permission gating. Otherwise, fall through to the existing checks.
     try:
@@ -7617,14 +7688,23 @@ async def tally_deeds(
                 )
 
                 # Send embed only (clean output)
-                await interaction.followup.send(embed=roster_embed, ephemeral=True)
+                if send_to_channel:
+                    await send_to_channel.send(embed=roster_embed)
+                else:
+                    await interaction.followup.send(embed=roster_embed, ephemeral=True)
             except Exception:
                 # Fallback to simple embed
                 try:
                     roster_embed = _embed_from_ansi("Kill Team Roster", roster_text)
-                    await interaction.followup.send(embed=roster_embed, ephemeral=True)
+                    if send_to_channel:
+                        await send_to_channel.send(embed=roster_embed)
+                    else:
+                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
                 except Exception:
-                    await interaction.followup.send(roster_text, ephemeral=True)
+                    if send_to_channel:
+                        await send_to_channel.send(roster_text)
+                    else:
+                        await interaction.followup.send(roster_text, ephemeral=True)
         except Exception:
             # Continue even if roster formatting fails
             pass
@@ -7816,7 +7896,11 @@ async def tally_deeds(
             embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
 
             # Send embed only (clean output)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            if send_to_channel:
+                await send_to_channel.send(embed=embed)
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
             # Fallback to simple embed
             try:
@@ -7824,7 +7908,11 @@ async def tally_deeds(
                     "Chapter Summary" if is_chapter_role else "Kill Team Summary"
                 )
                 embed = _embed_from_ansi(fallback_title, summary_text)
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                if send_to_channel:
+                    await send_to_channel.send(embed=embed)
+                    await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+                else:
+                    await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception:
                 pass
 
@@ -7916,7 +8004,10 @@ async def tally_deeds(
             embed = _embed_from_ansi("Deeds Ledger", reply_text)
 
         # Send embed only (clean output like forge_rite/stud announcement)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        if send_to_channel:
+            await send_to_channel.send(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
         # Send Monthly Honours as a separate additional message
         if len(members) == 1:
@@ -8114,7 +8205,11 @@ async def tally_deeds(
                 honours_embed = _embed_from_ansi("Monthly Honours", honours_text)
 
             # Send embed only (clean output like forge_rite/stud announcement)
-            await interaction.followup.send(embed=honours_embed, ephemeral=True)
+            if send_to_channel:
+                await send_to_channel.send(embed=honours_embed)
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+            else:
+                await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
 
 @bot.tree.command(
