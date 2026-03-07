@@ -3884,7 +3884,7 @@ def _blend_stud_flavor_by_rank(
     - Specialist (Watch Chaplain/Apothecary): 50% chapter, 50% role
     - Company Command: 50% chapter, 50% role
     - High Command Specialist: 20% chapter, 80% role
-    - Watch Master: 100% role/Watch, 0% chapter
+    - Watch Master: 10% chapter, 90% role
     
     pip_type: "plasteel", "electrum", or "ceramite" for veneration fallback selection.
     Returns blended flavor text or falls back to pip-type-based veneration.
@@ -3909,9 +3909,12 @@ def _blend_stud_flavor_by_rank(
     
     # Blend based on category
     if category == "watchers":
-        # 100% role: Watch Master gets no chapter reference
-        if role_options:
-            return random.choice(role_options)
+        # 90% role, 10% chapter
+        if random.random() < 0.9:
+            if role_options:
+                return random.choice(role_options)
+        if chapter_options:
+            return random.choice(chapter_options)
         # Fallback to pip-type veneration
         return random.choice(veneration_pool)
     
@@ -6936,7 +6939,7 @@ async def tally_deeds(
 
     # Mutual exclusivity and target selection: either a single brother or a killteam role
     if brother and killteam:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Provide either 'brother' or 'killteam', not both.", ephemeral=True
         )
         return
@@ -7023,7 +7026,7 @@ async def tally_deeds(
     elif brother:
         members = [brother]
     else:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Specify a brother or a killteam role.", ephemeral=True
         )
         return
