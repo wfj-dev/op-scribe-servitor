@@ -139,6 +139,22 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
     "reclamation",
 }
 
+# Specialist award thresholds and role mappings
+# Award role names (looked up dynamically)
+ARDENT_RAIDER_ROLE_NAME = "Ardent Raider"
+FOR_THE_FALLEN_ROLE_NAME = "For the Fallen"
+CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
+
+# Specialist role names for mentions (looked up dynamically)
+TECHMARINE_ROLE_NAME = "Watch Techmarine"
+APOTHECARY_ROLE_NAME = "Watch Apothecary"
+LIBRARIAN_ROLE_NAME = "Watch Librarian"
+
+# Award eligibility thresholds
+ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
+FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
+CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
+
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
 
@@ -1339,6 +1355,34 @@ async def _check_promotion_milestones():
             black_laurels_role.mention if black_laurels_role else "@Black Laurels"
         )
 
+        # Get specialist roles for award mentions
+        techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
+        techmarine_mention = (
+            techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
+        )
+        apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
+        apothecary_mention = (
+            apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
+        )
+        librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+        librarian_mention = (
+            librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
+        )
+
+        # Get award roles
+        ardent_raider_role = discord.utils.get(guild.roles, name=ARDENT_RAIDER_ROLE_NAME)
+        ardent_raider_mention = (
+            ardent_raider_role.mention if ardent_raider_role else f"@{ARDENT_RAIDER_ROLE_NAME}"
+        )
+        for_the_fallen_role = discord.utils.get(guild.roles, name=FOR_THE_FALLEN_ROLE_NAME)
+        for_the_fallen_mention = (
+            for_the_fallen_role.mention if for_the_fallen_role else f"@{FOR_THE_FALLEN_ROLE_NAME}"
+        )
+        crimson_laurels_role = discord.utils.get(guild.roles, name=CRIMSON_LAURELS_ROLE_NAME)
+        crimson_laurels_mention = (
+            crimson_laurels_role.mention if crimson_laurels_role else f"@{CRIMSON_LAURELS_ROLE_NAME}"
+        )
+
         # Build a map of user_id -> set of completed Black Laurels missions
         user_bl_missions: Dict[str, set] = {}
         for rec in DATASTORE.iter_records():
@@ -1581,6 +1625,102 @@ async def _check_promotion_milestones():
                         user_tracking["black_laurels_notified"] = True
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
+
+                # Check Ardent Raider eligibility (200 armory points)
+                if black_laurels_channel:
+                    armory_points = int(stats.get("armory_points", 0) or 0)
+                    is_ar_eligible = armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
+                    has_ar_role = (
+                        ardent_raider_role and ardent_raider_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "ardent_raider_notified" not in user_tracking:
+                        if is_ar_eligible or has_ar_role:
+                            user_tracking["ardent_raider_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("ardent_raider_notified"):
+                        if is_ar_eligible and not has_ar_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {techmarine_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["ardent_raider_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+
+                # Check For the Fallen eligibility (150 geneseed points)
+                if black_laurels_channel:
+                    gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
+                    is_ftf_eligible = gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
+                    has_ftf_role = (
+                        for_the_fallen_role and for_the_fallen_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "for_the_fallen_notified" not in user_tracking:
+                        if is_ftf_eligible or has_ftf_role:
+                            user_tracking["for_the_fallen_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("for_the_fallen_notified"):
+                        if is_ftf_eligible and not has_ftf_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {apothecary_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["for_the_fallen_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+
+                # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
+                if black_laurels_channel:
+                    # Check if user has Black Laurels role (required for Crimson)
+                    has_bl_role_for_cl = (
+                        black_laurels_role and black_laurels_role in member.roles
+                    )
+                    is_cl_eligible = (
+                        aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD
+                        and has_bl_role_for_cl
+                    )
+                    has_cl_role = (
+                        crimson_laurels_role and crimson_laurels_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "crimson_laurels_notified" not in user_tracking:
+                        if is_cl_eligible or has_cl_role:
+                            user_tracking["crimson_laurels_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("crimson_laurels_notified"):
+                        if is_cl_eligible and not has_cl_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {librarian_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["crimson_laurels_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower
@@ -3742,7 +3882,7 @@ SERVICE_STUDS_MILESTONE_TIER2: List[str] = [
 ]
 
 SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
-    "LEGENDARY SERVICE! Even the Armorium's oldest servitors pause to record this.",
+    "LEGENDARY SERVICE! Even the Apothecarion's eldest brothers pause to witness this.",
     "A ceramite stud! The highest honor the Watch can bestow!",
     "The Watch Fortress itself trembles at such monumental service!",
     "Legends walk among us—your marks proclaim it to all!",
@@ -3884,7 +4024,7 @@ def _blend_stud_flavor_by_rank(
     - Specialist (Watch Chaplain/Apothecary): 50% chapter, 50% role
     - Company Command: 50% chapter, 50% role
     - High Command Specialist: 20% chapter, 80% role
-    - Watch Master: 100% role/Watch, 0% chapter
+    - Watch Master: 10% chapter, 90% role
     
     pip_type: "plasteel", "electrum", or "ceramite" for veneration fallback selection.
     Returns blended flavor text or falls back to pip-type-based veneration.
@@ -3909,9 +4049,12 @@ def _blend_stud_flavor_by_rank(
     
     # Blend based on category
     if category == "watchers":
-        # 100% role: Watch Master gets no chapter reference
-        if role_options:
-            return random.choice(role_options)
+        # 90% role, 10% chapter
+        if random.random() < 0.9:
+            if role_options:
+                return random.choice(role_options)
+        if chapter_options:
+            return random.choice(chapter_options)
         # Fallback to pip-type veneration
         return random.choice(veneration_pool)
     
@@ -3951,11 +4094,13 @@ def _blend_stud_flavor_by_rank(
 def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -> Tuple[str, str]:
     """Determine who receives stud marking and who witnesses. Returns (primary, secondary).
     
-    - Watch Master: The Watch itself bears witness; no apothecary needed
-    - Forgemaster/Techmarine: Administer own marks (Mechanicus tradition)
-    - High Command: Report to actual Watch Master person
-    - Company Command/Specialists: Report to their Company CO (Captain or Lieutenant)
-    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage), fallback to Apothecary
+    The Apothecarion always performs the actual stud implantation (surgical procedure).
+    This function determines who witnesses/authorizes based on chain of command:
+    - Watch Master: The Chief Apothecary personally attends
+    - High Command: The Chief Apothecary attends, Watch Master witnesses
+    - Company Command/Specialists: Report to their Company CO
+    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage)
+    - Line: Report to the Apothecarion
     
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
@@ -3973,35 +4118,60 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
             member_rank_name = rank
             break
     
-    # Watch Master: The Watch itself witnesses
+    # Watch Master: Chief Apothecary personally attends
     if member_rank_name == "Watch Master":
-        return "The Watch itself bears witness.", ""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
+        except Exception:
+            pass
+        return "The Chief Apothecary personally attends.", ""
     
-    # Forgemaster/Techmarine administer own marks (Mechanicus tradition)
-    if member_rank_name in ("Forgemaster", "Watch Techmarine"):
-        emoji = _get_rank_emoji(guild, member_rank_name)
-        emoji_prefix = f"{emoji} " if emoji else ""
-        clean_name = strip_studs(member.display_name)
-        return f"{emoji_prefix}**{clean_name}** self-administers this mark.", ""
-    
-    # Other High Command report to Watch Master (find actual person)
+    # High Command: Chief Apothecary attends, witnessed by Watch Master
     high_cmd = {
-        "High Chaplain", "Chief Apothecary", "Void Warden", "Lord Executioner"
+        "High Chaplain", "Chief Apothecary", "Void Warden", "Lord Executioner",
+        "Forgemaster", "Watch Techmarine"
     }
     if member_rank_name in high_cmd:
-        wm = _find_watch_master(guild)
-        if wm:
-            emoji = _get_rank_emoji(guild, "Watch Master")
-            emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(wm.display_name)
-            return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        return "Report to the Watch Master.", ""
+        # For High Command, Chief Apothecary performs the marking
+        # If they ARE the Chief Apothecary, another Apothecary handles it
+        if member_rank_name == "Chief Apothecary":
+            return "Another Apothecary of the Watch attends.", ""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
+        except Exception:
+            pass
+        return "Report to the Chief Apothecary.", ""
     
-    # Company Command and Specialists report to their company CO
+    # Company Command and Specialists: Apothecarion handles, CO witnesses
     company_cmd_and_spec = {
         "Watch Captain", "Watch Lieutenant", "Company Champion", 
-        "Watch Chaplain", "Watch Apothecary", "Watch Librarian"
+        "Watch Chaplain", "Watch Librarian"
     }
+    # Watch Apothecary is handled separately - they can't mark themselves
+    if member_rank_name == "Watch Apothecary":
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
+        except Exception:
+            pass
+        return "Report to the Chief Apothecary.", ""
     if member_rank_name in company_cmd_and_spec:
         company = _find_company_or_chapter(member)
         if company:
@@ -4179,16 +4349,18 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Calculate visual pip change (what actually gets added to nickname)
-    # Clamp prev_studs to 0 minimum to handle edge cases in preview
-    prev_studs = max(0, displayed_studs - new_studs)
+    # Calculate visual pip change (what pips change from BEFORE to AFTER)
+    # displayed_studs = what they had before, new_total = what they'll have after
+    prev_studs = max(0, displayed_studs)
+    curr_studs = new_total
+    
     prev_ceramite = prev_studs // 25
     prev_electrum = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
 
-    curr_ceramite = displayed_studs // 25
-    curr_electrum = (displayed_studs % 25) // 5
-    curr_plasteel = displayed_studs % 5
+    curr_ceramite = curr_studs // 25
+    curr_electrum = (curr_studs % 25) // 5
+    curr_plasteel = curr_studs % 5
 
     # Compute net change in each pip type
     delta_ceramite = curr_ceramite - prev_ceramite
@@ -6936,7 +7108,7 @@ async def tally_deeds(
 
     # Mutual exclusivity and target selection: either a single brother or a killteam role
     if brother and killteam:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Provide either 'brother' or 'killteam', not both.", ephemeral=True
         )
         return
@@ -7023,7 +7195,7 @@ async def tally_deeds(
     elif brother:
         members = [brother]
     else:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Specify a brother or a killteam role.", ephemeral=True
         )
         return
