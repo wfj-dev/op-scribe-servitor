@@ -139,6 +139,22 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
     "reclamation",
 }
 
+# Specialist award thresholds and role mappings
+# Award role names (looked up dynamically)
+ARDENT_RAIDER_ROLE_NAME = "Ardent Raider"
+FOR_THE_FALLEN_ROLE_NAME = "For the Fallen"
+CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
+
+# Specialist role names for mentions (looked up dynamically)
+TECHMARINE_ROLE_NAME = "Watch Techmarine"
+APOTHECARY_ROLE_NAME = "Watch Apothecary"
+LIBRARIAN_ROLE_NAME = "Watch Librarian"
+
+# Award eligibility thresholds
+ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
+FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
+CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
+
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
 
@@ -1339,6 +1355,34 @@ async def _check_promotion_milestones():
             black_laurels_role.mention if black_laurels_role else "@Black Laurels"
         )
 
+        # Get specialist roles for award mentions
+        techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
+        techmarine_mention = (
+            techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
+        )
+        apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
+        apothecary_mention = (
+            apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
+        )
+        librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+        librarian_mention = (
+            librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
+        )
+
+        # Get award roles
+        ardent_raider_role = discord.utils.get(guild.roles, name=ARDENT_RAIDER_ROLE_NAME)
+        ardent_raider_mention = (
+            ardent_raider_role.mention if ardent_raider_role else f"@{ARDENT_RAIDER_ROLE_NAME}"
+        )
+        for_the_fallen_role = discord.utils.get(guild.roles, name=FOR_THE_FALLEN_ROLE_NAME)
+        for_the_fallen_mention = (
+            for_the_fallen_role.mention if for_the_fallen_role else f"@{FOR_THE_FALLEN_ROLE_NAME}"
+        )
+        crimson_laurels_role = discord.utils.get(guild.roles, name=CRIMSON_LAURELS_ROLE_NAME)
+        crimson_laurels_mention = (
+            crimson_laurels_role.mention if crimson_laurels_role else f"@{CRIMSON_LAURELS_ROLE_NAME}"
+        )
+
         # Build a map of user_id -> set of completed Black Laurels missions
         user_bl_missions: Dict[str, set] = {}
         for rec in DATASTORE.iter_records():
@@ -1581,6 +1625,102 @@ async def _check_promotion_milestones():
                         user_tracking["black_laurels_notified"] = True
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
+
+                # Check Ardent Raider eligibility (200 armory points)
+                if black_laurels_channel:
+                    armory_points = int(stats.get("armory_points", 0) or 0)
+                    is_ar_eligible = armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
+                    has_ar_role = (
+                        ardent_raider_role and ardent_raider_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "ardent_raider_notified" not in user_tracking:
+                        if is_ar_eligible or has_ar_role:
+                            user_tracking["ardent_raider_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("ardent_raider_notified"):
+                        if is_ar_eligible and not has_ar_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {techmarine_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["ardent_raider_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+
+                # Check For the Fallen eligibility (150 geneseed points)
+                if black_laurels_channel:
+                    gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
+                    is_ftf_eligible = gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
+                    has_ftf_role = (
+                        for_the_fallen_role and for_the_fallen_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "for_the_fallen_notified" not in user_tracking:
+                        if is_ftf_eligible or has_ftf_role:
+                            user_tracking["for_the_fallen_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("for_the_fallen_notified"):
+                        if is_ftf_eligible and not has_ftf_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {apothecary_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["for_the_fallen_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+
+                # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
+                if black_laurels_channel:
+                    # Check if user has Black Laurels role (required for Crimson)
+                    has_bl_role_for_cl = (
+                        black_laurels_role and black_laurels_role in member.roles
+                    )
+                    is_cl_eligible = (
+                        aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD
+                        and has_bl_role_for_cl
+                    )
+                    has_cl_role = (
+                        crimson_laurels_role and crimson_laurels_role in member.roles
+                    )
+                    # First run: if already eligible or has role, mark as notified without sending
+                    if "crimson_laurels_notified" not in user_tracking:
+                        if is_cl_eligible or has_cl_role:
+                            user_tracking["crimson_laurels_notified"] = True
+                    # Only notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("crimson_laurels_notified"):
+                        if is_cl_eligible and not has_cl_role:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {librarian_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["crimson_laurels_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower
