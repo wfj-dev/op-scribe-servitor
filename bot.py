@@ -142,7 +142,7 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
 # Specialist award thresholds and role mappings
 # Award role names (looked up dynamically)
 ARDENT_RAIDER_ROLE_NAME = "Ardent Raider"
-FOR_THE_FALLEN_ROLE_NAME = "For the Fallen"
+FOR_THE_FALLEN_ROLE_NAME = "Centurion of the Fallen"
 CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
 
 # Specialist role names for mentions (looked up dynamically)
