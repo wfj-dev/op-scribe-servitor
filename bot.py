@@ -1556,9 +1556,9 @@ async def _check_promotion_milestones():
 
                     # Count currently displayed studs from nickname
                     dn = str(member.nick or member.display_name or "")
-                    displayed_cer = dn.count("◆")
+                    displayed_cer = dn.count("⬥")
                     displayed_elec = dn.count("●")
-                    displayed_plas = dn.count("○")
+                    displayed_plas = dn.count("⚬")
                     displayed_studs = (
                         displayed_cer * 25 + displayed_elec * 5 + displayed_plas
                     )
@@ -3805,7 +3805,7 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
 }
 
 # Venerations based on PIP TYPE earned (not total count)
-# Applied when earning plasteel (○), electrum (●), or ceramite (◆) studs
+# Applied when earning plasteel (⚬), electrum (●), or ceramite (⬥) studs
 # Plasteel: frequent earns, larger pool to avoid repetition (~25 entries)
 SERVICE_STUDS_VENERATIONS_PLASTEEL: List[str] = [
     "Your service studs gleam with the promise of deeds yet to come.",
@@ -4105,8 +4105,8 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
     def strip_studs(name: str) -> str:
-        """Remove service studs (◆●○) from a name."""
-        return name.replace("◆", "").replace("●", "").replace("○", "").strip()
+        """Remove service studs (⬥●⚬) from a name."""
+        return name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
     
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
@@ -4294,12 +4294,12 @@ def _get_service_studs_announcement(
         else None
     )
 
-    # Compute stud pips display: ◆=25, ●=5, ○=1 (based on new total already calculated above)
+    # Compute stud pips display: ⬥=25, ●=5, ⚬=1 (based on new total already calculated above)
     ceramite = new_total // 25
     remainder = new_total % 25
     electrum = remainder // 5
     plasteel = remainder % 5
-    studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+    studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
     if not studs_pips:
         studs_pips = "—"  # No studs displayed yet
 
@@ -4373,13 +4373,13 @@ def _get_service_studs_announcement(
     pip_changes = []
     if delta_ceramite > 0:
         pip_word = "Stud" if delta_ceramite == 1 else "Studs"
-        pip_changes.append(f"+{delta_ceramite}◆ Ceramite {pip_word}")
+        pip_changes.append(f"+{delta_ceramite}⬥ Ceramite {pip_word}")
     if delta_electrum > 0:
         pip_word = "Stud" if delta_electrum == 1 else "Studs"
         pip_changes.append(f"+{delta_electrum}● Electrum {pip_word}")
     if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
-        pip_changes.append(f"+{delta_plasteel}○ Plasteel {pip_word}")
+        pip_changes.append(f"+{delta_plasteel}⚬ Plasteel {pip_word}")
 
     # Service Record field (bold values for numerical emphasis)
     if pip_changes:
@@ -4476,7 +4476,7 @@ def _get_oathsworn_announcement(
     remainder = earned_studs % 25
     electrum = remainder // 5
     plasteel = remainder % 5
-    studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+    studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
     if not studs_pips:
         studs_pips = "—"
 
@@ -4680,9 +4680,9 @@ def _get_bearer_rank_and_title(
                                 wm_name = wm_name[len("Watch Master") :].lstrip()
                             # Strip stud pips from name
                             wm_name = (
-                                wm_name.replace("◆", "")
+                                wm_name.replace("⬥", "")
                                 .replace("●", "")
-                                .replace("○", "")
+                                .replace("⚬", "")
                                 .strip()
                             )
                             watchmaster_name = wm_name
@@ -4716,9 +4716,9 @@ def _get_bearer_rank_and_title(
                                     break
                             # Strip stud pips from name
                             cap_name = (
-                                cap_name.replace("◆", "")
+                                cap_name.replace("⬥", "")
                                 .replace("●", "")
-                                .replace("○", "")
+                                .replace("⚬", "")
                                 .strip()
                             )
                             captain_name = cap_name
@@ -4783,7 +4783,7 @@ def _get_bearer_rank_and_title(
 
     # Strip stud pips from display name (we report studs separately)
     display_name = (
-        display_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+        display_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
     )
 
     # Build combined title: prefer "Kill Team X, Company Y" format
@@ -4996,7 +4996,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     attester = getattr(interaction.user, "display_name", None) or getattr(
         interaction.user, "name", str(interaction.user.id)
     )
-    attester = attester.replace("◆", "").replace("●", "").replace("○", "").strip()
+    attester = attester.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
     
     # Get techmarine's rank emoji for attestation
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
@@ -5018,7 +5018,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Bearer info: rank honorific, display name, and Kill Team/Company title
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
     # Defensive pip stripping - ensure no stud pips in display name
-    bearer_name = bearer_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+    bearer_name = bearer_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
 
     # Bearer's home chapter for chapter-specific blessing (use dedicated function)
     bearer_chapter = _get_bearer_home_chapter(member)
@@ -5140,12 +5140,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
-        # Tiered stud display: ◆=25, ●=5, ○=1
+        # Tiered stud display: ⬥=25, ●=5, ⚬=1
         ceramite = bearer_studs // 25
         remainder = bearer_studs % 25
         electrum = remainder // 5
         plasteel = remainder % 5
-        studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+        studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
         lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
@@ -5234,7 +5234,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     # Defensive pip stripping in case they survived from display name
-    bearer_name = bearer_name.replace("◆", "").replace("●", "").replace("○", "").strip()
+    bearer_name = bearer_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
         bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
@@ -5247,12 +5247,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
-        # Tiered stud display: ◆=25, ●=5, ○=1
+        # Tiered stud display: ⬥=25, ●=5, ⚬=1
         ceramite = bearer_studs // 25
         remainder = bearer_studs % 25
         electrum = remainder // 5
         plasteel = remainder % 5
-        studs_pips = "◆" * ceramite + "●" * electrum + "○" * plasteel
+        studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -5402,9 +5402,9 @@ async def _preview_stud_announcement(
 
     # Read displayed studs from nickname
     dn = str(member.nick or member.display_name or "")
-    displayed_cer = dn.count("◆")
+    displayed_cer = dn.count("⬥")
     displayed_elec = dn.count("●")
-    displayed_plas = dn.count("○")
+    displayed_plas = dn.count("⚬")
     actual_displayed = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
 
     # Use provided displayed_studs or fall back to actual
@@ -6567,9 +6567,9 @@ async def audit_service_studs(interaction: discord.Interaction):
 
             # Count existing studs shown in nickname/display name
             dn = str(member.nick or member.display_name or "")
-            existing_cer = dn.count("◆")
+            existing_cer = dn.count("⬥")
             existing_elec = dn.count("●")
-            existing_plas = dn.count("○")
+            existing_plas = dn.count("⚬")
             existing_total = existing_cer * 25 + existing_elec * 5 + existing_plas
 
             if studs_count != existing_total:
@@ -7312,9 +7312,9 @@ async def tally_deeds(
             studs_count = 0
 
         # Build display string using three-tier Unicode symbols:
-        # - lowest: hollow circle '○' (Plasteel)
+        # - lowest: hollow circle '⚬' (Plasteel)
         # - mid: filled circle '●' per five (Electrum)
-        # - top: diamond '◆' per twenty-five (Ceramite)
+        # - top: diamond '⬥' per twenty-five (Ceramite)
         # Append a type breakdown in parentheses using in-universe names.
         try:
             studs_symbols = ""
@@ -7327,7 +7327,7 @@ async def tally_deeds(
                 plasteel_count = studs_count % 5
 
                 studs_symbols = (
-                    "◆" * ceramite_count + "●" * electrum_count + "○" * plasteel_count
+                    "⬥" * ceramite_count + "●" * electrum_count + "⚬" * plasteel_count
                 )
 
                 parts: list[str] = []
@@ -7344,9 +7344,9 @@ async def tally_deeds(
                 # an in-universe notification if there's a mismatch.
                 try:
                     dn = str(display_name or "")
-                    existing_cer = dn.count("◆")
+                    existing_cer = dn.count("⬥")
                     existing_elec = dn.count("●")
-                    existing_plas = dn.count("○")
+                    existing_plas = dn.count("⚬")
                     existing_total = (
                         existing_cer * 25 + existing_elec * 5 + existing_plas
                     )
@@ -7602,7 +7602,7 @@ async def tally_deeds(
         # symbols don't duplicate the computed studs in roster output.
         try:
             name_raw = str(display_name or getattr(target, "display_name", "Unknown"))
-            name_val = re.sub(r"[◆●○]+", "", name_raw).strip()
+            name_val = re.sub(r"[⬥●⚬]+", "", name_raw).strip()
             if not name_val:
                 name_val = name_raw
         except Exception:
@@ -14342,9 +14342,9 @@ async def promotion_queue(interaction: discord.Interaction):
 
             # Count currently displayed studs from nickname
             dn = str(member.nick or member.display_name or "")
-            displayed_cer = dn.count("◆")
+            displayed_cer = dn.count("⬥")
             displayed_elec = dn.count("●")
-            displayed_plas = dn.count("○")
+            displayed_plas = dn.count("⚬")
             displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
 
             # Check if they're owed studs (only show those who could earn more)
