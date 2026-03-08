@@ -3882,7 +3882,7 @@ SERVICE_STUDS_MILESTONE_TIER2: List[str] = [
 ]
 
 SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
-    "LEGENDARY SERVICE! Even the Armorium's oldest servitors pause to record this.",
+    "LEGENDARY SERVICE! Even the Apothecarion's eldest brothers pause to witness this.",
     "A ceramite stud! The highest honor the Watch can bestow!",
     "The Watch Fortress itself trembles at such monumental service!",
     "Legends walk among us—your marks proclaim it to all!",
@@ -4094,11 +4094,13 @@ def _blend_stud_flavor_by_rank(
 def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -> Tuple[str, str]:
     """Determine who receives stud marking and who witnesses. Returns (primary, secondary).
     
-    - Watch Master: The Watch itself bears witness; no apothecary needed
-    - Forgemaster/Techmarine: Administer own marks (Mechanicus tradition)
-    - High Command: Report to actual Watch Master person
-    - Company Command/Specialists: Report to their Company CO (Captain or Lieutenant)
-    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage), fallback to Apothecary
+    The Apothecarion always performs the actual stud implantation (surgical procedure).
+    This function determines who witnesses/authorizes based on chain of command:
+    - Watch Master: The Chief Apothecary personally attends
+    - High Command: The Chief Apothecary attends, Watch Master witnesses
+    - Company Command/Specialists: Report to their Company CO
+    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage)
+    - Line: Report to the Apothecarion
     
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
@@ -4116,35 +4118,60 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
             member_rank_name = rank
             break
     
-    # Watch Master: The Watch itself witnesses
+    # Watch Master: Chief Apothecary personally attends
     if member_rank_name == "Watch Master":
-        return "The Watch itself bears witness.", ""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
+        except Exception:
+            pass
+        return "The Chief Apothecary personally attends.", ""
     
-    # Forgemaster/Techmarine administer own marks (Mechanicus tradition)
-    if member_rank_name in ("Forgemaster", "Watch Techmarine"):
-        emoji = _get_rank_emoji(guild, member_rank_name)
-        emoji_prefix = f"{emoji} " if emoji else ""
-        clean_name = strip_studs(member.display_name)
-        return f"{emoji_prefix}**{clean_name}** self-administers this mark.", ""
-    
-    # Other High Command report to Watch Master (find actual person)
+    # High Command: Chief Apothecary attends, witnessed by Watch Master
     high_cmd = {
-        "High Chaplain", "Chief Apothecary", "Void Warden", "Lord Executioner"
+        "High Chaplain", "Chief Apothecary", "Void Warden", "Lord Executioner",
+        "Forgemaster", "Watch Techmarine"
     }
     if member_rank_name in high_cmd:
-        wm = _find_watch_master(guild)
-        if wm:
-            emoji = _get_rank_emoji(guild, "Watch Master")
-            emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(wm.display_name)
-            return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        return "Report to the Watch Master.", ""
+        # For High Command, Chief Apothecary performs the marking
+        # If they ARE the Chief Apothecary, another Apothecary handles it
+        if member_rank_name == "Chief Apothecary":
+            return "Another Apothecary of the Watch attends.", ""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
+        except Exception:
+            pass
+        return "Report to the Chief Apothecary.", ""
     
-    # Company Command and Specialists report to their company CO
+    # Company Command and Specialists: Apothecarion handles, CO witnesses
     company_cmd_and_spec = {
         "Watch Captain", "Watch Lieutenant", "Company Champion", 
-        "Watch Chaplain", "Watch Apothecary", "Watch Librarian"
+        "Watch Chaplain", "Watch Librarian"
     }
+    # Watch Apothecary is handled separately - they can't mark themselves
+    if member_rank_name == "Watch Apothecary":
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
+                    emoji_prefix = f"{emoji} " if emoji else ""
+                    clean_name = strip_studs(mbr.display_name)
+                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
+        except Exception:
+            pass
+        return "Report to the Chief Apothecary.", ""
     if member_rank_name in company_cmd_and_spec:
         company = _find_company_or_chapter(member)
         if company:
@@ -4322,16 +4349,18 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Calculate visual pip change (what actually gets added to nickname)
-    # Clamp prev_studs to 0 minimum to handle edge cases in preview
-    prev_studs = max(0, displayed_studs - new_studs)
+    # Calculate visual pip change (what pips change from BEFORE to AFTER)
+    # displayed_studs = what they had before, new_total = what they'll have after
+    prev_studs = max(0, displayed_studs)
+    curr_studs = new_total
+    
     prev_ceramite = prev_studs // 25
     prev_electrum = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
 
-    curr_ceramite = displayed_studs // 25
-    curr_electrum = (displayed_studs % 25) // 5
-    curr_plasteel = displayed_studs % 5
+    curr_ceramite = curr_studs // 25
+    curr_electrum = (curr_studs % 25) // 5
+    curr_plasteel = curr_studs % 5
 
     # Compute net change in each pip type
     delta_ceramite = curr_ceramite - prev_ceramite
