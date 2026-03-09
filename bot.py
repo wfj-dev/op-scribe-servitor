@@ -3805,7 +3805,7 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
 }
 
 # Venerations based on PIP TYPE earned (not total count)
-# Applied when earning plasteel (⚬), electrum (●), or ceramite (⬥) studs
+# Applied when earning plasteel (⚬), ceramite (●), or auramite (⬥) studs
 # Plasteel: frequent earns, larger pool to avoid repetition (~25 entries)
 SERVICE_STUDS_VENERATIONS_PLASTEEL: List[str] = [
     "Your service studs gleam with the promise of deeds yet to come.",
@@ -3835,8 +3835,8 @@ SERVICE_STUDS_VENERATIONS_PLASTEEL: List[str] = [
     "From years of vigilance, these studs are born.",
 ]
 
-# Electrum: less frequent earns, moderate pool (~15 entries)
-SERVICE_STUDS_VENERATIONS_ELECTRUM: List[str] = [
+# Ceramite: less frequent earns, moderate pool (~15 entries)
+SERVICE_STUDS_VENERATIONS_CERAMITE: List[str] = [
     "Your service studs proclaim a warrior whose experience shapes the Watch itself.",
     "Few bear such marks of enduring service—honor is yours by right.",
     "The weight of your studs reflects the weight of your deeds.",
@@ -3854,8 +3854,8 @@ SERVICE_STUDS_VENERATIONS_ELECTRUM: List[str] = [
     "The studs upon your brow have witnessed the fall of countless xenos.",
 ]
 
-# Ceramite: rare earns, small focused pool (~5 entries)
-SERVICE_STUDS_VENERATIONS_CERAMITE: List[str] = [
+# Auramite: rare earns, small focused pool (~5 entries)
+SERVICE_STUDS_VENERATIONS_AURAMITE: List[str] = [
     "Your service studs rival those of the Ancients themselves.",
     "The studs upon your brow are a saga written in silver and blood.",
     "Even the machine-spirits whisper reverence for one so marked by duty.",
@@ -3883,7 +3883,7 @@ SERVICE_STUDS_MILESTONE_TIER2: List[str] = [
 
 SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
     "LEGENDARY SERVICE! Even the Apothecarion's eldest brothers pause to witness this.",
-    "A ceramite stud! The highest honor the Watch can bestow!",
+    "An auramite stud! The highest honor the Watch can bestow!",
     "The Watch Fortress itself trembles at such monumental service!",
     "Legends walk among us—your marks proclaim it to all!",
     "The chronicles of Jericho inscribe this momentous milestone!",
@@ -3894,7 +3894,7 @@ SERVICE_STUDS_SPECIAL_MILESTONES: Dict[int, str] = {
     1: "**FIRST SERVICE STUD** — A warrior's journey begins!",
     5: "**FIFTH SERVICE STUD** — A proven veteran emerges!",
     10: "**TENTH SERVICE STUD** — A decade of unwavering duty!",
-    25: "**CERAMITE STUD EARNED** — Legendary status achieved!",
+    25: "**AURAMITE STUD EARNED** — Legendary status achieved!",
     50: "**FIFTY SERVICE STUDS** — A living saga of war!",
     75: "**SEVENTY-FIVE STUDS** — The Ancients themselves take note!",
     100: "**ONE HUNDRED STUDS** — A monument of duty made flesh!",
@@ -4026,7 +4026,7 @@ def _blend_stud_flavor_by_rank(
     - High Command Specialist: 20% chapter, 80% role
     - Watch Master: 10% chapter, 90% role
     
-    pip_type: "plasteel", "electrum", or "ceramite" for veneration fallback selection.
+    pip_type: "plasteel", "auramite", or "ceramite" for veneration fallback selection.
     Returns blended flavor text or falls back to pip-type-based veneration.
     """
     import random
@@ -4040,10 +4040,10 @@ def _blend_stud_flavor_by_rank(
     role_options = RANK_STUDS_COMMENTARY.get(member_rank_name, [])
     
     # Select veneration pool based on pip type
-    if pip_type == "ceramite":
+    if pip_type == "auramite":
+        veneration_pool = SERVICE_STUDS_VENERATIONS_AURAMITE
+    elif pip_type == "ceramite":
         veneration_pool = SERVICE_STUDS_VENERATIONS_CERAMITE
-    elif pip_type == "electrum":
-        veneration_pool = SERVICE_STUDS_VENERATIONS_ELECTRUM
     else:  # plasteel or unknown
         veneration_pool = SERVICE_STUDS_VENERATIONS_PLASTEEL
     
@@ -4295,11 +4295,11 @@ def _get_service_studs_announcement(
     )
 
     # Compute stud pips display: ⬥=25, ●=5, ⚬=1 (based on new total already calculated above)
-    ceramite = new_total // 25
+    auramite = new_total // 25
     remainder = new_total % 25
-    electrum = remainder // 5
+    ceramite = remainder // 5
     plasteel = remainder % 5
-    studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
+    studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
     if not studs_pips:
         studs_pips = "—"  # No studs displayed yet
 
@@ -4354,29 +4354,29 @@ def _get_service_studs_announcement(
     prev_studs = max(0, displayed_studs)
     curr_studs = new_total
     
-    prev_ceramite = prev_studs // 25
-    prev_electrum = (prev_studs % 25) // 5
+    prev_auramite = prev_studs // 25
+    prev_ceramite = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
 
-    curr_ceramite = curr_studs // 25
-    curr_electrum = (curr_studs % 25) // 5
+    curr_auramite = curr_studs // 25
+    curr_ceramite = (curr_studs % 25) // 5
     curr_plasteel = curr_studs % 5
 
     # Compute net change in each pip type
+    delta_auramite = curr_auramite - prev_auramite
     delta_ceramite = curr_ceramite - prev_ceramite
-    delta_electrum = curr_electrum - prev_electrum
     delta_plasteel = curr_plasteel - prev_plasteel
 
     # Build visual pip change string showing what was gained
     # Show the highest tier pip that increased (the "upgrade")
     # If multiple pip types changed, show all positive deltas
     pip_changes = []
+    if delta_auramite > 0:
+        pip_word = "Stud" if delta_auramite == 1 else "Studs"
+        pip_changes.append(f"+{delta_auramite}⬥ Auramite {pip_word}")
     if delta_ceramite > 0:
         pip_word = "Stud" if delta_ceramite == 1 else "Studs"
-        pip_changes.append(f"+{delta_ceramite}⬥ Ceramite {pip_word}")
-    if delta_electrum > 0:
-        pip_word = "Stud" if delta_electrum == 1 else "Studs"
-        pip_changes.append(f"+{delta_electrum}● Electrum {pip_word}")
+        pip_changes.append(f"+{delta_ceramite}● Ceramite {pip_word}")
     if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
         pip_changes.append(f"+{delta_plasteel}⚬ Plasteel {pip_word}")
@@ -4406,11 +4406,11 @@ def _get_service_studs_announcement(
     else:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
     
-    # Determine which pip type is being earned (priority: ceramite > electrum > plasteel)
-    if delta_ceramite > 0:
+    # Determine which pip type is being earned (priority: auramite > ceramite > plasteel)
+    if delta_auramite > 0:
+        pip_type = "auramite"
+    elif delta_ceramite > 0:
         pip_type = "ceramite"
-    elif delta_electrum > 0:
-        pip_type = "electrum"
     else:
         pip_type = "plasteel"
     
@@ -4472,11 +4472,11 @@ def _get_oathsworn_announcement(
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
 
     # Compute stud pips display
-    ceramite = earned_studs // 25
+    auramite = earned_studs // 25
     remainder = earned_studs % 25
-    electrum = remainder // 5
+    ceramite = remainder // 5
     plasteel = remainder % 5
-    studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
+    studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
     if not studs_pips:
         studs_pips = "—"
 
@@ -4625,8 +4625,8 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
     Maps count ranges to pip types:
     - 0: No veneration (newly promoted)
     - 1-4: Plasteel (newly earned)
-    - 5-24: Electrum (experienced warrior)
-    - 25+: Ceramite (legendary)
+    - 5-24: Ceramite (experienced warrior)
+    - 25+: Auramite (legendary)
     """
     import random
 
@@ -4635,9 +4635,9 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
     elif studs_count <= 4:
         return random.choice(SERVICE_STUDS_VENERATIONS_PLASTEEL)
     elif studs_count <= 24:
-        return random.choice(SERVICE_STUDS_VENERATIONS_ELECTRUM)
-    else:
         return random.choice(SERVICE_STUDS_VENERATIONS_CERAMITE)
+    else:
+        return random.choice(SERVICE_STUDS_VENERATIONS_AURAMITE)
 
 
 def _get_bearer_rank_and_title(
@@ -5141,11 +5141,11 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
         # Tiered stud display: ⬥=25, ●=5, ⚬=1
-        ceramite = bearer_studs // 25
+        auramite = bearer_studs // 25
         remainder = bearer_studs % 25
-        electrum = remainder // 5
+        ceramite = remainder // 5
         plasteel = remainder % 5
-        studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
+        studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
         lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
@@ -5248,11 +5248,11 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
         # Tiered stud display: ⬥=25, ●=5, ⚬=1
-        ceramite = bearer_studs // 25
+        auramite = bearer_studs // 25
         remainder = bearer_studs % 25
-        electrum = remainder // 5
+        ceramite = remainder // 5
         plasteel = remainder % 5
-        studs_pips = "⬥" * ceramite + "●" * electrum + "⚬" * plasteel
+        studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -7313,28 +7313,28 @@ async def tally_deeds(
 
         # Build display string using three-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
-        # - mid: filled circle '●' per five (Electrum)
-        # - top: diamond '⬥' per twenty-five (Ceramite)
+        # - mid: filled circle '●' per five (Ceramite)
+        # - top: diamond '⬥' per twenty-five (Auramite)
         # Append a type breakdown in parentheses using in-universe names.
         try:
             studs_symbols = ""
             if not studs_count:
                 studs_display = "— (0 Plasteel)"
             else:
-                # Breakdown into Ceramite (25), Electrum (5), Plasteel (1)
-                ceramite_count = studs_count // 25
-                electrum_count = (studs_count % 25) // 5
+                # Breakdown into Auramite (25), Ceramite (5), Plasteel (1)
+                auramite_count = studs_count // 25
+                ceramite_count = (studs_count % 25) // 5
                 plasteel_count = studs_count % 5
 
                 studs_symbols = (
-                    "⬥" * ceramite_count + "●" * electrum_count + "⚬" * plasteel_count
+                    "⬥" * auramite_count + "●" * ceramite_count + "⚬" * plasteel_count
                 )
 
                 parts: list[str] = []
+                if auramite_count:
+                    parts.append(f"{auramite_count} Auramite")
                 if ceramite_count:
                     parts.append(f"{ceramite_count} Ceramite")
-                if electrum_count:
-                    parts.append(f"{electrum_count} Electrum")
                 if plasteel_count:
                     parts.append(f"{plasteel_count} Plasteel")
                 types_str = ", ".join(parts) if parts else "0 Plasteel"
