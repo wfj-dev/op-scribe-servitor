@@ -6544,7 +6544,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     name="cache_stats", description="Show DataStore cache and flush stats (admin only)"
 )
 async def cache_stats(interaction: discord.Interaction):
-    if not check_command_permission(interaction.user, "cache_stats"):
+    if not (
+        check_command_permission(interaction.user, "cache_stats")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     stats = DATASTORE.get_cache_stats()
@@ -13134,7 +13137,10 @@ async def _before_honours_runner():
     description="Preview monthly honours (Forgemaster only)",
 )
 async def preview_honours(interaction: discord.Interaction):
-    if not check_command_permission(interaction.user, "preview_honours"):
+    if not (
+        check_command_permission(interaction.user, "preview_honours")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
     # Try to defer; if the interaction is already unknown/expired, fall back
@@ -13294,7 +13300,10 @@ async def publish_honours(
     This command allows Forgemasters to manually trigger a monthly honours post,
     useful when the automatic post fails or needs to be re-posted.
     """
-    if not check_command_permission(interaction.user, "publish_honours"):
+    if not (
+        check_command_permission(interaction.user, "publish_honours")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
 
