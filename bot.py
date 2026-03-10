@@ -711,27 +711,6 @@ def _load_activity_status_last_check() -> Optional[datetime]:
     return None
 
 
-def _save_activity_status_last_check(check_time: datetime):
-    """Save the timestamp of the last activity status check."""
-    try:
-        tmp_path = ACTIVITY_STATUS_LAST_CHECK_PATH + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump({"last_check_time": check_time.isoformat()}, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        if os.path.exists(ACTIVITY_STATUS_LAST_CHECK_PATH):
-            try:
-                os.replace(
-                    ACTIVITY_STATUS_LAST_CHECK_PATH,
-                    ACTIVITY_STATUS_LAST_CHECK_PATH + ".bak",
-                )
-            except Exception:
-                pass
-        os.replace(tmp_path, ACTIVITY_STATUS_LAST_CHECK_PATH)
-    except Exception as e:
-        logger.debug(f"Failed to save activity status last check: {e}")
-
-
 def _save_activity_status(status_map: Dict[str, Dict]):
     """Persist activity status mapping to disk with backup.
 
@@ -1237,9 +1216,6 @@ async def _check_activity_status_changes():
                     new_status_map[uid] = status
 
             # Save updated data
-            # Note: _save_member_last_post_times already saves last_check_time,
-            # so we don't call _save_activity_status_last_check separately
-            # (that would overwrite and destroy member_last_posts data)
             _save_activity_status(new_status_map)
             _save_member_last_post_times(member_last_posts)
 
@@ -1324,12 +1300,15 @@ async def _check_promotion_milestones():
             try:
                 oathsworn_channel = await bot.fetch_channel(OATHSWORN_CHANNEL_ID)
             except Exception:
-                logger.warning(
-                    f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found"
-                )
+                logger.warning(f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found")
                 oathsworn_channel = None
 
-        if not veteran_channel and not studs_channel and not black_laurels_channel and not oathsworn_channel:
+        if (
+            not veteran_channel
+            and not studs_channel
+            and not black_laurels_channel
+            and not oathsworn_channel
+        ):
             logger.warning("No promotion channels available")
             return
 
@@ -1340,7 +1319,9 @@ async def _check_promotion_milestones():
         # Get Watch Captain/Lieutenant roles for mentions
         watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
         watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-        captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+        captain_mention = (
+            watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+        )
         lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
         watch_command_mention = f"{captain_mention} / {lt_mention}"
 
@@ -1371,17 +1352,29 @@ async def _check_promotion_milestones():
         )
 
         # Get award roles
-        ardent_raider_role = discord.utils.get(guild.roles, name=ARDENT_RAIDER_ROLE_NAME)
+        ardent_raider_role = discord.utils.get(
+            guild.roles, name=ARDENT_RAIDER_ROLE_NAME
+        )
         ardent_raider_mention = (
-            ardent_raider_role.mention if ardent_raider_role else f"@{ARDENT_RAIDER_ROLE_NAME}"
+            ardent_raider_role.mention
+            if ardent_raider_role
+            else f"@{ARDENT_RAIDER_ROLE_NAME}"
         )
-        for_the_fallen_role = discord.utils.get(guild.roles, name=FOR_THE_FALLEN_ROLE_NAME)
+        for_the_fallen_role = discord.utils.get(
+            guild.roles, name=FOR_THE_FALLEN_ROLE_NAME
+        )
         for_the_fallen_mention = (
-            for_the_fallen_role.mention if for_the_fallen_role else f"@{FOR_THE_FALLEN_ROLE_NAME}"
+            for_the_fallen_role.mention
+            if for_the_fallen_role
+            else f"@{FOR_THE_FALLEN_ROLE_NAME}"
         )
-        crimson_laurels_role = discord.utils.get(guild.roles, name=CRIMSON_LAURELS_ROLE_NAME)
+        crimson_laurels_role = discord.utils.get(
+            guild.roles, name=CRIMSON_LAURELS_ROLE_NAME
+        )
         crimson_laurels_mention = (
-            crimson_laurels_role.mention if crimson_laurels_role else f"@{CRIMSON_LAURELS_ROLE_NAME}"
+            crimson_laurels_role.mention
+            if crimson_laurels_role
+            else f"@{CRIMSON_LAURELS_ROLE_NAME}"
         )
 
         # Build a map of user_id -> set of completed Black Laurels missions
@@ -1630,7 +1623,9 @@ async def _check_promotion_milestones():
                 # Check Ardent Raider eligibility (200 armory points)
                 if black_laurels_channel:
                     armory_points = int(stats.get("armory_points", 0) or 0)
-                    is_ar_eligible = armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
+                    is_ar_eligible = (
+                        armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
+                    )
                     has_ar_role = (
                         ardent_raider_role and ardent_raider_role in member.roles
                     )
@@ -1660,7 +1655,9 @@ async def _check_promotion_milestones():
                 # Check For the Fallen eligibility (150 geneseed points)
                 if black_laurels_channel:
                     gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
-                    is_ftf_eligible = gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
+                    is_ftf_eligible = (
+                        gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
+                    )
                     has_ftf_role = (
                         for_the_fallen_role and for_the_fallen_role in member.roles
                     )
@@ -1758,7 +1755,9 @@ async def _check_promotion_milestones():
                         is_oathsworn_eligible = oathsworn_earned_studs >= 3
 
                         # Check they don't already have Oathsworn role
-                        oathsworn_role = discord.utils.get(guild.roles, name="Oathsworn")
+                        oathsworn_role = discord.utils.get(
+                            guild.roles, name="Oathsworn"
+                        )
                         has_oathsworn_role = (
                             oathsworn_role and oathsworn_role in member.roles
                         )
@@ -2220,18 +2219,42 @@ def is_sergeant_or_higher(user: discord.User | discord.Member):
 
 # Battle line ranks (linear progression)
 BATTLE_LINE_TRACK = {
-    "Watch Brother": {"Watch Brother", "Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
-    "Watch Veteran": {"Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Watch Brother": {
+        "Watch Brother",
+        "Watch Veteran",
+        "Oathsworn",
+        "Watch Sergeant",
+        "Watch Lieutenant",
+        "Watch Captain",
+    },
+    "Watch Veteran": {
+        "Watch Veteran",
+        "Oathsworn",
+        "Watch Sergeant",
+        "Watch Lieutenant",
+        "Watch Captain",
+    },
     "Oathsworn": {"Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
     "Watch Sergeant": {"Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
     "Watch Lieutenant": {"Watch Lieutenant", "Watch Captain"},
     "Watch Captain": {"Watch Captain"},
 }
-BATTLE_LINE_RANKS = {"Watch Brother", "Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"}
+BATTLE_LINE_RANKS = {
+    "Watch Brother",
+    "Watch Veteran",
+    "Oathsworn",
+    "Watch Sergeant",
+    "Watch Lieutenant",
+    "Watch Captain",
+}
 
 # Champion track (linear progression)
 CHAMPION_TRACK = {
-    "Kill Team Champion": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
+    "Kill Team Champion": {
+        "Kill Team Champion",
+        "Company Champion",
+        "Lord Executioner",
+    },
     "Company Champion": {"Company Champion", "Lord Executioner"},
     "Lord Executioner": {"Lord Executioner"},
 }
@@ -2251,54 +2274,72 @@ SPECIALIST_TRACKS = {
 SPECIALIST_RANKS = set(SPECIALIST_TRACKS.keys())
 
 # High Command (senior specialists + Watch Master)
-HIGH_COMMAND_RANKS = {"High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster", "Watch Master"}
+HIGH_COMMAND_RANKS = {
+    "High Chaplain",
+    "Chief Apothecary",
+    "Void Warden",
+    "Forgemaster",
+    "Watch Master",
+}
 
 # Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
 # This is a convenience group for "everyone who isn't a line brother"
 WATCH_COMMAND_ROLES = {
     # Battle Line (Sergeant+)
-    "Watch Sergeant", "Watch Lieutenant", "Watch Captain",
+    "Watch Sergeant",
+    "Watch Lieutenant",
+    "Watch Captain",
     # Champion track (all)
-    "Company Champion", "Lord Executioner",
+    "Company Champion",
+    "Lord Executioner",
     # Specialist track (all)
-    "Watch Chaplain", "Watch Apothecary", "Watch Librarian", "Watch Techmarine",
+    "Watch Chaplain",
+    "Watch Apothecary",
+    "Watch Librarian",
+    "Watch Techmarine",
     # High Command
-    "High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster", "Watch Master",
+    "High Chaplain",
+    "Chief Apothecary",
+    "Void Warden",
+    "Forgemaster",
+    "Watch Master",
 }
 
 
 def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
     """Check if user meets a min_rank requirement based on track logic.
-    
+
     - Battle Line: linear hierarchy (Sergeant+ means Sergeant, Lt, Captain)
     - Champion: KT Champion → Company Champion → Lord Executioner
     - Specialist: each of the 4 sub-tracks leads to its High Command role
-    
+
     Watch Master always qualifies for everything.
     """
     # Watch Master always has access
     if "Watch Master" in user_roles:
         return True
-    
+
     # Check specialist tracks (4 independent sub-tracks)
     if min_rank in SPECIALIST_TRACKS:
         allowed_roles = SPECIALIST_TRACKS[min_rank]
         return bool(user_roles & allowed_roles)
-    
+
     # Check champion track
     if min_rank in CHAMPION_TRACK:
         allowed_roles = CHAMPION_TRACK[min_rank]
         return bool(user_roles & allowed_roles)
-    
+
     # Check battle line track
     if min_rank in BATTLE_LINE_TRACK:
         allowed_roles = BATTLE_LINE_TRACK[min_rank]
         return bool(user_roles & allowed_roles)
-    
+
     return False
 
 
-def check_command_permission(user: discord.User | discord.Member, command_name: str) -> bool:
+def check_command_permission(
+    user: discord.User | discord.Member, command_name: str
+) -> bool:
     """Unified permission check for all commands.
 
     Reads from CONFIG["permissions"][command_name] which can have:
@@ -2309,13 +2350,13 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
 
     Admin users (from CONFIG["admin_user_ids"]) always have access.
     If no config entry exists, defaults based on command name pattern.
-    
+
     Three tracks:
       - Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
                      → Watch Lieutenant → Watch Captain
       - Champion: Kill Team Champion → Company Champion → Lord Executioner
       - Specialist (4 sub-tracks): Techmarine→Forgemaster, Librarian→Void Warden, etc.
-    
+
     Each track is independent. Watch Master has access to everything.
     """
     # Admin override: always grant
@@ -2357,12 +2398,16 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     # Default fallbacks for unconfigured commands (based on command name patterns)
     # Admin-level commands default to Watch Master + Forgemaster
     admin_commands = {
-        "reconcile_records", "sanctify_battle_records", "audit_archive_discrepancies",
-        "reparse_records", "preview_honours", "publish_honours", "roster_audit"
+        "reconcile_records",
+        "sanctify_battle_records",
+        "audit_archive_discrepancies",
+        "reparse_records",
+        "preview_honours",
+        "publish_honours",
+        "roster_audit",
     }
     if command_name in admin_commands:
         return any(r in user_roles for r in ("Watch Master", "Forgemaster"))
-
 
     # Most other commands default to Watch Sergeant or higher
     return is_sergeant_or_higher(user)
@@ -2903,7 +2948,10 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
 )
 async def litany_of_function(interaction: discord.Interaction):
-    if not (check_command_permission(interaction.user, "litany_of_function") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "litany_of_function")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     lines = [
@@ -3245,7 +3293,10 @@ async def _select_home_chapters_for_month(
     description="Show selected home chapters for this month and next (plans ahead).",
 )
 async def pick_home_chapters(interaction: discord.Interaction):
-    if not (check_command_permission(interaction.user, "pick_home_chapters") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "pick_home_chapters")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Compute current and next month keys and selections
@@ -3404,211 +3455,6 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Watch Veteran": "Honored Veteran",
     "Watch Brother": "Brother",
 }
-
-# Arming Chamber / Forge facility locations for ceremony grounding
-ARMING_CHAMBERS: List[str] = [
-    "the Arming Vaults of Jericho's inner sanctum",
-    "the Forge Chambers beneath Watch Fortress Jericho",
-    "the Upper Arming Galleries of the Fortress",
-    "the Machine-spirit Sanctum of the Deep Armory",
-    "the Blessed Forges where machine-spirit and warrior unite",
-    "the Sacred Arming Vaults that guard the Chapter's strength",
-    "the Ceremonial Forges of Watch Fortress Jericho",
-    "the Cogitator-blessed Arming Halls",
-]
-
-# Chapter-specific weapon/wargear blessings keyed by home chapter
-CHAPTER_WARGEAR_BLESSINGS: Dict[str, List[str]] = {
-    "Angels of Vengeance": [
-        "Your bolter speaks with the Lion's wrath; let none escape your purpose.",
-        "Blade and gun combined—the tools of the Unforgiven are now sworn to your hand.",
-        "Your arms are sanctified by the Dark Angels' unspoken oath.",
-    ],
-    "Black Templars": [
-        "Your chainsword sings the Emperor's litany; the Eternal Crusade continues through your wrath.",
-        "Blessed blade and bolter—weapons of the Eternal Crusade pass to you.",
-        "Your wargear embodies the Crusade eternal; let none stand against it.",
-    ],
-    "Blood Angels": [
-        "Your weapons are tempered by the blood of Sanguinius; channels of nobility and fury.",
-        "Chainsword and storm weapon alike are blessed by the Golden Throne.",
-        "Your arsenal flows with the very blood of angels—wield it with honor.",
-    ],
-    "Blood Ravens": [
-        "Your wargear is catalogued in the Librarius; knowledge encoded in every seal.",
-        "Seek knowledge through your arms; let curiosity guide your blade.",
-        "Your weapons bear the runes of accumulated wisdom—use them well.",
-    ],
-    "Carcharodons": [
-        "Your arms smell of the void; let them taste the xenoform's fear.",
-        "Blessed by the deep places—your weapons hunt without mercy.",
-        "Your wargear is silent and lethal, as the predator strikes.",
-    ],
-    "Cowled Wardens": [
-        "Your weapons hunt the Fallen; the Lion's vengeance flows through them.",
-        "In secret service your arms serve; the hunt eternal continues.",
-        "Your wargear is bound to pursuit—leave none of the Fallen to rest.",
-    ],
-    "Crimson Fists": [
-        "Your weapons are the fist of Dorn reforged; strike with righteous fury.",
-        "Tempered in Rynn's ashes, your arms honor the fallen and inspire the living.",
-        "Your blade and gun stand defiant—symbols of survival and vengeance.",
-    ],
-    "Dark Angels": [
-        "Your weapons hold secrets; the mysteries of the Dark Angels flow through them.",
-        "First and Finest—your arms uphold the Inner Circle's hidden oath.",
-        "The Lion's judgment is rendered through your blessed wargear.",
-    ],
-    "Dark Krakens": [
-        "From the abyss your weapons emerge, black-blessed and terrible.",
-        "Your arms crash like waves upon foes; irresistible and deep.",
-        "In crushing depths your wargear finds purpose; wield it with authority.",
-    ],
-    "Death Spectres": [
-        "Your weapons haunt the enemy; spirits of the fallen ride your strikes.",
-        "Between life and death your arms move; a shroud of judgment.",
-        "Your wargear touches the veil—death rides its every swing.",
-    ],
-    "Exorcists": [
-        "Your weapons are warded against the Warp itself; thrice-blessed and pure.",
-        "No daemonic taint can touch arms so sanctified; purification flows through them.",
-        "Your wargear stands inviolate against the powers of corruption.",
-    ],
-    "Flesh Tearers": [
-        "Your weapons channel the Red Thirst into controlled fury; discipline and wrath merged.",
-        "The blood-rage is tempered in your arms; channeled for victory.",
-        "Your wargear howls with purpose; fury bound to righteous purpose.",
-    ],
-    "Genesis Chapter": [
-        "Your arms uphold Guilliman's ideals; precision and strength united.",
-        "Blessed by the Codex Perfectus, your weapons embody tactical perfection.",
-        "Your wargear stands as a testament to Primarch-mandated excellence.",
-    ],
-    "Hawk Lords": [
-        "Your weapons strike like the raptor; swift and unerring.",
-        "Your arms cut through sky and foe alike; blessed by the hunt.",
-        "Swift talons of war—your wargear knows no hesitation.",
-    ],
-    "Imperial Fists": [
-        "Your arms are unyielding as the walls of Terra; fortress-blessed.",
-        "Stone and steel—your weapons embody Dorn's fortitude made manifest.",
-        "Your wargear stands as immovable as the Praetorian himself.",
-    ],
-    "Iron Hands": [
-        "Your weapons are extensions of the machine; perfected and logical.",
-        "Flesh is weak, but your blessed arms are steel eternal.",
-        "Your wargear computes the perfect strike; machine-spirit guides every blow.",
-    ],
-    "Iron Hounds": [
-        "Your arms are relentless as the hunt; pursuits without end.",
-        "Your wargear knows only victory or dust; there is no quarter here.",
-        "Machine-blessed and duty-bound—your weapons will not fail.",
-    ],
-    "Knights of the Raven": [
-        "Your weapons move in cunning shadows; stealth and precision woven through them.",
-        "Blessed in darkness, your arms strike judgment unseen.",
-        "Your wargear is the Raven's blade; silent, certain, and lethal.",
-    ],
-    "Lamenters": [
-        "Though cursed, your weapons shine bright—defiance against the doom.",
-        "Your arms carry the hope of the damned; steel against fate itself.",
-        "For those we cherish—your wargear is sanctified by love, not curses.",
-    ],
-    "Mentors": [
-        "Your weapons encode tactical precision; every lesson refined into steel.",
-        "Your arms teach through example; blessed with strategic perfection.",
-        "Your wargear demonstrates the lesson anew—precision in all things.",
-    ],
-    "Minotaurs": [
-        "Your weapons are the bull's charge made metal; unstoppable wrath.",
-        "Your arms bellow with the fury of the enclosure; bronze-blessed and terrible.",
-        "Your wargear crushes all in its path; the Minotaur's own strength flows through it.",
-    ],
-    "Raptors": [
-        "Your weapons strike unseen and fade like smoke; pragmatism incarnate.",
-        "Your arms wear the mantle of the predator; silent and deadly.",
-        "Your wargear knows that survival is the only victory that matters.",
-    ],
-    "Raven Guard": [
-        "Your weapons move through shadow as Corax moves through stars.",
-        "Your arms strike from darkness; blessed by the Raven's patience.",
-        "Your wargear bows to no foe; only the Emperor's justice flows through it.",
-    ],
-    "Red Scorpions": [
-        "Your weapons meet the Apothecary's exacting standards; purity absolute.",
-        "Your arms shine with gene-seed integrity; pure lines made manifest.",
-        "Your wargear represents perfection—a standard unto itself.",
-    ],
-    "Red Templars": [
-        "Your weapons are Dorn's fury given swiftness; a primal charge.",
-        "Speed and devastation—your arms are the Praetorian's momentum incarnate.",
-        "Your wargear is the swift hammer-blow that ends all argument.",
-    ],
-    "Salamanders": [
-        "Your weapons are forged in sacred flame; tested and purified.",
-        "Vulkan's blessing flows through your arms; fire tempered, humanity preserved.",
-        "Your wargear shields the innocent—tempered by your Chapter's greatest truth.",
-    ],
-    "Scythes of the Emperor": [
-        "Your weapons harvest in memory of Sotha; the reapers never rest.",
-        "Your arms carry the defiance of near-extinction; impossible duty made real.",
-        "Your wargear sings the songs of vengeance—the Great Devourer shall pay.",
-    ],
-    "Sons of Medusa": [
-        "Your weapons are logical calculations made into devastating force.",
-        "Logic and steel—your arms represent Medusa's uncompromising truth.",
-        "Your wargear is coded with perfection; every movement a formula for victory.",
-    ],
-    "Space Wolves": [
-        "Your weapons howl like the wolves of Fenris; blessed by the Fang itself.",
-        "Your arms are sagas written in blood and blessed fire; let skalds sing of their deeds!",
-        "Your wargear is the bite of the great wolf—none escape its hunger.",
-    ],
-    "Storm Giants": [
-        "Your weapons tower over foes; the reach and might of giants.",
-        "Your arms are the colossus born anew; strength made manifest.",
-        "Your wargear is the crushing force of the titan; blessed and terrible.",
-    ],
-    "The Drakes": [
-        "Your weapons emerge from flame purified and renewed.",
-        "Your arms burn with fire-blessed purpose; dragons' breath flows through them.",
-        "Your wargear is the dragon's claw made manifest; fire and fury combined.",
-    ],
-    "Ultramarines": [
-        "Your weapons are the Codex Astartes reflected in steel and ceramite.",
-        "Your arms embody Guilliman's wisdom; tactical enlightenment made manifest.",
-        "Your wargear is Macragge's finest—perfected through ten thousand campaigns.",
-    ],
-    "White Scars": [
-        "Your weapons are the wind's voice; swift strikes that leave naught but echoes.",
-        "Your arms are the Scars' blur; blessed with Chogoris's endless momentum.",
-        "Your wargear moves like the Khan's own—never hesitating, never slowing.",
-    ],
-    "Black Shield": [
-        "Your weapons carry no lineage—only purpose and duty eternal.",
-        "Your arms serve only the Long Watch; your past is forgotten in their kiss.",
-        "Your wargear is the Chapter's truth—that some battles matter more than names.",
-    ],
-}
-
-# Forgemaster vs Company Techmarine Affirmations (role-dependent)
-FORGEMASTER_AFFIRMATIONS: List[str] = [
-    "By the Omnissiah's will and the authority vested in this Forgemaster, I seal this sacred bond.",
-    "The highest rites are now complete; let no force of the Warp nor sword of the foe break this union.",
-    "I have spoken the Words of Unbinding and Binding; the machine-spirit is now yours to command.",
-    "Before the ancient machines of Jericho and by the power of sacred rites, this work stands eternal.",
-    "The Forgemaster's personal blessing descends—rare honor for one who walks beneath the Fortress.",
-    "Through the most exalted rites known to the Omnissiah, this armor finds its perfect bearer.",
-]
-
-COMPANY_TECHMARINE_AFFIRMATIONS: List[str] = [
-    "The rites are complete. This work is sanctified. Go forth and serve the Emperor.",
-    "The machine-spirit is satisfied; your duty now begins, warrior.",
-    "Blessed and ready—let your armor prove its worth in the Long Watch.",
-    "By the teachings of the Omnissiah and the duty placed upon my shoulders, this is done.",
-    "The work is finished. The machine-spirit answers. Wear it with honor.",
-    "Efficient and faithful—your armor stands ready for the wars ahead.",
-]
 
 # Techmarine's recognition of bearer's experience/studs (tier-based)
 TECHMARINE_STUDS_ACKNOWLEDGMENT: Dict[int, List[str]] = {
@@ -4073,6 +3919,7 @@ OATHSWORN_PROCLAMATIONS: List[str] = [
     "Steadfast service and proven valor have brought them to this threshold of honor.",
 ]
 
+
 def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
     """Lookup a custom emoji by name from the guild.
 
@@ -4114,9 +3961,9 @@ def _get_rank_emoji(guild: discord.Guild, rank_name: str) -> str:
 
 def _get_rank_category_for_blend(rank_name: str) -> str:
     """Categorize rank for stud flavor blending.
-    
+
     Returns one of: 'watchers', 'high_cmd_specialist', 'company_cmd', 'specialist', 'line'
-    
+
     - watchers: Watch Master (100% role, 0% chapter)
     - high_cmd_specialist: Chaplain, Apothecary, Librarian, Techmarine at High Command level
     - company_cmd: Captains, Lieutenants, Champions at company level
@@ -4125,24 +3972,26 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     """
     if rank_name == "Watch Master":
         return "watchers"
-    
+
     high_cmd_roles = {
-        "High Chaplain", "Chief Apothecary", "Watch Librarian",
-        "Watch Techmarine", "Forgemaster", "Void Warden"
+        "High Chaplain",
+        "Chief Apothecary",
+        "Watch Librarian",
+        "Watch Techmarine",
+        "Forgemaster",
+        "Void Warden",
     }
     if rank_name in high_cmd_roles:
         return "high_cmd_specialist"
-    
+
     company_cmd_roles = {"Watch Captain", "Watch Lieutenant", "Company Champion"}
     if rank_name in company_cmd_roles:
         return "company_cmd"
-    
-    specialist_roles = {
-        "Watch Chaplain", "Watch Apothecary"
-    }
+
+    specialist_roles = {"Watch Chaplain", "Watch Apothecary"}
     if rank_name in specialist_roles:
         return "specialist"
-    
+
     return "line"
 
 
@@ -4150,26 +3999,26 @@ def _blend_stud_flavor_by_rank(
     member_chapter: str, member_rank_name: str, pip_type: str
 ) -> str:
     """Blend chapter identity and role identity based on rank hierarchy.
-    
+
     - Line (KB/Oathsworn/KT members): 80% chapter, 20% role
     - Specialist (Watch Chaplain/Apothecary): 50% chapter, 50% role
     - Company Command: 50% chapter, 50% role
     - High Command Specialist: 20% chapter, 80% role
     - Watch Master: 10% chapter, 90% role
-    
+
     pip_type: "plasteel", "auramite", or "ceramite" for veneration fallback selection.
     Returns blended flavor text or falls back to pip-type-based veneration.
     """
     import random
-    
+
     category = _get_rank_category_for_blend(member_rank_name)
-    
+
     # Get chapter flavor (3 options per chapter)
     chapter_options = CHAPTER_STUDS_FLAVOR.get(member_chapter, [])
-    
+
     # Get role-specific commentary (if available)
     role_options = RANK_STUDS_COMMENTARY.get(member_rank_name, [])
-    
+
     # Select veneration pool based on pip type
     if pip_type == "auramite":
         veneration_pool = SERVICE_STUDS_VENERATIONS_AURAMITE
@@ -4177,7 +4026,7 @@ def _blend_stud_flavor_by_rank(
         veneration_pool = SERVICE_STUDS_VENERATIONS_CERAMITE
     else:  # plasteel or unknown
         veneration_pool = SERVICE_STUDS_VENERATIONS_PLASTEEL
-    
+
     # Blend based on category
     if category == "watchers":
         # 90% role, 10% chapter
@@ -4188,7 +4037,7 @@ def _blend_stud_flavor_by_rank(
             return random.choice(chapter_options)
         # Fallback to pip-type veneration
         return random.choice(veneration_pool)
-    
+
     elif category == "high_cmd_specialist":
         # 80% role, 20% chapter
         if random.random() < 0.8:
@@ -4197,7 +4046,7 @@ def _blend_stud_flavor_by_rank(
         if chapter_options:
             return random.choice(chapter_options)
         return random.choice(veneration_pool)
-    
+
     elif category == "company_cmd" or category == "specialist":
         # 50% chapter, 50% role
         if random.random() < 0.5:
@@ -4211,7 +4060,7 @@ def _blend_stud_flavor_by_rank(
             if chapter_options:
                 return random.choice(chapter_options)
         return random.choice(veneration_pool)
-    
+
     else:  # line (default: KB, Oathsworn, KT members)
         # 80% chapter, 20% role
         if random.random() < 0.8:
@@ -4222,9 +4071,11 @@ def _blend_stud_flavor_by_rank(
         return random.choice(veneration_pool)
 
 
-def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -> Tuple[str, str]:
+def _get_stud_marking_recipients(
+    member: discord.Member, guild: discord.Guild
+) -> Tuple[str, str]:
     """Determine who receives stud marking and who witnesses. Returns (primary, secondary).
-    
+
     The Apothecarion always performs the actual stud implantation (surgical procedure).
     This function determines who witnesses/authorizes based on chain of command:
     - Watch Master: The Chief Apothecary personally attends
@@ -4232,23 +4083,24 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
     - Company Command/Specialists: Report to their Company CO
     - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage)
     - Line: Report to the Apothecarion
-    
+
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
+
     def strip_studs(name: str) -> str:
         """Remove service studs (⬥●⚬) from a name."""
         return name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
-    
+
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
-    
+
     # Determine highest rank
     member_rank_name = "Watch Brother"
     for rank in RANK_ROLES_PRIORITY:
         if rank in role_names:
             member_rank_name = rank
             break
-    
+
     # Watch Master: Chief Apothecary personally attends
     if member_rank_name == "Watch Master":
         try:
@@ -4262,11 +4114,15 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
         except Exception:
             pass
         return "The Chief Apothecary personally attends.", ""
-    
+
     # High Command: Chief Apothecary attends, witnessed by Watch Master
     high_cmd = {
-        "High Chaplain", "Chief Apothecary", "Void Warden", "Lord Executioner",
-        "Forgemaster", "Watch Techmarine"
+        "High Chaplain",
+        "Chief Apothecary",
+        "Void Warden",
+        "Lord Executioner",
+        "Forgemaster",
+        "Watch Techmarine",
     }
     if member_rank_name in high_cmd:
         # For High Command, Chief Apothecary performs the marking
@@ -4284,11 +4140,14 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
         except Exception:
             pass
         return "Report to the Chief Apothecary.", ""
-    
+
     # Company Command and Specialists: Apothecarion handles, CO witnesses
     company_cmd_and_spec = {
-        "Watch Captain", "Watch Lieutenant", "Company Champion", 
-        "Watch Chaplain", "Watch Librarian"
+        "Watch Captain",
+        "Watch Lieutenant",
+        "Company Champion",
+        "Watch Chaplain",
+        "Watch Librarian",
     }
     # Watch Apothecary is handled separately - they can't mark themselves
     if member_rank_name == "Watch Apothecary":
@@ -4307,11 +4166,17 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
         company = _find_company_or_chapter(member)
         if company:
             captains, lieutenants = _find_company_command_staff(guild, company)
-            co_member = captains[0] if captains else (lieutenants[0] if lieutenants else None)
+            co_member = (
+                captains[0] if captains else (lieutenants[0] if lieutenants else None)
+            )
             if co_member:
                 # Determine CO's rank for emoji
                 co_roles = {getattr(r, "name", "") for r in co_member.roles}
-                co_rank = "Watch Captain" if "Watch Captain" in co_roles else "Watch Lieutenant"
+                co_rank = (
+                    "Watch Captain"
+                    if "Watch Captain" in co_roles
+                    else "Watch Lieutenant"
+                )
                 emoji = _get_rank_emoji(guild, co_rank)
                 emoji_prefix = f"{emoji} " if emoji else ""
                 clean_name = strip_studs(co_member.display_name)
@@ -4325,7 +4190,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
             clean_name = strip_studs(cap.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
         return "Report to your Company Captain.", ""
-    
+
     # Kill Team members: try Sergeant first; fallback to Lt/Cpt; fallback to Apothecary
     kt_name = _resolve_killteam_for_member(member)
     if kt_name:
@@ -4336,7 +4201,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(sgt.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        
+
         # If no Sergeant, search for Lt/Cpt in same KT (shortage coverage)
         try:
             for mbr in guild.members:
@@ -4356,7 +4221,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
                     return f"Report to {emoji_prefix}**{clean_name}**.", ""
         except Exception:
             pass
-    
+
     # Fallback: find Watch Apothecary
     try:
         for mbr in guild.members:
@@ -4368,7 +4233,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
                 return f"Report to {emoji_prefix}**{clean_name}**.", ""
     except Exception:
         pass
-    
+
     return "Report to the Apothecarion.", ""
 
 
@@ -4445,14 +4310,14 @@ def _get_service_studs_announcement(
     # Format opening with stripped display name (no rank/studs)
     opening_template = random.choice(DEATHWATCH_STUD_OPENINGS)
     opening = opening_template.format(name=display_name)
-    
+
     if tier == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER1)
     elif tier == 2:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER2)
     else:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER3)
-    
+
     # Add Watch's Proclamation as first field with mentions baked in
     # Opening and milestone intro flow together without line break (plain narrative text, no italics/quotes)
     proclamation_value = f"{opening} {milestone_intro}"
@@ -4475,7 +4340,9 @@ def _get_service_studs_announcement(
         bearer_value += f"\n*{member_title}*"
     if member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        lineage_display = (
+            "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
@@ -4484,7 +4351,7 @@ def _get_service_studs_announcement(
     # displayed_studs = what they had before, new_total = what they'll have after
     prev_studs = max(0, displayed_studs)
     curr_studs = new_total
-    
+
     prev_auramite = prev_studs // 25
     prev_ceramite = (prev_studs % 25) // 5
     prev_plasteel = prev_studs % 5
@@ -4536,7 +4403,7 @@ def _get_service_studs_announcement(
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER2)
     else:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
-    
+
     # Determine which pip type is being earned (priority: auramite > ceramite > plasteel)
     if delta_auramite > 0:
         pip_type = "auramite"
@@ -4544,10 +4411,12 @@ def _get_service_studs_announcement(
         pip_type = "ceramite"
     else:
         pip_type = "plasteel"
-    
+
     # Blend chapter and role flavor based on rank hierarchy (italics + quotes for honor/reverential phrases)
-    blended_flavor = _blend_stud_flavor_by_rank(member_chapter, member_rank_name, pip_type)
-    
+    blended_flavor = _blend_stud_flavor_by_rank(
+        member_chapter, member_rank_name, pip_type
+    )
+
     embed.add_field(
         name="▸ Honor of the Long Watch",
         value=f'*"{ordo_honor} {blended_flavor}"*',
@@ -4559,7 +4428,7 @@ def _get_service_studs_announcement(
     marking_value = marking_primary
     if marking_secondary:
         marking_value = f"{marking_primary}\n{marking_secondary}"
-    
+
     embed.add_field(
         name="▸ Rite of Marking",
         value=marking_value,
@@ -4639,14 +4508,18 @@ def _get_oathsworn_announcement(
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
-        candidate_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
+        candidate_value = (
+            f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
+        )
     else:
         candidate_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
     if member_title:
         candidate_value += f"\n*{member_title}*"
     if member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        lineage_display = (
+            "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        )
         candidate_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     candidate_value += f"\nService Studs: **[{studs_pips}]** ({earned_studs})"
     embed.add_field(name="▸ Candidate", value=candidate_value, inline=True)
@@ -4684,7 +4557,9 @@ def _get_oathsworn_announcement(
     # Content with mentions (Watch Captain/Lieutenant for visibility)
     watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
     watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-    captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+    captain_mention = (
+        watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+    )
     lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
     content = f"{captain_mention} {lt_mention} {member.mention}"
 
@@ -5128,10 +5003,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         interaction.user, "name", str(interaction.user.id)
     )
     attester = attester.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
-    
+
     # Get techmarine's rank emoji for attestation
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
-    tech_rank_emoji = _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
+    tech_rank_emoji = (
+        _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
+    )
 
     # Optional personal rite
     try:
@@ -5173,32 +5050,16 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         studs_tier = 2
     else:
         studs_tier = 3
-    
-    # Techmarine stud tier acknowledgment
-    stud_acknowledgment = random.choice(TECHMARINE_STUDS_ACKNOWLEDGMENT.get(studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]))
 
-    # Role-dependent Techmarine affirmation (Forgemaster grander, Company Techmarine efficient)
-    if role_key == "forgemaster":
-        techmarine_affirmation = random.choice(FORGEMASTER_AFFIRMATIONS)
-    else:
-        techmarine_affirmation = random.choice(COMPANY_TECHMARINE_AFFIRMATIONS)
+    # Techmarine stud tier acknowledgment
+    stud_acknowledgment = random.choice(
+        TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
+            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
+        )
+    )
 
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
-    
-    # Location/Arming Chamber for ceremony grounding
-    arming_chamber = random.choice(ARMING_CHAMBERS)
-    
-    # Chapter-specific weapon/wargear blessing
-    wargear_blessing = None
-    if bearer_chapter and bearer_chapter in CHAPTER_WARGEAR_BLESSINGS:
-        wargear_blessing = random.choice(CHAPTER_WARGEAR_BLESSINGS[bearer_chapter])
-    elif bearer_chapter:
-        # Check case-insensitive fallback
-        for chap_name, blessings in CHAPTER_WARGEAR_BLESSINGS.items():
-            if chap_name.lower() == bearer_chapter.lower():
-                wargear_blessing = random.choice(blessings)
-                break
 
     # Generate unique machine-spirit designation for the armor
     # Based on bearer ID + current timestamp to be unique per blessing
@@ -5225,28 +5086,6 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
     spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
 
-    # Auto-sign: prefer Forgemaster or Techmarine mention
-    try:
-        company = _find_company_or_chapter(interaction.user)
-        if role_key == "forgemaster":
-            signer = f"{attester}, Jericho High Command"
-        elif role_key == "techmarine":
-            signer = f"{attester}, {company or 'Unknown Company'}"
-        else:
-            top_role = None
-            try:
-                roles = [
-                    getattr(r, "name", "")
-                    for r in getattr(interaction.user, "roles", [])
-                    if getattr(r, "name", None)
-                ]
-                top_role = roles[-1] if roles else None
-            except Exception:
-                top_role = None
-            signer = f"{top_role + ' ' if top_role else ''}{attester}"
-    except Exception:
-        signer = attester
-
     # ─────────────────────────────────────────────────────────────────────────
     # Assemble ANSI block (PC/Console view)
     # ─────────────────────────────────────────────────────────────────────────
@@ -5268,7 +5107,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_line += f" • {bearer_title}"
     lines.append(bearer_line)
     if bearer_chapter:
-        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        lineage_display = (
+            "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        )
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
         # Tiered stud display: ⬥=25, ●=5, ⚬=1
@@ -5289,7 +5130,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         tier_for_honor = 2
     else:
         tier_for_honor = 3
-    
+
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER1)
@@ -5297,7 +5138,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER2)
     else:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
-    
+
     if chapter_blessing:
         lines.append("▸ HONOR OF THE LONG WATCH")
         lines.append(f'  "{ordo_honor} {stud_acknowledgment} {chapter_blessing}"')
@@ -5350,9 +5191,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
     chapter_emoji = (
-        _get_emoji_by_name(guild, bearer_chapter)
-        if guild and bearer_chapter
-        else None
+        _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
     )
 
     embed = discord.Embed(
@@ -5375,7 +5214,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        lineage_display = (
+            "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
         # Tiered stud display: ⬥=25, ●=5, ⚬=1
@@ -5402,7 +5243,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         tier_for_honor = 2
     else:
         tier_for_honor = 3
-    
+
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER1)
@@ -5410,7 +5251,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER2)
     else:
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER3)
-    
+
     if chapter_blessing:
         embed.add_field(
             name="▸ Honor of the Long Watch",
@@ -5586,7 +5427,8 @@ async def reconcile_records(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        check_command_permission(interaction.user, "reconcile_records") and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "reconcile_records")
+        and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -6023,7 +5865,8 @@ async def audit_archive_discrepancies(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        check_command_permission(interaction.user, "audit_archive_discrepancies") and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "audit_archive_discrepancies")
+        and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -6125,7 +5968,8 @@ async def sanctify_battle_records(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        check_command_permission(interaction.user, "sanctify_battle_records") and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "sanctify_battle_records")
+        and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -6646,7 +6490,10 @@ async def cache_stats(interaction: discord.Interaction):
 async def audit_service_studs(interaction: discord.Interaction):
     await interaction.response.defer(thinking=False, ephemeral=True)
 
-    if not (check_command_permission(interaction.user, "audit_service_studs") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "audit_service_studs")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
 
@@ -6839,7 +6686,10 @@ async def librarian_audit(interaction: discord.Interaction):
     A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
     an AAR with the @Black_Laurels mention on each of the required maps at least once.
     """
-    if not (check_command_permission(interaction.user, "librarian_audit") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "librarian_audit")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -7045,7 +6895,8 @@ async def librarian_audit(interaction: discord.Interaction):
 @app_commands.describe(limit="Optional: max number of records to reparse.")
 async def reparse_records(interaction: discord.Interaction, limit: int | None = None):
     if not (
-        check_command_permission(interaction.user, "reparse_records") and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "reparse_records")
+        and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -7208,7 +7059,9 @@ async def tally_deeds(
             return
 
         # Validate it's messageable
-        if not isinstance(send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
+        if not isinstance(
+            send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
+        ):
             await interaction.response.send_message(
                 "send_to must be a thread or forum post — not a forum channel itself.",
                 ephemeral=True,
@@ -7229,7 +7082,10 @@ async def tally_deeds(
             await interaction.response.send_message(err, ephemeral=True)
             return
     else:
-        if not (check_command_permission(interaction.user, "tally_deeds") and is_allowed_channel(interaction)):
+        if not (
+            check_command_permission(interaction.user, "tally_deeds")
+            and is_allowed_channel(interaction)
+        ):
             await interaction.response.send_message("Access denied.", ephemeral=True)
             return
 
@@ -7951,7 +7807,9 @@ async def tally_deeds(
             roster_text = "\n".join(r_lines)
             # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
             try:
-                kt_display_name = _extract_killteam_name(getattr(killteam, 'name', 'Unknown'))
+                kt_display_name = _extract_killteam_name(
+                    getattr(killteam, "name", "Unknown")
+                )
                 roster_embed = discord.Embed(
                     title="᛭⋅ KILL TEAM ROSTER ⋅᛭",
                     description=f"*⌾ {kt_display_name} ⌾*",
@@ -8001,7 +7859,9 @@ async def tally_deeds(
                     if send_to_channel:
                         await send_to_channel.send(embed=roster_embed)
                     else:
-                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
+                        await interaction.followup.send(
+                            embed=roster_embed, ephemeral=True
+                        )
                 except Exception:
                     if send_to_channel:
                         await send_to_channel.send(roster_text)
@@ -8158,8 +8018,12 @@ async def tally_deeds(
                 ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
                 avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
                 pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
-                armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
-                gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
+                armory_data = active_rankings.get("armory", {}).get(
+                    queried_key, (0, 0, 0)
+                )
+                gene_data = active_rankings.get("gene_carried", {}).get(
+                    queried_key, (0, 0, 0)
+                )
                 risk_data = active_rankings.get("high_risk", {}).get(
                     queried_key, (0, 0, 0)
                 )
@@ -8200,7 +8064,9 @@ async def tally_deeds(
             # Send embed only (clean output)
             if send_to_channel:
                 await send_to_channel.send(embed=embed)
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+                await interaction.followup.send(
+                    f"Posted to <#{send_to_channel.id}>.", ephemeral=True
+                )
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
@@ -8212,7 +8078,9 @@ async def tally_deeds(
                 embed = _embed_from_ansi(fallback_title, summary_text)
                 if send_to_channel:
                     await send_to_channel.send(embed=embed)
-                    await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+                    await interaction.followup.send(
+                        f"Posted to <#{send_to_channel.id}>.", ephemeral=True
+                    )
                 else:
                     await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception:
@@ -8224,9 +8092,7 @@ async def tally_deeds(
         try:
             if (len(members) == 1) and member_stat_rows_list:
                 target = members[0]
-                name_val = (
-                    roster_items[0].get("name") if roster_items else "Unknown"
-                )
+                name_val = roster_items[0].get("name") if roster_items else "Unknown"
                 stat_dict = {k: v for k, v in member_stat_rows_list[0]}
 
                 # Get rank emoji for display
@@ -8257,7 +8123,9 @@ async def tally_deeds(
                 bearer_value = f"{rank_prefix}**{name_val}**"
                 if home_ch and home_ch != "Unknown":
                     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-                    lineage_display = "REDACTED" if home_ch == "Black Shield" else home_ch
+                    lineage_display = (
+                        "REDACTED" if home_ch == "Black Shield" else home_ch
+                    )
                     bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
                 studs_val = stat_dict.get("Service Studs", "—")
                 bearer_value += f"\nService Studs: **{studs_val}**"
@@ -8273,7 +8141,9 @@ async def tally_deeds(
                     status_lines.append(f"Company: {company_val}")
                 if kt_val:
                     status_lines.append(f"Kill Team: {kt_val}")
-                embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
+                embed.add_field(
+                    name="▸ Status", value="\n".join(status_lines), inline=True
+                )
 
                 # ▸ Service Record field
                 induction_val = stat_dict.get("Induction", "—")
@@ -8456,7 +8326,9 @@ async def tally_deeds(
                 guild = interaction.guild
                 chapter_emoji = (
                     _get_emoji_by_name(guild, home_chapter)
-                    if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
+                    if guild
+                    and home_chapter
+                    and home_chapter not in ("Unknown", "REDACTED")
                     else None
                 )
                 chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
@@ -8485,7 +8357,9 @@ async def tally_deeds(
                 )
 
                 # ▸ Chapter Distinctions field
-                lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
+                lineage_display = (
+                    "REDACTED" if home_chapter == "Black Shield" else home_chapter
+                )
                 if ch_ops_data[2] > 0:
                     chapter_value = (
                         f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
@@ -8509,7 +8383,9 @@ async def tally_deeds(
             # Send embed only (clean output like forge_rite/stud announcement)
             if send_to_channel:
                 await send_to_channel.send(embed=honours_embed)
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+                await interaction.followup.send(
+                    f"Posted to <#{send_to_channel.id}>.", ephemeral=True
+                )
             else:
                 await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
@@ -8527,7 +8403,8 @@ async def combat_bonds(
     window: Optional[int] = None,
 ):
     if not (
-        check_command_permission(interaction.user, "combat_bonds") and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "combat_bonds")
+        and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -14095,7 +13972,10 @@ async def roster_audit(
 
     Permission: Forgemaster OR Watch Master only.
     """
-    if not (check_command_permission(interaction.user, "roster_audit") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "roster_audit")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -14302,7 +14182,10 @@ async def promotion_queue(interaction: discord.Interaction):
     - AAR not met, time not met: need both
     """
     # Permission check: Watch Command only
-    if not (check_command_permission(interaction.user, "promotion_queue") and is_allowed_channel(interaction)):
+    if not (
+        check_command_permission(interaction.user, "promotion_queue")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
