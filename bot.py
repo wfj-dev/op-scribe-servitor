@@ -155,6 +155,33 @@ ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
 FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
 CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 
+# Challenge roles for /completed_challenges command
+# Each entry is (role_name, display_name, emoji_hint)
+# emoji_hint is the emoji name to look up, or None to skip
+CHALLENGE_ROLES = [
+    # SOK-G Elite
+    ("Pipehitter", "Pipehitter", "SOKG"),
+    # Terminus Slayer variants
+    ("Master Terminus Slayer", "Master Terminus Slayer", "Terminus1"),
+    ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "Terminus1"),
+    ("Terminus Slayer - Tactical", "Terminus Slayer (Tactical)", "Terminus1"),
+    ("Terminus Slayer - Vanguard", "Terminus Slayer (Vanguard)", "Terminus1"),
+    ("Terminus Slayer - Bulwark", "Terminus Slayer (Bulwark)", "Terminus1"),
+    ("Terminus Slayer - Sniper", "Terminus Slayer (Sniper)", "Terminus1"),
+    ("Terminus Slayer - Heavy", "Terminus Slayer (Heavy)", "Terminus1"),
+    ("Terminus Slayer - Techmarine", "Terminus Slayer (Techmarine)", "Terminus1"),
+    # Laurels
+    ("Crimson Laurels", "Crimson Laurels", "CrimsonLaurels"),
+    ("Black Laurels", "Black Laurels", "BlackLaurels"),
+    # Service awards
+    ("Centurion of the Fallen", "Centurion of the Fallen", "WatchApothecary"),
+    ("Ardent Raider", "Ardent Raider", "WatchTechmarine"),
+    # Elite challenges
+    ("Crux Terminatus", "Crux Terminatus", None),
+    ("White Hand of Death", "White Hand of Death", None),
+    ("Red Hand of Doom", "Red Hand of Doom", None),
+]
+
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
 
@@ -1901,8 +1928,8 @@ COMMAND_TEAM_ROLE_IDS = {
     "secundus command": 1468797860014325902,
 }
 
-# Restrict commands to a specific channel (demo/training)
-ALLOWED_COMMAND_CHANNELS = {"❖⋅data-vault⋅❖"}
+# Default allowed command channels (can be overridden in config.json "default_allowed_channels")
+DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
@@ -1926,42 +1953,133 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
 FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {}
 
 
-def is_allowed_channel(interaction: discord.Interaction):
+def is_allowed_channel(interaction: discord.Interaction) -> bool:
+    """Check if a command can run in the current channel (WHERE).
+
+    Channel policies are read from CONFIG["channel_policies"], e.g.:
+        "channel_policies": {
+            "❖⋅arming-chamber⋅❖": { "allow": ["forge_rite", "set_rite"] },
+            "❖⋅data-vault⋅❖": { "deny": ["forge_rite", "set_rite"] },
+            "1430055064969674777": { "allow": ["completed_challenges"] }
+        }
+
+    Keys can be channel names or channel IDs (as strings).
+
+    Policy keys:
+      - allow: list of commands exclusively allowed in this channel
+      - deny: list of commands denied in this channel (all others allowed)
+
+    Note: WHO can run a command is handled by check_command_permission() via
+    CONFIG["permissions"] (roles, user_ids, min_rank).
+
+    Fallback order:
+      1. CONFIG["allowed_command_channel_ids"] - explicit channel ID allowlist
+      2. CONFIG["default_allowed_channels"] or DEFAULT_ALLOWED_CHANNELS constant
+    """
     try:
         ch = interaction.channel
-        # determine invoked command name if possible
+        ch_name = getattr(ch, "name", None)
+        ch_id = str(getattr(ch, "id", ""))
+
+        # Determine invoked command name
         cmd_name = None
         try:
             cmd_name = getattr(getattr(interaction, "command", None), "name", None)
         except Exception:
-            cmd_name = None
+            pass
         if not cmd_name:
             try:
                 data = getattr(interaction, "data", {}) or {}
                 cmd_name = data.get("name")
             except Exception:
-                cmd_name = None
+                pass
 
-        name = getattr(ch, "name", None)
-        # Channel-specific policy:
-        # - ❖⋅arming-chamber⋅❖: only /forge_rite and /litany_of_function
-        if name == "❖⋅arming-chamber⋅❖":
-            return cmd_name in ("forge_rite", "set_rite", "litany_of_function")
-        # - ❖⋅data-vault⋅❖: everything except /forge_rite (litany allowed)
-        if name == "❖⋅data-vault⋅❖":
-            return (
-                cmd_name is not None
-                and cmd_name != "forge_rite"
-                and cmd_name != "set_rite"
-            ) or cmd_name == "litany_of_function"
+        # Check channel-specific policies from config (by name or ID)
+        policies = CONFIG.get("channel_policies") or {}
+        policy = None
+        if ch_name and ch_name in policies:
+            policy = policies[ch_name]
+        elif ch_id and ch_id in policies:
+            policy = policies[ch_id]
 
-        # Fallback: respect configured allowed channel IDs or names
-        allowed_ids = set((CONFIG.get("allowed_command_channel_ids") or []))
-        if allowed_ids and hasattr(ch, "id"):
-            return str(ch.id) in {str(x) for x in allowed_ids}
-        return bool(name) and name in ALLOWED_COMMAND_CHANNELS
+        if policy is not None:
+            allow = policy.get("allow")
+            deny = policy.get("deny")
+
+            # If the command name cannot be determined and a policy exists,
+            # deny access to avoid bypassing channel restrictions.
+            if cmd_name is None and (allow is not None or deny is not None):
+                return False
+
+            # Check command whitelist/blacklist
+            if allow is not None:
+                if cmd_name not in allow:
+                    return False
+            if deny is not None:
+                if cmd_name in deny:
+                    return False
+
+            return True
+
+        # Fallback: check allowed channel IDs from config
+        allowed_ids = set(CONFIG.get("allowed_command_channel_ids") or [])
+        if allowed_ids and ch_id:
+            return ch_id in {str(x) for x in allowed_ids}
+
+        # Final fallback: default allowed channel names
+        default_channels = set(
+            CONFIG.get("default_allowed_channels") or DEFAULT_ALLOWED_CHANNELS
+        )
+        return bool(ch_name) and ch_name in default_channels
     except Exception:
         return False
+
+
+def command_check(command_name: Optional[str] = None):
+    """Decorator that combines channel and permission checks for commands.
+
+    Usage:
+        @bot.tree.command(name="my_command", ...)
+        @command_check()  # auto-detects command name from interaction
+        async def my_command(interaction: discord.Interaction, ...):
+            ...
+
+        # Or with explicit name:
+        @command_check("my_command")
+        async def my_command(interaction: discord.Interaction, ...):
+            ...
+
+    This replaces the manual pattern:
+        if not (check_command_permission(interaction.user, "cmd") and is_allowed_channel(interaction)):
+            await interaction.response.send_message("Access denied.", ephemeral=True)
+            return
+    """
+
+    async def predicate(interaction: discord.Interaction) -> bool:
+        # Determine command name
+        cmd = command_name
+        if cmd is None:
+            try:
+                cmd = getattr(getattr(interaction, "command", None), "name", None)
+            except Exception:
+                pass
+            if not cmd:
+                try:
+                    cmd = (getattr(interaction, "data", {}) or {}).get("name")
+                except Exception:
+                    pass
+
+        # Check channel restrictions first
+        if not is_allowed_channel(interaction):
+            return False
+
+        # Check command permissions
+        if cmd and not check_command_permission(interaction.user, cmd):
+            return False
+
+        return True
+
+    return app_commands.check(predicate)
 
 
 def _print_progress(prefix: str, current: int, total: int, width: int = 40):
@@ -2939,6 +3057,24 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         logger.warning(
             f"Error in /{cmd_name or '?'} by {_user_label(interaction.user)}: {type(error).__name__}: {error}"
         )
+    except Exception:
+        pass
+
+    # Unwrap CommandInvokeError to get the original cause
+    original = getattr(error, "original", error)
+
+    if isinstance(original, app_commands.NoPrivateMessage):
+        msg = "Access denied: this command cannot be used in private messages."
+    elif isinstance(original, app_commands.CheckFailure):
+        msg = "Access denied: you do not have permission to use this command here."
+    else:
+        return
+
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(msg, ephemeral=True)
+        else:
+            await interaction.followup.send(msg, ephemeral=True)
     except Exception:
         pass
 
@@ -6431,7 +6567,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     name="cache_stats", description="Show DataStore cache and flush stats (admin only)"
 )
 async def cache_stats(interaction: discord.Interaction):
-    if not check_command_permission(interaction.user, "cache_stats"):
+    if not (
+        check_command_permission(interaction.user, "cache_stats")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     stats = DATASTORE.get_cache_stats()
@@ -8549,6 +8688,110 @@ async def combat_bonds(
                 )
             except Exception:
                 logger.exception("combat_bonds: failed to send response or followup")
+
+
+@bot.tree.command(
+    name="completed_challenges",
+    description="Display challenge roles earned by a Brother.",
+)
+@app_commands.describe(brother="The Brother to check (defaults to yourself)")
+async def completed_challenges(
+    interaction: discord.Interaction,
+    brother: Optional[discord.Member] = None,
+):
+    """Display challenge roles completed by a member in an embed format."""
+    if not (
+        check_command_permission(interaction.user, "completed_challenges")
+        and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    # Default to the invoker if no member specified
+    target = brother or interaction.user
+    if not isinstance(target, discord.Member):
+        await interaction.response.send_message(
+            "Could not resolve member.", ephemeral=True
+        )
+        return
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message(
+            "Must be used in a guild.", ephemeral=True
+        )
+        return
+
+    # Get target's role names
+    target_role_names = {getattr(r, "name", "") for r in getattr(target, "roles", [])}
+
+    # Find completed challenges
+    completed = []
+    for role_name, display_name, emoji_hint in CHALLENGE_ROLES:
+        if role_name in target_role_names:
+            emoji_str = ""
+            if emoji_hint:
+                emoji = _get_emoji_by_name(guild, emoji_hint)
+                if emoji:
+                    emoji_str = f"{emoji} "
+            completed.append(f"{emoji_str}{display_name}")
+
+    # Get member's display information
+    # Extract name without pips
+    bearer_name = target.display_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+
+    # Get rank
+    member_rank_name = "Watch Brother"
+    for rank in RANK_ROLES_PRIORITY:
+        if rank in target_role_names:
+            member_rank_name = rank
+            break
+    rank_emoji = _get_rank_emoji(guild, member_rank_name)
+
+    # Get home chapter
+    home_chapter = None
+    chapter_emoji = None
+    for role_name in target_role_names:
+        if role_name in HOME_CHAPTERS:
+            home_chapter = role_name
+            chapter_emoji = _get_emoji_by_name(guild, home_chapter)
+            break
+
+    # Build embed
+    embed = discord.Embed(
+        title="᛭⋅ CHALLENGES COMPLETED ⋅᛭",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xC27C0E,  # Gold/bronze color for achievements
+    )
+
+    # Bearer field
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{bearer_name}**"
+    if home_chapter:
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Bearer", value=bearer_value, inline=False)
+
+    # Challenges field
+    if completed:
+        challenges_value = "\n".join(f"✦ {c}" for c in completed)
+        embed.add_field(
+            name=f"▸ Challenges Earned ({len(completed)})",
+            value=challenges_value,
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="▸ Challenges Earned",
+            value="*No challenge roles earned yet.*",
+            inline=False,
+        )
+
+    # Footer
+    embed.set_footer(text="᛭⋅ Valor is eternal ⋅᛭")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 def classify_difficulty(difficulty: str | None):
@@ -12917,7 +13160,10 @@ async def _before_honours_runner():
     description="Preview monthly honours (Forgemaster only)",
 )
 async def preview_honours(interaction: discord.Interaction):
-    if not check_command_permission(interaction.user, "preview_honours"):
+    if not (
+        check_command_permission(interaction.user, "preview_honours")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
     # Try to defer; if the interaction is already unknown/expired, fall back
@@ -13077,7 +13323,10 @@ async def publish_honours(
     This command allows Forgemasters to manually trigger a monthly honours post,
     useful when the automatic post fails or needs to be re-posted.
     """
-    if not check_command_permission(interaction.user, "publish_honours"):
+    if not (
+        check_command_permission(interaction.user, "publish_honours")
+        and is_allowed_channel(interaction)
+    ):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
 
