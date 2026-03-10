@@ -1337,11 +1337,12 @@ async def _check_promotion_milestones():
         tracking = _load_promotion_tracking()
         notifications_sent = 0
 
-        # Get Watch Command role for mentions
-        watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
-        watch_command_mention = (
-            watch_command_role.mention if watch_command_role else "@Watch Command"
-        )
+        # Get Watch Captain/Lieutenant roles for mentions
+        watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
+        watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
+        captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+        lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
+        watch_command_mention = f"{captain_mention} / {lt_mention}"
 
         # Get Watch Veteran role for mentions
         watch_veteran_role = discord.utils.get(guild.roles, name="Watch Veteran")
@@ -4550,12 +4551,12 @@ def _get_oathsworn_announcement(
     poll.add_answer(text="Aye, elevate to Oathsworn", emoji="⚔️")
     poll.add_answer(text="Nay, more service required", emoji="🛡️")
 
-    # Content with mentions (Watch Command for visibility)
-    watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
-    watch_command_mention = (
-        watch_command_role.mention if watch_command_role else "@Watch Command"
-    )
-    content = f"{watch_command_mention} {member.mention}"
+    # Content with mentions (Watch Captain/Lieutenant for visibility)
+    watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
+    watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
+    captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
+    lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
+    content = f"{captain_mention} {lt_mention} {member.mention}"
 
     return content, embed, poll
 
