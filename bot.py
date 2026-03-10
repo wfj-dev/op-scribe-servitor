@@ -179,8 +179,8 @@ CHALLENGE_ROLES = [
     ("Ardent Raider", "Ardent Raider", "ArdentRaiderRibbon"),
     # Elite challenges
     ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
-    ("White Hand of Death", "White Hand of Death", "unicode:⚪"),
-    ("Red Hand of Doom", "Red Hand of Doom", "unicode:🔴"),
+    ("White Hand of Death", "White Hand of Death", "ClandestineOperationsMedal"),
+    ("Red Hand of Doom", "Red Hand of Doom", "DistinguishedClandestineoperati"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
