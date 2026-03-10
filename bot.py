@@ -3055,6 +3055,24 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     except Exception:
         pass
 
+    # Unwrap CommandInvokeError to get the original cause
+    original = getattr(error, "original", error)
+
+    if isinstance(original, app_commands.NoPrivateMessage):
+        msg = "Access denied: this command cannot be used in private messages."
+    elif isinstance(original, app_commands.CheckFailure):
+        msg = "Access denied: you do not have permission to use this command here."
+    else:
+        return
+
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(msg, ephemeral=True)
+        else:
+            await interaction.followup.send(msg, ephemeral=True)
+    except Exception:
+        pass
+
 
 @bot.tree.command(
     name="litany_of_function",
