@@ -158,28 +158,30 @@ CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 # Challenge roles for /completed_challenges command
 # Each entry is (role_name, display_name, emoji_hint)
 # emoji_hint is the emoji name to look up, or None to skip
+# For unicode emojis, prefix with "unicode:" e.g. "unicode:⚪"
 CHALLENGE_ROLES = [
     # SOK-G Elite
-    ("Pipehitter", "Pipehitter", "SOKG"),
+    ("Distinguished SOK-G: Pipehitter", "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
+    ("Pipehitter", "Pipehitter", "SOKGServiceMedal"),
     # Terminus Slayer variants
-    ("Master Terminus Slayer", "Master Terminus Slayer", "Terminus1"),
-    ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "Terminus1"),
-    ("Terminus Slayer - Tactical", "Terminus Slayer (Tactical)", "Terminus1"),
-    ("Terminus Slayer - Vanguard", "Terminus Slayer (Vanguard)", "Terminus1"),
-    ("Terminus Slayer - Bulwark", "Terminus Slayer (Bulwark)", "Terminus1"),
-    ("Terminus Slayer - Sniper", "Terminus Slayer (Sniper)", "Terminus1"),
-    ("Terminus Slayer - Heavy", "Terminus Slayer (Heavy)", "Terminus1"),
-    ("Terminus Slayer - Techmarine", "Terminus Slayer (Techmarine)", "Terminus1"),
+    ("Master Terminus Slayer", "Master Terminus Slayer", "MasterTerminusSlayer"),
+    ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Tactical", "Terminus Slayer (Tactical)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Vanguard", "Terminus Slayer (Vanguard)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Bulwark", "Terminus Slayer (Bulwark)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Sniper", "Terminus Slayer (Sniper)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Heavy", "Terminus Slayer (Heavy)", "1stAwardTerminusSlayer"),
+    ("Terminus Slayer - Techmarine", "Terminus Slayer (Techmarine)", "1stAwardTerminusSlayer"),
     # Laurels
-    ("Crimson Laurels", "Crimson Laurels", "CrimsonLaurels"),
-    ("Black Laurels", "Black Laurels", "BlackLaurels"),
+    ("Crimson Laurels", "Crimson Laurels", "CrimsonLaurelsMedal"),
+    ("Black Laurels", "Black Laurels", "BlackLaurelsMedal"),
     # Service awards
-    ("Centurion of the Fallen", "Centurion of the Fallen", "WatchApothecary"),
-    ("Ardent Raider", "Ardent Raider", "WatchTechmarine"),
+    ("Centurion of the Fallen", "Centurion of the Fallen", "ApothecarionServiceMedal"),
+    ("Ardent Raider", "Ardent Raider", "ArdentRaiderRibbon"),
     # Elite challenges
-    ("Crux Terminatus", "Crux Terminatus", None),
-    ("White Hand of Death", "White Hand of Death", None),
-    ("Red Hand of Doom", "Red Hand of Doom", None),
+    ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
+    ("White Hand of Death", "White Hand of Death", "unicode:⚪"),
+    ("Red Hand of Doom", "Red Hand of Doom", "unicode:🔴"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -8731,9 +8733,14 @@ async def completed_challenges(
         if role_name in target_role_names:
             emoji_str = ""
             if emoji_hint:
-                emoji = _get_emoji_by_name(guild, emoji_hint)
-                if emoji:
-                    emoji_str = f"{emoji} "
+                if emoji_hint.startswith("unicode:"):
+                    # Direct unicode emoji
+                    emoji_str = f"{emoji_hint[8:]} "
+                else:
+                    # Guild custom emoji lookup
+                    emoji = _get_emoji_by_name(guild, emoji_hint)
+                    if emoji:
+                        emoji_str = f"{emoji} "
             completed.append(f"{emoji_str}{display_name}")
 
     # Get member's display information
