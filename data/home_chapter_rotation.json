@@ -8,10 +8,8 @@
     "Dark Krakens",
     "Exorcists",
     "Flesh Tearers",
-    "Hawk Lords",
     "Imperial Fists",
     "Iron Hands",
-    "Lamenters",
     "Mentors",
     "Raptors",
     "Raven Guard",
@@ -35,6 +33,10 @@
     "2026-03": [
       "Angels of Vengeance",
       "Blood Angels"
+    ],
+    "2026-04": [
+      "Hawk Lords",
+      "Lamenters"
     ]
   }
 }
