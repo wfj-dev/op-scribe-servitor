@@ -6,16 +6,22 @@
   "role_aliases": {
   },
   "permissions": {
-    "litany_of_function": { "min_rank": "Watch Sergeant" },
-    "tally_deeds": { "min_rank": "Watch Sergeant" },
-    "combat_bonds": { "min_rank": "Watch Sergeant" },
-    "reconcile_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "sanctify_battle_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "audit_archive_discrepancies": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "reparse_records": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "preview_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "publish_honours": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] },
-    "roster_audit": { "roles": ["Watch Master", "Forgemaster"], "user_ids": ["281651485782310914"] }
+    "litany_of_function": { "roles": ["Watch Command"] },
+    "tally_deeds": { "roles": ["Watch Command"] },
+    "combat_bonds": { "roles": ["Watch Command"] },
+    "preview_honours": { "roles": ["Watch Command"] },
+    "pick_home_chapters": { "roles": ["Watch Command"] },
+    "promotion_queue": { "roles": ["Watch Command"] },
+    "audit_service_studs": { "roles": ["Watch Command"] },
+    "roster_audit": { "roles": ["Watch Command"] },
+    "cache_stats": { "roles": ["Watch Techmarine", "Watch Master"] },
+    "reconcile_records": { "roles": ["Watch Techmarine", "Watch Master"] },
+    "sanctify_battle_records": { "roles": ["Watch Techmarine", "Watch Master"] },
+    "audit_archive_discrepancies": { "roles": ["Watch Techmarine", "Watch Master"] },
+    "librarian_audit": { "roles": ["Watch Techmarine", "Watch Librarian", "Watch Master"] },
+    "reparse_records": { "user_ids": ["281651485782310914"] },
+    "publish_honours": { "user_ids": ["281651485782310914"] },
+    "completed_challenges": { "roles": ["Watch Brother"] }
   },
   "companies": {
     "primus": {
@@ -62,5 +68,17 @@
       "bio_titan_kills": 100,
       "tyranid_prime_kills": 100
     }
-  }
+  },
+  "channel_policies": {
+    "❖⋅arming-chamber⋅❖": {
+      "allow": ["forge_rite", "set_rite", "litany_of_function"]
+    },
+    "❖⋅data-vault⋅❖": {
+      "deny": ["forge_rite"]
+    },
+    "1430055064969674777": {
+      "allow": ["completed_challenges"]
+    }
+  },
+  "default_allowed_channels": ["❖⋅data-vault⋅❖"]
 }
