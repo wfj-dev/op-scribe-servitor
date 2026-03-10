@@ -157,8 +157,7 @@ CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 
 # Challenge roles for /completed_challenges command
 # Each entry is (role_name, display_name, emoji_hint)
-# emoji_hint is the emoji name to look up, or None to skip
-# For unicode emojis, prefix with "unicode:" e.g. "unicode:⚪"
+# emoji_hint can be a custom emoji name to look up, "unicode:<char>" for a literal unicode emoji, or None to skip
 CHALLENGE_ROLES = [
     # SOK-G Elite
     ("Distinguished SOK-G: Pipehitter", "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
