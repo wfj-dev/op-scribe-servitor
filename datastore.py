@@ -150,10 +150,6 @@ class DataStore:
             self._home_chapter_cache_set(user_id, chapter)
         return chapter
 
-    def force_refresh_home_chapter(self, user_id: str) -> Optional[str]:
-        """Admin-only: force a rescan and refresh of the user's home chapter."""
-        return self.get_home_chapter(user_id, force_refresh=True)
-
     FLUSH_INTERVAL = 60  # seconds between background flushes
 
     def __init__(self, aar_records_path: str, processed_ids_path: str):
