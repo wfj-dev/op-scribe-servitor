@@ -20,7 +20,8 @@
     "audit_archive_discrepancies": { "roles": ["Watch Techmarine", "Watch Master"] },
     "librarian_audit": { "roles": ["Watch Techmarine", "Watch Librarian", "Watch Master"] },
     "reparse_records": { "user_ids": ["281651485782310914"] },
-    "publish_honours": { "user_ids": ["281651485782310914"] }
+    "publish_honours": { "user_ids": ["281651485782310914"] },
+    "completed_challenges": { "roles": ["Watch Brother"] }
   },
   "companies": {
     "primus": {
@@ -67,5 +68,17 @@
       "bio_titan_kills": 100,
       "tyranid_prime_kills": 100
     }
-  }
+  },
+  "channel_policies": {
+    "❖⋅arming-chamber⋅❖": {
+      "allow": ["forge_rite", "set_rite", "litany_of_function"]
+    },
+    "❖⋅data-vault⋅❖": {
+      "deny": ["forge_rite"]
+    },
+    "1430055064969674777": {
+      "allow": ["completed_challenges"]
+    }
+  },
+  "default_allowed_channels": ["❖⋅data-vault⋅❖"]
 }
