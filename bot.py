@@ -2202,8 +2202,169 @@ def is_sergeant_or_higher(user: discord.User | discord.Member):
     return idx is not None and idx <= idx_sergeant
 
 
-def is_watch_command(user: discord.User | discord.Member):
-    # Define "Watch Command" as Sergeant and higher (including staff roles above it)
+# ============================================================================
+# PERMISSION TRACKS
+# ============================================================================
+# Three tracks exist:
+#   1. Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
+#                   → Watch Lieutenant → Watch Captain
+#   2. Champion: Kill Team Champion → Company Champion → Lord Executioner
+#   3. Specialist (4 sub-tracks, each leading to High Command):
+#        Chaplain → High Chaplain, Apothecary → Chief Apothecary,
+#        Librarian → Void Warden, Techmarine → Forgemaster
+#
+# High Command = senior specialists (High Chaplain, Chief Apothecary, Void Warden,
+#                Forgemaster) + Watch Master
+# Watch Master is at the top of ALL tracks.
+# ============================================================================
+
+# Battle line ranks (linear progression)
+BATTLE_LINE_TRACK = {
+    "Watch Brother": {"Watch Brother", "Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Watch Veteran": {"Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Oathsworn": {"Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Watch Sergeant": {"Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Watch Lieutenant": {"Watch Lieutenant", "Watch Captain"},
+    "Watch Captain": {"Watch Captain"},
+}
+BATTLE_LINE_RANKS = {"Watch Brother", "Watch Veteran", "Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"}
+
+# Champion track (linear progression)
+CHAMPION_TRACK = {
+    "Kill Team Champion": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
+    "Company Champion": {"Company Champion", "Lord Executioner"},
+    "Lord Executioner": {"Lord Executioner"},
+}
+CHAMPION_RANKS = {"Kill Team Champion", "Company Champion", "Lord Executioner"}
+
+# Specialist tracks: each sub-track is independent, leads to High Command
+SPECIALIST_TRACKS = {
+    "Watch Techmarine": {"Watch Techmarine", "Forgemaster"},
+    "Forgemaster": {"Forgemaster"},
+    "Watch Librarian": {"Watch Librarian", "Void Warden"},
+    "Void Warden": {"Void Warden"},
+    "Watch Chaplain": {"Watch Chaplain", "High Chaplain"},
+    "High Chaplain": {"High Chaplain"},
+    "Watch Apothecary": {"Watch Apothecary", "Chief Apothecary"},
+    "Chief Apothecary": {"Chief Apothecary"},
+}
+SPECIALIST_RANKS = set(SPECIALIST_TRACKS.keys())
+
+# High Command (senior specialists + Watch Master)
+HIGH_COMMAND_RANKS = {"High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster", "Watch Master"}
+
+# Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
+# This is a convenience group for "everyone who isn't a line brother"
+WATCH_COMMAND_ROLES = {
+    # Battle Line (Sergeant+)
+    "Watch Sergeant", "Watch Lieutenant", "Watch Captain",
+    # Champion track (all)
+    "Company Champion", "Lord Executioner",
+    # Specialist track (all)
+    "Watch Chaplain", "Watch Apothecary", "Watch Librarian", "Watch Techmarine",
+    # High Command
+    "High Chaplain", "Chief Apothecary", "Void Warden", "Forgemaster", "Watch Master",
+}
+
+
+def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
+    """Check if user meets a min_rank requirement based on track logic.
+    
+    - Battle Line: linear hierarchy (Sergeant+ means Sergeant, Lt, Captain)
+    - Champion: KT Champion → Company Champion → Lord Executioner
+    - Specialist: each of the 4 sub-tracks leads to its High Command role
+    
+    Watch Master always qualifies for everything.
+    """
+    # Watch Master always has access
+    if "Watch Master" in user_roles:
+        return True
+    
+    # Check specialist tracks (4 independent sub-tracks)
+    if min_rank in SPECIALIST_TRACKS:
+        allowed_roles = SPECIALIST_TRACKS[min_rank]
+        return bool(user_roles & allowed_roles)
+    
+    # Check champion track
+    if min_rank in CHAMPION_TRACK:
+        allowed_roles = CHAMPION_TRACK[min_rank]
+        return bool(user_roles & allowed_roles)
+    
+    # Check battle line track
+    if min_rank in BATTLE_LINE_TRACK:
+        allowed_roles = BATTLE_LINE_TRACK[min_rank]
+        return bool(user_roles & allowed_roles)
+    
+    return False
+
+
+def check_command_permission(user: discord.User | discord.Member, command_name: str) -> bool:
+    """Unified permission check for all commands.
+
+    Reads from CONFIG["permissions"][command_name] which can have:
+      - min_rank: str - minimum rank required (e.g. "Watch Sergeant")
+      - roles: list[str] - list of role names that grant access
+                          "Watch Command" expands to all Watch Command roles
+      - user_ids: list[str|int] - specific user IDs with access
+
+    Admin users (from CONFIG["admin_user_ids"]) always have access.
+    If no config entry exists, defaults based on command name pattern.
+    
+    Three tracks:
+      - Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
+                     → Watch Lieutenant → Watch Captain
+      - Champion: Kill Team Champion → Company Champion → Lord Executioner
+      - Specialist (4 sub-tracks): Techmarine→Forgemaster, Librarian→Void Warden, etc.
+    
+    Each track is independent. Watch Master has access to everything.
+    """
+    # Admin override: always grant
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    uid = str(getattr(user, "id", None))
+    if uid in admin_ids:
+        return True
+
+    perms = CONFIG.get("permissions", {}) or {}
+    cmd_perms = perms.get(command_name, {}) or {}
+
+    # Check user_ids whitelist
+    user_whitelist = cmd_perms.get("user_ids") or []
+    if uid in {str(x) for x in user_whitelist}:
+        return True
+
+    user_roles = _canonical_role_names(user)
+
+    # Check min_rank using track-aware logic
+    min_rank = cmd_perms.get("min_rank")
+    if min_rank:
+        if _user_meets_track_requirement(user_roles, min_rank):
+            return True
+
+    # Check roles list (user must have any of these roles)
+    # "Watch Command" is a shorthand that expands to all Watch Command roles
+    allowed_roles = set(cmd_perms.get("roles") or [])
+    if "Watch Command" in allowed_roles:
+        allowed_roles.discard("Watch Command")
+        allowed_roles.update(WATCH_COMMAND_ROLES)
+    if allowed_roles:
+        if user_roles & allowed_roles:
+            return True
+
+    # If the command has explicit config but user doesn't match, deny
+    if cmd_perms:
+        return False
+
+    # Default fallbacks for unconfigured commands (based on command name patterns)
+    # Admin-level commands default to Watch Master + Forgemaster
+    admin_commands = {
+        "reconcile_records", "sanctify_battle_records", "audit_archive_discrepancies",
+        "reparse_records", "preview_honours", "publish_honours", "roster_audit"
+    }
+    if command_name in admin_commands:
+        return any(r in user_roles for r in ("Watch Master", "Forgemaster"))
+
+
+    # Most other commands default to Watch Sergeant or higher
     return is_sergeant_or_higher(user)
 
 
@@ -2451,37 +2612,6 @@ def check_tally_deeds_permissions_in_kt_post(
         except Exception:
             pass
         return True, "Permission check failed; contact an administrator."
-
-
-def can_reconcile_records(user: discord.User | discord.Member):
-    # Only Watch Master and Forgemaster, or whitelisted user IDs for these rites
-    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    uid = str(getattr(user, "id", None))
-    if uid in admin_ids:
-        return True
-
-    perms = CONFIG.get("permissions", {}) or {}
-    roles_union: set[str] = set()
-    ids_union: set[str] = set()
-    for key in (
-        "reconcile_records",
-        "sanctify_battle_records",
-        "audit_archive_discrepancies",
-    ):
-        block = perms.get(key, {}) or {}
-        for r in block.get("roles") or []:
-            roles_union.add(str(r))
-        for i in block.get("user_ids") or []:
-            ids_union.add(str(i))
-
-    if not roles_union:
-        roles_union = {"Watch Master", "Forgemaster"}
-
-    if uid in ids_union:
-        return True
-
-    names = _canonical_role_names(user)
-    return any(r in names for r in roles_union)
 
 
 def is_high_command(user: discord.User | discord.Member) -> bool:
@@ -2773,7 +2903,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
 )
 async def litany_of_function(interaction: discord.Interaction):
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "litany_of_function") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     lines = [
@@ -3115,7 +3245,7 @@ async def _select_home_chapters_for_month(
     description="Show selected home chapters for this month and next (plans ahead).",
 )
 async def pick_home_chapters(interaction: discord.Interaction):
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "pick_home_chapters") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Compute current and next month keys and selections
@@ -5456,7 +5586,7 @@ async def reconcile_records(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "reconcile_records") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5893,7 +6023,7 @@ async def audit_archive_discrepancies(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "audit_archive_discrepancies") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5995,7 +6125,7 @@ async def sanctify_battle_records(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "sanctify_battle_records") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -6457,8 +6587,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     name="cache_stats", description="Show DataStore cache and flush stats (admin only)"
 )
 async def cache_stats(interaction: discord.Interaction):
-    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    if str(getattr(interaction.user, "id", None)) not in admin_ids:
+    if not check_command_permission(interaction.user, "cache_stats"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     stats = DATASTORE.get_cache_stats()
@@ -6517,7 +6646,7 @@ async def cache_stats(interaction: discord.Interaction):
 async def audit_service_studs(interaction: discord.Interaction):
     await interaction.response.defer(thinking=False, ephemeral=True)
 
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "audit_service_studs") and is_allowed_channel(interaction)):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
 
@@ -6710,7 +6839,7 @@ async def librarian_audit(interaction: discord.Interaction):
     A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
     an AAR with the @Black_Laurels mention on each of the required maps at least once.
     """
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "librarian_audit") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -6916,7 +7045,7 @@ async def librarian_audit(interaction: discord.Interaction):
 @app_commands.describe(limit="Optional: max number of records to reparse.")
 async def reparse_records(interaction: discord.Interaction, limit: int | None = None):
     if not (
-        can_reconcile_records(interaction.user) and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "reparse_records") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -7100,7 +7229,7 @@ async def tally_deeds(
             await interaction.response.send_message(err, ephemeral=True)
             return
     else:
-        if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+        if not (check_command_permission(interaction.user, "tally_deeds") and is_allowed_channel(interaction)):
             await interaction.response.send_message("Access denied.", ephemeral=True)
             return
 
@@ -8398,7 +8527,7 @@ async def combat_bonds(
     window: Optional[int] = None,
 ):
     if not (
-        is_sergeant_or_higher(interaction.user) and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "combat_bonds") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -12906,21 +13035,12 @@ async def _before_honours_runner():
     await bot.wait_until_ready()
 
 
-def _user_is_forgemaster(user: discord.User | discord.Member) -> bool:
-    try:
-        names = _canonical_role_names(user)
-        return any("Forgemaster" in n for n in names)
-    except Exception:
-        return False
-
-
 @bot.tree.command(
     name="preview_honours",
     description="Preview monthly honours (Forgemaster only)",
 )
 async def preview_honours(interaction: discord.Interaction):
-    # Forgemaster-only
-    if not _user_is_forgemaster(interaction.user):
+    if not check_command_permission(interaction.user, "preview_honours"):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
     # Try to defer; if the interaction is already unknown/expired, fall back
@@ -13080,8 +13200,7 @@ async def publish_honours(
     This command allows Forgemasters to manually trigger a monthly honours post,
     useful when the automatic post fails or needs to be re-posted.
     """
-    # Forgemaster-only
-    if not _user_is_forgemaster(interaction.user):
+    if not check_command_permission(interaction.user, "publish_honours"):
         await interaction.response.send_message("Not authorized.", ephemeral=True)
         return
 
@@ -13222,30 +13341,6 @@ POSITION_LABEL_MAP = {
     "WatchVeteran": "Watch Veteran",
     "WatchBrother": "Watch Brother",
 }
-
-
-def can_roster_audit(user: discord.User | discord.Member) -> bool:
-    """Check if user has permission to run roster_audit."""
-    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    uid = str(getattr(user, "id", None))
-    if uid in admin_ids:
-        return True
-
-    perms = CONFIG.get("permissions", {}) or {}
-    block = perms.get("roster_audit", {}) or {}
-
-    for r in block.get("roles") or []:
-        role_names = _canonical_role_names(user)
-        if str(r) in role_names:
-            return True
-
-    for i in block.get("user_ids") or []:
-        if uid == str(i):
-            return True
-
-    # Fallback: check if user has Watch Master or Forgemaster role
-    names = _canonical_role_names(user)
-    return any(n in ("Watch Master", "Forgemaster") for n in names)
 
 
 def _extract_mentions_from_text(text: str) -> List[int]:
@@ -14000,7 +14095,7 @@ async def roster_audit(
 
     Permission: Forgemaster OR Watch Master only.
     """
-    if not (can_roster_audit(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "roster_audit") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -14207,7 +14302,7 @@ async def promotion_queue(interaction: discord.Interaction):
     - AAR not met, time not met: need both
     """
     # Permission check: Watch Command only
-    if not (is_watch_command(interaction.user) and is_allowed_channel(interaction)):
+    if not (check_command_permission(interaction.user, "promotion_queue") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
