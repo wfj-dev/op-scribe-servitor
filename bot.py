@@ -2006,6 +2006,11 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
             allow = policy.get("allow")
             deny = policy.get("deny")
 
+            # If the command name cannot be determined and a policy exists,
+            # deny access to avoid bypassing channel restrictions.
+            if cmd_name is None and (allow is not None or deny is not None):
+                return False
+
             # Check command whitelist/blacklist
             if allow is not None:
                 if cmd_name not in allow:
