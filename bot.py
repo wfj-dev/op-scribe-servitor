@@ -6690,7 +6690,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     # Prepare printable rows and compute column widths
     rows: list[tuple[str, str, str, str, str]] = []
-    name_max = 4
+    name_max = len("Brother")
     exp_max = len("Expected")
     cur_max = len("Current")
     action_max = len("Action")
