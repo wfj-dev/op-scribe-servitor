@@ -1574,7 +1574,7 @@ async def _check_promotion_milestones():
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
                     studs_aar = aar_points // 400
-                    earned_studs = min(studs_time, studs_aar)
+                    earned_studs = min(min(studs_time, studs_aar), 16)
 
                     # Count currently displayed studs from nickname
                     # Auramite (●) = 4 plasteel, Plasteel (⚬) = 1
@@ -1588,8 +1588,7 @@ async def _check_promotion_milestones():
                         user_tracking["last_earned_studs"] = earned_studs
                     last_earned_studs = user_tracking["last_earned_studs"]
                     # Only notify when they've actually earned NEW studs
-                    # Max 4 auramite studs (16 plasteel) - no announcements beyond that
-                    if earned_studs > last_earned_studs and earned_studs <= 16:
+                    if earned_studs > last_earned_studs:
                         new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
@@ -6659,6 +6658,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
                 studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_count, 16)
 
             # Count existing studs shown in nickname/display name
             # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
@@ -7380,6 +7380,7 @@ async def tally_deeds(
 
         # Compute Service Studs: one stud per 4 weeks AND 400 AAR points (conjunctive).
         # Only compute for members of rank Watch Veteran or higher; otherwise 0.
+        MAX_STUDS = 16
         try:
             studs_count = 0
             idx_veteran = _role_index("Watch Veteran")
@@ -7409,11 +7410,16 @@ async def tally_deeds(
                 except Exception:
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
-                studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_time, studs_aar, MAX_STUDS)
             else:
                 studs_count = 0
         except Exception:
             studs_count = 0
+        # Cap at 16 studs (4 Auramite) — the max tier
+        studs_count = min(studs_count, 16)
+
+        # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
+        studs_count = min(studs_count, 16)
 
         # Build display string using two-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
@@ -7425,8 +7431,8 @@ async def tally_deeds(
                 studs_display = "— (0 Plasteel)"
             else:
                 # Breakdown into Auramite (4), Plasteel (1), max 16 total
-                auramite_count = min(studs_count // 4, 4)
-                plasteel_count = studs_count % 4 if studs_count <= 16 else 0
+                auramite_count = studs_count // 4
+                plasteel_count = studs_count % 4
 
                 studs_symbols = (
                     "●" * auramite_count + "⚬" * plasteel_count
@@ -14592,10 +14598,12 @@ async def promotion_queue(interaction: discord.Interaction):
 
         # --- Process Service Studs eligibility ---
         if is_veteran_or_higher:
-            # Calculate current studs entitlement
+            MAX_STUDS = 16
+
+            # Calculate current studs entitlement, capped at MAX_STUDS
             studs_time = weeks_in_server // 4
             studs_aar = aar_points // 400
-            earned_studs = min(studs_time, studs_aar)
+            earned_studs = min(studs_time, studs_aar, MAX_STUDS)
 
             # Count currently displayed studs from nickname
             # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
@@ -14604,74 +14612,76 @@ async def promotion_queue(interaction: discord.Interaction):
             displayed_plas = dn.count("⚬")
             displayed_studs = displayed_aur * 4 + displayed_plas
 
-            # Check if they're owed studs (only show those who could earn more)
-            # We want to show people who would be eligible for MORE studs if they meet requirements
-            next_stud_threshold_time = (
-                displayed_studs + 1
-            ) * 4  # weeks needed for next stud
-            next_stud_threshold_aar = (
-                displayed_studs + 1
-            ) * 400  # AAR needed for next stud
+            # Only project further progression if below the cap
+            if displayed_studs < MAX_STUDS:
+                # Check if they're owed studs (only show those who could earn more)
+                # We want to show people who would be eligible for MORE studs if they meet requirements
+                next_stud_threshold_time = (
+                    displayed_studs + 1
+                ) * 4  # weeks needed for next stud
+                next_stud_threshold_aar = (
+                    displayed_studs + 1
+                ) * 400  # AAR needed for next stud
 
-            aar_met_for_next = aar_points >= next_stud_threshold_aar
-            time_met_for_next = weeks_in_server >= next_stud_threshold_time
+                aar_met_for_next = aar_points >= next_stud_threshold_aar
+                time_met_for_next = weeks_in_server >= next_stud_threshold_time
 
-            if aar_met_for_next and time_met_for_next:
-                # Already eligible for next stud - they just need to display it
-                pass
-            elif aar_met_for_next and not time_met_for_next:
-                # AAR met, waiting on time for next stud
-                weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
-                next_stud_date = now + timedelta(days=days_until)
-                studs_aar_met_time_not.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        next_stud_date,
+                if aar_met_for_next and time_met_for_next:
+                    # Already eligible for next stud - they just need to display it
+                    pass
+                elif aar_met_for_next and not time_met_for_next:
+                    # AAR met, waiting on time for next stud
+                    weeks_needed = next_stud_threshold_time - weeks_in_server
+                    days_until = (
+                        weeks_needed * 7 - ((now - joined_at).days % 7)
+                        if joined_at
+                        else weeks_needed * 7
                     )
-                )
-            elif not aar_met_for_next and time_met_for_next:
-                # Time met, waiting on AAR for next stud
-                aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_met.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        aar_needed,
+                    next_stud_date = now + timedelta(days=days_until)
+                    studs_aar_met_time_not.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            next_stud_date,
+                        )
                     )
-                )
-            else:
-                # Neither met for next stud
-                weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
-                next_time_date = now + timedelta(days=days_until)
-                aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_not.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        next_time_date,
-                        aar_needed,
+                elif not aar_met_for_next and time_met_for_next:
+                    # Time met, waiting on AAR for next stud
+                    aar_needed = next_stud_threshold_aar - aar_points
+                    studs_aar_not_time_met.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            aar_needed,
+                        )
                     )
-                )
+                else:
+                    # Neither met for next stud
+                    weeks_needed = next_stud_threshold_time - weeks_in_server
+                    days_until = (
+                        weeks_needed * 7 - ((now - joined_at).days % 7)
+                        if joined_at
+                        else weeks_needed * 7
+                    )
+                    next_time_date = now + timedelta(days=days_until)
+                    aar_needed = next_stud_threshold_aar - aar_points
+                    studs_aar_not_time_not.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            next_time_date,
+                            aar_needed,
+                        )
+                    )
 
     # Sort lists by proximity to eligibility
     # For AAR met, time not: sort by soonest date
