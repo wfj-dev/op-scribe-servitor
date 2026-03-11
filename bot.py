@@ -4690,6 +4690,28 @@ def _studs_pips(new_total: int) -> str:
     return pips if pips else "—"
 
 
+def _studs_next_target(displayed_studs: int) -> int:
+    """Return the next stud milestone for the promotion queue.
+
+    Plasteel tier (0-3 studs): next individual stud (displayed_studs + 1).
+    Auramite tier (4+ studs): next Auramite milestone in steps of 4 (8, 12, 16).
+    """
+    if displayed_studs < 4:
+        return displayed_studs + 1
+    return (displayed_studs // 4 + 1) * 4
+
+
+def _format_stud_target(target: int) -> str:
+    """Return a display string for the next stud target in the promotion queue.
+
+    For milestones that reach the first auramite or beyond (target >= 4), shows
+    auramite pip symbols (●). For earlier studs, shows the stud number (#n).
+    """
+    if target >= 4:
+        return "●" * (target // 4)
+    return f"#{target}"
+
+
 def _get_service_studs_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -14804,14 +14826,14 @@ async def promotion_queue(interaction: discord.Interaction):
     # --- Service Studs Queue (for Watch Veteran or higher) ---
     # Requirements: 1 stud per 4 weeks AND 400 AAR points (minimum of both)
     studs_aar_met_time_not: List[
-        Tuple[discord.Member, int, int, int, int, datetime]
-    ] = []  # member, aar_pts, weeks, earned, displayed, next_stud_date
+        Tuple[discord.Member, int, int, int, int, int, datetime]
+    ] = []  # member, aar_pts, weeks, earned, displayed, target, next_stud_date
     studs_aar_not_time_met: List[
-        Tuple[discord.Member, int, int, int, int, int]
-    ] = []  # member, aar_pts, weeks, earned, displayed, aar_needed
+        Tuple[discord.Member, int, int, int, int, int, int]
+    ] = []  # member, aar_pts, weeks, earned, displayed, target, aar_needed
     studs_aar_not_time_not: List[
-        Tuple[discord.Member, int, int, int, int, datetime, int]
-    ] = []  # member, aar_pts, weeks, earned, displayed, next_time_date, aar_needed
+        Tuple[discord.Member, int, int, int, int, int, datetime, int]
+    ] = []  # member, aar_pts, weeks, earned, displayed, target, next_time_date, aar_needed
 
     # --- Watch Veteran Queue (for Watch Brother only) ---
     # Requirements: 200 AAR points AND 2 weeks in server
@@ -14934,13 +14956,12 @@ async def promotion_queue(interaction: discord.Interaction):
             # Only project further progression if below the cap
             if displayed_studs < MAX_STUDS:
                 # Check if they're owed studs (only show those who could earn more)
-                # We want to show people who would be eligible for MORE studs if they meet requirements
-                next_stud_threshold_time = (
-                    displayed_studs + 1
-                ) * 4  # weeks needed for next stud
-                next_stud_threshold_aar = (
-                    displayed_studs + 1
-                ) * 400  # AAR needed for next stud
+                # For auramite tier (4+ studs), track next auramite milestone (8, 12, 16)
+                # For plasteel tier (0-3 studs), track next individual stud
+                next_target = _studs_next_target(displayed_studs)
+
+                next_stud_threshold_time = next_target * 4  # weeks needed for next milestone
+                next_stud_threshold_aar = next_target * 400  # AAR needed for next milestone
 
                 aar_met_for_next = aar_points >= next_stud_threshold_aar
                 time_met_for_next = weeks_in_server >= next_stud_threshold_time
@@ -14964,6 +14985,7 @@ async def promotion_queue(interaction: discord.Interaction):
                             weeks_in_server,
                             earned_studs,
                             displayed_studs,
+                            next_target,
                             next_stud_date,
                         )
                     )
@@ -14977,6 +14999,7 @@ async def promotion_queue(interaction: discord.Interaction):
                             weeks_in_server,
                             earned_studs,
                             displayed_studs,
+                            next_target,
                             aar_needed,
                         )
                     )
@@ -14997,6 +15020,7 @@ async def promotion_queue(interaction: discord.Interaction):
                             weeks_in_server,
                             earned_studs,
                             displayed_studs,
+                            next_target,
                             next_time_date,
                             aar_needed,
                         )
@@ -15005,15 +15029,15 @@ async def promotion_queue(interaction: discord.Interaction):
     # Sort lists by proximity to eligibility
     # For AAR met, time not: sort by soonest date
     veteran_aar_met_time_not.sort(key=lambda x: x[3])  # promotion_date
-    studs_aar_met_time_not.sort(key=lambda x: x[5])  # next_stud_date
+    studs_aar_met_time_not.sort(key=lambda x: x[6])  # next_stud_date
 
     # For AAR not, time met: sort by least AAR needed
     veteran_aar_not_time_met.sort(key=lambda x: x[3])  # aar_needed
-    studs_aar_not_time_met.sort(key=lambda x: x[5])  # aar_needed
+    studs_aar_not_time_met.sort(key=lambda x: x[6])  # aar_needed
 
     # For neither met: sort by soonest time date (they can always grind AAR)
     veteran_aar_not_time_not.sort(key=lambda x: x[3])  # time_date
-    studs_aar_not_time_not.sort(key=lambda x: x[5])  # next_time_date
+    studs_aar_not_time_not.sort(key=lambda x: x[6])  # next_time_date
 
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
@@ -15113,10 +15137,12 @@ async def promotion_queue(interaction: discord.Interaction):
             weeks,
             earned,
             displayed,
+            target,
             next_date,
         ) in studs_aar_met_time_not:
             date_str = next_date.strftime("%b %d")
-            lines.append(f"᛭⋅ {member.mention} | #{displayed + 1} | **{date_str}**")
+            target_str = _format_stud_target(target)
+            lines.append(f"᛭⋅ {member.mention} | →{target_str} | **{date_str}**")
         studs_embed.add_field(
             name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
             value=_build_field_value(lines, len(studs_aar_met_time_not)),
@@ -15132,10 +15158,12 @@ async def promotion_queue(interaction: discord.Interaction):
             weeks,
             earned,
             displayed,
+            target,
             aar_needed,
         ) in studs_aar_not_time_met:
+            target_str = _format_stud_target(target)
             lines.append(
-                f"᛭⋅ {member.mention} | [{displayed}] | needs **{aar_needed}**"
+                f"᛭⋅ {member.mention} | →{target_str} | needs **{aar_needed}**"
             )
         studs_embed.add_field(
             name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
@@ -15152,12 +15180,14 @@ async def promotion_queue(interaction: discord.Interaction):
             weeks,
             earned,
             displayed,
+            target,
             next_time,
             aar_needed,
         ) in studs_aar_not_time_not:
             date_str = next_time.strftime("%b %d")
+            target_str = _format_stud_target(target)
             lines.append(
-                f"᛭⋅ {member.mention} | [{displayed}] | {date_str}, +{aar_needed}"
+                f"᛭⋅ {member.mention} | →{target_str} | {date_str}, +{aar_needed}"
             )
         studs_embed.add_field(
             name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
