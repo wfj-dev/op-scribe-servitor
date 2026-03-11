@@ -1574,16 +1574,14 @@ async def _check_promotion_milestones():
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
                     studs_aar = aar_points // 400
-                    earned_studs = min(studs_time, studs_aar)
+                    earned_studs = min(min(studs_time, studs_aar), 16)
 
                     # Count currently displayed studs from nickname
+                    # Auramite (●) = 4 plasteel, Plasteel (⚬) = 1
                     dn = str(member.nick or member.display_name or "")
-                    displayed_cer = dn.count("⬥")
-                    displayed_elec = dn.count("●")
+                    displayed_aur = dn.count("●")
                     displayed_plas = dn.count("⚬")
-                    displayed_studs = (
-                        displayed_cer * 25 + displayed_elec * 5 + displayed_plas
-                    )
+                    displayed_studs = displayed_aur * 4 + displayed_plas
 
                     # First run: initialize tracking without notifying
                     if "last_earned_studs" not in user_tracking:
@@ -2159,6 +2157,86 @@ def _is_techmarine_or_forgemaster(
     if any("techmarine" in n for n in names):
         return True, "techmarine"
     return False, ""
+
+
+def _find_responsible_attestor(
+    bearer: discord.Member, guild: discord.Guild
+) -> Tuple[Optional[discord.Member], str]:
+    """Find the responsible techmarine/forgemaster for blessing a bearer's armor.
+
+    Returns (attestor_member, role_key) where role_key is 'forgemaster' or 'techmarine'.
+    Returns (None, 'forgemaster') if no attestor found (caller should handle fallback).
+
+    Logic:
+    1. If bearer is High Command → Forgemaster blesses
+    2. If bearer is a Techmarine → Forgemaster blesses (master blesses his subordinates)
+    3. If bearer has a company → That company's Techmarine blesses
+       (random selection if multiple techmarines in company)
+    4. No company or no techmarine → Forgemaster fills the gap
+    """
+    import random as _rand
+
+    # Check if bearer is High Command → Forgemaster responsibility
+    try:
+        bearer_roles = {n.lower() for n in _canonical_role_names(bearer)}
+    except Exception:
+        bearer_roles = set()
+
+    highcom_lower = {r.lower() for r in HIGH_COMMAND_ROLES}
+    if bearer_roles & highcom_lower:
+        # Bearer is High Command - find the Forgemaster
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                if any("forgemaster" in r for r in m_roles):
+                    return m, "forgemaster"
+            except Exception:
+                continue
+        return None, "forgemaster"  # No forgemaster found
+
+    # Check if bearer is a Techmarine → Forgemaster blesses them
+    if any("techmarine" in r for r in bearer_roles):
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                if any("forgemaster" in r for r in m_roles):
+                    return m, "forgemaster"
+            except Exception:
+                continue
+        return None, "forgemaster"  # No forgemaster found
+
+    # Get bearer's company
+    bearer_company = _get_member_company_name(bearer)
+
+    if bearer_company:
+        # Find techmarine(s) in the same company
+        company_techmarines = []
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                m_company = _get_member_company_name(m)
+                if (
+                    any("techmarine" in r for r in m_roles)
+                    and m_company == bearer_company
+                ):
+                    company_techmarines.append(m)
+            except Exception:
+                continue
+
+        if company_techmarines:
+            # If multiple, pick randomly; otherwise return the one
+            return _rand.choice(company_techmarines), "techmarine"
+
+    # Fallback: No company or no techmarine for company → Forgemaster
+    for m in guild.members:
+        try:
+            m_roles = {n.lower() for n in _canonical_role_names(m)}
+            if any("forgemaster" in r for r in m_roles):
+                return m, "forgemaster"
+        except Exception:
+            continue
+
+    return None, "forgemaster"  # No forgemaster found either
 
 
 def _load_rites() -> dict:
@@ -3593,24 +3671,231 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Watch Brother": "Brother",
 }
 
-# Techmarine's recognition of bearer's experience/studs (tier-based)
+# Techmarine's recognition of bearer's experience/studs (tier-based, legacy - now using rank-specific)
 TECHMARINE_STUDS_ACKNOWLEDGMENT: Dict[int, List[str]] = {
-    1: [  # Tier 1 (1-4 studs): Fresh warrior
+    1: [  # Tier 1 (1-3 studs): Fresh warrior
         "A warrior new-marked, yet the machine-spirit recognizes your potential.",
         "Your service begins; may this armor carry you through the trials ahead.",
         "Newly blooded, your armor learns your hand—grow together.",
     ],
-    2: [  # Tier 2 (5-24 studs): Seasoned veteran
+    2: [  # Tier 2 (4-11 studs): Seasoned veteran
         "The armor recognizes a warrior of proven valor—we have seen many campaigns together.",
         "Your studs speak of battles endured; this armor is blessed to carry a veteran.",
         "Long service has earned you armor touched by countless glorious moments of war.",
     ],
-    3: [  # Tier 3 (25+ studs): Legendary
+    3: [  # Tier 3 (12-16 studs): Legendary
         "The machine-spirit trembles before one so honored; legends rarely grace such work.",
         "An ancient warrior comes forth—may this armor honor the centuries of your service.",
         "The armor itself is humbled; to bear the weight of such achievement is sacred duty.",
     ],
 }
+
+# Rank-specific Techmarine acknowledgments for forge_rite
+# These express how the Techmarine addresses bearers based on their specific rank
+TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
+    # Watch Master - utmost reverence
+    "Watch Master": [
+        "It is the highest honor to minister to the Lord of the Long Watch.",
+        "The machine-spirits themselves tremble with awe at your station, my Lord.",
+        "To sanctify the armor of the Watch Master is the pinnacle of sacred duty.",
+    ],
+    # High Command
+    "High Chaplain": [
+        "The Voice of the Emperor deserves armor as unyielding as his faith.",
+        "Your sermons steel the souls of warriors; may this armor steel your flesh.",
+        "The machine-spirit bows before the Emperor's chosen herald.",
+    ],
+    "Chief Apothecary": [
+        "Guardian of the gene-seed, your armor must be as pure as the legacy you protect.",
+        "The Keeper of Purity deserves warplate untouched by flaw or imperfection.",
+        "May this armor shield the one who shields our sacred bloodlines.",
+    ],
+    "Void Warden": [
+        "Aegis against the Immaterium, your armor must resist more than mortal threats.",
+        "The wards I inscribe upon this armor echo the barriers of your mind.",
+        "The machine-spirit stands vigilant alongside your psychic watch.",
+    ],
+    "Forgemaster": [
+        "Master, it is my honor to tend to your sacred warplate.",
+        "The Hand of the Machine God deserves the Omnissiah's finest ministrations.",
+        "I apply the rites you taught me—may they honor your armor as you honor the craft.",
+    ],
+    "Lord Executioner": [
+        "The Blade of the Fortress demands armor as sharp as his judgment.",
+        "Your armor has tasted the blood of traitors; I sanctify it for more to come.",
+        "The machine-spirit hungers for righteous execution at your command.",
+    ],
+    "Venerable": [
+        "Ancient warrior, your armor has witnessed ages beyond reckoning—I approach this rite with reverence.",
+        "The centuries of your service are writ in every plate; I am honored to tend such sacred warplate.",
+        "To minister to one so Venerable is a privilege granted to few—the machine-spirit itself bows in respect.",
+    ],
+    # Company Command
+    "Watch Captain": [
+        "Warden of the Company, your armor must be as steadfast as your command.",
+        "The warriors who follow you need see no flaw in their Captain's warplate.",
+        "By your leadership, the Company prevails—by my rites, your armor endures.",
+    ],
+    "Watch Lieutenant": [
+        "Shield of the Watch, your armor stands between command and the line.",
+        "The Lieutenant's armor must inspire those who look to you for orders.",
+        "May this warplate serve as faithfully as you serve your Captain.",
+    ],
+    # Specialists
+    "Watch Chaplain": [
+        "Keeper of the Faith, your armor must reflect the Emperor's light.",
+        "The warriors you inspire deserve to see unshakeable strength in your warplate.",
+        "The machine-spirit resonates with the litanies you speak.",
+    ],
+    "Watch Apothecary": [
+        "Guardian of the gene-seed, your armor must protect the protector.",
+        "The Narthecium demands a steady hand—may this armor never hinder your sacred work.",
+        "Your duty preserves the Chapter eternal; my duty preserves your armor.",
+    ],
+    "Watch Librarian": [
+        "Warden of the Immaterium, your armor must withstand more than physical blows.",
+        "I inscribe protective glyphs into the machine-spirit's core—may the Warp find no purchase.",
+        "The psychic wards are renewed; the machine-spirit stands vigilant.",
+    ],
+    "Watch Techmarine": [
+        "Brother-Techmarine, your armor deserves the same devotion you show others.",
+        "We who serve the Machine God must not neglect our own sacred warplate.",
+        "The machine-spirit welcomes the ministrations of a fellow servant.",
+    ],
+    # Champions
+    "Company Champion": [
+        "Blade of the Company, your armor must match your peerless skill.",
+        "The Champion's warplate has witnessed countless duels—may it witness countless more.",
+        "The machine-spirit yearns for the glory of single combat at your side.",
+    ],
+    "Kill Team Champion": [
+        "Champion of the Kill Team, your armor reflects the honor you bring your brothers.",
+        "The blade that leads the charge deserves armor that never falters.",
+        "Victory follows where the Champion treads—may your armor bear you to glory.",
+    ],
+    # Line ranks
+    "Watch Sergeant": [
+        "Bearer of command, your armor must set the example for those you lead.",
+        "The Sergeant's warplate has seen the crucible of leadership—I honor its service.",
+        "Your brothers look to you; may this armor reflect your steadfast resolve.",
+    ],
+    "Oathsworn": [
+        "Oathsworn Warrior, your dedication to Jericho is writ in every plate of this armor.",
+        "The bonds of the Oathsworn are eternal—may your armor endure as long.",
+        "Your oath binds you to the Watch; my rites bind this armor to your service.",
+    ],
+    "Watch Veteran": [
+        "Honored Veteran, your experience is etched into the machine-spirit's memory.",
+        "Many battles have tested this warplate—may many more prove its worth.",
+        "The Veteran's armor knows war; I rekindle its readiness for the next campaign.",
+    ],
+    "Watch Brother": [
+        "Brother, the machine-spirit is honored to shield a warrior of the Long Watch.",
+        "The backbone of the Watch—may your armor serve as faithfully as you.",
+        "Your service to Jericho is written in every plate of this armor.",
+    ],
+}
+
+
+# Rank prestige weights for acknowledgment blending (0.0-1.0)
+# Higher rank = more likely to get rank-specific acknowledgment
+RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
+    # High Command - very high prestige
+    "Watch Master": 1.0,
+    "High Chaplain": 0.9,
+    "Chief Apothecary": 0.9,
+    "Void Warden": 0.9,
+    "Forgemaster": 0.9,
+    "Lord Executioner": 0.9,
+    "Venerable": 0.85,
+    # Company Command - high prestige
+    "Watch Captain": 0.75,
+    "Watch Lieutenant": 0.65,
+    # Specialists - medium-high prestige
+    "Watch Chaplain": 0.6,
+    "Watch Apothecary": 0.6,
+    "Watch Librarian": 0.6,
+    "Watch Techmarine": 0.6,
+    # Champions - medium prestige
+    "Company Champion": 0.5,
+    "Kill Team Champion": 0.45,
+    # Line ranks - lower prestige (studs matter more)
+    "Watch Sergeant": 0.35,
+    "Oathsworn": 0.25,
+    "Watch Veteran": 0.2,
+    "Watch Brother": 0.1,
+}
+
+
+def _get_stud_weight(studs: int) -> float:
+    """Calculate stud weight for acknowledgment blending (0.0-1.0).
+
+    Scales linearly from 0.1 (1 stud) to 1.0 (16 studs).
+    0 studs returns 0.05 (minimal weight).
+    """
+    if studs <= 0:
+        return 0.05
+    if studs >= 16:
+        return 1.0
+    # Linear scale: 1 stud = 0.1, 16 studs = 1.0
+    return 0.1 + (studs - 1) * (0.9 / 15)
+
+
+def _get_techmarine_acknowledgment_blended(
+    member: "discord.Member", bearer_studs: int
+) -> str:
+    """Get a dynamically blended acknowledgment phrase for forge_rite.
+
+    Blends rank-specific and stud-specific acknowledgments based on:
+    - Higher studs → more likely stud acknowledgment
+    - Higher rank → more likely rank acknowledgment
+
+    Examples:
+    - Watch Veteran + 16 studs → ~83% stud ack (studs are impressive for low rank)
+    - High Chaplain + 2 studs → ~86% rank ack (rank is impressive vs low studs)
+    - Forgemaster + 16 studs → ~50/50 (both equally impressive)
+    """
+    import random
+
+    # Determine bearer's rank name (highest priority first based on RANK_ROLES_PRIORITY order)
+    bearer_rank_name = None
+    try:
+        for rank_name in RANK_ROLES_PRIORITY:
+            for r in getattr(member, "roles", []) or []:
+                rn = (getattr(r, "name", "") or "").strip()
+                if rn == rank_name:
+                    bearer_rank_name = rank_name
+                    break
+            if bearer_rank_name:
+                break
+    except Exception:
+        pass
+
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    # Calculate weights
+    rank_weight = RANK_PRESTIGE_WEIGHTS.get(bearer_rank_name, 0.1)
+    stud_weight = _get_stud_weight(bearer_studs)
+
+    # Probability of rank acknowledgment = rank_weight / (rank_weight + stud_weight)
+    prob_rank = rank_weight / (rank_weight + stud_weight)
+
+    # Choose based on probability
+    if random.random() < prob_rank:
+        # Use rank-specific acknowledgment
+        rank_options = TECHMARINE_RANK_ACKNOWLEDGMENTS.get(
+            bearer_rank_name, TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
+        )
+        return random.choice(rank_options)
+    else:
+        # Use stud-tier acknowledgment via shared _studs_tier()
+        studs_tier = _studs_tier(bearer_studs)
+        stud_options = TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
+            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
+        )
+        return random.choice(stud_options)
+
 
 # Techmarine signature variation phrases (randomly chosen)
 TECHMARINE_SIGNATURES: List[str] = [
@@ -3827,7 +4112,7 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
 }
 
 # Ordo Xenos / Deathwatch-wide honor phrases (tiered by service studs)
-# Tier 1 (1-4 studs): Foundational acknowledgments of watch membership
+# Tier 1 (1-3 studs): Foundational acknowledgments of watch membership
 ORDO_XENOS_HONORS_TIER1: List[str] = [
     "The Ordo Xenos records your vigilance against the alien threat.",
     "Your service to the Long Watch brings honor to the Deathwatch.",
@@ -3838,7 +4123,7 @@ ORDO_XENOS_HONORS_TIER1: List[str] = [
     "Jericho's halls hear your name spoken in service.",
 ]
 
-# Tier 2 (5-24 studs): Formal record-keeping and established honor
+# Tier 2 (4-11 studs): Formal record-keeping and established honor
 ORDO_XENOS_HONORS_TIER2: List[str] = [
     "The Ordo Xenos archives record your steadfast vigilance against the xenos.",
     "Watch Fortress Jericho's ledgers mark your exceptional service and dedication.",
@@ -3850,7 +4135,7 @@ ORDO_XENOS_HONORS_TIER2: List[str] = [
     "Your service echoes through corridors of the Fortress itself.",
 ]
 
-# Tier 3 (25+ studs): Supreme honors and legendary status
+# Tier 3 (12-16 studs): Supreme honors and legendary status
 ORDO_XENOS_HONORS_TIER3: List[str] = [
     "The Ordo Xenos bows before one whose vigilance spans decades of endless war.",
     "Watch Fortress Jericho's highest honors are inscribed upon your name in perpetuity.",
@@ -3919,7 +4204,7 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
 }
 
 # Venerations based on PIP TYPE earned (not total count)
-# Applied when earning plasteel (⚬), ceramite (●), or auramite (⬥) studs
+# Applied when earning plasteel (⚬) or auramite (●) studs
 # Plasteel: frequent earns, larger pool to avoid repetition (~25 entries)
 SERVICE_STUDS_VENERATIONS_PLASTEEL: List[str] = [
     "Your service studs gleam with the promise of deeds yet to come.",
@@ -3949,36 +4234,22 @@ SERVICE_STUDS_VENERATIONS_PLASTEEL: List[str] = [
     "From years of vigilance, these studs are born.",
 ]
 
-# Ceramite: less frequent earns, moderate pool (~15 entries)
-SERVICE_STUDS_VENERATIONS_CERAMITE: List[str] = [
-    "Your service studs proclaim a warrior whose experience shapes the Watch itself.",
-    "Few bear such marks of enduring service—honor is yours by right.",
-    "The weight of your studs reflects the weight of your deeds.",
-    "Younger brothers look to your studs and see their own path illuminated.",
-    "Your marks of service are a legacy etched in adamantium and honor.",
-    "The Watch is strengthened by warriors such as you.",
-    "Your service studs tell tales that will echo through the centuries.",
-    "The machine-spirit bows before one whose service spans so many campaigns.",
-    "Your studs speak of war without end, and duty without question.",
-    "Veterans of the Long Watch look upon your marks with reverence.",
-    "The annals of Jericho record your deeds with each gleaming stud.",
-    "Your studs are a chronicle of the Emperor's wrath made manifest.",
-    "The fortress itself knows the tread of one so long in service.",
-    "Your experience is a weapon as mighty as any bolter or blade.",
-    "The studs upon your brow have witnessed the fall of countless xenos.",
-]
-
-# Auramite: rare earns, small focused pool (~5 entries)
+# Auramite: earned every 4 plasteel, focused pool (~10 entries)
 SERVICE_STUDS_VENERATIONS_AURAMITE: List[str] = [
     "Your service studs rival those of the Ancients themselves.",
     "The studs upon your brow are a saga written in silver and blood.",
     "Even the machine-spirits whisper reverence for one so marked by duty.",
     "Your service marks proclaim a living legend of the Deathwatch.",
     "The Omnissiah himself takes note of such devotion to duty eternal.",
+    "Your service studs proclaim a warrior whose experience shapes the Watch itself.",
+    "Few bear such marks of enduring service—honor is yours by right.",
+    "The weight of your studs reflects the weight of your deeds.",
+    "Younger brothers look to your studs and see their own path illuminated.",
+    "Your marks of service are a legacy etched in adamantium and honor.",
 ]
 
 # Tiered milestone intros based on stud number being earned
-# Tier 1: 1-4 (first marks), Tier 2: 5-24 (seasoned), Tier 3: 25+ (legendary)
+# Tier 1: 1-3 (first marks), Tier 2: 4-11 (seasoned), Tier 3: 12-16 (legendary)
 SERVICE_STUDS_MILESTONE_TIER1: List[str] = [
     "The Apothecarion stands ready to affix your mark of service.",
     "Your dedication has earned a new stud—seek the Apothecary's ministrations.",
@@ -4004,14 +4275,13 @@ SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
 ]
 
 # Special milestone announcements for exact stud numbers
+# Max 4 auramite studs (16 plasteel total)
 SERVICE_STUDS_SPECIAL_MILESTONES: Dict[int, str] = {
     1: "**FIRST SERVICE STUD** — A warrior's journey begins!",
-    5: "**FIFTH SERVICE STUD** — A proven veteran emerges!",
-    10: "**TENTH SERVICE STUD** — A decade of unwavering duty!",
-    25: "**AURAMITE STUD EARNED** — Legendary status achieved!",
-    50: "**FIFTY SERVICE STUDS** — A living saga of war!",
-    75: "**SEVENTY-FIVE STUDS** — The Ancients themselves take note!",
-    100: "**ONE HUNDRED STUDS** — A monument of duty made flesh!",
+    4: "**FIRST AURAMITE STUD** — A proven veteran emerges!",
+    8: "**SECOND AURAMITE STUD** — A seasoned warrior of the Watch!",
+    12: "**THIRD AURAMITE STUD** — Legendary status approaches!",
+    16: "**FOURTH AURAMITE STUD** — Maximum honor achieved! A living legend!",
 }
 
 # Deathwatch-themed opening phrases for service stud announcements
@@ -4143,7 +4413,7 @@ def _blend_stud_flavor_by_rank(
     - High Command Specialist: 20% chapter, 80% role
     - Watch Master: 10% chapter, 90% role
 
-    pip_type: "plasteel", "auramite", or "ceramite" for veneration fallback selection.
+    pip_type: "plasteel" or "auramite" for veneration fallback selection.
     Returns blended flavor text or falls back to pip-type-based veneration.
     """
     import random
@@ -4159,8 +4429,6 @@ def _blend_stud_flavor_by_rank(
     # Select veneration pool based on pip type
     if pip_type == "auramite":
         veneration_pool = SERVICE_STUDS_VENERATIONS_AURAMITE
-    elif pip_type == "ceramite":
-        veneration_pool = SERVICE_STUDS_VENERATIONS_CERAMITE
     else:  # plasteel or unknown
         veneration_pool = SERVICE_STUDS_VENERATIONS_PLASTEEL
 
@@ -4225,8 +4493,8 @@ def _get_stud_marking_recipients(
     """
 
     def strip_studs(name: str) -> str:
-        """Remove service studs (⬥●⚬) from a name."""
-        return name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+        """Remove service studs (●⚬) from a name."""
+        return name.replace("●", "").replace("⚬", "").strip()
 
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
@@ -4374,6 +4642,34 @@ def _get_stud_marking_recipients(
     return "Report to the Apothecarion.", ""
 
 
+def _studs_tier(new_total: int) -> int:
+    """Return the display tier (1, 2, or 3) for a given total stud count.
+
+    Tier 1: 1-3 studs (new warriors)
+    Tier 2: 4-11 studs (seasoned veterans)
+    Tier 3: 12-16 studs (legendary; studs are capped at 16 system-wide)
+    """
+    if new_total <= 3:
+        return 1
+    elif new_total <= 11:
+        return 2
+    return 3
+
+
+def _studs_pips(new_total: int) -> str:
+    """Return the pip display string for a given total stud count.
+
+    Each Auramite pip (●) represents 4 Plasteel studs.
+    Plasteel pips (⚬) represent individual studs (up to 3 remainder).
+    The display is capped at 4 Auramite studs (16 Plasteel total).
+    Returns '—' when new_total is 0.
+    """
+    auramite = min(new_total // 4, 4)
+    plasteel = new_total % 4 if new_total <= 16 else 0
+    pips = "●" * auramite + "⚬" * plasteel
+    return pips if pips else "—"
+
+
 def _get_service_studs_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -4406,14 +4702,10 @@ def _get_service_studs_announcement(
 
     stud_word = "Stud" if new_studs == 1 else "Studs"
 
-    # Determine tier based on NEW total they'll display (after earning these studs)
+    # Determine tier and pip display based on NEW total (after earning these studs)
     new_total = displayed_studs + new_studs
-    if new_total <= 4:
-        tier = 1
-    elif new_total <= 24:
-        tier = 2
-    else:
-        tier = 3
+    tier = _studs_tier(new_total)
+    studs_pips = _studs_pips(new_total)
 
     # Get Watch Brother role for pinging in content (outside embed)
     watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
@@ -4426,15 +4718,6 @@ def _get_service_studs_announcement(
         if member_chapter != "Unknown"
         else None
     )
-
-    # Compute stud pips display: ⬥=25, ●=5, ⚬=1 (based on new total already calculated above)
-    auramite = new_total // 25
-    remainder = new_total % 25
-    ceramite = remainder // 5
-    plasteel = remainder % 5
-    studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
-    if not studs_pips:
-        studs_pips = "—"  # No studs displayed yet
 
     # Build embed
     embed = discord.Embed(
@@ -4489,17 +4772,14 @@ def _get_service_studs_announcement(
     prev_studs = max(0, displayed_studs)
     curr_studs = new_total
 
-    prev_auramite = prev_studs // 25
-    prev_ceramite = (prev_studs % 25) // 5
-    prev_plasteel = prev_studs % 5
+    prev_auramite = min(prev_studs // 4, 4)
+    prev_plasteel = prev_studs % 4 if prev_studs <= 16 else 0
 
-    curr_auramite = curr_studs // 25
-    curr_ceramite = (curr_studs % 25) // 5
-    curr_plasteel = curr_studs % 5
+    curr_auramite = min(curr_studs // 4, 4)
+    curr_plasteel = curr_studs % 4 if curr_studs <= 16 else 0
 
     # Compute net change in each pip type
     delta_auramite = curr_auramite - prev_auramite
-    delta_ceramite = curr_ceramite - prev_ceramite
     delta_plasteel = curr_plasteel - prev_plasteel
 
     # Build visual pip change string showing what was gained
@@ -4508,10 +4788,7 @@ def _get_service_studs_announcement(
     pip_changes = []
     if delta_auramite > 0:
         pip_word = "Stud" if delta_auramite == 1 else "Studs"
-        pip_changes.append(f"+{delta_auramite}⬥ Auramite {pip_word}")
-    if delta_ceramite > 0:
-        pip_word = "Stud" if delta_ceramite == 1 else "Studs"
-        pip_changes.append(f"+{delta_ceramite}● Ceramite {pip_word}")
+        pip_changes.append(f"+{delta_auramite}● Auramite {pip_word}")
     if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
         pip_changes.append(f"+{delta_plasteel}⚬ Plasteel {pip_word}")
@@ -4541,11 +4818,9 @@ def _get_service_studs_announcement(
     else:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
 
-    # Determine which pip type is being earned (priority: auramite > ceramite > plasteel)
+    # Determine which pip type is being earned (priority: auramite > plasteel)
     if delta_auramite > 0:
         pip_type = "auramite"
-    elif delta_ceramite > 0:
-        pip_type = "ceramite"
     else:
         pip_type = "plasteel"
 
@@ -4608,12 +4883,10 @@ def _get_oathsworn_announcement(
     oathsworn_emoji = _get_emoji_by_name(guild, "Oathsworn")
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
 
-    # Compute stud pips display
-    auramite = earned_studs // 25
-    remainder = earned_studs % 25
-    ceramite = remainder // 5
-    plasteel = remainder % 5
-    studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
+    # Compute stud pips display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
+    auramite = min(earned_studs // 4, 4)
+    plasteel = earned_studs % 4 if earned_studs <= 16 else 0
+    studs_pips = "●" * auramite + "⚬" * plasteel
     if not studs_pips:
         studs_pips = "—"
 
@@ -4756,8 +5029,9 @@ def _compute_member_service_studs(member: discord.Member) -> int:
 
         studs_aar = aar_points // 400
 
-        # Studs are the minimum of time-based and points-based
-        return min(studs_time, studs_aar)
+        # Studs are the minimum of time-based and points-based, capped at 16
+        # (4 Auramite studs maximum, consistent with pip display and promotion tracking)
+        return min(min(studs_time, studs_aar), 16)
     except Exception:
         return 0
 
@@ -4767,18 +5041,15 @@ def _get_studs_veneration(studs_count: int) -> Optional[str]:
 
     Maps count ranges to pip types:
     - 0: No veneration (newly promoted)
-    - 1-4: Plasteel (newly earned)
-    - 5-24: Ceramite (experienced warrior)
-    - 25+: Auramite (legendary)
+    - 1-3: Plasteel (newly earned)
+    - 4+: Auramite (seasoned warrior, max 4 auramite = 16 plasteel)
     """
     import random
 
     if studs_count <= 0:
         return None
-    elif studs_count <= 4:
+    elif studs_count <= 3:
         return random.choice(SERVICE_STUDS_VENERATIONS_PLASTEEL)
-    elif studs_count <= 24:
-        return random.choice(SERVICE_STUDS_VENERATIONS_CERAMITE)
     else:
         return random.choice(SERVICE_STUDS_VENERATIONS_AURAMITE)
 
@@ -4823,8 +5094,7 @@ def _get_bearer_rank_and_title(
                                 wm_name = wm_name[len("Watch Master") :].lstrip()
                             # Strip stud pips from name
                             wm_name = (
-                                wm_name.replace("⬥", "")
-                                .replace("●", "")
+                                wm_name.replace("●", "")
                                 .replace("⚬", "")
                                 .strip()
                             )
@@ -4859,8 +5129,7 @@ def _get_bearer_rank_and_title(
                                     break
                             # Strip stud pips from name
                             cap_name = (
-                                cap_name.replace("⬥", "")
-                                .replace("●", "")
+                                cap_name.replace("●", "")
                                 .replace("⚬", "")
                                 .strip()
                             )
@@ -4926,7 +5195,7 @@ def _get_bearer_rank_and_title(
 
     # Strip stud pips from display name (we report studs separately)
     display_name = (
-        display_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+        display_name.replace("●", "").replace("⚬", "").strip()
     )
 
     # Build combined title: prefer "Kill Team X, Company Y" format
@@ -5106,7 +5375,8 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 async def _attest(interaction: discord.Interaction, member: discord.Member):
     import random
 
-    allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
+    # Permission check: caller must be techmarine or forgemaster to run command
+    allowed, _caller_role_key = _is_techmarine_or_forgemaster(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5122,24 +5392,31 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     except Exception:
         pass
 
+    # Find the responsible attestor based on BEARER's company/role (not caller)
+    attestor_member, role_key = _find_responsible_attestor(member, interaction.guild)
+    if attestor_member is None:
+        # No forgemaster found in guild - fall back to caller with their actual role
+        attestor_member = interaction.user
+        role_key = _caller_role_key
+
     # Build attestation using standardized Imperial date format
     try:
         ts = _format_imperial_date(datetime.utcnow())
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Authority
+    # Authority based on attestor's company/role
     if role_key == "forgemaster":
         authority = "Jericho High Command"
     else:
-        comp = _find_company_or_chapter(interaction.user) or "Unknown Company"
+        comp = _find_company_or_chapter(attestor_member) or "Unknown Company"
         authority = comp
 
-    # Attesting name (strip stud pips)
-    attester = getattr(interaction.user, "display_name", None) or getattr(
-        interaction.user, "name", str(interaction.user.id)
+    # Attesting name from the RESPONSIBLE attestor (strip stud pips)
+    attester = getattr(attestor_member, "display_name", None) or getattr(
+        attestor_member, "name", str(attestor_member.id)
     )
-    attester = attester.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+    attester = attester.replace("●", "").replace("⚬", "").strip()
 
     # Get techmarine's rank emoji for attestation
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
@@ -5147,9 +5424,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
     )
 
-    # Optional personal rite
+    # Optional personal rite from the RESPONSIBLE attestor
     try:
-        rite_text = await _get_user_rite(int(interaction.user.id))
+        rite_text = await _get_user_rite(int(attestor_member.id))
         # Safety truncation for legacy rites that may exceed the limit
         if rite_text and len(rite_text) > MAX_RITE_LENGTH:
             rite_text = rite_text[: MAX_RITE_LENGTH - 3] + "..."
@@ -5163,7 +5440,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Bearer info: rank honorific, display name, and Kill Team/Company title
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
     # Defensive pip stripping - ensure no stud pips in display name
-    bearer_name = bearer_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
 
     # Bearer's home chapter for chapter-specific blessing (use dedicated function)
     bearer_chapter = _get_bearer_home_chapter(member)
@@ -5180,20 +5457,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Service studs computation
     bearer_studs = _compute_member_service_studs(member)
 
-    # Determine stud tier for various rite elements
-    if bearer_studs <= 4:
-        studs_tier = 1
-    elif bearer_studs <= 24:
-        studs_tier = 2
-    else:
-        studs_tier = 3
-
-    # Techmarine stud tier acknowledgment
-    stud_acknowledgment = random.choice(
-        TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
-            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
-        )
-    )
+    # Techmarine acknowledgment (dynamically blended by rank prestige vs stud count)
+    stud_acknowledgment = _get_techmarine_acknowledgment_blended(member, bearer_studs)
 
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
@@ -5249,24 +5514,17 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
-        # Tiered stud display: ⬥=25, ●=5, ⚬=1
-        auramite = bearer_studs // 25
-        remainder = bearer_studs % 25
-        ceramite = remainder // 5
-        plasteel = remainder % 5
-        studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
+        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
+        auramite = min(bearer_studs // 4, 4)
+        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
+        studs_pips = "●" * auramite + "⚬" * plasteel
         lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs
+    # Determine tier based on bearer's service studs using shared _studs_tier()
     bearer_studs_for_tier = _compute_member_service_studs(member) if member else 0
-    if bearer_studs_for_tier <= 4:
-        tier_for_honor = 1
-    elif bearer_studs_for_tier <= 24:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    tier_for_honor = _studs_tier(bearer_studs_for_tier)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
@@ -5341,7 +5599,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     # Defensive pip stripping in case they survived from display name
-    bearer_name = bearer_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
         bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
@@ -5356,12 +5614,10 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
-        # Tiered stud display: ⬥=25, ●=5, ⚬=1
-        auramite = bearer_studs // 25
-        remainder = bearer_studs % 25
-        ceramite = remainder // 5
-        plasteel = remainder % 5
-        studs_pips = "⬥" * auramite + "●" * ceramite + "⚬" * plasteel
+        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
+        auramite = min(bearer_studs // 4, 4)
+        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
+        studs_pips = "●" * auramite + "⚬" * plasteel
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -5373,13 +5629,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs
-    if bearer_studs <= 4:
-        tier_for_honor = 1
-    elif bearer_studs <= 24:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    # Determine tier based on bearer's service studs using shared _studs_tier()
+    tier_for_honor = _studs_tier(bearer_studs)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
@@ -5510,11 +5761,11 @@ async def _preview_stud_announcement(
         earned_studs = earned_studs_override
 
     # Read displayed studs from nickname
+    # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
     dn = str(member.nick or member.display_name or "")
-    displayed_cer = dn.count("⬥")
-    displayed_elec = dn.count("●")
+    displayed_aur = dn.count("●")
     displayed_plas = dn.count("⚬")
-    actual_displayed = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+    actual_displayed = displayed_aur * 4 + displayed_plas
 
     # Use provided displayed_studs or fall back to actual
     if displayed_studs is None:
@@ -6681,13 +6932,14 @@ async def audit_service_studs(interaction: discord.Interaction):
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
                 studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_count, 16)
 
             # Count existing studs shown in nickname/display name
+            # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
             dn = str(member.nick or member.display_name or "")
-            existing_cer = dn.count("⬥")
-            existing_elec = dn.count("●")
+            existing_aur = dn.count("●")
             existing_plas = dn.count("⚬")
-            existing_total = existing_cer * 25 + existing_elec * 5 + existing_plas
+            existing_total = existing_aur * 4 + existing_plas
 
             if studs_count != existing_total:
                 mismatches.append((member, studs_count, existing_total))
@@ -7402,6 +7654,7 @@ async def tally_deeds(
 
         # Compute Service Studs: one stud per 4 weeks AND 400 AAR points (conjunctive).
         # Only compute for members of rank Watch Veteran or higher; otherwise 0.
+        MAX_STUDS = 16
         try:
             studs_count = 0
             idx_veteran = _role_index("Watch Veteran")
@@ -7431,36 +7684,37 @@ async def tally_deeds(
                 except Exception:
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
-                studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_time, studs_aar, MAX_STUDS)
             else:
                 studs_count = 0
         except Exception:
             studs_count = 0
+        # Cap at 16 studs (4 Auramite) — the max tier
+        studs_count = min(studs_count, 16)
 
-        # Build display string using three-tier Unicode symbols:
+        # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
+        studs_count = min(studs_count, 16)
+
+        # Build display string using two-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
-        # - mid: filled circle '●' per five (Ceramite)
-        # - top: diamond '⬥' per twenty-five (Auramite)
+        # - top: filled circle '●' per four (Auramite), max 4 auramite
         # Append a type breakdown in parentheses using in-universe names.
         try:
             studs_symbols = ""
             if not studs_count:
                 studs_display = "— (0 Plasteel)"
             else:
-                # Breakdown into Auramite (25), Ceramite (5), Plasteel (1)
-                auramite_count = studs_count // 25
-                ceramite_count = (studs_count % 25) // 5
-                plasteel_count = studs_count % 5
+                # Breakdown into Auramite (4), Plasteel (1), max 16 total
+                auramite_count = studs_count // 4
+                plasteel_count = studs_count % 4
 
                 studs_symbols = (
-                    "⬥" * auramite_count + "●" * ceramite_count + "⚬" * plasteel_count
+                    "●" * auramite_count + "⚬" * plasteel_count
                 )
 
                 parts: list[str] = []
                 if auramite_count:
                     parts.append(f"{auramite_count} Auramite")
-                if ceramite_count:
-                    parts.append(f"{ceramite_count} Ceramite")
                 if plasteel_count:
                     parts.append(f"{plasteel_count} Plasteel")
                 types_str = ", ".join(parts) if parts else "0 Plasteel"
@@ -7470,20 +7724,39 @@ async def tally_deeds(
                 # an in-universe notification if there's a mismatch.
                 try:
                     dn = str(display_name or "")
-                    existing_cer = dn.count("⬥")
-                    existing_elec = dn.count("●")
+                    existing_aur = dn.count("●")
                     existing_plas = dn.count("⚬")
-                    existing_total = (
-                        existing_cer * 25 + existing_elec * 5 + existing_plas
-                    )
+                    existing_total = existing_aur * 4 + existing_plas
                     diff = studs_count - existing_total
+
+                    # Check if plasteel studs need upgrading to auramite (4 plasteel = 1 auramite)
+                    upgrade_needed = existing_plas >= 4
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
-                        notif = f"(+{diff} studs earned to be awarded)"
+                        # Break down owed studs into auramite (4) and plasteel (1)
+                        owed_aur = diff // 4
+                        owed_plas = diff % 4
+                        owed_parts = []
+                        if owed_aur > 0:
+                            owed_parts.append(f"+{owed_aur} Auramite")
+                        if owed_plas > 0:
+                            owed_parts.append(f"+{owed_plas} Plasteel")
+                        if owed_parts:
+                            notif = f"({', '.join(owed_parts)} owed)"
+                        else:
+                            notif = f"(+{diff} studs earned to be awarded)"
                         studs_display = f"{studs_display} {notif}"
                     elif diff < 0:
                         # Note if the name shows more studs than computed
                         notif = f"({abs(diff)} excess stud(s) displayed)"
+                        studs_display = f"{studs_display} {notif}"
+                    elif upgrade_needed:
+                        # No diff but plasteel needs upgrading to auramite
+                        upgrade_aur = existing_plas // 4
+                        remaining_plas = existing_plas % 4
+                        notif = f"(upgrade: {existing_plas}⚬ → {upgrade_aur}● + {remaining_plas}⚬)"
+                        if remaining_plas == 0:
+                            notif = f"(upgrade: {existing_plas}⚬ → {upgrade_aur}●)"
                         studs_display = f"{studs_display} {notif}"
                 except Exception:
                     pass
@@ -7728,7 +8001,7 @@ async def tally_deeds(
         # symbols don't duplicate the computed studs in roster output.
         try:
             name_raw = str(display_name or getattr(target, "display_name", "Unknown"))
-            name_val = re.sub(r"[⬥●⚬]+", "", name_raw).strip()
+            name_val = re.sub(r"[●⚬]+", "", name_raw).strip()
             if not name_val:
                 name_val = name_raw
         except Exception:
@@ -8744,7 +9017,7 @@ async def completed_challenges(
 
     # Get member's display information
     # Extract name without pips
-    bearer_name = target.display_name.replace("⬥", "").replace("●", "").replace("⚬", "").strip()
+    bearer_name = target.display_name.replace("●", "").replace("⚬", "").strip()
 
     # Get rank
     member_rank_name = "Watch Brother"
@@ -14599,86 +14872,90 @@ async def promotion_queue(interaction: discord.Interaction):
 
         # --- Process Service Studs eligibility ---
         if is_veteran_or_higher:
-            # Calculate current studs entitlement
+            MAX_STUDS = 16
+
+            # Calculate current studs entitlement, capped at MAX_STUDS
             studs_time = weeks_in_server // 4
             studs_aar = aar_points // 400
-            earned_studs = min(studs_time, studs_aar)
+            earned_studs = min(studs_time, studs_aar, MAX_STUDS)
 
             # Count currently displayed studs from nickname
+            # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
             dn = str(member.nick or member.display_name or "")
-            displayed_cer = dn.count("⬥")
-            displayed_elec = dn.count("●")
+            displayed_aur = dn.count("●")
             displayed_plas = dn.count("⚬")
-            displayed_studs = displayed_cer * 25 + displayed_elec * 5 + displayed_plas
+            displayed_studs = displayed_aur * 4 + displayed_plas
 
-            # Check if they're owed studs (only show those who could earn more)
-            # We want to show people who would be eligible for MORE studs if they meet requirements
-            next_stud_threshold_time = (
-                displayed_studs + 1
-            ) * 4  # weeks needed for next stud
-            next_stud_threshold_aar = (
-                displayed_studs + 1
-            ) * 400  # AAR needed for next stud
+            # Only project further progression if below the cap
+            if displayed_studs < MAX_STUDS:
+                # Check if they're owed studs (only show those who could earn more)
+                # We want to show people who would be eligible for MORE studs if they meet requirements
+                next_stud_threshold_time = (
+                    displayed_studs + 1
+                ) * 4  # weeks needed for next stud
+                next_stud_threshold_aar = (
+                    displayed_studs + 1
+                ) * 400  # AAR needed for next stud
 
-            aar_met_for_next = aar_points >= next_stud_threshold_aar
-            time_met_for_next = weeks_in_server >= next_stud_threshold_time
+                aar_met_for_next = aar_points >= next_stud_threshold_aar
+                time_met_for_next = weeks_in_server >= next_stud_threshold_time
 
-            if aar_met_for_next and time_met_for_next:
-                # Already eligible for next stud - they just need to display it
-                pass
-            elif aar_met_for_next and not time_met_for_next:
-                # AAR met, waiting on time for next stud
-                weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
-                next_stud_date = now + timedelta(days=days_until)
-                studs_aar_met_time_not.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        next_stud_date,
+                if aar_met_for_next and time_met_for_next:
+                    # Already eligible for next stud - they just need to display it
+                    pass
+                elif aar_met_for_next and not time_met_for_next:
+                    # AAR met, waiting on time for next stud
+                    weeks_needed = next_stud_threshold_time - weeks_in_server
+                    days_until = (
+                        weeks_needed * 7 - ((now - joined_at).days % 7)
+                        if joined_at
+                        else weeks_needed * 7
                     )
-                )
-            elif not aar_met_for_next and time_met_for_next:
-                # Time met, waiting on AAR for next stud
-                aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_met.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        aar_needed,
+                    next_stud_date = now + timedelta(days=days_until)
+                    studs_aar_met_time_not.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            next_stud_date,
+                        )
                     )
-                )
-            else:
-                # Neither met for next stud
-                weeks_needed = next_stud_threshold_time - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
-                next_time_date = now + timedelta(days=days_until)
-                aar_needed = next_stud_threshold_aar - aar_points
-                studs_aar_not_time_not.append(
-                    (
-                        member,
-                        aar_points,
-                        weeks_in_server,
-                        earned_studs,
-                        displayed_studs,
-                        next_time_date,
-                        aar_needed,
+                elif not aar_met_for_next and time_met_for_next:
+                    # Time met, waiting on AAR for next stud
+                    aar_needed = next_stud_threshold_aar - aar_points
+                    studs_aar_not_time_met.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            aar_needed,
+                        )
                     )
-                )
+                else:
+                    # Neither met for next stud
+                    weeks_needed = next_stud_threshold_time - weeks_in_server
+                    days_until = (
+                        weeks_needed * 7 - ((now - joined_at).days % 7)
+                        if joined_at
+                        else weeks_needed * 7
+                    )
+                    next_time_date = now + timedelta(days=days_until)
+                    aar_needed = next_stud_threshold_aar - aar_points
+                    studs_aar_not_time_not.append(
+                        (
+                            member,
+                            aar_points,
+                            weeks_in_server,
+                            earned_studs,
+                            displayed_studs,
+                            next_time_date,
+                            aar_needed,
+                        )
+                    )
 
     # Sort lists by proximity to eligibility
     # For AAR met, time not: sort by soonest date
