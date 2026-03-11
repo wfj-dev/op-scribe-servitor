@@ -4,11 +4,12 @@ Covers:
 - _studs_tier: tier boundary logic (cutoffs at 3, 11, 12)
 - _studs_pips: Plasteel-to-Auramite conversion (4 pips = 1 Auramite)
               and the 16-stud display cap
+- _studs_next_target: next milestone selection for the promotion queue
 """
 
 import pytest
 
-from bot import _studs_tier, _studs_pips
+from bot import _studs_tier, _studs_pips, _studs_next_target
 
 
 # ---------------------------------------------------------------------------
@@ -84,3 +85,49 @@ def test_pips_above_cap_shows_only_four_auramite():
     """Values beyond 16 are capped to 4 Auramite with no Plasteel pips shown."""
     assert _studs_pips(17) == "●●●●"
     assert _studs_pips(20) == "●●●●"
+
+
+# ---------------------------------------------------------------------------
+# _studs_next_target — promotion queue milestone selection
+# ---------------------------------------------------------------------------
+
+def test_next_target_plasteel_to_last_plasteel():
+    """3 displayed studs → next target is the 4th (last Plasteel stud)."""
+    assert _studs_next_target(3) == 4
+
+def test_next_target_first_auramite_lower_bound():
+    """4 displayed studs → first Auramite milestone is 8."""
+    assert _studs_next_target(4) == 8
+
+def test_next_target_first_auramite_mid():
+    """7 displayed studs → still targeting the 8-stud milestone."""
+    assert _studs_next_target(7) == 8
+
+def test_next_target_second_auramite_lower_bound():
+    """8 displayed studs → second Auramite milestone is 12."""
+    assert _studs_next_target(8) == 12
+
+def test_next_target_second_auramite_mid():
+    """11 displayed studs → still targeting the 12-stud milestone."""
+    assert _studs_next_target(11) == 12
+
+def test_next_target_third_auramite_lower_bound():
+    """12 displayed studs → final Auramite milestone is 16."""
+    assert _studs_next_target(12) == 16
+
+def test_next_target_third_auramite_mid():
+    """15 displayed studs → still targeting the 16-stud cap."""
+    assert _studs_next_target(15) == 16
+
+def test_next_target_zero_studs():
+    """0 displayed studs → next individual Plasteel stud is 1."""
+    assert _studs_next_target(0) == 1
+
+def test_next_target_one_stud():
+    """1 displayed stud → next is 2."""
+    assert _studs_next_target(1) == 2
+
+def test_next_target_two_studs():
+    """2 displayed studs → next is 3."""
+    assert _studs_next_target(2) == 3
+

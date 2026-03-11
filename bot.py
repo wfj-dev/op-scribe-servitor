@@ -4403,6 +4403,32 @@ def _studs_pips(new_total: int) -> str:
     return pips if pips else "—"
 
 
+def _studs_next_target(displayed_studs: int) -> int:
+    """Return the next stud milestone for a member's promotion queue entry.
+
+    For the Plasteel tier (0–3 studs) each individual stud is the next target.
+    For the Auramite tier (4+ studs) the next milestone is the next multiple of 4
+    up to the cap of 16.
+
+    Boundary examples:
+        3  → 4   (last Plasteel stud)
+        4  → 8   (first Auramite milestone)
+        7  → 8
+        8  → 12  (second Auramite milestone)
+        11 → 12
+        12 → 16  (third / final Auramite milestone)
+        15 → 16
+    """
+    if displayed_studs >= 4:
+        if displayed_studs < 8:
+            return 8
+        elif displayed_studs < 12:
+            return 12
+        else:
+            return 16
+    return displayed_studs + 1
+
+
 def _get_service_studs_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -14652,17 +14678,7 @@ async def promotion_queue(interaction: discord.Interaction):
                 # Check if they're owed studs (only show those who could earn more)
                 # For auramite tier (4+ studs), track next auramite milestone (8, 12, 16)
                 # For plasteel tier (0-3 studs), track next individual stud
-                if displayed_studs >= 4:
-                    # Auramite tier: next milestone is 8, 12, or 16
-                    if displayed_studs < 8:
-                        next_target = 8
-                    elif displayed_studs < 12:
-                        next_target = 12
-                    else:
-                        next_target = 16
-                else:
-                    # Plasteel tier: track each individual stud
-                    next_target = displayed_studs + 1
+                next_target = _studs_next_target(displayed_studs)
 
                 next_stud_threshold_time = next_target * 4  # weeks needed for next milestone
                 next_stud_threshold_aar = next_target * 400  # AAR needed for next milestone
