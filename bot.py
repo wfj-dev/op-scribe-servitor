@@ -4466,11 +4466,6 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Calculate visual pip change (what pips change from BEFORE to AFTER)
-    # displayed_studs = what they had before, new_total = what they'll have after
-    prev_studs = max(0, displayed_studs)
-    curr_studs = new_total
-
     # Calculate visual pip change using new system: ●=4 (Auramite), ⚬=1 (Plasteel)
     # displayed_studs = what they had before, new_total = what they'll have after
     prev_studs = max(0, displayed_studs)
