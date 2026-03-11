@@ -6689,7 +6689,7 @@ async def audit_service_studs(interaction: discord.Interaction):
     mismatches.sort(key=lambda t: t[1] - t[2], reverse=True)
 
     # Prepare printable rows and compute column widths
-    rows: list[tuple[str, str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str]] = []
     name_max = 4
     exp_max = len("Expected")
     cur_max = len("Current")
