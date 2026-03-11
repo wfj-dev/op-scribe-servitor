@@ -4403,6 +4403,17 @@ def _studs_pips(new_total: int) -> str:
     return pips if pips else "—"
 
 
+def _format_stud_target(target: int) -> str:
+    """Return a display string for the next stud target in the promotion queue.
+
+    For milestones that reach the first auramite or beyond (target >= 4), shows
+    auramite pip symbols (●). For earlier studs, shows the stud number (#n).
+    """
+    if target >= 4:
+        return "●" * (target // 4)
+    return f"#{target}"
+
+
 def _get_service_studs_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -14845,8 +14856,7 @@ async def promotion_queue(interaction: discord.Interaction):
             next_date,
         ) in studs_aar_met_time_not:
             date_str = next_date.strftime("%b %d")
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(f"᛭⋅ {member.mention} | →{target_str} | **{date_str}**")
         studs_embed.add_field(
             name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
@@ -14866,8 +14876,7 @@ async def promotion_queue(interaction: discord.Interaction):
             target,
             aar_needed,
         ) in studs_aar_not_time_met:
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(
                 f"᛭⋅ {member.mention} | →{target_str} | needs **{aar_needed}**"
             )
@@ -14891,8 +14900,7 @@ async def promotion_queue(interaction: discord.Interaction):
             aar_needed,
         ) in studs_aar_not_time_not:
             date_str = next_time.strftime("%b %d")
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(
                 f"᛭⋅ {member.mention} | →{target_str} | {date_str}, +{aar_needed}"
             )
