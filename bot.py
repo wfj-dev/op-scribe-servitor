@@ -8779,14 +8779,38 @@ async def completed_challenges(
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=False)
 
-    # Challenges field
+    # Challenges field - split into multiple fields if needed (1024 char limit)
     if completed:
-        challenges_value = "\n".join(f"✦ {c}" for c in completed)
-        embed.add_field(
-            name=f"▸ Challenges Earned ({len(completed)})",
-            value=challenges_value,
-            inline=False,
-        )
+        challenges_lines = [f"✦ {c}" for c in completed]
+        field_num = 1
+        current_lines: list[str] = []
+        current_len = 0
+
+        for line in challenges_lines:
+            line_len = len(line) + 1  # +1 for newline
+            if current_len + line_len > 1000:  # Leave some margin
+                # Emit current field
+                field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
+                embed.add_field(
+                    name=field_name,
+                    value="\n".join(current_lines),
+                    inline=False,
+                )
+                field_num += 1
+                current_lines = [line]
+                current_len = line_len
+            else:
+                current_lines.append(line)
+                current_len += line_len
+
+        # Emit remaining lines
+        if current_lines:
+            field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
+            embed.add_field(
+                name=field_name,
+                value="\n".join(current_lines),
+                inline=False,
+            )
     else:
         embed.add_field(
             name="▸ Challenges Earned",
@@ -8797,6 +8821,12 @@ async def completed_challenges(
     # Footer
     embed.set_footer(text="᛭⋅ Valor is eternal ⋅᛭")
 
+    logger.info(
+        "completed_challenges: user=%s target=%s challenges=%d",
+        interaction.user.id,
+        target.id,
+        len(completed),
+    )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
