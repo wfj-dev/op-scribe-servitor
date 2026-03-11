@@ -4293,12 +4293,11 @@ SERVICE_STUDS_MILESTONE_TIER3: List[str] = [
 
 # Special milestone announcements for exact stud numbers
 # Max 4 auramite studs (16 plasteel total)
+# 1 stud = 25 years, 4 studs = 100 years, 16 studs = 400 years
 SERVICE_STUDS_SPECIAL_MILESTONES: Dict[int, str] = {
-    1: "**FIRST SERVICE STUD** — A warrior's journey begins!",
-    4: "**FIRST AURAMITE STUD** — A proven veteran emerges!",
-    8: "**SECOND AURAMITE STUD** — A seasoned warrior of the Watch!",
-    12: "**THIRD AURAMITE STUD** — Legendary status approaches!",
-    16: "**FOURTH AURAMITE STUD** — Maximum honor achieved! A living legend!",
+    1: "**FIRST SERVICE STUD** — Twenty-five years sworn to the Long Watch. The Vigil has claimed another soul.",
+    4: "**FIRST AURAMITE STUD** — A century of service. Plasteel gives way to auramite—the mark of a true veteran.",
+    16: "**FOURTH AURAMITE STUD** — Four hundred years. Few have ever borne such weight of duty. A living legend of the Deathwatch.",
 }
 
 # Deathwatch-themed opening phrases for service stud announcements
