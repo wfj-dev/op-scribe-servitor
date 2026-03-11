@@ -7404,6 +7404,8 @@ async def tally_deeds(
                 studs_count = 0
         except Exception:
             studs_count = 0
+        # Cap at 16 studs (4 Auramite) — the max tier
+        studs_count = min(studs_count, 16)
 
         # Build display string using two-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
@@ -7415,8 +7417,8 @@ async def tally_deeds(
                 studs_display = "— (0 Plasteel)"
             else:
                 # Breakdown into Auramite (4), Plasteel (1), max 16 total
-                auramite_count = min(studs_count // 4, 4)
-                plasteel_count = studs_count % 4 if studs_count <= 16 else 0
+                auramite_count = studs_count // 4
+                plasteel_count = studs_count % 4
 
                 studs_symbols = (
                     "●" * auramite_count + "⚬" * plasteel_count
