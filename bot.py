@@ -6895,7 +6895,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     idx_veteran = _role_index("Watch Veteran")
     now = datetime.utcnow()
-    mismatches: list[tuple[discord.Member, int, int]] = []
+    mismatches: list[tuple[discord.Member, int, int, str, str]] = []
 
     for member in getattr(guild, "members", []) or []:
         try:
@@ -6934,15 +6934,22 @@ async def audit_service_studs(interaction: discord.Interaction):
                 studs_count = min(studs_time, studs_aar)
                 studs_count = min(studs_count, 16)
 
-            # Count existing studs shown in nickname/display name
+            # Extract existing pips shown in nickname/display name
             # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
             dn = str(member.nick or member.display_name or "")
             existing_aur = dn.count("●")
             existing_plas = dn.count("⚬")
             existing_total = existing_aur * 4 + existing_plas
+            # Build actual pip string from display name (sorted: auramite first)
+            existing_pips = "●" * existing_aur + "⚬" * existing_plas
+            if not existing_pips and existing_total == 0:
+                existing_pips = "—"
+            expected_pips = _studs_pips(studs_count)
 
-            if studs_count != existing_total:
-                mismatches.append((member, studs_count, existing_total))
+            # Compare pip format, not just total count
+            # This catches cases like ⚬⚬⚬⚬ (4 plasteel) vs ● (1 auramite)
+            if existing_pips != expected_pips:
+                mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
         except Exception:
             continue
 
@@ -6958,26 +6965,24 @@ async def audit_service_studs(interaction: discord.Interaction):
     # Prepare printable rows and compute column widths
     rows: list[tuple[str, str, str, str]] = []
     name_max = 4
-    comp_max = len("Computed")
-    disp_max = len("Displayed")
+    exp_max = len("Expected")
+    cur_max = len("Current")
     action_max = len("Action")
-    for mem, comp, disp in mismatches:
+    for mem, comp, disp, exp_pips, cur_pips in mismatches:
         diff = comp - disp
-        action = f"AWARD {diff}" if diff > 0 else f"REMOVE {abs(diff)}"
+        action = f"AWARD {diff}" if diff > 0 else ("REFORMAT" if diff == 0 else f"REMOVE {abs(diff)}")
         name = getattr(mem, "display_name", str(getattr(mem, "id", "")))
-        scomp = str(comp)
-        sdisp = str(disp)
-        rows.append((name, scomp, sdisp, action))
+        rows.append((name, exp_pips, cur_pips, action))
         name_max = max(name_max, len(name))
-        comp_max = max(comp_max, len(scomp))
-        disp_max = max(disp_max, len(sdisp))
+        exp_max = max(exp_max, len(exp_pips))
+        cur_max = max(cur_max, len(cur_pips))
         action_max = max(action_max, len(action))
 
     # Cap name width to avoid excessively wide blocks
     NAME_CAP = 36
     name_w = min(NAME_CAP, name_max)
 
-    sep = "=" * (name_w + comp_max + disp_max + action_max + 10)
+    sep = "=" * (name_w + exp_max + cur_max + action_max + 10)
 
     lines: list[str] = []
     lines.append("```ansi")
@@ -6989,24 +6994,24 @@ async def audit_service_studs(interaction: discord.Interaction):
         "  "
         + "Brother".ljust(name_w)
         + "  "
-        + "Computed".rjust(comp_max)
+        + "Expected".rjust(exp_max)
         + "  "
-        + "Displayed".rjust(disp_max)
+        + "Current".rjust(cur_max)
         + "  "
         + "Action".rjust(action_max)
     )
     lines.append(header)
     lines.append(sep)
-    for name, scomp, sdisp, action in rows:
+    for name, exp_pips, cur_pips, action in rows:
         # Truncate name if necessary
         display_name = name if len(name) <= name_w else name[: name_w - 1] + "…"
         line = (
             "  "
             + display_name.ljust(name_w)
             + "  "
-            + scomp.rjust(comp_max)
+            + exp_pips.rjust(exp_max)
             + "  "
-            + sdisp.rjust(disp_max)
+            + cur_pips.rjust(cur_max)
             + "  "
             + action.rjust(action_max)
         )
@@ -7025,14 +7030,19 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     # Add up to 10 mismatches to embed fields
     awards_needed = [
-        (name, scomp, sdisp, action)
-        for name, scomp, sdisp, action in rows
+        (name, exp_pips, cur_pips, action)
+        for name, exp_pips, cur_pips, action in rows
         if "AWARD" in action
     ]
     removals_needed = [
-        (name, scomp, sdisp, action)
-        for name, scomp, sdisp, action in rows
+        (name, exp_pips, cur_pips, action)
+        for name, exp_pips, cur_pips, action in rows
         if "REMOVE" in action
+    ]
+    reformat_needed = [
+        (name, exp_pips, cur_pips, action)
+        for name, exp_pips, cur_pips, action in rows
+        if action == "REFORMAT"
     ]
 
     if awards_needed:
@@ -7054,6 +7064,18 @@ async def audit_service_studs(interaction: discord.Interaction):
         embed.add_field(
             name=f"Need Removal ({len(removals_needed)})",
             value=remove_text,
+            inline=False,
+        )
+
+    if reformat_needed:
+        reformat_text = "\n".join(
+            f"• {name}: {cur_pips} → {exp_pips}" for name, exp_pips, cur_pips, _ in reformat_needed[:8]
+        )
+        if len(reformat_needed) > 8:
+            reformat_text += f"\n... and {len(reformat_needed) - 8} more"
+        embed.add_field(
+            name=f"Need Reformat ({len(reformat_needed)})",
+            value=reformat_text,
             inline=False,
         )
 
