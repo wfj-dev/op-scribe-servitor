@@ -62,8 +62,9 @@ def test_pips_four_converts_to_one_auramite():
     """4 Plasteel studs should display as 1 Auramite (●) with no Plasteel remainder."""
     assert _studs_pips(4) == "●"
 
-def test_pips_five_is_one_auramite_one_plasteel():
-    assert _studs_pips(5) == "●⚬"
+def test_pips_five_is_one_auramite():
+    """Once the first Auramite is earned the plasteel remainder is not shown."""
+    assert _studs_pips(5) == "●"
 
 def test_pips_eight_is_two_auramite():
     assert _studs_pips(8) == "●●"
@@ -75,8 +76,9 @@ def test_pips_sixteen_is_four_auramite():
     """16 studs = 4 Auramite with no Plasteel remainder (display cap)."""
     assert _studs_pips(16) == "●●●●"
 
-def test_pips_fifteen_is_three_auramite_three_plasteel():
-    assert _studs_pips(15) == "●●●⚬⚬⚬"
+def test_pips_fifteen_is_three_auramite():
+    """15 studs = 3 full Auramite; plasteel remainder is not shown post-4."""
+    assert _studs_pips(15) == "●●●"
 
 def test_pips_above_cap_shows_only_four_auramite():
     """Values beyond 16 are capped to 4 Auramite with no Plasteel pips shown."""

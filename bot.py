@@ -1587,8 +1587,23 @@ async def _check_promotion_milestones():
                     if "last_earned_studs" not in user_tracking:
                         user_tracking["last_earned_studs"] = earned_studs
                     last_earned_studs = user_tracking["last_earned_studs"]
-                    # Only notify when they've actually earned NEW studs
+
+                    # Determine if we should announce:
+                    # - Before first auramite (< 4): announce every new stud
+                    # - After first auramite (>= 4): only announce on auramite milestones (4, 8, 12, 16)
+                    should_announce = False
                     if earned_studs > last_earned_studs:
+                        if last_earned_studs < 4:
+                            # Haven't earned first auramite yet - announce any new stud
+                            should_announce = True
+                        else:
+                            # Already have first auramite - only announce on auramite milestones
+                            for threshold in (8, 12, 16):
+                                if last_earned_studs < threshold <= earned_studs:
+                                    should_announce = True
+                                    break
+
+                    if should_announce:
                         new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
@@ -1613,8 +1628,10 @@ async def _check_promotion_milestones():
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
-                    # Always update tracking to reflect current earned studs
-                    user_tracking["last_earned_studs"] = earned_studs
+                        # Only update tracking when we actually announce, so new_studs
+                        # correctly reflects the full step (e.g. +4 at each auramite
+                        # milestone) rather than just the last incremental earn.
+                        user_tracking["last_earned_studs"] = earned_studs
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
                 if black_laurels_channel and not user_tracking.get(
@@ -4660,13 +4677,17 @@ def _studs_pips(new_total: int) -> str:
     """Return the pip display string for a given total stud count.
 
     Each Auramite pip (●) represents 4 Plasteel studs.
-    Plasteel pips (⚬) represent individual studs (up to 3 remainder).
+    Once the first Auramite is earned (total ≥ 4), only Auramite pips
+    are displayed; the Plasteel remainder is not shown.
     The display is capped at 4 Auramite studs (16 Plasteel total).
     Returns '—' when new_total is 0.
     """
     auramite = min(new_total // 4, 4)
-    plasteel = new_total % 4 if new_total <= 16 else 0
-    pips = "●" * auramite + "⚬" * plasteel
+    if auramite > 0:
+        pips = "●" * auramite
+    else:
+        plasteel = new_total % 4
+        pips = "⚬" * plasteel
     return pips if pips else "—"
 
 
@@ -4883,12 +4904,8 @@ def _get_oathsworn_announcement(
     oathsworn_emoji = _get_emoji_by_name(guild, "Oathsworn")
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
 
-    # Compute stud pips display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-    auramite = min(earned_studs // 4, 4)
-    plasteel = earned_studs % 4 if earned_studs <= 16 else 0
-    studs_pips = "●" * auramite + "⚬" * plasteel
-    if not studs_pips:
-        studs_pips = "—"
+    # Compute stud pips display using shared helper (auramite-only post-4)
+    studs_pips = _studs_pips(earned_studs)
 
     # Generate opening and proclamation
     opening_template = random.choice(OATHSWORN_OPENINGS)
@@ -5514,10 +5531,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
-        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-        auramite = min(bearer_studs // 4, 4)
-        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
-        studs_pips = "●" * auramite + "⚬" * plasteel
+        # Tiered stud display using shared helper (auramite-only post-4)
+        studs_pips = _studs_pips(bearer_studs)
         lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
@@ -5614,10 +5629,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
-        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-        auramite = min(bearer_studs // 4, 4)
-        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
-        studs_pips = "●" * auramite + "⚬" * plasteel
+        # Tiered stud display using shared helper (auramite-only post-4)
+        studs_pips = _studs_pips(bearer_studs)
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -6946,9 +6959,11 @@ async def audit_service_studs(interaction: discord.Interaction):
                 existing_pips = "—"
             expected_pips = _studs_pips(studs_count)
 
-            # Compare pip format, not just total count
-            # This catches cases like ⚬⚬⚬⚬ (4 plasteel) vs ● (1 auramite)
-            if existing_pips != expected_pips:
+            # Compare expected pips (auramite-only post-4) against what's in
+            # the display name. Any deviation is a mismatch.
+            is_mismatch = existing_pips != expected_pips
+
+            if is_mismatch:
                 mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
         except Exception:
             continue
@@ -7730,9 +7745,8 @@ async def tally_deeds(
                 auramite_count = studs_count // 4
                 plasteel_count = studs_count % 4
 
-                studs_symbols = (
-                    "●" * auramite_count + "⚬" * plasteel_count
-                )
+                # Pip symbols use auramite-only display post-4 (via shared helper)
+                studs_symbols = _studs_pips(studs_count)
 
                 parts: list[str] = []
                 if auramite_count:
