@@ -1574,7 +1574,7 @@ async def _check_promotion_milestones():
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
                     studs_aar = aar_points // 400
-                    earned_studs = min(studs_time, studs_aar)
+                    earned_studs = min(min(studs_time, studs_aar), 16)
 
                     # Count currently displayed studs from nickname
                     # Auramite (●) = 4 plasteel, Plasteel (⚬) = 1
@@ -1588,8 +1588,7 @@ async def _check_promotion_milestones():
                         user_tracking["last_earned_studs"] = earned_studs
                     last_earned_studs = user_tracking["last_earned_studs"]
                     # Only notify when they've actually earned NEW studs
-                    # Max 4 auramite studs (16 plasteel) - no announcements beyond that
-                    if earned_studs > last_earned_studs and earned_studs <= 16:
+                    if earned_studs > last_earned_studs:
                         new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
@@ -4466,11 +4465,6 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Calculate visual pip change (what pips change from BEFORE to AFTER)
-    # displayed_studs = what they had before, new_total = what they'll have after
-    prev_studs = max(0, displayed_studs)
-    curr_studs = new_total
-
     # Calculate visual pip change using new system: ●=4 (Auramite), ⚬=1 (Plasteel)
     # displayed_studs = what they had before, new_total = what they'll have after
     prev_studs = max(0, displayed_studs)
@@ -6649,6 +6643,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
                 studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_count, 16)
 
             # Count existing studs shown in nickname/display name
             # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
@@ -7405,6 +7400,11 @@ async def tally_deeds(
                 studs_count = 0
         except Exception:
             studs_count = 0
+        # Cap at 16 studs (4 Auramite) — the max tier
+        studs_count = min(studs_count, 16)
+
+        # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
+        studs_count = min(studs_count, 16)
 
         # Build display string using two-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
@@ -7415,7 +7415,7 @@ async def tally_deeds(
             if not studs_count:
                 studs_display = "— (0 Plasteel)"
             else:
-                # Breakdown into Auramite (4), Plasteel (1), max MAX_STUDS total
+                # Breakdown into Auramite (4), Plasteel (1), max 16 total
                 auramite_count = studs_count // 4
                 plasteel_count = studs_count % 4
 
