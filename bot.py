@@ -1574,7 +1574,7 @@ async def _check_promotion_milestones():
                     # Calculate current studs entitlement
                     studs_time = weeks_in_server // 4
                     studs_aar = aar_points // 400
-                    earned_studs = min(studs_time, studs_aar)
+                    earned_studs = min(min(studs_time, studs_aar), 16)
 
                     # Count currently displayed studs from nickname
                     # Auramite (●) = 4 plasteel, Plasteel (⚬) = 1
@@ -1588,8 +1588,7 @@ async def _check_promotion_milestones():
                         user_tracking["last_earned_studs"] = earned_studs
                     last_earned_studs = user_tracking["last_earned_studs"]
                     # Only notify when they've actually earned NEW studs
-                    # Max 4 auramite studs (16 plasteel) - no announcements beyond that
-                    if earned_studs > last_earned_studs and earned_studs <= 16:
+                    if earned_studs > last_earned_studs:
                         new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
