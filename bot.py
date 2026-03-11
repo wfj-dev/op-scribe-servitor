@@ -4466,11 +4466,6 @@ def _get_service_studs_announcement(
     bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Calculate visual pip change (what pips change from BEFORE to AFTER)
-    # displayed_studs = what they had before, new_total = what they'll have after
-    prev_studs = max(0, displayed_studs)
-    curr_studs = new_total
-
     # Calculate visual pip change using new system: ●=4 (Auramite), ⚬=1 (Plasteel)
     # displayed_studs = what they had before, new_total = what they'll have after
     prev_studs = max(0, displayed_studs)
@@ -7407,6 +7402,9 @@ async def tally_deeds(
         # Cap at 16 studs (4 Auramite) — the max tier
         studs_count = min(studs_count, 16)
 
+        # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
+        studs_count = min(studs_count, 16)
+
         # Build display string using two-tier Unicode symbols:
         # - lowest: hollow circle '⚬' (Plasteel)
         # - top: filled circle '●' per four (Auramite), max 4 auramite
@@ -7440,10 +7438,9 @@ async def tally_deeds(
                     existing_plas = dn.count("⚬")
                     existing_total = existing_aur * 4 + existing_plas
                     diff = studs_count - existing_total
-                    
+
                     # Check if plasteel studs need upgrading to auramite (4 plasteel = 1 auramite)
                     upgrade_needed = existing_plas >= 4
-                    
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
                         # Break down owed studs into auramite (4) and plasteel (1)
