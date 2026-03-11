@@ -1628,8 +1628,10 @@ async def _check_promotion_milestones():
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
-                    # Always update tracking to reflect current earned studs
-                    user_tracking["last_earned_studs"] = earned_studs
+                        # Only update tracking when we actually announce, so new_studs
+                        # correctly reflects the full step (e.g. +4 at each auramite
+                        # milestone) rather than just the last incremental earn.
+                        user_tracking["last_earned_studs"] = earned_studs
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
                 if black_laurels_channel and not user_tracking.get(
