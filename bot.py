@@ -9076,12 +9076,46 @@ async def completed_challenges(
 
     # Challenges field
     if completed:
-        challenges_text = "\n".join(f"✦ {c}" for c in completed)
-        embed.add_field(
-            name=f"▸ Challenges Earned ({len(completed)})",
-            value=challenges_text,
-            inline=False,
-        )
+        # Build lines for each completed challenge
+        challenge_lines = [f"✦ {c}" for c in completed]
+        base_field_name = f"▸ Challenges Earned ({len(completed)})"
+
+        # Discord embed field values are limited to 1024 characters.
+        # Chunk the challenges into multiple fields if necessary.
+        current_chunk = ""
+        field_index = 0
+
+        for line in challenge_lines:
+            prefix = "" if current_chunk == "" else "\n"
+            line_with_sep = prefix + line
+
+            if len(current_chunk) + len(line_with_sep) > 1024:
+                # Flush the current chunk as a field
+                field_name = (
+                    base_field_name if field_index == 0
+                    else f"{base_field_name} (cont. {field_index})"
+                )
+                embed.add_field(
+                    name=field_name,
+                    value=current_chunk,
+                    inline=False,
+                )
+                field_index += 1
+                current_chunk = line
+            else:
+                current_chunk += line_with_sep
+
+        # Add the final chunk, if any
+        if current_chunk:
+            field_name = (
+                base_field_name if field_index == 0
+                else f"{base_field_name} (cont. {field_index})"
+            )
+            embed.add_field(
+                name=field_name,
+                value=current_chunk,
+                inline=False,
+            )
     else:
         embed.add_field(
             name="▸ Challenges Earned",
