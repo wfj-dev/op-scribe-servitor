@@ -161,7 +161,7 @@ CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 CHALLENGE_ROLES = [
     # SOK-G Elite
     ("Distinguished SOK-G: Pipehitter", "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
-    ("Pipehitter", "Pipehitter", "SOKGServiceMedal"),
+    ("SOK-G: Pipehitter", "SOK-G: Pipehitter", "SOKGServiceMedal"),
     # Terminus Slayer variants
     ("Master Terminus Slayer", "Master Terminus Slayer", "MasterTerminusSlayer"),
     ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "1stAwardTerminusSlayer"),
@@ -9074,38 +9074,14 @@ async def completed_challenges(
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=False)
 
-    # Challenges field - split into multiple fields if needed (1024 char limit)
+    # Challenges field
     if completed:
-        challenges_lines = [f"✦ {c}" for c in completed]
-        field_num = 1
-        current_lines: list[str] = []
-        current_len = 0
-
-        for line in challenges_lines:
-            line_len = len(line) + 1  # +1 for newline
-            if current_len + line_len > 1000:  # Leave some margin
-                # Emit current field
-                field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
-                embed.add_field(
-                    name=field_name,
-                    value="\n".join(current_lines),
-                    inline=False,
-                )
-                field_num += 1
-                current_lines = [line]
-                current_len = line_len
-            else:
-                current_lines.append(line)
-                current_len += line_len
-
-        # Emit remaining lines
-        if current_lines:
-            field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
-            embed.add_field(
-                name=field_name,
-                value="\n".join(current_lines),
-                inline=False,
-            )
+        challenges_text = "\n".join(f"✦ {c}" for c in completed)
+        embed.add_field(
+            name=f"▸ Challenges Earned ({len(completed)})",
+            value=challenges_text,
+            inline=False,
+        )
     else:
         embed.add_field(
             name="▸ Challenges Earned",
