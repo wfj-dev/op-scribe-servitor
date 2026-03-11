@@ -3797,34 +3797,6 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
 }
 
 
-def _get_techmarine_acknowledgment(member: "discord.Member") -> str:
-    """Get a rank-specific acknowledgment phrase for forge_rite."""
-    import random
-
-    # Determine bearer's rank name (highest priority first based on RANK_ROLES_PRIORITY order)
-    bearer_rank_name = None
-    try:
-        for rank_name in RANK_ROLES_PRIORITY:
-            for r in getattr(member, "roles", []) or []:
-                rn = (getattr(r, "name", "") or "").strip()
-                if rn == rank_name:
-                    bearer_rank_name = rank_name
-                    break
-            if bearer_rank_name:
-                break
-    except Exception:
-        pass
-
-    if not bearer_rank_name:
-        bearer_rank_name = "Watch Brother"
-
-    # Get rank-specific phrases, fall back to Watch Brother if not found
-    rank_options = TECHMARINE_RANK_ACKNOWLEDGMENTS.get(
-        bearer_rank_name, TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
-    )
-    return random.choice(rank_options)
-
-
 # Rank prestige weights for acknowledgment blending (0.0-1.0)
 # Higher rank = more likely to get rank-specific acknowledgment
 RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
@@ -3917,13 +3889,8 @@ def _get_techmarine_acknowledgment_blended(
         )
         return random.choice(rank_options)
     else:
-        # Use stud-tier acknowledgment
-        if bearer_studs <= 3:
-            studs_tier = 1
-        elif bearer_studs <= 11:
-            studs_tier = 2
-        else:
-            studs_tier = 3
+        # Use stud-tier acknowledgment via shared _studs_tier()
+        studs_tier = _studs_tier(bearer_studs)
         stud_options = TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
             studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
         )
@@ -4680,7 +4647,7 @@ def _studs_tier(new_total: int) -> int:
 
     Tier 1: 1-3 studs (new warriors)
     Tier 2: 4-11 studs (seasoned veterans)
-    Tier 3: 12-16 studs (legendary)
+    Tier 3: 12-16 studs (legendary; studs are capped at 16 system-wide)
     """
     if new_total <= 3:
         return 1
@@ -5062,8 +5029,9 @@ def _compute_member_service_studs(member: discord.Member) -> int:
 
         studs_aar = aar_points // 400
 
-        # Studs are the minimum of time-based and points-based
-        return min(studs_time, studs_aar)
+        # Studs are the minimum of time-based and points-based, capped at 16
+        # (4 Auramite studs maximum, consistent with pip display and promotion tracking)
+        return min(min(studs_time, studs_aar), 16)
     except Exception:
         return 0
 
@@ -5427,8 +5395,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Find the responsible attestor based on BEARER's company/role (not caller)
     attestor_member, role_key = _find_responsible_attestor(member, interaction.guild)
     if attestor_member is None:
-        # No forgemaster found in guild - fall back to caller
+        # No forgemaster found in guild - fall back to caller with their actual role
         attestor_member = interaction.user
+        role_key = _caller_role_key
 
     # Build attestation using standardized Imperial date format
     try:
@@ -5553,14 +5522,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append("")
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs (Tier 1: 1-3, Tier 2: 4-11, Tier 3: 12-16)
+    # Determine tier based on bearer's service studs using shared _studs_tier()
     bearer_studs_for_tier = _compute_member_service_studs(member) if member else 0
-    if bearer_studs_for_tier <= 3:
-        tier_for_honor = 1
-    elif bearer_studs_for_tier <= 11:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    tier_for_honor = _studs_tier(bearer_studs_for_tier)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
@@ -5665,13 +5629,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs (Tier 1: 1-3, Tier 2: 4-11, Tier 3: 12-16)
-    if bearer_studs <= 3:
-        tier_for_honor = 1
-    elif bearer_studs <= 11:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    # Determine tier based on bearer's service studs using shared _studs_tier()
+    tier_for_honor = _studs_tier(bearer_studs)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
