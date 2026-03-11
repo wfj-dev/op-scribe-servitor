@@ -2159,6 +2159,86 @@ def _is_techmarine_or_forgemaster(
     return False, ""
 
 
+def _find_responsible_attestor(
+    bearer: discord.Member, guild: discord.Guild
+) -> Tuple[Optional[discord.Member], str]:
+    """Find the responsible techmarine/forgemaster for blessing a bearer's armor.
+
+    Returns (attestor_member, role_key) where role_key is 'forgemaster' or 'techmarine'.
+    Returns (None, 'forgemaster') if no attestor found (caller should handle fallback).
+
+    Logic:
+    1. If bearer is High Command → Forgemaster blesses
+    2. If bearer is a Techmarine → Forgemaster blesses (master blesses his subordinates)
+    3. If bearer has a company → That company's Techmarine blesses
+       (random selection if multiple techmarines in company)
+    4. No company or no techmarine → Forgemaster fills the gap
+    """
+    import random as _rand
+
+    # Check if bearer is High Command → Forgemaster responsibility
+    try:
+        bearer_roles = {n.lower() for n in _canonical_role_names(bearer)}
+    except Exception:
+        bearer_roles = set()
+
+    highcom_lower = {r.lower() for r in HIGH_COMMAND_ROLES}
+    if bearer_roles & highcom_lower:
+        # Bearer is High Command - find the Forgemaster
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                if any("forgemaster" in r for r in m_roles):
+                    return m, "forgemaster"
+            except Exception:
+                continue
+        return None, "forgemaster"  # No forgemaster found
+
+    # Check if bearer is a Techmarine → Forgemaster blesses them
+    if any("techmarine" in r for r in bearer_roles):
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                if any("forgemaster" in r for r in m_roles):
+                    return m, "forgemaster"
+            except Exception:
+                continue
+        return None, "forgemaster"  # No forgemaster found
+
+    # Get bearer's company
+    bearer_company = _get_member_company_name(bearer)
+
+    if bearer_company:
+        # Find techmarine(s) in the same company
+        company_techmarines = []
+        for m in guild.members:
+            try:
+                m_roles = {n.lower() for n in _canonical_role_names(m)}
+                m_company = _get_member_company_name(m)
+                if (
+                    any("techmarine" in r for r in m_roles)
+                    and m_company == bearer_company
+                ):
+                    company_techmarines.append(m)
+            except Exception:
+                continue
+
+        if company_techmarines:
+            # If multiple, pick randomly; otherwise return the one
+            return _rand.choice(company_techmarines), "techmarine"
+
+    # Fallback: No company or no techmarine for company → Forgemaster
+    for m in guild.members:
+        try:
+            m_roles = {n.lower() for n in _canonical_role_names(m)}
+            if any("forgemaster" in r for r in m_roles):
+                return m, "forgemaster"
+        except Exception:
+            continue
+
+    return None, "forgemaster"  # No forgemaster found either
+
+
 def _load_rites() -> dict:
     try:
         if not os.path.exists(RITES_PATH):
@@ -3591,7 +3671,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Watch Brother": "Brother",
 }
 
-# Techmarine's recognition of bearer's experience/studs (tier-based)
+# Techmarine's recognition of bearer's experience/studs (tier-based, legacy - now using rank-specific)
 TECHMARINE_STUDS_ACKNOWLEDGMENT: Dict[int, List[str]] = {
     1: [  # Tier 1 (1-3 studs): Fresh warrior
         "A warrior new-marked, yet the machine-spirit recognizes your potential.",
@@ -3609,6 +3689,213 @@ TECHMARINE_STUDS_ACKNOWLEDGMENT: Dict[int, List[str]] = {
         "The armor itself is humbled; to bear the weight of such achievement is sacred duty.",
     ],
 }
+
+# Rank-specific Techmarine acknowledgments for forge_rite
+# These express how the Techmarine addresses bearers based on their specific rank
+TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
+    # Watch Master - utmost reverence
+    "Watch Master": [
+        "It is the highest honor to minister to the Lord of the Long Watch.",
+        "The machine-spirits themselves tremble with awe at your station, my Lord.",
+        "To sanctify the armor of the Watch Master is the pinnacle of sacred duty.",
+    ],
+    # High Command
+    "High Chaplain": [
+        "The Voice of the Emperor deserves armor as unyielding as his faith.",
+        "Your sermons steel the souls of warriors; may this armor steel your flesh.",
+        "The machine-spirit bows before the Emperor's chosen herald.",
+    ],
+    "Chief Apothecary": [
+        "Guardian of the gene-seed, your armor must be as pure as the legacy you protect.",
+        "The Keeper of Purity deserves warplate untouched by flaw or imperfection.",
+        "May this armor shield the one who shields our sacred bloodlines.",
+    ],
+    "Void Warden": [
+        "Aegis against the Immaterium, your armor must resist more than mortal threats.",
+        "The wards I inscribe upon this armor echo the barriers of your mind.",
+        "The machine-spirit stands vigilant alongside your psychic watch.",
+    ],
+    "Forgemaster": [
+        "Master, it is my honor to tend to your sacred warplate.",
+        "The Hand of the Machine God deserves the Omnissiah's finest ministrations.",
+        "I apply the rites you taught me—may they honor your armor as you honor the craft.",
+    ],
+    "Lord Executioner": [
+        "The Blade of the Fortress demands armor as sharp as his judgment.",
+        "Your armor has tasted the blood of traitors; I sanctify it for more to come.",
+        "The machine-spirit hungers for righteous execution at your command.",
+    ],
+    "Venerable": [
+        "Ancient warrior, your armor has witnessed ages beyond reckoning—I approach this rite with reverence.",
+        "The centuries of your service are writ in every plate; I am honored to tend such sacred warplate.",
+        "To minister to one so Venerable is a privilege granted to few—the machine-spirit itself bows in respect.",
+    ],
+    # Company Command
+    "Watch Captain": [
+        "Warden of the Company, your armor must be as steadfast as your command.",
+        "The warriors who follow you need see no flaw in their Captain's warplate.",
+        "By your leadership, the Company prevails—by my rites, your armor endures.",
+    ],
+    "Watch Lieutenant": [
+        "Shield of the Watch, your armor stands between command and the line.",
+        "The Lieutenant's armor must inspire those who look to you for orders.",
+        "May this warplate serve as faithfully as you serve your Captain.",
+    ],
+    # Specialists
+    "Watch Chaplain": [
+        "Keeper of the Faith, your armor must reflect the Emperor's light.",
+        "The warriors you inspire deserve to see unshakeable strength in your warplate.",
+        "The machine-spirit resonates with the litanies you speak.",
+    ],
+    "Watch Apothecary": [
+        "Guardian of the gene-seed, your armor must protect the protector.",
+        "The Narthecium demands a steady hand—may this armor never hinder your sacred work.",
+        "Your duty preserves the Chapter eternal; my duty preserves your armor.",
+    ],
+    "Watch Librarian": [
+        "Warden of the Immaterium, your armor must withstand more than physical blows.",
+        "I inscribe protective glyphs into the machine-spirit's core—may the Warp find no purchase.",
+        "The psychic wards are renewed; the machine-spirit stands vigilant.",
+    ],
+    "Watch Techmarine": [
+        "Brother-Techmarine, your armor deserves the same devotion you show others.",
+        "We who serve the Machine God must not neglect our own sacred warplate.",
+        "The machine-spirit welcomes the ministrations of a fellow servant.",
+    ],
+    # Champions
+    "Company Champion": [
+        "Blade of the Company, your armor must match your peerless skill.",
+        "The Champion's warplate has witnessed countless duels—may it witness countless more.",
+        "The machine-spirit yearns for the glory of single combat at your side.",
+    ],
+    "Kill Team Champion": [
+        "Champion of the Kill Team, your armor reflects the honor you bring your brothers.",
+        "The blade that leads the charge deserves armor that never falters.",
+        "Victory follows where the Champion treads—may your armor bear you to glory.",
+    ],
+    # Line ranks
+    "Watch Sergeant": [
+        "Bearer of command, your armor must set the example for those you lead.",
+        "The Sergeant's warplate has seen the crucible of leadership—I honor its service.",
+        "Your brothers look to you; may this armor reflect your steadfast resolve.",
+    ],
+    "Oathsworn": [
+        "Oathsworn Warrior, your dedication to Jericho is writ in every plate of this armor.",
+        "The bonds of the Oathsworn are eternal—may your armor endure as long.",
+        "Your oath binds you to the Watch; my rites bind this armor to your service.",
+    ],
+    "Watch Veteran": [
+        "Honored Veteran, your experience is etched into the machine-spirit's memory.",
+        "Many battles have tested this warplate—may many more prove its worth.",
+        "The Veteran's armor knows war; I rekindle its readiness for the next campaign.",
+    ],
+    "Watch Brother": [
+        "Brother, the machine-spirit is honored to shield a warrior of the Long Watch.",
+        "The backbone of the Watch—may your armor serve as faithfully as you.",
+        "Your service to Jericho is written in every plate of this armor.",
+    ],
+}
+
+
+# Rank prestige weights for acknowledgment blending (0.0-1.0)
+# Higher rank = more likely to get rank-specific acknowledgment
+RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
+    # High Command - very high prestige
+    "Watch Master": 1.0,
+    "High Chaplain": 0.9,
+    "Chief Apothecary": 0.9,
+    "Void Warden": 0.9,
+    "Forgemaster": 0.9,
+    "Lord Executioner": 0.9,
+    "Venerable": 0.85,
+    # Company Command - high prestige
+    "Watch Captain": 0.75,
+    "Watch Lieutenant": 0.65,
+    # Specialists - medium-high prestige
+    "Watch Chaplain": 0.6,
+    "Watch Apothecary": 0.6,
+    "Watch Librarian": 0.6,
+    "Watch Techmarine": 0.6,
+    # Champions - medium prestige
+    "Company Champion": 0.5,
+    "Kill Team Champion": 0.45,
+    # Line ranks - lower prestige (studs matter more)
+    "Watch Sergeant": 0.35,
+    "Oathsworn": 0.25,
+    "Watch Veteran": 0.2,
+    "Watch Brother": 0.1,
+}
+
+
+def _get_stud_weight(studs: int) -> float:
+    """Calculate stud weight for acknowledgment blending (0.0-1.0).
+
+    Scales linearly from 0.1 (1 stud) to 1.0 (16 studs).
+    0 studs returns 0.05 (minimal weight).
+    """
+    if studs <= 0:
+        return 0.05
+    if studs >= 16:
+        return 1.0
+    # Linear scale: 1 stud = 0.1, 16 studs = 1.0
+    return 0.1 + (studs - 1) * (0.9 / 15)
+
+
+def _get_techmarine_acknowledgment_blended(
+    member: "discord.Member", bearer_studs: int
+) -> str:
+    """Get a dynamically blended acknowledgment phrase for forge_rite.
+
+    Blends rank-specific and stud-specific acknowledgments based on:
+    - Higher studs → more likely stud acknowledgment
+    - Higher rank → more likely rank acknowledgment
+
+    Examples:
+    - Watch Veteran + 16 studs → ~83% stud ack (studs are impressive for low rank)
+    - High Chaplain + 2 studs → ~86% rank ack (rank is impressive vs low studs)
+    - Forgemaster + 16 studs → ~50/50 (both equally impressive)
+    """
+    import random
+
+    # Determine bearer's rank name (highest priority first based on RANK_ROLES_PRIORITY order)
+    bearer_rank_name = None
+    try:
+        for rank_name in RANK_ROLES_PRIORITY:
+            for r in getattr(member, "roles", []) or []:
+                rn = (getattr(r, "name", "") or "").strip()
+                if rn == rank_name:
+                    bearer_rank_name = rank_name
+                    break
+            if bearer_rank_name:
+                break
+    except Exception:
+        pass
+
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    # Calculate weights
+    rank_weight = RANK_PRESTIGE_WEIGHTS.get(bearer_rank_name, 0.1)
+    stud_weight = _get_stud_weight(bearer_studs)
+
+    # Probability of rank acknowledgment = rank_weight / (rank_weight + stud_weight)
+    prob_rank = rank_weight / (rank_weight + stud_weight)
+
+    # Choose based on probability
+    if random.random() < prob_rank:
+        # Use rank-specific acknowledgment
+        rank_options = TECHMARINE_RANK_ACKNOWLEDGMENTS.get(
+            bearer_rank_name, TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
+        )
+        return random.choice(rank_options)
+    else:
+        # Use stud-tier acknowledgment via shared _studs_tier()
+        studs_tier = _studs_tier(bearer_studs)
+        stud_options = TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
+            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
+        )
+        return random.choice(stud_options)
+
 
 # Techmarine signature variation phrases (randomly chosen)
 TECHMARINE_SIGNATURES: List[str] = [
@@ -4360,7 +4647,7 @@ def _studs_tier(new_total: int) -> int:
 
     Tier 1: 1-3 studs (new warriors)
     Tier 2: 4-11 studs (seasoned veterans)
-    Tier 3: 12-16 studs (legendary)
+    Tier 3: 12-16 studs (legendary; studs are capped at 16 system-wide)
     """
     if new_total <= 3:
         return 1
@@ -4742,8 +5029,9 @@ def _compute_member_service_studs(member: discord.Member) -> int:
 
         studs_aar = aar_points // 400
 
-        # Studs are the minimum of time-based and points-based
-        return min(studs_time, studs_aar)
+        # Studs are the minimum of time-based and points-based, capped at 16
+        # (4 Auramite studs maximum, consistent with pip display and promotion tracking)
+        return min(min(studs_time, studs_aar), 16)
     except Exception:
         return 0
 
@@ -5087,7 +5375,8 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 async def _attest(interaction: discord.Interaction, member: discord.Member):
     import random
 
-    allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
+    # Permission check: caller must be techmarine or forgemaster to run command
+    allowed, _caller_role_key = _is_techmarine_or_forgemaster(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5103,22 +5392,29 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     except Exception:
         pass
 
+    # Find the responsible attestor based on BEARER's company/role (not caller)
+    attestor_member, role_key = _find_responsible_attestor(member, interaction.guild)
+    if attestor_member is None:
+        # No forgemaster found in guild - fall back to caller with their actual role
+        attestor_member = interaction.user
+        role_key = _caller_role_key
+
     # Build attestation using standardized Imperial date format
     try:
         ts = _format_imperial_date(datetime.utcnow())
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Authority
+    # Authority based on attestor's company/role
     if role_key == "forgemaster":
         authority = "Jericho High Command"
     else:
-        comp = _find_company_or_chapter(interaction.user) or "Unknown Company"
+        comp = _find_company_or_chapter(attestor_member) or "Unknown Company"
         authority = comp
 
-    # Attesting name (strip stud pips)
-    attester = getattr(interaction.user, "display_name", None) or getattr(
-        interaction.user, "name", str(interaction.user.id)
+    # Attesting name from the RESPONSIBLE attestor (strip stud pips)
+    attester = getattr(attestor_member, "display_name", None) or getattr(
+        attestor_member, "name", str(attestor_member.id)
     )
     attester = attester.replace("●", "").replace("⚬", "").strip()
 
@@ -5128,9 +5424,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
     )
 
-    # Optional personal rite
+    # Optional personal rite from the RESPONSIBLE attestor
     try:
-        rite_text = await _get_user_rite(int(interaction.user.id))
+        rite_text = await _get_user_rite(int(attestor_member.id))
         # Safety truncation for legacy rites that may exceed the limit
         if rite_text and len(rite_text) > MAX_RITE_LENGTH:
             rite_text = rite_text[: MAX_RITE_LENGTH - 3] + "..."
@@ -5161,20 +5457,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Service studs computation
     bearer_studs = _compute_member_service_studs(member)
 
-    # Determine stud tier for various rite elements
-    if bearer_studs <= 4:
-        studs_tier = 1
-    elif bearer_studs <= 24:
-        studs_tier = 2
-    else:
-        studs_tier = 3
-
-    # Techmarine stud tier acknowledgment
-    stud_acknowledgment = random.choice(
-        TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
-            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
-        )
-    )
+    # Techmarine acknowledgment (dynamically blended by rank prestige vs stud count)
+    stud_acknowledgment = _get_techmarine_acknowledgment_blended(member, bearer_studs)
 
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
@@ -5238,14 +5522,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     lines.append("")
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs
+    # Determine tier based on bearer's service studs using shared _studs_tier()
     bearer_studs_for_tier = _compute_member_service_studs(member) if member else 0
-    if bearer_studs_for_tier <= 3:
-        tier_for_honor = 1
-    elif bearer_studs_for_tier <= 11:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    tier_for_honor = _studs_tier(bearer_studs_for_tier)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
@@ -5350,13 +5629,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs
-    if bearer_studs <= 3:
-        tier_for_honor = 1
-    elif bearer_studs <= 11:
-        tier_for_honor = 2
-    else:
-        tier_for_honor = 3
+    # Determine tier based on bearer's service studs using shared _studs_tier()
+    tier_for_honor = _studs_tier(bearer_studs)
 
     # Select tier-appropriate Ordo Xenos honor
     if tier_for_honor == 1:
