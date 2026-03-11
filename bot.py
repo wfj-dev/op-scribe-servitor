@@ -4403,6 +4403,17 @@ def _studs_pips(new_total: int) -> str:
     return pips if pips else "—"
 
 
+def _studs_next_target(displayed_studs: int) -> int:
+    """Return the next stud milestone for the promotion queue.
+
+    Plasteel tier (0-3 studs): next individual stud (displayed_studs + 1).
+    Auramite tier (4+ studs): next Auramite milestone in steps of 4 (8, 12, 16).
+    """
+    if displayed_studs < 4:
+        return displayed_studs + 1
+    return (displayed_studs // 4 + 1) * 4
+
+
 def _format_stud_target(target: int) -> str:
     """Return a display string for the next stud target in the promotion queue.
 
