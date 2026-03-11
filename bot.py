@@ -161,7 +161,7 @@ CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 CHALLENGE_ROLES = [
     # SOK-G Elite
     ("Distinguished SOK-G: Pipehitter", "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
-    ("Pipehitter", "Pipehitter", "SOKGServiceMedal"),
+    ("SOK-G: Pipehitter", "SOK-G: Pipehitter", "SOKGServiceMedal"),
     # Terminus Slayer variants
     ("Master Terminus Slayer", "Master Terminus Slayer", "MasterTerminusSlayer"),
     ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "1stAwardTerminusSlayer"),
@@ -9074,36 +9074,46 @@ async def completed_challenges(
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=False)
 
-    # Challenges field - split into multiple fields if needed (1024 char limit)
+    # Challenges field
     if completed:
-        challenges_lines = [f"✦ {c}" for c in completed]
-        field_num = 1
-        current_lines: list[str] = []
-        current_len = 0
+        # Build lines for each completed challenge
+        challenge_lines = [f"✦ {c}" for c in completed]
+        base_field_name = f"▸ Challenges Earned ({len(completed)})"
 
-        for line in challenges_lines:
-            line_len = len(line) + 1  # +1 for newline
-            if current_len + line_len > 1000:  # Leave some margin
-                # Emit current field
-                field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
+        # Discord embed field values are limited to 1024 characters.
+        # Chunk the challenges into multiple fields if necessary.
+        current_chunk = ""
+        field_index = 0
+
+        for line in challenge_lines:
+            prefix = "" if current_chunk == "" else "\n"
+            line_with_sep = prefix + line
+
+            if len(current_chunk) + len(line_with_sep) > 1024:
+                # Flush the current chunk as a field
+                field_name = (
+                    base_field_name if field_index == 0
+                    else f"{base_field_name} (cont. {field_index})"
+                )
                 embed.add_field(
                     name=field_name,
-                    value="\n".join(current_lines),
+                    value=current_chunk,
                     inline=False,
                 )
-                field_num += 1
-                current_lines = [line]
-                current_len = line_len
+                field_index += 1
+                current_chunk = line
             else:
-                current_lines.append(line)
-                current_len += line_len
+                current_chunk += line_with_sep
 
-        # Emit remaining lines
-        if current_lines:
-            field_name = f"▸ Challenges Earned ({len(completed)})" if field_num == 1 else "▸ (continued)"
+        # Add the final chunk, if any
+        if current_chunk:
+            field_name = (
+                base_field_name if field_index == 0
+                else f"{base_field_name} (cont. {field_index})"
+            )
             embed.add_field(
                 name=field_name,
-                value="\n".join(current_lines),
+                value=current_chunk,
                 inline=False,
             )
     else:
