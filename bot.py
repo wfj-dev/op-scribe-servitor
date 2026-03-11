@@ -6621,7 +6621,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     idx_veteran = _role_index("Watch Veteran")
     now = datetime.utcnow()
-    mismatches: list[tuple[discord.Member, int, int]] = []
+    mismatches: list[tuple[discord.Member, int, int, str, str]] = []
 
     for member in getattr(guild, "members", []) or []:
         try:
@@ -6689,8 +6689,8 @@ async def audit_service_studs(interaction: discord.Interaction):
     mismatches.sort(key=lambda t: t[1] - t[2], reverse=True)
 
     # Prepare printable rows and compute column widths
-    rows: list[tuple[str, str, str, str, str]] = []
-    name_max = len("Brother")
+    rows: list[tuple[str, str, str, str]] = []
+    name_max = 4
     exp_max = len("Expected")
     cur_max = len("Current")
     action_max = len("Action")
