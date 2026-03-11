@@ -14733,15 +14733,15 @@ async def promotion_queue(interaction: discord.Interaction):
     # Sort lists by proximity to eligibility
     # For AAR met, time not: sort by soonest date
     veteran_aar_met_time_not.sort(key=lambda x: x[3])  # promotion_date
-    studs_aar_met_time_not.sort(key=lambda x: x[5])  # next_stud_date
+    studs_aar_met_time_not.sort(key=lambda x: x[6])  # next_stud_date
 
     # For AAR not, time met: sort by least AAR needed
     veteran_aar_not_time_met.sort(key=lambda x: x[3])  # aar_needed
-    studs_aar_not_time_met.sort(key=lambda x: x[5])  # aar_needed
+    studs_aar_not_time_met.sort(key=lambda x: x[6])  # aar_needed
 
     # For neither met: sort by soonest time date (they can always grind AAR)
     veteran_aar_not_time_not.sort(key=lambda x: x[3])  # time_date
-    studs_aar_not_time_not.sort(key=lambda x: x[5])  # next_time_date
+    studs_aar_not_time_not.sort(key=lambda x: x[6])  # next_time_date
 
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
