@@ -6644,6 +6644,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                     aar_points_val = 0
                 studs_aar = aar_points_val // 400
                 studs_count = min(studs_time, studs_aar)
+                studs_count = min(studs_count, 16)
 
             # Count existing studs shown in nickname/display name
             # New system: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
