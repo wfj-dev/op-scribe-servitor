@@ -14663,17 +14663,7 @@ async def promotion_queue(interaction: discord.Interaction):
                 # Check if they're owed studs (only show those who could earn more)
                 # For auramite tier (4+ studs), track next auramite milestone (8, 12, 16)
                 # For plasteel tier (0-3 studs), track next individual stud
-                if displayed_studs >= 4:
-                    # Auramite tier: next milestone is 8, 12, or 16
-                    if displayed_studs < 8:
-                        next_target = 8
-                    elif displayed_studs < 12:
-                        next_target = 12
-                    else:
-                        next_target = 16
-                else:
-                    # Plasteel tier: track each individual stud
-                    next_target = displayed_studs + 1
+                next_target = _studs_next_target(displayed_studs)
 
                 next_stud_threshold_time = next_target * 4  # weeks needed for next milestone
                 next_stud_threshold_aar = next_target * 400  # AAR needed for next milestone
