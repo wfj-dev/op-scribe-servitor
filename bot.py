@@ -5421,8 +5421,9 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Find the responsible attestor based on BEARER's company/role (not caller)
     attestor_member, role_key = _find_responsible_attestor(member, interaction.guild)
     if attestor_member is None:
-        # No forgemaster found in guild - fall back to caller
+        # No forgemaster found in guild - fall back to caller with their actual role
         attestor_member = interaction.user
+        role_key = _caller_role_key
 
     # Build attestation using standardized Imperial date format
     try:
