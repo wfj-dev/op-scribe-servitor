@@ -3792,34 +3792,6 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
 }
 
 
-def _get_techmarine_acknowledgment(member: "discord.Member") -> str:
-    """Get a rank-specific acknowledgment phrase for forge_rite."""
-    import random
-
-    # Determine bearer's rank name (highest priority first based on RANK_HONORIFICS order)
-    bearer_rank_name = None
-    try:
-        for rank_name in RANK_HONORIFICS.keys():
-            for r in getattr(member, "roles", []) or []:
-                rn = (getattr(r, "name", "") or "").strip()
-                if rn == rank_name:
-                    bearer_rank_name = rank_name
-                    break
-            if bearer_rank_name:
-                break
-    except Exception:
-        pass
-
-    if not bearer_rank_name:
-        bearer_rank_name = "Watch Brother"
-
-    # Get rank-specific phrases, fall back to Watch Brother if not found
-    rank_options = TECHMARINE_RANK_ACKNOWLEDGMENTS.get(
-        bearer_rank_name, TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
-    )
-    return random.choice(rank_options)
-
-
 # Rank prestige weights for acknowledgment blending (0.0-1.0)
 # Higher rank = more likely to get rank-specific acknowledgment
 RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
