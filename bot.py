@@ -6621,7 +6621,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     idx_veteran = _role_index("Watch Veteran")
     now = datetime.utcnow()
-    mismatches: list[tuple[discord.Member, int, int]] = []
+    mismatches: list[tuple[discord.Member, int, int, str, str]] = []
 
     for member in getattr(guild, "members", []) or []:
         try:
