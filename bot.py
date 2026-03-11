@@ -4356,6 +4356,34 @@ def _get_stud_marking_recipients(
     return "Report to the Apothecarion.", ""
 
 
+def _studs_tier(new_total: int) -> int:
+    """Return the display tier (1, 2, or 3) for a given total stud count.
+
+    Tier 1: 1-3 studs (new warriors)
+    Tier 2: 4-11 studs (seasoned veterans)
+    Tier 3: 12-16 studs (legendary)
+    """
+    if new_total <= 3:
+        return 1
+    elif new_total <= 11:
+        return 2
+    return 3
+
+
+def _studs_pips(new_total: int) -> str:
+    """Return the pip display string for a given total stud count.
+
+    Each Auramite pip (●) represents 4 Plasteel studs.
+    Plasteel pips (⚬) represent individual studs (up to 3 remainder).
+    The display is capped at 4 Auramite studs (16 Plasteel total).
+    Returns '—' when new_total is 0.
+    """
+    auramite = min(new_total // 4, 4)
+    plasteel = new_total % 4 if new_total <= 16 else 0
+    pips = "●" * auramite + "⚬" * plasteel
+    return pips if pips else "—"
+
+
 def _get_service_studs_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -4388,15 +4416,10 @@ def _get_service_studs_announcement(
 
     stud_word = "Stud" if new_studs == 1 else "Studs"
 
-    # Determine tier based on NEW total they'll display (after earning these studs)
-    # Tier 1: 1-3 studs (new warriors), Tier 2: 4-11 studs (seasoned), Tier 3: 12-16 studs (legendary)
+    # Determine tier and pip display based on NEW total (after earning these studs)
     new_total = displayed_studs + new_studs
-    if new_total <= 3:
-        tier = 1
-    elif new_total <= 11:
-        tier = 2
-    else:
-        tier = 3
+    tier = _studs_tier(new_total)
+    studs_pips = _studs_pips(new_total)
 
     # Get Watch Brother role for pinging in content (outside embed)
     watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
@@ -4409,14 +4432,6 @@ def _get_service_studs_announcement(
         if member_chapter != "Unknown"
         else None
     )
-
-    # Compute stud pips display: ●=4 (Auramite), ⚬=1 (Plasteel)
-    # Max 4 auramite studs (16 plasteel total)
-    auramite = min(new_total // 4, 4)
-    plasteel = new_total % 4 if new_total <= 16 else 0
-    studs_pips = "●" * auramite + "⚬" * plasteel
-    if not studs_pips:
-        studs_pips = "—"  # No studs displayed yet
 
     # Build embed
     embed = discord.Embed(
@@ -4467,11 +4482,6 @@ def _get_service_studs_announcement(
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what pips change from BEFORE to AFTER)
-    # displayed_studs = what they had before, new_total = what they'll have after
-    prev_studs = max(0, displayed_studs)
-    curr_studs = new_total
-
-    # Calculate visual pip change using new system: ●=4 (Auramite), ⚬=1 (Plasteel)
     # displayed_studs = what they had before, new_total = what they'll have after
     prev_studs = max(0, displayed_studs)
     curr_studs = new_total
