@@ -92,7 +92,7 @@ def test_pips_above_cap_shows_only_four_auramite():
 # ---------------------------------------------------------------------------
 
 def test_next_target_plasteel_to_last_plasteel():
-    """3 displayed studs → next target is the 4th (last Plasteel stud)."""
+    """3 displayed studs → next target is 4 (first Auramite threshold)."""
     assert _studs_next_target(3) == 4
 
 def test_next_target_first_auramite_lower_bound():
