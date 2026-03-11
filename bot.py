@@ -1587,8 +1587,23 @@ async def _check_promotion_milestones():
                     if "last_earned_studs" not in user_tracking:
                         user_tracking["last_earned_studs"] = earned_studs
                     last_earned_studs = user_tracking["last_earned_studs"]
-                    # Only notify when they've actually earned NEW studs
+
+                    # Determine if we should announce:
+                    # - Before first auramite (< 4): announce every new stud
+                    # - After first auramite (>= 4): only announce on auramite milestones (4, 8, 12, 16)
+                    should_announce = False
                     if earned_studs > last_earned_studs:
+                        if last_earned_studs < 4:
+                            # Haven't earned first auramite yet - announce any new stud
+                            should_announce = True
+                        else:
+                            # Already have first auramite - only announce on auramite milestones
+                            for threshold in (8, 12, 16):
+                                if last_earned_studs < threshold <= earned_studs:
+                                    should_announce = True
+                                    break
+
+                    if should_announce:
                         new_studs = earned_studs - last_earned_studs
                         owed_studs = earned_studs - displayed_studs
 
@@ -6672,9 +6687,26 @@ async def audit_service_studs(interaction: discord.Interaction):
                 existing_pips = "—"
             expected_pips = _studs_pips(studs_count)
 
-            # Compare pip format, not just total count
-            # This catches cases like ⚬⚬⚬⚬ (4 plasteel) vs ● (1 auramite)
-            if existing_pips != expected_pips:
+            # Determine if this is a mismatch based on the milestone system:
+            # - Mixing auramite AND plasteel is always wrong
+            # - Before first auramite (< 4): flag any discrepancy
+            # - After first auramite (>= 4): only flag if auramite count is wrong
+            is_mismatch = False
+
+            # Flag mixed studs (should never have both auramite AND plasteel)
+            if existing_aur > 0 and existing_plas > 0:
+                is_mismatch = True
+            elif studs_count < 4:
+                # Pre-auramite: any discrepancy matters
+                if existing_pips != expected_pips:
+                    is_mismatch = True
+            else:
+                # Post-auramite: only auramite milestones matter
+                expected_aur = studs_count // 4
+                if existing_aur != expected_aur:
+                    is_mismatch = True
+
+            if is_mismatch:
                 mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
         except Exception:
             continue
