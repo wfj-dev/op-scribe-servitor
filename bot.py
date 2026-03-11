@@ -3725,6 +3725,11 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
         "Your armor has tasted the blood of traitors; I sanctify it for more to come.",
         "The machine-spirit hungers for righteous execution at your command.",
     ],
+    "Venerable": [
+        "Ancient warrior, your armor has witnessed ages beyond reckoning—I approach this rite with reverence.",
+        "The centuries of your service are writ in every plate; I am honored to tend such sacred warplate.",
+        "To minister to one so Venerable is a privilege granted to few—the machine-spirit itself bows in respect.",
+    ],
     # Company Command
     "Watch Captain": [
         "Warden of the Company, your armor must be as steadfast as your command.",
@@ -3796,10 +3801,10 @@ def _get_techmarine_acknowledgment(member: "discord.Member") -> str:
     """Get a rank-specific acknowledgment phrase for forge_rite."""
     import random
 
-    # Determine bearer's rank name (highest priority first based on RANK_HONORIFICS order)
+    # Determine bearer's rank name (highest priority first based on RANK_ROLES_PRIORITY order)
     bearer_rank_name = None
     try:
-        for rank_name in RANK_HONORIFICS.keys():
+        for rank_name in RANK_ROLES_PRIORITY:
             for r in getattr(member, "roles", []) or []:
                 rn = (getattr(r, "name", "") or "").strip()
                 if rn == rank_name:
@@ -3830,6 +3835,7 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     "Void Warden": 0.9,
     "Forgemaster": 0.9,
     "Lord Executioner": 0.9,
+    "Venerable": 0.85,
     # Company Command - high prestige
     "Watch Captain": 0.75,
     "Watch Lieutenant": 0.65,
@@ -3879,10 +3885,10 @@ def _get_techmarine_acknowledgment_blended(
     """
     import random
 
-    # Determine bearer's rank name (highest priority first based on RANK_HONORIFICS order)
+    # Determine bearer's rank name (highest priority first based on RANK_ROLES_PRIORITY order)
     bearer_rank_name = None
     try:
-        for rank_name in RANK_HONORIFICS.keys():
+        for rank_name in RANK_ROLES_PRIORITY:
             for r in getattr(member, "roles", []) or []:
                 rn = (getattr(r, "name", "") or "").strip()
                 if rn == rank_name:
