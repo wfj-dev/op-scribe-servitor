@@ -7438,10 +7438,9 @@ async def tally_deeds(
                     existing_plas = dn.count("⚬")
                     existing_total = existing_aur * 4 + existing_plas
                     diff = studs_count - existing_total
-                    
+
                     # Check if plasteel studs need upgrading to auramite (4 plasteel = 1 auramite)
                     upgrade_needed = existing_plas >= 4
-                    
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
                         # Break down owed studs into auramite (4) and plasteel (1)
