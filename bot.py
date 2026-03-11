@@ -7399,6 +7399,8 @@ async def tally_deeds(
                 studs_count = 0
         except Exception:
             studs_count = 0
+        # Cap at 16 studs (4 Auramite) — the max tier
+        studs_count = min(studs_count, 16)
 
         # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
         studs_count = min(studs_count, 16)
@@ -7412,7 +7414,7 @@ async def tally_deeds(
             if not studs_count:
                 studs_display = "— (0 Plasteel)"
             else:
-                # Breakdown into Auramite (4) and Plasteel (1); studs_count is already capped at 16
+                # Breakdown into Auramite (4), Plasteel (1), max 16 total
                 auramite_count = studs_count // 4
                 plasteel_count = studs_count % 4
 
