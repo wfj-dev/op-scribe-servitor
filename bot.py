@@ -4388,13 +4388,17 @@ def _studs_pips(new_total: int) -> str:
     """Return the pip display string for a given total stud count.
 
     Each Auramite pip (●) represents 4 Plasteel studs.
-    Plasteel pips (⚬) represent individual studs (up to 3 remainder).
+    Once the first Auramite is earned (total ≥ 4), only Auramite pips
+    are displayed; the Plasteel remainder is not shown.
     The display is capped at 4 Auramite studs (16 Plasteel total).
     Returns '—' when new_total is 0.
     """
     auramite = min(new_total // 4, 4)
-    plasteel = new_total % 4 if new_total <= 16 else 0
-    pips = "●" * auramite + "⚬" * plasteel
+    if auramite > 0:
+        pips = "●" * auramite
+    else:
+        plasteel = new_total % 4
+        pips = "⚬" * plasteel
     return pips if pips else "—"
 
 
@@ -4611,12 +4615,8 @@ def _get_oathsworn_announcement(
     oathsworn_emoji = _get_emoji_by_name(guild, "Oathsworn")
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
 
-    # Compute stud pips display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-    auramite = min(earned_studs // 4, 4)
-    plasteel = earned_studs % 4 if earned_studs <= 16 else 0
-    studs_pips = "●" * auramite + "⚬" * plasteel
-    if not studs_pips:
-        studs_pips = "—"
+    # Compute stud pips display using shared helper (auramite-only post-4)
+    studs_pips = _studs_pips(earned_studs)
 
     # Generate opening and proclamation
     opening_template = random.choice(OATHSWORN_OPENINGS)
@@ -5245,10 +5245,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         lines.append(f"  Lineage: {lineage_display}")
     if bearer_studs > 0:
-        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-        auramite = min(bearer_studs // 4, 4)
-        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
-        studs_pips = "●" * auramite + "⚬" * plasteel
+        # Tiered stud display using shared helper (auramite-only post-4)
+        studs_pips = _studs_pips(bearer_studs)
         lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
     lines.append("")
 
@@ -5350,10 +5348,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
-        # Tiered stud display: ●=4 (Auramite), ⚬=1 (Plasteel), max 16
-        auramite = min(bearer_studs // 4, 4)
-        plasteel = bearer_studs % 4 if bearer_studs <= 16 else 0
-        studs_pips = "●" * auramite + "⚬" * plasteel
+        # Tiered stud display using shared helper (auramite-only post-4)
+        studs_pips = _studs_pips(bearer_studs)
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
@@ -6687,24 +6683,9 @@ async def audit_service_studs(interaction: discord.Interaction):
                 existing_pips = "—"
             expected_pips = _studs_pips(studs_count)
 
-            # Determine if this is a mismatch based on the milestone system:
-            # - Mixing auramite AND plasteel is always wrong
-            # - Before first auramite (< 4): flag any discrepancy
-            # - After first auramite (>= 4): only flag if auramite count is wrong
-            is_mismatch = False
-
-            # Flag mixed studs (should never have both auramite AND plasteel)
-            if existing_aur > 0 and existing_plas > 0:
-                is_mismatch = True
-            elif studs_count < 4:
-                # Pre-auramite: any discrepancy matters
-                if existing_pips != expected_pips:
-                    is_mismatch = True
-            else:
-                # Post-auramite: only auramite milestones matter
-                expected_aur = studs_count // 4
-                if existing_aur != expected_aur:
-                    is_mismatch = True
+            # Compare expected pips (auramite-only post-4) against what's in
+            # the display name. Any deviation is a mismatch.
+            is_mismatch = existing_pips != expected_pips
 
             if is_mismatch:
                 mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
@@ -7488,9 +7469,8 @@ async def tally_deeds(
                 auramite_count = studs_count // 4
                 plasteel_count = studs_count % 4
 
-                studs_symbols = (
-                    "●" * auramite_count + "⚬" * plasteel_count
-                )
+                # Pip symbols use auramite-only display post-4 (via shared helper)
+                studs_symbols = _studs_pips(studs_count)
 
                 parts: list[str] = []
                 if auramite_count:
