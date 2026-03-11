@@ -4403,30 +4403,15 @@ def _studs_pips(new_total: int) -> str:
     return pips if pips else "—"
 
 
-def _studs_next_target(displayed_studs: int) -> int:
-    """Return the next stud milestone for a member's promotion queue entry.
+def _format_stud_target(target: int) -> str:
+    """Return a display string for the next stud target in the promotion queue.
 
-    For the Plasteel tier (0–3 studs) each individual stud is the next target.
-    For the Auramite tier (4+ studs) the next milestone is the next multiple of 4
-    up to the cap of 16.
-
-    Boundary examples:
-        3  → 4   (last Plasteel stud)
-        4  → 8   (first Auramite milestone)
-        7  → 8
-        8  → 12  (second Auramite milestone)
-        11 → 12
-        12 → 16  (third / final Auramite milestone)
-        15 → 16
+    For milestones that reach the first auramite or beyond (target >= 4), shows
+    auramite pip symbols (●). For earlier studs, shows the stud number (#n).
     """
-    if displayed_studs >= 4:
-        if displayed_studs < 8:
-            return 8
-        elif displayed_studs < 12:
-            return 12
-        else:
-            return 16
-    return displayed_studs + 1
+    if target >= 4:
+        return "●" * (target // 4)
+    return f"#{target}"
 
 
 def _get_service_studs_announcement(
@@ -14861,8 +14846,7 @@ async def promotion_queue(interaction: discord.Interaction):
             next_date,
         ) in studs_aar_met_time_not:
             date_str = next_date.strftime("%b %d")
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(f"᛭⋅ {member.mention} | →{target_str} | **{date_str}**")
         studs_embed.add_field(
             name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
@@ -14882,8 +14866,7 @@ async def promotion_queue(interaction: discord.Interaction):
             target,
             aar_needed,
         ) in studs_aar_not_time_met:
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(
                 f"᛭⋅ {member.mention} | →{target_str} | needs **{aar_needed}**"
             )
@@ -14907,8 +14890,7 @@ async def promotion_queue(interaction: discord.Interaction):
             aar_needed,
         ) in studs_aar_not_time_not:
             date_str = next_time.strftime("%b %d")
-            # Show auramite count for milestones 4+, otherwise stud number
-            target_str = f"{'●' * (target // 4)}" if target >= 4 else f"#{target}"
+            target_str = _format_stud_target(target)
             lines.append(
                 f"᛭⋅ {member.mention} | →{target_str} | {date_str}, +{aar_needed}"
             )
