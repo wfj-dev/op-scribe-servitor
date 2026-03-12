@@ -1189,16 +1189,12 @@ async def _check_activity_status_changes():
                     # Extract old status (handling both new dict format and legacy string format)
                     old_entry = prev_status.get(user_id)
                     old_status = None
-                    old_updated_at = None
                     if isinstance(old_entry, dict):
                         old_status = old_entry.get("status")
-                        old_updated_at = old_entry.get("updated_at")
                     elif isinstance(old_entry, str):
                         old_status = old_entry
 
                     # Only notify for status changes if not first check and member is transitioning to a new state
-                    # For inactive->active, only notify if they were marked inactive at least 7 days ago
-                    # (prevents notifying brand-new members found in old records)
                     should_notify = False
                     if (
                         not is_first_check
@@ -1206,24 +1202,13 @@ async def _check_activity_status_changes():
                         and old_status != current_status
                     ):
                         if current_status == "active" and old_status == "inactive":
-                            # inactive->active: only notify if member was inactive for a while
-                            # (i.e., marked inactive at least 7 days ago)
-                            if old_updated_at:
-                                try:
-                                    last_update = datetime.fromisoformat(old_updated_at)
-                                    if last_update.tzinfo is not None:
-                                        last_update = last_update.astimezone(
-                                            tz=None
-                                        ).replace(tzinfo=None)
-                                    days_inactive = (
-                                        check_start_time - last_update
-                                    ).days
-                                    should_notify = days_inactive >= 7
-                                except Exception:
-                                    should_notify = False
+                            # inactive->active: only notify if we previously sent a departure notification
+                            should_notify = isinstance(old_entry, dict) and old_entry.get("notified_inactive", False)
                         else:
                             # active->inactive: always notify (these are real departures)
                             should_notify = True
+                            # Mark that we're notifying about this inactive transition
+                            new_status_entry["notified_inactive"] = True
 
                     if should_notify:
                         # Status changed; find member in guild
