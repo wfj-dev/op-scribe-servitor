@@ -1207,8 +1207,6 @@ async def _check_activity_status_changes():
                         else:
                             # active->inactive: always notify (these are real departures)
                             should_notify = True
-                            # Mark that we're notifying about this inactive transition
-                            new_status_entry["notified_inactive"] = True
 
                     if should_notify:
                         # Status changed; find member in guild
@@ -1217,7 +1215,7 @@ async def _check_activity_status_changes():
                             if not member:
                                 member = await guild.fetch_member(int(user_id))
                             if member and not member.bot:
-                                changes.append((member, old_status, current_status))
+                                changes.append((member, old_status, current_status, user_id))
                         except Exception:
                             pass
                 except Exception:
@@ -1228,19 +1226,23 @@ async def _check_activity_status_changes():
                 if uid not in new_status_map:
                     new_status_map[uid] = status
 
-            # Save updated data
-            _save_activity_status(new_status_map)
+            # Save member last post times (status map saved after notifications below)
             _save_member_last_post_times(member_last_posts)
 
-            # Send notifications for changes
-            for member, old, new in changes:
+            # Send notifications for changes; mark notified_inactive only on confirmed delivery
+            for member, old, new, uid in changes:
                 try:
                     await _send_activity_status_notification(guild, member, old, new)
+                    if new == "inactive" and uid in new_status_map:
+                        new_status_map[uid]["notified_inactive"] = True
                     await asyncio.sleep(0.5)
                 except Exception as e:
                     logger.exception(
                         f"Failed to notify activity change for {member.id}: {e}"
                     )
+
+            # Save updated activity status (after notifications so notified_inactive reflects actual sends)
+            _save_activity_status(new_status_map)
 
             if changes:
                 logger.info(
