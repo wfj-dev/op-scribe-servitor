@@ -1194,6 +1194,10 @@ async def _check_activity_status_changes():
                     elif isinstance(old_entry, str):
                         old_status = old_entry
 
+                    # Carry forward notified_inactive flag when member remains inactive across runs
+                    if current_status == "inactive" and isinstance(old_entry, dict) and old_entry.get("notified_inactive", False):
+                        new_status_entry["notified_inactive"] = True
+
                     # Only notify for status changes if not first check and member is transitioning to a new state
                     should_notify = False
                     if (
