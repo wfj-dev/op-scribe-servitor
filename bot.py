@@ -2184,14 +2184,20 @@ def _find_responsible_attestor(
     """
     import random as _rand
 
+    logger.debug(f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})")
+    logger.debug(f"[attestor] Guild members count: {len(guild.members)}")
+
     # Check if bearer is High Command → Forgemaster responsibility
     try:
         bearer_roles = {n.lower() for n in _canonical_role_names(bearer)}
     except Exception:
         bearer_roles = set()
 
+    logger.debug(f"[attestor] Bearer roles (lower): {bearer_roles}")
+
     highcom_lower = {r.lower() for r in HIGH_COMMAND_ROLES}
     if bearer_roles & highcom_lower:
+        logger.debug("[attestor] Bearer is High Command -> Forgemaster")
         # Bearer is High Command - find the Forgemaster
         for m in guild.members:
             try:
@@ -2203,7 +2209,9 @@ def _find_responsible_attestor(
         return None, "forgemaster"  # No forgemaster found
 
     # Check if bearer is a Techmarine → Forgemaster blesses them
-    if any("techmarine" in r for r in bearer_roles):
+    # Must be exact "watch techmarine" role, not Terminus Slayer awards
+    if "watch techmarine" in bearer_roles:
+        logger.debug("[attestor] Bearer is Watch Techmarine -> Forgemaster")
         for m in guild.members:
             try:
                 m_roles = {n.lower() for n in _canonical_role_names(m)}
@@ -2215,31 +2223,42 @@ def _find_responsible_attestor(
 
     # Get bearer's company
     bearer_company = _get_member_company_name(bearer)
+    logger.debug(f"[attestor] Bearer company: {bearer_company}")
 
     if bearer_company:
         # Find techmarine(s) in the same company
+        # Must be exact "watch techmarine" role, not Terminus Slayer awards
         company_techmarines = []
+        all_techmarines_found = []
         for m in guild.members:
             try:
                 m_roles = {n.lower() for n in _canonical_role_names(m)}
                 m_company = _get_member_company_name(m)
-                if (
-                    any("techmarine" in r for r in m_roles)
-                    and m_company == bearer_company
-                ):
+                is_tech = "watch techmarine" in m_roles
+                if is_tech:
+                    all_techmarines_found.append((m.display_name, m_company, list(m_roles)))
+                if is_tech and m_company == bearer_company:
                     company_techmarines.append(m)
             except Exception:
                 continue
 
+        logger.debug(f"[attestor] All techmarines found: {all_techmarines_found}")
+        logger.debug(f"[attestor] Company techmarines for {bearer_company}: {[m.display_name for m in company_techmarines]}")
+
         if company_techmarines:
+            chosen = _rand.choice(company_techmarines)
+            logger.debug(f"[attestor] Chose techmarine: {chosen.display_name}")
             # If multiple, pick randomly; otherwise return the one
-            return _rand.choice(company_techmarines), "techmarine"
+            return chosen, "techmarine"
+    
+    logger.debug("[attestor] No company techmarine found, falling back to Forgemaster")
 
     # Fallback: No company or no techmarine for company → Forgemaster
     for m in guild.members:
         try:
             m_roles = {n.lower() for n in _canonical_role_names(m)}
             if any("forgemaster" in r for r in m_roles):
+                logger.debug(f"[attestor] Found Forgemaster: {m.display_name}")
                 return m, "forgemaster"
         except Exception:
             continue
@@ -11323,6 +11342,11 @@ def _main():
         global BROADCAST_STATUS, DEBUG_MODE
         BROADCAST_STATUS = not debug_flag
         DEBUG_MODE = bool(debug_flag)
+        # If debug mode enabled, set logger to DEBUG level
+        if DEBUG_MODE:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+            logger.debug("Debug mode enabled via CLI flag")
     except Exception as e:
         logger.debug(f"Failed to parse CLI args: {e}")
     token = os.getenv("DISCORD_TOKEN")
