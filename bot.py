@@ -7552,15 +7552,15 @@ async def tally_deeds(
             await interaction.response.send_message("Access denied.", ephemeral=True)
             return
 
-    # First response: defer, so we can do slower work safely
-    await interaction.response.defer(thinking=False, ephemeral=True)
-
-    # Mutual exclusivity and target selection: either a single brother or a killteam role
+    # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
     if brother and killteam:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             "Provide either 'brother' or 'killteam', not both.", ephemeral=True
         )
         return
+
+    # First response: defer, so we can do slower work safely
+    await interaction.response.defer(thinking=False, ephemeral=True)
 
     if killteam:
         members = [m for m in getattr(killteam, "members", [])]
@@ -7804,12 +7804,15 @@ async def tally_deeds(
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
                         # Break down owed studs into auramite (4) and plasteel (1)
+                        # Once in auramite tier, no longer track plasteel — only show
+                        # auramite owed (partial progress not displayed)
                         owed_aur = diff // 4
                         owed_plas = diff % 4
                         owed_parts = []
                         if owed_aur > 0:
                             owed_parts.append(f"+{owed_aur} Auramite")
-                        if owed_plas > 0:
+                        # Only show plasteel owed if user hasn't reached auramite tier yet
+                        if owed_plas > 0 and studs_count < 4:
                             owed_parts.append(f"+{owed_plas} Plasteel")
                         if owed_parts:
                             notif = f"({', '.join(owed_parts)} owed)"
@@ -8288,7 +8291,7 @@ async def tally_deeds(
             for fl in footer_lines:
                 r_lines.append(fl)
             roster_text = "\n".join(r_lines)
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
                 kt_display_name = _extract_killteam_name(
                     getattr(killteam, "name", "Unknown")
@@ -8321,7 +8324,7 @@ async def tally_deeds(
                     chunk = roster_lines[i : i + chunk_size]
                     field_value = "\n".join(chunk)
                     roster_embed.add_field(
-                        name=f"▸ Members {i + 1}–{min(i + chunk_size, len(roster_lines))}",
+                        name="\u200b",
                         value=field_value or "—",
                         inline=False,
                     )
@@ -8490,7 +8493,7 @@ async def tally_deeds(
         summary_text = "\n".join(s_lines)
 
         try:
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             title_type = "Chapter" if is_chapter_role else "Kill Team"
             embed = discord.Embed(
                 title=f"᛭⋅ {title_type.upper()} MONTHLY HONOURS ⋅᛭",
@@ -8571,7 +8574,7 @@ async def tally_deeds(
 
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
-        # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+        # Build a clean, mobile-friendly embed (Jericho embed style)
         try:
             if (len(members) == 1) and member_stat_rows_list:
                 target = members[0]
@@ -8803,7 +8806,7 @@ async def tally_deeds(
             h_lines.append("\u001b[0m```")
             honours_text = "\n".join(h_lines)
 
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
                 # Get chapter emoji for display
                 guild = interaction.guild
@@ -8908,18 +8911,20 @@ async def combat_bonds(
         all_bros.extend([str(b) for b in (rec.get("brother_ids") or [])])
     all_bros = sorted(set(all_bros))
 
+    # Filter to only Watch Brother+ ranked members
+    eligible_ids = _get_eligible_combat_bonds_ids(interaction.guild, all_bros)
+    all_bros = sorted(eligible_ids)
+
     pair_counts = None
-    triples = None
-    spreads = None
-    # Prefer using cached combat computations from DataStore if available
+    # Prefer using cached pair_counts from DataStore if available
     try:
         if DATASTORE:
             cached = DATASTORE.get_combat_cache(span_days)
             if cached and isinstance(cached.get("data"), dict):
                 pdata = cached.get("data")
-                pair_counts = pdata.get("pair_counts")
-                triples = pdata.get("triples")
-                spreads = pdata.get("spreads")
+                cached_pc = pdata.get("pair_counts")
+                if isinstance(cached_pc, dict):
+                    pair_counts = cached_pc
     except Exception:
         pair_counts = None
 
@@ -8930,34 +8935,42 @@ async def combat_bonds(
         except Exception:
             pair_counts = _build_pair_counts(missions)
 
-        # Build multi-size groups (3..5) weighted by pair AAR points
-        try:
-            triples = await asyncio.to_thread(_build_group_bonds, pair_counts, all_bros)
-        except Exception:
-            triples = _build_group_bonds(pair_counts, all_bros)
+    # Preserve unfiltered pair_counts for caching; eligibility is applied per-request
+    # so that role changes (promotions/demotions) are reflected without a cache rebuild.
+    unfiltered_pair_counts = pair_counts
 
-        # Active members in the window: those who appeared in at least one AAR
-        active_count = len(all_bros)
-        try:
-            spreads = await asyncio.to_thread(
-                _build_spread_counts, pair_counts, active_count=active_count
+    # Filter pair_counts to only include eligible Watch Brother+ members
+    pair_counts = _filter_pair_counts_by_eligible(pair_counts, eligible_ids)
+
+    # Always rebuild triples and spreads from filtered pair_counts
+    # Build multi-size groups (3..5) weighted by pair AAR points
+    try:
+        triples = await asyncio.to_thread(_build_group_bonds, pair_counts, all_bros)
+    except Exception:
+        triples = _build_group_bonds(pair_counts, all_bros)
+
+    # Active members in the window: those who appeared in at least one AAR
+    active_count = len(all_bros)
+    try:
+        spreads = await asyncio.to_thread(
+            _build_spread_counts, pair_counts, active_count=active_count
+        )
+    except Exception:
+        spreads = _build_spread_counts(pair_counts, active_count=active_count)
+
+    # Store in DataStore cache if available
+    try:
+        if DATASTORE:
+            await DATASTORE.set_combat_cache(
+                span_days,
+                {
+                    "pair_counts": unfiltered_pair_counts,
+                    "triples": triples,
+                    "spreads": spreads,
+                },
             )
-        except Exception:
-            spreads = _build_spread_counts(pair_counts, active_count=active_count)
-
-        # Store in DataStore cache if available
-        try:
-            if DATASTORE:
-                await DATASTORE.set_combat_cache(
-                    span_days,
-                    {
-                        "pair_counts": pair_counts,
-                        "triples": triples,
-                        "spreads": spreads,
-                    },
-                )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     if brother is None:
         top_global = _select_top_global_bonds(triples, top_n=5)
@@ -10493,6 +10506,65 @@ def _get_missions_last_days(days: int):
             stamped.append((dt, rec))
     stamped.sort(key=lambda t: t[0], reverse=True)
     return [r for _dt, r in stamped]
+
+
+def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) -> set:
+    """Return the set of user IDs that have at least Watch Brother rank.
+
+    Eligible members must have one of the roles in RANK_ROLES_PRIORITY or
+    the Watch Sister alias. Members without a rank role are excluded from
+    combat bond calculations.
+
+    NOTE: This helper uses ``guild.get_member()``, which only consults the
+    local member cache. Callers should ensure that the guild's member cache
+    is fully populated (for example via member intents and chunking) before
+    relying on this filter, otherwise eligible members that are not cached
+    may be incorrectly excluded from combat bond calculations.
+    """
+    # Detect obviously incomplete caches and emit a warning so operators can
+    # address it at the configuration/call-site level.
+    try:
+        total_members = getattr(guild, "member_count", None)
+        cached_members = len(getattr(guild, "members", []))
+        if isinstance(total_members, int) and total_members > 0 and cached_members < total_members:
+            logging.getLogger(__name__).warning(
+                "Guild member cache appears incomplete for %s "
+                "(cached=%d, total=%d); _get_eligible_combat_bonds_ids "
+                "relies on the cache and may under-count eligible members.",
+                getattr(guild, "name", guild.id),
+                cached_members,
+                total_members,
+            )
+    except Exception:
+        # If anything goes wrong while checking cache completeness, fall back
+        # silently to existing behavior.
+        pass
+
+    eligible: set = set()
+    # Build set of qualifying role names (all rank roles + Watch Sister alias)
+    qualifying_roles = set(RANK_ROLES_PRIORITY) | {"Watch Sister"}
+    for uid in user_ids:
+        try:
+            member = guild.get_member(int(uid))
+            if member is None:
+                continue
+            member_role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+            if any(r in member_role_names for r in qualifying_roles):
+                eligible.add(str(uid))
+        except Exception:
+            continue
+    return eligible
+
+
+def _filter_pair_counts_by_eligible(
+    pair_counts: Dict[Tuple[str, str], int], eligible_ids: set
+) -> Dict[Tuple[str, str], int]:
+    """Filter pair_counts to only include pairs where both members are eligible."""
+    return {
+        k: v
+        for k, v in pair_counts.items()
+        if k[0] in eligible_ids and k[1] in eligible_ids
+    }
 
 
 def _build_pair_counts(missions):
