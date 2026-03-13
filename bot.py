@@ -9317,6 +9317,8 @@ def parse_aar(message: discord.Message):
     black_laurels_in_difficulty = False
     black_laurels_in_mission = False
     black_laurels_mentioned_elsewhere = False
+    # Watch Command role mention (required for Initiation Trials)
+    watch_command_mentioned = False
 
     brothers_start_idx = None
 
@@ -9520,6 +9522,21 @@ def parse_aar(message: discord.Message):
     except Exception:
         pass
 
+    # Detect Watch Command role mention anywhere in the message (required for Initiation Trials).
+    # Role ID: 1429281421931057283
+    try:
+        for role in message.role_mentions:
+            try:
+                rid = getattr(role, "id", None)
+                rn = (getattr(role, "name", "") or "").strip().lower()
+                if rid == 1429281421931057283 or str(rid) == "1429281421931057283" or rn == "watch command":
+                    watch_command_mentioned = True
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     # If Chapter Approved tag present, apply +1 point only when the AAR
     # is recorded on the 1st or 3rd Saturday of the month.
     try:
@@ -9599,6 +9616,7 @@ def parse_aar(message: discord.Message):
         "initiate_ids": initiate_ids,
         # Legacy field for backward compat with old records
         "initiate_id": initiate_ids[0] if initiate_ids else None,
+        "watch_command_mentioned": watch_command_mentioned,
         "chapter_approved": chapter_approved,
         "chapter_approved_extra_point_applied": chapter_approved_extra_point_applied,
         # Black Laurels tracking for validation
@@ -9820,6 +9838,11 @@ def validate_aar(record: dict):
         if not has_initiates:
             errors.append(
                 "Initiation Trial present but no initiate mention found; include the person being initiated."
+            )
+        # Watch Command role must be mentioned for Initiation Trials
+        if not record.get("watch_command_mentioned"):
+            errors.append(
+                "Initiation Trial requires @Watch Command to be mentioned."
             )
 
     # 7) Gene-seed logic
