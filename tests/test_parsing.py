@@ -34,6 +34,7 @@ def test_parse_and_validate_basic_stratagem():
         "++ MISSION REPORT ++\n"
         "Mission: Test Operation\n"
         f"Difficulty: <@&{r1.id}>\n"
+        f"Gene-seed: <@&{u1.id}>\n"
         "Armory Data: 2\n"
         "Brothers:\n"
         f" - <@{u1.id}>\n"
@@ -46,3 +47,73 @@ def test_parse_and_validate_basic_stratagem():
     assert rec is not None
     errs = validate_aar(rec)
     assert errs == []
+
+
+INITIATION_TRIAL_ROLE_ID = 1434942334914662501
+WATCH_COMMAND_ROLE_ID = 1429281421931057283
+
+
+def _make_initiation_trial_message(include_watch_command: bool):
+    """Build a FakeMessage representing an Initiation Trial AAR."""
+    brother = FakeUser(201, "Veteran", nick="Veteran")
+    initiate = FakeUser(202, "Neophyte", nick="Neophyte")
+    difficulty_role = FakeRole(501, "Normal-Stratagem")
+    initiation_trial_role = FakeRole(INITIATION_TRIAL_ROLE_ID, "Initiation Trial")
+
+    role_mentions = [difficulty_role, initiation_trial_role]
+    if include_watch_command:
+        watch_command_role = FakeRole(WATCH_COMMAND_ROLE_ID, "Watch Command")
+        role_mentions.append(watch_command_role)
+
+    watch_command_line = (
+        f"<@&{WATCH_COMMAND_ROLE_ID}>\n" if include_watch_command else ""
+    )
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        "Mission: Inferno\n"
+        f"Difficulty: <@&{difficulty_role.id}>\n"
+        f"<@&{INITIATION_TRIAL_ROLE_ID}> <@{initiate.id}>\n"
+        f"{watch_command_line}\n"
+        f"Gene-seed: <@&{brother.id}>\n"
+        "Armory Data: 2\n"
+        "Brothers:\n"
+        f" - <@{brother.id}>\n"
+        f" - <@{initiate.id}>\n"
+        "++ END OF REPORT ++\n"
+    )
+
+    return FakeMessage(
+        content,
+        mentions=[brother, initiate],
+        role_mentions=role_mentions,
+    )
+
+
+def test_initiation_trial_with_watch_command_validates():
+    """An Initiation Trial that mentions @Watch Command should pass the Watch Command check."""
+    msg = _make_initiation_trial_message(include_watch_command=True)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("initiation_trial") is True
+    assert rec.get("watch_command_mentioned") is True
+    errs = validate_aar(rec)
+    watch_command_errors = [e for e in errs if "Watch Command" in e]
+    assert watch_command_errors == [], (
+        "Expected no Watch Command error when @Watch Command is mentioned, "
+        f"but got: {watch_command_errors}"
+    )
+
+
+def test_initiation_trial_without_watch_command_returns_error():
+    """An Initiation Trial that omits @Watch Command should return the required mention error."""
+    msg = _make_initiation_trial_message(include_watch_command=False)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("initiation_trial") is True
+    assert rec.get("watch_command_mentioned") is False
+    errs = validate_aar(rec)
+    assert any("Watch Command" in e for e in errs), (
+        "Expected an error about @Watch Command being required, but got: "
+        + str(errs)
+    )
