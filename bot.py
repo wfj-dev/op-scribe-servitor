@@ -10511,7 +10511,32 @@ def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) ->
     Eligible members must have one of the roles in RANK_ROLES_PRIORITY or
     the Watch Sister alias. Members without a rank role are excluded from
     combat bond calculations.
+
+    NOTE: This helper uses ``guild.get_member()``, which only consults the
+    local member cache. Callers should ensure that the guild's member cache
+    is fully populated (for example via member intents and chunking) before
+    relying on this filter, otherwise eligible members that are not cached
+    may be incorrectly excluded from combat bond calculations.
     """
+    # Detect obviously incomplete caches and emit a warning so operators can
+    # address it at the configuration/call-site level.
+    try:
+        total_members = getattr(guild, "member_count", None)
+        cached_members = len(getattr(guild, "members", []))
+        if isinstance(total_members, int) and total_members > 0 and cached_members < total_members:
+            logging.getLogger(__name__).warning(
+                "Guild member cache appears incomplete for %s "
+                "(cached=%d, total=%d); _get_eligible_combat_bonds_ids "
+                "relies on the cache and may under-count eligible members.",
+                getattr(guild, "name", guild.id),
+                cached_members,
+                total_members,
+            )
+    except Exception:
+        # If anything goes wrong while checking cache completeness, fall back
+        # silently to existing behavior.
+        pass
+
     eligible: set = set()
     # Build set of qualifying role names (all rank roles + Watch Sister alias)
     qualifying_roles = set(RANK_ROLES_PRIORITY) | {"Watch Sister"}
