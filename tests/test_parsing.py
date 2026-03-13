@@ -32,9 +32,9 @@ def test_parse_and_validate_basic_stratagem():
 
     content = (
         "++ MISSION REPORT ++\n"
-        "Mission: Test Operation\n"
+        "Mission: Inferno\n"
         f"Difficulty: <@&{r1.id}>\n"
-        f"Gene-seed: <@&{u1.id}>\n"
+        f"Gene-seed: <@{u1.id}>\n"
         "Armory Data: 2\n"
         "Brothers:\n"
         f" - <@{u1.id}>\n"
@@ -75,7 +75,7 @@ def _make_initiation_trial_message(include_watch_command: bool):
         f"Difficulty: <@&{difficulty_role.id}>\n"
         f"<@&{INITIATION_TRIAL_ROLE_ID}> <@{initiate.id}>\n"
         f"{watch_command_line}\n"
-        f"Gene-seed: <@&{brother.id}>\n"
+        f"Gene-seed: <@{brother.id}>\n"
         "Armory Data: 2\n"
         "Brothers:\n"
         f" - <@{brother.id}>\n"
