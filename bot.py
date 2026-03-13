@@ -7812,7 +7812,7 @@ async def tally_deeds(
                         if owed_aur > 0:
                             owed_parts.append(f"+{owed_aur} Auramite")
                         # Only show plasteel owed if user hasn't reached auramite tier yet
-                        if owed_plas > 0 and existing_aur == 0:
+                        if owed_plas > 0 and studs_count < 4:
                             owed_parts.append(f"+{owed_plas} Plasteel")
                         if owed_parts:
                             notif = f"({', '.join(owed_parts)} owed)"
