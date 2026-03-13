@@ -25,6 +25,9 @@ import sys
 # Import DataStore
 from datastore import DataStore
 
+# Role IDs
+WATCH_COMMAND_ROLE_ID = 1429281421931057283
+
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
 
@@ -9317,6 +9320,8 @@ def parse_aar(message: discord.Message):
     black_laurels_in_difficulty = False
     black_laurels_in_mission = False
     black_laurels_mentioned_elsewhere = False
+    # Watch Command role mention (required for Initiation Trials)
+    watch_command_mentioned = False
 
     brothers_start_idx = None
 
@@ -9485,40 +9490,80 @@ def parse_aar(message: discord.Message):
     except Exception:
         pass
 
+    def role_mentioned(message, *, role_id=None, role_name=None, name_contains=None):
+        """
+        Check whether a role matching the given criteria is mentioned in the message.
+
+        :param message: Discord message object with a role_mentions attribute.
+        :param role_id: Optional int or str role ID to match.
+        :param role_name: Optional canonical role name (case-insensitive).
+        :param name_contains: Optional iterable of substrings that must all be present
+                             in the role name (case-insensitive).
+        :return: True if a matching role is found, False otherwise.
+        """
+        try:
+            roles = getattr(message, "role_mentions", [])
+        except Exception:
+            return False
+
+        try:
+            for role in roles:
+                try:
+                    rn = (getattr(role, "name", "") or "").strip().lower()
+                    rid = getattr(role, "id", None)
+
+                    # Match by role ID (accept either int or string form)
+                    if role_id is not None:
+                        if rid == role_id or str(rid) == str(role_id):
+                            return True
+
+                    # Match by exact canonical role name (case-insensitive)
+                    if role_name is not None:
+                        if rn == role_name.strip().lower():
+                            return True
+
+                    # Match by all required substrings in the role name
+                    if name_contains:
+                        try:
+                            if all(token in rn for token in name_contains):
+                                return True
+                        except Exception:
+                            # If name_contains is not iterable or another error occurs, ignore.
+                            pass
+                except Exception:
+                    # Ignore issues with individual role objects and continue scanning.
+                    continue
+        except Exception:
+            return False
+
+        return False
+
     # Detect Chapter Approved role mention anywhere in the message.
-    try:
-        for role in message.role_mentions:
-            try:
-                rn = (getattr(role, "name", "") or "").strip().lower()
-                rid = getattr(role, "id", None)
-                # Accept either the canonical name or the known role ID
-                if (
-                    rn == "chapter approved"
-                    or rid == 1467960627795464344
-                    or str(rid) == "1467960627795464344"
-                ):
-                    chapter_approved = True
-                    break
-            except Exception:
-                continue
-    except Exception:
-        chapter_approved = False
+    chapter_approved = role_mentioned(
+        message,
+        role_id=1467960627795464344,
+        role_name="chapter approved",
+    )
 
     # Detect Black Laurels role mention anywhere in the message.
     # Track if it's in difficulty/mission lines OR mentioned as a role elsewhere.
-    try:
-        for role in message.role_mentions:
-            try:
-                rn = (getattr(role, "name", "") or "").strip().lower()
-                if "black" in rn and "laurel" in rn:
-                    # If it's not already in difficulty or mission line, flag it as elsewhere
-                    if not black_laurels_in_difficulty and not black_laurels_in_mission:
-                        black_laurels_mentioned_elsewhere = True
-                    break
-            except Exception:
-                continue
-    except Exception:
-        pass
+    black_laurels_role_mentioned = role_mentioned(
+        message,
+        name_contains=("black", "laurel"),
+    )
+    if (
+        black_laurels_role_mentioned
+        and not black_laurels_in_difficulty
+        and not black_laurels_in_mission
+    ):
+        black_laurels_mentioned_elsewhere = True
+
+    # Detect Watch Command role mention anywhere in the message (required for Initiation Trials).
+    watch_command_mentioned = role_mentioned(
+        message,
+        role_id=WATCH_COMMAND_ROLE_ID,
+        role_name="watch command",
+    )
 
     # If Chapter Approved tag present, apply +1 point only when the AAR
     # is recorded on the 1st or 3rd Saturday of the month.
@@ -9599,6 +9644,7 @@ def parse_aar(message: discord.Message):
         "initiate_ids": initiate_ids,
         # Legacy field for backward compat with old records
         "initiate_id": initiate_ids[0] if initiate_ids else None,
+        "watch_command_mentioned": watch_command_mentioned,
         "chapter_approved": chapter_approved,
         "chapter_approved_extra_point_applied": chapter_approved_extra_point_applied,
         # Black Laurels tracking for validation
@@ -9820,6 +9866,11 @@ def validate_aar(record: dict):
         if not has_initiates:
             errors.append(
                 "Initiation Trial present but no initiate mention found; include the person being initiated."
+            )
+        # Watch Command role must be mentioned for Initiation Trials
+        if not record.get("watch_command_mentioned"):
+            errors.append(
+                "Initiation Trial requires @Watch Command to be mentioned."
             )
 
     # 7) Gene-seed logic
