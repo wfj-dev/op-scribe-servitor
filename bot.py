@@ -7804,12 +7804,15 @@ async def tally_deeds(
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
                         # Break down owed studs into auramite (4) and plasteel (1)
+                        # Once in auramite tier, no longer track plasteel — only show
+                        # auramite owed (partial progress not displayed)
                         owed_aur = diff // 4
                         owed_plas = diff % 4
                         owed_parts = []
                         if owed_aur > 0:
                             owed_parts.append(f"+{owed_aur} Auramite")
-                        if owed_plas > 0:
+                        # Only show plasteel owed if user hasn't reached auramite tier yet
+                        if owed_plas > 0 and studs_count < 4:
                             owed_parts.append(f"+{owed_plas} Plasteel")
                         if owed_parts:
                             notif = f"({', '.join(owed_parts)} owed)"
@@ -8288,7 +8291,7 @@ async def tally_deeds(
             for fl in footer_lines:
                 r_lines.append(fl)
             roster_text = "\n".join(r_lines)
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
                 kt_display_name = _extract_killteam_name(
                     getattr(killteam, "name", "Unknown")
@@ -8490,7 +8493,7 @@ async def tally_deeds(
         summary_text = "\n".join(s_lines)
 
         try:
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             title_type = "Chapter" if is_chapter_role else "Kill Team"
             embed = discord.Embed(
                 title=f"᛭⋅ {title_type.upper()} MONTHLY HONOURS ⋅᛭",
@@ -8571,7 +8574,7 @@ async def tally_deeds(
 
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
-        # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+        # Build a clean, mobile-friendly embed (Jericho embed style)
         try:
             if (len(members) == 1) and member_stat_rows_list:
                 target = members[0]
@@ -8803,7 +8806,7 @@ async def tally_deeds(
             h_lines.append("\u001b[0m```")
             honours_text = "\n".join(h_lines)
 
-            # Build a clean, mobile-friendly embed (like forge_rite/stud announcement style)
+            # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
                 # Get chapter emoji for display
                 guild = interaction.guild
