@@ -8919,9 +8919,9 @@ async def combat_bonds(
             cached = DATASTORE.get_combat_cache(span_days)
             if cached and isinstance(cached.get("data"), dict):
                 pdata = cached.get("data")
-                cached_pair_counts = pdata.get("pair_counts")
-                if isinstance(cached_pair_counts, dict):
-                    pair_counts = cached_pair_counts
+                cached_pc = pdata.get("pair_counts")
+                if isinstance(cached_pc, dict):
+                    pair_counts = cached_pc
     except Exception:
         pair_counts = None
 
@@ -8931,6 +8931,10 @@ async def combat_bonds(
             pair_counts = await asyncio.to_thread(_build_pair_counts, missions)
         except Exception:
             pair_counts = _build_pair_counts(missions)
+
+    # Preserve unfiltered pair_counts for caching; eligibility is applied per-request
+    # so that role changes (promotions/demotions) are reflected without a cache rebuild.
+    unfiltered_pair_counts = pair_counts
 
     # Filter pair_counts to only include eligible Watch Brother+ members
     pair_counts = _filter_pair_counts_by_eligible(pair_counts, eligible_ids)
@@ -8957,7 +8961,7 @@ async def combat_bonds(
             await DATASTORE.set_combat_cache(
                 span_days,
                 {
-                    "pair_counts": pair_counts,
+                    "pair_counts": unfiltered_pair_counts,
                     "triples": triples,
                     "spreads": spreads,
                 },
