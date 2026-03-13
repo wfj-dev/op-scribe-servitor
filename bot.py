@@ -8919,7 +8919,9 @@ async def combat_bonds(
             cached = DATASTORE.get_combat_cache(span_days)
             if cached and isinstance(cached.get("data"), dict):
                 pdata = cached.get("data")
-                pair_counts = pdata.get("pair_counts")
+                cached_pair_counts = pdata.get("pair_counts")
+                if isinstance(cached_pair_counts, dict):
+                    pair_counts = cached_pair_counts
     except Exception:
         pair_counts = None
 
