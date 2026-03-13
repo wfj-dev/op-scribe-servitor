@@ -7552,15 +7552,15 @@ async def tally_deeds(
             await interaction.response.send_message("Access denied.", ephemeral=True)
             return
 
-    # First response: defer, so we can do slower work safely
-    await interaction.response.defer(thinking=False, ephemeral=True)
-
-    # Mutual exclusivity and target selection: either a single brother or a killteam role
+    # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
     if brother and killteam:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             "Provide either 'brother' or 'killteam', not both.", ephemeral=True
         )
         return
+
+    # First response: defer, so we can do slower work safely
+    await interaction.response.defer(thinking=False, ephemeral=True)
 
     if killteam:
         members = [m for m in getattr(killteam, "members", [])]
@@ -8324,7 +8324,7 @@ async def tally_deeds(
                     chunk = roster_lines[i : i + chunk_size]
                     field_value = "\n".join(chunk)
                     roster_embed.add_field(
-                        name=f"▸ Members {i + 1}–{min(i + chunk_size, len(roster_lines))}",
+                        name="\u200b",
                         value=field_value or "—",
                         inline=False,
                     )
