@@ -3188,6 +3188,92 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         pass
 
 
+@bot.event
+async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
+    """Detect when a processed AAR message is deleted and notify staff."""
+    try:
+        message_id = str(payload.message_id)
+        # Check if this was a processed AAR
+        if not DATASTORE.is_processed(message_id):
+            return
+        # Get the stored record for details
+        record = DATASTORE.get_record(message_id)
+        if not record:
+            return
+        # Resolve guild and notification channel
+        guild = None
+        try:
+            guild = bot.get_guild(payload.guild_id) if payload.guild_id else None
+        except Exception:
+            pass
+        if not guild:
+            return
+        # Verify this was from the AAR channel
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        if not aar_channel or payload.channel_id != aar_channel.id:
+            return
+        # Get notification channel
+        notify_channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
+        if not notify_channel:
+            logger.warning(f"AAR {message_id} deleted but notification channel not found.")
+            return
+        # Build notification message
+        brother_ids = record.get("brother_ids", [])
+        brother_names = record.get("brother_names", [])
+        mission = record.get("mission", "Unknown")
+        difficulty = record.get("difficulty", "Unknown")
+        timestamp = record.get("timestamp", "Unknown")
+        # Try to identify who posted it (first brother is usually the author)
+        author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
+        # Format preserved content preview (truncated)
+        preserved_content = record.get("content", "")
+        content_preview = preserved_content[:500] + "..." if len(preserved_content) > 500 else preserved_content
+        # Get Watch Command role for ping
+        watch_role = discord.utils.get(guild.roles, name="Watch Command")
+        mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
+        # Build alert content, shrinking the preview as needed to stay within limits
+        while True:
+            alert_lines = [
+                f"{mention} ⚠️ **AAR DELETION DETECTED**",
+                "",
+                f"**Message ID:** `{message_id}`",
+                f"**Likely Author:** {author_mention}",
+                f"**Mission:** {mission}",
+                f"**Difficulty:** {difficulty}",
+                f"**Original Timestamp:** {timestamp}",
+                "",
+                "**Preserved Content:**",
+                f"```\n{content_preview}\n```",
+                "",
+                "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
+            ]
+            alert_content = "\n".join(alert_lines)
+            if len(alert_content) <= 1900 or not content_preview:
+                break
+            # Reduce the preview length to fit within the limit, preserving markdown fences.
+            overflow = len(alert_content) - 1900
+            if overflow >= len(content_preview):
+                content_preview = ""
+            else:
+                # Target length for the preview after shrinking.
+                target_len = len(content_preview) - overflow
+                if len(preserved_content) > target_len:
+                    # Leave room for ellipsis if we still need to truncate the preserved content.
+                    body_len = max(0, target_len - 3)
+                    content_preview = preserved_content[:body_len] + "..."
+                else:
+                    content_preview = preserved_content[:target_len]
+        try:
+            await notify_channel.send(
+                alert_content,
+                allowed_mentions=discord.AllowedMentions(roles=True, users=True),
+            )
+        except Exception as e:
+            logger.error(f"Failed to send AAR deletion notification: {e}")
+    except Exception as e:
+        logger.error(f"Error in on_raw_message_delete handler: {e}", exc_info=True)
+
+
 @bot.tree.command(
     name="litany_of_function",
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
@@ -9630,6 +9716,7 @@ def parse_aar(message: discord.Message):
     # Always return a record, even if Brothers section is missing; validation will handle errors
     return {
         "aar_id": aar_id,
+        "content": content,  # Store full message content for resilience against deletion
         "mission": mission,
         "difficulty": difficulty,
         "difficulty_class": difficulty_class,
