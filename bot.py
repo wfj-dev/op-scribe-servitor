@@ -3231,24 +3231,38 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         # Get Watch Command role for ping
         watch_role = discord.utils.get(guild.roles, name="Watch Command")
         mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
-        alert_lines = [
-            f"{mention} ⚠️ **AAR DELETION DETECTED**",
-            "",
-            f"**Message ID:** `{message_id}`",
-            f"**Likely Author:** {author_mention}",
-            f"**Mission:** {mission}",
-            f"**Difficulty:** {difficulty}",
-            f"**Original Timestamp:** {timestamp}",
-            "",
-            "**Preserved Content:**",
-            f"```\n{content_preview}\n```",
-            "",
-            "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
-        ]
-        alert_content = "\n".join(alert_lines)
-        # Truncate if needed
-        if len(alert_content) > 1900:
-            alert_content = alert_content[:1900] + "\n...```"
+        # Build alert content, shrinking the preview as needed to stay within limits
+        while True:
+            alert_lines = [
+                f"{mention} ⚠️ **AAR DELETION DETECTED**",
+                "",
+                f"**Message ID:** `{message_id}`",
+                f"**Likely Author:** {author_mention}",
+                f"**Mission:** {mission}",
+                f"**Difficulty:** {difficulty}",
+                f"**Original Timestamp:** {timestamp}",
+                "",
+                "**Preserved Content:**",
+                f"```\n{content_preview}\n```",
+                "",
+                "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
+            ]
+            alert_content = "\n".join(alert_lines)
+            if len(alert_content) <= 1900 or not content_preview:
+                break
+            # Reduce the preview length to fit within the limit, preserving markdown fences.
+            overflow = len(alert_content) - 1900
+            if overflow >= len(content_preview):
+                content_preview = ""
+            else:
+                # Target length for the preview after shrinking.
+                target_len = len(content_preview) - overflow
+                if len(preserved_content) > target_len:
+                    # Leave room for ellipsis if we still need to truncate the preserved content.
+                    body_len = max(0, target_len - 3)
+                    content_preview = preserved_content[:body_len] + "..."
+                else:
+                    content_preview = preserved_content[:target_len]
         try:
             await notify_channel.send(
                 alert_content,
