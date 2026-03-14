@@ -3271,7 +3271,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         except Exception as e:
             logger.error(f"Failed to send AAR deletion notification: {e}")
     except Exception as e:
-        logger.debug(f"Error in on_raw_message_delete handler: {e}")
+        logger.error(f"Error in on_raw_message_delete handler: {e}", exc_info=True)
 
 
 @bot.tree.command(
