@@ -1891,6 +1891,7 @@ HOME_CHAPTERS = [
     "Dark Angels",
     "Dark Krakens",
     "Death Spectres",
+    "Epsilon Paladins",
     "Exorcists",
     "Flesh Tearers",
     "Genesis Chapter",
@@ -3732,6 +3733,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Dark Krakens": "From the abyssal depths, your armor rises to crush the foe.",
     "Death Spectres": "The shroud of death clings to your armor; let enemies despair.",
     "Exorcists": "Thrice-bound against the Warp, your armor stands inviolate.",
+    "Epsilon Paladins": "For Honour! For Duty! For Dorn!—your armor gleams with the Paladin's steadfast resolve.",
     "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
     "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
@@ -4106,6 +4108,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Thrice-tested, your studs proclaim purity of service.",
         "No daemon can claim one whose brow bears such marks.",
         "Your service is warded against the Warp itself.",
+    ],
+    "Epsilon Paladins": [
+        "Each stud shines silver and gold—proof of honour earned in Dorn's name.",
+        "The Paladins count your marks among the bastions held and battles won.",
+        "For Duty fulfilled, your service studs gleam like the Paladin's own warplate.",
     ],
     "Flesh Tearers": [
         "The Red Thirst is held at bay by such devoted service.",
