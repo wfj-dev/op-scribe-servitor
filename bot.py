@@ -1022,7 +1022,7 @@ async def _send_activity_status_notification(
 
             mention_str = " ".join(role_mentions) if role_mentions else ""
 
-            message = f"⚔️ **{member_name}** has returned from the Reserves and stands ready for duty once more."
+            message = f"⚔️ **{member_name}** has returned from Reserves and stands ready for duty once more."
 
             if mention_str:
                 content = f"{mention_str}\n{message}"
