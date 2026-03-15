@@ -203,6 +203,36 @@ def _is_truthy(val) -> bool:
     return False
 
 
+def _should_send_award_notification(
+    is_eligible: bool,
+    has_role: bool,
+    tracking_key: str,
+    tracking: dict,
+) -> bool:
+    """Decide whether an award notification should be sent.
+
+    On the first time a key is seen (first run / after a restart), if the member
+    already has the role the entry is silently initialised to ``True`` in *tracking*
+    so that no duplicate notification is produced.  In all other first-run cases
+    *tracking* is not mutated by this function.
+
+    After initialisation a notification is only sent when all three conditions
+    hold: the member is eligible, does **not** yet hold the role, and has not
+    previously been notified.
+
+    Returns ``True`` if a notification should be sent, ``False`` otherwise.
+    """
+    # First run: silently mark as notified if the role is already held
+    if tracking_key not in tracking:
+        if has_role:
+            tracking[tracking_key] = True
+
+    if tracking.get(tracking_key):
+        return False
+
+    return is_eligible and not has_role
+
+
 def _resolve_notification_guild() -> Optional[discord.Guild]:
     """Resolve the notification guild by name first, then ID, then fallback.
     Priority:
@@ -1666,30 +1696,27 @@ async def _check_promotion_milestones():
                     has_ar_role = (
                         ardent_raider_role and ardent_raider_role in member.roles
                     )
-                    # First run: initialize notified flag based on current state to avoid bursts
-                    if "ardent_raider_notified" not in user_tracking:
-                        # Treat users who already have the role or are already eligible as notified
-                        user_tracking["ardent_raider_notified"] = (
-                            bool(has_ar_role) or bool(is_ar_eligible)
+                    if _should_send_award_notification(
+                        is_eligible=is_ar_eligible,
+                        has_role=has_ar_role,
+                        tracking_key="ardent_raider_notified",
+                        tracking=user_tracking,
+                    ):
+                        msg = (
+                            f"᛭⋅ {member.mention}\n"
+                            f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
+                            f"᛭⋅ {techmarine_mention}\n"
+                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                         )
-                    # Only notify if eligible, doesn't have role, and not already notified
-                    if not user_tracking.get("ardent_raider_notified"):
-                        if is_ar_eligible and not has_ar_role:
-                            msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {techmarine_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
-                            )
-                            user_tracking["ardent_raider_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
+                        await black_laurels_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
+                        )
+                        user_tracking["ardent_raider_notified"] = True
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
 
                 # Check For the Fallen eligibility (150 geneseed points)
                 if black_laurels_channel:
@@ -1700,28 +1727,27 @@ async def _check_promotion_milestones():
                     has_ftf_role = (
                         for_the_fallen_role and for_the_fallen_role in member.roles
                     )
-                    # First run: if already has role, mark as notified without sending
-                    if "for_the_fallen_notified" not in user_tracking:
-                        if has_ftf_role:
-                            user_tracking["for_the_fallen_notified"] = True
-                    # Only notify if eligible, doesn't have role, and not already notified
-                    if not user_tracking.get("for_the_fallen_notified"):
-                        if is_ftf_eligible and not has_ftf_role:
-                            msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {apothecary_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
-                            )
-                            user_tracking["for_the_fallen_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
+                    if _should_send_award_notification(
+                        is_eligible=is_ftf_eligible,
+                        has_role=has_ftf_role,
+                        tracking_key="for_the_fallen_notified",
+                        tracking=user_tracking,
+                    ):
+                        msg = (
+                            f"᛭⋅ {member.mention}\n"
+                            f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
+                            f"᛭⋅ {apothecary_mention}\n"
+                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                        )
+                        await black_laurels_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
+                        )
+                        user_tracking["for_the_fallen_notified"] = True
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
 
                 # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
                 if black_laurels_channel:
@@ -1736,34 +1762,27 @@ async def _check_promotion_milestones():
                     has_cl_role = (
                         crimson_laurels_role and crimson_laurels_role in member.roles
                     )
-                    # First run: if already has role, mark as notified without sending.
-                    # Also initialize tracking without sending any notifications on this run.
-                    first_run = "crimson_laurels_notified" not in user_tracking
-                    if first_run:
-                        if has_cl_role:
-                            # Already has the role; consider them notified so we never ping them.
-                            user_tracking["crimson_laurels_notified"] = True
-                        else:
-                            # Does not have the role; start tracking but do not notify on first run.
-                            user_tracking["crimson_laurels_notified"] = False
-                    # Only notify if eligible, doesn't have role, not already notified, and not on first run
-                    if not user_tracking.get("crimson_laurels_notified") and not first_run:
-                        if is_cl_eligible and not has_cl_role:
-                            msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {librarian_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
-                            )
-                            user_tracking["crimson_laurels_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
+                    if _should_send_award_notification(
+                        is_eligible=is_cl_eligible,
+                        has_role=has_cl_role,
+                        tracking_key="crimson_laurels_notified",
+                        tracking=user_tracking,
+                    ):
+                        msg = (
+                            f"᛭⋅ {member.mention}\n"
+                            f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
+                            f"᛭⋅ {librarian_mention}\n"
+                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                        )
+                        await black_laurels_channel.send(
+                            msg,
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
+                        )
+                        user_tracking["crimson_laurels_notified"] = True
+                        notifications_sent += 1
+                        await asyncio.sleep(0.5)
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower
