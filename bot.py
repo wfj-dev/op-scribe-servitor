@@ -1666,10 +1666,12 @@ async def _check_promotion_milestones():
                     has_ar_role = (
                         ardent_raider_role and ardent_raider_role in member.roles
                     )
-                    # First run: if already has role, mark as notified without sending
+                    # First run: initialize notified flag based on current state to avoid bursts
                     if "ardent_raider_notified" not in user_tracking:
-                        if has_ar_role:
-                            user_tracking["ardent_raider_notified"] = True
+                        # Treat users who already have the role or are already eligible as notified
+                        user_tracking["ardent_raider_notified"] = (
+                            bool(has_ar_role) or bool(is_ar_eligible)
+                        )
                     # Only notify if eligible, doesn't have role, and not already notified
                     if not user_tracking.get("ardent_raider_notified"):
                         if is_ar_eligible and not has_ar_role:
