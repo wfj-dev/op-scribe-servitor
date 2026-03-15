@@ -4104,15 +4104,15 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The shroud parts to reveal your accumulated marks.",
         "Each stud pierces the veil of mortality.",
     ],
-    "Exorcists": [
-        "Thrice-tested, your studs proclaim purity of service.",
-        "No daemon can claim one whose brow bears such marks.",
-        "Your service is warded against the Warp itself.",
-    ],
     "Epsilon Paladins": [
         "Each stud shines silver and gold—proof of honour earned in Dorn's name.",
         "The Paladins count your marks among the bastions held and battles won.",
         "For Duty fulfilled, your service studs gleam like the Paladin's own warplate.",
+    ],
+    "Exorcists": [
+        "Thrice-tested, your studs proclaim purity of service.",
+        "No daemon can claim one whose brow bears such marks.",
+        "Your service is warded against the Warp itself.",
     ],
     "Flesh Tearers": [
         "The Red Thirst is held at bay by such devoted service.",
