@@ -1666,13 +1666,12 @@ async def _check_promotion_milestones():
                     has_ar_role = (
                         ardent_raider_role and ardent_raider_role in member.roles
                     )
-                    # First run: if already eligible or has role, mark as notified without sending
-                    if "ardent_raider_notified" not in user_tracking:
-                        if is_ar_eligible or has_ar_role:
-                            user_tracking["ardent_raider_notified"] = True
-                    # Only notify if eligible, doesn't have role, and not already notified
+                    # If already has role, mark as notified without sending
+                    if has_ar_role:
+                        user_tracking["ardent_raider_notified"] = True
+                    # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("ardent_raider_notified"):
-                        if is_ar_eligible and not has_ar_role:
+                        if is_ar_eligible:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
                                 f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
@@ -1698,13 +1697,12 @@ async def _check_promotion_milestones():
                     has_ftf_role = (
                         for_the_fallen_role and for_the_fallen_role in member.roles
                     )
-                    # First run: if already eligible or has role, mark as notified without sending
-                    if "for_the_fallen_notified" not in user_tracking:
-                        if is_ftf_eligible or has_ftf_role:
-                            user_tracking["for_the_fallen_notified"] = True
-                    # Only notify if eligible, doesn't have role, and not already notified
+                    # If already has role, mark as notified without sending
+                    if has_ftf_role:
+                        user_tracking["for_the_fallen_notified"] = True
+                    # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("for_the_fallen_notified"):
-                        if is_ftf_eligible and not has_ftf_role:
+                        if is_ftf_eligible:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
                                 f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
@@ -1734,13 +1732,12 @@ async def _check_promotion_milestones():
                     has_cl_role = (
                         crimson_laurels_role and crimson_laurels_role in member.roles
                     )
-                    # First run: if already eligible or has role, mark as notified without sending
-                    if "crimson_laurels_notified" not in user_tracking:
-                        if is_cl_eligible or has_cl_role:
-                            user_tracking["crimson_laurels_notified"] = True
-                    # Only notify if eligible, doesn't have role, and not already notified
+                    # If already has role, mark as notified without sending
+                    if has_cl_role:
+                        user_tracking["crimson_laurels_notified"] = True
+                    # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("crimson_laurels_notified"):
-                        if is_cl_eligible and not has_cl_role:
+                        if is_cl_eligible:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
                                 f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
