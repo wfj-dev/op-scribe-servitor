@@ -1736,12 +1736,18 @@ async def _check_promotion_milestones():
                     has_cl_role = (
                         crimson_laurels_role and crimson_laurels_role in member.roles
                     )
-                    # First run: if already has role, mark as notified without sending
-                    if "crimson_laurels_notified" not in user_tracking:
+                    # First run: if already has role, mark as notified without sending.
+                    # Also initialize tracking without sending any notifications on this run.
+                    first_run = "crimson_laurels_notified" not in user_tracking
+                    if first_run:
                         if has_cl_role:
+                            # Already has the role; consider them notified so we never ping them.
                             user_tracking["crimson_laurels_notified"] = True
-                    # Only notify if eligible, doesn't have role, and not already notified
-                    if not user_tracking.get("crimson_laurels_notified"):
+                        else:
+                            # Does not have the role; start tracking but do not notify on first run.
+                            user_tracking["crimson_laurels_notified"] = False
+                    # Only notify if eligible, doesn't have role, not already notified, and not on first run
+                    if not user_tracking.get("crimson_laurels_notified") and not first_run:
                         if is_cl_eligible and not has_cl_role:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
