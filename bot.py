@@ -4718,17 +4718,19 @@ def _get_stud_marking_recipients(
     # Kill Team members: try Sergeant first; fallback to Lt/Cpt; fallback to Apothecary
     kt_name = _resolve_killteam_for_member(member)
     if kt_name:
-        # Try to find Sergeant
+        # Try to find Sergeant (but not the member themselves)
         sgt = _find_kt_sergeant(guild, kt_name)
-        if sgt:
+        if sgt and sgt.id != member.id:
             emoji = _get_rank_emoji(guild, "Watch Sergeant")
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(sgt.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
 
-        # If no Sergeant, search for Lt/Cpt in same KT (shortage coverage)
+        # If no Sergeant (or member IS the Sergeant), search for Lt/Cpt in same KT
         try:
             for mbr in guild.members:
+                if mbr.id == member.id:
+                    continue
                 mbr_teams = _resolve_killteams_for_member(mbr)
                 if kt_name not in mbr_teams:
                     continue
