@@ -44,6 +44,7 @@ class FakeMember:
     def __init__(self, member_id: int, role_names):
         self.id = member_id
         self.roles = [FakeRole(n) for n in role_names]
+        self.display_name = f"Member{member_id}"
 
 
 class FakeGuild:
@@ -76,6 +77,20 @@ def test_high_command_bearer_no_forgemaster_returns_none():
 
     attestor, role_key = _find_responsible_attestor(bearer, guild)
     assert attestor is None
+    assert role_key == "forgemaster"
+
+
+def test_watch_captain_bearer_selects_forgemaster():
+    """Watch Captain is High Command and should be blessed by the Forgemaster."""
+    assert "Watch Captain" in HIGH_COMMAND_ROLES, "Watch Captain must be in HIGH_COMMAND_ROLES"
+    bearer = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
+    company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
+    forgemaster = FakeMember(3, ["Forgemaster"])
+    guild = FakeGuild([bearer, company_tech, forgemaster])
+
+    # Even though there's a company techmarine, Watch Captain gets Forgemaster
+    attestor, role_key = _find_responsible_attestor(bearer, guild)
+    assert attestor is forgemaster
     assert role_key == "forgemaster"
 
 
