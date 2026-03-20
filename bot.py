@@ -2505,6 +2505,7 @@ HIGH_COMMAND_RANKS = {
     "Void Warden",
     "Forgemaster",
     "Watch Master",
+    "Venerable",
 }
 
 # Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
@@ -2528,6 +2529,7 @@ WATCH_COMMAND_ROLES = {
     "Void Warden",
     "Forgemaster",
     "Watch Master",
+    "Venerable",
 }
 
 
@@ -3769,6 +3771,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Void Warden": "Aegis against the Void, Void Warden",
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
+    "Venerable": "Ancient of the Long Watch, Venerable",
     # Specialists
     "Watch Chaplain": "Keeper of the faith, Watch Chaplain",
     "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
@@ -4285,6 +4288,10 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
     "Forgemaster": [
         "The Armorium's cogitators record this data-point of dedication.",
         "Machine-spirits sing of your accumulated service.",
+    ],
+    "Venerable": [
+        "The Old One's sarcophagus bears another inscription of eternal service.",
+        "Centuries of slumber cannot diminish such devotion—the sepulchre records all.",
     ],
     # Senior Officers - respectful acknowledgments
     "Watch Captain": [
