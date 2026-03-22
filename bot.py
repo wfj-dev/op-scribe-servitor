@@ -203,6 +203,36 @@ def _is_truthy(val) -> bool:
     return False
 
 
+def _should_send_award_notification(
+    is_eligible: bool,
+    has_role: bool,
+    tracking_key: str,
+    tracking: dict,
+) -> bool:
+    """Decide whether an award notification should be sent.
+
+    On the first time a key is seen (first run / after a restart), if the member
+    already has the role the entry is silently initialised to ``True`` in *tracking*
+    so that no duplicate notification is produced.  In all other first-run cases
+    *tracking* is not mutated by this function.
+
+    After initialisation a notification is only sent when all three conditions
+    hold: the member is eligible, does **not** yet hold the role, and has not
+    previously been notified.
+
+    Returns ``True`` if a notification should be sent, ``False`` otherwise.
+    """
+    # First run: silently mark as notified if the role is already held
+    if tracking_key not in tracking:
+        if has_role:
+            tracking[tracking_key] = True
+
+    if tracking.get(tracking_key):
+        return False
+
+    return is_eligible and not has_role
+
+
 def _resolve_notification_guild() -> Optional[discord.Guild]:
     """Resolve the notification guild by name first, then ID, then fallback.
     Priority:
@@ -7937,56 +7967,9 @@ async def tally_deeds(
             studs_symbols = ""
 
         # Use in-memory records from DATASTORE
-        ops_trials = 0
-        siege_waves = 0
-        initiation_event_times: List[datetime] = []
-        for rec in DATASTORE.iter_records():
-            try:
-                brother_ids = rec.get("brother_ids") or []
-                if str(target.id) not in brother_ids:
-                    continue
-                if not bool(rec.get("initiation_trial")):
-                    continue
-                # Count inductees (excluding self) - each inductee counts separately
-                initiate_ids_list = rec.get("initiate_ids") or []
-                legacy_initiate_id = rec.get("initiate_id")
-                # Build full list of inductees from both new and legacy fields
-                all_inductees = list(initiate_ids_list)
-                if legacy_initiate_id and legacy_initiate_id not in all_inductees:
-                    all_inductees.append(legacy_initiate_id)
-                # Remove self from count
-                inductee_count = sum(
-                    1 for uid in all_inductees if uid != str(target.id)
-                )
-                if inductee_count == 0:
-                    continue
-                ts = rec.get("timestamp")
-                try:
-                    if ts:
-                        t = datetime.fromisoformat(ts)
-                        if t.tzinfo is not None:
-                            try:
-                                t = t.astimezone(tz=None).replace(tzinfo=None)
-                            except Exception:
-                                t = t.replace(tzinfo=None)
-                        initiation_event_times.append(t)
-                except Exception:
-                    pass
-                dclass = (rec.get("difficulty_class") or "").lower()
-                if "siege" in dclass:
-                    # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
-                    rec_waves = rec.get("waves") or 0
-                    try:
-                        rec_waves = int(rec_waves)
-                    except Exception:
-                        rec_waves = 0
-                    siege_waves += rec_waves * inductee_count
-                else:
-                    # Ops: each inductee counts as 1 trial (3 trials = 1 induction)
-                    ops_trials += inductee_count
-            except Exception:
-                pass
-        trials_reported = (siege_waves // 15) + (ops_trials // 3)
+        trials_reported = _count_inductions_from_records(
+            str(target.id), DATASTORE.iter_records()
+        )
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -10458,20 +10441,20 @@ def compute_stats_for_user(user_id: str):
     return DATASTORE.get_user_stats(user_id)
 
 
-def _induction_count_for_user(user_id: str) -> int:
-    """Compute total inductions a brother participated in across all AARs.
-    Rule: Siege initiation: 15 waves per inductee = 1 induction.
-          Operation initiation: 3 trials per inductee = 1 induction.
-          Each inductee in an AAR counts separately.
-          Your own induction is excluded.
+def _count_inductions_from_records(user_id: str, records) -> int:
+    """Compute induction count for *user_id* from an iterable of AAR record dicts.
+
+    Rules:
+      - Omega operation: 1 trial per inductee = 1 complete induction.
+      - Siege initiation: 15 waves per inductee = 1 induction.
+      - Operation initiation: 3 trials per inductee = 1 induction.
+      - Each inductee in an AAR counts separately.
+      - The user's own induction (if they appear as an inductee) is excluded.
     """
-    try:
-        data = load_aar_data(AAR_RECORDS_PATH)
-    except Exception:
-        data = {}
     ops_trials = 0
     siege_waves = 0
-    for rec in data.values():
+    omega_inductions = 0
+    for rec in records:
         try:
             brother_ids = rec.get("brother_ids") or []
             if str(user_id) not in brother_ids:
@@ -10490,7 +10473,10 @@ def _induction_count_for_user(user_id: str) -> int:
             if inductee_count == 0:
                 continue
             dclass = (rec.get("difficulty_class") or "").lower()
-            if "siege" in dclass:
+            if "omega" in dclass:
+                # Omega: each inductee counts as a full induction (1 trial = 1 induction)
+                omega_inductions += inductee_count
+            elif "siege" in dclass:
                 # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
                 rec_waves = rec.get("waves") or 0
                 try:
@@ -10504,7 +10490,16 @@ def _induction_count_for_user(user_id: str) -> int:
         except Exception:
             # Be resilient to malformed records
             pass
-    return int((siege_waves // 15) + (ops_trials // 3))
+    return int(omega_inductions + (siege_waves // 15) + (ops_trials // 3))
+
+
+def _induction_count_for_user(user_id: str) -> int:
+    """Compute total inductions a brother participated in across all AARs."""
+    try:
+        data = load_aar_data(AAR_RECORDS_PATH)
+    except Exception:
+        data = {}
+    return _count_inductions_from_records(user_id, data.values())
 
 
 def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
