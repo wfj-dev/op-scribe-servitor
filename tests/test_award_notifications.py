@@ -9,8 +9,6 @@ Covers the pure helper that gates award notification dispatch:
 - Already notified → should not notify regardless of eligibility
 """
 
-import pytest
-
 from bot import _should_send_award_notification
 
 
