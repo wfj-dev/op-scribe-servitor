@@ -203,6 +203,36 @@ def _is_truthy(val) -> bool:
     return False
 
 
+def _should_send_award_notification(
+    is_eligible: bool,
+    has_role: bool,
+    tracking_key: str,
+    tracking: dict,
+) -> bool:
+    """Decide whether an award notification should be sent.
+
+    On the first time a key is seen (first run / after a restart), if the member
+    already has the role the entry is silently initialised to ``True`` in *tracking*
+    so that no duplicate notification is produced.  In all other first-run cases
+    *tracking* is not mutated by this function.
+
+    After initialisation a notification is only sent when all three conditions
+    hold: the member is eligible, does **not** yet hold the role, and has not
+    previously been notified.
+
+    Returns ``True`` if a notification should be sent, ``False`` otherwise.
+    """
+    # First run: silently mark as notified if the role is already held
+    if tracking_key not in tracking:
+        if has_role:
+            tracking[tracking_key] = True
+
+    if tracking.get(tracking_key):
+        return False
+
+    return is_eligible and not has_role
+
+
 def _resolve_notification_guild() -> Optional[discord.Guild]:
     """Resolve the notification guild by name first, then ID, then fallback.
     Priority:
