@@ -9,7 +9,6 @@ Covers:
 - Non-initiation AARs are ignored
 """
 
-import pytest
 from unittest.mock import patch
 
 
