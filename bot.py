@@ -1459,8 +1459,9 @@ async def _check_promotion_milestones():
             if not has_black_laurels:
                 continue
 
-            # Check @Absolute
-            if "absolute" not in difficulty:
+            # Check @Absolute or @Omega difficulty
+            is_omega = "omega" in difficulty
+            if "absolute" not in difficulty and not is_omega:
                 continue
 
             mission = rec.get("mission")
@@ -1468,7 +1469,8 @@ async def _check_promotion_milestones():
                 continue
 
             mission_lower = mission.strip().lower()
-            if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
+            # Omega difficulty allows Black Laurels on any mission
+            if not is_omega and mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
                 continue
 
             for uid in rec.get("brother_ids") or []:
