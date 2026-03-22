@@ -1052,7 +1052,7 @@ async def _send_activity_status_notification(
 
             mention_str = " ".join(role_mentions) if role_mentions else ""
 
-            message = f"⚔️ **{member_name}** has returned from the Reserves and stands ready for duty once more."
+            message = f"⚔️ **{member_name}** has returned from Reserves and stands ready for duty once more."
 
             if mention_str:
                 content = f"{mention_str}\n{message}"
@@ -1696,27 +1696,27 @@ async def _check_promotion_milestones():
                     has_ar_role = (
                         ardent_raider_role and ardent_raider_role in member.roles
                     )
-                    if _should_send_award_notification(
-                        is_eligible=is_ar_eligible,
-                        has_role=has_ar_role,
-                        tracking_key="ardent_raider_notified",
-                        tracking=user_tracking,
-                    ):
-                        msg = (
-                            f"᛭⋅ {member.mention}\n"
-                            f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
-                            f"᛭⋅ {techmarine_mention}\n"
-                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                        )
-                        await black_laurels_channel.send(
-                            msg,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
-                        )
+                    # If already has role, mark as notified without sending
+                    if has_ar_role:
                         user_tracking["ardent_raider_notified"] = True
-                        notifications_sent += 1
-                        await asyncio.sleep(0.5)
+                    # Notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("ardent_raider_notified"):
+                        if is_ar_eligible:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {techmarine_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["ardent_raider_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Check For the Fallen eligibility (150 geneseed points)
                 if black_laurels_channel:
@@ -1727,27 +1727,27 @@ async def _check_promotion_milestones():
                     has_ftf_role = (
                         for_the_fallen_role and for_the_fallen_role in member.roles
                     )
-                    if _should_send_award_notification(
-                        is_eligible=is_ftf_eligible,
-                        has_role=has_ftf_role,
-                        tracking_key="for_the_fallen_notified",
-                        tracking=user_tracking,
-                    ):
-                        msg = (
-                            f"᛭⋅ {member.mention}\n"
-                            f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
-                            f"᛭⋅ {apothecary_mention}\n"
-                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                        )
-                        await black_laurels_channel.send(
-                            msg,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
-                        )
+                    # If already has role, mark as notified without sending
+                    if has_ftf_role:
                         user_tracking["for_the_fallen_notified"] = True
-                        notifications_sent += 1
-                        await asyncio.sleep(0.5)
+                    # Notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("for_the_fallen_notified"):
+                        if is_ftf_eligible:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {apothecary_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["for_the_fallen_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
                 if black_laurels_channel:
@@ -1762,27 +1762,27 @@ async def _check_promotion_milestones():
                     has_cl_role = (
                         crimson_laurels_role and crimson_laurels_role in member.roles
                     )
-                    if _should_send_award_notification(
-                        is_eligible=is_cl_eligible,
-                        has_role=has_cl_role,
-                        tracking_key="crimson_laurels_notified",
-                        tracking=user_tracking,
-                    ):
-                        msg = (
-                            f"᛭⋅ {member.mention}\n"
-                            f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
-                            f"᛭⋅ {librarian_mention}\n"
-                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                        )
-                        await black_laurels_channel.send(
-                            msg,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
-                        )
+                    # If already has role, mark as notified without sending
+                    if has_cl_role:
                         user_tracking["crimson_laurels_notified"] = True
-                        notifications_sent += 1
-                        await asyncio.sleep(0.5)
+                    # Notify if eligible, doesn't have role, and not already notified
+                    elif not user_tracking.get("crimson_laurels_notified"):
+                        if is_cl_eligible:
+                            msg = (
+                                f"᛭⋅ {member.mention}\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ {librarian_mention}\n"
+                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
+                            )
+                            await black_laurels_channel.send(
+                                msg,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                            user_tracking["crimson_laurels_notified"] = True
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower
@@ -1921,6 +1921,7 @@ HOME_CHAPTERS = [
     "Dark Angels",
     "Dark Krakens",
     "Death Spectres",
+    "Epsilon Paladins",
     "Exorcists",
     "Flesh Tearers",
     "Genesis Chapter",
@@ -2534,6 +2535,7 @@ HIGH_COMMAND_RANKS = {
     "Void Warden",
     "Forgemaster",
     "Watch Master",
+    "Venerable",
 }
 
 # Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
@@ -2557,6 +2559,7 @@ WATCH_COMMAND_ROLES = {
     "Void Warden",
     "Forgemaster",
     "Watch Master",
+    "Venerable",
 }
 
 
@@ -3761,6 +3764,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Dark Angels": "The secrets of the First are woven into your warplate's spirit.",
     "Dark Krakens": "From the abyssal depths, your armor rises to crush the foe.",
     "Death Spectres": "The shroud of death clings to your armor; let enemies despair.",
+    "Epsilon Paladins": "For Honour! For Duty! For Dorn!—your armor gleams with the Paladin's steadfast resolve.",
     "Exorcists": "Thrice-bound against the Warp, your armor stands inviolate.",
     "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
     "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
@@ -3797,6 +3801,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Void Warden": "Aegis against the Void, Void Warden",
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
+    "Venerable": "Ancient of the Long Watch, Venerable",
     # Specialists
     "Watch Chaplain": "Keeper of the faith, Watch Chaplain",
     "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
@@ -4132,6 +4137,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The shroud parts to reveal your accumulated marks.",
         "Each stud pierces the veil of mortality.",
     ],
+    "Epsilon Paladins": [
+        "Each stud shines silver and gold—proof of honour earned in Dorn's name.",
+        "The Paladins count your marks among the bastions held and battles won.",
+        "For Duty fulfilled, your service studs gleam like the Paladin's own warplate.",
+    ],
     "Exorcists": [
         "Thrice-tested, your studs proclaim purity of service.",
         "No daemon can claim one whose brow bears such marks.",
@@ -4308,6 +4318,10 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
     "Forgemaster": [
         "The Armorium's cogitators record this data-point of dedication.",
         "Machine-spirits sing of your accumulated service.",
+    ],
+    "Venerable": [
+        "The Old One's sarcophagus bears another inscription of eternal service.",
+        "Centuries of slumber cannot diminish such devotion—the sepulchre records all.",
     ],
     # Senior Officers - respectful acknowledgments
     "Watch Captain": [
@@ -4741,17 +4755,19 @@ def _get_stud_marking_recipients(
     # Kill Team members: try Sergeant first; fallback to Lt/Cpt; fallback to Apothecary
     kt_name = _resolve_killteam_for_member(member)
     if kt_name:
-        # Try to find Sergeant
+        # Try to find Sergeant (but not the member themselves)
         sgt = _find_kt_sergeant(guild, kt_name)
-        if sgt:
+        if sgt and sgt.id != member.id:
             emoji = _get_rank_emoji(guild, "Watch Sergeant")
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(sgt.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
 
-        # If no Sergeant, search for Lt/Cpt in same KT (shortage coverage)
+        # If no Sergeant (or member IS the Sergeant), search for Lt/Cpt in same KT
         try:
             for mbr in guild.members:
+                if mbr.id == member.id:
+                    continue
                 mbr_teams = _resolve_killteams_for_member(mbr)
                 if kt_name not in mbr_teams:
                     continue
@@ -7951,56 +7967,9 @@ async def tally_deeds(
             studs_symbols = ""
 
         # Use in-memory records from DATASTORE
-        ops_trials = 0
-        siege_waves = 0
-        initiation_event_times: List[datetime] = []
-        for rec in DATASTORE.iter_records():
-            try:
-                brother_ids = rec.get("brother_ids") or []
-                if str(target.id) not in brother_ids:
-                    continue
-                if not bool(rec.get("initiation_trial")):
-                    continue
-                # Count inductees (excluding self) - each inductee counts separately
-                initiate_ids_list = rec.get("initiate_ids") or []
-                legacy_initiate_id = rec.get("initiate_id")
-                # Build full list of inductees from both new and legacy fields
-                all_inductees = list(initiate_ids_list)
-                if legacy_initiate_id and legacy_initiate_id not in all_inductees:
-                    all_inductees.append(legacy_initiate_id)
-                # Remove self from count
-                inductee_count = sum(
-                    1 for uid in all_inductees if uid != str(target.id)
-                )
-                if inductee_count == 0:
-                    continue
-                ts = rec.get("timestamp")
-                try:
-                    if ts:
-                        t = datetime.fromisoformat(ts)
-                        if t.tzinfo is not None:
-                            try:
-                                t = t.astimezone(tz=None).replace(tzinfo=None)
-                            except Exception:
-                                t = t.replace(tzinfo=None)
-                        initiation_event_times.append(t)
-                except Exception:
-                    pass
-                dclass = (rec.get("difficulty_class") or "").lower()
-                if "siege" in dclass:
-                    # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
-                    rec_waves = rec.get("waves") or 0
-                    try:
-                        rec_waves = int(rec_waves)
-                    except Exception:
-                        rec_waves = 0
-                    siege_waves += rec_waves * inductee_count
-                else:
-                    # Ops: each inductee counts as 1 trial (3 trials = 1 induction)
-                    ops_trials += inductee_count
-            except Exception:
-                pass
-        trials_reported = (siege_waves // 15) + (ops_trials // 3)
+        trials_reported = _count_inductions_from_records(
+            str(target.id), DATASTORE.iter_records()
+        )
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -10472,20 +10441,20 @@ def compute_stats_for_user(user_id: str):
     return DATASTORE.get_user_stats(user_id)
 
 
-def _induction_count_for_user(user_id: str) -> int:
-    """Compute total inductions a brother participated in across all AARs.
-    Rule: Siege initiation: 15 waves per inductee = 1 induction.
-          Operation initiation: 3 trials per inductee = 1 induction.
-          Each inductee in an AAR counts separately.
-          Your own induction is excluded.
+def _count_inductions_from_records(user_id: str, records) -> int:
+    """Compute induction count for *user_id* from an iterable of AAR record dicts.
+
+    Rules:
+      - Omega operation: 1 trial per inductee = 1 complete induction.
+      - Siege initiation: 15 waves per inductee = 1 induction.
+      - Operation initiation: 3 trials per inductee = 1 induction.
+      - Each inductee in an AAR counts separately.
+      - The user's own induction (if they appear as an inductee) is excluded.
     """
-    try:
-        data = load_aar_data(AAR_RECORDS_PATH)
-    except Exception:
-        data = {}
     ops_trials = 0
     siege_waves = 0
-    for rec in data.values():
+    omega_inductions = 0
+    for rec in records:
         try:
             brother_ids = rec.get("brother_ids") or []
             if str(user_id) not in brother_ids:
@@ -10504,7 +10473,10 @@ def _induction_count_for_user(user_id: str) -> int:
             if inductee_count == 0:
                 continue
             dclass = (rec.get("difficulty_class") or "").lower()
-            if "siege" in dclass:
+            if "omega" in dclass:
+                # Omega: each inductee counts as a full induction (1 trial = 1 induction)
+                omega_inductions += inductee_count
+            elif "siege" in dclass:
                 # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
                 rec_waves = rec.get("waves") or 0
                 try:
@@ -10518,7 +10490,16 @@ def _induction_count_for_user(user_id: str) -> int:
         except Exception:
             # Be resilient to malformed records
             pass
-    return int((siege_waves // 15) + (ops_trials // 3))
+    return int(omega_inductions + (siege_waves // 15) + (ops_trials // 3))
+
+
+def _induction_count_for_user(user_id: str) -> int:
+    """Compute total inductions a brother participated in across all AARs."""
+    try:
+        data = load_aar_data(AAR_RECORDS_PATH)
+    except Exception:
+        data = {}
+    return _count_inductions_from_records(user_id, data.values())
 
 
 def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
@@ -11612,6 +11593,7 @@ SPECIALIST_ROLES = {
 }
 HIGH_COMMAND_ROLES = {
     "Watch Master",
+    "Watch Captain",
     "High Chaplain",
     "Chief Apothecary",
     "Void Warden",
