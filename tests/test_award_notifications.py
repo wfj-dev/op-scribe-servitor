@@ -1,6 +1,6 @@
 """Unit tests for _should_send_award_notification in bot.py.
 
-Covers the pure helper that gates award notification dispatch:
+Covers the helper that gates award notification dispatch:
 - First-run initialisation when the member already holds the role
 - First-run initialisation when the member does not hold the role
 - Subsequent-run (restart-safe) behaviour: no duplicate notifications
