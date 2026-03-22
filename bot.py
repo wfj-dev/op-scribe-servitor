@@ -7939,6 +7939,7 @@ async def tally_deeds(
         # Use in-memory records from DATASTORE
         ops_trials = 0
         siege_waves = 0
+        omega_inductions = 0
         initiation_event_times: List[datetime] = []
         for rec in DATASTORE.iter_records():
             try:
@@ -7973,7 +7974,10 @@ async def tally_deeds(
                 except Exception:
                     pass
                 dclass = (rec.get("difficulty_class") or "").lower()
-                if "siege" in dclass:
+                if "omega" in dclass:
+                    # Omega: each inductee counts as a full induction (1 trial = 1 induction)
+                    omega_inductions += inductee_count
+                elif "siege" in dclass:
                     # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
                     rec_waves = rec.get("waves") or 0
                     try:
@@ -7986,7 +7990,7 @@ async def tally_deeds(
                     ops_trials += inductee_count
             except Exception:
                 pass
-        trials_reported = (siege_waves // 15) + (ops_trials // 3)
+        trials_reported = omega_inductions + (siege_waves // 15) + (ops_trials // 3)
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -10460,7 +10464,8 @@ def compute_stats_for_user(user_id: str):
 
 def _induction_count_for_user(user_id: str) -> int:
     """Compute total inductions a brother participated in across all AARs.
-    Rule: Siege initiation: 15 waves per inductee = 1 induction.
+    Rule: Omega operation: 1 trial per inductee = 1 induction (complete).
+          Siege initiation: 15 waves per inductee = 1 induction.
           Operation initiation: 3 trials per inductee = 1 induction.
           Each inductee in an AAR counts separately.
           Your own induction is excluded.
@@ -10471,6 +10476,7 @@ def _induction_count_for_user(user_id: str) -> int:
         data = {}
     ops_trials = 0
     siege_waves = 0
+    omega_inductions = 0
     for rec in data.values():
         try:
             brother_ids = rec.get("brother_ids") or []
@@ -10490,7 +10496,10 @@ def _induction_count_for_user(user_id: str) -> int:
             if inductee_count == 0:
                 continue
             dclass = (rec.get("difficulty_class") or "").lower()
-            if "siege" in dclass:
+            if "omega" in dclass:
+                # Omega: each inductee counts as a full induction (1 trial = 1 induction)
+                omega_inductions += inductee_count
+            elif "siege" in dclass:
                 # Siege: add waves * inductee_count (15 waves per inductee = 1 induction)
                 rec_waves = rec.get("waves") or 0
                 try:
@@ -10504,7 +10513,7 @@ def _induction_count_for_user(user_id: str) -> int:
         except Exception:
             # Be resilient to malformed records
             pass
-    return int((siege_waves // 15) + (ops_trials // 3))
+    return int(omega_inductions + (siege_waves // 15) + (ops_trials // 3))
 
 
 def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
