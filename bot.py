@@ -9858,19 +9858,32 @@ def validate_aar(record: dict):
         has_black_laurels_difficulty = "black" in dlower and "laurel" in dlower
         has_black_laurels_mission = record.get("black_laurels_in_mission", False)
         has_absolute = "absolute" in dlower
+        has_omega = "omega" in dlower
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
-            # Black Laurels requires exactly 3 brothers (fireteam requirement)
-            if len(brothers) != 3:
-                errors.append(
-                    "@Black_Laurels requires exactly 3 Brothers (a full fireteam)."
-                )
+            # Black Laurels on Omega requires 5 brothers and 0 KIA
+            # Black Laurels on Absolute requires exactly 3 brothers
+            if has_omega:
+                if len(brothers) != 5:
+                    errors.append(
+                        "@Black_Laurels on @Omega requires exactly 5 Brothers (full squad)."
+                    )
+                kia = record.get("killed_in_action", 0)
+                if kia != 0:
+                    errors.append(
+                        "@Black_Laurels on @Omega requires 0 KIA (no deaths)."
+                    )
+            else:
+                if len(brothers) != 3:
+                    errors.append(
+                        "@Black_Laurels requires exactly 3 Brothers (a full fireteam)."
+                    )
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
-                # Only check: must have @Absolute when Black Laurels is present
-                if not has_absolute:
+                # Only check: must have @Absolute or @Omega when Black Laurels is present
+                if not has_absolute and not has_omega:
                     errors.append(
-                        "@Black_Laurels requires @Absolute on the Difficulty line."
+                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
                 # Check eligible missions
                 mission_lower = (mission or "").lower().strip()
@@ -9885,14 +9898,14 @@ def validate_aar(record: dict):
                         "Exfiltration, Termination, Reclamation, Disruption."
                     )
             else:
-                # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute on Difficulty
+                # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute/@Omega on Difficulty
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append(
                         "@Black_Laurels must be placed on the Mission line only."
                     )
-                if not has_absolute:
+                if not has_absolute and not has_omega:
                     errors.append(
-                        "@Black_Laurels requires @Absolute on the Difficulty line."
+                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
                 # Check eligible missions
                 mission_lower = (mission or "").lower().strip()
