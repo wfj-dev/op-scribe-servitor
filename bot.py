@@ -9061,70 +9061,46 @@ async def combat_bonds(
         for tri, _score in top_global:
             uids.extend(list(tri))
         chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        text = _format_bonds_for_discord(
-            top_global,
-            interaction.guild,
-            window_days=span_days,
-            chapters=chapters,
-            spreads=spreads,
-        )
         embed = _format_bonds_embed(
             top_global,
             guild=interaction.guild,
             window_days=span_days,
             chapters=chapters,
-            spreads=spreads,
         )
-        view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
-        # Use followup when we've deferred, fallback to response if not
+        # Send jericho embed directly
         try:
             if interaction_deferred:
-                await interaction.followup.send(content=text, view=view, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
             else:
-                await interaction.response.send_message(
-                    content=text, view=view, ephemeral=True
-                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception:
             try:
-                await interaction.response.send_message(
-                    content=text, view=view, ephemeral=True
-                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             except Exception:
                 logger.exception("combat_bonds: failed to send response or followup")
     else:
         target_id = str(brother.id)
-        personal = _select_personal_bonds(triples, target_id, max_n=3)
-        uids: List[str] = []
-        for tri, _score in personal:
-            uids.extend(list(tri))
-        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(uids)))
-        text = _format_bonds_for_discord(
-            personal,
-            interaction.guild,
-            window_days=span_days,
-            chapters=chapters,
-            spreads=spreads,
-        )
-        embed = _format_bonds_embed(
-            personal,
+        # Get pairwise bonds for the target brother
+        personal_pairs = _select_personal_pair_bonds(pair_counts, target_id, max_n=5)
+        # Resolve chapters for partners
+        partner_uids = [uid for uid, _score in personal_pairs]
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(partner_uids)))
+        embed = _format_personal_bonds_jericho_embed(
+            personal_pairs,
+            target_member=brother,
             guild=interaction.guild,
             window_days=span_days,
             chapters=chapters,
-            spreads=spreads,
         )
-        view = ToggleFormatView(text_content=text, embed=embed, default="ansi")
+        # Send jericho embed directly
         try:
             if interaction_deferred:
-                await interaction.followup.send(content=text, view=view, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
             else:
-                await interaction.response.send_message(
-                    content=text, view=view, ephemeral=True
-                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception:
             try:
-                await interaction.response.send_message(
-                    content=text, view=view, ephemeral=True
-                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             except Exception:
                 logger.exception("combat_bonds: failed to send response or followup")
 
@@ -11072,6 +11048,23 @@ def _select_personal_bonds(
     return results[:max_n]
 
 
+def _select_personal_pair_bonds(
+    pair_counts: Dict[Tuple[str, str], int], target_id: str, max_n: int = 5
+) -> List[Tuple[str, int]]:
+    """Return up to max_n pairwise bonds for a specific brother.
+
+    Returns a list of (partner_uid, score) tuples sorted by score descending.
+    """
+    pairs: List[Tuple[str, int]] = []
+    for (a, b), score in pair_counts.items():
+        if a == target_id:
+            pairs.append((b, score))
+        elif b == target_id:
+            pairs.append((a, score))
+    pairs.sort(key=lambda x: x[1], reverse=True)
+    return pairs[:max_n]
+
+
 def _bond_tier(score: int):
     """Map bond score to a tier label."""
     if score <= 6:
@@ -11318,61 +11311,76 @@ def _format_bonds_embed(
     window_span: int = 100,
     chapters: Optional[Dict[str, str]] = None,
     window_days: Optional[int] = None,
-    spreads: Optional[Dict[str, int]] = None,
 ):
-    """Render Combat Bonds as a Discord Embed (mobile-friendly).
-    Shows up to 5 triads, with tier labels and member lines.
+    """Render Combat Bonds as a Discord Embed (jericho style).
+    Shows up to 5 group bonds, with tier labels and member lines.
     """
     embed = discord.Embed(
-        title="Combat Bonds — Multi-Member Battle-Litany",
-        description=(
-            f"Auspex Window: Last {window_days} day(s)"
-            if window_days is not None
-            else f"Auspex Window: Last {window_span} engagements"
-        ),
+        title="᛭⋅ COMBAT BONDS ⋅᛭",
+        description="*⌾ Watch Fortress Jericho ⌾*",
         color=0x2ECC71,
     )
     if not bonds:
-        embed.description = "No qualifying Combat Bonds found in the current window."
+        embed.add_field(
+            name="▸ Status",
+            value="No qualifying Combat Bonds found in the current window.",
+            inline=False,
+        )
         return embed
 
-    # Compact veneration key in the embed description
-    try:
-        embed.description = (
-            embed.description or ""
-        ) + "\n\nVeneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE"
-    except Exception:
-        pass
+    # Auspex window info
+    window_text = (
+        f"Last {window_days} day(s)"
+        if window_days is not None
+        else f"Last {window_span} engagements"
+    )
+    embed.add_field(name="▸ Auspex Window", value=window_text, inline=True)
+    embed.add_field(
+        name="▸ Veneration Key",
+        value="FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE",
+        inline=True,
+    )
 
     scores_for_cutoffs = [score for _tri, score in bonds]
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
-    ordinal_labels = {
-        1: "PRIMARY",
-        2: "SECONDARY",
-        3: "TERTIARY",
-        4: "QUATERNARY",
-        5: "QUINARY",
-    }
 
     def _member_label(uid: str) -> str:
         member = None
         name = "REDACTED"
+        rank_emoji = ""
         if guild:
             try:
                 member = guild.get_member(int(uid))
             except Exception:
                 member = None
         if member:
-            name = member.nick or member.display_name
-        # Resolve chapter from member roles by matching against HOME_CHAPTERS
+            display_name = member.nick or member.display_name
+            # Strip rank prefix and studs from name
+            name = display_name
+            # Strip stud pips first
+            name = name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+            # Strip rank prefix
+            member_rank = None
+            member_role_names = {
+                (getattr(r, "name", "") or "").strip()
+                for r in member.roles
+                if getattr(r, "name", None)
+            }
+            for rp in RANK_ROLES_PRIORITY:
+                if rp in member_role_names:
+                    member_rank = rp
+                    break
+            if member_rank:
+                rank_emoji = _get_rank_emoji(guild, member_rank)
+                # Strip rank prefix from name (case-insensitive)
+                for rp in RANK_ROLES_PRIORITY:
+                    if name.lower().startswith(rp.lower()):
+                        name = name[len(rp):].lstrip()
+                        break
+        # Resolve chapter from member roles
         chap = None
         if member:
             try:
-                member_role_names = {
-                    (getattr(r, "name", "") or "").strip()
-                    for r in member.roles
-                    if getattr(r, "name", None)
-                }
                 match = next(
                     (
                         hc
@@ -11387,39 +11395,228 @@ def _format_bonds_embed(
                 chap = None
         if not chap:
             chap = (chapters or {}).get(uid)
-        chap_str = chap if chap else "REDACTED"
-        spread_val = (spreads or {}).get(uid)
-        spread_str = ""
-        try:
-            if isinstance(spread_val, dict):
-                norm = float(spread_val.get("normalized", 0.0))
-                pct = int(spread_val.get("percentile", 0))
-                eligible = bool(spread_val.get("eligible", True))
-                spread_str = f" • Spread {norm:.2f} (pct {pct}%)"
-                if not eligible:
-                    spread_str += " [insufficient interactions]"
-            elif spread_val is not None:
-                spread_str = f" • Spread {spread_val}"
-        except Exception:
-            spread_str = f" • Spread {spread_val}"
-        return f"{name} [{chap_str}]{spread_str}"
+        # Use chapter emoji if available
+        chap_emoji = _get_emoji_by_name(guild, chap) if guild and chap else None
+        chap_display = chap_emoji if chap_emoji else ""
+        # Build label: rank_emoji stripped_name chapter_emoji
+        parts = []
+        if rank_emoji:
+            parts.append(rank_emoji)
+        parts.append(name)
+        if chap_display:
+            parts.append(chap_display)
+        return " ".join(parts)
 
-    # Add a field per bond (Discord embeds allow up to 25 fields)
-    rank = 1
-    for triple, score in bonds:
-        if rank > 5:
-            break
+    # Group bonds by tier
+    tier_groups: Dict[str, List[Tuple[str, ...]]] = {}
+    for triple, score in bonds[:5]:  # Limit to top 5
         tier = _bond_tier_dynamic(score, cutoffs)
-        members_in_group = list(triple)
-        name = (
-            f"{ordinal_labels.get(rank, 'BOND')} — {tier} ({len(members_in_group)}-man)"
+        if tier not in tier_groups:
+            tier_groups[tier] = []
+        tier_groups[tier].append(triple)
+
+    # Order tiers from strongest to weakest
+    tier_order = ["INDOMITABLE", "STALWART", "RELIABLE", "FORMING", "FRAGILE"]
+    for tier in tier_order:
+        if tier not in tier_groups:
+            continue
+        groups = tier_groups[tier]
+        # Build field value with all groups of this tier
+        lines = []
+        for group in groups:
+            members_in_group = list(group)
+            group_lines = [f"• {_member_label(uid)}" for uid in members_in_group]
+            lines.append("\n".join(group_lines))
+        value = "\n\n".join(lines)  # Separate groups with blank line
+        embed.add_field(
+            name=f"▸ {tier}",
+            value=value,
+            inline=False,
         )
-        value = "\n".join(f"• {_member_label(uid)}" for uid in members_in_group)
-        embed.add_field(name=name, value=value, inline=False)
-        rank += 1
 
     embed.set_footer(
-        text="These Combat Bonds may be invoked by decree of Watch Command."
+        text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭"
+    )
+    return embed
+
+
+def _format_personal_bonds_jericho_embed(
+    pair_bonds: List[Tuple[str, int]],
+    target_member: discord.Member,
+    guild: Optional[discord.Guild] = None,
+    window_days: Optional[int] = None,
+    chapters: Optional[Dict[str, str]] = None,
+):
+    """Render personal pairwise Combat Bonds as a jericho-style embed.
+
+    Shows the target brother's top 5 pairwise bonds with other brothers.
+    """
+    # Strip rank/studs from target name
+    target_display = target_member.nick or target_member.display_name
+    target_name = target_display.replace("●", "").replace("⚬", "").strip()
+    
+    # Get target's rank and chapter
+    target_rank = None
+    target_chapter = None
+    try:
+        member_role_names = {
+            (getattr(r, "name", "") or "").strip()
+            for r in target_member.roles
+            if getattr(r, "name", None)
+        }
+        for rp in RANK_ROLES_PRIORITY:
+            if rp in member_role_names:
+                target_rank = rp
+                break
+        target_chapter = next(
+            (
+                hc
+                for hc in HOME_CHAPTERS
+                if any(rn.lower() == hc.lower() for rn in member_role_names)
+            ),
+            None,
+        )
+    except Exception:
+        pass
+    
+    # Strip rank prefix from name
+    if target_rank:
+        for rp in RANK_ROLES_PRIORITY:
+            if target_name.lower().startswith(rp.lower()):
+                target_name = target_name[len(rp):].lstrip()
+                break
+    
+    # Get emojis
+    rank_emoji = _get_rank_emoji(guild, target_rank) if guild and target_rank else ""
+    chapter_emoji = _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
+
+    embed = discord.Embed(
+        title="᛭⋅ COMBAT BONDS ⋅᛭",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0x2ECC71,
+    )
+
+    # Bearer field with rank emoji + stripped name + chapter emoji
+    bearer_parts = []
+    if rank_emoji:
+        bearer_parts.append(rank_emoji)
+    bearer_parts.append(f"**{target_name}**")
+    if chapter_emoji:
+        bearer_parts.append(chapter_emoji)
+    embed.add_field(
+        name="▸ Bearer",
+        value=" ".join(bearer_parts),
+        inline=True,
+    )
+
+    # Auspex window info
+    window_text = f"Last {window_days} day(s)" if window_days else "Last 28 days"
+    embed.add_field(name="▸ Auspex Window", value=window_text, inline=True)
+
+    if not pair_bonds:
+        embed.add_field(
+            name="▸ Status",
+            value="No qualifying Combat Bonds found for this Brother in the current window.",
+            inline=False,
+        )
+        return embed
+
+    # Compute cutoffs for tier labels from pair bond scores
+    scores = [score for _uid, score in pair_bonds]
+    cutoffs = _compute_bond_cutoffs(scores)
+
+    def _partner_label(uid: str) -> str:
+        member = None
+        name = "REDACTED"
+        rank_emoji = ""
+        if guild:
+            try:
+                member = guild.get_member(int(uid))
+            except Exception:
+                member = None
+        if member:
+            display_name = member.nick or member.display_name
+            # Strip rank prefix and studs from name
+            name = display_name
+            # Strip stud pips first
+            name = name.replace("●", "").replace("⚬", "").strip()
+            # Get member roles
+            member_role_names = {
+                (getattr(r, "name", "") or "").strip()
+                for r in member.roles
+                if getattr(r, "name", None)
+            }
+            # Find member rank
+            member_rank = None
+            for rp in RANK_ROLES_PRIORITY:
+                if rp in member_role_names:
+                    member_rank = rp
+                    break
+            if member_rank:
+                rank_emoji = _get_rank_emoji(guild, member_rank)
+                # Strip rank prefix from name (case-insensitive)
+                for rp in RANK_ROLES_PRIORITY:
+                    if name.lower().startswith(rp.lower()):
+                        name = name[len(rp):].lstrip()
+                        break
+            # Resolve chapter
+            chap = None
+            try:
+                match = next(
+                    (
+                        hc
+                        for hc in HOME_CHAPTERS
+                        if any(rn.lower() == hc.lower() for rn in member_role_names)
+                    ),
+                    None,
+                )
+                if match:
+                    chap = match
+            except Exception:
+                chap = None
+        else:
+            chap = None
+            member_role_names = set()
+        if not chap:
+            chap = (chapters or {}).get(uid)
+        # Use chapter emoji if available
+        chap_emoji = _get_emoji_by_name(guild, chap) if guild and chap else None
+        chap_display = chap_emoji if chap_emoji else ""
+        # Build label: rank_emoji stripped_name chapter_emoji
+        parts = []
+        if rank_emoji:
+            parts.append(rank_emoji)
+        parts.append(name)
+        if chap_display:
+            parts.append(chap_display)
+        return " ".join(parts)
+
+    # Group bonds by tier
+    tier_groups: Dict[str, List[str]] = {}
+    for partner_uid, score in pair_bonds[:5]:  # Limit to top 5
+        tier = _bond_tier_dynamic(score, cutoffs)
+        if tier not in tier_groups:
+            tier_groups[tier] = []
+        tier_groups[tier].append(partner_uid)
+
+    # Order tiers from strongest to weakest
+    tier_order = ["INDOMITABLE", "STALWART", "RELIABLE", "FORMING", "FRAGILE"]
+    bonds_lines = []
+    for tier in tier_order:
+        if tier not in tier_groups:
+            continue
+        partners = tier_groups[tier]
+        partner_labels = [f"• {_partner_label(uid)}" for uid in partners]
+        bonds_lines.append(f"**{tier}**\n" + "\n".join(partner_labels))
+
+    embed.add_field(
+        name="▸ Forged Bonds",
+        value="\n\n".join(bonds_lines) if bonds_lines else "None",
+        inline=False,
+    )
+
+    embed.set_footer(
+        text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭"
     )
     return embed
 
