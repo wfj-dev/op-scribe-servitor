@@ -11361,7 +11361,7 @@ def _format_bonds_embed(
             # Strip rank prefix and studs from name
             name = display_name
             # Strip stud pips first
-            name = name.replace("●", "").replace("▬", "").strip()
+            name = name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
             # Strip rank prefix
             member_rank = None
             member_role_names = {
