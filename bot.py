@@ -9066,7 +9066,6 @@ async def combat_bonds(
             guild=interaction.guild,
             window_days=span_days,
             chapters=chapters,
-            spreads=spreads,
         )
         # Send jericho embed directly
         try:
@@ -9092,7 +9091,6 @@ async def combat_bonds(
             guild=interaction.guild,
             window_days=span_days,
             chapters=chapters,
-            spreads=spreads,
         )
         # Send jericho embed directly
         try:
@@ -11313,7 +11311,6 @@ def _format_bonds_embed(
     window_span: int = 100,
     chapters: Optional[Dict[str, str]] = None,
     window_days: Optional[int] = None,
-    spreads: Optional[Dict[str, int]] = None,
 ):
     """Render Combat Bonds as a Discord Embed (jericho style).
     Shows up to 5 group bonds, with tier labels and member lines.
@@ -11449,7 +11446,6 @@ def _format_personal_bonds_jericho_embed(
     guild: Optional[discord.Guild] = None,
     window_days: Optional[int] = None,
     chapters: Optional[Dict[str, str]] = None,
-    spreads: Optional[Dict[str, int]] = None,
 ):
     """Render personal pairwise Combat Bonds as a jericho-style embed.
 
