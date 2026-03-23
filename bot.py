@@ -11432,7 +11432,7 @@ def _format_bonds_embed(
             lines.append("\n".join(group_lines))
         value = "\n\n".join(lines)  # Separate groups with blank line
         embed.add_field(
-            name=f"▸ {tier} ({len(groups[0])}-man)",
+            name=f"▸ {tier}",
             value=value,
             inline=False,
         )
