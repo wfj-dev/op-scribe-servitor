@@ -1459,9 +1459,8 @@ async def _check_promotion_milestones():
             if not has_black_laurels:
                 continue
 
-            # Check @Absolute or @Omega difficulty
-            is_omega = "omega" in difficulty
-            if "absolute" not in difficulty and not is_omega:
+            # Check @Absolute
+            if "absolute" not in difficulty:
                 continue
 
             mission = rec.get("mission")
@@ -1469,8 +1468,7 @@ async def _check_promotion_milestones():
                 continue
 
             mission_lower = mission.strip().lower()
-            # Omega difficulty allows Black Laurels on any mission
-            if not is_omega and mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
+            if mission_lower not in BLACK_LAURELS_REQUIRED_MISSIONS:
                 continue
 
             for uid in rec.get("brother_ids") or []:
@@ -9887,18 +9885,19 @@ def validate_aar(record: dict):
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
-                # Check eligible missions
-                mission_lower = (mission or "").lower().strip()
-                mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                if (
-                    mission_clean
-                    and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
-                ):
-                    errors.append(
-                        "@Black_Laurels may only be used on eligible missions: "
-                        "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                        "Exfiltration, Termination, Reclamation, Disruption."
-                    )
+                # Check eligible missions (Omega allows any mission)
+                if not has_omega:
+                    mission_lower = (mission or "").lower().strip()
+                    mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+                    if (
+                        mission_clean
+                        and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
+                    ):
+                        errors.append(
+                            "@Black_Laurels may only be used on eligible missions: "
+                            "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                            "Exfiltration, Termination, Reclamation, Disruption."
+                        )
             else:
                 # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute/@Omega on Difficulty
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
@@ -9909,18 +9908,19 @@ def validate_aar(record: dict):
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
-                # Check eligible missions
-                mission_lower = (mission or "").lower().strip()
-                mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                if (
-                    mission_clean
-                    and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
-                ):
-                    errors.append(
-                        "@Black_Laurels may only be used on eligible missions: "
-                        "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                        "Exfiltration, Termination, Reclamation, Disruption."
-                    )
+                # Check eligible missions (Omega allows any mission)
+                if not has_omega:
+                    mission_lower = (mission or "").lower().strip()
+                    mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+                    if (
+                        mission_clean
+                        and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
+                    ):
+                        errors.append(
+                            "@Black_Laurels may only be used on eligible missions: "
+                            "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                            "Exfiltration, Termination, Reclamation, Disruption."
+                        )
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
                     errors.append(
