@@ -123,6 +123,8 @@ BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
 )
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
+# Leviathan Protocol role ID for parsing
+LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 # Required missions for Black Laurels eligibility (all required for new earners)
 BLACK_LAURELS_REQUIRED_MISSIONS = {
     "inferno",
@@ -9477,6 +9479,9 @@ def parse_aar(message: discord.Message):
     black_laurels_in_difficulty = False
     black_laurels_in_mission = False
     black_laurels_mentioned_elsewhere = False
+    # Leviathan Protocol tracking
+    leviathan_protocol_in_mission = False
+    leviathan_protocol_in_difficulty = False
     # Watch Command role mention (required for Initiation Trials)
     watch_command_mentioned = False
 
@@ -9493,6 +9498,11 @@ def parse_aar(message: discord.Message):
                 "black" in mission.lower() and "laurel" in mission.lower()
             ):
                 black_laurels_in_mission = True
+            # Check if Leviathan Protocol is in mission line
+            if f"<@&{LEVIATHAN_PROTOCOL_ROLE_ID}>" in mission or (
+                "leviathan" in mission.lower() and "protocol" in mission.lower()
+            ):
+                leviathan_protocol_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
                 import re
@@ -9510,6 +9520,9 @@ def parse_aar(message: discord.Message):
             # Check if Black Laurels is in difficulty line
             if "black" in after_colon.lower() and "laurel" in after_colon.lower():
                 black_laurels_in_difficulty = True
+            # Check if Leviathan Protocol is in difficulty line
+            if "leviathan" in after_colon.lower() and "protocol" in after_colon.lower():
+                leviathan_protocol_in_difficulty = True
 
         # Armory / Armoury Data in any order, any capitalization
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
@@ -9811,6 +9824,8 @@ def parse_aar(message: discord.Message):
         "black_laurels_in_difficulty": black_laurels_in_difficulty,
         "black_laurels_in_mission": black_laurels_in_mission,
         "black_laurels_mentioned_elsewhere": black_laurels_mentioned_elsewhere,
+        "leviathan_protocol_in_mission": leviathan_protocol_in_mission,
+        "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
