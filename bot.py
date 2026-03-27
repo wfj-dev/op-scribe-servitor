@@ -15883,6 +15883,14 @@ async def promotion_queue(interaction: discord.Interaction):
 )
 async def company_roster(interaction: discord.Interaction, company: str):
     """Show Kill Teams and their member counts for a given Watch Company."""
+    # Permission check: Watch Command only, in the designated channel
+    if not (
+        check_command_permission(interaction.user, "company_roster")
+        and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
     guild = interaction.guild or _resolve_notification_guild()
     if not guild:
         await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
