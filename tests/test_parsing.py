@@ -117,3 +117,54 @@ def test_initiation_trial_without_watch_command_returns_error():
         "Expected an error about @Watch Command being required, but got: "
         + str(errs)
     )
+
+
+def _make_omega_message(include_kia_line: bool, kia_value: int = 0):
+    """Build a FakeMessage representing an Omega difficulty AAR."""
+    u1 = FakeUser(301, "BrotherA", nick="BrotherA")
+    u2 = FakeUser(302, "BrotherB", nick="BrotherB")
+    u3 = FakeUser(303, "BrotherC", nick="BrotherC")
+    omega_role = FakeRole(601, "Omega")
+
+    kia_line = f"KIA: {kia_value}\n" if include_kia_line else ""
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        "Mission: Terminus Protocol\n"
+        f"Difficulty: <@&{omega_role.id}>\n"
+        f"Gene-seed: <@{u1.id}>\n"
+        "Armory Data: 3\n"
+        f"{kia_line}"
+        "Brothers:\n"
+        f" - <@{u1.id}>\n"
+        f" - <@{u2.id}>\n"
+        f" - <@{u3.id}>\n"
+        "++ END OF REPORT ++\n"
+    )
+
+    return FakeMessage(content, mentions=[u1, u2, u3], role_mentions=[omega_role])
+
+
+def test_omega_with_kia_line_validates():
+    """An Omega AAR with an explicit 'KIA: 0' line should pass validation."""
+    msg = _make_omega_message(include_kia_line=True, kia_value=0)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("kia_line_present") is True
+    errs = validate_aar(rec)
+    kia_errors = [e for e in errs if "KIA" in e]
+    assert not kia_errors, (
+        f"Expected no KIA error when KIA line is present, but got: {kia_errors}"
+    )
+
+
+def test_omega_without_kia_line_returns_error():
+    """An Omega AAR missing the 'KIA:' line should fail validation."""
+    msg = _make_omega_message(include_kia_line=False)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("kia_line_present") is False
+    errs = validate_aar(rec)
+    assert any("KIA" in e for e in errs), (
+        f"Expected a KIA line required error for Omega without KIA line, but got: {errs}"
+    )
