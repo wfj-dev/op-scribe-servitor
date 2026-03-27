@@ -7546,6 +7546,7 @@ async def reparse_records(
         total = 0
         updated = 0
         failed = 0
+        changes_by_field: dict[str, int] = {}  # Track which fields changed
         # Snapshot of records to process (respect optional limit and days filter)
         now_utc = datetime.now(timezone.utc)
         if days is not None:
@@ -7621,6 +7622,10 @@ async def reparse_records(
                 # Ensure aar_id remains the same key
                 merged["aar_id"] = rec.get("aar_id")
                 if merged != rec:
+                    # Track which fields changed
+                    for field in set(rec.keys()) | set(merged.keys()):
+                        if rec.get(field) != merged.get(field):
+                            changes_by_field[field] = changes_by_field.get(field, 0) + 1
                     await DATASTORE.set_record(str(merged.get("aar_id")), merged)
                     updated += 1
             except Exception:
@@ -7633,8 +7638,15 @@ async def reparse_records(
             sys.stdout.flush()
 
         days_info = f" (last {days} days)" if days else ""
+        # Build changes summary
+        if changes_by_field:
+            sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
+            changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
+            changes_line = f"\nFields updated: {changes_summary}"
+        else:
+            changes_line = ""
         await interaction.followup.send(
-            f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}",
+            f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}{changes_line}",
             ephemeral=True,
         )
     finally:
