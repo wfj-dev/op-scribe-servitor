@@ -1,27 +1,105 @@
 {
   "guild_id": null,
   "guild_name": "Watch Fortress Jericho",
-  "allowed_command_channel_ids": [1445526714749943898],
-  "admin_user_ids": [281651485782310914],
-  "role_aliases": {
-  },
+  "allowed_command_channel_ids": [
+    1445526714749943898
+  ],
+  "admin_user_ids": [
+    281651485782310914
+  ],
+  "role_aliases": {},
   "permissions": {
-    "litany_of_function": { "roles": ["Watch Command"] },
-    "tally_deeds": { "roles": ["Watch Command"] },
-    "combat_bonds": { "roles": ["Watch Command"] },
-    "preview_honours": { "roles": ["Watch Command"] },
-    "pick_home_chapters": { "roles": ["Watch Command"] },
-    "promotion_queue": { "roles": ["Watch Command"] },
-    "audit_service_studs": { "roles": ["Watch Command"] },
-    "roster_audit": { "roles": ["Watch Command"] },
-    "cache_stats": { "roles": ["Watch Techmarine", "Watch Master"] },
-    "reconcile_records": { "roles": ["Watch Techmarine", "Watch Master"] },
-    "sanctify_battle_records": { "roles": ["Watch Techmarine", "Watch Master"] },
-    "audit_archive_discrepancies": { "roles": ["Watch Techmarine", "Watch Master"] },
-    "librarian_audit": { "roles": ["Watch Techmarine", "Watch Librarian", "Watch Master"] },
-    "reparse_records": { "user_ids": ["281651485782310914"] },
-    "publish_honours": { "user_ids": ["281651485782310914"] },
-    "completed_challenges": { "roles": ["Watch Brother"] }
+    "litany_of_function": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "tally_deeds": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "combat_bonds": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "preview_honours": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "pick_home_chapters": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "promotion_queue": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "audit_service_studs": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "roster_audit": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
+    "cache_stats": {
+      "roles": [
+        "Watch Techmarine",
+        "Watch Master"
+      ]
+    },
+    "reconcile_records": {
+      "roles": [
+        "Watch Techmarine",
+        "Watch Master"
+      ]
+    },
+    "sanctify_battle_records": {
+      "roles": [
+        "Watch Techmarine",
+        "Watch Master"
+      ]
+    },
+    "audit_archive_discrepancies": {
+      "roles": [
+        "Watch Techmarine",
+        "Watch Master"
+      ]
+    },
+    "librarian_audit": {
+      "roles": [
+        "Watch Techmarine",
+        "Watch Librarian",
+        "Watch Master"
+      ]
+    },
+    "reparse_records": {
+      "user_ids": [
+        "281651485782310914"
+      ]
+    },
+    "publish_honours": {
+      "user_ids": [
+        "281651485782310914"
+      ]
+    },
+    "completed_challenges": {
+      "roles": [
+        "Watch Brother"
+      ]
+    },
+    "company_roster": {
+      "roles": [
+        "Watch Command"
+      ]
+    }
   },
   "companies": {
     "primus": {
@@ -71,14 +149,24 @@
   },
   "channel_policies": {
     "❖⋅arming-chamber⋅❖": {
-      "allow": ["forge_rite", "set_rite", "litany_of_function"]
+      "allow": [
+        "forge_rite",
+        "set_rite",
+        "litany_of_function"
+      ]
     },
     "❖⋅data-vault⋅❖": {
-      "deny": ["forge_rite"]
+      "deny": [
+        "forge_rite"
+      ]
     },
     "1480965300089389136": {
-      "allow": ["completed_challenges"]
+      "allow": [
+        "completed_challenges"
+      ]
     }
   },
-  "default_allowed_channels": ["❖⋅data-vault⋅❖"]
+  "default_allowed_channels": [
+    "❖⋅data-vault⋅❖"
+  ]
 }
