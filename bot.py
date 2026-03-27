@@ -4,6 +4,7 @@
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
+# TODO: does this file need to be split up? its getting pretty long. maybe bot.py for the main loop and command handling, datastore.py for the DataStore class, and utils.py for shared helper functions?
 
 import os
 import asyncio
@@ -1917,7 +1918,7 @@ RANK_ROLES_PRIORITY = [
 HOME_CHAPTERS = [
     "Angels of Vengeance",
     "Black Templars",
-    "Bleeding Hearts", # TODO: include flavor text in stud announcement and forge rite
+    "Bleeding Hearts",
     "Blood Angels",
     "Blood Ravens",
     "Carcharodons",
@@ -3761,6 +3762,7 @@ MAX_RITE_LENGTH = 250
 CHAPTER_BLESSINGS: Dict[str, str] = {
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
+    "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
     "Blood Angels": "By the Blood of Sanguinius, your armor is sanctified.",
     "Blood Ravens": "Knowledge is power; guard it well within these sacred plates.",
     "Carcharodons": "From the void you came, and to the void your enemies shall fall.",
@@ -4101,6 +4103,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Your studs are earned in the fires of the Eternal Crusade.",
         "No pity, no remorse—only the marks of endless war upon your brow.",
         "The Emperor's Champion would nod at such dedication.",
+    ],
+    "Bleeding Hearts": [
+        "Each stud is a fang torn from the xenos—trophies of the hunt eternal.",
+        "The Rage walks close, yet your marks proclaim discipline over annihilation.",
+        "For those we sacrifice, your studs shine through the martyr's curse.",
     ],
     "Blood Angels": [
         "By the blood of Sanguinius, your service marks are sanctified.",
@@ -9027,9 +9034,16 @@ async def tally_deeds(
             except Exception:
                 honours_embed = _embed_from_ansi("Monthly Honours", honours_text)
 
-            # Send embed only (clean output like forge_rite/stud announcement)
+            # Send embed with @Watch Brother mention (clean output like forge_rite/stud announcement)
             if send_to_channel:
-                await send_to_channel.send(embed=honours_embed)
+                # Get Watch Brother role for mention
+                watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+                mention_content = watch_brother_role.mention if watch_brother_role else ""
+                await send_to_channel.send(
+                    content=mention_content,
+                    embed=honours_embed,
+                    allowed_mentions=discord.AllowedMentions(roles=True),
+                )
                 await interaction.followup.send(
                     f"Posted to <#{send_to_channel.id}>.", ephemeral=True
                 )
@@ -12876,7 +12890,8 @@ AARs/Member              Chapter (X.X)
     honoured_parts: List[str] = []
 
     def user_mention(uid: str) -> str:
-        return f"<@{uid}>" if include_mentions else _member_display_name(guild, uid)
+        # Use combat bonds style: rank_emoji + stripped_name (no Discord mentions)
+        return _format_member_combat_bonds_style(guild, uid, chapters_map)
 
     # Individuals: dedupe and collect top picks
     individual_uids = []
@@ -13212,29 +13227,22 @@ AARs/Member              Chapter (X.X)
     }
     ch_top5 = sorted(ch_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
 
-    # Add all Top 5 chapters to mentions (using role mapping logic)
+    # Add all Top 5 chapters using their emoji (no role mentions)
     for chapter_name, _ in ch_top5:
         if not chapter_name:
             continue
-        # Try to find role matching chapter name
-        mentioned = False
-        try:
-            for r in guild.roles:
-                if chapter_name.lower() in (r.name or "").lower():
-                    top5_chapter_mentions.append(f"<@&{r.id}>")
-                    mentioned = True
-                    break
-        except Exception:
-            pass
-        # Final fallback: if no role found, add chapter name as text
-        if not mentioned and include_mentions:
-            top5_chapter_mentions.append(f"@{chapter_name}")
+        # Get chapter emoji only
+        chapter_emoji = _get_emoji_by_name(guild, chapter_name)
+        if chapter_emoji:
+            top5_chapter_mentions.append(str(chapter_emoji))
+        else:
+            # Fallback: just use chapter name if no emoji found
+            top5_chapter_mentions.append(chapter_name)
     honoured_parts.extend(top5_chapter_mentions)
 
-    # Construct HONOURED line
-    honour_line = "HONOURED: " + " ".join(
-        dict.fromkeys([p for p in honoured_parts if p])
-    )
+    # Construct HONOURED line - just the @Watch Brother mention
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    honour_line = watch_brother_role.mention if watch_brother_role else ""
 
     # --- Build Top 5 Rankings block ---
     def _format_rank_display(rank_num: int, prev_rank: float, curr_rank: float) -> str:
@@ -13384,10 +13392,9 @@ AARs/Member              Chapter (X.X)
 
     honoured_parts.extend(chapter_mentions)
 
-    # Construct HONOURED line (dedupe while preserving order)
-    honour_line = "HONOURED: " + " ".join(
-        dict.fromkeys([p for p in honoured_parts if p])
-    )
+    # Construct HONOURED line - just the @Watch Brother mention
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    honour_line = watch_brother_role.mention if watch_brother_role else ""
 
     # Choose display date for the honours header: use start of window (the actual
     # reporting month) rather than end (which is first of next month).
@@ -13546,7 +13553,15 @@ AARs/Member              Chapter (X.X)
             return r.mention
         return ch_name
 
-    # Top 5 Brothers (with user mentions if include_mentions)
+    # Helper to get chapter emoji only (no role mention)
+    def _ch_emoji_only(ch_name: str) -> str:
+        """Get just the chapter emoji, falling back to name."""
+        emoji = _get_emoji_by_name(guild, ch_name)
+        if emoji:
+            return str(emoji)
+        return ch_name
+
+    # Top 5 Brothers (always use combat bonds style: rank_emoji + stripped_name)
     brothers_text = ""
     prev_rank = None
     display_rank = 0
@@ -13554,11 +13569,8 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        if include_mentions:
-            brothers_text += f"**{display_rank}.** <@{uid}>\n"
-        else:
-            name = _member_display_name(guild, uid)
-            brothers_text += f"**{display_rank}.** {name}\n"
+        name = _format_member_combat_bonds_style(guild, uid, chapters_map)
+        brothers_text += f"**{display_rank}.** {name}\n"
         prev_rank = curr_rank
 
     if brothers_text:
@@ -13590,7 +13602,7 @@ AARs/Member              Chapter (X.X)
             name="▸ Top 5 Kill Teams", value=teams_text.strip(), inline=True
         )
 
-    # Top 5 Chapters (with role mentions if include_mentions)
+    # Top 5 Chapters (always use emoji only)
     chapters_text = ""
     prev_rank = None
     display_rank = 0
@@ -13598,10 +13610,7 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        if include_mentions:
-            chapters_text += f"**{display_rank}.** {_ch_mention(ch)}\n"
-        else:
-            chapters_text += f"**{display_rank}.** {ch}\n"
+        chapters_text += f"**{display_rank}.** {_ch_emoji_only(ch)}\n"
         prev_rank = curr_rank
 
     if chapters_text:
@@ -13611,28 +13620,14 @@ AARs/Member              Chapter (X.X)
             name="▸ Top 5 Chapters", value=chapters_text.strip(), inline=True
         )
 
-    # Individual Distinctions (with mentions if include_mentions)
+    # Individual Distinctions (always use combat bonds style: rank_emoji + stripped_name)
     omega_suffix = f" | Ω KIA {high_kia}" if high_kia else ""
-    if include_mentions:
-        tempo_m = f"<@{tempo_name}>" if tempo_name else tempo_disp
-        lethal_m = f"<@{lethal_name}>" if lethal_name else lethal_disp
-        gene_m = f"<@{gene_name}>" if gene_name else gene_disp
-        arm_m = f"<@{arm_name}>" if arm_name else arm_disp
-        high_m = f"<@{high_name}>" if high_name else high_disp
-    else:
-        tempo_m, lethal_m, gene_m, arm_m, high_m = (
-            tempo_disp,
-            lethal_disp,
-            gene_disp,
-            arm_disp,
-            high_disp,
-        )
     individual_text = (
-        f"Operations: {tempo_m} ({tempo_val})\n"
-        f"Avg Pts/Op: {lethal_m} ({lethal_val:.1f})\n"
-        f"Gene-seed: {gene_m} ({gene_val})\n"
-        f"Armory: {arm_m} ({arm_val})\n"
-        f"Hard-Strat+Ω: {high_m} ({high_val}{omega_suffix})"
+        f"Operations: {tempo_disp} ({tempo_val})\n"
+        f"Avg Pts/Op: {lethal_disp} ({lethal_val:.1f})\n"
+        f"Gene-seed: {gene_disp} ({gene_val})\n"
+        f"Armory: {arm_disp} ({arm_val})\n"
+        f"Hard-Strat+Ω: {high_disp} ({high_val}{omega_suffix})"
     )
     if len(individual_text) > 1024:
         individual_text = individual_text[:1020] + "…"
@@ -13666,15 +13661,12 @@ AARs/Member              Chapter (X.X)
         killteam_text = killteam_text[:1020] + "…"
     embed.add_field(name="▸ Kill Team Distinctions", value=killteam_text, inline=False)
 
-    # Chapter Distinctions (with mentions if include_mentions)
-    if include_mentions:
-        ch1_m = _ch_mention(ch1)
-        ch2_m = _ch_mention(ch2)
-        ch3_m = _ch_mention(ch3)
-        ch4_m = _ch_mention(ch4)
-        ch5_m = _ch_mention(ch5)
-    else:
-        ch1_m, ch2_m, ch3_m, ch4_m, ch5_m = ch1, ch2, ch3, ch4, ch5
+    # Chapter Distinctions (always use emoji only)
+    ch1_m = _ch_emoji_only(ch1)
+    ch2_m = _ch_emoji_only(ch2)
+    ch3_m = _ch_emoji_only(ch3)
+    ch4_m = _ch_emoji_only(ch4)
+    ch5_m = _ch_emoji_only(ch5)
     chapter_text = (
         f"Operations: {ch1_m} ({ch1_val})\n"
         f"Avg Pts/Op: {ch2_m} ({ch2_val:.1f})\n"
@@ -14223,6 +14215,7 @@ async def preview_honours(interaction: discord.Interaction):
             view = ToggleFormatView(text_content=content, embed=embed, default="embed")
             if deferred:
                 await interaction.followup.send(
+                    content=honour_line,
                     embed=embed,
                     view=view,
                     ephemeral=True,
@@ -14230,6 +14223,7 @@ async def preview_honours(interaction: discord.Interaction):
                 )
             else:
                 await interaction.response.send_message(
+                    content=honour_line,
                     embed=embed,
                     view=view,
                     ephemeral=True,
@@ -15710,16 +15704,27 @@ async def promotion_queue(interaction: discord.Interaction):
         return ""  # No change
 
     def _format_member_with_rank(member: discord.Member) -> str:
-        """Format member with rank emoji + name (combat bonds style) + mention."""
+        """Format member with rank emoji + stripped name (combat bonds style)."""
         rank_emoji = ""
+        member_rank = None
         role_names = {(getattr(r, "name", "") or "").strip() for r in member.roles}
         for rp in RANK_ROLES_PRIORITY:
             if rp in role_names:
+                member_rank = rp
                 rank_emoji = _get_rank_emoji(guild, rp)
                 break
+        # Strip stud pips from display name
+        display_name = member.nick or member.display_name
+        name = display_name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+        # Strip rank prefix from name (case-insensitive)
+        if member_rank:
+            for rp in RANK_ROLES_PRIORITY:
+                if name.lower().startswith(rp.lower()):
+                    name = name[len(rp):].lstrip()
+                    break
         if rank_emoji:
-            return f"{rank_emoji} {member.mention}"
-        return member.mention
+            return f"{rank_emoji} {name}"
+        return name
 
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
