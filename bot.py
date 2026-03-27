@@ -12132,7 +12132,8 @@ async def _compute_fortress_rankings(
             except Exception:
                 pass
 
-        # Team aggregation: attribute to member's teams
+        # Team aggregation: collect all teams participating in this AAR, then count once per team
+        aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
         for uid in brother_ids:
             try:
                 member = guild.get_member(int(uid)) if guild else None
@@ -12146,68 +12147,87 @@ async def _compute_fortress_rankings(
             if not member:
                 continue
 
-            resolved_teams: List[str] = []
             try:
                 member_teams = _resolve_killteams_for_member(member)
                 for mt in member_teams:
-                    if mt not in resolved_teams:
-                        resolved_teams.append(mt)
+                    aar_teams.setdefault(mt, []).append(str(uid))
             except Exception:
                 pass
 
-            for resolved_team in resolved_teams:
-                t = teams.setdefault(
-                    str(resolved_team),
-                    {
-                        "ops": 0,
-                        "points": 0,
-                        "armory": 0,
-                        "high_risk": 0,
-                        "gene_carried": 0,
-                        "gene_participated": 0,
-                        "members": set(),
-                    },
-                )
-                t["ops"] += 1
-                t["points"] += int(rec.get("points_for_op") or 0)
-                t["armory"] += int(rec.get("armory_challenge_points") or 0)
-                if is_high_risk:
-                    t["high_risk"] += 1
-                try:
-                    if rec.get("gene_seed_status") == "carried":
-                        t["gene_carried"] += int(
-                            rec.get("gene_seed_base_points_for_carrier") or 0
-                        )
-                    t["gene_participated"] += 1
+        # Now add stats once per team for this AAR
+        total_participants = len(brother_ids)
+        for resolved_team, team_member_ids in aar_teams.items():
+            t = teams.setdefault(
+                str(resolved_team),
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                    "members": set(),
+                    "cohesion_sum": 0.0,
+                    "cohesion_count": 0,
+                },
+            )
+            t["ops"] += 1  # Count 1 op per AAR, not per member
+            t["points"] += int(rec.get("points_for_op") or 0)
+            t["armory"] += int(rec.get("armory_challenge_points") or 0)
+            if is_high_risk:
+                t["high_risk"] += 1
+            # Cohesion: only count ops with 2+ teammates running together
+            team_count = len(team_member_ids)
+            if team_count >= 2 and total_participants >= 2:
+                cohesion_score = (team_count / total_participants) * 100.0
+                t["cohesion_sum"] += cohesion_score
+                t["cohesion_count"] += 1
+            try:
+                # Gene-seed: count once per AAR if carried
+                if rec.get("gene_seed_status") == "carried":
+                    t["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
+                t["gene_participated"] += 1
+                # Track unique members who participated
+                for uid in team_member_ids:
                     t["members"].add(str(uid))
-                except Exception:
-                    pass
+            except Exception:
+                pass
 
-        # Chapter aggregation
+        # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
+        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
-                c = chapters.setdefault(
-                    ch,
-                    {
-                        "ops": 0,
-                        "points": 0,
-                        "armory": 0,
-                        "high_risk": 0,
-                        "gene_carried": 0,
-                        "gene_participated": 0,
-                    },
+                aar_chapters.setdefault(ch, []).append(str(uid))
+
+        # Now add stats once per chapter for this AAR
+        for ch, chapter_member_ids in aar_chapters.items():
+            c = chapters.setdefault(
+                ch,
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                },
+            )
+            c["ops"] += 1  # Count 1 op per AAR, not per member
+            c["points"] += int(rec.get("points_for_op") or 0)
+            c["armory"] += int(rec.get("armory_challenge_points") or 0)
+            if is_high_risk:
+                c["high_risk"] += 1
+            # Gene-seed: count once per AAR if carried
+            if rec.get("gene_seed_status") == "carried":
+                c["gene_carried"] += int(
+                    rec.get("gene_seed_base_points_for_carrier") or 0
                 )
-                c["ops"] += 1
-                c["points"] += int(rec.get("points_for_op") or 0)
-                c["armory"] += int(rec.get("armory_challenge_points") or 0)
-                if is_high_risk:
-                    c["high_risk"] += 1
-                if rec.get("gene_seed_status") == "carried":
-                    c["gene_carried"] += int(
-                        rec.get("gene_seed_base_points_for_carrier") or 0
-                    )
-                c["gene_participated"] += 1
+            c["gene_participated"] += 1
+            # Track unique members for ops/member calculation
+            for uid in chapter_member_ids:
                 chapters_members.setdefault(ch, set()).add(str(uid))
 
     # Compute derived metrics for users
@@ -12561,6 +12581,8 @@ Operations               Team (X)
 Avg Pts/Op               Team (X.X)
 Armory+Gene-seed         Team (X|X)
 Hard-Strat+Omega         Team (X)
+AARs/Member              Team (X.X)
+Squad Cohesion           Team (X.X%)
 
 CHAPTER DISTINCTIONS
 Operations               Chapter (X)
@@ -12698,7 +12720,8 @@ AARs/Member              Chapter (X.X)
             if u["first_ts"] is None or ts < u["first_ts"]:
                 u["first_ts"] = ts
 
-        # Team aggregation: attribute contributions per brother to their own Kill Team
+        # Team aggregation: collect all teams participating in this AAR, then count once per team
+        aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
         for uid in brother_ids:
             member = members_cache.get(str(uid)) if guild else None
             # Build list of teams this member contributes to for this record
@@ -12706,7 +12729,8 @@ AARs/Member              Chapter (X.X)
             try:
                 # Include record-level canonical team for all members (maintain existing semantics)
                 if team_key and any(team_key == kt for kt in KILL_TEAMS):
-                    resolved_teams.append(team_key)
+                    if team_key not in resolved_teams:
+                        resolved_teams.append(team_key)
                 # Add per-member teams (canonical KT, company command, high command)
                 if member:
                     try:
@@ -12719,41 +12743,52 @@ AARs/Member              Chapter (X.X)
             except Exception:
                 resolved_teams = []
 
-            if not resolved_teams:
-                continue
-
             for resolved_team in resolved_teams:
-                t = teams.setdefault(
-                    str(resolved_team),
-                    {
-                        "ops": 0,
-                        "points": 0,
-                        "armory": 0,
-                        "high_risk": 0,
-                        "first_ts": None,
-                        "gene_carried": 0,
-                        "gene_participated": 0,
-                        "members": set(),
-                    },
-                )
-                t["ops"] += 1
-                t["points"] += int(rec.get("points_for_op") or 0)
-                t["armory"] += int(rec.get("armory_challenge_points") or 0)
-                if is_high_risk:
-                    t["high_risk"] += 1
-                if difficulty == "omega_ops":
-                    t["omega_kia"] = t.get("omega_kia", 0) + omega_kia
-                try:
-                    if rec.get("gene_seed_status") == "carried":
-                        # count gene carried points once per record per team-member
-                        t["gene_carried"] += int(
-                            rec.get("gene_seed_base_points_for_carrier") or 0
-                        )
-                    t["gene_participated"] += 1
+                aar_teams.setdefault(resolved_team, []).append(str(uid))
+
+        # Now add stats once per team for this AAR
+        total_participants = len(brother_ids)
+        for resolved_team, team_member_ids in aar_teams.items():
+            t = teams.setdefault(
+                str(resolved_team),
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "first_ts": None,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                    "members": set(),
+                    "cohesion_sum": 0.0,
+                    "cohesion_count": 0,
+                },
+            )
+            t["ops"] += 1  # Count 1 op per AAR, not per member
+            t["points"] += int(rec.get("points_for_op") or 0)
+            t["armory"] += int(rec.get("armory_challenge_points") or 0)
+            if is_high_risk:
+                t["high_risk"] += 1
+            if difficulty == "omega_ops":
+                t["omega_kia"] = t.get("omega_kia", 0) + omega_kia
+            # Cohesion: only count ops with 2+ teammates running together
+            team_count = len(team_member_ids)
+            if team_count >= 2 and total_participants >= 2:
+                cohesion_score = (team_count / total_participants) * 100.0
+                t["cohesion_sum"] += cohesion_score
+                t["cohesion_count"] += 1
+            try:
+                # Gene-seed: count once per AAR if carried
+                if rec.get("gene_seed_status") == "carried":
+                    t["gene_carried"] += int(
+                        rec.get("gene_seed_base_points_for_carrier") or 0
+                    )
+                t["gene_participated"] += 1
+                # Track unique members who participated
+                for uid in team_member_ids:
                     try:
                         t["members"].add(str(uid))
                     except Exception:
-                        # ensure members remains a set-like container
                         if not t.get("members"):
                             t["members"] = {str(uid)}
                         else:
@@ -12761,37 +12796,44 @@ AARs/Member              Chapter (X.X)
                                 t["members"].add(str(uid))
                             except Exception:
                                 pass
-                except Exception:
-                    pass
-                if t["first_ts"] is None or ts < t["first_ts"]:
-                    t["first_ts"] = ts
+            except Exception:
+                pass
+            if t["first_ts"] is None or ts < t["first_ts"]:
+                t["first_ts"] = ts
 
-        # Chapters: per participating members' home chapters (use pre-resolved map)
+        # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
+        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
-                c = chapters.setdefault(
-                    ch,
-                    {
-                        "ops": 0,
-                        "points": 0,
-                        "armory": 0,
-                        "high_risk": 0,
-                        "gene_carried": 0,
-                        "gene_participated": 0,
-                    },
+                aar_chapters.setdefault(ch, []).append(str(uid))
+
+        # Now add stats once per chapter for this AAR
+        for ch, chapter_member_ids in aar_chapters.items():
+            c = chapters.setdefault(
+                ch,
+                {
+                    "ops": 0,
+                    "points": 0,
+                    "armory": 0,
+                    "high_risk": 0,
+                    "gene_carried": 0,
+                    "gene_participated": 0,
+                },
+            )
+            c["ops"] += 1  # Count 1 op per AAR, not per member
+            c["points"] += int(rec.get("points_for_op") or 0)
+            c["armory"] += int(rec.get("armory_challenge_points") or 0)
+            if is_high_risk:
+                c["high_risk"] += 1
+            # Gene-seed: count once per AAR if carried
+            if rec.get("gene_seed_status") == "carried":
+                c["gene_carried"] += int(
+                    rec.get("gene_seed_base_points_for_carrier") or 0
                 )
-                c["ops"] += 1
-                c["points"] += int(rec.get("points_for_op") or 0)
-                c["armory"] += int(rec.get("armory_challenge_points") or 0)
-                if is_high_risk:
-                    c["high_risk"] += 1
-                if rec.get("gene_seed_status") == "carried":
-                    c["gene_carried"] += int(
-                        rec.get("gene_seed_base_points_for_carrier") or 0
-                    )
-                c["gene_participated"] += 1
-                # track unique members for Ops/Member calculation
+            c["gene_participated"] += 1
+            # Track unique members for Ops/Member calculation
+            for uid in chapter_member_ids:
                 try:
                     chapters_members.setdefault(ch, set()).add(str(uid))
                 except Exception:
@@ -12856,7 +12898,7 @@ AARs/Member              Chapter (X.X)
     high_sorted = sort_entities(users_for_eval, "high_risk")
     high_name = high_sorted[0][0] if high_sorted else ""
 
-    # Kill team picks (use ops, avg, armory/gene, high risk)
+    # Kill team picks (use ops, avg, armory/gene, high risk, cohesion)
     for tid, tv in teams.items():
         tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
         tv["gene_rate"] = (
@@ -12874,6 +12916,16 @@ AARs/Member              Chapter (X.X)
             )
         except Exception:
             tv["avg_aar_per_member"] = 0.0
+        # Squad Cohesion: average cohesion % for ops where 2+ teammates ran together
+        try:
+            cohesion_count = tv.get("cohesion_count", 0)
+            tv["cohesion"] = (
+                (tv.get("cohesion_sum", 0.0) / cohesion_count)
+                if cohesion_count > 0
+                else 0.0
+            )
+        except Exception:
+            tv["cohesion"] = 0.0
 
     # Filter kill teams to those meeting the minimum ops requirement; if none
     # meet the threshold, fall back to including all teams.
@@ -12902,6 +12954,14 @@ AARs/Member              Chapter (X.X)
             for k, v in teams_for_eval.items()
         },
         "force",
+    )
+    # Squad Cohesion: average cohesion % for ops where 2+ teammates ran together
+    kt_cohesion = sort_entities(
+        {
+            k: {**v, **{"cohesion": v.get("cohesion", 0.0)}}
+            for k, v in teams_for_eval.items()
+        },
+        "cohesion",
     )
 
     # --- Compute Top 5 rankings by median rank across all metrics ---
@@ -12937,13 +12997,14 @@ AARs/Member              Chapter (X.X)
     }
     ind_top5 = sorted(ind_median_ranks.items(), key=lambda x: (x[1], x[0]))[:5]
 
-    # Kill Team rankings across 5 metrics: ops, avg, pres, high_risk, force
+    # Kill Team rankings across 6 metrics: ops, avg, pres, high_risk, force, cohesion
     kt_metrics = [
         (kt_ops, "ops"),
         (kt_avg, "avg"),
         (kt_pres, "pres"),
         (kt_risk, "high_risk"),
         (kt_force, "force"),
+        (kt_cohesion, "cohesion"),
     ]
     kt_all_ranks: Dict[str, List[int]] = {}
     for sorted_list, key in kt_metrics:
@@ -12977,6 +13038,7 @@ AARs/Member              Chapter (X.X)
         kt_pres[0][0] if kt_pres else None,
         kt_risk[0][0] if kt_risk else None,
         kt_force[0][0] if kt_force else None,
+        kt_cohesion[0][0] if kt_cohesion else None,
     ]:
         if not t:
             continue
@@ -13103,6 +13165,8 @@ AARs/Member              Chapter (X.X)
     kt_risk_val = teams.get(kt_risk_name, {}).get("high_risk", 0)
     kt_force_name = kt_force[0][0] if kt_force else "Team"
     kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
+    kt_cohesion_name = kt_cohesion[0][0] if kt_cohesion else "Team"
+    kt_cohesion_val = teams.get(kt_cohesion_name, {}).get("cohesion", 0.0)
 
     # doctrine winners (ch1..ch5) will be computed after metric helpers below
     ch1 = ch2 = ch3 = ch4 = ch5 = "Chapter"
@@ -13543,7 +13607,8 @@ AARs/Member              Chapter (X.X)
         f"Avg Pts/Op               {kt_avg_name} ({fmt_avg(kt_avg_val)})\n"
         f"Armory+Gene-seed         {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
         f"Hard-Strat+Omega         {kt_risk_name} ({kt_risk_val})\n"
-        f"AARs/Member              {kt_force_name} ({fmt_avg(kt_force_val)})\n\n"
+        f"AARs/Member              {kt_force_name} ({fmt_avg(kt_force_val)})\n"
+        f"Squad Cohesion           {kt_cohesion_name} ({fmt_avg(kt_cohesion_val)}%)\n\n"
         "CHAPTER DISTINCTIONS\n"
         f"Operations               {ch1} ({ch1_val})\n"
         f"Avg Pts/Op               {ch2} ({fmt_avg(ch2_val)})\n"
@@ -13731,20 +13796,23 @@ AARs/Member              Chapter (X.X)
         kt_pres_m = _kt_mention(kt_pres_name)
         kt_risk_m = _kt_mention(kt_risk_name)
         kt_force_m = _kt_mention(kt_force_name)
+        kt_cohesion_m = _kt_mention(kt_cohesion_name)
     else:
-        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m = (
+        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m, kt_cohesion_m = (
             kt_ops_name,
             kt_avg_name,
             kt_pres_name,
             kt_risk_name,
             kt_force_name,
+            kt_cohesion_name,
         )
     killteam_text = (
         f"Operations: {kt_ops_m} ({kt_ops_val})\n"
         f"Avg Pts/Op: {kt_avg_m} ({kt_avg_val:.1f})\n"
         f"Armory+Gene: {kt_pres_m} ({kt_pres_arm}|{kt_pres_gene})\n"
         f"Hard-Strat+Ω: {kt_risk_m} ({kt_risk_val})\n"
-        f"AARs/Member: {kt_force_m} ({kt_force_val:.1f})"
+        f"AARs/Member: {kt_force_m} ({kt_force_val:.1f})\n"
+        f"Cohesion: {kt_cohesion_m} ({kt_cohesion_val:.1f}%)"
     )
     if len(killteam_text) > 1024:
         killteam_text = killteam_text[:1020] + "…"
