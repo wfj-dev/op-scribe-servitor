@@ -8979,7 +8979,6 @@ async def tally_deeds(
 
                 median_rank = None
                 if individual_ranks:
-                    import statistics
                     median_rank = statistics.median(individual_ranks)
 
                 # ▸ Individual Distinctions field
