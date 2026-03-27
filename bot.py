@@ -85,6 +85,10 @@ ROTATION_LOCK = asyncio.Lock()
 # Lock for activity status operations
 ACTIVITY_STATUS_LOCK = asyncio.Lock()
 
+# Lock for promotion tracking file operations (shared between promotion_queue and
+# _check_promotion_milestones to prevent concurrent read-modify-write races)
+PROMOTION_TRACKING_LOCK = asyncio.Lock()
+
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
 
@@ -1862,8 +1866,13 @@ async def _check_promotion_milestones():
                 logger.debug(f"Promotion check failed for member {member.id}: {e}")
                 continue
 
-        # Save tracking data
-        _save_promotion_tracking(tracking)
+        # Save tracking data (merge with current on-disk state under lock to avoid
+        # overwriting concurrent changes from promotion_queue)
+        async with PROMOTION_TRACKING_LOCK:
+            fresh_tracking = _load_promotion_tracking()
+            for uid, data in tracking.items():
+                fresh_tracking.setdefault(uid, {}).update(data)
+            _save_promotion_tracking(fresh_tracking)
 
         if notifications_sent > 0:
             logger.info(
@@ -12272,7 +12281,7 @@ def _member_display_name(guild: discord.Guild, user_id: str) -> str:
     return str(user_id)
 
 def _format_member_styled(
-    guild: discord.Guild,
+    guild: Optional[discord.Guild],
     user_id: str,
     chapters_map: Optional[Dict[str, str]] = None,
     include_chapter: bool = False,
@@ -12282,17 +12291,18 @@ def _format_member_styled(
     Used across honours, combat bonds, and leaderboard displays for consistency.
     Strips stud pips and rank prefix from the display name, then prepends
     the rank emoji. Optionally appends the chapter emoji.
-    Falls back to user_id string if member can't be resolved.
+    Falls back to user_id string if member can't be resolved or guild is None.
     """
     member = None
     name = str(user_id)
     rank_emoji = ""
     chapter_emoji = ""
 
-    try:
-        member = guild.get_member(int(user_id))
-    except Exception:
-        member = None
+    if guild is not None:
+        try:
+            member = guild.get_member(int(user_id))
+        except Exception:
+            member = None
 
     if member:
         display_name = member.nick or member.display_name
@@ -15878,12 +15888,15 @@ async def promotion_queue(interaction: discord.Interaction):
     studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
     embeds.append(studs_embed)
 
-    # Save current positions for next comparison
-    for uid, pos in veteran_positions.items():
-        tracking.setdefault(uid, {})["veteran_position"] = pos
-    for uid, pos in studs_positions.items():
-        tracking.setdefault(uid, {})["studs_position"] = pos
-    _save_promotion_tracking(tracking)
+    # Save current positions for next comparison (merge with current on-disk state
+    # under lock to avoid overwriting concurrent changes from _check_promotion_milestones)
+    async with PROMOTION_TRACKING_LOCK:
+        fresh_tracking = _load_promotion_tracking()
+        for uid, pos in veteran_positions.items():
+            fresh_tracking.setdefault(uid, {})["veteran_position"] = pos
+        for uid, pos in studs_positions.items():
+            fresh_tracking.setdefault(uid, {})["studs_position"] = pos
+        _save_promotion_tracking(fresh_tracking)
 
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
