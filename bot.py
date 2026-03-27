@@ -173,17 +173,41 @@ CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 # emoji_hint can be a custom emoji name to look up, "unicode:<char>" for a literal unicode emoji, or None to skip
 CHALLENGE_ROLES = [
     # SOK-G Elite
-    ("Distinguished SOK-G: Pipehitter", "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
+    (
+        "Distinguished SOK-G: Pipehitter",
+        "Distinguished SOK-G: Pipehitter",
+        "DistinguishedSOKGServiceMedal",
+    ),
     ("SOK-G: Pipehitter", "SOK-G: Pipehitter", "SOKGServiceMedal"),
     # Terminus Slayer variants
     ("Master Terminus Slayer", "Master Terminus Slayer", "MasterTerminusSlayer"),
-    ("Terminus Slayer - Assault", "Terminus Slayer (Assault)", "1stAwardTerminusSlayer"),
-    ("Terminus Slayer - Tactical", "Terminus Slayer (Tactical)", "1stAwardTerminusSlayer"),
-    ("Terminus Slayer - Vanguard", "Terminus Slayer (Vanguard)", "1stAwardTerminusSlayer"),
-    ("Terminus Slayer - Bulwark", "Terminus Slayer (Bulwark)", "1stAwardTerminusSlayer"),
+    (
+        "Terminus Slayer - Assault",
+        "Terminus Slayer (Assault)",
+        "1stAwardTerminusSlayer",
+    ),
+    (
+        "Terminus Slayer - Tactical",
+        "Terminus Slayer (Tactical)",
+        "1stAwardTerminusSlayer",
+    ),
+    (
+        "Terminus Slayer - Vanguard",
+        "Terminus Slayer (Vanguard)",
+        "1stAwardTerminusSlayer",
+    ),
+    (
+        "Terminus Slayer - Bulwark",
+        "Terminus Slayer (Bulwark)",
+        "1stAwardTerminusSlayer",
+    ),
     ("Terminus Slayer - Sniper", "Terminus Slayer (Sniper)", "1stAwardTerminusSlayer"),
     ("Terminus Slayer - Heavy", "Terminus Slayer (Heavy)", "1stAwardTerminusSlayer"),
-    ("Terminus Slayer - Techmarine", "Terminus Slayer (Techmarine)", "1stAwardTerminusSlayer"),
+    (
+        "Terminus Slayer - Techmarine",
+        "Terminus Slayer (Techmarine)",
+        "1stAwardTerminusSlayer",
+    ),
     # Laurels
     ("Crimson Laurels", "Crimson Laurels", "CrimsonLaurelsMedal"),
     ("Black Laurels", "Black Laurels", "BlackLaurelsMedal"),
@@ -1238,7 +1262,11 @@ async def _check_activity_status_changes():
                         old_status = old_entry
 
                     # Carry forward notified_inactive flag when member remains inactive across runs
-                    if current_status == "inactive" and isinstance(old_entry, dict) and old_entry.get("notified_inactive", False):
+                    if (
+                        current_status == "inactive"
+                        and isinstance(old_entry, dict)
+                        and old_entry.get("notified_inactive", False)
+                    ):
                         new_status_entry["notified_inactive"] = True
 
                     # Only notify for status changes if not first check and member is transitioning to a new state
@@ -1250,7 +1278,9 @@ async def _check_activity_status_changes():
                     ):
                         if current_status == "active" and old_status == "inactive":
                             # inactive->active: only notify if we previously sent a departure notification
-                            should_notify = isinstance(old_entry, dict) and old_entry.get("notified_inactive", False)
+                            should_notify = isinstance(
+                                old_entry, dict
+                            ) and old_entry.get("notified_inactive", False)
                         else:
                             # active->inactive: always notify (these are real departures)
                             should_notify = True
@@ -1262,7 +1292,9 @@ async def _check_activity_status_changes():
                             if not member:
                                 member = await guild.fetch_member(int(user_id))
                             if member and not member.bot:
-                                changes.append((member, old_status, current_status, user_id))
+                                changes.append(
+                                    (member, old_status, current_status, user_id)
+                                )
                         except Exception:
                             pass
                 except Exception:
@@ -1988,7 +2020,9 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
-ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set([1433351293103112202, 1458255656682258504])
+ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set(
+    [1433351293103112202, 1458255656682258504, 1486238369175437342]
+)
 
 # Hard-coded allowlist of Kill Team role IDs that may be used with
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
@@ -2231,7 +2265,9 @@ def _find_responsible_attestor(
     """
     import random as _rand
 
-    logger.debug(f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})")
+    logger.debug(
+        f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})"
+    )
     logger.debug(f"[attestor] Guild members count: {len(guild.members)}")
 
     # Check if bearer is High Command → Forgemaster responsibility
@@ -2283,21 +2319,25 @@ def _find_responsible_attestor(
                 m_company = _get_member_company_name(m)
                 is_tech = "watch techmarine" in m_roles
                 if is_tech:
-                    all_techmarines_found.append((m.display_name, m_company, list(m_roles)))
+                    all_techmarines_found.append(
+                        (m.display_name, m_company, list(m_roles))
+                    )
                 if is_tech and m_company == bearer_company:
                     company_techmarines.append(m)
             except Exception:
                 continue
 
         logger.debug(f"[attestor] All techmarines found: {all_techmarines_found}")
-        logger.debug(f"[attestor] Company techmarines for {bearer_company}: {[m.display_name for m in company_techmarines]}")
+        logger.debug(
+            f"[attestor] Company techmarines for {bearer_company}: {[m.display_name for m in company_techmarines]}"
+        )
 
         if company_techmarines:
             chosen = _rand.choice(company_techmarines)
             logger.debug(f"[attestor] Chose techmarine: {chosen.display_name}")
             # If multiple, pick randomly; otherwise return the one
             return chosen, "techmarine"
-    
+
     logger.debug("[attestor] No company techmarine found, falling back to Forgemaster")
 
     # Fallback: No company or no techmarine for company → Forgemaster
@@ -3255,13 +3295,17 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         if not guild:
             return
         # Verify this was from the AAR channel
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
         if not aar_channel or payload.channel_id != aar_channel.id:
             return
         # Get notification channel
         notify_channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
         if not notify_channel:
-            logger.warning(f"AAR {message_id} deleted but notification channel not found.")
+            logger.warning(
+                f"AAR {message_id} deleted but notification channel not found."
+            )
             return
         # Build notification message
         brother_ids = record.get("brother_ids", [])
@@ -3273,7 +3317,11 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
         # Format preserved content preview (truncated)
         preserved_content = record.get("content", "")
-        content_preview = preserved_content[:500] + "..." if len(preserved_content) > 500 else preserved_content
+        content_preview = (
+            preserved_content[:500] + "..."
+            if len(preserved_content) > 500
+            else preserved_content
+        )
         # Get Watch Command role for ping
         watch_role = discord.utils.get(guild.roles, name="Watch Command")
         mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
@@ -5307,11 +5355,7 @@ def _get_bearer_rank_and_title(
                             if wm_name.lower().startswith("watch master"):
                                 wm_name = wm_name[len("Watch Master") :].lstrip()
                             # Strip stud pips from name
-                            wm_name = (
-                                wm_name.replace("●", "")
-                                .replace("⚬", "")
-                                .strip()
-                            )
+                            wm_name = wm_name.replace("●", "").replace("⚬", "").strip()
                             watchmaster_name = wm_name
                     except Exception:
                         pass
@@ -5343,9 +5387,7 @@ def _get_bearer_rank_and_title(
                                     break
                             # Strip stud pips from name
                             cap_name = (
-                                cap_name.replace("●", "")
-                                .replace("⚬", "")
-                                .strip()
+                                cap_name.replace("●", "").replace("⚬", "").strip()
                             )
                             captain_name = cap_name
                     except Exception:
@@ -5408,9 +5450,7 @@ def _get_bearer_rank_and_title(
             break
 
     # Strip stud pips from display name (we report studs separately)
-    display_name = (
-        display_name.replace("●", "").replace("⚬", "").strip()
-    )
+    display_name = display_name.replace("●", "").replace("⚬", "").strip()
 
     # Build combined title: prefer "Kill Team X, Company Y" format
     title_parts = []
@@ -7161,7 +7201,9 @@ async def audit_service_studs(interaction: discord.Interaction):
             is_mismatch = existing_pips != expected_pips
 
             if is_mismatch:
-                mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
+                mismatches.append(
+                    (member, studs_count, existing_total, expected_pips, existing_pips)
+                )
         except Exception:
             continue
 
@@ -7182,7 +7224,11 @@ async def audit_service_studs(interaction: discord.Interaction):
     action_max = len("Action")
     for mem, comp, disp, exp_pips, cur_pips in mismatches:
         diff = comp - disp
-        action = f"AWARD {diff}" if diff > 0 else ("REFORMAT" if diff == 0 else f"REMOVE {abs(diff)}")
+        action = (
+            f"AWARD {diff}"
+            if diff > 0
+            else ("REFORMAT" if diff == 0 else f"REMOVE {abs(diff)}")
+        )
         name = getattr(mem, "display_name", str(getattr(mem, "id", "")))
         rows.append((name, exp_pips, cur_pips, action))
         name_max = max(name_max, len(name))
@@ -7281,7 +7327,8 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     if reformat_needed:
         reformat_text = "\n".join(
-            f"• {name}: {cur_pips} → {exp_pips}" for name, exp_pips, cur_pips, _ in reformat_needed[:8]
+            f"• {name}: {cur_pips} → {exp_pips}"
+            for name, exp_pips, cur_pips, _ in reformat_needed[:8]
         )
         if len(reformat_needed) > 8:
             reformat_text += f"\n... and {len(reformat_needed) - 8} more"
@@ -9200,7 +9247,9 @@ async def combat_bonds(
         personal_pairs = _select_personal_pair_bonds(pair_counts, target_id, max_n=5)
         # Resolve chapters for partners
         partner_uids = [uid for uid, _score in personal_pairs]
-        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(partner_uids)))
+        chapters = await _resolve_home_chapters(
+            interaction.guild, sorted(set(partner_uids))
+        )
         embed = _format_personal_bonds_jericho_embed(
             personal_pairs,
             target_member=brother,
@@ -9327,7 +9376,8 @@ async def completed_challenges(
             if len(current_chunk) + len(line_with_sep) > 1024:
                 # Flush the current chunk as a field
                 field_name = (
-                    base_field_name if field_index == 0
+                    base_field_name
+                    if field_index == 0
                     else f"{base_field_name} (cont. {field_index})"
                 )
                 embed.add_field(
@@ -9343,7 +9393,8 @@ async def completed_challenges(
         # Add the final chunk, if any
         if current_chunk:
             field_name = (
-                base_field_name if field_index == 0
+                base_field_name
+                if field_index == 0
                 else f"{base_field_name} (cont. {field_index})"
             )
             embed.add_field(
@@ -10093,9 +10144,7 @@ def validate_aar(record: dict):
             )
         # Watch Command role must be mentioned for Initiation Trials
         if not record.get("watch_command_mentioned"):
-            errors.append(
-                "Initiation Trial requires @Watch Command to be mentioned."
-            )
+            errors.append("Initiation Trial requires @Watch Command to be mentioned.")
 
     # 7) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
@@ -10749,7 +10798,11 @@ def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) ->
     try:
         total_members = getattr(guild, "member_count", None)
         cached_members = len(getattr(guild, "members", []))
-        if isinstance(total_members, int) and total_members > 0 and cached_members < total_members:
+        if (
+            isinstance(total_members, int)
+            and total_members > 0
+            and cached_members < total_members
+        ):
             logging.getLogger(__name__).warning(
                 "Guild member cache appears incomplete for %s "
                 "(cached=%d, total=%d); _get_eligible_combat_bonds_ids "
@@ -10771,7 +10824,9 @@ def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) ->
             member = guild.get_member(int(uid))
             if member is None:
                 continue
-            member_role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+            member_role_names = {
+                getattr(r, "name", "") for r in getattr(member, "roles", [])
+            }
             if any(r in member_role_names for r in qualifying_roles):
                 eligible.add(str(uid))
         except Exception:
@@ -10987,7 +11042,9 @@ def _build_group_bonds(
             brother_connection_scores[b] = brother_connection_scores.get(b, 0) + 1
 
     # Only consider brothers who have at least 2 connections (required for triads)
-    connected_bros = {b for b, conn_count in brother_connection_scores.items() if conn_count >= 2}
+    connected_bros = {
+        b for b, conn_count in brother_connection_scores.items() if conn_count >= 2
+    }
     uniq_bros = sorted([b for b in uniq_bros if b in connected_bros])
 
     # Further limit to top 50 most-connected brothers if the set is still large
@@ -10995,9 +11052,7 @@ def _build_group_bonds(
     max_brothers_for_combos = 50
     if len(uniq_bros) > max_brothers_for_combos:
         sorted_by_connections = sorted(
-            uniq_bros,
-            key=lambda b: brother_connection_scores.get(b, 0),
-            reverse=True
+            uniq_bros, key=lambda b: brother_connection_scores.get(b, 0), reverse=True
         )
         uniq_bros = sorted_by_connections[:max_brothers_for_combos]
 
@@ -11560,7 +11615,7 @@ def _format_personal_bonds_jericho_embed(
     # Strip rank/studs from target name
     target_display = target_member.nick or target_member.display_name
     target_name = target_display.replace("●", "").replace("⚬", "").strip()
-    
+
     # Get target's rank and chapter
     target_rank = None
     target_chapter = None
@@ -11584,17 +11639,19 @@ def _format_personal_bonds_jericho_embed(
         )
     except Exception:
         pass
-    
+
     # Strip rank prefix from name
     if target_rank:
         for rp in RANK_ROLES_PRIORITY:
             if target_name.lower().startswith(rp.lower()):
-                target_name = target_name[len(rp):].lstrip()
+                target_name = target_name[len(rp) :].lstrip()
                 break
-    
+
     # Get emojis
     rank_emoji = _get_rank_emoji(guild, target_rank) if guild and target_rank else ""
-    chapter_emoji = _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
+    chapter_emoji = (
+        _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
+    )
 
     embed = discord.Embed(
         title="᛭⋅ COMBAT BONDS ⋅᛭",
@@ -11663,7 +11720,7 @@ def _format_personal_bonds_jericho_embed(
                 # Strip rank prefix from name (case-insensitive)
                 for rp in RANK_ROLES_PRIORITY:
                     if name.lower().startswith(rp.lower()):
-                        name = name[len(rp):].lstrip()
+                        name = name[len(rp) :].lstrip()
                         break
             # Resolve chapter
             chap = None
@@ -12292,6 +12349,7 @@ def _member_display_name(guild: discord.Guild, user_id: str) -> str:
         pass
     return str(user_id)
 
+
 def _format_member_styled(
     guild: Optional[discord.Guild],
     user_id: str,
@@ -12337,7 +12395,7 @@ def _format_member_styled(
             # Strip rank prefix from name (case-insensitive)
             for rp in RANK_ROLES_PRIORITY:
                 if name.lower().startswith(rp.lower()):
-                    name = name[len(rp):].lstrip()
+                    name = name[len(rp) :].lstrip()
                     break
 
         # Resolve chapter if requested
@@ -15589,8 +15647,12 @@ async def promotion_queue(interaction: discord.Interaction):
                 # For plasteel tier (0-3 studs), track next individual stud
                 next_target = _studs_next_target(displayed_studs)
 
-                next_stud_threshold_time = next_target * 4  # weeks needed for next milestone
-                next_stud_threshold_aar = next_target * 400  # AAR needed for next milestone
+                next_stud_threshold_time = (
+                    next_target * 4
+                )  # weeks needed for next milestone
+                next_stud_threshold_aar = (
+                    next_target * 400
+                )  # AAR needed for next milestone
 
                 aar_met_for_next = aar_points >= next_stud_threshold_aar
                 time_met_for_next = weeks_in_server >= next_stud_threshold_time
@@ -15912,6 +15974,7 @@ async def promotion_queue(interaction: discord.Interaction):
 
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
+
 # TODO: include vacant command positions in output and whether or not there is an outstanding oath for that role. need to work on the oath parsing logic.
 @bot.tree.command(
     name="company_roster",
@@ -15941,7 +16004,9 @@ async def company_roster(interaction: discord.Interaction, company: str):
 
     guild = interaction.guild or _resolve_notification_guild()
     if not guild:
-        await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
+        await interaction.response.send_message(
+            "Could not resolve guild.", ephemeral=True
+        )
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -15949,14 +16014,20 @@ async def company_roster(interaction: discord.Interaction, company: str):
     # Find the company role
     company_role = discord.utils.get(guild.roles, name=company)
     if not company_role:
-        await interaction.followup.send(f"Company role '{company}' not found.", ephemeral=True)
+        await interaction.followup.send(
+            f"Company role '{company}' not found.", ephemeral=True
+        )
         return
 
     # Find all members with this company role
-    company_members = [m for m in guild.members if company_role in m.roles and not m.bot]
+    company_members = [
+        m for m in guild.members if company_role in m.roles and not m.bot
+    ]
 
     if not company_members:
-        await interaction.followup.send(f"No members found in {company}.", ephemeral=True)
+        await interaction.followup.send(
+            f"No members found in {company}.", ephemeral=True
+        )
         return
 
     # Group members by their Kill Team role
