@@ -7552,7 +7552,7 @@ async def reparse_records(
                 return False
 
         records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
-        if limit:
+        if limit is not None and limit > 0:
             records_list = records_list[:limit]
         total_records = len(records_list)
 
