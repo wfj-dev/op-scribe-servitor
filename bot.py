@@ -2004,6 +2004,7 @@ KILL_TEAMS: List[str] = []
 COMMAND_TEAMS = [
     "Primus Command",
     "Secundus Command",
+    "Tertius Command",
     "High Command",
 ]
 
@@ -2012,6 +2013,7 @@ COMMAND_TEAM_ROLE_IDS = {
     "high command": 1452913063970865203,
     "primus command": 1468794571889709248,
     "secundus command": 1468797860014325902,
+    "tertius command": 1468797905740759082,
 }
 
 # Default allowed command channels (can be overridden in config.json "default_allowed_channels")
@@ -2028,11 +2030,11 @@ ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set(
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
 ALLOWED_KT_ROLE_IDS: set[int] = set(
     [
-        1449257158641455265,
-        1444348999401210037,
         1458254715942080543,
         1458254904819974386,
         1433355179020914688,
+        1444348999401210037, 
+        1486476398058012712
     ]
 )
 
@@ -7705,29 +7707,49 @@ async def _forum_post_autocomplete(
 ) -> List[app_commands.Choice[str]]:
     """Autocomplete for forum posts (threads within forum channels)."""
     choices = []
+    seen_ids: set[int] = set()
     if not interaction.guild:
         return choices
 
     current_lower = current.lower()
+
+    def add_thread(thread, parent):
+        """Add thread to choices if it matches and not already seen."""
+        if thread.id in seen_ids:
+            return
+        seen_ids.add(thread.id)
+        if not current or current_lower in thread.name.lower():
+            display = f"{thread.name} ({parent.name})"
+            if len(display) > 100:
+                display = display[:97] + "..."
+            choices.append(app_commands.Choice(name=display, value=str(thread.id)))
+
     try:
         # Fetch all active threads in the guild
         active_threads = await interaction.guild.active_threads()
         for thread in active_threads:
-            # Only include threads from forum channels
             parent = thread.parent
             if isinstance(parent, discord.ForumChannel):
-                if not current or current_lower in thread.name.lower():
-                    # Show forum name for context
-                    display = f"{thread.name} ({parent.name})"
-                    if len(display) > 100:
-                        display = display[:97] + "..."
-                    choices.append(
-                        app_commands.Choice(name=display, value=str(thread.id))
-                    )
-                    if len(choices) >= 25:
-                        return choices
+                add_thread(thread, parent)
+                if len(choices) >= 25:
+                    return choices
     except Exception:
         pass
+
+    # Also check archived threads in forum channels (catches new/quiet posts)
+    try:
+        for channel in interaction.guild.channels:
+            if isinstance(channel, discord.ForumChannel):
+                try:
+                    async for thread in channel.archived_threads(limit=50):
+                        add_thread(thread, channel)
+                        if len(choices) >= 25:
+                            return choices
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     return choices
 
 
@@ -7757,20 +7779,32 @@ async def tally_deeds(
                 send_to_channel = await bot.fetch_channel(channel_id)
         except ValueError:
             # Not an ID, try to find by name across forum threads
+            name_lower = send_to.lower()
             for channel in interaction.guild.channels:
                 if isinstance(channel, discord.ForumChannel):
+                    # Check cached threads first
                     for thread in channel.threads:
-                        if thread.name.lower() == send_to.lower():
+                        if thread.name.lower() == name_lower:
                             send_to_channel = thread
                             break
                     if send_to_channel:
                         break
+                    # Check archived threads if not found
+                    try:
+                        async for thread in channel.archived_threads(limit=100):
+                            if thread.name.lower() == name_lower:
+                                send_to_channel = thread
+                                break
+                        if send_to_channel:
+                            break
+                    except Exception:
+                        pass
         except Exception:
             pass
 
         if send_to_channel is None:
             await interaction.response.send_message(
-                f"Could not find forum post '{send_to}'. Make sure it's an active post.",
+                f"Could not find forum post '{send_to}'. Check the post exists and the bot can see it.",
                 ephemeral=True,
             )
             return
