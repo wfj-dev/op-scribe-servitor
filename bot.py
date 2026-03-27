@@ -7537,7 +7537,16 @@ async def reparse_records(
         failed = 0
         # Snapshot of records to process (respect optional limit and days filter)
         now_utc = datetime.now(timezone.utc)
-        cutoff = now_utc - timedelta(days=days) if days else None
+        if days is not None:
+            if days <= 0:
+                await interaction.followup.send(
+                    "`days` must be a positive integer when specified.",
+                    ephemeral=True,
+                )
+                return
+            cutoff = now_utc - timedelta(days=days)
+        else:
+            cutoff = None
 
         def _in_window(rec: dict) -> bool:
             if cutoff is None:
