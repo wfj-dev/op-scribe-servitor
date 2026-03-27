@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# TODO: do we want to make forge rite machine spirits persist with the user whose armor we are blessing?
+# TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
+# TODO: should we add company distinctions in monthly honors?
+# TODO: do we need to schedule a reparse command like we do ingestion and audits?
 
 import os
 import asyncio
@@ -81,6 +85,10 @@ ROTATION_LOCK = asyncio.Lock()
 # Lock for activity status operations
 ACTIVITY_STATUS_LOCK = asyncio.Lock()
 
+# Lock for promotion tracking file operations (shared between promotion_queue and
+# _check_promotion_milestones to prevent concurrent read-modify-write races)
+PROMOTION_TRACKING_LOCK = asyncio.Lock()
+
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
 
@@ -119,6 +127,8 @@ BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
 )
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
+# Leviathan Protocol role ID for parsing
+LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 # Required missions for Black Laurels eligibility (all required for new earners)
 BLACK_LAURELS_REQUIRED_MISSIONS = {
     "inferno",
@@ -1856,8 +1866,13 @@ async def _check_promotion_milestones():
                 logger.debug(f"Promotion check failed for member {member.id}: {e}")
                 continue
 
-        # Save tracking data
-        _save_promotion_tracking(tracking)
+        # Save tracking data (merge with current on-disk state under lock to avoid
+        # overwriting concurrent changes from promotion_queue)
+        async with PROMOTION_TRACKING_LOCK:
+            fresh_tracking = _load_promotion_tracking()
+            for uid, data in tracking.items():
+                fresh_tracking.setdefault(uid, {}).update(data)
+            _save_promotion_tracking(fresh_tracking)
 
         if notifications_sent > 0:
             logger.info(
@@ -1913,6 +1928,7 @@ RANK_ROLES_PRIORITY = [
 HOME_CHAPTERS = [
     "Angels of Vengeance",
     "Black Templars",
+    "Bleeding Hearts",
     "Blood Angels",
     "Blood Ravens",
     "Carcharodons",
@@ -3756,6 +3772,7 @@ MAX_RITE_LENGTH = 250
 CHAPTER_BLESSINGS: Dict[str, str] = {
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
+    "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
     "Blood Angels": "By the Blood of Sanguinius, your armor is sanctified.",
     "Blood Ravens": "Knowledge is power; guard it well within these sacred plates.",
     "Carcharodons": "From the void you came, and to the void your enemies shall fall.",
@@ -4097,6 +4114,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "No pity, no remorse—only the marks of endless war upon your brow.",
         "The Emperor's Champion would nod at such dedication.",
     ],
+    "Bleeding Hearts": [
+        "Each stud is a fang torn from the xenos—trophies of the hunt eternal.",
+        "The Rage walks close, yet your marks proclaim discipline over annihilation.",
+        "For those we sacrifice, your studs shine through the martyr's curse.",
+    ],
     "Blood Angels": [
         "By the blood of Sanguinius, your service marks are sanctified.",
         "Your studs gleam with the nobility of Baal.",
@@ -4407,6 +4429,15 @@ SERVICE_STUDS_VENERATIONS_AURAMITE: List[str] = [
 
 # Tiered milestone intros based on stud number being earned
 # Tier 1: 1-3 (first marks), Tier 2: 4-11 (seasoned), Tier 3: 12-16 (legendary)
+# First stud gets special templates that don't say "another"
+SERVICE_STUDS_MILESTONE_FIRST: List[str] = [
+    "The Apothecarion stands ready to affix your first mark of service.",
+    "Your dedication has earned your first stud—seek the Apothecary's ministrations.",
+    "The first mark is earned through steadfast duty.",
+    "The Watch marks your service with your inaugural stud.",
+    "Your commitment to the Long Watch earns its first visible recognition.",
+]
+
 SERVICE_STUDS_MILESTONE_TIER1: List[str] = [
     "The Apothecarion stands ready to affix your mark of service.",
     "Your dedication has earned a new stud—seek the Apothecary's ministrations.",
@@ -4915,7 +4946,10 @@ def _get_service_studs_announcement(
     opening_template = random.choice(DEATHWATCH_STUD_OPENINGS)
     opening = opening_template.format(name=display_name)
 
-    if tier == 1:
+    # Use first-stud templates when earning stud #1 to avoid "another" phrasing
+    if new_total == 1:
+        milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_FIRST)
+    elif tier == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER1)
     elif tier == 2:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER2)
@@ -7484,8 +7518,15 @@ async def librarian_audit(interaction: discord.Interaction):
     name="reparse_records",
     description="Re-parse stored AAR records from their message_url and update records (admin).",
 )
-@app_commands.describe(limit="Optional: max number of records to reparse.")
-async def reparse_records(interaction: discord.Interaction, limit: int | None = None):
+@app_commands.describe(
+    limit="Optional: max number of records to reparse.",
+    days="Optional: only reparse records from the last N days.",
+)
+async def reparse_records(
+    interaction: discord.Interaction,
+    limit: int | None = None,
+    days: int | None = None,
+):
     if not (
         check_command_permission(interaction.user, "reparse_records")
         and is_allowed_channel(interaction)
@@ -7505,9 +7546,33 @@ async def reparse_records(interaction: discord.Interaction, limit: int | None = 
         total = 0
         updated = 0
         failed = 0
-        # Snapshot of records to process (respect optional limit)
-        records_list = list(DATASTORE._records.items())
-        if limit:
+        # Snapshot of records to process (respect optional limit and days filter)
+        now_utc = datetime.now(timezone.utc)
+        if days is not None:
+            if days <= 0:
+                await interaction.followup.send(
+                    "`days` must be a positive integer when specified.",
+                    ephemeral=True,
+                )
+                return
+            cutoff = now_utc - timedelta(days=days)
+        else:
+            cutoff = None
+
+        def _in_window(rec: dict) -> bool:
+            if cutoff is None:
+                return True
+            ts_str = rec.get("timestamp")
+            if not ts_str:
+                return False
+            try:
+                ts = _parse_iso8601_to_utc(ts_str)
+                return ts is not None and ts >= cutoff
+            except Exception:
+                return False
+
+        records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
+        if limit is not None and limit > 0:
             records_list = records_list[:limit]
         total_records = len(records_list)
 
@@ -7567,8 +7632,9 @@ async def reparse_records(interaction: discord.Interaction, limit: int | None = 
             sys.stdout.write("\n")
             sys.stdout.flush()
 
+        days_info = f" (last {days} days)" if days else ""
         await interaction.followup.send(
-            f"Reparse complete: processed={total}, updated={updated}, failed={failed}",
+            f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}",
             ephemeral=True,
         )
     finally:
@@ -8907,6 +8973,23 @@ async def tally_deeds(
                     color=0x2ECC71,
                 )
 
+                # Compute median rank from individual metrics
+                individual_ranks = []
+                if ops_data[2] > 0:
+                    individual_ranks.append(ops_data[1])
+                if avg_data[2] > 0:
+                    individual_ranks.append(avg_data[1])
+                if gene_data[2] > 0:
+                    individual_ranks.append(gene_data[1])
+                if armory_data[2] > 0:
+                    individual_ranks.append(armory_data[1])
+                if risk_data[2] > 0:
+                    individual_ranks.append(risk_data[1])
+
+                median_rank = None
+                if individual_ranks:
+                    median_rank = statistics.median(individual_ranks)
+
                 # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
                     individual_value = (
@@ -8916,6 +8999,8 @@ async def tally_deeds(
                         f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
                         f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})"
                     )
+                    if median_rank is not None:
+                        individual_value += f"\n**Median Rank:** {median_rank:.1f}"
                 else:
                     individual_value = "No ranking data available"
                 honours_embed.add_field(
@@ -8928,6 +9013,23 @@ async def tally_deeds(
                 lineage_display = (
                     "REDACTED" if home_chapter == "Black Shield" else home_chapter
                 )
+                # Compute chapter median rank
+                chapter_ranks = []
+                if ch_ops_data[2] > 0:
+                    chapter_ranks.append(ch_ops_data[1])
+                if ch_avg_data[2] > 0:
+                    chapter_ranks.append(ch_avg_data[1])
+                if ch_pres_data[2] > 0:
+                    chapter_ranks.append(ch_pres_data[1])
+                if ch_risk_data[2] > 0:
+                    chapter_ranks.append(ch_risk_data[1])
+                if ch_aar_data[2] > 0:
+                    chapter_ranks.append(ch_aar_data[1])
+
+                ch_median_rank = None
+                if chapter_ranks:
+                    ch_median_rank = statistics.median(chapter_ranks)
+
                 if ch_ops_data[2] > 0:
                     chapter_value = (
                         f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
@@ -8936,6 +9038,8 @@ async def tally_deeds(
                         f"**High-Risk:** {int(ch_risk_data[0])} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
                         f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
                     )
+                    if ch_median_rank is not None:
+                        chapter_value += f"\n**Median Rank:** {ch_median_rank:.1f}"
                 else:
                     chapter_value = "Below minimum threshold"
                 honours_embed.add_field(
@@ -9384,6 +9488,7 @@ def parse_aar(message: discord.Message):
     initiate_ids: List[str] = []
     # KIA count (Killed In Action)
     kia_count = 0
+    kia_line_present = False
     # Chapter Approved tag present (role mention)
     chapter_approved = False
     chapter_approved_extra_point_applied = False
@@ -9391,6 +9496,9 @@ def parse_aar(message: discord.Message):
     black_laurels_in_difficulty = False
     black_laurels_in_mission = False
     black_laurels_mentioned_elsewhere = False
+    # Leviathan Protocol tracking
+    leviathan_protocol_in_mission = False
+    leviathan_protocol_in_difficulty = False
     # Watch Command role mention (required for Initiation Trials)
     watch_command_mentioned = False
 
@@ -9407,6 +9515,11 @@ def parse_aar(message: discord.Message):
                 "black" in mission.lower() and "laurel" in mission.lower()
             ):
                 black_laurels_in_mission = True
+            # Check if Leviathan Protocol is in mission line
+            if f"<@&{LEVIATHAN_PROTOCOL_ROLE_ID}>" in mission or (
+                "leviathan" in mission.lower() and "protocol" in mission.lower()
+            ):
+                leviathan_protocol_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
                 import re
@@ -9424,6 +9537,9 @@ def parse_aar(message: discord.Message):
             # Check if Black Laurels is in difficulty line
             if "black" in after_colon.lower() and "laurel" in after_colon.lower():
                 black_laurels_in_difficulty = True
+            # Check if Leviathan Protocol is in difficulty line
+            if "leviathan" in after_colon.lower() and "protocol" in after_colon.lower():
+                leviathan_protocol_in_difficulty = True
 
         # Armory / Armoury Data in any order, any capitalization
         elif ("armory" in lower or "armoury" in lower) and "data" in lower:
@@ -9437,6 +9553,7 @@ def parse_aar(message: discord.Message):
 
         # KIA (Killed In Action) line, e.g. 'KIA: 1' or 'KIA: <@12345>'
         elif lower.startswith("kia:"):
+            kia_line_present = True
             parts = line.split(":", 1)
             kia_val = parts[1].strip() if len(parts) > 1 else ""
             # Prefer numeric count if present, otherwise count mentions on that line
@@ -9706,6 +9823,7 @@ def parse_aar(message: discord.Message):
         "brother_waves": brother_waves,
         "waves": waves,
         "killed_in_action": kia_count if difficulty_class == "omega_ops" else 0,
+        "kia_line_present": kia_line_present,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat()
@@ -9723,6 +9841,8 @@ def parse_aar(message: discord.Message):
         "black_laurels_in_difficulty": black_laurels_in_difficulty,
         "black_laurels_in_mission": black_laurels_in_mission,
         "black_laurels_mentioned_elsewhere": black_laurels_mentioned_elsewhere,
+        "leviathan_protocol_in_mission": leviathan_protocol_in_mission,
+        "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
@@ -9933,6 +10053,11 @@ def validate_aar(record: dict):
         if not (2 <= len(brothers) <= 5):
             errors.append(
                 "Omega difficulty requires between 2 and 5 Brothers listed under the 'Brothers:' section."
+            )
+        # Omega ops must have an explicit KIA line
+        if not record.get("kia_line_present", False):
+            errors.append(
+                "Omega difficulty requires an explicit 'KIA:' line (e.g. 'KIA: 0' or 'KIA: 1')."
             )
     else:
         if len(brothers) < 2:
@@ -10811,6 +10936,9 @@ def _build_group_bonds(
       - Compute Harmonic Mean across those pair weights, scaled by group size.
       - Apply the same dominance penalty based on the largest pair share.
 
+    Optimization: Pre-filter brothers to only those with meaningful connections
+    to reduce combinatorial explosion.
+
     Returns list of ((id1,...,idN), score:int) sorted by score desc.
     """
     try:
@@ -10836,6 +10964,31 @@ def _build_group_bonds(
     groups: List[Tuple[Tuple[str, ...], int]] = []
     # Ensure brother identifiers are strings to avoid type-comparison issues
     uniq_bros = sorted(set(str(x) for x in brothers))
+
+    # OPTIMIZATION: Pre-filter to brothers who have at least `min_pair` connections
+    # with at least one other brother. Also limit to top N most-connected brothers
+    # to avoid combinatorial explosion with large member counts.
+    brother_connection_scores: Dict[str, int] = {}
+    for (a, b), weight in pair_counts.items():
+        if weight >= min_pair:
+            brother_connection_scores[a] = brother_connection_scores.get(a, 0) + 1
+            brother_connection_scores[b] = brother_connection_scores.get(b, 0) + 1
+
+    # Only consider brothers who have at least 2 connections (required for triads)
+    connected_bros = {b for b, conn_count in brother_connection_scores.items() if conn_count >= 2}
+    uniq_bros = sorted([b for b in uniq_bros if b in connected_bros])
+
+    # Further limit to top 50 most-connected brothers if the set is still large
+    # This prevents O(n^5) blowup while keeping the most relevant bonds
+    max_brothers_for_combos = 50
+    if len(uniq_bros) > max_brothers_for_combos:
+        sorted_by_connections = sorted(
+            uniq_bros,
+            key=lambda b: brother_connection_scores.get(b, 0),
+            reverse=True
+        )
+        uniq_bros = sorted_by_connections[:max_brothers_for_combos]
+
     for n in sizes:
         if n < 2:
             continue
@@ -11345,67 +11498,8 @@ def _format_bonds_embed(
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
 
     def _member_label(uid: str) -> str:
-        member = None
-        name = "REDACTED"
-        rank_emoji = ""
-        if guild:
-            try:
-                member = guild.get_member(int(uid))
-            except Exception:
-                member = None
-        if member:
-            display_name = member.nick or member.display_name
-            # Strip rank prefix and studs from name
-            name = display_name
-            # Strip stud pips first
-            name = name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
-            # Strip rank prefix
-            member_rank = None
-            member_role_names = {
-                (getattr(r, "name", "") or "").strip()
-                for r in member.roles
-                if getattr(r, "name", None)
-            }
-            for rp in RANK_ROLES_PRIORITY:
-                if rp in member_role_names:
-                    member_rank = rp
-                    break
-            if member_rank:
-                rank_emoji = _get_rank_emoji(guild, member_rank)
-                # Strip rank prefix from name (case-insensitive)
-                for rp in RANK_ROLES_PRIORITY:
-                    if name.lower().startswith(rp.lower()):
-                        name = name[len(rp):].lstrip()
-                        break
-        # Resolve chapter from member roles
-        chap = None
-        if member:
-            try:
-                match = next(
-                    (
-                        hc
-                        for hc in HOME_CHAPTERS
-                        if any(rn.lower() == hc.lower() for rn in member_role_names)
-                    ),
-                    None,
-                )
-                if match:
-                    chap = match
-            except Exception:
-                chap = None
-        if not chap:
-            chap = (chapters or {}).get(uid)
-        # Use chapter emoji if available
-        chap_emoji = _get_emoji_by_name(guild, chap) if guild and chap else None
-        chap_display = chap_emoji if chap_emoji else ""
-        # Build label: rank_emoji stripped_name chapter_emoji
-        parts = []
-        if rank_emoji:
-            parts.append(rank_emoji)
-        parts.append(name)
-        if chap_display:
-            parts.append(chap_display)
-        return " ".join(parts)
+        # Use shared helper for consistent formatting across honours/bonds displays
+        return _format_member_styled(guild, uid, chapters, include_chapter=True)
 
     # Group bonds by tier
     tier_groups: Dict[str, List[Tuple[str, ...]]] = {}
@@ -12186,6 +12280,86 @@ def _member_display_name(guild: discord.Guild, user_id: str) -> str:
         pass
     return str(user_id)
 
+def _format_member_styled(
+    guild: Optional[discord.Guild],
+    user_id: str,
+    chapters_map: Optional[Dict[str, str]] = None,
+    include_chapter: bool = False,
+) -> str:
+    """Format a member's name for display: rank_emoji + stripped_name (+ chapter_emoji).
+
+    Used across honours, combat bonds, and leaderboard displays for consistency.
+    Strips stud pips and rank prefix from the display name, then prepends
+    the rank emoji. Optionally appends the chapter emoji.
+    Falls back to user_id string if member can't be resolved or guild is None.
+    """
+    member = None
+    name = str(user_id)
+    rank_emoji = ""
+    chapter_emoji = ""
+
+    if guild is not None:
+        try:
+            member = guild.get_member(int(user_id))
+        except Exception:
+            member = None
+
+    if member:
+        display_name = member.nick or member.display_name
+        # Strip stud pips first
+        name = display_name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+        # Get member's roles
+        member_role_names = {
+            (getattr(r, "name", "") or "").strip()
+            for r in member.roles
+            if getattr(r, "name", None)
+        }
+        # Find member's rank and strip rank prefix from name
+        member_rank = None
+        for rp in RANK_ROLES_PRIORITY:
+            if rp in member_role_names:
+                member_rank = rp
+                break
+        if member_rank:
+            rank_emoji = _get_rank_emoji(guild, member_rank)
+            # Strip rank prefix from name (case-insensitive)
+            for rp in RANK_ROLES_PRIORITY:
+                if name.lower().startswith(rp.lower()):
+                    name = name[len(rp):].lstrip()
+                    break
+
+        # Resolve chapter if requested
+        if include_chapter:
+            chap = None
+            # Try from member roles first
+            try:
+                match = next(
+                    (
+                        hc
+                        for hc in HOME_CHAPTERS
+                        if any(rn.lower() == hc.lower() for rn in member_role_names)
+                    ),
+                    None,
+                )
+                if match:
+                    chap = match
+            except Exception:
+                pass
+            # Fall back to chapters_map
+            if not chap and chapters_map:
+                chap = chapters_map.get(str(user_id))
+            if chap:
+                chapter_emoji = _get_emoji_by_name(guild, chap) or ""
+
+    # Build label: rank_emoji stripped_name chapter_emoji
+    parts = []
+    if rank_emoji:
+        parts.append(rank_emoji)
+    parts.append(name)
+    if chapter_emoji:
+        parts.append(chapter_emoji)
+    return " ".join(parts)
+
 
 def _format_imperial_date(dt: datetime) -> str:
     """Return Imperial date string like '0 123 456.M41' based on UTC datetime.
@@ -12795,11 +12969,8 @@ AARs/Member              Chapter (X.X)
     def display_name_for(uid_key: str) -> str:
         if not uid_key:
             return "Name"
-        if include_mentions:
-            # show mention inside block? Spec: mentions must be BEFORE the ANSI block, never inside it.
-            # So always show plain display name inside ANSI block.
-            return _member_display_name(guild, uid_key)
-        return _member_display_name(guild, uid_key)
+        # Use styled formatting: rank_emoji + stripped_name
+        return _format_member_styled(guild, uid_key, chapters_map)
 
     def fmt_avg(v):
         return f"{v:.1f}" if isinstance(v, float) else f"{float(v):.1f}"
@@ -13144,7 +13315,7 @@ AARs/Member              Chapter (X.X)
             curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
-            name = _member_display_name(guild, uid)
+            name = _format_member_styled(guild, uid, chapters_map)
             lines.append(f"{display_rank}. {name} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
@@ -13215,7 +13386,7 @@ AARs/Member              Chapter (X.X)
         # Build column data
         bro_col = ["BROTHERS"]
         for idx, (uid, _) in enumerate(ind_top5):
-            name = _member_display_name(guild, uid)
+            name = _format_member_styled(guild, uid, chapters_map)
             bro_col.append(f"{idx + 1}.{truncate_name(name)}")
 
         kt_col = ["KILL TEAMS"]
@@ -15485,6 +15656,51 @@ async def promotion_queue(interaction: discord.Interaction):
     veteran_aar_not_time_not.sort(key=lambda x: x[3])  # time_date
     studs_aar_not_time_not.sort(key=lambda x: x[6])  # next_time_date
 
+    # Load previous queue positions for comparison
+    tracking = _load_promotion_tracking()
+
+    # Build combined position lists and compute positions
+    veteran_queue = (
+        [(m, "time") for m, *_ in veteran_aar_met_time_not]
+        + [(m, "aar") for m, *_ in veteran_aar_not_time_met]
+        + [(m, "both") for m, *_ in veteran_aar_not_time_not]
+    )
+    studs_queue = (
+        [(m, "time") for m, *_ in studs_aar_met_time_not]
+        + [(m, "aar") for m, *_ in studs_aar_not_time_met]
+        + [(m, "both") for m, *_ in studs_aar_not_time_not]
+    )
+
+    # Assign current positions
+    veteran_positions = {str(m.id): i + 1 for i, (m, _) in enumerate(veteran_queue)}
+    studs_positions = {str(m.id): i + 1 for i, (m, _) in enumerate(studs_queue)}
+
+    def _get_position_arrow(uid: str, queue_type: str, current_pos: int) -> str:
+        """Return position change indicator: 🔼 +N (green up) or 🔻 -N (red down)."""
+        prev_key = f"{queue_type}_position"
+        user_data = tracking.get(uid, {})
+        prev_pos = user_data.get(prev_key)
+        if prev_pos is None:
+            return ""  # New entry, no arrow
+        change = prev_pos - current_pos  # Positive = moved up
+        if change > 0:
+            return f" 🔼{change}"
+        elif change < 0:
+            return f" 🔻{abs(change)}"
+        return ""  # No change
+
+    def _format_member_with_rank(member: discord.Member) -> str:
+        """Format member with rank emoji + name (combat bonds style) + mention."""
+        rank_emoji = ""
+        role_names = {(getattr(r, "name", "") or "").strip() for r in member.roles}
+        for rp in RANK_ROLES_PRIORITY:
+            if rp in role_names:
+                rank_emoji = _get_rank_emoji(guild, rp)
+                break
+        if rank_emoji:
+            return f"{rank_emoji} {member.mention}"
+        return member.mention
+
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
     ) -> str:
@@ -15518,7 +15734,10 @@ async def promotion_queue(interaction: discord.Interaction):
         lines = []
         for member, aar_pts, weeks, promo_date in veteran_aar_met_time_not:
             date_str = promo_date.strftime("%b %d")
-            lines.append(f"᛭⋅ {member.mention} | {aar_pts} AAR | **{date_str}**")
+            member_str = _format_member_with_rank(member)
+            pos = veteran_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "veteran", pos)
+            lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | **{date_str}**")
         veteran_embed.add_field(
             name=f"▸ Ready on Date ({len(veteran_aar_met_time_not)})",
             value=_build_field_value(lines, len(veteran_aar_met_time_not)),
@@ -15529,8 +15748,11 @@ async def promotion_queue(interaction: discord.Interaction):
     if veteran_aar_not_time_met:
         lines = []
         for member, aar_pts, weeks, aar_needed in veteran_aar_not_time_met:
+            member_str = _format_member_with_rank(member)
+            pos = veteran_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "veteran", pos)
             lines.append(
-                f"᛭⋅ {member.mention} | {aar_pts} AAR | needs **{aar_needed}**"
+                f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | needs **{aar_needed}**"
             )
         veteran_embed.add_field(
             name=f"▸ Needs AAR ({len(veteran_aar_not_time_met)})",
@@ -15543,8 +15765,11 @@ async def promotion_queue(interaction: discord.Interaction):
         lines = []
         for member, aar_pts, weeks, time_date, aar_needed in veteran_aar_not_time_not:
             date_str = time_date.strftime("%b %d")
+            member_str = _format_member_with_rank(member)
+            pos = veteran_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "veteran", pos)
             lines.append(
-                f"᛭⋅ {member.mention} | {aar_pts} AAR | {date_str}, +{aar_needed}"
+                f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | {date_str}, +{aar_needed}"
             )
         veteran_embed.add_field(
             name=f"▸ Needs Both ({len(veteran_aar_not_time_not)})",
@@ -15588,7 +15813,10 @@ async def promotion_queue(interaction: discord.Interaction):
         ) in studs_aar_met_time_not:
             date_str = next_date.strftime("%b %d")
             target_str = _format_stud_target(target)
-            lines.append(f"᛭⋅ {member.mention} | →{target_str} | **{date_str}**")
+            member_str = _format_member_with_rank(member)
+            pos = studs_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "studs", pos)
+            lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | **{date_str}**")
         studs_embed.add_field(
             name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
             value=_build_field_value(lines, len(studs_aar_met_time_not)),
@@ -15608,8 +15836,11 @@ async def promotion_queue(interaction: discord.Interaction):
             aar_needed,
         ) in studs_aar_not_time_met:
             target_str = _format_stud_target(target)
+            member_str = _format_member_with_rank(member)
+            pos = studs_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "studs", pos)
             lines.append(
-                f"᛭⋅ {member.mention} | →{target_str} | needs **{aar_needed}**"
+                f"᛭⋅ {member_str}{arrow} | →{target_str} | needs **{aar_needed}**"
             )
         studs_embed.add_field(
             name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
@@ -15632,8 +15863,11 @@ async def promotion_queue(interaction: discord.Interaction):
         ) in studs_aar_not_time_not:
             date_str = next_time.strftime("%b %d")
             target_str = _format_stud_target(target)
+            member_str = _format_member_with_rank(member)
+            pos = studs_positions.get(str(member.id), 0)
+            arrow = _get_position_arrow(str(member.id), "studs", pos)
             lines.append(
-                f"᛭⋅ {member.mention} | →{target_str} | {date_str}, +{aar_needed}"
+                f"᛭⋅ {member_str}{arrow} | →{target_str} | {date_str}, +{aar_needed}"
             )
         studs_embed.add_field(
             name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
@@ -15654,7 +15888,120 @@ async def promotion_queue(interaction: discord.Interaction):
     studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
     embeds.append(studs_embed)
 
+    # Save current positions for next comparison (merge with current on-disk state
+    # under lock to avoid overwriting concurrent changes from _check_promotion_milestones)
+    async with PROMOTION_TRACKING_LOCK:
+        fresh_tracking = _load_promotion_tracking()
+        for uid, pos in veteran_positions.items():
+            fresh_tracking.setdefault(uid, {})["veteran_position"] = pos
+        for uid, pos in studs_positions.items():
+            fresh_tracking.setdefault(uid, {})["studs_position"] = pos
+        _save_promotion_tracking(fresh_tracking)
+
     await interaction.followup.send(embeds=embeds, ephemeral=True)
+
+# TODO: include vacant command positions in output and whether or not there is an outstanding oath for that role. need to work on the oath parsing logic.
+@bot.tree.command(
+    name="company_roster",
+    description="Show Kill Teams and member counts for a Watch Company.",
+)
+@app_commands.describe(
+    company="The Watch Company to display roster for.",
+)
+@app_commands.choices(
+    company=[
+        app_commands.Choice(name="Primus", value="Watch Company Primus"),
+        app_commands.Choice(name="Secundus", value="Watch Company Secundus"),
+        app_commands.Choice(name="Tertius", value="Watch Company Tertius"),
+        app_commands.Choice(name="Quartus", value="Watch Company Quartus"),
+        app_commands.Choice(name="Quintus", value="Watch Company Quintus"),
+    ]
+)
+async def company_roster(interaction: discord.Interaction, company: str):
+    """Show Kill Teams and their member counts for a given Watch Company."""
+    # Permission check: Watch Command only, in the designated channel
+    if not (
+        check_command_permission(interaction.user, "company_roster")
+        and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild or _resolve_notification_guild()
+    if not guild:
+        await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    # Find the company role
+    company_role = discord.utils.get(guild.roles, name=company)
+    if not company_role:
+        await interaction.followup.send(f"Company role '{company}' not found.", ephemeral=True)
+        return
+
+    # Find all members with this company role
+    company_members = [m for m in guild.members if company_role in m.roles and not m.bot]
+
+    if not company_members:
+        await interaction.followup.send(f"No members found in {company}.", ephemeral=True)
+        return
+
+    # Group members by their Kill Team role
+    kt_counts: Dict[str, List[discord.Member]] = {}
+    no_kt_members: List[discord.Member] = []
+
+    for member in company_members:
+        # Find member's kill team role from ALLOWED_KT_ROLE_IDS
+        member_kt = None
+        for role in member.roles:
+            if role.id in ALLOWED_KT_ROLE_IDS:
+                member_kt = role.name
+                break
+
+        if member_kt:
+            kt_counts.setdefault(member_kt, []).append(member)
+        else:
+            no_kt_members.append(member)
+
+    # Sort kill teams by name
+    sorted_kts = sorted(kt_counts.items(), key=lambda x: x[0])
+
+    # Build embed
+    short_name = _extract_company_short_name(company)
+    embed = discord.Embed(
+        title=f"᛭⋅ {short_name.upper()} COMPANY ROSTER ⋅᛭",
+        description=f"*⌾ {company} ⌾*",
+        color=0x2ECC71,
+    )
+
+    # Add kill team fields
+    kt_lines = []
+    for kt_name, members in sorted_kts:
+        kt_lines.append(f"**{kt_name}:** {len(members)}")
+
+    if kt_lines:
+        embed.add_field(
+            name="▸ Kill Teams",
+            value="\n".join(kt_lines),
+            inline=False,
+        )
+
+    # Add unassigned members if any
+    if no_kt_members:
+        embed.add_field(
+            name="▸ No Kill Team",
+            value=f"{len(no_kt_members)} member(s)",
+            inline=False,
+        )
+
+    # Summary
+    total_in_kts = sum(len(m) for m in kt_counts.values())
+    embed.set_footer(
+        text=f"᛭⋅ {total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total ⋅᛭"
+    )
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 if __name__ == "__main__":
