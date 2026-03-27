@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# TODO: do we want to make forge rite machine spirits persist with the user who's armor we are blessing?
+# TODO: do we want to make forge rite machine spirits persist with the user whose armor we are blessing?
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
@@ -7539,7 +7539,16 @@ async def reparse_records(
         failed = 0
         # Snapshot of records to process (respect optional limit and days filter)
         now_utc = datetime.now(timezone.utc)
-        cutoff = now_utc - timedelta(days=days) if days else None
+        if days is not None:
+            if days <= 0:
+                await interaction.followup.send(
+                    "`days` must be a positive integer when specified.",
+                    ephemeral=True,
+                )
+                return
+            cutoff = now_utc - timedelta(days=days)
+        else:
+            cutoff = None
 
         def _in_window(rec: dict) -> bool:
             if cutoff is None:
@@ -7554,7 +7563,7 @@ async def reparse_records(
                 return False
 
         records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
-        if limit:
+        if limit is not None and limit > 0:
             records_list = records_list[:limit]
         total_records = len(records_list)
 
@@ -15898,6 +15907,14 @@ async def promotion_queue(interaction: discord.Interaction):
 )
 async def company_roster(interaction: discord.Interaction, company: str):
     """Show Kill Teams and their member counts for a given Watch Company."""
+    # Permission check: Watch Command only, in the designated channel
+    if not (
+        check_command_permission(interaction.user, "company_roster")
+        and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
     guild = interaction.guild or _resolve_notification_guild()
     if not guild:
         await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
