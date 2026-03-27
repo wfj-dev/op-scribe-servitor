@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# TODO: do we want to make forge rite machine spirits persist with the user who's armor we are blessing?
+# TODO: do we want to make forge rite machine spirits persist with the user whose armor we are blessing?
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
