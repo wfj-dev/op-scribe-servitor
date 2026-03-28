@@ -2033,8 +2033,8 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
         1458254715942080543,
         1458254904819974386,
         1433355179020914688,
-        1444348999401210037, 
-        1486476398058012712
+        1444348999401210037,
+        1486476398058012712,
     ]
 )
 
@@ -8541,7 +8541,7 @@ async def tally_deeds(
                 roster_lines = []
                 for it in sorted_items:
                     member_id = str(it.get("member_id", "") or "")
-                    nm = str(it.get("name", "") or "")[:20]
+                    nm = str(it.get("name", "") or "")
                     studs = str(it.get("studs_symbols", "") or "")
                     st = str(it.get("status", ""))
                     home_ch = str(it.get("home_chapter", "") or "")
@@ -8557,18 +8557,34 @@ async def tally_deeds(
                         if rp in role_names:
                             member_rank = rp
                             break
-                    rank_emoji = _get_rank_emoji(interaction.guild, member_rank) if member_rank else ""
+                    rank_emoji = (
+                        _get_rank_emoji(interaction.guild, member_rank)
+                        if member_rank
+                        else ""
+                    )
+
+                    # Strip rank prefix from name (case-insensitive)
+                    stripped_name = nm
+                    for rp in RANK_ROLES_PRIORITY:
+                        if stripped_name.lower().startswith(rp.lower()):
+                            stripped_name = stripped_name[len(rp) :].lstrip()
+                            break
+                    # Truncate after stripping
+                    stripped_name = stripped_name[:20]
 
                     # Get chapter emoji
                     chapter_emoji = ""
                     if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                        chapter_emoji = _get_emoji_by_name(interaction.guild, home_ch) or ""
+                        chapter_emoji = (
+                            _get_emoji_by_name(interaction.guild, home_ch) or ""
+                        )
 
-                    # Build member label: status rank_emoji name studs chapter_emoji
-                    parts = [status_icon]
+                    # Build member label: rank_emoji name studs chapter_emoji
+                    # (status icon on separate concept line below)
+                    parts = []
                     if rank_emoji:
                         parts.append(rank_emoji)
-                    parts.append(f"**{nm}**")
+                    parts.append(f"**{stripped_name}**")
                     if studs:
                         parts.append(studs)
                     if chapter_emoji:
@@ -8576,7 +8592,7 @@ async def tally_deeds(
                     member_label = " ".join(parts)
 
                     roster_lines.append(
-                        f"{member_label}\n"
+                        f"{status_icon} {member_label}\n"
                         f"AAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
                     )
 
@@ -8802,21 +8818,19 @@ async def tally_deeds(
                     kt_ranks.append(force_data[1])
                 if cohesion_data[2] > 0:
                     kt_ranks.append(cohesion_data[1])
-                kt_overall_rank = (
-                    sum(kt_ranks) / len(kt_ranks) if kt_ranks else None
-                )
+                kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                 # ▸ Distinctions field with consolidated stats
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                     f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-                    f"**Armory+Gene:** #{pres_data[1]}/{pres_data[2]}\n"
+                    f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
                     f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
                     f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
                     f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
                 )
                 if kt_overall_rank is not None:
-                    distinctions += f"\n**Overall Rank:** {kt_overall_rank:.1f}"
+                    distinctions += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
                 embed.add_field(
                     name=f"▸ {title_type} Distinctions",
                     value=distinctions,
@@ -9099,11 +9113,21 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_armory_val = team_rankings.get("armory", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_armory_val = team_rankings.get("armory", {}).get(
+                        kt_name, (0, 0, 0)
+                    )[0]
+                    kt_gene_val = team_rankings.get("gene_carried", {}).get(
+                        kt_name, (0, 0, 0)
+                    )[0]
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
                     if kt_ops_data[2] > 0:
                         h_lines.append(
                             f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
@@ -9172,7 +9196,7 @@ async def tally_deeds(
                 # Compute overall rank as average of individual rankings
                 overall_rank = None
                 if individual_ranks:
-                    overall_rank = sum(individual_ranks) / len(individual_ranks)
+                    overall_rank = statistics.median(individual_ranks)
 
                 # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
@@ -9184,7 +9208,7 @@ async def tally_deeds(
                         f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})"
                     )
                     if overall_rank is not None:
-                        individual_value += f"\n**Overall Rank:** {overall_rank:.1f}"
+                        individual_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
                 else:
                     individual_value = "No ranking data available"
                 honours_embed.add_field(
@@ -9214,10 +9238,10 @@ async def tally_deeds(
                 if chapter_ranks:
                     ch_median_rank = statistics.median(chapter_ranks)
 
-                # Compute overall rank as average of chapter rankings
+                # Compute overall rank as median of chapter rankings
                 ch_overall_rank = None
                 if chapter_ranks:
-                    ch_overall_rank = sum(chapter_ranks) / len(chapter_ranks)
+                    ch_overall_rank = statistics.median(chapter_ranks)
 
                 if ch_ops_data[2] > 0:
                     chapter_value = (
@@ -9228,7 +9252,7 @@ async def tally_deeds(
                         f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
                     )
                     if ch_overall_rank is not None:
-                        chapter_value += f"\n**Overall Rank:** {ch_overall_rank:.1f}"
+                        chapter_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
                 else:
                     chapter_value = "Below minimum threshold"
                 honours_embed.add_field(
@@ -9242,9 +9266,15 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
 
                     # Compute overall rank for kill team
                     kt_ranks = []
@@ -9260,21 +9290,19 @@ async def tally_deeds(
                         kt_ranks.append(kt_aar_data[1])
                     if kt_cohesion_data[2] > 0:
                         kt_ranks.append(kt_cohesion_data[1])
-                    kt_overall_rank = (
-                        sum(kt_ranks) / len(kt_ranks) if kt_ranks else None
-                    )
+                    kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                     if kt_ops_data[2] > 0:
                         kt_value = (
                             f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                             f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
-                            f"**Armory+Gene:** #{kt_pres_data[1]}/{kt_pres_data[2]}\n"
+                            f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
                             f"**High-Risk:** {int(kt_risk_data[0])} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
                             f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
                             f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
                         )
                         if kt_overall_rank is not None:
-                            kt_value += f"\n**Overall Rank:** {kt_overall_rank:.1f}"
+                            kt_value += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
                     else:
                         kt_value = "No ranking data available"
                     honours_embed.add_field(
@@ -12338,7 +12366,9 @@ async def _compute_fortress_rankings(
                 pass
 
         # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
-        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
+        aar_chapters: Dict[
+            str, List[str]
+        ] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
@@ -12952,7 +12982,9 @@ AARs/Member              Chapter (X.X)
                 t["first_ts"] = ts
 
         # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
-        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
+        aar_chapters: Dict[
+            str, List[str]
+        ] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
