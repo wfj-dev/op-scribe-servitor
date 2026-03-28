@@ -12304,6 +12304,7 @@ async def _compute_fortress_rankings(
 
         # Team aggregation: collect all teams participating in this AAR, then count once per team
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
+        resolved_participants = 0  # Count only resolved members for cohesion calculation
         for uid in brother_ids:
             try:
                 member = guild.get_member(int(uid)) if guild else None
@@ -12317,6 +12318,7 @@ async def _compute_fortress_rankings(
             if not member:
                 continue
 
+            resolved_participants += 1
             try:
                 member_teams = _resolve_killteams_for_member(member)
                 for mt in member_teams:
@@ -12325,7 +12327,7 @@ async def _compute_fortress_rankings(
                 pass
 
         # Now add stats once per team for this AAR
-        total_participants = len(brother_ids)
+        total_participants = resolved_participants  # Use resolved count for cohesion
         for resolved_team, team_member_ids in aar_teams.items():
             t = teams.setdefault(
                 str(resolved_team),
@@ -12902,11 +12904,13 @@ AARs/Member              Chapter (X.X)
 
         # Team aggregation: collect all teams participating in this AAR, then count once per team
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
+        resolved_participants = 0  # Count only resolved members for cohesion calculation
         for uid in brother_ids:
             member = members_cache.get(str(uid)) if guild else None
             # Skip unresolved members for team aggregation (consistent with _compute_fortress_rankings)
             if not member:
                 continue
+            resolved_participants += 1
             # Build list of teams this member contributes to for this record
             resolved_teams: List[str] = []
             try:
@@ -12929,7 +12933,7 @@ AARs/Member              Chapter (X.X)
                 aar_teams.setdefault(resolved_team, []).append(str(uid))
 
         # Now add stats once per team for this AAR
-        total_participants = len(brother_ids)
+        total_participants = resolved_participants  # Use resolved count for cohesion
         for resolved_team, team_member_ids in aar_teams.items():
             t = teams.setdefault(
                 str(resolved_team),
@@ -13980,12 +13984,12 @@ AARs/Member              Chapter (X.X)
 
     # Kill Team Distinctions (no @ mentions)
     killteam_text = (
-        f"Operations: {kt_ops_name} ({kt_ops_val})\n"
-        f"Avg Pts/Op: {kt_avg_name} ({kt_avg_val:.1f})\n"
-        f"Armory+Gene: {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"Hard-Strat+Ω: {kt_risk_name} ({kt_risk_val})\n"
-        f"AARs/Member: {kt_force_name} ({kt_force_val:.1f})\n"
-        f"Cohesion: {kt_cohesion_name} ({kt_cohesion_val:.1f}%)"
+        f"Operations: **{kt_ops_name}** ({kt_ops_val})\n"
+        f"Avg Pts/Op: **{kt_avg_name}** ({kt_avg_val:.1f})\n"
+        f"Armory+Gene: **{kt_pres_name}** ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"Hard-Strat+Ω: **{kt_risk_name}** ({kt_risk_val})\n"
+        f"AARs/Member: **{kt_force_name}** ({kt_force_val:.1f})\n"
+        f"Cohesion: **{kt_cohesion_name}** ({kt_cohesion_val:.1f}%)"
     )
     if len(killteam_text) > 1024:
         killteam_text = killteam_text[:1020] + "…"
