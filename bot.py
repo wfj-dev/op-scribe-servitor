@@ -13905,7 +13905,7 @@ AARs/Member              Chapter (X.X)
             return r.mention
         return ch_name
 
-    # Top 5 Brothers (with user mentions if include_mentions)
+    # Top 5 Brothers (rank emoji + name + chapter emoji, no @ mentions)
     brothers_text = ""
     prev_rank = None
     display_rank = 0
@@ -13913,11 +13913,8 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        if include_mentions:
-            brothers_text += f"**{display_rank}.** <@{uid}>\n"
-        else:
-            name = _member_display_name(guild, uid)
-            brothers_text += f"**{display_rank}.** {name}\n"
+        name = _format_member_styled(guild, uid, chapters_map, include_chapter=True)
+        brothers_text += f"**{display_rank}.** {name}\n"
         prev_rank = curr_rank
 
     if brothers_text:
@@ -13928,7 +13925,7 @@ AARs/Member              Chapter (X.X)
             name="▸ Top 5 Brothers", value=brothers_text.strip(), inline=True
         )
 
-    # Top 5 Kill Teams (with role mentions if include_mentions)
+    # Top 5 Kill Teams (no @ mentions)
     teams_text = ""
     prev_rank = None
     display_rank = 0
@@ -13936,10 +13933,7 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        if include_mentions:
-            teams_text += f"**{display_rank}.** {_kt_mention(tid)}\n"
-        else:
-            teams_text += f"**{display_rank}.** {tid}\n"
+        teams_text += f"**{display_rank}.** {tid}\n"
         prev_rank = curr_rank
 
     if teams_text:
@@ -13949,7 +13943,7 @@ AARs/Member              Chapter (X.X)
             name="▸ Top 5 Kill Teams", value=teams_text.strip(), inline=True
         )
 
-    # Top 5 Chapters (with role mentions if include_mentions)
+    # Top 5 Chapters (chapter emoji, no @ mentions)
     chapters_text = ""
     prev_rank = None
     display_rank = 0
@@ -13957,10 +13951,9 @@ AARs/Member              Chapter (X.X)
         curr_rank = median_rank
         if prev_rank is None or curr_rank != prev_rank:
             display_rank = idx + 1
-        if include_mentions:
-            chapters_text += f"**{display_rank}.** {_ch_mention(ch)}\n"
-        else:
-            chapters_text += f"**{display_rank}.** {ch}\n"
+        ch_emoji = _get_emoji_by_name(guild, ch) if ch else ""
+        ch_display = f"{ch_emoji}" if ch_emoji else ch
+        chapters_text += f"**{display_rank}.** {ch_display}\n"
         prev_rank = curr_rank
 
     if chapters_text:
@@ -13970,28 +13963,14 @@ AARs/Member              Chapter (X.X)
             name="▸ Top 5 Chapters", value=chapters_text.strip(), inline=True
         )
 
-    # Individual Distinctions (with mentions if include_mentions)
+    # Individual Distinctions (rank emoji + name + chapter emoji, no @ mentions)
     omega_suffix = f" | Ω KIA {high_kia}" if high_kia else ""
-    if include_mentions:
-        tempo_m = f"<@{tempo_name}>" if tempo_name else tempo_disp
-        lethal_m = f"<@{lethal_name}>" if lethal_name else lethal_disp
-        gene_m = f"<@{gene_name}>" if gene_name else gene_disp
-        arm_m = f"<@{arm_name}>" if arm_name else arm_disp
-        high_m = f"<@{high_name}>" if high_name else high_disp
-    else:
-        tempo_m, lethal_m, gene_m, arm_m, high_m = (
-            tempo_disp,
-            lethal_disp,
-            gene_disp,
-            arm_disp,
-            high_disp,
-        )
     individual_text = (
-        f"Operations: {tempo_m} ({tempo_val})\n"
-        f"Avg Pts/Op: {lethal_m} ({lethal_val:.1f})\n"
-        f"Gene-seed: {gene_m} ({gene_val})\n"
-        f"Armory: {arm_m} ({arm_val})\n"
-        f"Hard-Strat+Ω: {high_m} ({high_val}{omega_suffix})"
+        f"Operations: {tempo_disp} ({tempo_val})\n"
+        f"Avg Pts/Op: {lethal_disp} ({lethal_val:.1f})\n"
+        f"Gene-seed: {gene_disp} ({gene_val})\n"
+        f"Armory: {arm_disp} ({arm_val})\n"
+        f"Hard-Strat+Ω: {high_disp} ({high_val}{omega_suffix})"
     )
     if len(individual_text) > 1024:
         individual_text = individual_text[:1020] + "…"
@@ -13999,50 +13978,26 @@ AARs/Member              Chapter (X.X)
         name="▸ Individual Distinctions", value=individual_text, inline=False
     )
 
-    # Kill Team Distinctions (with mentions if include_mentions)
-    if include_mentions:
-        kt_ops_m = _kt_mention(kt_ops_name)
-        kt_avg_m = _kt_mention(kt_avg_name)
-        kt_pres_m = _kt_mention(kt_pres_name)
-        kt_risk_m = _kt_mention(kt_risk_name)
-        kt_force_m = _kt_mention(kt_force_name)
-        kt_cohesion_m = _kt_mention(kt_cohesion_name)
-    else:
-        kt_ops_m, kt_avg_m, kt_pres_m, kt_risk_m, kt_force_m, kt_cohesion_m = (
-            kt_ops_name,
-            kt_avg_name,
-            kt_pres_name,
-            kt_risk_name,
-            kt_force_name,
-            kt_cohesion_name,
-        )
+    # Kill Team Distinctions (no @ mentions)
     killteam_text = (
-        f"Operations: {kt_ops_m} ({kt_ops_val})\n"
-        f"Avg Pts/Op: {kt_avg_m} ({kt_avg_val:.1f})\n"
-        f"Armory+Gene: {kt_pres_m} ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"Hard-Strat+Ω: {kt_risk_m} ({kt_risk_val})\n"
-        f"AARs/Member: {kt_force_m} ({kt_force_val:.1f})\n"
-        f"Cohesion: {kt_cohesion_m} ({kt_cohesion_val:.1f}%)"
+        f"Operations: {kt_ops_name} ({kt_ops_val})\n"
+        f"Avg Pts/Op: {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"Armory+Gene: {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"Hard-Strat+Ω: {kt_risk_name} ({kt_risk_val})\n"
+        f"AARs/Member: {kt_force_name} ({kt_force_val:.1f})\n"
+        f"Cohesion: {kt_cohesion_name} ({kt_cohesion_val:.1f}%)"
     )
     if len(killteam_text) > 1024:
         killteam_text = killteam_text[:1020] + "…"
     embed.add_field(name="▸ Kill Team Distinctions", value=killteam_text, inline=False)
 
-    # Chapter Distinctions (with mentions if include_mentions)
-    if include_mentions:
-        ch1_m = _ch_mention(ch1)
-        ch2_m = _ch_mention(ch2)
-        ch3_m = _ch_mention(ch3)
-        ch4_m = _ch_mention(ch4)
-        ch5_m = _ch_mention(ch5)
-    else:
-        ch1_m, ch2_m, ch3_m, ch4_m, ch5_m = ch1_disp, ch2_disp, ch3_disp, ch4_disp, ch5_disp
+    # Chapter Distinctions (chapter emoji, no @ mentions)
     chapter_text = (
-        f"Operations: {ch1_m} ({ch1_val})\n"
-        f"Avg Pts/Op: {ch2_m} ({ch2_val:.1f})\n"
-        f"Armory+Gene: {ch3_m} ({ch3_arm}|{ch3_gene})\n"
-        f"Hard-Strat+Ω: {ch4_m} ({ch4_val})\n"
-        f"AARs/Member: {ch5_m} ({ch5_val:.1f})"
+        f"Operations: {ch1_disp} ({ch1_val})\n"
+        f"Avg Pts/Op: {ch2_disp} ({ch2_val:.1f})\n"
+        f"Armory+Gene: {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
+        f"Hard-Strat+Ω: {ch4_disp} ({ch4_val})\n"
+        f"AARs/Member: {ch5_disp} ({ch5_val:.1f})"
     )
     if len(chapter_text) > 1024:
         chapter_text = chapter_text[:1020] + "…"
@@ -14793,8 +14748,12 @@ async def publish_honours(
         await interaction.followup.send(f"Error building honours: {e}", ephemeral=True)
         return
 
-    # Send to honours channel - only embed with PC/Console toggle (no separate mentions message)
+    # Send to honours channel - only embed with PC/Console toggle + @Watch Brothers mention
     try:
+        # Find Watch Brothers role for mention
+        wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+        wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
+
         if embed:
             view = ToggleFormatView(
                 text_content=block,
@@ -14803,6 +14762,7 @@ async def publish_honours(
                 ephemeral_context=False,
             )
             await channel.send(
+                content=wb_mention,
                 embed=embed,
                 view=view,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
@@ -14810,7 +14770,7 @@ async def publish_honours(
         else:
             # Fallback: send ANSI block only if no embed
             await channel.send(
-                block,
+                f"{wb_mention}\n{block}" if wb_mention else block,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
             )
 
