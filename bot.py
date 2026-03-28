@@ -8707,6 +8707,9 @@ async def tally_deeds(
             force_data = active_rankings.get("avg_aar_per_member", {}).get(
                 queried_key, (0.0, 0, 0)
             )
+            cohesion_data = active_rankings.get("cohesion", {}).get(
+                queried_key, (0.0, 0, 0)
+            )
 
             s_lines.append(
                 f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}"
@@ -8722,6 +8725,9 @@ async def tally_deeds(
             )
             s_lines.append(
                 f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}"
+            )
+            s_lines.append(
+                f"Squad Cohesion           ({cohesion_data[0]:.1f}%) — Rank #{cohesion_data[1]}/{cohesion_data[2]}"
             )
         else:
             s_lines.append("  No ranking data available")
@@ -8757,12 +8763,16 @@ async def tally_deeds(
                 force_data = active_rankings.get("avg_aar_per_member", {}).get(
                     queried_key, (0.0, 0, 0)
                 )
+                cohesion_data = active_rankings.get("cohesion", {}).get(
+                    queried_key, (0.0, 0, 0)
+                )
                 # ▸ Distinctions field with consolidated stats
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                     f"**Avg Points/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
                     f"**High-Risk Ops:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
-                    f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})"
+                    f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
+                    f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
                 )
                 embed.add_field(
                     name=f"▸ {title_type} Distinctions",
@@ -8773,7 +8783,7 @@ async def tally_deeds(
                 preservation = (
                     f"**Armory:** {armory_data[0]:.1f} pts\n"
                     f"**Gene-seed:** {gene_data[0]:.1f} pts\n"
-                    f"Combined Rank: #{pres_data[1]}/{pres_data[2]}"
+                    f"**Overall Rank**: #{pres_data[1]}/{pres_data[2]}"
                 )
                 embed.add_field(
                     name="▸ Preservation",
@@ -12250,6 +12260,13 @@ async def _compute_fortress_rankings(
         members_count = len(tv.get("members") or set())
         tv["avg_aar_per_member"] = (tv["ops"] / members_count) if members_count else 0.0
         tv["pres"] = tv.get("armory", 0) + tv.get("gene_carried", 0)
+        # Squad Cohesion: average cohesion % for ops where 2+ teammates ran together
+        cohesion_count = tv.get("cohesion_count", 0)
+        tv["cohesion"] = (
+            (tv.get("cohesion_sum", 0.0) / cohesion_count)
+            if cohesion_count > 0
+            else 0.0
+        )
 
     # Compute derived metrics for chapters
     # Minimum ops threshold for chapter eligibility
@@ -12357,6 +12374,7 @@ async def _compute_fortress_rankings(
         "gene_carried": rank_teams("gene_carried"),
         "high_risk": rank_teams("high_risk"),
         "avg_aar_per_member": rank_teams("avg_aar_per_member"),
+        "cohesion": rank_teams("cohesion"),
     }
 
     # Compute chapter rankings (matching kill team metrics)
