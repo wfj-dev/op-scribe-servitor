@@ -2033,8 +2033,8 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
         1458254715942080543,
         1458254904819974386,
         1433355179020914688,
-        1444348999401210037, 
-        1486476398058012712
+        1444348999401210037,
+        1486476398058012712,
     ]
 )
 
@@ -8818,9 +8818,7 @@ async def tally_deeds(
                     kt_ranks.append(force_data[1])
                 if cohesion_data[2] > 0:
                     kt_ranks.append(cohesion_data[1])
-                kt_overall_rank = (
-                    statistics.median(kt_ranks) if kt_ranks else None
-                )
+                kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                 # ▸ Distinctions field with consolidated stats
                 distinctions = (
@@ -9115,11 +9113,21 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_armory_val = team_rankings.get("armory", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_armory_val = team_rankings.get("armory", {}).get(
+                        kt_name, (0, 0, 0)
+                    )[0]
+                    kt_gene_val = team_rankings.get("gene_carried", {}).get(
+                        kt_name, (0, 0, 0)
+                    )[0]
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
                     if kt_ops_data[2] > 0:
                         h_lines.append(
                             f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
@@ -9258,9 +9266,15 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
+                        kt_name, (0.0, 0, 0)
+                    )
 
                     # Compute overall rank for kill team
                     kt_ranks = []
@@ -9276,9 +9290,7 @@ async def tally_deeds(
                         kt_ranks.append(kt_aar_data[1])
                     if kt_cohesion_data[2] > 0:
                         kt_ranks.append(kt_cohesion_data[1])
-                    kt_overall_rank = (
-                        statistics.median(kt_ranks) if kt_ranks else None
-                    )
+                    kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                     if kt_ops_data[2] > 0:
                         kt_value = (
@@ -12354,7 +12366,9 @@ async def _compute_fortress_rankings(
                 pass
 
         # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
-        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
+        aar_chapters: Dict[
+            str, List[str]
+        ] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
@@ -12968,7 +12982,9 @@ AARs/Member              Chapter (X.X)
                 t["first_ts"] = ts
 
         # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
-        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
+        aar_chapters: Dict[
+            str, List[str]
+        ] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
