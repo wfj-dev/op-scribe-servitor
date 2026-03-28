@@ -14582,13 +14582,18 @@ async def preview_honours(interaction: discord.Interaction):
     # Include mentions in preview so Forgemasters can test tagging; send unified message
     # with PC/Mobile toggle and respect Discord message length limits.
 
-    content = honour_line + "\n" + ansi
+    # Use @Watch Brothers role mention instead of HONOURED line
+    wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+    wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
+
+    content = f"{wb_mention}\n{ansi}" if wb_mention else ansi
     try:
         if len(content) <= 2000 and embed:
             # Use ToggleFormatView for preview with unified embed (default to embed view)
             view = ToggleFormatView(text_content=content, embed=embed, default="embed")
             if deferred:
                 await interaction.followup.send(
+                    content=wb_mention,
                     embed=embed,
                     view=view,
                     ephemeral=True,
@@ -14596,6 +14601,7 @@ async def preview_honours(interaction: discord.Interaction):
                 )
             else:
                 await interaction.response.send_message(
+                    content=wb_mention,
                     embed=embed,
                     view=view,
                     ephemeral=True,
@@ -14616,11 +14622,11 @@ async def preview_honours(interaction: discord.Interaction):
                 )
         else:
             # Split into mentions then ANSI block. If deferred, use followups; else
-            # send the honour_line as the response and post the ANSI block to the
+            # send the wb_mention as the response and post the ANSI block to the
             # channel (non-ephemeral) as a best-effort fallback.
             if deferred:
                 await interaction.followup.send(
-                    honour_line,
+                    wb_mention or "@Watch Brothers",
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
@@ -14635,7 +14641,7 @@ async def preview_honours(interaction: discord.Interaction):
                     await interaction.followup.send(ansi, ephemeral=True)
             else:
                 await interaction.response.send_message(
-                    honour_line,
+                    wb_mention or "@Watch Brothers",
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
