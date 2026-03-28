@@ -4,6 +4,8 @@
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
+# TODO: promotion queue need to remove mentions and use combat bonds format for names
+# TODO: something is wrong with the cohesion calculations for leaderboard
 
 import os
 import asyncio
