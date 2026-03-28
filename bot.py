@@ -8758,29 +8758,40 @@ async def tally_deeds(
                 cohesion_data = active_rankings.get("cohesion", {}).get(
                     queried_key, (0.0, 0, 0)
                 )
-                # ▸ Distinctions field with consolidated stats
+
+                # Compute overall rank as average of all metric ranks
+                kt_ranks = []
+                if ops_data[2] > 0:
+                    kt_ranks.append(ops_data[1])
+                if avg_data[2] > 0:
+                    kt_ranks.append(avg_data[1])
+                if pres_data[2] > 0:
+                    kt_ranks.append(pres_data[1])
+                if risk_data[2] > 0:
+                    kt_ranks.append(risk_data[1])
+                if force_data[2] > 0:
+                    kt_ranks.append(force_data[1])
+                if cohesion_data[2] > 0:
+                    kt_ranks.append(cohesion_data[1])
+                overall_rank = (
+                    sum(kt_ranks) / len(kt_ranks) if kt_ranks else None
+                )
+
+                # ▸ Distinctions field matching brother view format
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
-                    f"**Avg Points/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-                    f"**High-Risk Ops:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
+                    f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
+                    f"**Armory+Gene:** #{pres_data[1]}/{pres_data[2]}\n"
+                    f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
                     f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
                     f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
                 )
+                if overall_rank is not None:
+                    distinctions += f"\n**Overall Rank:** {overall_rank:.1f}"
                 embed.add_field(
                     name=f"▸ {title_type} Distinctions",
                     value=distinctions,
                     inline=False,
-                )
-                # ▸ Preservation field
-                preservation = (
-                    f"**Armory:** {armory_data[0]:.1f} pts\n"
-                    f"**Gene-seed:** {gene_data[0]:.1f} pts\n"
-                    f"**Overall Rank**: #{pres_data[1]}/{pres_data[2]}"
-                )
-                embed.add_field(
-                    name="▸ Preservation",
-                    value=preservation,
-                    inline=True,
                 )
             else:
                 embed.add_field(
