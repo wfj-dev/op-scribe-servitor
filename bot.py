@@ -8084,21 +8084,21 @@ async def tally_deeds(
                     if diff > 0:
                         # Loreful addendum when computed studs exceed what's shown
                         # Break down owed studs into auramite (4) and plasteel (1)
-                        # Once in auramite tier, no longer track plasteel — only show
-                        # auramite owed (partial progress not displayed)
+                        # Once in auramite tier (4+ studs), no longer track plasteel —
+                        # only show auramite owed (partial progress not displayed)
+                        in_auramite_tier = studs_count >= 4
                         owed_aur = diff // 4
                         owed_plas = diff % 4
                         owed_parts = []
                         if owed_aur > 0:
                             owed_parts.append(f"+{owed_aur} Auramite")
                         # Only show plasteel owed if user hasn't reached auramite tier yet
-                        if owed_plas > 0 and studs_count < 4:
+                        if owed_plas > 0 and not in_auramite_tier:
                             owed_parts.append(f"+{owed_plas} Plasteel")
                         if owed_parts:
                             notif = f"({', '.join(owed_parts)} owed)"
-                        else:
-                            notif = f"(+{diff} studs earned to be awarded)"
-                        studs_display = f"{studs_display} {notif}"
+                            studs_display = f"{studs_display} {notif}"
+                        # If in auramite tier and only partial plasteel owed, don't show anything
                     elif diff < 0:
                         # Note if the name shows more studs than computed
                         notif = f"({abs(diff)} excess stud(s) displayed)"
