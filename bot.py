@@ -8316,6 +8316,7 @@ async def tally_deeds(
         roster_items.append(
             {
                 "name": name_val,
+                "member_id": str(target.id),
                 "status": status_val,
                 "aar": aar_val,
                 "gene": gene_val,
@@ -8323,6 +8324,7 @@ async def tally_deeds(
                 "studs_symbols": studs_symbols,
                 "studs_count": studs_count,
                 "role_names": list(_canonical_role_names(target)),
+                "home_chapter": home_chapter,
                 # Rank bucket for roster sorting: Sergeant (0), Kill Team Champion (1), Veteran (2), Brother/Sister (3), Other (9)
                 "rank_bucket": (
                     0
@@ -8535,19 +8537,46 @@ async def tally_deeds(
                     color=0x2ECC71,
                 )
 
-                # Build roster entries as compact lines
+                # Build roster entries using combat bonds style formatting
                 roster_lines = []
                 for it in sorted_items:
+                    member_id = str(it.get("member_id", "") or "")
                     nm = str(it.get("name", "") or "")[:20]
                     studs = str(it.get("studs_symbols", "") or "")
                     st = str(it.get("status", ""))
+                    home_ch = str(it.get("home_chapter", "") or "")
                     aar_v = int(it.get("aar", 0) or 0)
                     gene_v = int(it.get("gene", 0) or 0)
                     armory_v = int(it.get("armory", 0) or 0)
                     status_icon = "✅" if st.lower() == "active" else "⏸️"
-                    studs_str = f" {studs}" if studs else ""
+
+                    # Get rank emoji
+                    role_names = it.get("role_names", [])
+                    member_rank = None
+                    for rp in RANK_ROLES_PRIORITY:
+                        if rp in role_names:
+                            member_rank = rp
+                            break
+                    rank_emoji = _get_rank_emoji(interaction.guild, member_rank) if member_rank else ""
+
+                    # Get chapter emoji
+                    chapter_emoji = ""
+                    if home_ch and home_ch not in ("Unknown", "REDACTED"):
+                        chapter_emoji = _get_emoji_by_name(interaction.guild, home_ch) or ""
+
+                    # Build member label: status rank_emoji name studs chapter_emoji
+                    parts = [status_icon]
+                    if rank_emoji:
+                        parts.append(rank_emoji)
+                    parts.append(f"**{nm}**")
+                    if studs:
+                        parts.append(studs)
+                    if chapter_emoji:
+                        parts.append(chapter_emoji)
+                    member_label = " ".join(parts)
+
                     roster_lines.append(
-                        f"{status_icon} **{nm}**{studs_str}\n"
+                        f"{member_label}\n"
                         f"AAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
                     )
 
@@ -8759,7 +8788,7 @@ async def tally_deeds(
                     queried_key, (0.0, 0, 0)
                 )
 
-                # Compute overall rank as average of all metric ranks
+                # Compute overall rank as average of all metric rankings
                 kt_ranks = []
                 if ops_data[2] > 0:
                     kt_ranks.append(ops_data[1])
@@ -8773,11 +8802,11 @@ async def tally_deeds(
                     kt_ranks.append(force_data[1])
                 if cohesion_data[2] > 0:
                     kt_ranks.append(cohesion_data[1])
-                overall_rank = (
+                kt_overall_rank = (
                     sum(kt_ranks) / len(kt_ranks) if kt_ranks else None
                 )
 
-                # ▸ Distinctions field matching brother view format
+                # ▸ Distinctions field with consolidated stats
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                     f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
@@ -8786,8 +8815,8 @@ async def tally_deeds(
                     f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
                     f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
                 )
-                if overall_rank is not None:
-                    distinctions += f"\n**Overall Rank:** {overall_rank:.1f}"
+                if kt_overall_rank is not None:
+                    distinctions += f"\n**Overall Rank:** {kt_overall_rank:.1f}"
                 embed.add_field(
                     name=f"▸ {title_type} Distinctions",
                     value=distinctions,
