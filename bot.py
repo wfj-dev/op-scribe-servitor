@@ -5,7 +5,6 @@
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
 # TODO: promotion queue need to remove mentions and use combat bonds format for names
-# TODO: something is wrong with the cohesion calculations for leaderboard
 
 import os
 import asyncio
@@ -12899,26 +12898,14 @@ AARs/Member              Chapter (X.X)
             if not member:
                 continue
             resolved_participants += 1
-            # Build list of teams this member contributes to for this record
-            resolved_teams: List[str] = []
+            # Use role-based team resolution only (consistent with _compute_fortress_rankings)
+            # Do NOT add record-level team_key for all members - that inflates cohesion
             try:
-                # Include record-level canonical team for all members (maintain existing semantics)
-                if team_key and any(team_key == kt for kt in KILL_TEAMS):
-                    if team_key not in resolved_teams:
-                        resolved_teams.append(team_key)
-                # Add per-member teams (canonical KT, company command, high command)
-                try:
-                    member_teams = _resolve_killteams_for_member(member)
-                except Exception:
-                    member_teams = []
+                member_teams = _resolve_killteams_for_member(member)
                 for mt in member_teams:
-                    if mt not in resolved_teams:
-                        resolved_teams.append(mt)
+                    aar_teams.setdefault(mt, []).append(str(uid))
             except Exception:
-                resolved_teams = []
-
-            for resolved_team in resolved_teams:
-                aar_teams.setdefault(resolved_team, []).append(str(uid))
+                pass
 
         # Now add stats once per team for this AAR
         total_participants = resolved_participants  # Use resolved count for cohesion
