@@ -246,6 +246,9 @@ class DataStore:
     async def set_record(self, aar_id: str | int, record: dict):
         sid = str(aar_id)
         async with self._lock:
+            # Capture previous record BEFORE overwriting so we can invalidate
+            # stats for users who were removed from the record on an edit.
+            prev = self._records.get(sid)
             # Update record
             self._records[sid] = record
             self._dirty_records = True
@@ -253,7 +256,6 @@ class DataStore:
             # Find all users in this record
             affected_users = set(record.get("brother_ids", []))
             # Also, if this is an edit, find users in the previous record
-            prev = self._records.get(sid)
             if prev:
                 affected_users.update(prev.get("brother_ids", []))
             # For each affected user, gather all records for that user
