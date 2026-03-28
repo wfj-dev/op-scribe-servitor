@@ -8541,7 +8541,7 @@ async def tally_deeds(
                 roster_lines = []
                 for it in sorted_items:
                     member_id = str(it.get("member_id", "") or "")
-                    nm = str(it.get("name", "") or "")[:20]
+                    nm = str(it.get("name", "") or "")
                     studs = str(it.get("studs_symbols", "") or "")
                     st = str(it.get("status", ""))
                     home_ch = str(it.get("home_chapter", "") or "")
@@ -8557,18 +8557,34 @@ async def tally_deeds(
                         if rp in role_names:
                             member_rank = rp
                             break
-                    rank_emoji = _get_rank_emoji(interaction.guild, member_rank) if member_rank else ""
+                    rank_emoji = (
+                        _get_rank_emoji(interaction.guild, member_rank)
+                        if member_rank
+                        else ""
+                    )
+
+                    # Strip rank prefix from name (case-insensitive)
+                    stripped_name = nm
+                    for rp in RANK_ROLES_PRIORITY:
+                        if stripped_name.lower().startswith(rp.lower()):
+                            stripped_name = stripped_name[len(rp) :].lstrip()
+                            break
+                    # Truncate after stripping
+                    stripped_name = stripped_name[:20]
 
                     # Get chapter emoji
                     chapter_emoji = ""
                     if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                        chapter_emoji = _get_emoji_by_name(interaction.guild, home_ch) or ""
+                        chapter_emoji = (
+                            _get_emoji_by_name(interaction.guild, home_ch) or ""
+                        )
 
-                    # Build member label: status rank_emoji name studs chapter_emoji
-                    parts = [status_icon]
+                    # Build member label: rank_emoji name studs chapter_emoji
+                    # (status icon on separate concept line below)
+                    parts = []
                     if rank_emoji:
                         parts.append(rank_emoji)
-                    parts.append(f"**{nm}**")
+                    parts.append(f"**{stripped_name}**")
                     if studs:
                         parts.append(studs)
                     if chapter_emoji:
@@ -8576,7 +8592,7 @@ async def tally_deeds(
                     member_label = " ".join(parts)
 
                     roster_lines.append(
-                        f"{member_label}\n"
+                        f"{status_icon} {member_label}\n"
                         f"AAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
                     )
 
