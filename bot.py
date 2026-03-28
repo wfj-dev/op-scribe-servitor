@@ -12904,6 +12904,9 @@ AARs/Member              Chapter (X.X)
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
         for uid in brother_ids:
             member = members_cache.get(str(uid)) if guild else None
+            # Skip unresolved members for team aggregation (consistent with _compute_fortress_rankings)
+            if not member:
+                continue
             # Build list of teams this member contributes to for this record
             resolved_teams: List[str] = []
             try:
@@ -12912,14 +12915,13 @@ AARs/Member              Chapter (X.X)
                     if team_key not in resolved_teams:
                         resolved_teams.append(team_key)
                 # Add per-member teams (canonical KT, company command, high command)
-                if member:
-                    try:
-                        member_teams = _resolve_killteams_for_member(member)
-                    except Exception:
-                        member_teams = []
-                    for mt in member_teams:
-                        if mt not in resolved_teams:
-                            resolved_teams.append(mt)
+                try:
+                    member_teams = _resolve_killteams_for_member(member)
+                except Exception:
+                    member_teams = []
+                for mt in member_teams:
+                    if mt not in resolved_teams:
+                        resolved_teams.append(mt)
             except Exception:
                 resolved_teams = []
 
@@ -13689,7 +13691,7 @@ AARs/Member              Chapter (X.X)
             curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
-            name = _format_member_styled(guild, uid, chapters_map, include_chapter=True)
+            name = _format_member_styled(guild, uid, chapters_map)
             lines.append(f"{display_rank}. {name} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
@@ -13760,7 +13762,7 @@ AARs/Member              Chapter (X.X)
         # Build column data
         bro_col = ["BROTHERS"]
         for idx, (uid, _) in enumerate(ind_top5):
-            name = _format_member_styled(guild, uid, chapters_map, include_chapter=True)
+            name = _format_member_styled(guild, uid, chapters_map)
             bro_col.append(f"{idx + 1}.{truncate_name(name)}")
 
         kt_col = ["KILL TEAMS"]
@@ -14426,6 +14428,9 @@ async def _scheduled_honours_runner():
         # Helper to send honours content respecting Discord message length
         async def _send_honours(line, block, embed=None):
             try:
+                # Find Watch Brothers role for mention
+                wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+                wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
                 # Send only the embed with PC/Console toggle (no separate mentions message)
                 # Mentions are included within the embed fields themselves
                 if embed:
@@ -14436,6 +14441,7 @@ async def _scheduled_honours_runner():
                         ephemeral_context=False,
                     )
                     await channel.send(
+                        content=wb_mention,
                         embed=embed,
                         view=view,
                         allowed_mentions=discord.AllowedMentions(
@@ -14445,7 +14451,7 @@ async def _scheduled_honours_runner():
                 else:
                     # Fallback: send ANSI block only if no embed
                     await channel.send(
-                        block,
+                        f"{wb_mention}\n{block}" if wb_mention else block,
                         allowed_mentions=discord.AllowedMentions(
                             users=True, roles=True
                         ),
