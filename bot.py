@@ -14387,8 +14387,8 @@ async def _scheduled_honours_runner():
         # Helper to send honours content respecting Discord message length
         async def _send_honours(line, block, embed=None):
             try:
-                # Find Watch Brothers role for mention
-                wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+                # Find Watch Brother role for mention
+                wb_role = discord.utils.get(guild.roles, name="Watch Brother")
                 wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
                 # Send only the embed with PC/Console toggle (no separate mentions message)
                 # Mentions are included within the embed fields themselves
@@ -14541,8 +14541,8 @@ async def preview_honours(interaction: discord.Interaction):
     # Include mentions in preview so Forgemasters can test tagging; send unified message
     # with PC/Mobile toggle and respect Discord message length limits.
 
-    # Use @Watch Brothers role mention instead of HONOURED line
-    wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+    # Use @Watch Brother role mention instead of HONOURED line
+    wb_role = discord.utils.get(guild.roles, name="Watch Brother")
     wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
 
     content = f"{wb_mention}\n{ansi}" if wb_mention else ansi
@@ -14754,8 +14754,8 @@ async def publish_honours(
 
     # Send to honours channel - only embed with PC/Console toggle + @Watch Brothers mention
     try:
-        # Find Watch Brothers role for mention
-        wb_role = discord.utils.get(guild.roles, name="Watch Brothers")
+        # Find Watch Brother role for mention
+        wb_role = discord.utils.get(guild.roles, name="Watch Brother")
         wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
 
         if embed:
