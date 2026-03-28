@@ -13984,12 +13984,12 @@ AARs/Member              Chapter (X.X)
 
     # Kill Team Distinctions (no @ mentions)
     killteam_text = (
-        f"Operations: **{kt_ops_name}** ({kt_ops_val})\n"
-        f"Avg Pts/Op: **{kt_avg_name}** ({kt_avg_val:.1f})\n"
-        f"Armory+Gene: **{kt_pres_name}** ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"Hard-Strat+Ω: **{kt_risk_name}** ({kt_risk_val})\n"
-        f"AARs/Member: **{kt_force_name}** ({kt_force_val:.1f})\n"
-        f"Cohesion: **{kt_cohesion_name}** ({kt_cohesion_val:.1f}%)"
+        f"**Operations**: {kt_ops_name} ({kt_ops_val})\n"
+        f"**Avg Pts/Op**: {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"**Armory+Gene**: {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"**Hard-Strat+Ω**: {kt_risk_name} ({kt_risk_val})\n"
+        f"**AARs/Member**: {kt_force_name} ({kt_force_val:.1f})\n"
+        f"**Cohesion**: {kt_cohesion_name} ({kt_cohesion_val:.1f}%)"
     )
     if len(killteam_text) > 1024:
         killteam_text = killteam_text[:1020] + "…"
