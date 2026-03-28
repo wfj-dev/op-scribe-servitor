@@ -2417,11 +2417,8 @@ def _resolve_killteam_for_member(
     """Return the canonical Kill Team name for a member by inspecting their roles.
 
     Matching strategy (in order):
-    - Exact case-insensitive match against entries in `KILL_TEAMS`.
-    - If a role name contains the canonical suffix (e.g., 'Solomon'), map to
-      'Kill Team Solomon'.
-    - If a role name uses a 'Kill Team' prefix (e.g., 'Kill Team: Solomon'),
-      normalize with `_extract_killteam_name` and match.
+    1. Role ID in ALLOWED_KT_ROLE_IDS (most reliable).
+    2. Exact case-insensitive role name match against entries in `KILL_TEAMS`.
 
     Returns the canonical `KILL_TEAMS` entry on match, else `None`.
     """
@@ -2429,28 +2426,23 @@ def _resolve_killteam_for_member(
         roles = getattr(member, "roles", []) or []
         # map lower->canonical for fast lookup
         canonical_map = {kt.lower(): kt for kt in KILL_TEAMS}
-        # suffixes (e.g., 'solomon') for fuzzy matching
-        suffixes = [kt.lower().replace("kill team", "").strip() for kt in KILL_TEAMS]
 
         for r in roles:
+            # 1) Check role ID against ALLOWED_KT_ROLE_IDS (most reliable)
+            rid = getattr(r, "id", None)
+            if rid and ALLOWED_KT_ROLE_IDS and rid in ALLOWED_KT_ROLE_IDS:
+                rn = (getattr(r, "name", "") or "").strip()
+                # Return the role name if it's in KILL_TEAMS, otherwise return as-is
+                if rn.lower() in canonical_map:
+                    return canonical_map[rn.lower()]
+                return rn  # Role ID matched but name not in KILL_TEAMS yet
+
+            # 2) Exact case-insensitive match against KILL_TEAMS entries
             rn = (getattr(r, "name", "") or "").strip()
             if not rn:
                 continue
-            low = rn.lower()
-            # 1) exact canonical match
-            if low in canonical_map:
-                return canonical_map[low]
-            # 2) suffix contained in role name
-            for kt, suf in zip(KILL_TEAMS, suffixes):
-                if suf and suf in low:
-                    return kt
-            # 3) normalized 'Kill Team' prefixed roles
-            extracted = _extract_killteam_name(rn)
-            if extracted and extracted.lower() in {s for s in suffixes if s}:
-                # find the canonical entry containing the extracted token
-                for kt in KILL_TEAMS:
-                    if extracted.lower() in kt.lower():
-                        return kt
+            if rn.lower() in canonical_map:
+                return canonical_map[rn.lower()]
     except Exception:
         return None
     return None
