@@ -4,6 +4,7 @@
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
+# TODO: promotion queue need to remove mentions and use combat bonds format for names
 
 import os
 import asyncio
@@ -456,24 +457,20 @@ async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = F
         if not aar_channel:
             logger.debug("Scheduled audit: AAR channel not found; skipping.")
             return
-        await RECONCILE_LOCK.acquire()
-        if monthly:
-            # Mark monthly as running while we hold the lock
-            MONTHLY_AUDIT_PENDING = True
-        try:
-            fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
-            logger.info(
-                f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}"
-            )
-        finally:
-            # Clear monthly flag before releasing lock so other scheduled runs
-            # may not start until this completes.
+        async with RECONCILE_LOCK:
+            if monthly:
+                # Mark monthly as running while we hold the lock
+                MONTHLY_AUDIT_PENDING = True
             try:
+                fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
+                logger.info(
+                    f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}"
+                )
+            finally:
+                # Clear monthly flag before releasing lock so other scheduled runs
+                # may not start until this completes.
                 if monthly:
                     MONTHLY_AUDIT_PENDING = False
-            except Exception:
-                pass
-            RECONCILE_LOCK.release()
     except Exception:
         logger.exception("Scheduled audit failed")
 
@@ -581,8 +578,7 @@ async def _scheduled_weekly_maintenance_loop():
             logger.info("Weekly maintenance: reconcile lock held; skipping.")
             return
 
-        await RECONCILE_LOCK.acquire()
-        try:
+        async with RECONCILE_LOCK:
             # 1) Run sanctify with configured span
             logger.info(
                 f"Weekly maintenance: Running ingest for last {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS} days"
@@ -601,8 +597,6 @@ async def _scheduled_weekly_maintenance_loop():
 
             LAST_WEEKLY_MAINTENANCE_DATE = str(today)
             logger.info("Weekly maintenance completed successfully.")
-        finally:
-            RECONCILE_LOCK.release()
     except Exception:
         logger.exception("Weekly maintenance failed")
 
@@ -620,6 +614,14 @@ if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r") as f:
             CONFIG = json.load(f) or {}
     except Exception:
+        # Log at module level (before the named logger is created) so the
+        # operator knows the bot is running with an empty configuration.
+        logging.warning(
+            "CRITICAL: Failed to load %s — running with empty config. "
+            "Permissions, channel IDs, and schedules will use hard-coded defaults.",
+            CONFIG_PATH,
+            exc_info=True,
+        )
         CONFIG = {}
 
 # Apply schedule configuration if present
@@ -1150,7 +1152,7 @@ async def _check_activity_status_changes():
                     try:
                         t = datetime.fromisoformat(ts)
                         if t.tzinfo is not None:
-                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                            t = t.astimezone(timezone.utc).replace(tzinfo=None)
                         for uid in rec.get("brother_ids") or []:
                             uid_str = str(uid)
                             # Keep the most recent timestamp for each member
@@ -1178,7 +1180,7 @@ async def _check_activity_status_changes():
                     try:
                         t = datetime.fromisoformat(ts)
                         if t.tzinfo is not None:
-                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                            t = t.astimezone(timezone.utc).replace(tzinfo=None)
                         # Only update timestamps for recent records
                         if t >= recent_cutoff:
                             for uid in rec.get("brother_ids") or []:
@@ -1203,7 +1205,7 @@ async def _check_activity_status_changes():
                 try:
                     last_post_dt = datetime.fromisoformat(last_post_str)
                     if last_post_dt.tzinfo is not None:
-                        last_post_dt = last_post_dt.astimezone(tz=None).replace(
+                        last_post_dt = last_post_dt.astimezone(timezone.utc).replace(
                             tzinfo=None
                         )
                     # Check if record is recent (within 4 hours) or if member was previously active and is now at/past 28 days
@@ -1237,7 +1239,7 @@ async def _check_activity_status_changes():
                     if last_post_str:
                         last_post_dt = datetime.fromisoformat(last_post_str)
                         if last_post_dt.tzinfo is not None:
-                            last_post_dt = last_post_dt.astimezone(tz=None).replace(
+                            last_post_dt = last_post_dt.astimezone(timezone.utc).replace(
                                 tzinfo=None
                             )
                         # Status is active if last post is within 28 days, else inactive
@@ -5269,7 +5271,7 @@ def _compute_member_service_studs(member: discord.Member) -> int:
         ja = joined_at
         if ja.tzinfo is not None:
             try:
-                ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
             except Exception:
                 ja = ja.replace(tzinfo=None)
 
@@ -6080,11 +6082,8 @@ async def reconcile_records(
     except Exception as e:
         logger.debug(f"Interaction defer failed: {e}")
 
-    await RECONCILE_LOCK.acquire()
-    try:
+    async with RECONCILE_LOCK:
         await _reconciliation_core(interaction, span_days)
-    finally:
-        RECONCILE_LOCK.release()
 
 
 @bot.tree.command(
@@ -6516,8 +6515,7 @@ async def audit_archive_discrepancies(
     except Exception:
         interaction_deferred = False
 
-    await RECONCILE_LOCK.acquire()
-    try:
+    async with RECONCILE_LOCK:
         guild = interaction.guild
         aar_channel = discord.utils.get(
             guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
@@ -6587,8 +6585,6 @@ async def audit_archive_discrepancies(
                 logger.error(
                     "Unable to deliver report to channel; interaction unknown and channel send failed."
                 )
-    finally:
-        RECONCILE_LOCK.release()
 
 
 @bot.tree.command(
@@ -6618,8 +6614,7 @@ async def sanctify_battle_records(
     except Exception:
         interaction_deferred = False
 
-    await RECONCILE_LOCK.acquire()
-    try:
+    async with RECONCILE_LOCK:
         guild = interaction.guild
         aar_channel = discord.utils.get(
             guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
@@ -6695,8 +6690,6 @@ async def sanctify_battle_records(
                 logger.error(
                     "Unable to deliver report to channel; check bot permissions."
                 )
-    finally:
-        RECONCILE_LOCK.release()
 
 
 async def _reconciliation_core(interaction: discord.Interaction, span_days: int | None):
@@ -6842,7 +6835,7 @@ async def _run_recheck_errors(
                 try:
                     msg_dt = msg.created_at
                     if msg_dt.tzinfo is not None:
-                        msg_dt = msg_dt.astimezone(tz=None).replace(tzinfo=None)
+                        msg_dt = msg_dt.astimezone(timezone.utc).replace(tzinfo=None)
                     if total_errs == 0:
                         # First time we see a windowed message, estimate total as count of window hits
                         pass
@@ -7161,7 +7154,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                     ja = joined_at
                     if ja.tzinfo is not None:
                         try:
-                            ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                            ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             ja = ja.replace(tzinfo=None)
                     weeks = max(0, (now - ja).days // 7)
@@ -7582,8 +7575,7 @@ async def reparse_records(
         return
     await interaction.response.defer(thinking=True, ephemeral=True)
 
-    await RECONCILE_LOCK.acquire()
-    try:
+    async with RECONCILE_LOCK:
         total = 0
         updated = 0
         failed = 0
@@ -7690,8 +7682,6 @@ async def reparse_records(
             f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}{changes_line}",
             ephemeral=True,
         )
-    finally:
-        RECONCILE_LOCK.release()
 
 
 async def _forum_post_autocomplete(
@@ -8022,7 +8012,7 @@ async def tally_deeds(
                     ja = joined_at
                     if ja.tzinfo is not None:
                         try:
-                            ja = ja.astimezone(tz=None).replace(tzinfo=None)
+                            ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             ja = ja.replace(tzinfo=None)
                     weeks = max(0, (now - ja).days // 7)
@@ -8041,9 +8031,6 @@ async def tally_deeds(
         except Exception:
             studs_count = 0
         # Cap at 16 studs (4 Auramite) — the max tier
-        studs_count = min(studs_count, 16)
-
-        # Enforce the cap of 16 studs (4 Auramite) before any display or diff logic
         studs_count = min(studs_count, 16)
 
         # Build display string using two-tier Unicode symbols:
@@ -8141,7 +8128,7 @@ async def tally_deeds(
                         continue
                     if t.tzinfo is not None:
                         try:
-                            t = t.astimezone(tz=None).replace(tzinfo=None)
+                            t = t.astimezone(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             t = t.replace(tzinfo=None)
                     timestamps.append(t)
@@ -12911,26 +12898,14 @@ AARs/Member              Chapter (X.X)
             if not member:
                 continue
             resolved_participants += 1
-            # Build list of teams this member contributes to for this record
-            resolved_teams: List[str] = []
+            # Use role-based team resolution only (consistent with _compute_fortress_rankings)
+            # Do NOT add record-level team_key for all members - that inflates cohesion
             try:
-                # Include record-level canonical team for all members (maintain existing semantics)
-                if team_key and any(team_key == kt for kt in KILL_TEAMS):
-                    if team_key not in resolved_teams:
-                        resolved_teams.append(team_key)
-                # Add per-member teams (canonical KT, company command, high command)
-                try:
-                    member_teams = _resolve_killteams_for_member(member)
-                except Exception:
-                    member_teams = []
+                member_teams = _resolve_killteams_for_member(member)
                 for mt in member_teams:
-                    if mt not in resolved_teams:
-                        resolved_teams.append(mt)
+                    aar_teams.setdefault(mt, []).append(str(uid))
             except Exception:
-                resolved_teams = []
-
-            for resolved_team in resolved_teams:
-                aar_teams.setdefault(resolved_team, []).append(str(uid))
+                pass
 
         # Now add stats once per team for this AAR
         total_participants = resolved_participants  # Use resolved count for cohesion
@@ -14433,8 +14408,7 @@ async def _scheduled_honours_runner():
                 if RECONCILE_LOCK.locked():
                     logger.info("Pre-audit: Reconcile lock held, skipping audit")
                     return
-                await RECONCILE_LOCK.acquire()
-                try:
+                async with RECONCILE_LOCK:
                     # Run ingest (sanctify battle records)
                     logger.info(f"Pre-audit: Running ingest for last {span_days} days")
                     ingested, rejected = await _run_ingest_new(aar_channel, span_days)
@@ -14447,8 +14421,6 @@ async def _scheduled_honours_runner():
                     logger.info(
                         f"Pre-audit: Fixed {fixed}, still broken {still_broken}"
                     )
-                finally:
-                    RECONCILE_LOCK.release()
             except Exception:
                 logger.exception("Pre-audit failed")
 
