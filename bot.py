@@ -13317,8 +13317,17 @@ AARs/Member              Chapter (X.X)
     def display_name_for(uid_key: str) -> str:
         if not uid_key:
             return "Name"
-        # Use styled formatting: rank_emoji + stripped_name
-        return _format_member_styled(guild, uid_key, chapters_map)
+        # Use styled formatting: rank_emoji + stripped_name + chapter_emoji
+        return _format_member_styled(guild, uid_key, chapters_map, include_chapter=True)
+
+    def chapter_display(ch_name: str) -> str:
+        """Get chapter emoji + name for display."""
+        if not ch_name or ch_name in ("Unknown", "REDACTED"):
+            return ch_name or "Unknown"
+        emoji = _get_emoji_by_name(guild, ch_name) or ""
+        if emoji:
+            return f"{emoji} {ch_name}"
+        return ch_name
 
     def fmt_avg(v):
         return f"{v:.1f}" if isinstance(v, float) else f"{float(v):.1f}"
@@ -13482,6 +13491,21 @@ AARs/Member              Chapter (X.X)
     ch3_gene = _chap_pres_gene(ch3)
     ch4_val = _chap_high_risk(ch4)
     ch5_val = _chap_avg_aar(ch5)
+
+    # Helper to format chapter name with emoji
+    def chapter_display(chapter_name: str) -> str:
+        """Return ':chapter:' emoji format for a chapter name."""
+        if not chapter_name:
+            return "—"
+        emoji = _get_emoji_by_name(guild, chapter_name)
+        return f"{emoji}" if emoji else chapter_name
+
+    ch1_disp = chapter_display(ch1)
+    ch2_disp = chapter_display(ch2)
+    ch3_disp = chapter_display(ch3)
+    ch4_disp = chapter_display(ch4)
+    ch5_disp = chapter_display(ch5)
+
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
 
     # --- Chapter rankings across 5 distinction metrics ---
@@ -13665,7 +13689,7 @@ AARs/Member              Chapter (X.X)
             curr_rank = median_rank
             if prev_rank is None or curr_rank != prev_rank:
                 display_rank = idx + 1
-            name = _format_member_styled(guild, uid, chapters_map)
+            name = _format_member_styled(guild, uid, chapters_map, include_chapter=True)
             lines.append(f"{display_rank}. {name} (Median Rank {median_rank:.1f})")
             prev_rank = curr_rank
 
@@ -13736,7 +13760,7 @@ AARs/Member              Chapter (X.X)
         # Build column data
         bro_col = ["BROTHERS"]
         for idx, (uid, _) in enumerate(ind_top5):
-            name = _format_member_styled(guild, uid, chapters_map)
+            name = _format_member_styled(guild, uid, chapters_map, include_chapter=True)
             bro_col.append(f"{idx + 1}.{truncate_name(name)}")
 
         kt_col = ["KILL TEAMS"]
@@ -13745,7 +13769,9 @@ AARs/Member              Chapter (X.X)
 
         ch_col = ["CHAPTERS"]
         for idx, (ch, _) in enumerate(ch_top5):
-            ch_col.append(f"{idx + 1}.{truncate_name(ch)}")
+            ch_emoji = _get_emoji_by_name(guild, ch) if ch else ""
+            ch_display = f"{ch_emoji}" if ch_emoji else ch
+            ch_col.append(f"{idx + 1}.{truncate_name(ch_display)}")
 
         # Build 3-column layout with padding
         lines = []
@@ -13792,11 +13818,11 @@ AARs/Member              Chapter (X.X)
         f"AARs/Member              {kt_force_name} ({fmt_avg(kt_force_val)})\n"
         f"Squad Cohesion           {kt_cohesion_name} ({fmt_avg(kt_cohesion_val)}%)\n\n"
         "CHAPTER DISTINCTIONS\n"
-        f"Operations               {ch1} ({ch1_val})\n"
-        f"Avg Pts/Op               {ch2} ({fmt_avg(ch2_val)})\n"
-        f"Armory+Gene-seed         {ch3} ({ch3_arm}|{ch3_gene})\n"
-        f"Hard-Strat+Omega         {ch4} ({ch4_val})\n"
-        f"AARs/Member              {ch5} ({fmt_avg(ch5_val)})\n"
+        f"Operations               {ch1_disp} ({ch1_val})\n"
+        f"Avg Pts/Op               {ch2_disp} ({fmt_avg(ch2_val)})\n"
+        f"Armory+Gene-seed         {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
+        f"Hard-Strat+Omega         {ch4_disp} ({ch4_val})\n"
+        f"AARs/Member              {ch5_disp} ({fmt_avg(ch5_val)})\n"
         "=============================================================================="
     )
 
@@ -14008,7 +14034,7 @@ AARs/Member              Chapter (X.X)
         ch4_m = _ch_mention(ch4)
         ch5_m = _ch_mention(ch5)
     else:
-        ch1_m, ch2_m, ch3_m, ch4_m, ch5_m = ch1, ch2, ch3, ch4, ch5
+        ch1_m, ch2_m, ch3_m, ch4_m, ch5_m = ch1_disp, ch2_disp, ch3_disp, ch4_disp, ch5_disp
     chapter_text = (
         f"Operations: {ch1_m} ({ch1_val})\n"
         f"Avg Pts/Op: {ch2_m} ({ch2_val:.1f})\n"
