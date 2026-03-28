@@ -8927,6 +8927,7 @@ async def tally_deeds(
                 rankings = {
                     "individuals": {},
                     "chapters": {},
+                    "teams": {},
                     "chapters_map": {},
                     "imperial_date": _format_imperial_date(datetime.utcnow()),
                     "span_days": mtd_span_days,
@@ -8935,6 +8936,7 @@ async def tally_deeds(
             imperial_date = rankings.get("imperial_date", "")
             individual_rankings = rankings.get("individuals", {})
             chapter_rankings = rankings.get("chapters", {})
+            team_rankings = rankings.get("teams", {})
             resolved_chapters_map = rankings.get("chapters_map", {})
 
             target = members[0]
@@ -8978,6 +8980,13 @@ async def tally_deeds(
             ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
                 home_chapter, (0.0, 0, 0)
             )
+
+            # Get target's kill teams using _resolve_killteams_for_member
+            target_killteams = []
+            try:
+                target_killteams = _resolve_killteams_for_member(target)
+            except Exception:
+                pass
 
             # Build honours ANSI block
             h_lines = []
@@ -9042,6 +9051,41 @@ async def tally_deeds(
             else:
                 h_lines.append("  Chapter does not meet minimum threshold for ranking")
 
+            # Kill Team Distinctions (for each team the member belongs to)
+            if target_killteams:
+                for kt_name in target_killteams:
+                    h_lines.append("")
+                    h_lines.append(f"KILL TEAM DISTINCTIONS: {kt_name}")
+                    kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
+                    kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
+                    kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
+                    kt_armory_val = team_rankings.get("armory", {}).get(kt_name, (0, 0, 0))[0]
+                    kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_name, (0, 0, 0))[0]
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    if kt_ops_data[2] > 0:
+                        h_lines.append(
+                            f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
+                        )
+                        h_lines.append(
+                            f"Avg Points per Op        (Avg Op {kt_avg_data[0]:.1f}) — Rank #{kt_avg_data[1]}/{kt_avg_data[2]}"
+                        )
+                        h_lines.append(
+                            f"Armory + Gene-seed       (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}"
+                        )
+                        h_lines.append(
+                            f"High-Risk Ops            (Hard-Strat+Omega {int(kt_risk_data[0])}) — Rank #{kt_risk_data[1]}/{kt_risk_data[2]}"
+                        )
+                        h_lines.append(
+                            f"AARs per Member          (Avg AAR/Member {kt_aar_data[0]:.1f}) — Rank #{kt_aar_data[1]}/{kt_aar_data[2]}"
+                        )
+                        h_lines.append(
+                            f"Squad Cohesion           ({kt_cohesion_data[0]:.1f}%) — Rank #{kt_cohesion_data[1]}/{kt_cohesion_data[2]}"
+                        )
+                    else:
+                        h_lines.append("  No ranking data available")
+
             h_lines.append("")
             h_lines.append(
                 "=============================================================================="
@@ -9085,6 +9129,11 @@ async def tally_deeds(
                 if individual_ranks:
                     median_rank = statistics.median(individual_ranks)
 
+                # Compute overall rank as average of individual rankings
+                overall_rank = None
+                if individual_ranks:
+                    overall_rank = sum(individual_ranks) / len(individual_ranks)
+
                 # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
                     individual_value = (
@@ -9094,8 +9143,8 @@ async def tally_deeds(
                         f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
                         f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})"
                     )
-                    if median_rank is not None:
-                        individual_value += f"\n**Median Rank:** {median_rank:.1f}"
+                    if overall_rank is not None:
+                        individual_value += f"\n**Overall Rank:** {overall_rank:.1f}"
                 else:
                     individual_value = "No ranking data available"
                 honours_embed.add_field(
@@ -9125,6 +9174,11 @@ async def tally_deeds(
                 if chapter_ranks:
                     ch_median_rank = statistics.median(chapter_ranks)
 
+                # Compute overall rank as average of chapter rankings
+                ch_overall_rank = None
+                if chapter_ranks:
+                    ch_overall_rank = sum(chapter_ranks) / len(chapter_ranks)
+
                 if ch_ops_data[2] > 0:
                     chapter_value = (
                         f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
@@ -9133,8 +9187,8 @@ async def tally_deeds(
                         f"**High-Risk:** {int(ch_risk_data[0])} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
                         f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
                     )
-                    if ch_median_rank is not None:
-                        chapter_value += f"\n**Median Rank:** {ch_median_rank:.1f}"
+                    if ch_overall_rank is not None:
+                        chapter_value += f"\n**Overall Rank:** {ch_overall_rank:.1f}"
                 else:
                     chapter_value = "Below minimum threshold"
                 honours_embed.add_field(
@@ -9142,6 +9196,52 @@ async def tally_deeds(
                     value=chapter_value,
                     inline=False,
                 )
+
+                # ▸ Kill Team Distinctions fields (one per team the member belongs to)
+                for kt_name in target_killteams:
+                    kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
+                    kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
+                    kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+
+                    # Compute overall rank for kill team
+                    kt_ranks = []
+                    if kt_ops_data[2] > 0:
+                        kt_ranks.append(kt_ops_data[1])
+                    if kt_avg_data[2] > 0:
+                        kt_ranks.append(kt_avg_data[1])
+                    if kt_pres_data[2] > 0:
+                        kt_ranks.append(kt_pres_data[1])
+                    if kt_risk_data[2] > 0:
+                        kt_ranks.append(kt_risk_data[1])
+                    if kt_aar_data[2] > 0:
+                        kt_ranks.append(kt_aar_data[1])
+                    if kt_cohesion_data[2] > 0:
+                        kt_ranks.append(kt_cohesion_data[1])
+                    kt_overall_rank = (
+                        sum(kt_ranks) / len(kt_ranks) if kt_ranks else None
+                    )
+
+                    if kt_ops_data[2] > 0:
+                        kt_value = (
+                            f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
+                            f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
+                            f"**Armory+Gene:** #{kt_pres_data[1]}/{kt_pres_data[2]}\n"
+                            f"**High-Risk:** {int(kt_risk_data[0])} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
+                            f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
+                            f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
+                        )
+                        if kt_overall_rank is not None:
+                            kt_value += f"\n**Overall Rank:** {kt_overall_rank:.1f}"
+                    else:
+                        kt_value = "No ranking data available"
+                    honours_embed.add_field(
+                        name=f"▸ {kt_name}",
+                        value=kt_value,
+                        inline=False,
+                    )
 
                 honours_embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
             except Exception:
