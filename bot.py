@@ -13970,11 +13970,11 @@ AARs/Member              Chapter (X.X)
     # Individual Distinctions (rank emoji + name + chapter emoji, no @ mentions)
     omega_suffix = f" | Ω KIA {high_kia}" if high_kia else ""
     individual_text = (
-        f"Operations: {tempo_disp} ({tempo_val})\n"
-        f"Avg Pts/Op: {lethal_disp} ({lethal_val:.1f})\n"
-        f"Gene-seed: {gene_disp} ({gene_val})\n"
-        f"Armory: {arm_disp} ({arm_val})\n"
-        f"Hard-Strat+Ω: {high_disp} ({high_val}{omega_suffix})"
+        f"**Operations**: {tempo_disp} ({tempo_val})\n"
+        f"**Avg Pts/Op**: {lethal_disp} ({lethal_val:.1f})\n"
+        f"**Gene-seed**: {gene_disp} ({gene_val})\n"
+        f"**Armory**: {arm_disp} ({arm_val})\n"
+        f"**Hard-Strat+Ω**: {high_disp} ({high_val}{omega_suffix})"
     )
     if len(individual_text) > 1024:
         individual_text = individual_text[:1020] + "…"
@@ -13984,12 +13984,12 @@ AARs/Member              Chapter (X.X)
 
     # Kill Team Distinctions (no @ mentions)
     killteam_text = (
-        f"Operations: **{kt_ops_name}** ({kt_ops_val})\n"
-        f"Avg Pts/Op: **{kt_avg_name}** ({kt_avg_val:.1f})\n"
-        f"Armory+Gene: **{kt_pres_name}** ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"Hard-Strat+Ω: **{kt_risk_name}** ({kt_risk_val})\n"
-        f"AARs/Member: **{kt_force_name}** ({kt_force_val:.1f})\n"
-        f"Cohesion: **{kt_cohesion_name}** ({kt_cohesion_val:.1f}%)"
+        f"**Operations**: {kt_ops_name} ({kt_ops_val})\n"
+        f"**Avg Pts/Op**: {kt_avg_name} ({kt_avg_val:.1f})\n"
+        f"**Armory+Gene**: {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
+        f"**Hard-Strat+Ω**: {kt_risk_name} ({kt_risk_val})\n"
+        f"**AARs/Member**: {kt_force_name} ({kt_force_val:.1f})\n"
+        f"**Cohesion**: {kt_cohesion_name} ({kt_cohesion_val:.1f}%)"
     )
     if len(killteam_text) > 1024:
         killteam_text = killteam_text[:1020] + "…"
@@ -13997,11 +13997,11 @@ AARs/Member              Chapter (X.X)
 
     # Chapter Distinctions (chapter emoji, no @ mentions)
     chapter_text = (
-        f"Operations: {ch1_disp} ({ch1_val})\n"
-        f"Avg Pts/Op: {ch2_disp} ({ch2_val:.1f})\n"
-        f"Armory+Gene: {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
-        f"Hard-Strat+Ω: {ch4_disp} ({ch4_val})\n"
-        f"AARs/Member: {ch5_disp} ({ch5_val:.1f})"
+        f"**Operations**: {ch1_disp} ({ch1_val})\n"
+        f"**Avg Pts/Op**: {ch2_disp} ({ch2_val:.1f})\n"
+        f"**Armory+Gene**: {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
+        f"**Hard-Strat+Ω**: {ch4_disp} ({ch4_val})\n"
+        f"**AARs/Member**: {ch5_disp} ({ch5_val:.1f})"
     )
     if len(chapter_text) > 1024:
         chapter_text = chapter_text[:1020] + "…"
