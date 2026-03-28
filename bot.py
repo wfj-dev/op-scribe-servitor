@@ -42,6 +42,7 @@ AAR_RECORDS_PATH = os.path.join(DATA_DIR, "aar_records.json")
 AAR_ERRORS_PATH = os.path.join(DATA_DIR, "aar_errors.json")
 PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
+MACHINE_SPIRITS_PATH = os.path.join(DATA_DIR, "machine_spirits.json")
 ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
 ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
     DATA_DIR, "activity_status_last_check.json"
@@ -79,6 +80,9 @@ MONTHLY_AUDIT_PENDING = False
 
 # Rites storage lock
 RITES_LOCK = asyncio.Lock()
+
+# Machine spirits storage lock
+MACHINE_SPIRITS_LOCK = asyncio.Lock()
 
 # Lock for rotation state operations
 ROTATION_LOCK = asyncio.Lock()
@@ -1239,9 +1243,9 @@ async def _check_activity_status_changes():
                     if last_post_str:
                         last_post_dt = datetime.fromisoformat(last_post_str)
                         if last_post_dt.tzinfo is not None:
-                            last_post_dt = last_post_dt.astimezone(timezone.utc).replace(
-                                tzinfo=None
-                            )
+                            last_post_dt = last_post_dt.astimezone(
+                                timezone.utc
+                            ).replace(tzinfo=None)
                         # Status is active if last post is within 28 days, else inactive
                         current_status = (
                             "active" if last_post_dt >= cutoff_datetime else "inactive"
@@ -2391,6 +2395,49 @@ async def _set_user_rite(user_id: int, text: str):
             data = _load_rites()
             data[str(user_id)] = text
             _save_rites(data)
+    except Exception:
+        pass
+
+
+# --- Machine Spirit Persistence for Forge Rite ---
+
+
+def _load_machine_spirits() -> dict:
+    try:
+        if not os.path.exists(MACHINE_SPIRITS_PATH):
+            return {}
+        with open(MACHINE_SPIRITS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_machine_spirits(data: dict):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(MACHINE_SPIRITS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+async def _get_machine_spirit(user_id: int) -> Optional[str]:
+    """Get the stored machine spirit designation for a user's armor."""
+    try:
+        async with MACHINE_SPIRITS_LOCK:
+            data = _load_machine_spirits()
+            return data.get(str(user_id))
+    except Exception:
+        return None
+
+
+async def _set_machine_spirit(user_id: int, spirit: str):
+    """Store the machine spirit designation for a user's armor."""
+    try:
+        async with MACHINE_SPIRITS_LOCK:
+            data = _load_machine_spirits()
+            data[str(user_id)] = spirit
+            _save_machine_spirits(data)
     except Exception:
         pass
 
@@ -5713,30 +5760,91 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
 
-    # Generate unique machine-spirit designation for the armor
-    # Based on bearer ID + current timestamp to be unique per blessing
+    # Machine-spirit designation: persist across blessings for the same bearer
+    # 85% chance to reawaken existing spirit, 15% chance armor was damaged and new spirit bound
     import hashlib
 
-    spirit_hash = (
-        hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
-        .hexdigest()[:6]
-        .upper()
-    )
-    # Format: PREFIX-HASH-SUFFIX (e.g., "FURY-A3C7B2-Θ")
-    spirit_prefixes = [
-        "FURY",
-        "AEGIS",
-        "VIGIL",
-        "TALON",
-        "WRATH",
-        "PURITY",
-        "FERRUM",
-        "MORTIS",
-        "VENATOR",
-        "GLADIUS",
-    ]
-    spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
-    spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
+    existing_spirit = await _get_machine_spirit(int(member.id))
+    spirit_is_returning = False
+    spirit_is_new_armor = False
+
+    if existing_spirit:
+        # Bearer has been blessed before - determine if same spirit or new armor
+        if random.random() < 0.85:
+            # Same spirit reawakens
+            spirit_designation = existing_spirit
+            spirit_is_returning = True
+        else:
+            # Old armor was destroyed, new spirit bound
+            spirit_hash = (
+                hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
+                .hexdigest()[:6]
+                .upper()
+            )
+            spirit_prefixes = [
+                "FURY",
+                "AEGIS",
+                "VIGIL",
+                "TALON",
+                "WRATH",
+                "PURITY",
+                "FERRUM",
+                "MORTIS",
+                "VENATOR",
+                "GLADIUS",
+            ]
+            spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+            spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
+            await _set_machine_spirit(int(member.id), spirit_designation)
+            spirit_is_new_armor = True
+    else:
+        # First blessing - generate and store new spirit
+        spirit_hash = (
+            hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
+            .hexdigest()[:6]
+            .upper()
+        )
+        spirit_prefixes = [
+            "FURY",
+            "AEGIS",
+            "VIGIL",
+            "TALON",
+            "WRATH",
+            "PURITY",
+            "FERRUM",
+            "MORTIS",
+            "VENATOR",
+            "GLADIUS",
+        ]
+        spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+        spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
+        await _set_machine_spirit(int(member.id), spirit_designation)
+
+    # Flavor text for spirit status
+    if spirit_is_returning:
+        spirit_status_phrases = [
+            "The machine spirit stirs, recognizing its bearer",
+            "Ancient recognition-rites confirm: spirit and bearer are one",
+            "The spirit awakens from dormancy, its vigilance renewed",
+            "Cogitator confirms: spirit-bond integrity remains absolute",
+        ]
+        spirit_status_text = random.choice(spirit_status_phrases)
+    elif spirit_is_new_armor:
+        spirit_status_phrases = [
+            "Previous plate lost in sacred combat. A new spirit is bound",
+            "The old armor fell in glorious service. Fresh spirit awakened",
+            "Warplate restored from the dead; new spirit consecrated",
+            "Prior spirit returned to the Omnissiah. Successor now bound",
+        ]
+        spirit_status_text = random.choice(spirit_status_phrases)
+    else:
+        spirit_status_phrases = [
+            "First binding complete. Spirit and bearer are now one",
+            "Virgin armor awakened. The spirit stirs for the first time",
+            "Inaugural consecration. May this bond endure ten thousand years",
+            "New spirit bound to bearer by sacred rite of the Omnissiah",
+        ]
+        spirit_status_text = random.choice(spirit_status_phrases)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Assemble ANSI block (PC/Console view)
@@ -5793,7 +5901,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Status
     lines.append("▸ MACHINE-SPIRIT STATUS")
-    lines.append(f" Spirit Designation .... {spirit_designation}")
+    lines.append(f"  Spirit Designation .... {spirit_designation}")
+    lines.append(f"  Spirit Bond ........... {spirit_status_text}")
     lines.append("  Inspection ............ PASSED")
     lines.append("  Compliance ............ CONFIRMED")
     lines.append("  Warplate Integrity .... SANCTIFIED")
@@ -5867,10 +5976,10 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Status field
+    # Status field with spirit bond flavor
     embed.add_field(
         name="▸ Machine-Spirit",
-        value=f"Spirit: `{spirit_designation}`\n✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
+        value=f"Spirit: `{spirit_designation}`\n*{spirit_status_text}*\n✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
         inline=True,
     )
 
@@ -8728,6 +8837,9 @@ async def tally_deeds(
                 queried_key, (0, 0, 0)
             )
             risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
+            omega_kia_data = active_rankings.get("omega_kia", {}).get(
+                queried_key, (0, 0, 0)
+            )
             force_data = active_rankings.get("avg_aar_per_member", {}).get(
                 queried_key, (0.0, 0, 0)
             )
@@ -8744,8 +8856,13 @@ async def tally_deeds(
             s_lines.append(
                 f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}"
             )
+            omega_suffix = (
+                f" | Omega KIA {int(omega_kia_data[0])}"
+                if omega_kia_data[0] > 0
+                else ""
+            )
             s_lines.append(
-                f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}) — Rank #{risk_data[1]}/{risk_data[2]}"
+                f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
             )
             s_lines.append(
                 f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}"
@@ -8784,6 +8901,9 @@ async def tally_deeds(
                 risk_data = active_rankings.get("high_risk", {}).get(
                     queried_key, (0, 0, 0)
                 )
+                omega_kia_data = active_rankings.get("omega_kia", {}).get(
+                    queried_key, (0, 0, 0)
+                )
                 force_data = active_rankings.get("avg_aar_per_member", {}).get(
                     queried_key, (0.0, 0, 0)
                 )
@@ -8808,11 +8928,14 @@ async def tally_deeds(
                 kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                 # ▸ Distinctions field with consolidated stats
+                omega_suffix = (
+                    f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
+                )
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                     f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
                     f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
-                    f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})\n"
+                    f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
                     f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
                     f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
                 )
@@ -9018,6 +9141,9 @@ async def tally_deeds(
             ch_risk_data = chapter_rankings.get("high_risk", {}).get(
                 home_chapter, (0, 0, 0)
             )
+            ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(
+                home_chapter, (0, 0, 0)
+            )
             ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
                 home_chapter, (0.0, 0, 0)
             )
@@ -9083,8 +9209,13 @@ async def tally_deeds(
                 h_lines.append(
                     f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}"
                 )
+                ch_omega_suffix = (
+                    f" | Omega KIA {int(ch_omega_kia_data[0])}"
+                    if ch_omega_kia_data[0] > 0
+                    else ""
+                )
                 h_lines.append(
-                    f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}"
+                    f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}{ch_omega_suffix}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}"
                 )
                 h_lines.append(
                     f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}"
@@ -9115,6 +9246,9 @@ async def tally_deeds(
                     kt_cohesion_data = team_rankings.get("cohesion", {}).get(
                         kt_name, (0.0, 0, 0)
                     )
+                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
                     if kt_ops_data[2] > 0:
                         h_lines.append(
                             f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
@@ -9125,8 +9259,13 @@ async def tally_deeds(
                         h_lines.append(
                             f"Armory + Gene-seed       (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}"
                         )
+                        kt_omega_suffix = (
+                            f" | Omega KIA {int(kt_omega_kia_data[0])}"
+                            if kt_omega_kia_data[0] > 0
+                            else ""
+                        )
                         h_lines.append(
-                            f"High-Risk Ops            (Hard-Strat+Omega {int(kt_risk_data[0])}) — Rank #{kt_risk_data[1]}/{kt_risk_data[2]}"
+                            f"High-Risk Ops            (Hard-Strat+Omega {int(kt_risk_data[0])}{kt_omega_suffix}) — Rank #{kt_risk_data[1]}/{kt_risk_data[2]}"
                         )
                         h_lines.append(
                             f"AARs per Member          (Avg AAR/Member {kt_aar_data[0]:.1f}) — Rank #{kt_aar_data[1]}/{kt_aar_data[2]}"
@@ -9187,12 +9326,17 @@ async def tally_deeds(
 
                 # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
+                    omega_suffix = (
+                        f" | KIA {int(omega_kia_data[0])}"
+                        if omega_kia_data[0] > 0
+                        else ""
+                    )
                     individual_value = (
                         f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                         f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
                         f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
                         f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
-                        f"**High-Risk:** {int(risk_data[0])} (#{risk_data[1]}/{risk_data[2]})"
+                        f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})"
                     )
                     if overall_rank is not None:
                         individual_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
@@ -9231,11 +9375,16 @@ async def tally_deeds(
                     ch_overall_rank = statistics.median(chapter_ranks)
 
                 if ch_ops_data[2] > 0:
+                    ch_omega_suffix = (
+                        f" | KIA {int(ch_omega_kia_data[0])}"
+                        if ch_omega_kia_data[0] > 0
+                        else ""
+                    )
                     chapter_value = (
                         f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
                         f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
                         f"**Armory + Gene:** #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
-                        f"**High-Risk:** {int(ch_risk_data[0])} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
+                        f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
                         f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
                     )
                     if ch_overall_rank is not None:
@@ -9262,6 +9411,9 @@ async def tally_deeds(
                     kt_cohesion_data = team_rankings.get("cohesion", {}).get(
                         kt_name, (0.0, 0, 0)
                     )
+                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(
+                        kt_name, (0, 0, 0)
+                    )
 
                     # Compute overall rank for kill team
                     kt_ranks = []
@@ -9280,11 +9432,16 @@ async def tally_deeds(
                     kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                     if kt_ops_data[2] > 0:
+                        kt_omega_suffix = (
+                            f" | KIA {int(kt_omega_kia_data[0])}"
+                            if kt_omega_kia_data[0] > 0
+                            else ""
+                        )
                         kt_value = (
                             f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                             f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
                             f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
-                            f"**High-Risk:** {int(kt_risk_data[0])} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
+                            f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
                             f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
                             f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
                         )
@@ -12291,7 +12448,9 @@ async def _compute_fortress_rankings(
 
         # Team aggregation: collect all teams participating in this AAR, then count once per team
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
-        resolved_participants = 0  # Count only resolved members for cohesion calculation
+        resolved_participants = (
+            0  # Count only resolved members for cohesion calculation
+        )
         for uid in brother_ids:
             try:
                 member = guild.get_member(int(uid)) if guild else None
@@ -12323,6 +12482,7 @@ async def _compute_fortress_rankings(
                     "points": 0,
                     "armory": 0,
                     "high_risk": 0,
+                    "omega_kia": 0,
                     "gene_carried": 0,
                     "gene_participated": 0,
                     "members": set(),
@@ -12335,6 +12495,8 @@ async def _compute_fortress_rankings(
             t["armory"] += int(rec.get("armory_challenge_points") or 0)
             if is_high_risk:
                 t["high_risk"] += 1
+            if difficulty == "omega_ops":
+                t["omega_kia"] += omega_kia
             # Cohesion: only count ops with 2+ teammates running together
             team_count = len(team_member_ids)
             if team_count >= 2 and total_participants >= 2:
@@ -12372,6 +12534,7 @@ async def _compute_fortress_rankings(
                     "points": 0,
                     "armory": 0,
                     "high_risk": 0,
+                    "omega_kia": 0,
                     "gene_carried": 0,
                     "gene_participated": 0,
                 },
@@ -12381,6 +12544,8 @@ async def _compute_fortress_rankings(
             c["armory"] += int(rec.get("armory_challenge_points") or 0)
             if is_high_risk:
                 c["high_risk"] += 1
+            if difficulty == "omega_ops":
+                c["omega_kia"] += omega_kia
             # Gene-seed: count once per AAR if carried
             if rec.get("gene_seed_status") == "carried":
                 c["gene_carried"] += int(
@@ -12524,6 +12689,7 @@ async def _compute_fortress_rankings(
         "armory": rank_teams("armory"),
         "gene_carried": rank_teams("gene_carried"),
         "high_risk": rank_teams("high_risk"),
+        "omega_kia": rank_teams("omega_kia"),
         "avg_aar_per_member": rank_teams("avg_aar_per_member"),
         "cohesion": rank_teams("cohesion"),
     }
@@ -12536,6 +12702,7 @@ async def _compute_fortress_rankings(
         "armory": rank_chapters("armory"),
         "gene_carried": rank_chapters("gene_carried"),
         "high_risk": rank_chapters("high_risk"),
+        "omega_kia": rank_chapters("omega_kia"),
         "avg_aar_per_member": rank_chapters("avg_aar_per_member"),
     }
 
@@ -12891,7 +13058,9 @@ AARs/Member              Chapter (X.X)
 
         # Team aggregation: collect all teams participating in this AAR, then count once per team
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
-        resolved_participants = 0  # Count only resolved members for cohesion calculation
+        resolved_participants = (
+            0  # Count only resolved members for cohesion calculation
+        )
         for uid in brother_ids:
             member = members_cache.get(str(uid)) if guild else None
             # Skip unresolved members for team aggregation (consistent with _compute_fortress_rankings)
@@ -12980,6 +13149,7 @@ AARs/Member              Chapter (X.X)
                     "points": 0,
                     "armory": 0,
                     "high_risk": 0,
+                    "omega_kia": 0,
                     "gene_carried": 0,
                     "gene_participated": 0,
                 },
@@ -12989,6 +13159,8 @@ AARs/Member              Chapter (X.X)
             c["armory"] += int(rec.get("armory_challenge_points") or 0)
             if is_high_risk:
                 c["high_risk"] += 1
+            if difficulty == "omega_ops":
+                c["omega_kia"] += omega_kia
             # Gene-seed: count once per AAR if carried
             if rec.get("gene_seed_status") == "carried":
                 c["gene_carried"] += int(
@@ -13335,6 +13507,7 @@ AARs/Member              Chapter (X.X)
     kt_pres_gene = teams.get(kt_pres_name, {}).get("gene_carried", 0)
     kt_risk_name = kt_risk[0][0] if kt_risk else "Team"
     kt_risk_val = teams.get(kt_risk_name, {}).get("high_risk", 0)
+    kt_risk_kia = teams.get(kt_risk_name, {}).get("omega_kia", 0)
     kt_force_name = kt_force[0][0] if kt_force else "Team"
     kt_force_val = teams.get(kt_force_name, {}).get("avg_aar_per_member", 0.0)
     kt_cohesion_name = kt_cohesion[0][0] if kt_cohesion else "Team"
@@ -13471,6 +13644,7 @@ AARs/Member              Chapter (X.X)
     ch3_arm = _chap_pres_armory(ch3)
     ch3_gene = _chap_pres_gene(ch3)
     ch4_val = _chap_high_risk(ch4)
+    ch4_kia = chapters.get(ch4, {}).get("omega_kia", 0)
     ch5_val = _chap_avg_aar(ch5)
 
     # Helper to format chapter name with emoji
@@ -13488,6 +13662,8 @@ AARs/Member              Chapter (X.X)
     ch5_disp = chapter_display(ch5)
 
     omega_kia_seg = f" | Omega KIA {high_kia}" if high_kia else ""
+    kt_omega_seg = f" | Omega KIA {kt_risk_kia}" if kt_risk_kia else ""
+    ch_omega_seg = f" | Omega KIA {ch4_kia}" if ch4_kia else ""
 
     # --- Chapter rankings across 5 distinction metrics ---
     def _compute_chapter_ranks_by_metric(
@@ -13795,14 +13971,14 @@ AARs/Member              Chapter (X.X)
         f"Operations               {kt_ops_name} ({kt_ops_val})\n"
         f"Avg Pts/Op               {kt_avg_name} ({fmt_avg(kt_avg_val)})\n"
         f"Armory+Gene-seed         {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"Hard-Strat+Omega         {kt_risk_name} ({kt_risk_val})\n"
+        f"Hard-Strat+Omega         {kt_risk_name} ({kt_risk_val}{kt_omega_seg})\n"
         f"AARs/Member              {kt_force_name} ({fmt_avg(kt_force_val)})\n"
         f"Squad Cohesion           {kt_cohesion_name} ({fmt_avg(kt_cohesion_val)}%)\n\n"
         "CHAPTER DISTINCTIONS\n"
         f"Operations               {ch1_disp} ({ch1_val})\n"
         f"Avg Pts/Op               {ch2_disp} ({fmt_avg(ch2_val)})\n"
         f"Armory+Gene-seed         {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
-        f"Hard-Strat+Omega         {ch4_disp} ({ch4_val})\n"
+        f"Hard-Strat+Omega         {ch4_disp} ({ch4_val}{ch_omega_seg})\n"
         f"AARs/Member              {ch5_disp} ({fmt_avg(ch5_val)})\n"
         "=============================================================================="
     )
@@ -13958,11 +14134,12 @@ AARs/Member              Chapter (X.X)
     )
 
     # Kill Team Distinctions (no @ mentions)
+    kt_omega_suffix = f" | Ω KIA {kt_risk_kia}" if kt_risk_kia else ""
     killteam_text = (
         f"**Operations**: {kt_ops_name} ({kt_ops_val})\n"
         f"**Avg Pts/Op**: {kt_avg_name} ({kt_avg_val:.1f})\n"
         f"**Armory+Gene**: {kt_pres_name} ({kt_pres_arm}|{kt_pres_gene})\n"
-        f"**Hard-Strat+Ω**: {kt_risk_name} ({kt_risk_val})\n"
+        f"**Hard-Strat+Ω**: {kt_risk_name} ({kt_risk_val}{kt_omega_suffix})\n"
         f"**AARs/Member**: {kt_force_name} ({kt_force_val:.1f})\n"
         f"**Cohesion**: {kt_cohesion_name} ({kt_cohesion_val:.1f}%)"
     )
@@ -13971,11 +14148,12 @@ AARs/Member              Chapter (X.X)
     embed.add_field(name="▸ Kill Team Distinctions", value=killteam_text, inline=False)
 
     # Chapter Distinctions (chapter emoji, no @ mentions)
+    ch_omega_suffix = f" | Ω KIA {ch4_kia}" if ch4_kia else ""
     chapter_text = (
         f"**Operations**: {ch1_disp} ({ch1_val})\n"
         f"**Avg Pts/Op**: {ch2_disp} ({ch2_val:.1f})\n"
         f"**Armory+Gene**: {ch3_disp} ({ch3_arm}|{ch3_gene})\n"
-        f"**Hard-Strat+Ω**: {ch4_disp} ({ch4_val})\n"
+        f"**Hard-Strat+Ω**: {ch4_disp} ({ch4_val}{ch_omega_suffix})\n"
         f"**AARs/Member**: {ch5_disp} ({ch5_val:.1f})"
     )
     if len(chapter_text) > 1024:
@@ -14365,8 +14543,7 @@ async def _scheduled_honours_runner():
                 # Find Watch Brother role for mention
                 wb_role = discord.utils.get(guild.roles, name="Watch Brother")
                 wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
-                # Send only the embed with PC/Console toggle (no separate mentions message)
-                # Mentions are included within the embed fields themselves
+                # Send embed with @Watch Brother mention in same message when possible
                 if embed:
                     view = ToggleFormatView(
                         text_content=block,
@@ -14374,6 +14551,7 @@ async def _scheduled_honours_runner():
                         default="embed",
                         ephemeral_context=False,
                     )
+                    # content param has 2000 char limit; mention is ~22 chars so always safe
                     await channel.send(
                         content=wb_mention,
                         embed=embed,
@@ -14383,13 +14561,25 @@ async def _scheduled_honours_runner():
                         ),
                     )
                 else:
-                    # Fallback: send ANSI block only if no embed
-                    await channel.send(
-                        f"{wb_mention}\n{block}" if wb_mention else block,
-                        allowed_mentions=discord.AllowedMentions(
-                            users=True, roles=True
-                        ),
-                    )
+                    # Fallback: send ANSI block with mention, respecting 2000 char limit
+                    combined = f"{wb_mention}\n{block}" if wb_mention else block
+                    if len(combined) <= 2000:
+                        await channel.send(
+                            combined,
+                            allowed_mentions=discord.AllowedMentions(
+                                users=True, roles=True
+                            ),
+                        )
+                    else:
+                        # Split into separate messages if too long
+                        if wb_mention:
+                            await channel.send(
+                                wb_mention,
+                                allowed_mentions=discord.AllowedMentions(
+                                    users=True, roles=True
+                                ),
+                            )
+                        await channel.send(block)
             except Exception:
                 logger.exception("Failed to post honours")
                 raise  # Re-raise so caller knows the post failed
@@ -14517,11 +14707,10 @@ async def preview_honours(interaction: discord.Interaction):
     wb_role = discord.utils.get(guild.roles, name="Watch Brother")
     wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
 
-    content = f"{wb_mention}\n{ansi}" if wb_mention else ansi
     try:
-        if len(content) <= 2000 and embed:
-            # Use ToggleFormatView for preview with unified embed (default to embed view)
-            view = ToggleFormatView(text_content=content, embed=embed, default="embed")
+        if embed:
+            # Send embed with @Watch Brother mention in same message; toggle view for PC/Console
+            view = ToggleFormatView(text_content=ansi, embed=embed, default="embed")
             if deferred:
                 await interaction.followup.send(
                     content=wb_mention,
@@ -14535,67 +14724,50 @@ async def preview_honours(interaction: discord.Interaction):
                     content=wb_mention,
                     embed=embed,
                     view=view,
-                    ephemeral=True,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                )
-        elif len(content) <= 2000:
-            if deferred:
-                await interaction.followup.send(
-                    content,
-                    ephemeral=True,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                )
-            else:
-                await interaction.response.send_message(
-                    content,
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                 )
         else:
-            # Split into mentions then ANSI block. If deferred, use followups; else
-            # send the wb_mention as the response and post the ANSI block to the
-            # channel (non-ephemeral) as a best-effort fallback.
-            if deferred:
-                await interaction.followup.send(
-                    wb_mention or "@Watch Brothers",
-                    ephemeral=True,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                )
-                if embed:
-                    view = ToggleFormatView(
-                        text_content=ansi, embed=embed, default="embed"
-                    )
+            # No embed - send ANSI text with mention
+            content = f"{wb_mention}\n{ansi}" if wb_mention else ansi
+            if len(content) <= 2000:
+                if deferred:
                     await interaction.followup.send(
-                        embed=embed, view=view, ephemeral=True
+                        content,
+                        ephemeral=True,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
                     )
                 else:
-                    await interaction.followup.send(ansi, ephemeral=True)
+                    await interaction.response.send_message(
+                        content,
+                        ephemeral=True,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
             else:
-                await interaction.response.send_message(
-                    wb_mention or "@Watch Brothers",
-                    ephemeral=True,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                )
-                try:
-                    ch = interaction.channel
-                    if ch:
-                        if embed:
-                            view = ToggleFormatView(
-                                text_content=ansi, embed=embed, default="embed"
-                            )
-                            await ch.send(embed=embed, view=view)
-                        else:
-                            await ch.send(ansi)
-                except Exception:
-                    # last-resort: attempt to send ANSI as a normal followup
+                # ANSI too long - split into mention then ANSI block
+                if deferred:
+                    await interaction.followup.send(
+                        wb_mention or "@Watch Brothers",
+                        ephemeral=True,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
+                    await interaction.followup.send(ansi, ephemeral=True)
+                else:
+                    await interaction.response.send_message(
+                        wb_mention or "@Watch Brothers",
+                        ephemeral=True,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
                     try:
-                        if embed:
-                            view = ToggleFormatView(
-                                text_content=ansi, embed=embed, default="embed"
-                            )
-                            await interaction.followup.send(embed=embed, view=view)
-                        else:
-                            await interaction.followup.send(ansi)
+                        await interaction.followup.send(ansi, ephemeral=True)
                     except Exception:
                         pass
     except Exception:
@@ -14737,6 +14909,7 @@ async def publish_honours(
                 default="embed",
                 ephemeral_context=False,
             )
+            # content param has 2000 char limit; mention is ~22 chars so always safe
             await channel.send(
                 content=wb_mention,
                 embed=embed,
@@ -14744,11 +14917,23 @@ async def publish_honours(
                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
             )
         else:
-            # Fallback: send ANSI block only if no embed
-            await channel.send(
-                f"{wb_mention}\n{block}" if wb_mention else block,
-                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-            )
+            # Fallback: send ANSI block with mention, respecting 2000 char limit
+            combined = f"{wb_mention}\n{block}" if wb_mention else block
+            if len(combined) <= 2000:
+                await channel.send(
+                    combined,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                )
+            else:
+                # Split into separate messages if too long
+                if wb_mention:
+                    await channel.send(
+                        wb_mention,
+                        allowed_mentions=discord.AllowedMentions(
+                            users=True, roles=True
+                        ),
+                    )
+                await channel.send(block)
 
         await interaction.followup.send(
             f"Successfully published {month_name} {target_year} honours to <#{ch_id}>.",
