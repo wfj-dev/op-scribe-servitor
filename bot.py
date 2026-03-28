@@ -12904,6 +12904,9 @@ AARs/Member              Chapter (X.X)
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
         for uid in brother_ids:
             member = members_cache.get(str(uid)) if guild else None
+            # Skip unresolved members for team aggregation (consistent with _compute_fortress_rankings)
+            if not member:
+                continue
             # Build list of teams this member contributes to for this record
             resolved_teams: List[str] = []
             try:
@@ -12912,14 +12915,13 @@ AARs/Member              Chapter (X.X)
                     if team_key not in resolved_teams:
                         resolved_teams.append(team_key)
                 # Add per-member teams (canonical KT, company command, high command)
-                if member:
-                    try:
-                        member_teams = _resolve_killteams_for_member(member)
-                    except Exception:
-                        member_teams = []
-                    for mt in member_teams:
-                        if mt not in resolved_teams:
-                            resolved_teams.append(mt)
+                try:
+                    member_teams = _resolve_killteams_for_member(member)
+                except Exception:
+                    member_teams = []
+                for mt in member_teams:
+                    if mt not in resolved_teams:
+                        resolved_teams.append(mt)
             except Exception:
                 resolved_teams = []
 
