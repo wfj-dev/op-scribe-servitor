@@ -9127,6 +9127,9 @@ async def tally_deeds(
             omega_kia_data = individual_rankings.get("omega_kia", {}).get(
                 target_id, (0, 0, 0)
             )
+            black_laurels_data = individual_rankings.get("black_laurels", {}).get(
+                target_id, (0, 0, 0)
+            )
 
             # Get chapter ranking data (matching kill team metrics)
             ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
@@ -9192,6 +9195,9 @@ async def tally_deeds(
                 )
                 h_lines.append(
                     f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
+                )
+                h_lines.append(
+                    f"Black Laurels Missions   (BL Ops {int(black_laurels_data[0])}) — Rank #{black_laurels_data[1]}/{black_laurels_data[2]}"
                 )
             else:
                 h_lines.append("  No ranking data available")
@@ -9314,6 +9320,8 @@ async def tally_deeds(
                     individual_ranks.append(armory_data[1])
                 if risk_data[2] > 0:
                     individual_ranks.append(risk_data[1])
+                if black_laurels_data[2] > 0:
+                    individual_ranks.append(black_laurels_data[1])
 
                 median_rank = None
                 if individual_ranks:
@@ -9336,7 +9344,8 @@ async def tally_deeds(
                         f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
                         f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
                         f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
-                        f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})"
+                        f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
+                        f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
                     )
                     if overall_rank is not None:
                         individual_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
@@ -12411,6 +12420,9 @@ async def _compute_fortress_rankings(
         )
         brother_ids = [str(x) for x in (rec.get("brother_ids") or [])]
 
+        # Check if this AAR is a Black Laurels mission
+        is_black_laurels = bool(rec.get("black_laurels_in_mission", False))
+
         # Aggregate user-level stats (only for Watch Brother+ members)
         for uid in brother_ids:
             if uid not in watch_brother_plus_ids:
@@ -12425,6 +12437,7 @@ async def _compute_fortress_rankings(
                     "omega_kia": 0,
                     "gene_carried": 0,
                     "gene_participated": 0,
+                    "black_laurels": 0,
                 },
             )
             u["ops"] += 1
@@ -12434,6 +12447,8 @@ async def _compute_fortress_rankings(
                 u["high_risk"] += 1
             if difficulty == "omega_ops":
                 u["omega_kia"] += omega_kia
+            if is_black_laurels:
+                u["black_laurels"] += 1
             try:
                 if (
                     str(rec.get("gene_seed_carrier_id")) == str(uid)
@@ -12679,6 +12694,7 @@ async def _compute_fortress_rankings(
         "armory": rank_users("armory"),
         "high_risk": rank_users("high_risk"),
         "omega_kia": rank_users("omega_kia"),
+        "black_laurels": rank_users("black_laurels"),
     }
 
     # Compute team rankings
@@ -14160,7 +14176,7 @@ AARs/Member              Chapter (X.X)
         chapter_text = chapter_text[:1020] + "…"
     embed.add_field(name="▸ Chapter Distinctions", value=chapter_text, inline=False)
 
-    embed.set_footer(text="For the Emperor and the Primarchs")
+    embed.set_footer(text="᛭⋅ For the Emperor and the Primarchs ⋅᛭")
 
     # Check total embed length and reduce if needed (Discord limit: 6000 chars)
     def _embed_length(e: discord.Embed) -> int:
