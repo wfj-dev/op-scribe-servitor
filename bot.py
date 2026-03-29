@@ -13000,6 +13000,9 @@ AARs/Member              Chapter (X.X)
             int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
         )
 
+        # Check if this AAR is a Black Laurels mission
+        is_black_laurels = bool(rec.get("black_laurels_in_mission", False))
+
         brother_ids = [str(x) for x in (rec.get("brother_ids") or [])]
 
         # Normalize any provided team_key to a canonical Kill Team name when possible
@@ -13048,6 +13051,7 @@ AARs/Member              Chapter (X.X)
                     "first_ts": None,
                     "gene_carried": 0,
                     "gene_participated": 0,
+                    "black_laurels": 0,
                 },
             )
             u["ops"] += 1
@@ -13057,6 +13061,8 @@ AARs/Member              Chapter (X.X)
                 u["high_risk"] += 1
             if difficulty == "omega_ops":
                 u["omega_kia"] += omega_kia
+            if is_black_laurels:
+                u["black_laurels"] += 1
             try:
                 if (
                     str(rec.get("gene_seed_carrier_id")) == str(uid)
@@ -13249,6 +13255,10 @@ AARs/Member              Chapter (X.X)
     high_sorted = sort_entities(users_for_eval, "high_risk")
     high_name = high_sorted[0][0] if high_sorted else ""
 
+    # Black Laurels Champion -> black_laurels
+    bl_sorted = sort_entities(users_for_eval, "black_laurels")
+    bl_name = bl_sorted[0][0] if bl_sorted else ""
+
     # Kill team picks (use ops, avg, armory/gene, high risk, cohesion)
     for tid, tv in teams.items():
         tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
@@ -13329,13 +13339,14 @@ AARs/Member              Chapter (X.X)
             prev_val = val
         return ranks
 
-    # Individual rankings across 5 metrics: ops, avg, gene_carried, armory, high_risk
+    # Individual rankings across 6 metrics: ops, avg, gene_carried, armory, high_risk, black_laurels
     ind_metrics = [
         (ops_sorted, "ops"),
         (leth_sorted, "avg"),
         (gene_sorted, "gene_carried"),
         (arm_sorted, "armory"),
         (high_sorted, "high_risk"),
+        (bl_sorted, "black_laurels"),
     ]
     ind_all_ranks: Dict[str, List[int]] = {}
     for sorted_list, key in ind_metrics:
@@ -13376,7 +13387,7 @@ AARs/Member              Chapter (X.X)
 
     # Individuals: dedupe and collect top picks
     individual_uids = []
-    for src in (tempo_name, lethal_name, gene_name, arm_name, high_name):
+    for src in (tempo_name, lethal_name, gene_name, arm_name, high_name, bl_name):
         if src and src not in individual_uids:
             individual_uids.append(src)
     honoured_parts.extend([user_mention(u) for u in individual_uids])
@@ -13513,6 +13524,8 @@ AARs/Member              Chapter (X.X)
     high_disp = display_name_for(high_name)
     high_val = users.get(high_name, {}).get("high_risk", 0)
     high_kia = users.get(high_name, {}).get("omega_kia", 0)
+    bl_disp = display_name_for(bl_name)
+    bl_val = users.get(bl_name, {}).get("black_laurels", 0)
 
     kt_ops_name = kt_ops[0][0] if kt_ops else "Team"
     kt_ops_val = teams.get(kt_ops_name, {}).get("ops", 0)
@@ -13982,7 +13995,8 @@ AARs/Member              Chapter (X.X)
         f"Avg Pts/Op               {lethal_disp} ({fmt_avg(lethal_val)})\n"
         f"Gene-seed Pts            {gene_disp} ({gene_val})\n"
         f"Armory Pts               {arm_disp} ({arm_val})\n"
-        f"Hard-Strat+Omega         {high_disp} ({high_val}{omega_kia_seg})\n\n"
+        f"Hard-Strat+Omega         {high_disp} ({high_val}{omega_kia_seg})\n"
+        f"Black Laurels Missions   {bl_disp} ({bl_val})\n\n"
         "KILL TEAM DISTINCTIONS\n"
         f"Operations               {kt_ops_name} ({kt_ops_val})\n"
         f"Avg Pts/Op               {kt_avg_name} ({fmt_avg(kt_avg_val)})\n"
@@ -14141,7 +14155,8 @@ AARs/Member              Chapter (X.X)
         f"**Avg Pts/Op**: {lethal_disp} ({lethal_val:.1f})\n"
         f"**Gene-seed**: {gene_disp} ({gene_val})\n"
         f"**Armory**: {arm_disp} ({arm_val})\n"
-        f"**Hard-Strat+Ω**: {high_disp} ({high_val}{omega_suffix})"
+        f"**Hard-Strat+Ω**: {high_disp} ({high_val}{omega_suffix})\n"
+        f"**Black Laurels**: {bl_disp} ({bl_val})"
     )
     if len(individual_text) > 1024:
         individual_text = individual_text[:1020] + "…"
