@@ -6580,7 +6580,8 @@ async def _armor_status(
         total_aar_points = stats.get("aar_points", 0)
     except Exception:
         total_aar_points = 0
-    in_grace_period = _check_armor_grace_period(target, total_aar_points)
+    cleared_grace_period = _check_armor_grace_period(target, total_aar_points)
+    in_grace_period = not cleared_grace_period
 
     # Get bearer display info
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
