@@ -6995,7 +6995,7 @@ async def _armor_status(
     )
 
     # Risk assessment field
-    if not in_grace_period:
+    if in_grace_period:
         risk_text = "🛡️ **Grace period active**\n*No damage risk*"
     elif prob_percent == 0:
         risk_text = "🟢 **Minimal**\n*0% degradation chance*"
