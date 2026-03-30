@@ -10446,7 +10446,7 @@ def validate_aar(record: dict):
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
         leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)
-        if leviathan_in_difficulty and not leviathan_in_mission:
+        if leviathan_in_difficulty:
             errors.append(
                 "@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line."
             )
@@ -12660,8 +12660,10 @@ async def _compute_fortress_rankings(
             dampened[ch] = weight * raw + (1.0 - weight) * global_mean
         return dampened
 
-    # Compute minimum ops required for rate-based metrics (like avg pts/op)
-    # to match the filtering used in monthly honours leaderboards.
+    # Compute minimum ops required for user/team rankings (including raw ops
+    # and rate-based metrics like avg pts/op), matching the filtering used in
+    # monthly honours leaderboards. Note: despite the name, this threshold is
+    # also reused for team rankings.
     if span_days >= 28:
         user_min_ops_required = 28
     else:
@@ -12669,10 +12671,14 @@ async def _compute_fortress_rankings(
 
     # Build ranking functions
     def rank_users(metric_key: str, higher_is_better: bool = True, min_ops: int = 0):
-        # Filter to users meeting minimum ops threshold if specified
+        # Filter to users meeting minimum ops threshold if specified;
+        # fall back to all users when none meet the threshold (matching
+        # monthly honours fallback behaviour to avoid empty leaderboards).
         eligible_users = {
             uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops
         } if min_ops > 0 else users
+        if not eligible_users:
+            eligible_users = users
         items = [(uid, v.get(metric_key, 0)) for uid, v in eligible_users.items()]
         items.sort(key=lambda x: x[1], reverse=higher_is_better)
         rankings = {}
@@ -12681,10 +12687,14 @@ async def _compute_fortress_rankings(
         return rankings
 
     def rank_teams(metric_key: str, higher_is_better: bool = True, min_ops: int = 0):
-        # Filter to teams meeting minimum ops threshold if specified
+        # Filter to teams meeting minimum ops threshold if specified;
+        # fall back to all teams when none meet the threshold (matching
+        # monthly honours fallback behaviour to avoid empty leaderboards).
         eligible_teams = {
             tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops
         } if min_ops > 0 else teams
+        if not eligible_teams:
+            eligible_teams = teams
         items = [(tid, v.get(metric_key, 0)) for tid, v in eligible_teams.items()]
         items.sort(key=lambda x: x[1], reverse=higher_is_better)
         rankings = {}
