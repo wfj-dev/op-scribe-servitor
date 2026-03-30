@@ -113,7 +113,7 @@ Detailed command descriptions
 
 - `/record_of_blood`
 	- Purpose: Show gene-seed recovery and armory preservation records.
-	- Who can run: general use.
+	- Who can run: role-restricted (Forgemaster, Watch Master).
 
 - `/librarian_audit`
 	- Purpose: Audit data integrity across all stored records.
