@@ -2,16 +2,19 @@ from datetime import datetime
 
 from bot import parse_aar, validate_aar
 
+
 class FakeUser:
     def __init__(self, id, name, nick=None):
         self.id = id
         self.name = name
         self.nick = nick
 
+
 class FakeRole:
     def __init__(self, id, name):
         self.id = id
         self.name = name
+
 
 class FakeMessage:
     def __init__(self, content, mentions=None, role_mentions=None):
@@ -114,8 +117,7 @@ def test_initiation_trial_without_watch_command_returns_error():
     assert rec.get("watch_command_mentioned") is False
     errs = validate_aar(rec)
     assert any("Watch Command" in e for e in errs), (
-        "Expected an error about @Watch Command being required, but got: "
-        + str(errs)
+        "Expected an error about @Watch Command being required, but got: " + str(errs)
     )
 
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-# TODO: do we want to make forge rite machine spirits persist with the user whose armor we are blessing?
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
+# TODO: are commands queued? i know we use locks but do commands enter a queue?
 
 import os
 import asyncio
@@ -48,6 +48,7 @@ ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
 )
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
+ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -92,6 +93,9 @@ ACTIVITY_STATUS_LOCK = asyncio.Lock()
 # Lock for promotion tracking file operations (shared between promotion_queue and
 # _check_promotion_milestones to prevent concurrent read-modify-write races)
 PROMOTION_TRACKING_LOCK = asyncio.Lock()
+
+# Lock for armor integrity operations
+ARMOR_INTEGRITY_LOCK = asyncio.Lock()
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -222,7 +226,7 @@ CHALLENGE_ROLES = [
     ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
     ("White Hand of Death", "White Hand of Death", "ClandestineOperationsMedal"),
     ("Red Hand of Doom", "Red Hand of Doom", "DistinguishedClandestineoperati"),
-    ("Kadaku Campaign Medal", "Kadaku Campaign Medal", "KadakuCampaignMedal")
+    ("Kadaku Campaign Medal", "Kadaku Campaign Medal", "KadakuCampaignMedal"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -2440,6 +2444,578 @@ async def _set_machine_spirit(user_id: int, spirit: str):
             _save_machine_spirits(data)
     except Exception:
         pass
+
+
+# --- Armor Integrity System ---
+# Tracks armor wear and damage for brothers, with Techmarine maintenance requirements.
+
+
+# Damage tier definitions: role name -> penalty
+ARMOR_DAMAGE_TIERS = ["damaged", "compromised", "critical"]
+ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}
+
+# Default probability tiers (can be overridden in config)
+DEFAULT_ARMOR_PROBABILITY_TIERS = [
+    {"min": 0, "max": 25, "chance": 0.0},
+    {"min": 26, "max": 75, "chance": 0.02},
+    {"min": 76, "max": 150, "chance": 0.08},
+    {"min": 151, "max": 250, "chance": 0.20},
+    {"min": 251, "max": None, "chance": 0.40},
+]
+
+# Grace period defaults
+DEFAULT_ARMOR_GRACE_PERIOD_MIN_POINTS = 100
+DEFAULT_ARMOR_GRACE_PERIOD_MIN_DAYS = 7
+
+# Fracture threshold (AAR submissions at critical before spirit fractures)
+DEFAULT_ARMOR_FRACTURE_THRESHOLD = 3
+
+# Flavor text for armor status in forge_rite
+ARMOR_STATUS_NOMINAL = {
+    "plate": "NOMINAL",
+    "spirit": "STABLE",
+    "rite": "MAINTENANCE",
+}
+ARMOR_STATUS_DAMAGED = {
+    "plate": "MINOR WEAR",
+    "spirit": "STABLE",
+    "rite": "RESTORATION",
+}
+ARMOR_STATUS_COMPROMISED = {
+    "plate": "STRUCTURAL STRESS",
+    "spirit": "AGITATED",
+    "rite": "EMERGENCY RITES",
+}
+ARMOR_STATUS_CRITICAL = {
+    "plate": "CRITICAL FAILURE",
+    "spirit": "UNSTABLE",
+    "rite": "STABILIZATION",
+}
+ARMOR_STATUS_FRACTURED = {
+    "plate": "CRITICAL FAILURE",
+    "spirit": "FRACTURED",
+    "rite": "RE-CONSECRATION",
+}
+
+# Flavor text for spirit restoration (was damaged but not fractured)
+SPIRIT_RESTORATION_PHRASES = [
+    "Sacred oils soothe worn servos. The bond holds. What was stressed is now restored.",
+    "The machine spirit's agitation fades as blessed unguents are applied. Integrity restored.",
+    "Damaged systems repaired, seals renewed. The spirit settles into watchful calm.",
+    "Rites of maintenance complete. The armor remembers its purpose.",
+]
+
+# Flavor text for spirit re-consecration (spirit fractured)
+SPIRIT_RECONSECRATION_PHRASES = [
+    "The previous spirit has departed, its bond severed through neglect. A new spirit must learn to trust you anew. This is not celebration. This is beginning again.",
+    "What was bonded is now lost. Fresh spirit bound to old armor. The Omnissiah grants no second chances—only new beginnings.",
+    "The machine spirit you knew is gone. Another takes its place, wary and untested. Earn its trust.",
+    "Re-consecration complete. The new spirit knows nothing of your deeds. Prove yourself worthy once more.",
+]
+
+
+def _load_armor_integrity() -> dict:
+    """Load armor integrity data from disk."""
+    try:
+        if not os.path.exists(ARMOR_INTEGRITY_PATH):
+            return {}
+        with open(ARMOR_INTEGRITY_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_armor_integrity(data: dict):
+    """Save armor integrity data to disk with backup."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        # Create backup if file exists
+        if os.path.exists(ARMOR_INTEGRITY_PATH):
+            bak_path = ARMOR_INTEGRITY_PATH + ".bak"
+            try:
+                import shutil
+
+                shutil.copy2(ARMOR_INTEGRITY_PATH, bak_path)
+            except Exception:
+                pass
+        with open(ARMOR_INTEGRITY_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+async def _get_armor_state(user_id: int) -> dict:
+    """Get armor integrity state for a user."""
+    try:
+        async with ARMOR_INTEGRITY_LOCK:
+            data = _load_armor_integrity()
+            return data.get(
+                str(user_id),
+                {
+                    "points_since_blessing": 0,
+                    "damage_tier": None,
+                    "critical_aar_count": 0,
+                    "spirit_fractured": False,
+                    "last_blessing_timestamp": None,
+                },
+            )
+    except Exception:
+        return {
+            "points_since_blessing": 0,
+            "damage_tier": None,
+            "critical_aar_count": 0,
+            "spirit_fractured": False,
+            "last_blessing_timestamp": None,
+        }
+
+
+async def _set_armor_state(user_id: int, state: dict):
+    """Update armor integrity state for a user."""
+    try:
+        async with ARMOR_INTEGRITY_LOCK:
+            data = _load_armor_integrity()
+            data[str(user_id)] = state
+            _save_armor_integrity(data)
+    except Exception:
+        pass
+
+
+def _get_armor_config() -> dict:
+    """Get armor integrity configuration from CONFIG or defaults."""
+    return CONFIG.get("armor_integrity", {})
+
+
+def _get_armor_probability_tiers() -> list:
+    """Get probability tiers from config or defaults."""
+    config = _get_armor_config()
+    return config.get("probability_tiers", DEFAULT_ARMOR_PROBABILITY_TIERS)
+
+
+def _get_damage_probability(points_since_blessing: int) -> float:
+    """Get damage probability for a given point total."""
+    tiers = _get_armor_probability_tiers()
+    for tier in tiers:
+        min_pts = tier.get("min", 0)
+        max_pts = tier.get("max")
+        if max_pts is None:
+            # Unbounded upper tier
+            if points_since_blessing >= min_pts:
+                return tier.get("chance", 0.0)
+        else:
+            if min_pts <= points_since_blessing <= max_pts:
+                return tier.get("chance", 0.0)
+    return 0.0
+
+
+def _get_armor_damage_role_ids() -> dict:
+    """Get damage role IDs from config."""
+    config = _get_armor_config()
+    return config.get("damage_role_ids", {})
+
+
+def _get_arming_chamber_channel_id() -> Optional[int]:
+    """Get the arming chamber channel ID for alerts."""
+    config = _get_armor_config()
+    cid = config.get("arming_chamber_channel_id")
+    if cid:
+        try:
+            return int(cid)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _get_techmarine_role_id() -> Optional[int]:
+    """Get the Techmarine role ID for pinging."""
+    config = _get_armor_config()
+    rid = config.get("techmarine_role_id")
+    if rid:
+        try:
+            return int(rid)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _get_member_damage_tier(member: discord.Member) -> Optional[str]:
+    """Check a member's roles and return their current damage tier, or None if undamaged."""
+    role_ids = _get_armor_damage_role_ids()
+    if not role_ids:
+        return None
+
+    member_role_ids = {r.id for r in getattr(member, "roles", [])}
+
+    # Check in order of severity (return highest)
+    for tier in reversed(ARMOR_DAMAGE_TIERS):
+        tier_role_id = role_ids.get(tier)
+        if tier_role_id:
+            try:
+                if int(tier_role_id) in member_role_ids:
+                    return tier
+            except (ValueError, TypeError):
+                pass
+    return None
+
+
+def _get_damage_penalty(tier: Optional[str]) -> int:
+    """Get the AAR point penalty for a damage tier."""
+    if not tier:
+        return 0
+    return ARMOR_DAMAGE_PENALTIES.get(tier, 0)
+
+
+def _check_armor_grace_period(member: discord.Member, total_aar_points: int) -> bool:
+    """Check if a member has cleared the grace period.
+
+    Returns True if BOTH conditions are met:
+    - At least grace_period_min_points AAR points earned
+    - At least grace_period_min_days since joining
+    """
+    config = _get_armor_config()
+    min_points = config.get(
+        "grace_period_min_points", DEFAULT_ARMOR_GRACE_PERIOD_MIN_POINTS
+    )
+    min_days = config.get("grace_period_min_days", DEFAULT_ARMOR_GRACE_PERIOD_MIN_DAYS)
+
+    # Check points threshold
+    if total_aar_points < min_points:
+        return False
+
+    # Check time threshold
+    joined_at = getattr(member, "joined_at", None)
+    if not joined_at:
+        return False
+
+    days_since_join = (datetime.utcnow() - joined_at.replace(tzinfo=None)).days
+    if days_since_join < min_days:
+        return False
+
+    return True
+
+
+async def _run_armor_integrity_check(points_since_blessing: int) -> bool:
+    """Run the armor integrity check and return True if damage occurs."""
+    probability = _get_damage_probability(points_since_blessing)
+    if probability <= 0:
+        return False
+    return random.random() < probability
+
+
+async def _escalate_damage_tier(
+    member: discord.Member,
+    guild: discord.Guild,
+    current_tier: Optional[str],
+) -> Optional[str]:
+    """Escalate a member's damage tier by one level. Returns the new tier."""
+    role_ids = _get_armor_damage_role_ids()
+    if not role_ids:
+        return None
+
+    # Determine current index and next tier
+    if current_tier is None:
+        current_idx = -1
+    else:
+        try:
+            current_idx = ARMOR_DAMAGE_TIERS.index(current_tier)
+        except ValueError:
+            current_idx = -1
+
+    next_idx = current_idx + 1
+    if next_idx >= len(ARMOR_DAMAGE_TIERS):
+        # Already at max tier
+        return current_tier
+
+    new_tier = ARMOR_DAMAGE_TIERS[next_idx]
+    new_role_id = role_ids.get(new_tier)
+
+    if not new_role_id:
+        return None
+
+    try:
+        # Remove current damage role if any
+        if current_tier:
+            current_role_id = role_ids.get(current_tier)
+            if current_role_id:
+                current_role = guild.get_role(int(current_role_id))
+                if current_role and current_role in member.roles:
+                    await member.remove_roles(
+                        current_role, reason="Armor integrity: escalating damage tier"
+                    )
+
+        # Add new damage role
+        new_role = guild.get_role(int(new_role_id))
+        if new_role:
+            await member.add_roles(
+                new_role, reason=f"Armor integrity: {new_tier} damage"
+            )
+
+        return new_tier
+    except Exception:
+        return None
+
+
+async def _clear_armor_damage(member: discord.Member, guild: discord.Guild):
+    """Remove all damage roles from a member and reset their armor state."""
+    role_ids = _get_armor_damage_role_ids()
+
+    # Remove all damage roles
+    for tier in ARMOR_DAMAGE_TIERS:
+        role_id = role_ids.get(tier)
+        if role_id:
+            try:
+                role = guild.get_role(int(role_id))
+                if role and role in member.roles:
+                    await member.remove_roles(
+                        role, reason="Armor integrity: blessed by Techmarine"
+                    )
+            except Exception:
+                pass
+
+    # Reset armor state
+    await _set_armor_state(
+        member.id,
+        {
+            "points_since_blessing": 0,
+            "damage_tier": None,
+            "critical_aar_count": 0,
+            "spirit_fractured": False,
+            "last_blessing_timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+async def _check_spirit_fracture(user_id: int) -> bool:
+    """Check if a user's machine spirit has fractured (should be replaced on blessing)."""
+    state = await _get_armor_state(user_id)
+    return state.get("spirit_fractured", False)
+
+
+async def _post_armor_alert(
+    member: discord.Member,
+    tier: str,
+    critical_aar_count: int = 0,
+    guild: Optional[discord.Guild] = None,
+):
+    """Post an armor damage alert to the arming chamber channel."""
+    channel_id = _get_arming_chamber_channel_id()
+    if not channel_id:
+        return
+
+    guild = guild or member.guild
+    if not guild:
+        return
+
+    channel = guild.get_channel(channel_id)
+    if not channel:
+        return
+
+    penalty = _get_damage_penalty(tier)
+    config = _get_armor_config()
+    fracture_threshold = config.get(
+        "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
+    )
+
+    # Get bearer info using the same pattern as forge_rite/stud announcements
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+
+    # Service studs computation
+    bearer_studs = _compute_member_service_studs(member)
+
+    # Home chapter (lineage)
+    bearer_chapter = _get_bearer_home_chapter(member)
+    chapter_emoji = (
+        _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+    )
+
+    # Get rank emoji
+    bearer_rank_name = None
+    for rank, hon in RANK_HONORIFICS.items():
+        if hon == bearer_honorific or rank in bearer_honorific:
+            bearer_rank_name = rank
+            break
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+
+    # Build bearer display string (matching forge_rite style)
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_display = (
+            f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+        )
+    else:
+        bearer_display = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+
+    if bearer_title:
+        bearer_display += f"\n*{bearer_title}*"
+    # Lineage (home chapter)
+    if bearer_chapter and bearer_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        if bearer_chapter == "Black Shield":
+            bearer_display += f"\nLineage: {chapter_prefix}REDACTED"
+        else:
+            bearer_display += f"\nLineage: {chapter_prefix}{bearer_chapter}"
+    if bearer_studs > 0:
+        studs_pips = _studs_pips(bearer_studs)
+        bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+
+        # Determine embed color and title based on tier
+        color = 0xE74C3C  # Red
+        title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
+        description = "*Machine spirit instability detected*"
+    else:
+        color = 0xE67E22  # Orange
+        title = "᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭"
+        description = "*Maintenance required*"
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+    )
+
+    # Affected brother field with proper rank display
+    tier_display = tier.title() if tier else "Unknown"
+    embed.add_field(
+        name="▸ Affected Brother",
+        value=f"{bearer_display}\n**Status:** {tier_display} (-{penalty} AAR per mission)",
+        inline=False,
+    )
+
+    # Warning field for critical
+    if tier == "critical":
+        remaining = fracture_threshold - critical_aar_count
+        embed.add_field(
+            name="▸ Warning",
+            value=f"⚠️ AAR submissions until spirit fracture: **{remaining}**",
+            inline=False,
+        )
+        embed.add_field(
+            name="▸ Immediate Techmarine Response Required",
+            value="Administer blessing via `/forge_rite` to preserve machine spirit bond.",
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="▸ Techmarine Response Required",
+            value="Administer blessing via `/forge_rite` to restore armor integrity.",
+            inline=False,
+        )
+
+    # Build message content with Techmarine ping and affected brother mention BEFORE the embed
+    content = ""
+    tech_role_id = _get_techmarine_role_id()
+    if tech_role_id:
+        content = f"<@&{tech_role_id}> {member.mention}"
+    else:
+        content = member.mention
+
+    try:
+        await channel.send(
+            content=content,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(roles=True, users=True),
+        )
+    except Exception:
+        pass
+
+
+async def _process_armor_integrity_for_aar(
+    brother_id: str,
+    base_points: int,
+    guild: discord.Guild,
+) -> Tuple[int, Optional[dict]]:
+    """Process armor integrity for a single brother in an AAR.
+
+    Returns:
+        Tuple of (penalty_amount, alert_info_or_none)
+        alert_info is a dict with member, tier, critical_count if an alert should be posted.
+    """
+    alert_info = None
+    penalty = 0
+
+    try:
+        member = guild.get_member(int(brother_id))
+        if not member:
+            return 0, None
+
+        # Check current damage tier from roles
+        current_tier = _get_member_damage_tier(member)
+        penalty = _get_damage_penalty(current_tier)
+
+        # Get user stats for grace period check
+        stats = compute_stats_for_user(str(brother_id))
+        total_aar_points = int(stats.get("aar_points", 0) or 0)
+
+        # Check grace period
+        if not _check_armor_grace_period(member, total_aar_points):
+            return penalty, None
+
+        # Get current armor state
+        state = await _get_armor_state(int(brother_id))
+
+        # Accumulate points (use base unpenalized points for tracking)
+        state["points_since_blessing"] = (
+            state.get("points_since_blessing", 0) + base_points
+        )
+
+        # Check if damage occurs
+        damage_occurred = await _run_armor_integrity_check(
+            state["points_since_blessing"]
+        )
+
+        if damage_occurred:
+            # Escalate damage tier
+            new_tier = await _escalate_damage_tier(member, guild, current_tier)
+            if new_tier:
+                state["damage_tier"] = new_tier
+                if new_tier == "critical":
+                    state["critical_aar_count"] = 0  # Reset on entering critical
+                alert_info = {
+                    "member": member,
+                    "tier": new_tier,
+                    "critical_count": 0,
+                }
+        elif current_tier == "critical":
+            # Already at critical, increment AAR count
+            state["critical_aar_count"] = state.get("critical_aar_count", 0) + 1
+            config = _get_armor_config()
+            fracture_threshold = config.get(
+                "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
+            )
+
+            if state["critical_aar_count"] >= fracture_threshold:
+                # Spirit fractures
+                state["spirit_fractured"] = True
+
+        # Save updated state
+        await _set_armor_state(int(brother_id), state)
+
+        return penalty, alert_info
+
+    except Exception:
+        return penalty, None
+
+
+def _get_armor_status_for_blessing(
+    was_damaged: bool,
+    damage_tier: Optional[str],
+    spirit_fractured: bool,
+) -> dict:
+    """Get the status line values for a forge_rite blessing based on armor state."""
+    if spirit_fractured:
+        return ARMOR_STATUS_FRACTURED
+    elif damage_tier == "critical":
+        return ARMOR_STATUS_CRITICAL
+    elif damage_tier == "compromised":
+        return ARMOR_STATUS_COMPROMISED
+    elif damage_tier == "damaged" or was_damaged:
+        return ARMOR_STATUS_DAMAGED
+    else:
+        return ARMOR_STATUS_NOMINAL
 
 
 def _extract_killteam_name(name: str) -> str:
@@ -5509,67 +6085,6 @@ def _get_bearer_rank_and_title(
     return honorific, display_name, title
 
 
-class ForgeRiteToggleView(discord.ui.View):
-    """Toggle view for Forge Rite attestation: PC/Console (ANSI) vs Mobile (Embed)."""
-
-    def __init__(
-        self,
-        text_content: str,
-        embed: discord.Embed,
-        bearer_mention: str,
-        default: str = "ansi",
-    ):
-        super().__init__(timeout=None)  # No timeout - buttons work until bot restart
-        self.text_content = text_content
-        self.embed_obj = embed
-        self.bearer_mention = bearer_mention
-        self.current = default if default in ("ansi", "embed") else "ansi"
-        self._ansi_max_len = 1900
-        self._update_buttons()
-
-    def _update_buttons(self):
-        # Only PC/Console button remains; disable if ANSI too long
-        for child in self.children:
-            if isinstance(child, discord.ui.Button):
-                if child.custom_id == "forge_show_ansi":
-                    too_long = len(self.text_content) > self._ansi_max_len
-                    child.disabled = too_long
-
-    @discord.ui.button(
-        label="PC/Console",
-        style=discord.ButtonStyle.secondary,
-        custom_id="forge_show_ansi",
-    )
-    async def show_ansi(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        if len(self.text_content) > self._ansi_max_len:
-            try:
-                await interaction.response.send_message(
-                    "PC/Console view exceeds message limit.",
-                    ephemeral=True,
-                )
-            except Exception:
-                pass
-            return
-        # Send ANSI view as ephemeral message (only the clicker sees it)
-        try:
-            await interaction.response.send_message(
-                content=f"{self.bearer_mention}\n{self.text_content}",
-                ephemeral=True,
-            )
-        except Exception:
-            try:
-                await interaction.followup.send(
-                    "Unable to show PC/Console view.", ephemeral=True
-                )
-            except Exception:
-                pass
-
-    # Mobile button removed - embed is now the default public view.
-    # Users can click PC/Console to get an ephemeral ANSI view.
-
-
 def _get_bearer_home_chapter(user: discord.User | discord.Member) -> Optional[str]:
     """Return the bearer's home chapter only (not company). Used for chapter blessings."""
     try:
@@ -5689,6 +6204,18 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     except Exception:
         pass
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Check armor integrity state BEFORE clearing
+    # ─────────────────────────────────────────────────────────────────────────
+    current_damage_tier = _get_member_damage_tier(member)
+    was_damaged = current_damage_tier is not None
+    spirit_fractured = await _check_spirit_fracture(int(member.id))
+
+    # Get armor status for status lines
+    armor_status = _get_armor_status_for_blessing(
+        was_damaged, current_damage_tier, spirit_fractured
+    )
+
     # Find the responsible attestor based on BEARER's company/role (not caller)
     attestor_member, role_key = _find_responsible_attestor(member, interaction.guild)
     if attestor_member is None:
@@ -5760,43 +6287,47 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Random sacred Mechanicus phrase
     sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
 
-    # Machine-spirit designation: persist across blessings for the same bearer
-    # 85% chance to reawaken existing spirit, 15% chance armor was damaged and new spirit bound
+    # ─────────────────────────────────────────────────────────────────────────
+    # Machine-spirit designation with armor integrity awareness
+    # ─────────────────────────────────────────────────────────────────────────
     import hashlib
 
     existing_spirit = await _get_machine_spirit(int(member.id))
     spirit_is_returning = False
-    spirit_is_new_armor = False
+    spirit_is_reconsecrated = False
+    spirit_is_restored = False
+    spirit_is_first = False
 
-    if existing_spirit:
-        # Bearer has been blessed before - determine if same spirit or new armor
-        if random.random() < 0.85:
-            # Same spirit reawakens
-            spirit_designation = existing_spirit
-            spirit_is_returning = True
+    if spirit_fractured:
+        # Spirit was lost due to neglect at critical - generate new spirit (re-consecration)
+        spirit_hash = (
+            hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
+            .hexdigest()[:6]
+            .upper()
+        )
+        spirit_prefixes = [
+            "FURY",
+            "AEGIS",
+            "VIGIL",
+            "TALON",
+            "WRATH",
+            "PURITY",
+            "FERRUM",
+            "MORTIS",
+            "VENATOR",
+            "GLADIUS",
+        ]
+        spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+        spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
+        await _set_machine_spirit(int(member.id), spirit_designation)
+        spirit_is_reconsecrated = True
+    elif existing_spirit:
+        # Spirit intact - preserve it
+        spirit_designation = existing_spirit
+        if was_damaged:
+            spirit_is_restored = True
         else:
-            # Old armor was destroyed, new spirit bound
-            spirit_hash = (
-                hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
-                .hexdigest()[:6]
-                .upper()
-            )
-            spirit_prefixes = [
-                "FURY",
-                "AEGIS",
-                "VIGIL",
-                "TALON",
-                "WRATH",
-                "PURITY",
-                "FERRUM",
-                "MORTIS",
-                "VENATOR",
-                "GLADIUS",
-            ]
-            spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
-            spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
-            await _set_machine_spirit(int(member.id), spirit_designation)
-            spirit_is_new_armor = True
+            spirit_is_returning = True
     else:
         # First blessing - generate and store new spirit
         spirit_hash = (
@@ -5819,9 +6350,14 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
         spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
         await _set_machine_spirit(int(member.id), spirit_designation)
+        spirit_is_first = True
 
     # Flavor text for spirit status
-    if spirit_is_returning:
+    if spirit_is_reconsecrated:
+        spirit_status_text = random.choice(SPIRIT_RECONSECRATION_PHRASES)
+    elif spirit_is_restored:
+        spirit_status_text = random.choice(SPIRIT_RESTORATION_PHRASES)
+    elif spirit_is_returning:
         spirit_status_phrases = [
             "The machine spirit stirs, recognizing its bearer",
             "Ancient recognition-rites confirm: spirit and bearer are one",
@@ -5829,15 +6365,7 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             "Cogitator confirms: spirit-bond integrity remains absolute",
         ]
         spirit_status_text = random.choice(spirit_status_phrases)
-    elif spirit_is_new_armor:
-        spirit_status_phrases = [
-            "Previous plate lost in sacred combat. A new spirit is bound",
-            "The old armor fell in glorious service. Fresh spirit awakened",
-            "Warplate restored from the dead; new spirit consecrated",
-            "Prior spirit returned to the Omnissiah. Successor now bound",
-        ]
-        spirit_status_text = random.choice(spirit_status_phrases)
-    else:
+    else:  # spirit_is_first
         spirit_status_phrases = [
             "First binding complete. Spirit and bearer are now one",
             "Virgin armor awakened. The spirit stirs for the first time",
@@ -5847,90 +6375,16 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         spirit_status_text = random.choice(spirit_status_phrases)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Assemble ANSI block (PC/Console view)
+    # Clear armor damage (roles and state) - this is the blessing effect
     # ─────────────────────────────────────────────────────────────────────────
-    lines = []
-    lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
-    lines.append("  WATCH FORTRESS JERICHO // COGITATOR-ATTESTATION")
-    lines.append("  COGITATOR RITE — FORGE ATTESTATION")
-    lines.append(
-        "=============================================================================="
-    )
-
-    # Bearer section
-    lines.append("▸ BEARER DESIGNATION")
-    bearer_line = f"  {bearer_honorific} {bearer_name}"
-    if bearer_title:
-        bearer_line += f" • {bearer_title}"
-    lines.append(bearer_line)
-    if bearer_chapter:
-        lineage_display = (
-            "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
-        )
-        lines.append(f"  Lineage: {lineage_display}")
-    if bearer_studs > 0:
-        # Tiered stud display using shared helper (auramite-only post-4)
-        studs_pips = _studs_pips(bearer_studs)
-        lines.append(f"  Service Studs: [{studs_pips}] ({bearer_studs})")
-    lines.append("")
-
-    # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs using shared _studs_tier()
-    bearer_studs_for_tier = _compute_member_service_studs(member) if member else 0
-    tier_for_honor = _studs_tier(bearer_studs_for_tier)
-
-    # Select tier-appropriate Ordo Xenos honor
-    if tier_for_honor == 1:
-        ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER1)
-    elif tier_for_honor == 2:
-        ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER2)
-    else:
-        ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
-
-    if chapter_blessing:
-        lines.append("▸ HONOR OF THE LONG WATCH")
-        lines.append(f'  "{ordo_honor} {stud_acknowledgment} {chapter_blessing}"')
-        lines.append("")
-    else:
-        lines.append("▸ HONOR OF THE LONG WATCH")
-        lines.append(f'  "{ordo_honor} {stud_acknowledgment}"')
-        lines.append("")
-
-    # Status
-    lines.append("▸ MACHINE-SPIRIT STATUS")
-    lines.append(f"  Spirit Designation .... {spirit_designation}")
-    lines.append(f"  Spirit Bond ........... {spirit_status_text}")
-    lines.append("  Inspection ............ PASSED")
-    lines.append("  Compliance ............ CONFIRMED")
-    lines.append("  Warplate Integrity .... SANCTIFIED")
-    lines.append("")
-
-    # Litany to the Machine-Spirit (user's custom rite - unquoted, direct address)
-    if rite_text:
-        lines.append("▸ LITANY TO THE MACHINE-SPIRIT")
-        for line in str(rite_text).splitlines():
-            lines.append(f"  {line}")
-        lines.append("")
-
-    # Attestation: techmarine, date, authority, sacred phrase
-    lines.append("▸ ATTESTATION")
-    # Techmarine name with rank
-    attester_with_rank = f"{tech_rank_name} {attester}" if tech_rank_name else attester
-    lines.append(f"  {attester_with_rank}")
-    lines.append(f"  {authority} • {ts}")
-    lines.append(f'  "{sacred_phrase}"')
-    lines.append("\u001b[0m```")
-
-    ansi_content = "\n".join(lines)
+    if interaction.guild:
+        await _clear_armor_damage(member, interaction.guild)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Build Mobile embed (condensed format)
+    # Build embed
     # ─────────────────────────────────────────────────────────────────────────
 
-    # Get emojis for rank and chapter (mobile embed only - ANSI can't render them)
+    # Get emojis for rank and chapter
     guild = interaction.guild
     # Extract raw rank name from bearer_honorific by reverse-lookup
     bearer_rank_name = None
@@ -5952,10 +6406,8 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         color=0x2ECC71,
     )
 
-    # Bearer field (condensed) with emojis
-    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    # Bearer field with emojis
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    # Defensive pip stripping in case they survived from display name
     bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
@@ -5971,23 +6423,44 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
-        # Tiered stud display using shared helper (auramite-only post-4)
         studs_pips = _studs_pips(bearer_studs)
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
-    # Status field with spirit bond flavor
-    embed.add_field(
-        name="▸ Machine-Spirit",
-        value=f"Spirit: `{spirit_designation}`\n*{spirit_status_text}*\n✅ Inspection: PASSED\n✅ Compliance: CONFIRMED\n✅ Integrity: SANCTIFIED",
-        inline=True,
+    # Status field with dynamic armor status
+    # Determine status emoji based on armor state
+    plate_status = armor_status.get("plate", "NOMINAL")
+    spirit_status = armor_status.get("spirit", "STABLE")
+    rite_status = armor_status.get("rite", "MAINTENANCE")
+
+    # Use appropriate emoji based on status
+    plate_emoji = (
+        "✅"
+        if plate_status == "NOMINAL"
+        else ("🔴" if "CRITICAL" in plate_status else "⚠️")
+    )
+    spirit_emoji = (
+        "✅"
+        if spirit_status == "STABLE"
+        else ("🔴" if spirit_status == "FRACTURED" else "⚠️")
+    )
+    rite_emoji = (
+        "✅"
+        if rite_status == "MAINTENANCE"
+        else ("⚠️" if rite_status == "RE-CONSECRATION" else "✅")
     )
 
-    # Honor of the Long Watch: Tiered Ordo Xenos phrase + stud acknowledgment + chapter blessing
-    # Determine tier based on bearer's service studs using shared _studs_tier()
-    tier_for_honor = _studs_tier(bearer_studs)
+    status_value = (
+        f"Spirit: `{spirit_designation}`\n"
+        f"*{spirit_status_text}*\n"
+        f"{plate_emoji} Plate: {plate_status}\n"
+        f"{spirit_emoji} Spirit: {spirit_status}\n"
+        f"{rite_emoji} Rite: {rite_status}"
+    )
+    embed.add_field(name="▸ Machine-Spirit", value=status_value, inline=True)
 
-    # Select tier-appropriate Ordo Xenos honor
+    # Honor of the Long Watch
+    tier_for_honor = _studs_tier(bearer_studs)
     if tier_for_honor == 1:
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER1)
     elif tier_for_honor == 2:
@@ -6008,34 +6481,26 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             inline=False,
         )
 
-    # Litany to the Machine-Spirit (user's custom rite - unquoted)
+    # Litany to the Machine-Spirit (user's custom rite)
     if rite_text:
         rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
         embed.add_field(
             name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False
         )
 
-    # Attestation: rank emoji before techmarine name, authority, date, sacred phrase
+    # Attestation
     rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
     attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
     tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
     embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Send with toggle view
+    # Send embed (no toggle view needed)
     # ─────────────────────────────────────────────────────────────────────────
     try:
-        view = ForgeRiteToggleView(
-            text_content=ansi_content,
-            embed=embed,
-            bearer_mention=member.mention,
-            default="embed",
-        )
-        # Default to embed view (mobile-friendly); PC/Console button sends ephemeral ANSI
         await interaction.response.send_message(
             content=member.mention,
             embed=embed,
-            view=view,
             allowed_mentions=discord.AllowedMentions(users=True),
             ephemeral=DEBUG_MODE,
         )
@@ -6046,6 +6511,377 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             )
         except Exception:
             pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Armor Status Command
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _get_armor_status_allowed_channels() -> set:
+    """Get allowed channel IDs for armor_status command from config."""
+    config = _get_armor_config()
+    channel_ids = config.get("armor_status_allowed_channels", [])
+    return {int(c) for c in channel_ids if c}
+
+
+@bot.tree.command(
+    name="armor_status",
+    description="Check armor integrity status for a battle-brother.",
+)
+@app_commands.describe(brother="Brother to check (defaults to self)")
+async def _armor_status(
+    interaction: discord.Interaction, brother: Optional[discord.Member] = None
+):
+    """Display armor integrity status including damage tier and next-mission risk."""
+    # Permission check: caller must be techmarine or forgemaster
+    allowed, _ = _is_techmarine_or_forgemaster(interaction.user)
+    if not allowed:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    # Channel restriction
+    channel_id = getattr(interaction.channel, "id", None)
+    allowed_channels = _get_armor_status_allowed_channels()
+    if channel_id not in allowed_channels:
+        await interaction.response.send_message(
+            "This command may only be used in the arming chamber or Techmarine channels.",
+            ephemeral=True,
+        )
+        return
+
+    # Default to caller if no brother specified
+    target = brother or interaction.user
+    if not isinstance(target, discord.Member):
+        await interaction.response.send_message(
+            "Could not resolve brother.", ephemeral=True
+        )
+        return
+
+    guild = interaction.guild
+
+    # Get armor state from persistent storage
+    armor_state = await _get_armor_state(int(target.id))
+    points_since_blessing = armor_state.get("points_since_blessing", 0)
+    critical_aar_count = armor_state.get("critical_aar_count", 0)
+    spirit_fractured = armor_state.get("spirit_fractured", False)
+
+    # Get current damage tier from Discord roles
+    current_tier = _get_member_damage_tier(target)
+    penalty = _get_damage_penalty(current_tier)
+
+    # Calculate damage probability for next AAR
+    damage_probability = _get_damage_probability(points_since_blessing)
+    prob_percent = damage_probability * 100
+
+    # Check grace period
+    try:
+        stats = await bot.store.get_user_stats_map(str(target.id))
+        total_aar_points = stats.get("aar_points", 0)
+    except Exception:
+        total_aar_points = 0
+    in_grace_period = _check_armor_grace_period(target, total_aar_points)
+
+    # Get bearer display info
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+
+    # Service studs computation
+    bearer_studs = _compute_member_service_studs(target)
+
+    # Home chapter (lineage)
+    bearer_chapter = _get_bearer_home_chapter(target)
+    chapter_emoji = (
+        _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+    )
+
+    bearer_rank_name = None
+    for rank, hon in RANK_HONORIFICS.items():
+        if hon == bearer_honorific or rank in bearer_honorific:
+            bearer_rank_name = rank
+            break
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_display = (
+            f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+        )
+    else:
+        bearer_display = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+
+    if bearer_title:
+        bearer_display += f"\n*{bearer_title}*"
+    # Lineage (home chapter)
+    if bearer_chapter and bearer_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        if bearer_chapter == "Black Shield":
+            bearer_display += f"\nLineage: {chapter_prefix}REDACTED"
+        else:
+            bearer_display += f"\nLineage: {chapter_prefix}{bearer_chapter}"
+    if bearer_studs > 0:
+        studs_pips = _studs_pips(bearer_studs)
+        bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+
+    # Determine embed color and status based on tier
+    config = _get_armor_config()
+    fracture_threshold = config.get(
+        "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
+    )
+
+    if spirit_fractured:
+        color = 0x8B0000  # Dark red - fractured
+        status_icon = "💀"
+        status_text = "SPIRIT FRACTURED"
+        plate_status = "CRITICAL FAILURE"
+        spirit_status = "FRACTURED"
+    elif current_tier == "critical":
+        color = 0xE74C3C  # Red
+        status_icon = "🔴"
+        status_text = "CRITICAL"
+        plate_status = "CRITICAL FAILURE"
+        spirit_status = "UNSTABLE"
+    elif current_tier == "compromised":
+        color = 0xE67E22  # Orange
+        status_icon = "🟠"
+        status_text = "COMPROMISED"
+        plate_status = "STRUCTURAL STRESS"
+        spirit_status = "AGITATED"
+    elif current_tier == "damaged":
+        color = 0xF1C40F  # Yellow
+        status_icon = "🟡"
+        status_text = "DAMAGED"
+        plate_status = "MINOR WEAR"
+        spirit_status = "STABLE"
+    else:
+        color = 0x5D6D7E  # Ethereal blue-grey
+        status_icon = "🟢"
+        status_text = "NOMINAL"
+        plate_status = "NOMINAL"
+        spirit_status = "STABLE"
+
+    embed = discord.Embed(
+        title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+        description="*Cogitator diagnostics complete*",
+        color=color,
+    )
+
+    # Bearer field
+    embed.add_field(
+        name="▸ Subject",
+        value=bearer_display,
+        inline=False,
+    )
+
+    # Status field
+    status_value = f"{status_icon} **{status_text}**"
+    if penalty > 0:
+        status_value += f"\n*-{penalty} AAR per mission*"
+    embed.add_field(
+        name="▸ Current Status",
+        value=status_value,
+        inline=True,
+    )
+
+    # Diagnostics field
+    diag_lines = [
+        f"**Plate:** {plate_status}",
+        f"**Spirit:** {spirit_status}",
+        f"**Cycles since blessing:** {points_since_blessing}",
+    ]
+    embed.add_field(
+        name="▸ Diagnostics",
+        value="\n".join(diag_lines),
+        inline=True,
+    )
+
+    # Risk assessment field
+    if in_grace_period:
+        risk_text = "🛡️ **Grace period active**\n*No damage risk*"
+    elif prob_percent == 0:
+        risk_text = "✅ **Minimal**\n*0% degradation chance*"
+    elif prob_percent <= 2:
+        risk_text = f"✅ **Low**\n*{prob_percent:.0f}% degradation chance*"
+    elif prob_percent <= 8:
+        risk_text = f"⚠️ **Moderate**\n*{prob_percent:.0f}% degradation chance*"
+    elif prob_percent <= 20:
+        risk_text = f"⚠️ **Elevated**\n*{prob_percent:.0f}% degradation chance*"
+    else:
+        risk_text = f"🔴 **High**\n*{prob_percent:.0f}% degradation chance*"
+
+    embed.add_field(
+        name="▸ Next Mission Risk",
+        value=risk_text,
+        inline=False,
+    )
+
+    # Warning field for critical/fractured
+    if spirit_fractured:
+        embed.add_field(
+            name="▸ ⚠️ CRITICAL WARNING",
+            value="Spirit bond severed. Immediate re-consecration required via `/forge_rite`.\nNew machine spirit must be bound.",
+            inline=False,
+        )
+    elif current_tier == "critical":
+        remaining = fracture_threshold - critical_aar_count
+        embed.add_field(
+            name="▸ ⚠️ CRITICAL WARNING",
+            value=f"AAR submissions until spirit fracture: **{remaining}**\nImmediate blessing required via `/forge_rite`.",
+            inline=False,
+        )
+    elif current_tier in ("damaged", "compromised"):
+        embed.add_field(
+            name="▸ Recommendation",
+            value="Schedule blessing via `/forge_rite` to restore integrity.",
+            inline=False,
+        )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(
+    name="preview_armor_alert",
+    description="[DEBUG] Preview armor damage alert for a brother.",
+)
+@app_commands.describe(
+    brother="Brother to preview",
+    tier="Damage tier to simulate",
+    critical_count="Number of AARs at critical (for critical tier countdown)",
+)
+@app_commands.choices(
+    tier=[
+        app_commands.Choice(name="Damaged (-1 AAR)", value="damaged"),
+        app_commands.Choice(name="Compromised (-2 AAR)", value="compromised"),
+        app_commands.Choice(name="Critical (-3 AAR)", value="critical"),
+    ]
+)
+async def _preview_armor_alert(
+    interaction: discord.Interaction,
+    brother: discord.Member,
+    tier: str = "damaged",
+    critical_count: int = 1,
+):
+    """Preview armor damage alert without modifying roles or state."""
+    # Permission check: caller must be techmarine or forgemaster
+    allowed, _ = _is_techmarine_or_forgemaster(interaction.user)
+    if not allowed:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    penalty = _get_damage_penalty(tier)
+    config = _get_armor_config()
+    fracture_threshold = config.get(
+        "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
+    )
+
+    # Get bearer info using the same pattern as forge_rite/stud announcements
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(brother)
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+
+    # Service studs computation
+    bearer_studs = _compute_member_service_studs(brother)
+
+    # Home chapter (lineage)
+    bearer_chapter = _get_bearer_home_chapter(brother)
+    chapter_emoji = (
+        _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+    )
+
+    # Get rank emoji
+    bearer_rank_name = None
+    for rank, hon in RANK_HONORIFICS.items():
+        if hon == bearer_honorific or rank in bearer_honorific:
+            bearer_rank_name = rank
+            break
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+
+    # Build bearer display string (matching forge_rite style)
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_display = (
+            f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+        )
+    else:
+        bearer_display = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+
+    if bearer_title:
+        bearer_display += f"\n*{bearer_title}*"
+    # Lineage (home chapter)
+    if bearer_chapter and bearer_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        if bearer_chapter == "Black Shield":
+            bearer_display += f"\nLineage: {chapter_prefix}REDACTED"
+        else:
+            bearer_display += f"\nLineage: {chapter_prefix}{bearer_chapter}"
+    if bearer_studs > 0:
+        studs_pips = _studs_pips(bearer_studs)
+        bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+
+        # Determine embed color and title based on tier
+        color = 0xE74C3C  # Red
+        title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
+        description = "*Machine spirit instability detected*"
+    else:
+        color = 0xE67E22  # Orange
+        title = "᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭"
+        description = "*Maintenance required*"
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+    )
+
+    # Affected brother field with proper rank display
+    tier_display = tier.title() if tier else "Unknown"
+    embed.add_field(
+        name="▸ Affected Brother",
+        value=f"{bearer_display}\n**Status:** {tier_display} (-{penalty} AAR per mission)",
+        inline=False,
+    )
+
+    # Warning field for critical
+    if tier == "critical":
+        remaining = fracture_threshold - critical_count
+        embed.add_field(
+            name="▸ Warning",
+            value=f"⚠️ AAR submissions until spirit fracture: **{remaining}**",
+            inline=False,
+        )
+        embed.add_field(
+            name="▸ Immediate Techmarine Response Required",
+            value="Administer blessing via `/forge_rite` to preserve machine spirit bond.",
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="▸ Techmarine Response Required",
+            value="Administer blessing via `/forge_rite` to restore armor integrity.",
+            inline=False,
+        )
+
+    # Build preview content
+    tech_role_id = _get_techmarine_role_id()
+    content = f"**[PREVIEW]** "
+    if tech_role_id:
+        content += f"<@&{tech_role_id}> {brother.mention}"
+    else:
+        content += f"@Watch Techmarine {brother.mention}"
+
+    await interaction.response.send_message(
+        content=content,
+        embed=embed,
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(
@@ -7113,7 +7949,56 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             if scanned % 10 == 0:
                 _print_progress("Ingest New AARs", scanned, scanned)
             continue
+
+        # --- Armor Integrity: Check penalties BEFORE saving ---
+        guild = aar_channel.guild
+        brother_ids = record.get("brother_ids", [])
+        base_points = record.get("points_for_op", 0)
+        armor_penalties = {}
+
+        if guild and brother_ids:
+            for bid in brother_ids:
+                try:
+                    member = guild.get_member(int(bid))
+                    if member:
+                        tier = _get_member_damage_tier(member)
+                        penalty = _get_damage_penalty(tier)
+                        if penalty > 0:
+                            armor_penalties[bid] = penalty
+                except Exception:
+                    pass
+
+        # Store armor penalties in the record
+        if armor_penalties:
+            record["armor_penalties"] = armor_penalties
+
         await save_aar_record(record)
+
+        # --- Armor Integrity: Run checks and post alerts AFTER saving ---
+        alerts_to_post = []
+        if guild and brother_ids:
+            for bid in brother_ids:
+                try:
+                    penalty, alert_info = await _process_armor_integrity_for_aar(
+                        bid, base_points, guild
+                    )
+                    if alert_info:
+                        alerts_to_post.append(alert_info)
+                except Exception:
+                    pass
+
+        # Post any armor alerts (outside the loop to avoid rate limits)
+        for alert in alerts_to_post:
+            try:
+                await _post_armor_alert(
+                    alert["member"],
+                    alert["tier"],
+                    alert.get("critical_count", 0),
+                    guild,
+                )
+            except Exception:
+                pass
+
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:
             data = _load_json_dict(AAR_ERRORS_PATH)
@@ -12674,9 +13559,11 @@ async def _compute_fortress_rankings(
         # Filter to users meeting minimum ops threshold if specified;
         # fall back to all users when none meet the threshold (matching
         # monthly honours fallback behaviour to avoid empty leaderboards).
-        eligible_users = {
-            uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops
-        } if min_ops > 0 else users
+        eligible_users = (
+            {uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops}
+            if min_ops > 0
+            else users
+        )
         if not eligible_users:
             eligible_users = users
         items = [(uid, v.get(metric_key, 0)) for uid, v in eligible_users.items()]
@@ -12690,9 +13577,11 @@ async def _compute_fortress_rankings(
         # Filter to teams meeting minimum ops threshold if specified;
         # fall back to all teams when none meet the threshold (matching
         # monthly honours fallback behaviour to avoid empty leaderboards).
-        eligible_teams = {
-            tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops
-        } if min_ops > 0 else teams
+        eligible_teams = (
+            {tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops}
+            if min_ops > 0
+            else teams
+        )
         if not eligible_teams:
             eligible_teams = teams
         items = [(tid, v.get(metric_key, 0)) for tid, v in eligible_teams.items()]
@@ -12743,7 +13632,9 @@ async def _compute_fortress_rankings(
         "gene_carried": rank_teams("gene_carried", min_ops=user_min_ops_required),
         "high_risk": rank_teams("high_risk", min_ops=user_min_ops_required),
         "omega_kia": rank_teams("omega_kia", min_ops=user_min_ops_required),
-        "avg_aar_per_member": rank_teams("avg_aar_per_member", min_ops=user_min_ops_required),
+        "avg_aar_per_member": rank_teams(
+            "avg_aar_per_member", min_ops=user_min_ops_required
+        ),
         "cohesion": rank_teams("cohesion", min_ops=user_min_ops_required),
     }
 
@@ -16276,7 +17167,9 @@ async def promotion_queue(interaction: discord.Interaction):
 
     def _format_member_with_rank(member: discord.Member) -> str:
         """Format member with rank emoji + stripped name (combat bonds style, no @mention)."""
-        return _format_member_styled(guild, str(member.id), chapters_map=None, include_chapter=False)
+        return _format_member_styled(
+            guild, str(member.id), chapters_map=None, include_chapter=False
+        )
 
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
