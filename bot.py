@@ -6523,9 +6523,18 @@ def _get_armor_status_allowed_channels() -> set:
     """Get allowed channel IDs for armor_status command from config."""
     config = _get_armor_config()
     channel_ids = config.get("armor_status_allowed_channels", [])
-    return {int(c) for c in channel_ids if c}
 
+    allowed_channels: set[int] = set()
+    for c in channel_ids:
+        if not c:
+            continue
+        try:
+            allowed_channels.add(int(c))
+        except (TypeError, ValueError):
+            # Skip invalid entries to avoid breaking the command on bad config
+            continue
 
+    return allowed_channels
 @bot.tree.command(
     name="armor_status",
     description="Check armor integrity status for a battle-brother.",
