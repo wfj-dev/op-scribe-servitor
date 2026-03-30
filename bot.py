@@ -7956,7 +7956,17 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         # --- Armor Integrity: Check penalties BEFORE saving ---
         guild = aar_channel.guild
         brother_ids = record.get("brother_ids", [])
-        base_points = record.get("points_for_op", 0)
+        # Compute per-brother base points using difficulty_class and waves information.
+        difficulty_class = record.get("difficulty_class") or 0
+        global_waves = record.get("waves")
+        brother_waves = record.get("brother_waves") or {}
+        base_points = {}
+        if brother_ids:
+            for bid in brother_ids:
+                waves_for_brother = brother_waves.get(bid, global_waves)
+                if waves_for_brother is None:
+                    waves_for_brother = 0
+                base_points[bid] = difficulty_class + waves_for_brother
         armor_penalties = {}
 
         if guild and brother_ids:
