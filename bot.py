@@ -5,7 +5,7 @@
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
 # TODO: are commands queued? i know we use locks but do commands enter a queue?
 # TODO: should we split this file up? its getting pretty long. maybe aars.py for AAR-related commands and processing, awards.py for awards and milestones, etc? or is it better to keep it all together since there is some interdependence and shared state (e.g. datastore access, config, locks)? maybe we can split out some of the more self-contained features like rites and machine spirits into separate modules to reduce clutter in the main bot file while keeping core command handling together? would also make it easier to manage imports and dependencies if we have more focused modules. on the other hand, having everything in one file can make it easier to see the overall flow and shared context without jumping between files. maybe we can start by splitting out just the AAR processing into aars.py since that is a large chunk of functionality, and keep the rest in bot.py for now? then if we find that awards/milestones or rites/machine spirits are also getting large we can consider splitting those out as well. would need to be careful about circular imports though if we split into multiple files since they all interact with the datastore and config. could potentially have a common module for shared utilities and data access to avoid circular dependencies. overall i think splitting out AAR processing into aars.py makes sense as a first step since it is a distinct area of functionality with its own commands and processing logic, and then we can evaluate if further splits are needed after that.
-# TODO: create command for those not in watch command where they can view their aars like in tally deeds but ONLY their aars. maybe we can overload it?
+# TODO: for armor integriy system - lets track stats for how many blessing each techmarine is doing, which brothers are getting blessed and how much, what their damage values are when they get blessed, and anything else i might be missing.
 
 import os
 import asyncio
@@ -2458,11 +2458,36 @@ ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}
 
 # Default probability tiers (can be overridden in config)
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
-    {"min": 0, "max": 20, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
-    {"min": 21, "max": 50, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
-    {"min": 51, "max": 100, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
-    {"min": 101, "max": 175, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
-    {"min": 176, "max": None, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}},
+    {
+        "min": 0,
+        "max": 20,
+        "chance": 0.0,
+        "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0},
+    },
+    {
+        "min": 21,
+        "max": 50,
+        "chance": 0.02,
+        "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2},
+    },
+    {
+        "min": 51,
+        "max": 100,
+        "chance": 0.08,
+        "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5},
+    },
+    {
+        "min": 101,
+        "max": 175,
+        "chance": 0.20,
+        "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10},
+    },
+    {
+        "min": 176,
+        "max": None,
+        "chance": 0.40,
+        "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15},
+    },
 ]
 
 # Grace period defaults
@@ -2548,6 +2573,7 @@ def _save_armor_integrity(data: dict):
 
 # Batch armor integrity helpers for bulk ingest operations
 # These avoid repeated file I/O by working with an in-memory dict
+
 
 def _get_armor_state_from_batch(user_id: int, batch_data: dict) -> dict:
     """Get armor state from batch data (in-memory, no file I/O)."""
@@ -2650,15 +2676,15 @@ def _get_damage_probability(points_since_blessing: int) -> float:
 
 def _roll_damage_tier(points_since_blessing: int) -> str:
     """Roll which damage tier to apply based on weighted probabilities.
-    
+
     Returns one of: 'damaged', 'compromised', 'critical'
     """
     tier = _get_probability_tier_for_points(points_since_blessing)
-    
+
     # Default weights if not specified
     default_weights = {"damaged": 100, "compromised": 0, "critical": 0}
     weights = tier.get("damage_weights", default_weights) if tier else default_weights
-    
+
     # Build weighted list
     damage_tiers = []
     tier_weights = []
@@ -2667,11 +2693,11 @@ def _roll_damage_tier(points_since_blessing: int) -> str:
         if weight > 0:
             damage_tiers.append(damage_tier)
             tier_weights.append(weight)
-    
+
     # If no valid weights, default to damaged
     if not damage_tiers:
         return "damaged"
-    
+
     # Weighted random selection
     total = sum(tier_weights)
     roll = random.uniform(0, total)
@@ -2680,7 +2706,7 @@ def _roll_damage_tier(points_since_blessing: int) -> str:
         cumulative += weight
         if roll <= cumulative:
             return damage_tiers[i]
-    
+
     return damage_tiers[-1]
 
 
@@ -3074,7 +3100,9 @@ async def _process_armor_integrity_for_aar(
         if damage_occurred:
             # Roll which damage tier to apply based on current points
             rolled_tier = _roll_damage_tier(state["points_since_blessing"])
-            new_tier = await _apply_damage_tier(member, guild, current_tier, rolled_tier)
+            new_tier = await _apply_damage_tier(
+                member, guild, current_tier, rolled_tier
+            )
             if new_tier and new_tier != current_tier:
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
@@ -3452,252 +3480,6 @@ def check_command_permission(
 
     # Most other commands default to Watch Sergeant or higher
     return is_sergeant_or_higher(user)
-
-
-def check_tally_deeds_permissions_in_kt_post(
-    interaction: discord.Interaction,
-    kt_role: Optional[discord.Role],
-    target: Optional[discord.Member],
-) -> Tuple[bool, Optional[str]]:
-    """Special permission gating when `/tally_deeds` is invoked inside
-    a Kill Team forum post (thread).
-
-    Returns (handled, error_message).
-    - handled == False: caller is NOT in a KT post context; caller should
-      fall through to existing permission checks.
-    - handled == True and error_message is None: permission granted for
-      KT-post invocation; proceed with command.
-    - handled == True and error_message is str: deny with that message.
-    """
-    try:
-        ch = getattr(interaction, "channel", None)
-        if ch is None:
-            return False, None
-        # Duck-type: Threads have a `parent` attribute and are instances of discord.Thread
-        is_thread = (
-            isinstance(ch, discord.Thread)
-            if hasattr(discord, "Thread")
-            else getattr(ch, "type", None) == discord.ChannelType.public_thread
-        )
-        parent = getattr(ch, "parent", None)
-        parent_id = getattr(parent, "id", None)
-        ch_id = getattr(ch, "id", None)
-
-        # KT context if either:
-        # - invocation is inside a thread whose parent (forum) is in allowed list
-        # - invocation is inside the forum channel itself and its id is in allowed list
-        is_kt_context = False
-        try:
-            if (
-                is_thread
-                and parent_id is not None
-                and parent_id in ALLOWED_KT_FORUM_PARENT_IDS
-            ):
-                is_kt_context = True
-            elif ch_id is not None and ch_id in ALLOWED_KT_FORUM_PARENT_IDS:
-                is_kt_context = True
-        except Exception:
-            is_kt_context = False
-
-        if not is_kt_context:
-            # Not a Kill Team post we care about; let existing checks run
-            return False, None
-
-        # Inside a configured Kill Team post: enforce special rules.
-        caller = interaction.user
-        caller_role_names = _canonical_role_names(caller)
-        allowed_ranks = {
-            "Watch Sergeant",
-            "Watch Lieutenant",
-            "Watch Captain",
-            "Forgemaster",
-        }
-        if not any(r in caller_role_names for r in allowed_ranks):
-            return (
-                True,
-                "This command in Kill Team posts is restricted to Sergeants leading this Kill Team and Lieutenants or Captains in this Company.",
-            )
-
-        # Validate provided Kill Team role (if given)
-        if kt_role is not None:
-            try:
-                krid = int(getattr(kt_role, "id", 0) or 0)
-            except Exception:
-                return True, "Invalid Kill Team role provided."
-            # Forgemaster path will perform name-based validation below; do
-            # not enforce the global ALLOWED_KT_ROLE_IDS membership for them
-            # here (avoids blocking Forgemaster when the allowlist contains
-            # different IDs such as forum/channel IDs).
-            if "Forgemaster" not in caller_role_names:
-                if ALLOWED_KT_ROLE_IDS and krid not in ALLOWED_KT_ROLE_IDS:
-                    return (
-                        True,
-                        "The specified Kill Team role is not permitted in this context.",
-                    )
-
-        # Build caller and target role id sets
-        try:
-            caller_role_ids = {
-                int(getattr(r, "id", 0)) for r in getattr(caller, "roles", [])
-            }
-        except Exception:
-            caller_role_ids = set()
-        try:
-            target_role_ids = (
-                {int(getattr(r, "id", 0)) for r in getattr(target, "roles", [])}
-                if target
-                else set()
-            )
-        except Exception:
-            target_role_ids = set()
-
-        # Sergeant rules
-        if "Watch Sergeant" in caller_role_names:
-            # Sergeant may only operate for their own Kill Team.
-            # They must have a KT role among ALLOWED_KT_ROLE_IDS and if kt_role arg provided it must match theirs.
-            sergeant_kt = caller_role_ids & (ALLOWED_KT_ROLE_IDS or set())
-            if not sergeant_kt:
-                return (
-                    True,
-                    "Sergeants must have an assigned Kill Team role to use this command in Kill Team posts.",
-                )
-            if kt_role is not None:
-                if int(getattr(kt_role, "id", 0) or 0) not in sergeant_kt:
-                    return (
-                        True,
-                        "Sergeants may only specify their own Kill Team role when running this command here.",
-                    )
-            else:
-                # No kt_role arg: require a target who shares a KT role with the sergeant
-                if not target:
-                    return (
-                        True,
-                        "Sergeants must specify a target Brother or their Kill Team role when running this command in a Kill Team post.",
-                    )
-                if not (sergeant_kt & target_role_ids):
-                    return True, "Target is not a member of the Sergeant's Kill Team."
-            # If kt_role provided and target provided, also ensure target has that role
-            if kt_role is not None and target is not None:
-                if int(getattr(kt_role, "id", 0) or 0) not in target_role_ids:
-                    return (
-                        True,
-                        "Target member does not belong to the specified Kill Team.",
-                    )
-
-            # All sergeant checks passed
-            return True, None
-
-        # Forgemaster: may run in any KT post, but args must align with the
-        # Kill Team associated with this thread (no company restriction).
-        if "Forgemaster" in caller_role_names:
-            # Infer kill team name from thread or parent
-            thread_name = getattr(ch, "name", None) or ""
-            if not thread_name:
-                thread_name = getattr(parent, "name", None) or ""
-            thread_kt = (
-                _extract_killteam_name(thread_name).lower() if thread_name else ""
-            )
-
-            # If a kt_role was provided, validate role id and that its name matches thread
-            if kt_role is not None:
-                try:
-                    krid = int(getattr(kt_role, "id", 0) or 0)
-                except Exception:
-                    return True, "Invalid Kill Team role provided."
-                # Forgemaster: allow any KT role id, but require the role's
-                # name to match the thread (so a Forgemaster cannot run
-                # Kill Team WiFi actions from the Kill Team Solomon channel).
-                kt_name = _extract_killteam_name(getattr(kt_role, "name", "")).lower()
-                if thread_kt and not (thread_kt in kt_name or kt_name in thread_kt):
-                    return (
-                        True,
-                        "The specified Kill Team role does not match this thread.",
-                    )
-                if target is not None and krid not in target_role_ids:
-                    return (
-                        True,
-                        "Target member does not belong to the specified Kill Team.",
-                    )
-                return True, None
-
-            # No kt_role provided: require a target whose KT role matches the thread
-            if target is None:
-                return (
-                    True,
-                    "Forgemaster must specify a Kill Team role or a target when using this command in a Kill Team post.",
-                )
-            # Find target's KT roles (by allowed IDs if configured, else any role whose name looks like a KT)
-            target_kt_roles = []
-            for r in getattr(target, "roles", []) or []:
-                try:
-                    rid = int(getattr(r, "id", 0) or 0)
-                except Exception:
-                    rid = 0
-                if ALLOWED_KT_ROLE_IDS:
-                    if rid in ALLOWED_KT_ROLE_IDS:
-                        target_kt_roles.append(r)
-                else:
-                    # Heuristic: role name contains 'kill' and 'team'
-                    rn = (getattr(r, "name", "") or "").lower()
-                    if "kill" in rn and "team" in rn:
-                        target_kt_roles.append(r)
-            if not target_kt_roles:
-                return True, "Target member has no recognized Kill Team role."
-            # Ensure at least one target KT role matches the thread name
-            match = False
-            for r in target_kt_roles:
-                rn = _extract_killteam_name(getattr(r, "name", "")).lower()
-                if thread_kt and (thread_kt in rn or rn in thread_kt):
-                    match = True
-                    break
-            if not match:
-                return True, "Target member's Kill Team does not match this thread."
-            return True, None
-
-        # Lieutenant / Captain rules
-        # Determine owning company roles for this forum parent
-        owning_company_ids = FORUM_PARENT_COMPANY_ROLE_IDS.get(parent_id, set())
-        if not owning_company_ids:
-            # If no mapping configured, deny to be conservative
-            return (
-                True,
-                "Kill Team post not configured with an owning company; contact an administrator.",
-            )
-        if not (caller_role_ids & owning_company_ids):
-            return (
-                True,
-                "You must belong to the company that owns this Kill Team post to run this command here.",
-            )
-
-        # Ensure a kt_role was provided and the target (if any) belongs to it
-        if kt_role is None:
-            return (
-                True,
-                "Lieutenants and Captains must specify a Kill Team role when using this command in a Kill Team post.",
-            )
-        krid = int(getattr(kt_role, "id", 0) or 0)
-        if ALLOWED_KT_ROLE_IDS and krid not in ALLOWED_KT_ROLE_IDS:
-            return (
-                True,
-                "The specified Kill Team role is not permitted in this context.",
-            )
-        if target is None:
-            return (
-                True,
-                "You must specify a target Brother when running this command for a Kill Team here.",
-            )
-        if krid not in target_role_ids:
-            return True, "Target member does not belong to the specified Kill Team."
-
-        # Passed Lt/Captain checks
-        return True, None
-    except Exception:
-        # On unexpected failure, deny with a safe message
-        try:
-            logger.exception("KT permission check failure")
-        except Exception:
-            pass
-        return True, "Permission check failed; contact an administrator."
 
 
 def is_high_command(user: discord.User | discord.Member) -> bool:
@@ -6651,7 +6433,7 @@ def _calculate_armor_risk_score(
     spirit_fractured: bool,
 ) -> int:
     """Calculate a risk score for sorting armor status leaderboard.
-    
+
     Higher score = more urgent/at-risk.
     Score components:
     - Fractured spirit: +10000
@@ -6680,7 +6462,7 @@ async def _show_armor_leaderboard(
     """Show top 10 brothers at risk of armor damage."""
     # Load all armor states
     armor_data = _load_armor_integrity()
-    
+
     if not armor_data:
         embed = discord.Embed(
             title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
@@ -6697,30 +6479,30 @@ async def _show_armor_leaderboard(
             user_id = int(user_id_str)
         except ValueError:
             continue
-        
+
         member = guild.get_member(user_id)
         if not member:
             continue
-        
+
         # Get damage tier from roles (more accurate than stored state)
         current_tier = _get_member_damage_tier(member)
         points_since_blessing = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
-        
+
         risk_score = _calculate_armor_risk_score(
             current_tier, points_since_blessing, spirit_fractured
         )
-        
+
         # Only include if they have any risk (points > 0 or damage)
         if risk_score > 0:
             risk_list.append((member, state, current_tier, risk_score))
-    
+
     # Sort by risk score descending
     risk_list.sort(key=lambda x: x[3], reverse=True)
-    
+
     # Take top 10
     top_10 = risk_list[:10]
-    
+
     if not top_10:
         embed = discord.Embed(
             title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
@@ -6736,13 +6518,13 @@ async def _show_armor_leaderboard(
         description="*Top 10 brothers requiring attention*",
         color=0xE67E22,  # Orange
     )
-    
+
     lines = []
     for i, (member, state, current_tier, risk_score) in enumerate(top_10, 1):
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
         prob = _get_damage_probability(points) * 100
-        
+
         # Status icon
         if spirit_fractured:
             icon = "💀"
@@ -6754,14 +6536,14 @@ async def _show_armor_leaderboard(
             icon = "🟡"
         else:
             icon = "🟢"
-        
+
         # Get display name (short)
         bearer_honorific, bearer_name, _ = _get_bearer_rank_and_title(member)
         bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
         # Truncate long names
         if len(bearer_name) > 18:
             bearer_name = bearer_name[:16] + "…"
-        
+
         # Get rank emoji
         bearer_rank_name = None
         for rank, hon in RANK_HONORIFICS.items():
@@ -6772,14 +6554,16 @@ async def _show_armor_leaderboard(
             bearer_rank_name = "Watch Brother"
         rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
         rank_str = f"{rank_emoji} " if rank_emoji else ""
-        
+
         # Get home chapter emoji
         bearer_chapter = _get_bearer_home_chapter(member)
         chapter_emoji = (
-            _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+            _get_emoji_by_name(guild, bearer_chapter)
+            if bearer_chapter and guild
+            else None
         )
         chapter_str = f"{chapter_emoji}" if chapter_emoji else ""
-        
+
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · -3"
         penalty = _get_damage_penalty(current_tier)
         penalty_str = f" · -{penalty}" if penalty > 0 else ""
@@ -6788,13 +6572,13 @@ async def _show_armor_leaderboard(
         lines.append(
             f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{penalty_str}{prob_str}"
         )
-    
+
     embed.add_field(
         name="▸ Brothers at Risk",
         value="\n".join(lines),
         inline=False,
     )
-    
+
     # Add legend (compact)
     legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged 🟢Nominal"
     embed.add_field(
@@ -6802,9 +6586,9 @@ async def _show_armor_leaderboard(
         value=legend,
         inline=False,
     )
-    
+
     embed.set_footer(text="Use /armor_status @brother for detailed diagnostics")
-    
+
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -9138,26 +8922,13 @@ async def tally_deeds(
             )
             return
 
-    # Special-case: if this is a Kill Team forum/thread post, use KT-specific
-    # permission gating. Otherwise, fall through to the existing checks.
-    try:
-        handled, err = check_tally_deeds_permissions_in_kt_post(
-            interaction, killteam, brother
-        )
-    except Exception:
-        handled, err = False, None
-
-    if handled:
-        if err:
-            await interaction.response.send_message(err, ephemeral=True)
-            return
-    else:
-        if not (
-            check_command_permission(interaction.user, "tally_deeds")
-            and is_allowed_channel(interaction)
-        ):
-            await interaction.response.send_message("Access denied.", ephemeral=True)
-            return
+    # Permission check: requires Watch Command role and allowed channel
+    if not (
+        check_command_permission(interaction.user, "tally_deeds")
+        and is_allowed_channel(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
 
     # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
     if brother and killteam:
@@ -10241,7 +10012,7 @@ async def tally_deeds(
 
                 # ▸ Bearer field (styled like forge_rite/stud announcement)
                 rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-                bearer_value = f"{rank_prefix}**{name_val}**"
+                bearer_value = f"{rank_prefix}**{member_rank_name} {name_val}**"
                 if home_ch and home_ch != "Unknown":
                     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
                     lineage_display = (
@@ -10288,6 +10059,57 @@ async def tally_deeds(
                     f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
                 )
                 embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
+
+                # ▸ Challenges field
+                target_role_names_ch = {
+                    getattr(r, "name", "") for r in getattr(target, "roles", [])
+                }
+                completed_challenges = []
+                for role_name_ch, display_name_ch, emoji_hint in CHALLENGE_ROLES:
+                    if role_name_ch in target_role_names_ch:
+                        emoji_str = ""
+                        if emoji_hint:
+                            if emoji_hint.startswith("unicode:"):
+                                emoji_str = f"{emoji_hint[8:]} "
+                            else:
+                                emoji = _get_emoji_by_name(guild, emoji_hint)
+                                if emoji:
+                                    emoji_str = f"{emoji} "
+                        completed_challenges.append(f"{emoji_str}{display_name_ch}")
+
+                if completed_challenges:
+                    challenge_lines = [f"✦ {c}" for c in completed_challenges]
+                    base_field_name = f"▸ Challenges ({len(completed_challenges)})"
+                    current_chunk = ""
+                    field_index = 0
+
+                    for line in challenge_lines:
+                        prefix = "" if current_chunk == "" else "\n"
+                        line_with_sep = prefix + line
+
+                        if len(current_chunk) + len(line_with_sep) > 1024:
+                            field_name = (
+                                base_field_name
+                                if field_index == 0
+                                else f"{base_field_name} (cont.)"
+                            )
+                            embed.add_field(
+                                name=field_name, value=current_chunk, inline=False
+                            )
+                            field_index += 1
+                            current_chunk = line
+                        else:
+                            current_chunk += line_with_sep
+
+                    if current_chunk:
+                        field_name = (
+                            base_field_name
+                            if field_index == 0
+                            else f"{base_field_name} (cont.)"
+                        )
+                        embed.add_field(
+                            name=field_name, value=current_chunk, inline=False
+                        )
 
                 # Footer
                 embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
@@ -10704,6 +10526,545 @@ async def tally_deeds(
                 )
             else:
                 await interaction.followup.send(embed=honours_embed, ephemeral=True)
+
+
+@bot.tree.command(
+    name="my_deeds",
+    description="View your own Deeds Ledger (Watch Brother only, in your KT channel).",
+)
+async def my_deeds(interaction: discord.Interaction):
+    """Self-service deeds ledger for Watch Brothers in their Kill Team channels.
+
+    Permission requirements:
+    - Caller has the Watch Brother role
+    - Caller does NOT have Watch Command role
+    - Channel is a thread under a configured KT forum
+    - Caller's KT role name matches the thread name
+    """
+    caller = interaction.user
+    caller_role_names = _canonical_role_names(caller)
+
+    # Forgemaster bypass for testing
+    is_forgemaster = "Forgemaster" in caller_role_names
+
+    # Check caller has Watch Brother role (Forgemaster exempt)
+    if not is_forgemaster and (
+        "Watch Brother" not in caller_role_names
+        and "Watch Sister" not in caller_role_names
+    ):
+        await interaction.response.send_message(
+            "This command is for Watch Brothers only.", ephemeral=True
+        )
+        return
+
+    # Deny if caller has Watch Command role (they should use /tally_deeds) - Forgemaster exempt
+    if not is_forgemaster and "Watch Command" in caller_role_names:
+        await interaction.response.send_message(
+            "Watch Command members should use `/tally_deeds` instead.", ephemeral=True
+        )
+        return
+
+    # Check channel is a KT thread
+    ch = getattr(interaction, "channel", None)
+    if ch is None:
+        await interaction.response.send_message(
+            "Could not determine channel context.", ephemeral=True
+        )
+        return
+
+    is_thread = (
+        isinstance(ch, discord.Thread)
+        if hasattr(discord, "Thread")
+        else getattr(ch, "type", None) == discord.ChannelType.public_thread
+    )
+    parent = getattr(ch, "parent", None)
+    parent_id = getattr(parent, "id", None) if parent else None
+
+    if not is_forgemaster and not (
+        is_thread and parent_id and parent_id in ALLOWED_KT_FORUM_PARENT_IDS
+    ):
+        await interaction.response.send_message(
+            "This command can only be used in your Kill Team forum post.",
+            ephemeral=True,
+        )
+        return
+
+    # Get caller's KT role name
+    caller_kt_name = None
+    for r in getattr(caller, "roles", []):
+        rid = getattr(r, "id", None)
+        if rid and ALLOWED_KT_ROLE_IDS and rid in ALLOWED_KT_ROLE_IDS:
+            caller_kt_name = _extract_killteam_name(getattr(r, "name", "")).lower()
+            break
+
+    if not is_forgemaster and not caller_kt_name:
+        await interaction.response.send_message(
+            "You must belong to a Kill Team to use this command.", ephemeral=True
+        )
+        return
+
+    # Extract KT name from thread name and verify match (Forgemaster exempt)
+    thread_name = getattr(ch, "name", "") or ""
+    thread_kt = _extract_killteam_name(thread_name).lower() if thread_name else ""
+
+    if not is_forgemaster and (
+        not thread_kt or not (thread_kt in caller_kt_name or caller_kt_name in thread_kt)
+    ):
+        await interaction.response.send_message(
+            "You can only view your deeds in your own Kill Team's forum post.",
+            ephemeral=True,
+        )
+        return
+
+    # Permission checks passed - defer and compute deeds
+    await interaction.response.defer(thinking=False, ephemeral=True)
+
+    target = caller
+    guild = interaction.guild
+
+    # Compute stats
+    stats = compute_stats_for_user(str(target.id))
+
+    # Determine rank
+    current_rank = "Watch Brother"
+    for rank in RANK_ROLES_PRIORITY:
+        for role in target.roles:
+            if role.name == rank:
+                current_rank = rank
+                break
+        if current_rank != "Watch Brother":
+            break
+
+    display_name = target.nick or target.display_name
+
+    # Join date
+    try:
+        joined_at = getattr(target, "joined_at", None)
+        if joined_at:
+            if joined_at.tzinfo is None:
+                joined_at = joined_at.replace(tzinfo=timezone.utc)
+            ja_utc = joined_at.astimezone(timezone.utc)
+            days_since_join = (datetime.now(timezone.utc) - ja_utc).days
+            joined_str = (
+                f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
+            )
+        else:
+            joined_str = "Unknown"
+    except Exception:
+        joined_str = "Unknown"
+
+    # Service studs (only for Watch Veteran+)
+    MAX_STUDS = 16
+    try:
+        studs_count = 0
+        idx_veteran = _role_index("Watch Veteran")
+        highest_idx = get_highest_rank_index(target)
+        if (
+            idx_veteran is not None
+            and highest_idx is not None
+            and highest_idx <= idx_veteran
+        ):
+            if joined_at:
+                now = datetime.utcnow()
+                ja = joined_at
+                if ja.tzinfo is not None:
+                    ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
+                weeks = max(0, (now - ja).days // 7)
+                studs_time = weeks // 4
+            else:
+                studs_time = 0
+            aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
+            studs_aar = aar_points_val // 400
+            studs_count = min(studs_time, studs_aar, MAX_STUDS)
+    except Exception:
+        studs_count = 0
+    studs_count = min(studs_count, MAX_STUDS)
+
+    # Build studs display
+    try:
+        if not studs_count:
+            studs_display = "— (0 Plasteel)"
+        else:
+            auramite_count = studs_count // 4
+            plasteel_count = studs_count % 4
+            studs_symbols = _studs_pips(studs_count)
+            parts = []
+            if auramite_count:
+                parts.append(f"{auramite_count} Auramite")
+            if plasteel_count:
+                parts.append(f"{plasteel_count} Plasteel")
+            types_str = ", ".join(parts) if parts else "0 Plasteel"
+            studs_display = f"{studs_symbols} ({types_str})"
+    except Exception:
+        studs_display = str(studs_count)
+
+    # Trials reported (inductions)
+    trials_reported = _count_inductions_from_records(
+        str(target.id), DATASTORE.iter_records()
+    )
+
+    # Home chapter
+    try:
+        chapters_map = await _resolve_home_chapters(guild, [str(target.id)])
+        home_chapter = chapters_map.get(str(target.id), "REDACTED")
+    except Exception:
+        home_chapter = "REDACTED"
+
+    # Active/Inactive status
+    try:
+        timestamps = []
+        for rec in DATASTORE.iter_records():
+            if str(target.id) in (rec.get("brother_ids") or []):
+                ts = rec.get("timestamp")
+                if not ts:
+                    continue
+                try:
+                    t = datetime.fromisoformat(ts)
+                except Exception:
+                    continue
+                if t.tzinfo is not None:
+                    t = t.astimezone(timezone.utc).replace(tzinfo=None)
+                timestamps.append(t)
+        status = "Inactive"
+        last_aar_date = None
+        days_since_aar = None
+        if timestamps:
+            timestamps.sort(reverse=True)
+            last_aar_date = timestamps[0]
+            now = datetime.utcnow()
+            days_since_aar = (now - last_aar_date).days
+            cutoff = now - timedelta(days=28)
+            for t in timestamps:
+                if t >= cutoff:
+                    status = "Active"
+                    break
+    except Exception:
+        status = "Inactive"
+        last_aar_date = None
+        days_since_aar = None
+
+    # Company/KT visibility
+    show_company = True
+    company = "Reserves" if status == "Inactive" else "Unknown"
+    kt_name = "Unknown"
+    try:
+        role_names = caller_role_names
+        roles = getattr(target, "roles", [])
+
+        high_command = {
+            "Watch Master",
+            "Lord Executioner",
+            "Forgemaster",
+            "Void Warden",
+            "Chief Apothecary",
+            "High Chaplain",
+        }
+        show_company = not any(r in role_names for r in high_command)
+        if show_company:
+            for role in roles:
+                rn = getattr(role, "name", "") or ""
+                if "company" in rn.lower():
+                    company = rn
+                    break
+
+        for role in roles:
+            rn = getattr(role, "name", "") or ""
+            rn_l = rn.lower()
+            if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
+                kt_name = _extract_killteam_name(rn)
+                break
+    except Exception:
+        pass
+
+    # Format last AAR display
+    if last_aar_date is not None and days_since_aar is not None:
+        try:
+            if last_aar_date.tzinfo is None:
+                last_aar_date = last_aar_date.replace(tzinfo=timezone.utc)
+            aar_utc = last_aar_date.astimezone(timezone.utc)
+            aar_date_str = aar_utc.strftime("%Y-%m-%d")
+        except Exception:
+            aar_date_str = last_aar_date.strftime("%Y-%m-%d")
+        last_aar_display = f"{aar_date_str} ({days_since_aar}d ago)"
+    else:
+        last_aar_display = "None on record"
+
+    # Build stat_dict for embed
+    stat_dict = {
+        "Status": status,
+        "Last AAR": last_aar_display,
+        "Induction": joined_str,
+        "Service Studs": studs_display,
+        "Home Chapter": home_chapter,
+        "Total Operations": str(stats["ops"]),
+        "Total Siege Waves": str(stats["waves_participated"]),
+        "Brothers Sanctioned": str(trials_reported),
+        "AAR Commendations": str(stats["aar_points"]),
+        "Gene-seed Secured": str(stats["gene_seed_points"]),
+        "Armory Data Recovered": str(stats["armory_points"]),
+    }
+    if show_company:
+        stat_dict["Company"] = company
+    if kt_name and kt_name != "Unknown":
+        stat_dict["Kill Team"] = kt_name
+
+    # Strip rank prefix from display name
+    name_val = display_name
+    for rp in RANK_ROLES_PRIORITY:
+        if name_val.lower().startswith(rp.lower()):
+            name_val = name_val[len(rp) :].lstrip()
+            break
+    name_val = re.sub(r"[●⚬]+", "", name_val).strip() or display_name
+
+    # Get rank emoji
+    rank_emoji = _get_rank_emoji(guild, current_rank) if guild else ""
+
+    # Get chapter emoji
+    chapter_emoji = (
+        _get_emoji_by_name(guild, home_chapter)
+        if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
+        else None
+    )
+
+    # Build embed
+    embed = discord.Embed(
+        title="᛭⋅ DEEDS LEDGER ⋅᛭",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0x2ECC71,
+    )
+
+    # ▸ Bearer field
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{current_rank} {name_val}**"
+    if home_chapter and home_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    studs_val = stat_dict.get("Service Studs", "—")
+    bearer_value += f"\nService Studs: **{studs_val}**"
+    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+
+    # ▸ Status field
+    status_val = stat_dict.get("Status", "Unknown")
+    last_aar_val = stat_dict.get("Last AAR", "—")
+    company_val = stat_dict.get("Company")
+    kt_val = stat_dict.get("Kill Team")
+    status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
+    if company_val:
+        status_lines.append(f"Company: {company_val}")
+    if kt_val:
+        status_lines.append(f"Kill Team: {kt_val}")
+    embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
+
+    # ▸ Service Record field
+    induction_val = stat_dict.get("Induction", "—")
+    embed.add_field(name="▸ Induction", value=f"{induction_val}", inline=False)
+
+    # ▸ Deeds Tallied field
+    ops_val = stat_dict.get("Total Operations", "0")
+    waves_val = stat_dict.get("Total Siege Waves", "0")
+    sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
+    aar_val = stat_dict.get("AAR Commendations", "0")
+    gene_val = stat_dict.get("Gene-seed Secured", "0")
+    armory_val = stat_dict.get("Armory Data Recovered", "0")
+
+    deeds_value = (
+        f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
+        f"Brothers Sanctioned: **{sanctioned_val}**\n"
+        f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
+    )
+    embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
+
+    # ▸ Challenges field
+    target_role_names = {getattr(r, "name", "") for r in getattr(target, "roles", [])}
+    completed_challenges = []
+    for role_name, display_name_ch, emoji_hint in CHALLENGE_ROLES:
+        if role_name in target_role_names:
+            emoji_str = ""
+            if emoji_hint:
+                if emoji_hint.startswith("unicode:"):
+                    emoji_str = f"{emoji_hint[8:]} "
+                else:
+                    emoji = _get_emoji_by_name(guild, emoji_hint)
+                    if emoji:
+                        emoji_str = f"{emoji} "
+            completed_challenges.append(f"{emoji_str}{display_name_ch}")
+
+    if completed_challenges:
+        challenge_lines = [f"✦ {c}" for c in completed_challenges]
+        base_field_name = f"▸ Challenges ({len(completed_challenges)})"
+        current_chunk = ""
+        field_index = 0
+
+        for line in challenge_lines:
+            prefix = "" if current_chunk == "" else "\n"
+            line_with_sep = prefix + line
+
+            if len(current_chunk) + len(line_with_sep) > 1024:
+                field_name = (
+                    base_field_name
+                    if field_index == 0
+                    else f"{base_field_name} (cont.)"
+                )
+                embed.add_field(name=field_name, value=current_chunk, inline=False)
+                field_index += 1
+                current_chunk = line
+            else:
+                current_chunk += line_with_sep
+
+        if current_chunk:
+            field_name = (
+                base_field_name if field_index == 0 else f"{base_field_name} (cont.)"
+            )
+            embed.add_field(name=field_name, value=current_chunk, inline=False)
+
+    embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # --- Monthly Honours (same as tally_deeds) ---
+    now_mtd = datetime.utcnow()
+    first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
+    mtd_span_days = max(1, (now_mtd - first_of_month).days)
+
+    try:
+        rankings = await _compute_fortress_rankings(
+            guild, mtd_span_days, start_dt=first_of_month, end_dt=now_mtd
+        )
+    except Exception:
+        rankings = {
+            "individuals": {},
+            "chapters": {},
+            "teams": {},
+            "chapters_map": {},
+            "imperial_date": _format_imperial_date(datetime.utcnow()),
+            "span_days": mtd_span_days,
+        }
+
+    imperial_date = rankings.get("imperial_date", "")
+    individual_rankings = rankings.get("individuals", {})
+    chapter_rankings = rankings.get("chapters", {})
+    team_rankings = rankings.get("teams", {})
+    resolved_chapters_map = rankings.get("chapters_map", {})
+
+    target_id = str(target.id)
+    target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
+    home_chapter = resolved_chapters_map.get(target_id, home_chapter)
+
+    # Individual ranking data
+    ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
+    avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
+    gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
+    armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
+    pres_data = individual_rankings.get("pres", {}).get(target_id, (0, 0, 0))
+    risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
+    black_laurels_data = individual_rankings.get("black_laurels", {}).get(
+        target_id, (0, 0, 0)
+    )
+    omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
+
+    # Chapter ranking
+    ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
+    ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
+    ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
+    ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
+    ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[
+        0
+    ]
+    ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
+    ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
+        home_chapter, (0.0, 0, 0)
+    )
+    ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(
+        home_chapter, (0, 0, 0)
+    )
+
+    # Kill team rankings
+    target_killteams = []
+    try:
+        for r in getattr(target, "roles", []):
+            rn = getattr(r, "name", "") or ""
+            if (
+                "kill" in rn.lower()
+                and "team" in rn.lower()
+                and "champion" not in rn.lower()
+            ):
+                target_killteams.append(_extract_killteam_name(rn))
+    except Exception:
+        pass
+
+    # Build Monthly Honours embed
+    honours_embed = discord.Embed(
+        title="᛭⋅ MONTHLY HONOURS ⋅᛭",
+        description=f"*⌾ {target_name} — {calendar.month_name[now_mtd.month]} {now_mtd.year} ⌾*",
+        color=0x2ECC71,
+    )
+
+    # Individual distinctions
+    if ops_data[2] > 0:
+        omega_suffix = (
+            f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
+        )
+        indiv_value = (
+            f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
+            f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
+            f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
+            f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
+            f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
+        )
+    else:
+        indiv_value = "No ranking data available"
+    honours_embed.add_field(name="▸ Individual", value=indiv_value, inline=False)
+
+    # Chapter distinctions
+    if ch_ops_data[2] > 0:
+        ch_omega_suffix = (
+            f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
+        )
+        ch_value = (
+            f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
+            f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
+            f"**Armory+Gene:** #({ch_pres_data[1]}/{ch_pres_data[2]})\n"
+            f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
+            f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
+        )
+    else:
+        ch_value = "Chapter does not meet minimum threshold"
+    honours_embed.add_field(
+        name=f"▸ Chapter ({home_chapter})", value=ch_value, inline=False
+    )
+
+    # Kill Team distinctions
+    for kt_n in target_killteams:
+        kt_ops_data = team_rankings.get("ops", {}).get(kt_n, (0, 0, 0))
+        kt_avg_data = team_rankings.get("avg", {}).get(kt_n, (0.0, 0, 0))
+        kt_pres_data = team_rankings.get("pres", {}).get(kt_n, (0, 0, 0))
+        kt_risk_data = team_rankings.get("high_risk", {}).get(kt_n, (0, 0, 0))
+        kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_n, (0.0, 0, 0))
+        kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_n, (0.0, 0, 0))
+        kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_n, (0, 0, 0))
+
+        if kt_ops_data[2] > 0:
+            kt_omega_suffix = (
+                f" | KIA {int(kt_omega_kia_data[0])}"
+                if kt_omega_kia_data[0] > 0
+                else ""
+            )
+            kt_value = (
+                f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
+                f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
+                f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
+                f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
+                f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
+                f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
+            )
+        else:
+            kt_value = "No ranking data available"
+        honours_embed.add_field(name=f"▸ {kt_n}", value=kt_value, inline=False)
+
+    honours_embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
+
+    await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
 
 @bot.tree.command(
