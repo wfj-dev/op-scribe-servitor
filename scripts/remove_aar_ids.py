@@ -8,6 +8,7 @@ Usage examples:
 
 This script makes timestamped backups before writing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -97,11 +98,20 @@ def remove_ids(aar_ids: List[str], do_write: bool) -> dict:
 
 
 def main(argv: List[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Remove AAR id(s) from records and processed list")
+    ap = argparse.ArgumentParser(
+        description="Remove AAR id(s) from records and processed list"
+    )
     ap.add_argument("ids", nargs="*", help="AAR id(s) to remove")
     ap.add_argument("--file", "-f", type=Path, help="file with one id per line")
-    ap.add_argument("--yes", "-y", action="store_true", help="apply changes (create backups and write files)")
-    ap.add_argument("--dry-run", action="store_true", help="show what would be removed (default)")
+    ap.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply changes (create backups and write files)",
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true", help="show what would be removed (default)"
+    )
 
     args = ap.parse_args(argv)
 

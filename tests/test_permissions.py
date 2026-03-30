@@ -1,10 +1,18 @@
 import types
 
-from bot import RANK_ROLES_PRIORITY, _role_index, is_sergeant_or_higher, can_reconcile_records, is_high_command
+from bot import (
+    RANK_ROLES_PRIORITY,
+    _role_index,
+    is_sergeant_or_higher,
+    can_reconcile_records,
+    is_high_command,
+)
+
 
 class FakeRole:
     def __init__(self, name):
         self.name = name
+
 
 class FakeMember:
     def __init__(self, id, roles, nick=None):
@@ -12,9 +20,11 @@ class FakeMember:
         self.roles = roles
         self.nick = nick
 
+
 def test_role_index_valid():
     assert _role_index("Watch Master") == 0
     assert _role_index("Watch Sergeant") is not None
+
 
 def test_sergeant_or_higher_threshold():
     member_brother = FakeMember(1001, [FakeRole("Watch Brother")])
@@ -24,6 +34,7 @@ def test_sergeant_or_higher_threshold():
     assert not is_sergeant_or_higher(member_brother)
     assert is_sergeant_or_higher(member_sergeant)
     assert is_sergeant_or_higher(member_captain)
+
 
 def test_can_reconcile_records_default_roles():
     member_ok = FakeMember(2001, [FakeRole("Watch Techmarine")])
