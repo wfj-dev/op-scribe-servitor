@@ -2862,7 +2862,8 @@ async def _post_armor_alert(
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
 
-        # Determine embed color and title based on tier
+    # Determine embed color and title based on tier
+    if tier == "critical":
         color = 0xE74C3C  # Red
         title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
         description = "*Machine spirit instability detected*"
@@ -6827,7 +6828,8 @@ async def _preview_armor_alert(
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
 
-        # Determine embed color and title based on tier
+    # Determine embed color and title based on tier
+    if tier == "critical":
         color = 0xE74C3C  # Red
         title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
         description = "*Machine spirit instability detected*"
