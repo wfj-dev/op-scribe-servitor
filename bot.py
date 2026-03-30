@@ -2544,6 +2544,37 @@ def _save_armor_integrity(data: dict):
         pass
 
 
+# Batch armor integrity helpers for bulk ingest operations
+# These avoid repeated file I/O by working with an in-memory dict
+
+def _get_armor_state_from_batch(user_id: int, batch_data: dict) -> dict:
+    """Get armor state from batch data (in-memory, no file I/O)."""
+    return batch_data.get(
+        str(user_id),
+        {
+            "points_since_blessing": 0,
+            "damage_tier": None,
+            "critical_aar_count": 0,
+            "spirit_fractured": False,
+            "last_blessing_timestamp": None,
+        },
+    )
+
+
+def _set_armor_state_in_batch(user_id: int, state: dict, batch_data: dict):
+    """Set armor state in batch data (in-memory, no file I/O)."""
+    batch_data[str(user_id)] = state
+
+
+async def _save_armor_batch(batch_data: dict):
+    """Save batch armor data to disk (call once at end of bulk operation)."""
+    try:
+        async with ARMOR_INTEGRITY_LOCK:
+            _save_armor_integrity(batch_data)
+    except Exception:
+        pass
+
+
 async def _get_armor_state(user_id: int) -> dict:
     """Get armor integrity state for a user."""
     try:
@@ -2928,8 +2959,17 @@ async def _process_armor_integrity_for_aar(
     brother_id: str,
     base_points: int,
     guild: discord.Guild,
+    armor_batch: Optional[dict] = None,
 ) -> Tuple[int, Optional[dict]]:
     """Process armor integrity for a single brother in an AAR.
+
+    Args:
+        brother_id: Discord user ID string
+        base_points: Base AAR points for this brother (before penalties)
+        guild: Discord guild for role operations
+        armor_batch: Optional pre-loaded armor data dict for batch processing.
+                     If provided, state is read/written to this dict (no file I/O).
+                     If None, uses individual file I/O per call.
 
     Returns:
         Tuple of (penalty_amount, alert_info_or_none)
@@ -2955,8 +2995,11 @@ async def _process_armor_integrity_for_aar(
         if not _check_armor_grace_period(member, total_aar_points):
             return penalty, None
 
-        # Get current armor state
-        state = await _get_armor_state(int(brother_id))
+        # Get current armor state (from batch if provided, else from file)
+        if armor_batch is not None:
+            state = _get_armor_state_from_batch(int(brother_id), armor_batch)
+        else:
+            state = await _get_armor_state(int(brother_id))
 
         # Accumulate points (use base unpenalized points for tracking)
         state["points_since_blessing"] = (
@@ -2992,8 +3035,11 @@ async def _process_armor_integrity_for_aar(
                 # Spirit fractures
                 state["spirit_fractured"] = True
 
-        # Save updated state
-        await _set_armor_state(int(brother_id), state)
+        # Save updated state (to batch if provided, else to file)
+        if armor_batch is not None:
+            _set_armor_state_in_batch(int(brother_id), state, armor_batch)
+        else:
+            await _set_armor_state(int(brother_id), state)
 
         return penalty, alert_info
 
@@ -7902,6 +7948,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         except Exception:
             pass
 
+    # Load armor integrity data once for batch processing (avoids repeated file I/O)
+    armor_batch = _load_armor_integrity()
+    armor_batch_modified = False
+
     async for msg in aar_channel.history(**history_kwargs):
         if not is_aar_message(msg):
             continue
@@ -8011,13 +8061,18 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         if guild and brother_ids:
             for bid in brother_ids:
                 try:
+                    bid_base_points = base_points.get(bid, 0)
                     penalty, alert_info = await _process_armor_integrity_for_aar(
-                        bid, base_points, guild
+                        bid, bid_base_points, guild, armor_batch
                     )
                     if alert_info:
                         alerts_to_post.append(alert_info)
+                        armor_batch_modified = True
                 except Exception:
                     pass
+            # Mark batch as modified if any brother was processed
+            if brother_ids:
+                armor_batch_modified = True
 
         # Post any armor alerts (outside the loop to avoid rate limits)
         for alert in alerts_to_post:
@@ -8073,6 +8128,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             await _set_aar_reaction(m, "ok")
         for m in to_react_err:
             await _set_aar_reaction(m, "error")
+
+    # Save armor batch data once at end (avoid repeated file I/O during loop)
+    if armor_batch_modified:
+        await _save_armor_batch(armor_batch)
 
     return ingested, rejected
 
