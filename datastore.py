@@ -17,6 +17,11 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
         if user_id in brother_ids:
             ops += 1
             difficulty_class = record.get("difficulty_class")
+
+            # Get armor penalty for this user in this record
+            armor_penalties = record.get("armor_penalties") or {}
+            user_penalty = int(armor_penalties.get(user_id, 0) or 0)
+
             if difficulty_class in ("normal_siege", "hard_siege"):
                 bw = record.get("brother_waves") or {}
                 try:
@@ -29,12 +34,22 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
                     except Exception:
                         my_waves = 0
                 if difficulty_class == "normal_siege":
-                    aar_points += 3 * (my_waves // 5)
+                    base_pts = 3 * (my_waves // 5)
                 else:
-                    aar_points += 4 * (my_waves // 5)
+                    base_pts = 4 * (my_waves // 5)
+                # Apply penalty (min 1 point if base > 0)
+                if base_pts > 0:
+                    aar_points += max(1, base_pts - user_penalty)
+                else:
+                    aar_points += base_pts
                 waves_participated += my_waves
             else:
-                aar_points += record.get("points_for_op", 0)
+                base_pts = record.get("points_for_op", 0)
+                # Apply penalty (min 1 point if base > 0)
+                if base_pts > 0:
+                    aar_points += max(1, base_pts - user_penalty)
+                else:
+                    aar_points += base_pts
             armory_data = record.get("armory_data")
             try:
                 armory_raw += int(armory_data) if armory_data is not None else 0
@@ -69,6 +84,7 @@ class DataStore:
     Loads data once at startup and provides read/write accessors.
     Writes are write-behind: in-memory state is updated immediately, and disk is flushed in a background task every N seconds and on shutdown. Atomic writes and .bak backup are used. All writes are protected by an asyncio.Lock.
     """
+
     def _init_cache_stats(self):
         self._home_chapter_cache_hits = 0
         self._home_chapter_cache_misses = 0
@@ -324,8 +340,14 @@ class DataStore:
     def get_cache_stats(self) -> dict:
         """Return cache and flush stats for admin diagnostics."""
         try:
-            combat_size = len(self._combat_cache) if hasattr(self, "_combat_cache") else 0
-            combat_spans = sorted(list(self._combat_cache.keys())) if hasattr(self, "_combat_cache") else []
+            combat_size = (
+                len(self._combat_cache) if hasattr(self, "_combat_cache") else 0
+            )
+            combat_spans = (
+                sorted(list(self._combat_cache.keys()))
+                if hasattr(self, "_combat_cache")
+                else []
+            )
         except Exception:
             combat_size = 0
             combat_spans = []

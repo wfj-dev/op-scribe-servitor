@@ -10,6 +10,7 @@ Options:
   --yes      Skip confirmation when using --apply
   --backup   Path to write backup (default: data/aar_records.json.YYYYmmddHHMMSS.bak)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,15 @@ def make_backup(path: Path, backup_path: Path | None = None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Prune AAR records not in processed_ids.json")
-    p.add_argument("--apply", action="store_true", help="Write changes to aar_records.json")
-    p.add_argument("--yes", action="store_true", help="Skip confirmation when applying changes")
+    p = argparse.ArgumentParser(
+        description="Prune AAR records not in processed_ids.json"
+    )
+    p.add_argument(
+        "--apply", action="store_true", help="Write changes to aar_records.json"
+    )
+    p.add_argument(
+        "--yes", action="store_true", help="Skip confirmation when applying changes"
+    )
     p.add_argument("--backup", help="Explicit backup path")
     args = p.parse_args(argv)
 
@@ -71,7 +78,9 @@ def main(argv: list[str] | None = None) -> int:
 
     records = load_json(AAR_RECORDS_PATH)
     if not isinstance(records, dict):
-        print("Unexpected format for aar_records.json: expected JSON object mapping ids->record")
+        print(
+            "Unexpected format for aar_records.json: expected JSON object mapping ids->record"
+        )
         return 2
 
     record_ids = set(records.keys())
@@ -94,14 +103,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.apply and not args.yes:
-        confirm = input("Proceed to remove these records from aar_records.json? [y/N]: ")
+        confirm = input(
+            "Proceed to remove these records from aar_records.json? [y/N]: "
+        )
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
             return 1
 
     # backup
     try:
-        backup = make_backup(AAR_RECORDS_PATH, Path(args.backup) if args.backup else None)
+        backup = make_backup(
+            AAR_RECORDS_PATH, Path(args.backup) if args.backup else None
+        )
         print(f"Backup written to: {backup}")
     except Exception as exc:
         print("Failed to create backup:", exc)

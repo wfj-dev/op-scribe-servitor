@@ -35,6 +35,7 @@ from bot import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakeRole:
     def __init__(self, name: str):
         self.name = name
@@ -55,6 +56,7 @@ class FakeGuild:
 # ---------------------------------------------------------------------------
 # _find_responsible_attestor – High Command bearer
 # ---------------------------------------------------------------------------
+
 
 def test_high_command_bearer_selects_forgemaster():
     """A High Command bearer should be blessed by the Forgemaster."""
@@ -82,7 +84,9 @@ def test_high_command_bearer_no_forgemaster_returns_none():
 
 def test_watch_captain_bearer_selects_forgemaster():
     """Watch Captain is High Command and should be blessed by the Forgemaster."""
-    assert "Watch Captain" in HIGH_COMMAND_ROLES, "Watch Captain must be in HIGH_COMMAND_ROLES"
+    assert "Watch Captain" in HIGH_COMMAND_ROLES, (
+        "Watch Captain must be in HIGH_COMMAND_ROLES"
+    )
     bearer = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
     company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
     forgemaster = FakeMember(3, ["Forgemaster"])
@@ -97,6 +101,7 @@ def test_watch_captain_bearer_selects_forgemaster():
 # ---------------------------------------------------------------------------
 # _find_responsible_attestor – Techmarine bearer
 # ---------------------------------------------------------------------------
+
 
 def test_techmarine_bearer_selects_forgemaster():
     """A Techmarine bearer should be blessed by the Forgemaster."""
@@ -122,6 +127,7 @@ def test_techmarine_bearer_no_forgemaster_returns_none():
 # ---------------------------------------------------------------------------
 # _find_responsible_attestor – Company Techmarine
 # ---------------------------------------------------------------------------
+
 
 def test_company_bearer_selects_company_techmarine():
     """A bearer in a company should be blessed by that company's Techmarine."""
@@ -177,6 +183,7 @@ def test_multiple_company_techmarines_both_can_be_chosen():
 # _find_responsible_attestor – Forgemaster fallback
 # ---------------------------------------------------------------------------
 
+
 def test_no_company_bearer_falls_back_to_forgemaster():
     """A bearer with no company role should fall back to the Forgemaster."""
     bearer = FakeMember(1, ["Watch Brother"])  # no company
@@ -212,6 +219,7 @@ def test_company_bearer_no_company_tech_falls_back_to_forgemaster():
 # ---------------------------------------------------------------------------
 # _get_techmarine_acknowledgment_blended – rank detection
 # ---------------------------------------------------------------------------
+
 
 def test_blended_ack_detects_watch_captain_rank():
     """Rank detection should identify 'Watch Captain' among a member's roles."""
@@ -249,12 +257,15 @@ def test_blended_ack_no_roles_falls_back_to_watch_brother():
 # _get_techmarine_acknowledgment_blended – weight / path selection
 # ---------------------------------------------------------------------------
 
+
 def test_blended_ack_uses_rank_path_when_random_below_prob_rank():
     """When random() < prob_rank, the rank acknowledgment pool is used."""
     member = FakeMember(1, ["Watch Sergeant"])
     # With 0 studs, stud_weight is minimal, so prob_rank is high; force rank path.
-    with unittest.mock.patch("bot.random.random", return_value=0.0), \
-         unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]):
+    with (
+        unittest.mock.patch("bot.random.random", return_value=0.0),
+        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+    ):
         result = _get_techmarine_acknowledgment_blended(member, 0)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Sergeant"]
 
@@ -265,8 +276,10 @@ def test_blended_ack_uses_stud_path_when_random_above_prob_rank():
     # Watch Brother rank_weight = 0.1, 16 studs → stud_weight = 1.0
     # prob_rank = 0.1 / (0.1 + 1.0) ≈ 0.091
     # random.random = 0.99 → stud path chosen
-    with unittest.mock.patch("bot.random.random", return_value=0.99), \
-         unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]):
+    with (
+        unittest.mock.patch("bot.random.random", return_value=0.99),
+        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+    ):
         result = _get_techmarine_acknowledgment_blended(member, 16)
     # 16 studs → tier 3
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[3]
@@ -276,11 +289,14 @@ def test_blended_ack_uses_stud_path_when_random_above_prob_rank():
 # _get_techmarine_acknowledgment_blended – stud tier thresholds
 # ---------------------------------------------------------------------------
 
+
 def test_blended_ack_tier1_for_low_studs():
     """1-3 studs maps to tier 1 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
-    with unittest.mock.patch("bot.random.random", return_value=0.99), \
-         unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]):
+    with (
+        unittest.mock.patch("bot.random.random", return_value=0.99),
+        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+    ):
         result = _get_techmarine_acknowledgment_blended(member, 3)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
 
@@ -288,8 +304,10 @@ def test_blended_ack_tier1_for_low_studs():
 def test_blended_ack_tier2_for_mid_studs():
     """4-11 studs maps to tier 2 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
-    with unittest.mock.patch("bot.random.random", return_value=0.99), \
-         unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]):
+    with (
+        unittest.mock.patch("bot.random.random", return_value=0.99),
+        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+    ):
         result = _get_techmarine_acknowledgment_blended(member, 8)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[2]
 
@@ -297,8 +315,10 @@ def test_blended_ack_tier2_for_mid_studs():
 def test_blended_ack_tier3_for_high_studs():
     """12+ studs maps to tier 3 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
-    with unittest.mock.patch("bot.random.random", return_value=0.99), \
-         unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]):
+    with (
+        unittest.mock.patch("bot.random.random", return_value=0.99),
+        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+    ):
         result = _get_techmarine_acknowledgment_blended(member, 12)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[3]
 

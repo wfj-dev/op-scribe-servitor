@@ -7,6 +7,7 @@ Usage:
 If --commit is omitted the script runs in dry-run mode and only reports what
 would be changed.
 """
+
 import argparse
 import json
 import os
