@@ -16,6 +16,7 @@ from bot import _should_send_award_notification
 # First-run behaviour (key not yet in tracking dict)
 # ---------------------------------------------------------------------------
 
+
 def test_first_run_has_role_marks_notified_no_send():
     """On first run, if the member already has the role, the key is silently
     initialised to True and the helper returns False (no notification sent)."""
@@ -58,6 +59,7 @@ def test_first_run_eligible_no_role_should_send():
 # ---------------------------------------------------------------------------
 # Subsequent-run / restart-safe behaviour (key already in tracking dict)
 # ---------------------------------------------------------------------------
+
 
 def test_subsequent_run_already_notified_no_send():
     """After a previous notification the helper must not send again, even if
@@ -112,6 +114,7 @@ def test_subsequent_run_not_notified_has_role_no_send():
 # ---------------------------------------------------------------------------
 # Tracking dict mutation
 # ---------------------------------------------------------------------------
+
 
 def test_tracking_dict_not_mutated_on_send():
     """The helper does NOT set the tracking key to True on a positive return;

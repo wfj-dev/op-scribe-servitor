@@ -19,6 +19,7 @@ from bot import is_allowed_channel, DEFAULT_ALLOWED_CHANNELS
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakeChannel:
     """Minimal stand-in for a discord.TextChannel."""
 
@@ -39,6 +40,7 @@ def _make_interaction(channel_name: str, channel_id: int, command_name: str):
 # ---------------------------------------------------------------------------
 # channel_policies – name-based matching
 # ---------------------------------------------------------------------------
+
 
 def test_allow_policy_by_name_permits_listed_command():
     """A command in the allow list for a named channel should be permitted."""
@@ -92,6 +94,7 @@ def test_deny_policy_by_name_permits_unlisted_command():
 # channel_policies – ID-based matching
 # ---------------------------------------------------------------------------
 
+
 def test_allow_policy_by_id_permits_listed_command():
     """Policy keyed by channel ID (as string) should match by channel ID."""
     channel_id = 1430055064969674777
@@ -143,6 +146,7 @@ def test_name_policy_takes_precedence_over_id_policy():
 # Fallback – allowed_command_channel_ids
 # ---------------------------------------------------------------------------
 
+
 def test_fallback_allowed_channel_ids_permits_matching_id():
     """When no channel_policies match, allowed_command_channel_ids is checked."""
     allowed_id = 5555
@@ -164,6 +168,7 @@ def test_fallback_allowed_channel_ids_blocks_non_matching_id():
 # Fallback – default_allowed_channels config key
 # ---------------------------------------------------------------------------
 
+
 def test_fallback_default_allowed_channels_config_permits_named_channel():
     """When no ID list is set, default_allowed_channels names are checked."""
     config = {"default_allowed_channels": ["ops-channel"]}
@@ -184,6 +189,7 @@ def test_fallback_default_allowed_channels_config_blocks_other_channel():
 # Final fallback – DEFAULT_ALLOWED_CHANNELS constant
 # ---------------------------------------------------------------------------
 
+
 def test_final_fallback_default_constant_permits_known_channel():
     """With empty config the DEFAULT_ALLOWED_CHANNELS constant is the last resort."""
     known_channel = next(iter(DEFAULT_ALLOWED_CHANNELS))
@@ -202,6 +208,7 @@ def test_final_fallback_default_constant_blocks_unknown_channel():
 # ---------------------------------------------------------------------------
 # Edge-cases
 # ---------------------------------------------------------------------------
+
 
 def test_no_channel_returns_false():
     """If the interaction has no channel, is_allowed_channel should return False."""

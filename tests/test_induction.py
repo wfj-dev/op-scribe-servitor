@@ -16,6 +16,7 @@ from unittest.mock import patch
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_aar_record(
     brother_ids,
     initiation_trial=True,
@@ -42,6 +43,7 @@ def make_aar_record(
 # ---------------------------------------------------------------------------
 # Omega induction tests
 # ---------------------------------------------------------------------------
+
 
 @patch("bot.load_aar_data")
 def test_omega_single_inductee_counts_as_one_induction(mock_load):
@@ -94,6 +96,7 @@ def test_omega_case_insensitive(mock_load):
 # Regular operation induction tests
 # ---------------------------------------------------------------------------
 
+
 @patch("bot.load_aar_data")
 def test_regular_op_three_trials_equals_one_induction(mock_load):
     """3 regular operation trials = 1 induction."""
@@ -142,6 +145,7 @@ def test_regular_op_two_trials_equals_zero_inductions(mock_load):
 # ---------------------------------------------------------------------------
 # Siege induction tests
 # ---------------------------------------------------------------------------
+
 
 @patch("bot.load_aar_data")
 def test_siege_15_waves_equals_one_induction(mock_load):
@@ -201,6 +205,7 @@ def test_siege_accumulated_waves_across_aars(mock_load):
 # Mixed induction tests
 # ---------------------------------------------------------------------------
 
+
 @patch("bot.load_aar_data")
 def test_mixed_omega_and_regular_ops(mock_load):
     """Omega + 3 regular ops = 2 inductions."""
@@ -235,6 +240,7 @@ def test_mixed_omega_and_regular_ops(mock_load):
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 @patch("bot.load_aar_data")
 def test_self_excluded_from_inductee_count(mock_load):
