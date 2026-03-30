@@ -5,6 +5,7 @@
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
 # TODO: are commands queued? i know we use locks but do commands enter a queue?
 # TODO: should we split this file up? its getting pretty long. maybe aars.py for AAR-related commands and processing, awards.py for awards and milestones, etc? or is it better to keep it all together since there is some interdependence and shared state (e.g. datastore access, config, locks)? maybe we can split out some of the more self-contained features like rites and machine spirits into separate modules to reduce clutter in the main bot file while keeping core command handling together? would also make it easier to manage imports and dependencies if we have more focused modules. on the other hand, having everything in one file can make it easier to see the overall flow and shared context without jumping between files. maybe we can start by splitting out just the AAR processing into aars.py since that is a large chunk of functionality, and keep the rest in bot.py for now? then if we find that awards/milestones or rites/machine spirits are also getting large we can consider splitting those out as well. would need to be careful about circular imports though if we split into multiple files since they all interact with the datastore and config. could potentially have a common module for shared utilities and data access to avoid circular dependencies. overall i think splitting out AAR processing into aars.py makes sense as a first step since it is a distinct area of functionality with its own commands and processing logic, and then we can evaluate if further splits are needed after that.
+# TODO: create command for those not in watch command where they can view their aars like in tally deeds but ONLY their aars. maybe we can overload it?
 
 import os
 import asyncio
@@ -2457,11 +2458,11 @@ ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}
 
 # Default probability tiers (can be overridden in config)
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
-    {"min": 0, "max": 25, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
-    {"min": 26, "max": 75, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
-    {"min": 76, "max": 150, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
-    {"min": 151, "max": 250, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
-    {"min": 251, "max": None, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}},
+    {"min": 0, "max": 20, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
+    {"min": 21, "max": 50, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
+    {"min": 51, "max": 100, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
+    {"min": 101, "max": 175, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
+    {"min": 176, "max": None, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}},
 ]
 
 # Grace period defaults
