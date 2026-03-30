@@ -97,7 +97,7 @@ Detailed command descriptions
 
 - `/litany_of_function`
 	- Purpose: Show a concise summary of available commands.
-	- Who can run: general use.
+	- Who can run: Watch Sergeant+ by default (configurable via permission mappings).
 
 - `/pick_home_chapters member:@User`
 	- Purpose: Randomly select home chapter(s) for a member from the rotation pool.
