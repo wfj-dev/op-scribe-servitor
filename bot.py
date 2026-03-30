@@ -6783,8 +6783,9 @@ async def _show_armor_leaderboard(
         penalty = _get_damage_penalty(current_tier)
         penalty_str = f" · -{penalty}" if penalty > 0 else ""
         prob_str = f" · {prob:.0f}%" if not current_tier and prob > 0 else ""
+        chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}· {points}c{penalty_str}{prob_str}"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{penalty_str}{prob_str}"
         )
     
     embed.add_field(
