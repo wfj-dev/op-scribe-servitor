@@ -120,7 +120,10 @@ def main():
                             updates += 1
                             changed = True
                         # update name if replacement available
-                        if isinstance(replacement_name, str) and replacement_name.strip():
+                        if (
+                            isinstance(replacement_name, str)
+                            and replacement_name.strip()
+                        ):
                             if str(names[i]) != replacement_name:
                                 names[i] = replacement_name
                                 name_updates += 1
@@ -164,15 +167,20 @@ def main():
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-    print(json.dumps({
-        "backup": os.path.basename(backup_path),
-        "records_touched": records_touched,
-        "ids_updated": updates,
-        "names_updated": name_updates,
-        "old_id": OLD_ID,
-        "new_id": NEW_ID,
-        "new_name": replacement_name or None
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "backup": os.path.basename(backup_path),
+                "records_touched": records_touched,
+                "ids_updated": updates,
+                "names_updated": name_updates,
+                "old_id": OLD_ID,
+                "new_id": NEW_ID,
+                "new_name": replacement_name or None,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

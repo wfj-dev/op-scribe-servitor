@@ -147,6 +147,29 @@
       "tyranid_prime_kills": 100
     }
   },
+  "armor_integrity": {
+    "arming_chamber_channel_id": "1429303902343401575",
+    "techmarine_role_id": "1429342203251265576",
+    "armor_status_allowed_channels": [
+      "1445526714749943898",
+      "1429303902343401575"
+    ],
+    "damage_role_ids": {
+      "damaged": "1487996088999874591",
+      "compromised": "1487996558447476777",
+      "critical": "1487996649518141531"
+    },
+    "probability_tiers": [
+      {"min": 0, "max": 25, "chance": 0.0},
+      {"min": 26, "max": 75, "chance": 0.02},
+      {"min": 76, "max": 150, "chance": 0.08},
+      {"min": 151, "max": 250, "chance": 0.20},
+      {"min": 251, "max": null, "chance": 0.40}
+    ],
+    "grace_period_min_points": 100,
+    "grace_period_min_days": 7,
+    "fracture_threshold": 3
+  },
   "channel_policies": {
     "❖⋅arming-chamber⋅❖": {
       "allow": [
