@@ -4,7 +4,6 @@
 # TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
-# TODO: promotion queue need to remove mentions and use combat bonds format for names
 
 import os
 import asyncio
@@ -10443,6 +10442,14 @@ def validate_aar(record: dict):
                         "@Black_Laurels must be placed on the Mission line, not elsewhere in the AAR."
                     )
 
+        # Leviathan Protocol validation: must be on Mission line only
+        leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
+        leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)
+        if leviathan_in_difficulty and not leviathan_in_mission:
+            errors.append(
+                "@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line."
+            )
+
     # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
     if "normal-siege" in dlower or "hard-siege" in dlower:
         global_ok = False
@@ -12652,17 +12659,32 @@ async def _compute_fortress_rankings(
             dampened[ch] = weight * raw + (1.0 - weight) * global_mean
         return dampened
 
+    # Compute minimum ops required for rate-based metrics (like avg pts/op)
+    # to match the filtering used in monthly honours leaderboards.
+    if span_days >= 28:
+        user_min_ops_required = 28
+    else:
+        user_min_ops_required = max(3, int(span_days * 0.3))
+
     # Build ranking functions
-    def rank_users(metric_key: str, higher_is_better: bool = True):
-        items = [(uid, v.get(metric_key, 0)) for uid, v in users.items()]
+    def rank_users(metric_key: str, higher_is_better: bool = True, min_ops: int = 0):
+        # Filter to users meeting minimum ops threshold if specified
+        eligible_users = {
+            uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops
+        } if min_ops > 0 else users
+        items = [(uid, v.get(metric_key, 0)) for uid, v in eligible_users.items()]
         items.sort(key=lambda x: x[1], reverse=higher_is_better)
         rankings = {}
         for idx, (uid, val) in enumerate(items, 1):
             rankings[uid] = (val, idx, len(items))
         return rankings
 
-    def rank_teams(metric_key: str, higher_is_better: bool = True):
-        items = [(tid, v.get(metric_key, 0)) for tid, v in teams.items()]
+    def rank_teams(metric_key: str, higher_is_better: bool = True, min_ops: int = 0):
+        # Filter to teams meeting minimum ops threshold if specified
+        eligible_teams = {
+            tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops
+        } if min_ops > 0 else teams
+        items = [(tid, v.get(metric_key, 0)) for tid, v in eligible_teams.items()]
         items.sort(key=lambda x: x[1], reverse=higher_is_better)
         rankings = {}
         for idx, (tid, val) in enumerate(items, 1):
@@ -12687,27 +12709,31 @@ async def _compute_fortress_rankings(
         return rankings
 
     # Compute individual rankings
+    # All rankings filter to users meeting minimum ops threshold to match
+    # monthly honours leaderboard behavior (only active-enough users qualify).
     individual_rankings = {
-        "ops": rank_users("ops"),
-        "avg": rank_users("avg"),
-        "gene_carried": rank_users("gene_carried"),
-        "armory": rank_users("armory"),
-        "high_risk": rank_users("high_risk"),
-        "omega_kia": rank_users("omega_kia"),
-        "black_laurels": rank_users("black_laurels"),
+        "ops": rank_users("ops", min_ops=user_min_ops_required),
+        "avg": rank_users("avg", min_ops=user_min_ops_required),
+        "gene_carried": rank_users("gene_carried", min_ops=user_min_ops_required),
+        "armory": rank_users("armory", min_ops=user_min_ops_required),
+        "high_risk": rank_users("high_risk", min_ops=user_min_ops_required),
+        "omega_kia": rank_users("omega_kia", min_ops=user_min_ops_required),
+        "black_laurels": rank_users("black_laurels", min_ops=user_min_ops_required),
     }
 
     # Compute team rankings
+    # All rankings filter to teams meeting minimum ops threshold to match
+    # monthly honours leaderboard behavior.
     team_rankings = {
-        "ops": rank_teams("ops"),
-        "avg": rank_teams("avg"),
-        "pres": rank_teams("pres"),
-        "armory": rank_teams("armory"),
-        "gene_carried": rank_teams("gene_carried"),
-        "high_risk": rank_teams("high_risk"),
-        "omega_kia": rank_teams("omega_kia"),
-        "avg_aar_per_member": rank_teams("avg_aar_per_member"),
-        "cohesion": rank_teams("cohesion"),
+        "ops": rank_teams("ops", min_ops=user_min_ops_required),
+        "avg": rank_teams("avg", min_ops=user_min_ops_required),
+        "pres": rank_teams("pres", min_ops=user_min_ops_required),
+        "armory": rank_teams("armory", min_ops=user_min_ops_required),
+        "gene_carried": rank_teams("gene_carried", min_ops=user_min_ops_required),
+        "high_risk": rank_teams("high_risk", min_ops=user_min_ops_required),
+        "omega_kia": rank_teams("omega_kia", min_ops=user_min_ops_required),
+        "avg_aar_per_member": rank_teams("avg_aar_per_member", min_ops=user_min_ops_required),
+        "cohesion": rank_teams("cohesion", min_ops=user_min_ops_required),
     }
 
     # Compute chapter rankings (matching kill team metrics)
@@ -16238,16 +16264,8 @@ async def promotion_queue(interaction: discord.Interaction):
         return ""  # No change
 
     def _format_member_with_rank(member: discord.Member) -> str:
-        """Format member with rank emoji + name (combat bonds style) + mention."""
-        rank_emoji = ""
-        role_names = {(getattr(r, "name", "") or "").strip() for r in member.roles}
-        for rp in RANK_ROLES_PRIORITY:
-            if rp in role_names:
-                rank_emoji = _get_rank_emoji(guild, rp)
-                break
-        if rank_emoji:
-            return f"{rank_emoji} {member.mention}"
-        return member.mention
+        """Format member with rank emoji + stripped name (combat bonds style, no @mention)."""
+        return _format_member_styled(guild, str(member.id), chapters_map=None, include_chapter=False)
 
     def _build_field_value(
         lines: List[str], total_count: int, max_shown: int = 10
