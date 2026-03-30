@@ -2853,6 +2853,9 @@ async def _post_armor_alert(
     # Service studs computation
     bearer_studs = _compute_member_service_studs(member)
 
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(member.id))
+
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(member)
     chapter_emoji = (
@@ -2892,6 +2895,11 @@ async def _post_armor_alert(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
     # Determine embed color and title based on tier
     if tier == "critical":
@@ -6632,7 +6640,7 @@ async def _armor_status(
 
     # Check grace period
     try:
-        stats = await compute_stats_for_user(str(target.id))
+        stats = compute_stats_for_user(str(target.id))
         total_aar_points = stats.get("aar_points", 0)
     except Exception:
         total_aar_points = 0
@@ -6645,6 +6653,9 @@ async def _armor_status(
 
     # Service studs computation
     bearer_studs = _compute_member_service_studs(target)
+
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(target.id))
 
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(target)
@@ -6683,6 +6694,11 @@ async def _armor_status(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
     # Determine embed color and status based on tier
     config = _get_armor_config()
@@ -6843,6 +6859,9 @@ async def _preview_armor_alert(
     # Service studs computation
     bearer_studs = _compute_member_service_studs(brother)
 
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(brother.id))
+
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(brother)
     chapter_emoji = (
@@ -6882,6 +6901,11 @@ async def _preview_armor_alert(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
     # Determine embed color and title based on tier
     if tier == "critical":
