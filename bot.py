@@ -2456,11 +2456,11 @@ ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}
 
 # Default probability tiers (can be overridden in config)
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
-    {"min": 0, "max": 25, "chance": 0.0},
-    {"min": 26, "max": 75, "chance": 0.02},
-    {"min": 76, "max": 150, "chance": 0.08},
-    {"min": 151, "max": 250, "chance": 0.20},
-    {"min": 251, "max": None, "chance": 0.40},
+    {"min": 0, "max": 25, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
+    {"min": 26, "max": 75, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
+    {"min": 76, "max": 150, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
+    {"min": 151, "max": 250, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
+    {"min": 251, "max": None, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}},
 ]
 
 # Grace period defaults
@@ -2622,8 +2622,8 @@ def _get_armor_probability_tiers() -> list:
     return config.get("probability_tiers", DEFAULT_ARMOR_PROBABILITY_TIERS)
 
 
-def _get_damage_probability(points_since_blessing: int) -> float:
-    """Get damage probability for a given point total."""
+def _get_probability_tier_for_points(points_since_blessing: int) -> Optional[dict]:
+    """Get the probability tier config for a given point total."""
     tiers = _get_armor_probability_tiers()
     for tier in tiers:
         min_pts = tier.get("min", 0)
@@ -2631,11 +2631,55 @@ def _get_damage_probability(points_since_blessing: int) -> float:
         if max_pts is None:
             # Unbounded upper tier
             if points_since_blessing >= min_pts:
-                return tier.get("chance", 0.0)
+                return tier
         else:
             if min_pts <= points_since_blessing <= max_pts:
-                return tier.get("chance", 0.0)
+                return tier
+    return None
+
+
+def _get_damage_probability(points_since_blessing: int) -> float:
+    """Get damage probability for a given point total."""
+    tier = _get_probability_tier_for_points(points_since_blessing)
+    if tier:
+        return tier.get("chance", 0.0)
     return 0.0
+
+
+def _roll_damage_tier(points_since_blessing: int) -> str:
+    """Roll which damage tier to apply based on weighted probabilities.
+    
+    Returns one of: 'damaged', 'compromised', 'critical'
+    """
+    tier = _get_probability_tier_for_points(points_since_blessing)
+    
+    # Default weights if not specified
+    default_weights = {"damaged": 100, "compromised": 0, "critical": 0}
+    weights = tier.get("damage_weights", default_weights) if tier else default_weights
+    
+    # Build weighted list
+    damage_tiers = []
+    tier_weights = []
+    for damage_tier in ARMOR_DAMAGE_TIERS:
+        weight = weights.get(damage_tier, 0)
+        if weight > 0:
+            damage_tiers.append(damage_tier)
+            tier_weights.append(weight)
+    
+    # If no valid weights, default to damaged
+    if not damage_tiers:
+        return "damaged"
+    
+    # Weighted random selection
+    total = sum(tier_weights)
+    roll = random.uniform(0, total)
+    cumulative = 0
+    for i, weight in enumerate(tier_weights):
+        cumulative += weight
+        if roll <= cumulative:
+            return damage_tiers[i]
+    
+    return damage_tiers[-1]
 
 
 def _get_armor_damage_role_ids() -> dict:
@@ -2732,17 +2776,18 @@ async def _run_armor_integrity_check(points_since_blessing: int) -> bool:
     return random.random() < probability
 
 
-async def _escalate_damage_tier(
+async def _apply_damage_tier(
     member: discord.Member,
     guild: discord.Guild,
     current_tier: Optional[str],
+    rolled_tier: str,
 ) -> Optional[str]:
-    """Escalate a member's damage tier by one level. Returns the new tier."""
+    """Apply a rolled damage tier if it's worse than current. Returns the new tier."""
     role_ids = _get_armor_damage_role_ids()
     if not role_ids:
         return None
 
-    # Determine current index and next tier
+    # Determine current index
     if current_tier is None:
         current_idx = -1
     else:
@@ -2751,12 +2796,17 @@ async def _escalate_damage_tier(
         except ValueError:
             current_idx = -1
 
-    next_idx = current_idx + 1
-    if next_idx >= len(ARMOR_DAMAGE_TIERS):
-        # Already at max tier
+    # Determine rolled tier index
+    try:
+        rolled_idx = ARMOR_DAMAGE_TIERS.index(rolled_tier)
+    except ValueError:
+        return None
+
+    # Only apply if rolled tier is worse (higher index) than current
+    if rolled_idx <= current_idx:
         return current_tier
 
-    new_tier = ARMOR_DAMAGE_TIERS[next_idx]
+    new_tier = rolled_tier
     new_role_id = role_ids.get(new_tier)
 
     if not new_role_id:
@@ -2770,7 +2820,7 @@ async def _escalate_damage_tier(
                 current_role = guild.get_role(int(current_role_id))
                 if current_role and current_role in member.roles:
                     await member.remove_roles(
-                        current_role, reason="Armor integrity: escalating damage tier"
+                        current_role, reason="Armor integrity: applying damage tier"
                     )
 
         # Add new damage role
@@ -3020,9 +3070,10 @@ async def _process_armor_integrity_for_aar(
         )
 
         if damage_occurred:
-            # Escalate damage tier
-            new_tier = await _escalate_damage_tier(member, guild, current_tier)
-            if new_tier:
+            # Roll which damage tier to apply based on current points
+            rolled_tier = _roll_damage_tier(state["points_since_blessing"])
+            new_tier = await _apply_damage_tier(member, guild, current_tier, rolled_tier)
+            if new_tier and new_tier != current_tier:
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
                     state["critical_aar_count"] = 0  # Reset on entering critical
@@ -6589,11 +6640,151 @@ def _get_armor_status_allowed_channels() -> set:
             continue
 
     return allowed_channels
+
+
+def _calculate_armor_risk_score(
+    damage_tier: Optional[str],
+    points_since_blessing: int,
+    spirit_fractured: bool,
+) -> int:
+    """Calculate a risk score for sorting armor status leaderboard.
+    
+    Higher score = more urgent/at-risk.
+    Score components:
+    - Fractured spirit: +10000
+    - Critical tier: +3000
+    - Compromised tier: +2000
+    - Damaged tier: +1000
+    - Points since blessing: direct add
+    """
+    score = 0
+    if spirit_fractured:
+        score += 10000
+    elif damage_tier == "critical":
+        score += 3000
+    elif damage_tier == "compromised":
+        score += 2000
+    elif damage_tier == "damaged":
+        score += 1000
+    score += points_since_blessing
+    return score
+
+
+async def _show_armor_leaderboard(
+    interaction: discord.Interaction,
+    guild: discord.Guild,
+):
+    """Show top 10 brothers at risk of armor damage."""
+    # Load all armor states
+    armor_data = _load_armor_integrity()
+    
+    if not armor_data:
+        embed = discord.Embed(
+            title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+            description="*No armor integrity records on file.*",
+            color=0x5D6D7E,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # Build list of (member, state, risk_score)
+    risk_list = []
+    for user_id_str, state in armor_data.items():
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            continue
+        
+        member = guild.get_member(user_id)
+        if not member:
+            continue
+        
+        # Get damage tier from roles (more accurate than stored state)
+        current_tier = _get_member_damage_tier(member)
+        points_since_blessing = state.get("points_since_blessing", 0)
+        spirit_fractured = state.get("spirit_fractured", False)
+        
+        risk_score = _calculate_armor_risk_score(
+            current_tier, points_since_blessing, spirit_fractured
+        )
+        
+        # Only include if they have any risk (points > 0 or damage)
+        if risk_score > 0:
+            risk_list.append((member, state, current_tier, risk_score))
+    
+    # Sort by risk score descending
+    risk_list.sort(key=lambda x: x[3], reverse=True)
+    
+    # Take top 10
+    top_10 = risk_list[:10]
+    
+    if not top_10:
+        embed = discord.Embed(
+            title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+            description="*All brothers nominal. No maintenance required.*",
+            color=0x2ECC71,  # Green
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # Build the leaderboard embed
+    embed = discord.Embed(
+        title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+        description="*Top 10 brothers requiring attention*",
+        color=0xE67E22,  # Orange
+    )
+    
+    lines = []
+    for i, (member, state, current_tier, risk_score) in enumerate(top_10, 1):
+        points = state.get("points_since_blessing", 0)
+        spirit_fractured = state.get("spirit_fractured", False)
+        prob = _get_damage_probability(points) * 100
+        
+        # Status icon
+        if spirit_fractured:
+            icon = "💀"
+            tier_text = "FRACTURED"
+        elif current_tier == "critical":
+            icon = "🔴"
+            tier_text = "CRITICAL"
+        elif current_tier == "compromised":
+            icon = "🟠"
+            tier_text = "COMPROMISED"
+        elif current_tier == "damaged":
+            icon = "🟡"
+            tier_text = "DAMAGED"
+        else:
+            icon = "⚪"
+            tier_text = f"{prob:.0f}% risk"
+        
+        # Get display name
+        _, bearer_name, _ = _get_bearer_rank_and_title(member)
+        bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+        
+        # Format line
+        penalty = _get_damage_penalty(current_tier)
+        penalty_text = f" (-{penalty})" if penalty > 0 else ""
+        lines.append(
+            f"`{i:>2}.` {icon} **{bearer_name}**{penalty_text}\n"
+            f"      ↳ {tier_text} · {points} cycles"
+        )
+    
+    embed.add_field(
+        name="▸ Brothers at Risk",
+        value="\n".join(lines),
+        inline=False,
+    )
+    
+    embed.set_footer(text="Use /armor_status @brother for detailed diagnostics")
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(
     name="armor_status",
-    description="Check armor integrity status for a battle-brother.",
+    description="Check armor integrity status for a brother, or view top 10 at-risk brothers.",
 )
-@app_commands.describe(brother="Brother to check (defaults to self)")
+@app_commands.describe(brother="Brother to check (omit to see top 10 at-risk)")
 async def _armor_status(
     interaction: discord.Interaction, brother: Optional[discord.Member] = None
 ):
@@ -6614,15 +6805,18 @@ async def _armor_status(
         )
         return
 
-    # Default to caller if no brother specified
-    target = brother or interaction.user
-    if not isinstance(target, discord.Member):
-        await interaction.response.send_message(
-            "Could not resolve brother.", ephemeral=True
-        )
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message("Guild not found.", ephemeral=True)
         return
 
-    guild = interaction.guild
+    # If no brother specified, show leaderboard
+    if brother is None:
+        await _show_armor_leaderboard(interaction, guild)
+        return
+
+    # Individual brother view
+    target = brother
 
     # Get armor state from persistent storage
     armor_state = await _get_armor_state(int(target.id))
