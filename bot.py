@@ -4,6 +4,7 @@
 # TODO: should we add company distinctions in monthly honors?
 # TODO: do we need to schedule a reparse command like we do ingestion and audits?
 # TODO: are commands queued? i know we use locks but do commands enter a queue?
+# TODO: should we split this file up? its getting pretty long. maybe aars.py for AAR-related commands and processing, awards.py for awards and milestones, etc? or is it better to keep it all together since there is some interdependence and shared state (e.g. datastore access, config, locks)? maybe we can split out some of the more self-contained features like rites and machine spirits into separate modules to reduce clutter in the main bot file while keeping core command handling together? would also make it easier to manage imports and dependencies if we have more focused modules. on the other hand, having everything in one file can make it easier to see the overall flow and shared context without jumping between files. maybe we can start by splitting out just the AAR processing into aars.py since that is a large chunk of functionality, and keep the rest in bot.py for now? then if we find that awards/milestones or rites/machine spirits are also getting large we can consider splitting those out as well. would need to be careful about circular imports though if we split into multiple files since they all interact with the datastore and config. could potentially have a common module for shared utilities and data access to avoid circular dependencies. overall i think splitting out AAR processing into aars.py makes sense as a first step since it is a distinct area of functionality with its own commands and processing logic, and then we can evaluate if further splits are needed after that.
 
 import os
 import asyncio
@@ -6542,19 +6543,19 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
 
     # Use appropriate emoji based on status
     plate_emoji = (
-        "✅"
+        "🟢"
         if plate_status == "NOMINAL"
         else ("🔴" if "CRITICAL" in plate_status else "⚠️")
     )
     spirit_emoji = (
-        "✅"
+        "🟢"
         if spirit_status == "STABLE"
         else ("🔴" if spirit_status == "FRACTURED" else "⚠️")
     )
     rite_emoji = (
-        "✅"
+        "🟢"
         if rite_status == "MAINTENANCE"
-        else ("⚠️" if rite_status == "RE-CONSECRATION" else "✅")
+        else ("⚠️" if rite_status == "RE-CONSECRATION" else "🟢")
     )
 
     status_value = (
@@ -6744,23 +6745,21 @@ async def _show_armor_leaderboard(
         # Status icon
         if spirit_fractured:
             icon = "💀"
-            tier_text = "FRACTURED"
         elif current_tier == "critical":
             icon = "🔴"
-            tier_text = "CRITICAL"
         elif current_tier == "compromised":
             icon = "🟠"
-            tier_text = "COMPROMISED"
         elif current_tier == "damaged":
             icon = "🟡"
-            tier_text = "DAMAGED"
         else:
-            icon = "⚪"
-            tier_text = f"{prob:.0f}% dmg chance"
+            icon = "🟢"
         
-        # Get display name and rank
+        # Get display name (short)
         bearer_honorific, bearer_name, _ = _get_bearer_rank_and_title(member)
         bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+        # Truncate long names
+        if len(bearer_name) > 18:
+            bearer_name = bearer_name[:16] + "…"
         
         # Get rank emoji
         bearer_rank_name = None
@@ -6771,22 +6770,22 @@ async def _show_armor_leaderboard(
         if not bearer_rank_name:
             bearer_rank_name = "Watch Brother"
         rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+        rank_str = f"{rank_emoji} " if rank_emoji else ""
         
         # Get home chapter emoji
         bearer_chapter = _get_bearer_home_chapter(member)
         chapter_emoji = (
             _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
         )
-        chapter_prefix = f"{chapter_emoji}" if chapter_emoji else ""
+        chapter_str = f"{chapter_emoji}" if chapter_emoji else ""
         
-        # Format line
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · -3"
         penalty = _get_damage_penalty(current_tier)
-        penalty_text = f" (-{penalty})" if penalty > 0 else ""
-        rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-        chapter_suffix = f" {chapter_prefix}" if chapter_prefix else ""
+        penalty_str = f" · -{penalty}" if penalty > 0 else ""
+        prob_str = f" · {prob:.0f}%" if not current_tier and prob > 0 else ""
+        chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_prefix}**{bearer_name}**{chapter_suffix}{penalty_text}\n"
-            f"       ↳ {tier_text} · {points} cycles"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{penalty_str}{prob_str}"
         )
     
     embed.add_field(
@@ -6795,14 +6794,10 @@ async def _show_armor_leaderboard(
         inline=False,
     )
     
-    # Add legend
-    legend = (
-        "💀 Spirit Fractured · 🔴 Critical (-3)\n"
-        "🟠 Compromised (-2) · 🟡 Damaged (-1)\n"
-        "⚪ Undamaged (showing next-mission damage chance)"
-    )
+    # Add legend (compact)
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged 🟢Nominal"
     embed.add_field(
-        name="▸ Status Key",
+        name="▸ Key",
         value=legend,
         inline=False,
     )
@@ -6867,7 +6862,7 @@ async def _armor_status(
     # Check grace period
     try:
         stats = compute_stats_for_user(str(target.id))
-        total_aar_points = stats.get("aar_points", 0)
+        total_aar_points = int(stats.get("aar_points", 0) or 0)
     except Exception:
         total_aar_points = 0
     cleared_grace_period = _check_armor_grace_period(target, total_aar_points)
@@ -6999,12 +6994,12 @@ async def _armor_status(
     )
 
     # Risk assessment field
-    if not in_grace_period:
+    if in_grace_period:
         risk_text = "🛡️ **Grace period active**\n*No damage risk*"
     elif prob_percent == 0:
-        risk_text = "✅ **Minimal**\n*0% degradation chance*"
+        risk_text = "🟢 **Minimal**\n*0% degradation chance*"
     elif prob_percent <= 2:
-        risk_text = f"✅ **Low**\n*{prob_percent:.0f}% degradation chance*"
+        risk_text = f"🟢 **Low**\n*{prob_percent:.0f}% degradation chance*"
     elif prob_percent <= 8:
         risk_text = f"⚠️ **Moderate**\n*{prob_percent:.0f}% degradation chance*"
     elif prob_percent <= 20:
