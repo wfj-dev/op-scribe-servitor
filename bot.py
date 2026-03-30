@@ -3082,8 +3082,9 @@ async def _process_armor_integrity_for_aar(
                     "tier": new_tier,
                     "critical_count": 0,
                 }
-        elif current_tier == "critical":
-            # Already at critical, increment AAR count
+
+        # If at critical (whether damage occurred or not), increment fracture countdown
+        if current_tier == "critical":
             state["critical_aar_count"] = state.get("critical_aar_count", 0) + 1
             config = _get_armor_config()
             fracture_threshold = config.get(
@@ -6755,23 +6756,54 @@ async def _show_armor_leaderboard(
             tier_text = "DAMAGED"
         else:
             icon = "⚪"
-            tier_text = f"{prob:.0f}% risk"
+            tier_text = f"{prob:.0f}% dmg chance"
         
-        # Get display name
-        _, bearer_name, _ = _get_bearer_rank_and_title(member)
+        # Get display name and rank
+        bearer_honorific, bearer_name, _ = _get_bearer_rank_and_title(member)
         bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+        
+        # Get rank emoji
+        bearer_rank_name = None
+        for rank, hon in RANK_HONORIFICS.items():
+            if hon == bearer_honorific or rank in bearer_honorific:
+                bearer_rank_name = rank
+                break
+        if not bearer_rank_name:
+            bearer_rank_name = "Watch Brother"
+        rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+        
+        # Get home chapter emoji
+        bearer_chapter = _get_bearer_home_chapter(member)
+        chapter_emoji = (
+            _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+        )
+        chapter_prefix = f"{chapter_emoji}" if chapter_emoji else ""
         
         # Format line
         penalty = _get_damage_penalty(current_tier)
         penalty_text = f" (-{penalty})" if penalty > 0 else ""
+        rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+        chapter_suffix = f" {chapter_prefix}" if chapter_prefix else ""
         lines.append(
-            f"`{i:>2}.` {icon} **{bearer_name}**{penalty_text}\n"
-            f"      ↳ {tier_text} · {points} cycles"
+            f"`{i:>2}.` {icon} {rank_prefix}**{bearer_name}**{chapter_suffix}{penalty_text}\n"
+            f"       ↳ {tier_text} · {points} cycles"
         )
     
     embed.add_field(
         name="▸ Brothers at Risk",
         value="\n".join(lines),
+        inline=False,
+    )
+    
+    # Add legend
+    legend = (
+        "💀 Spirit Fractured · 🔴 Critical (-3)\n"
+        "🟠 Compromised (-2) · 🟡 Damaged (-1)\n"
+        "⚪ Undamaged (showing next-mission damage chance)"
+    )
+    embed.add_field(
+        name="▸ Status Key",
+        value=legend,
         inline=False,
     )
     
