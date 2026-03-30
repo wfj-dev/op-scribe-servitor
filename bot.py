@@ -2457,11 +2457,11 @@ ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}
 
 # Default probability tiers (can be overridden in config)
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
-    {"min": 0, "max": 25, "chance": 0.0},
-    {"min": 26, "max": 75, "chance": 0.02},
-    {"min": 76, "max": 150, "chance": 0.08},
-    {"min": 151, "max": 250, "chance": 0.20},
-    {"min": 251, "max": None, "chance": 0.40},
+    {"min": 0, "max": 25, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
+    {"min": 26, "max": 75, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
+    {"min": 76, "max": 150, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
+    {"min": 151, "max": 250, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
+    {"min": 251, "max": None, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}},
 ]
 
 # Grace period defaults
@@ -2545,6 +2545,37 @@ def _save_armor_integrity(data: dict):
         pass
 
 
+# Batch armor integrity helpers for bulk ingest operations
+# These avoid repeated file I/O by working with an in-memory dict
+
+def _get_armor_state_from_batch(user_id: int, batch_data: dict) -> dict:
+    """Get armor state from batch data (in-memory, no file I/O)."""
+    return batch_data.get(
+        str(user_id),
+        {
+            "points_since_blessing": 0,
+            "damage_tier": None,
+            "critical_aar_count": 0,
+            "spirit_fractured": False,
+            "last_blessing_timestamp": None,
+        },
+    )
+
+
+def _set_armor_state_in_batch(user_id: int, state: dict, batch_data: dict):
+    """Set armor state in batch data (in-memory, no file I/O)."""
+    batch_data[str(user_id)] = state
+
+
+async def _save_armor_batch(batch_data: dict):
+    """Save batch armor data to disk (call once at end of bulk operation)."""
+    try:
+        async with ARMOR_INTEGRITY_LOCK:
+            _save_armor_integrity(batch_data)
+    except Exception:
+        pass
+
+
 async def _get_armor_state(user_id: int) -> dict:
     """Get armor integrity state for a user."""
     try:
@@ -2592,8 +2623,8 @@ def _get_armor_probability_tiers() -> list:
     return config.get("probability_tiers", DEFAULT_ARMOR_PROBABILITY_TIERS)
 
 
-def _get_damage_probability(points_since_blessing: int) -> float:
-    """Get damage probability for a given point total."""
+def _get_probability_tier_for_points(points_since_blessing: int) -> Optional[dict]:
+    """Get the probability tier config for a given point total."""
     tiers = _get_armor_probability_tiers()
     for tier in tiers:
         min_pts = tier.get("min", 0)
@@ -2601,11 +2632,55 @@ def _get_damage_probability(points_since_blessing: int) -> float:
         if max_pts is None:
             # Unbounded upper tier
             if points_since_blessing >= min_pts:
-                return tier.get("chance", 0.0)
+                return tier
         else:
             if min_pts <= points_since_blessing <= max_pts:
-                return tier.get("chance", 0.0)
+                return tier
+    return None
+
+
+def _get_damage_probability(points_since_blessing: int) -> float:
+    """Get damage probability for a given point total."""
+    tier = _get_probability_tier_for_points(points_since_blessing)
+    if tier:
+        return tier.get("chance", 0.0)
     return 0.0
+
+
+def _roll_damage_tier(points_since_blessing: int) -> str:
+    """Roll which damage tier to apply based on weighted probabilities.
+    
+    Returns one of: 'damaged', 'compromised', 'critical'
+    """
+    tier = _get_probability_tier_for_points(points_since_blessing)
+    
+    # Default weights if not specified
+    default_weights = {"damaged": 100, "compromised": 0, "critical": 0}
+    weights = tier.get("damage_weights", default_weights) if tier else default_weights
+    
+    # Build weighted list
+    damage_tiers = []
+    tier_weights = []
+    for damage_tier in ARMOR_DAMAGE_TIERS:
+        weight = weights.get(damage_tier, 0)
+        if weight > 0:
+            damage_tiers.append(damage_tier)
+            tier_weights.append(weight)
+    
+    # If no valid weights, default to damaged
+    if not damage_tiers:
+        return "damaged"
+    
+    # Weighted random selection
+    total = sum(tier_weights)
+    roll = random.uniform(0, total)
+    cumulative = 0
+    for i, weight in enumerate(tier_weights):
+        cumulative += weight
+        if roll <= cumulative:
+            return damage_tiers[i]
+    
+    return damage_tiers[-1]
 
 
 def _get_armor_damage_role_ids() -> dict:
@@ -2702,17 +2777,18 @@ async def _run_armor_integrity_check(points_since_blessing: int) -> bool:
     return random.random() < probability
 
 
-async def _escalate_damage_tier(
+async def _apply_damage_tier(
     member: discord.Member,
     guild: discord.Guild,
     current_tier: Optional[str],
+    rolled_tier: str,
 ) -> Optional[str]:
-    """Escalate a member's damage tier by one level. Returns the new tier."""
+    """Apply a rolled damage tier if it's worse than current. Returns the new tier."""
     role_ids = _get_armor_damage_role_ids()
     if not role_ids:
         return None
 
-    # Determine current index and next tier
+    # Determine current index
     if current_tier is None:
         current_idx = -1
     else:
@@ -2721,12 +2797,17 @@ async def _escalate_damage_tier(
         except ValueError:
             current_idx = -1
 
-    next_idx = current_idx + 1
-    if next_idx >= len(ARMOR_DAMAGE_TIERS):
-        # Already at max tier
+    # Determine rolled tier index
+    try:
+        rolled_idx = ARMOR_DAMAGE_TIERS.index(rolled_tier)
+    except ValueError:
+        return None
+
+    # Only apply if rolled tier is worse (higher index) than current
+    if rolled_idx <= current_idx:
         return current_tier
 
-    new_tier = ARMOR_DAMAGE_TIERS[next_idx]
+    new_tier = rolled_tier
     new_role_id = role_ids.get(new_tier)
 
     if not new_role_id:
@@ -2740,7 +2821,7 @@ async def _escalate_damage_tier(
                 current_role = guild.get_role(int(current_role_id))
                 if current_role and current_role in member.roles:
                     await member.remove_roles(
-                        current_role, reason="Armor integrity: escalating damage tier"
+                        current_role, reason="Armor integrity: applying damage tier"
                     )
 
         # Add new damage role
@@ -2823,6 +2904,9 @@ async def _post_armor_alert(
     # Service studs computation
     bearer_studs = _compute_member_service_studs(member)
 
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(member.id))
+
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(member)
     chapter_emoji = (
@@ -2862,8 +2946,14 @@ async def _post_armor_alert(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
-        # Determine embed color and title based on tier
+    # Determine embed color and title based on tier
+    if tier == "critical":
         color = 0xE74C3C  # Red
         title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
         description = "*Machine spirit instability detected*"
@@ -2928,8 +3018,17 @@ async def _process_armor_integrity_for_aar(
     brother_id: str,
     base_points: int,
     guild: discord.Guild,
+    armor_batch: Optional[dict] = None,
 ) -> Tuple[int, Optional[dict]]:
     """Process armor integrity for a single brother in an AAR.
+
+    Args:
+        brother_id: Discord user ID string
+        base_points: Base AAR points for this brother (before penalties)
+        guild: Discord guild for role operations
+        armor_batch: Optional pre-loaded armor data dict for batch processing.
+                     If provided, state is read/written to this dict (no file I/O).
+                     If None, uses individual file I/O per call.
 
     Returns:
         Tuple of (penalty_amount, alert_info_or_none)
@@ -2955,8 +3054,11 @@ async def _process_armor_integrity_for_aar(
         if not _check_armor_grace_period(member, total_aar_points):
             return penalty, None
 
-        # Get current armor state
-        state = await _get_armor_state(int(brother_id))
+        # Get current armor state (from batch if provided, else from file)
+        if armor_batch is not None:
+            state = _get_armor_state_from_batch(int(brother_id), armor_batch)
+        else:
+            state = await _get_armor_state(int(brother_id))
 
         # Accumulate points (use base unpenalized points for tracking)
         state["points_since_blessing"] = (
@@ -2969,9 +3071,10 @@ async def _process_armor_integrity_for_aar(
         )
 
         if damage_occurred:
-            # Escalate damage tier
-            new_tier = await _escalate_damage_tier(member, guild, current_tier)
-            if new_tier:
+            # Roll which damage tier to apply based on current points
+            rolled_tier = _roll_damage_tier(state["points_since_blessing"])
+            new_tier = await _apply_damage_tier(member, guild, current_tier, rolled_tier)
+            if new_tier and new_tier != current_tier:
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
                     state["critical_aar_count"] = 0  # Reset on entering critical
@@ -2980,8 +3083,9 @@ async def _process_armor_integrity_for_aar(
                     "tier": new_tier,
                     "critical_count": 0,
                 }
-        elif current_tier == "critical":
-            # Already at critical, increment AAR count
+
+        # If at critical (whether damage occurred or not), increment fracture countdown
+        if current_tier == "critical":
             state["critical_aar_count"] = state.get("critical_aar_count", 0) + 1
             config = _get_armor_config()
             fracture_threshold = config.get(
@@ -2992,8 +3096,11 @@ async def _process_armor_integrity_for_aar(
                 # Spirit fractures
                 state["spirit_fractured"] = True
 
-        # Save updated state
-        await _set_armor_state(int(brother_id), state)
+        # Save updated state (to batch if provided, else to file)
+        if armor_batch is not None:
+            _set_armor_state_in_batch(int(brother_id), state, armor_batch)
+        else:
+            await _set_armor_state(int(brother_id), state)
 
         return penalty, alert_info
 
@@ -6523,14 +6630,194 @@ def _get_armor_status_allowed_channels() -> set:
     """Get allowed channel IDs for armor_status command from config."""
     config = _get_armor_config()
     channel_ids = config.get("armor_status_allowed_channels", [])
-    return {int(c) for c in channel_ids if c}
+
+    allowed_channels: set[int] = set()
+    for c in channel_ids:
+        if not c:
+            continue
+        try:
+            allowed_channels.add(int(c))
+        except (TypeError, ValueError):
+            # Skip invalid entries to avoid breaking the command on bad config
+            continue
+
+    return allowed_channels
+
+
+def _calculate_armor_risk_score(
+    damage_tier: Optional[str],
+    points_since_blessing: int,
+    spirit_fractured: bool,
+) -> int:
+    """Calculate a risk score for sorting armor status leaderboard.
+    
+    Higher score = more urgent/at-risk.
+    Score components:
+    - Fractured spirit: +10000
+    - Critical tier: +3000
+    - Compromised tier: +2000
+    - Damaged tier: +1000
+    - Points since blessing: direct add
+    """
+    score = 0
+    if spirit_fractured:
+        score += 10000
+    elif damage_tier == "critical":
+        score += 3000
+    elif damage_tier == "compromised":
+        score += 2000
+    elif damage_tier == "damaged":
+        score += 1000
+    score += points_since_blessing
+    return score
+
+
+async def _show_armor_leaderboard(
+    interaction: discord.Interaction,
+    guild: discord.Guild,
+):
+    """Show top 10 brothers at risk of armor damage."""
+    # Load all armor states
+    armor_data = _load_armor_integrity()
+    
+    if not armor_data:
+        embed = discord.Embed(
+            title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+            description="*No armor integrity records on file.*",
+            color=0x5D6D7E,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # Build list of (member, state, risk_score)
+    risk_list = []
+    for user_id_str, state in armor_data.items():
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            continue
+        
+        member = guild.get_member(user_id)
+        if not member:
+            continue
+        
+        # Get damage tier from roles (more accurate than stored state)
+        current_tier = _get_member_damage_tier(member)
+        points_since_blessing = state.get("points_since_blessing", 0)
+        spirit_fractured = state.get("spirit_fractured", False)
+        
+        risk_score = _calculate_armor_risk_score(
+            current_tier, points_since_blessing, spirit_fractured
+        )
+        
+        # Only include if they have any risk (points > 0 or damage)
+        if risk_score > 0:
+            risk_list.append((member, state, current_tier, risk_score))
+    
+    # Sort by risk score descending
+    risk_list.sort(key=lambda x: x[3], reverse=True)
+    
+    # Take top 10
+    top_10 = risk_list[:10]
+    
+    if not top_10:
+        embed = discord.Embed(
+            title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+            description="*All brothers nominal. No maintenance required.*",
+            color=0x2ECC71,  # Green
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # Build the leaderboard embed
+    embed = discord.Embed(
+        title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
+        description="*Top 10 brothers requiring attention*",
+        color=0xE67E22,  # Orange
+    )
+    
+    lines = []
+    for i, (member, state, current_tier, risk_score) in enumerate(top_10, 1):
+        points = state.get("points_since_blessing", 0)
+        spirit_fractured = state.get("spirit_fractured", False)
+        prob = _get_damage_probability(points) * 100
+        
+        # Status icon
+        if spirit_fractured:
+            icon = "💀"
+            tier_text = "FRACTURED"
+        elif current_tier == "critical":
+            icon = "🔴"
+            tier_text = "CRITICAL"
+        elif current_tier == "compromised":
+            icon = "🟠"
+            tier_text = "COMPROMISED"
+        elif current_tier == "damaged":
+            icon = "🟡"
+            tier_text = "DAMAGED"
+        else:
+            icon = "⚪"
+            tier_text = f"{prob:.0f}% dmg chance"
+        
+        # Get display name and rank
+        bearer_honorific, bearer_name, _ = _get_bearer_rank_and_title(member)
+        bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+        
+        # Get rank emoji
+        bearer_rank_name = None
+        for rank, hon in RANK_HONORIFICS.items():
+            if hon == bearer_honorific or rank in bearer_honorific:
+                bearer_rank_name = rank
+                break
+        if not bearer_rank_name:
+            bearer_rank_name = "Watch Brother"
+        rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+        
+        # Get home chapter emoji
+        bearer_chapter = _get_bearer_home_chapter(member)
+        chapter_emoji = (
+            _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
+        )
+        chapter_prefix = f"{chapter_emoji}" if chapter_emoji else ""
+        
+        # Format line
+        penalty = _get_damage_penalty(current_tier)
+        penalty_text = f" (-{penalty})" if penalty > 0 else ""
+        rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+        chapter_suffix = f" {chapter_prefix}" if chapter_prefix else ""
+        lines.append(
+            f"`{i:>2}.` {icon} {rank_prefix}**{bearer_name}**{chapter_suffix}{penalty_text}\n"
+            f"       ↳ {tier_text} · {points} cycles"
+        )
+    
+    embed.add_field(
+        name="▸ Brothers at Risk",
+        value="\n".join(lines),
+        inline=False,
+    )
+    
+    # Add legend
+    legend = (
+        "💀 Spirit Fractured · 🔴 Critical (-3)\n"
+        "🟠 Compromised (-2) · 🟡 Damaged (-1)\n"
+        "⚪ Undamaged (showing next-mission damage chance)"
+    )
+    embed.add_field(
+        name="▸ Status Key",
+        value=legend,
+        inline=False,
+    )
+    
+    embed.set_footer(text="Use /armor_status @brother for detailed diagnostics")
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(
     name="armor_status",
-    description="Check armor integrity status for a battle-brother.",
+    description="Check armor integrity status for a brother, or view top 10 at-risk brothers.",
 )
-@app_commands.describe(brother="Brother to check (defaults to self)")
+@app_commands.describe(brother="Brother to check (omit to see top 10 at-risk)")
 async def _armor_status(
     interaction: discord.Interaction, brother: Optional[discord.Member] = None
 ):
@@ -6551,15 +6838,18 @@ async def _armor_status(
         )
         return
 
-    # Default to caller if no brother specified
-    target = brother or interaction.user
-    if not isinstance(target, discord.Member):
-        await interaction.response.send_message(
-            "Could not resolve brother.", ephemeral=True
-        )
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message("Guild not found.", ephemeral=True)
         return
 
-    guild = interaction.guild
+    # If no brother specified, show leaderboard
+    if brother is None:
+        await _show_armor_leaderboard(interaction, guild)
+        return
+
+    # Individual brother view
+    target = brother
 
     # Get armor state from persistent storage
     armor_state = await _get_armor_state(int(target.id))
@@ -6583,6 +6873,8 @@ async def _armor_status(
         total_aar_points = 0
     cleared_grace_period = _check_armor_grace_period(target, total_aar_points)
     in_grace_period = not cleared_grace_period
+    cleared_grace_period = _check_armor_grace_period(target, total_aar_points)
+    in_grace_period = not cleared_grace_period
 
     # Get bearer display info
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
@@ -6590,6 +6882,9 @@ async def _armor_status(
 
     # Service studs computation
     bearer_studs = _compute_member_service_studs(target)
+
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(target.id))
 
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(target)
@@ -6628,6 +6923,11 @@ async def _armor_status(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
     # Determine embed color and status based on tier
     config = _get_armor_config()
@@ -6702,7 +7002,7 @@ async def _armor_status(
     )
 
     # Risk assessment field
-    if in_grace_period:
+    if not in_grace_period:
         risk_text = "🛡️ **Grace period active**\n*No damage risk*"
     elif prob_percent == 0:
         risk_text = "✅ **Minimal**\n*0% degradation chance*"
@@ -6788,6 +7088,9 @@ async def _preview_armor_alert(
     # Service studs computation
     bearer_studs = _compute_member_service_studs(brother)
 
+    # Machine spirit designation
+    machine_spirit = await _get_machine_spirit(int(brother.id))
+
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(brother)
     chapter_emoji = (
@@ -6827,8 +7130,14 @@ async def _preview_armor_alert(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_display += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
+    # Machine spirit
+    if machine_spirit:
+        bearer_display += f"\nSpirit: `{machine_spirit}`"
+    else:
+        bearer_display += "\nSpirit: *UNBOUND*"
 
-        # Determine embed color and title based on tier
+    # Determine embed color and title based on tier
+    if tier == "critical":
         color = 0xE74C3C  # Red
         title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
         description = "*Machine spirit instability detected*"
@@ -7892,6 +8201,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         except Exception:
             pass
 
+    # Load armor integrity data once for batch processing (avoids repeated file I/O)
+    armor_batch = _load_armor_integrity()
+    armor_batch_modified = False
+
     async for msg in aar_channel.history(**history_kwargs):
         if not is_aar_message(msg):
             continue
@@ -7919,7 +8232,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             continue
         aar_id = record.get("aar_id", msg.id)
         if has_been_processed(aar_id):
-            existing = _load_json_dict(AAR_RECORDS_PATH).get(str(aar_id))
+            existing = DATASTORE.get_record(aar_id)
             existing_hash = (
                 (existing or {}).get("content_hash")
                 if isinstance(existing, dict)
@@ -7955,7 +8268,33 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         # --- Armor Integrity: Check penalties BEFORE saving ---
         guild = aar_channel.guild
         brother_ids = record.get("brother_ids", [])
-        base_points = record.get("points_for_op", 0)
+        # Compute per-brother base points for armor tracking
+        # For siege ops: points based on waves per brother
+        # For other ops: use points_for_op (same for all brothers)
+        difficulty_class = record.get("difficulty_class") or ""
+        global_waves = record.get("waves") or 0
+        brother_waves = record.get("brother_waves") or {}
+        points_for_op = record.get("points_for_op") or 0
+        base_points = {}
+        if brother_ids:
+            is_siege = difficulty_class in ("normal_siege", "hard_siege")
+            for bid in brother_ids:
+                if is_siege:
+                    # Siege: compute per-brother from waves
+                    waves_for_brother = brother_waves.get(bid)
+                    if waves_for_brother is None:
+                        waves_for_brother = global_waves
+                    try:
+                        waves_for_brother = int(waves_for_brother or 0)
+                    except Exception:
+                        waves_for_brother = 0
+                    if difficulty_class == "normal_siege":
+                        base_points[bid] = 3 * (waves_for_brother // 5)
+                    else:
+                        base_points[bid] = 4 * (waves_for_brother // 5)
+                else:
+                    # Non-siege: same points for all brothers
+                    base_points[bid] = points_for_op
         armor_penalties = {}
 
         if guild and brother_ids:
@@ -7981,13 +8320,18 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         if guild and brother_ids:
             for bid in brother_ids:
                 try:
+                    bid_base_points = base_points.get(bid, 0)
                     penalty, alert_info = await _process_armor_integrity_for_aar(
-                        bid, base_points, guild
+                        bid, bid_base_points, guild, armor_batch
                     )
                     if alert_info:
                         alerts_to_post.append(alert_info)
+                        armor_batch_modified = True
                 except Exception:
                     pass
+            # Mark batch as modified if any brother was processed
+            if brother_ids:
+                armor_batch_modified = True
 
         # Post any armor alerts (outside the loop to avoid rate limits)
         for alert in alerts_to_post:
@@ -8043,6 +8387,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             await _set_aar_reaction(m, "ok")
         for m in to_react_err:
             await _set_aar_reaction(m, "error")
+
+    # Save armor batch data once at end (avoid repeated file I/O during loop)
+    if armor_batch_modified:
+        await _save_armor_batch(armor_batch)
 
     return ingested, rejected
 
