@@ -222,7 +222,7 @@ CHALLENGE_ROLES = [
     ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
     ("White Hand of Death", "White Hand of Death", "ClandestineOperationsMedal"),
     ("Red Hand of Doom", "Red Hand of Doom", "DistinguishedClandestineoperati"),
-    ("Leviathan Protocol", "Leviathan Protocol", "KadakuCampaignMedal")
+    ("Kadaku Campaign Medal", "Kadaku Campaign Medal", "KadakuCampaignMedal")
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -9701,7 +9701,7 @@ async def completed_challenges(
 
     # Build embed
     embed = discord.Embed(
-        title="᛭⋅ CHALLENGES COMPLETED ⋅᛭",
+        title="᛭⋅ COMPLETED CHALLENGES ⋅᛭",
         description="*⌾ Watch Fortress Jericho ⌾*",
         color=0xC27C0E,  # Gold/bronze color for achievements
     )
