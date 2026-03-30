@@ -7967,6 +7967,16 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 if waves_for_brother is None:
                     waves_for_brother = 0
                 base_points[bid] = difficulty_class + waves_for_brother
+        difficulty_class = record.get("difficulty_class") or 0
+        global_waves = record.get("waves")
+        brother_waves = record.get("brother_waves") or {}
+        base_points = {}
+        if brother_ids:
+            for bid in brother_ids:
+                waves_for_brother = brother_waves.get(bid, global_waves)
+                if waves_for_brother is None:
+                    waves_for_brother = 0
+                base_points[bid] = difficulty_class + waves_for_brother
         armor_penalties = {}
 
         if guild and brother_ids:
