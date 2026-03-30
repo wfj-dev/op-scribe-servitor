@@ -10445,7 +10445,7 @@ def validate_aar(record: dict):
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
         leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)
-        if leviathan_in_difficulty and not leviathan_in_mission:
+        if leviathan_in_difficulty:
             errors.append(
                 "@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line."
             )
