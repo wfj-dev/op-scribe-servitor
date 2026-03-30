@@ -10,13 +10,16 @@ flowchart TB
 
     subgraph Bot["bot.py - Core Engine"]
         Client["Discord.py Client"]
-        Commands["Slash Commands (21)"]
+        Commands["Slash Commands (23)"]
         Events["Event Handlers"]
         
         subgraph Tasks["Scheduled Tasks"]
-            DailyAudit["Daily Audit"]
+            DailyAudit["Daily Audit (24h)"]
             MonthlyAudit["Monthly Full Audit"]
-            WeeklyMaint["Weekly Maintenance"]
+            WeeklyMaint["Weekly Maintenance (1h check)"]
+            ActivityCheck["Activity Status Check (4h)"]
+            MilestoneCheck["Milestone Check (1h)"]
+            HonoursRunner["Honours Runner (15m)"]
         end
         
         subgraph Locks["Concurrency Control"]
@@ -24,6 +27,9 @@ flowchart TB
             RitesLock["RITES_LOCK"]
             RotationLock["ROTATION_LOCK"]
             ActivityLock["ACTIVITY_STATUS_LOCK"]
+            MachineLock["MACHINE_SPIRITS_LOCK"]
+            PromotionLock["PROMOTION_TRACKING_LOCK"]
+            ArmorLock["ARMOR_INTEGRITY_LOCK"]
         end
         
         Parser["AAR Parser"]
@@ -54,6 +60,7 @@ flowchart TB
         TrophyHall["trophy_hall_index.json"]
         HomeRotation["home_chapter_rotation.json"]
         Oaths["oaths_index.json"]
+        MachineSpirits["machine_spirits.json"]
     end
 
     subgraph Logging["logs/"]
@@ -86,6 +93,29 @@ flowchart TB
 | Data Layer | `datastore.py` | Write-behind cache, background flush, user stats |
 | Configuration | `config/config.json` | Guild settings, permissions, channel policies |
 | Persistence | `data/*.json` | AAR records, activity tracking, milestones, rites |
+
+## Scheduled Tasks
+
+| Task | Interval | Purpose |
+|------|----------|---------|
+| Daily Audit | 24 hours | Reprocess recent AARs and update archive |
+| Monthly Audit | Daily (runs on last day) | Full-history recheck |
+| Weekly Maintenance | Hourly (runs on configured day) | Sanctify + full audit |
+| Activity Status Check | 4 hours | Check for activity status changes and promotions |
+| Milestone Check | Hourly (runs on configured day) | Check and announce collective milestones |
+| Honours Runner | 15 minutes | Post monthly honours on 1st of month |
+
+## Concurrency Locks
+
+| Lock | Purpose |
+|------|---------|
+| RECONCILE_LOCK | Prevents concurrent AAR reconciliation |
+| RITES_LOCK | Protects rites.json access |
+| ROTATION_LOCK | Guards home chapter rotation |
+| ACTIVITY_STATUS_LOCK | Protects activity status updates |
+| MACHINE_SPIRITS_LOCK | Guards machine spirits data |
+| PROMOTION_TRACKING_LOCK | Protects promotion tracking updates |
+| ARMOR_INTEGRITY_LOCK | Guards armor integrity data |
 
 ## Data Flow
 
