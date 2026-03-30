@@ -6576,7 +6576,7 @@ async def _armor_status(
 
     # Check grace period
     try:
-        stats = await bot.store.get_user_stats_map(str(target.id))
+        stats = await compute_stats_for_user(str(target.id))
         total_aar_points = stats.get("aar_points", 0)
     except Exception:
         total_aar_points = 0
