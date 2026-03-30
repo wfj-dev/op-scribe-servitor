@@ -12659,8 +12659,10 @@ async def _compute_fortress_rankings(
             dampened[ch] = weight * raw + (1.0 - weight) * global_mean
         return dampened
 
-    # Compute minimum ops required for rate-based metrics (like avg pts/op)
-    # to match the filtering used in monthly honours leaderboards.
+    # Compute minimum ops required for user/team rankings (including raw ops
+    # and rate-based metrics like avg pts/op), matching the filtering used in
+    # monthly honours leaderboards. Note: despite the name, this threshold is
+    # also reused for team rankings.
     if span_days >= 28:
         user_min_ops_required = 28
     else:
