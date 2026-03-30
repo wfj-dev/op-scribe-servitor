@@ -7979,7 +7979,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             continue
         aar_id = record.get("aar_id", msg.id)
         if has_been_processed(aar_id):
-            existing = _load_json_dict(AAR_RECORDS_PATH).get(str(aar_id))
+            existing = DATASTORE.get_record(aar_id)
             existing_hash = (
                 (existing or {}).get("content_hash")
                 if isinstance(existing, dict)
@@ -8015,27 +8015,33 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         # --- Armor Integrity: Check penalties BEFORE saving ---
         guild = aar_channel.guild
         brother_ids = record.get("brother_ids", [])
-        # Compute per-brother base points using difficulty_class and waves information.
-        difficulty_class = record.get("difficulty_class") or 0
-        global_waves = record.get("waves")
+        # Compute per-brother base points for armor tracking
+        # For siege ops: points based on waves per brother
+        # For other ops: use points_for_op (same for all brothers)
+        difficulty_class = record.get("difficulty_class") or ""
+        global_waves = record.get("waves") or 0
         brother_waves = record.get("brother_waves") or {}
+        points_for_op = record.get("points_for_op") or 0
         base_points = {}
         if brother_ids:
+            is_siege = difficulty_class in ("normal_siege", "hard_siege")
             for bid in brother_ids:
-                waves_for_brother = brother_waves.get(bid, global_waves)
-                if waves_for_brother is None:
-                    waves_for_brother = 0
-                base_points[bid] = difficulty_class + waves_for_brother
-        difficulty_class = record.get("difficulty_class") or 0
-        global_waves = record.get("waves")
-        brother_waves = record.get("brother_waves") or {}
-        base_points = {}
-        if brother_ids:
-            for bid in brother_ids:
-                waves_for_brother = brother_waves.get(bid, global_waves)
-                if waves_for_brother is None:
-                    waves_for_brother = 0
-                base_points[bid] = difficulty_class + waves_for_brother
+                if is_siege:
+                    # Siege: compute per-brother from waves
+                    waves_for_brother = brother_waves.get(bid)
+                    if waves_for_brother is None:
+                        waves_for_brother = global_waves
+                    try:
+                        waves_for_brother = int(waves_for_brother or 0)
+                    except Exception:
+                        waves_for_brother = 0
+                    if difficulty_class == "normal_siege":
+                        base_points[bid] = 3 * (waves_for_brother // 5)
+                    else:
+                        base_points[bid] = 4 * (waves_for_brother // 5)
+                else:
+                    # Non-siege: same points for all brothers
+                    base_points[bid] = points_for_op
         armor_penalties = {}
 
         if guild and brother_ids:
