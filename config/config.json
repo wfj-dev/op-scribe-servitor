@@ -160,11 +160,11 @@
       "critical": "1487996649518141531"
     },
     "probability_tiers": [
-      {"min": 0, "max": 25, "chance": 0.0},
-      {"min": 26, "max": 75, "chance": 0.02},
-      {"min": 76, "max": 150, "chance": 0.08},
-      {"min": 151, "max": 250, "chance": 0.20},
-      {"min": 251, "max": null, "chance": 0.40}
+      {"min": 0, "max": 25, "chance": 0.0, "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0}},
+      {"min": 26, "max": 75, "chance": 0.02, "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2}},
+      {"min": 76, "max": 150, "chance": 0.08, "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5}},
+      {"min": 151, "max": 250, "chance": 0.20, "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10}},
+      {"min": 251, "max": null, "chance": 0.40, "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15}}
     ],
     "grace_period_min_points": 100,
     "grace_period_min_days": 7,
