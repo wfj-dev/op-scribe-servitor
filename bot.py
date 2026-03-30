@@ -222,6 +222,7 @@ CHALLENGE_ROLES = [
     ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
     ("White Hand of Death", "White Hand of Death", "ClandestineOperationsMedal"),
     ("Red Hand of Doom", "Red Hand of Doom", "DistinguishedClandestineoperati"),
+    ("Leviathan Protocol", "Leviathan Protocol", "KadakuCampaignMedal")
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
