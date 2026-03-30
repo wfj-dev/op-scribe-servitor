@@ -107,9 +107,13 @@ Detailed command descriptions
 	- Purpose: Show armor integrity status for a Brother or yourself.
 	- Who can run: general use.
 
-- `/preview_armor_alert`, `/preview_stud_announcement`
-	- Purpose: Preview what automated alerts/announcements would look like.
-	- Who can run: admin-only.
+- `/preview_armor_alert`
+	- Purpose: Preview what an automated armor damage alert would look like.
+	- Who can run: Techmarine or Forgemaster only.
+
+- `/preview_stud_announcement`
+	- Purpose: Preview what a service-stud announcement would look like.
+	- Who can run: debug mode only, or configured admin user IDs.
 
 - `/record_of_blood`
 	- Purpose: Show gene-seed recovery and armory preservation records.
