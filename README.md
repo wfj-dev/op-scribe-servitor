@@ -117,7 +117,7 @@ Detailed command descriptions
 
 - `/librarian_audit`
 	- Purpose: Audit data integrity across all stored records.
-	- Who can run: admin-only.
+	- Who can run: Watch Command only (or as configured via permissions).
 
 - `/completed_challenges`
 	- Purpose: List completed chapter challenges and accomplishments.
