@@ -14870,10 +14870,16 @@ async def _scheduled_milestone_check():
         now_utc = datetime.now(timezone.utc)
         today = now_utc.date()
 
-        # Check if enough days have passed since last check
-        if LAST_MILESTONE_CHECK_DATE:
+        # Load tracking data early so the persisted last_check_date is the
+        # source of truth for interval gating (survives bot restarts).
+        tracking = _load_milestone_tracking()
+        persisted_last_check = tracking.get("last_check_date")
+
+        # Use persisted date preferentially; fall back to in-memory value
+        last_check_str = persisted_last_check or LAST_MILESTONE_CHECK_DATE
+        if last_check_str:
             try:
-                last_check = datetime.strptime(LAST_MILESTONE_CHECK_DATE, "%Y-%m-%d").date()
+                last_check = datetime.strptime(last_check_str, "%Y-%m-%d").date()
                 days_since = (today - last_check).days
                 if days_since < MILESTONES_CHECK_INTERVAL_DAYS:
                     return
@@ -14896,8 +14902,6 @@ async def _scheduled_milestone_check():
             logger.exception("Milestone check: Could not resolve channel")
             return
 
-        # Load tracking data
-        tracking = _load_milestone_tracking()
         last_announced = tracking.get("last_announced", {})
 
         # Calculate current totals
