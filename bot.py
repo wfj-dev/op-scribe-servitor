@@ -10640,14 +10640,10 @@ async def my_deeds(interaction: discord.Interaction):
         )
         return
 
-    # Get caller's KT role name
-    caller_kt_name = None
-    for r in getattr(caller, "roles", []):
-        rid = getattr(r, "id", None)
-        if rid and ALLOWED_KT_ROLE_IDS and rid in ALLOWED_KT_ROLE_IDS:
-            caller_kt_name = _extract_killteam_name(getattr(r, "name", "")).lower()
-            break
-
+    # Get caller's Kill Team name using shared resolution logic
+    caller_kt_name = _resolve_killteam_for_member(caller)
+    if caller_kt_name:
+        caller_kt_name = caller_kt_name.lower()
     if not is_forgemaster and not caller_kt_name:
         await interaction.response.send_message(
             "You must belong to a Kill Team to use this command.", ephemeral=True
