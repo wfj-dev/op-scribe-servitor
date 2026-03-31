@@ -7101,6 +7101,9 @@ async def reconcile_records(
         return
     # Serialize concurrent invocations to avoid file races
     if RECONCILE_LOCK.locked():
+        logger.info(
+            f"reconcile_records blocked: lock held (user={interaction.user.id})"
+        )
         try:
             await interaction.response.send_message(
                 "Another reconciliation is in progress. Please try again shortly.",
@@ -7115,7 +7118,9 @@ async def reconcile_records(
     except Exception as e:
         logger.debug(f"Interaction defer failed: {e}")
 
+    logger.info(f"reconcile_records: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
+        logger.info(f"reconcile_records: lock acquired (user={interaction.user.id})")
         await _reconciliation_core(interaction, span_days)
 
 
@@ -7535,6 +7540,9 @@ async def audit_archive_discrepancies(
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if RECONCILE_LOCK.locked():
+        logger.info(
+            f"audit_archive_discrepancies blocked: lock held (user={interaction.user.id})"
+        )
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -7548,7 +7556,9 @@ async def audit_archive_discrepancies(
     except Exception:
         interaction_deferred = False
 
+    logger.info(f"audit_archive_discrepancies: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
+        logger.info(f"audit_archive_discrepancies: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
         aar_channel = discord.utils.get(
             guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
@@ -7635,6 +7645,9 @@ async def sanctify_battle_records(
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if RECONCILE_LOCK.locked():
+        logger.info(
+            f"sanctify_battle_records blocked: lock held (user={interaction.user.id})"
+        )
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -7647,7 +7660,9 @@ async def sanctify_battle_records(
     except Exception:
         interaction_deferred = False
 
+    logger.info(f"sanctify_battle_records: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
+        logger.info(f"sanctify_battle_records: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
         aar_channel = discord.utils.get(
             guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
@@ -8689,6 +8704,9 @@ async def reparse_records(
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if RECONCILE_LOCK.locked():
+        logger.info(
+            f"reparse_records blocked: lock held (user={interaction.user.id})"
+        )
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -8696,7 +8714,9 @@ async def reparse_records(
         return
     await interaction.response.defer(thinking=True, ephemeral=True)
 
+    logger.info(f"reparse_records: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
+        logger.info(f"reparse_records: lock acquired (user={interaction.user.id})")
         total = 0
         updated = 0
         failed = 0
