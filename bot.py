@@ -3031,14 +3031,35 @@ async def _post_armor_alert(
     else:
         content = member.mention
 
+    logger.debug(
+        f"Armor alert for {member.display_name}: tier={tier}, "
+        f"bearer_display_len={len(bearer_display)}, embed_fields={len(embed.fields)}, "
+        f"content_len={len(content)}"
+    )
+
+    # Check bot permissions
+    perms = channel.permissions_for(channel.guild.me)
+    if not perms.embed_links:
+        logger.error(f"Bot lacks 'Embed Links' permission in channel {channel.name}")
+    if not perms.send_messages:
+        logger.error(f"Bot lacks 'Send Messages' permission in channel {channel.name}")
+
     try:
-        await channel.send(
+        sent_msg = await channel.send(
             content=content,
             embed=embed,
             allowed_mentions=discord.AllowedMentions(roles=True, users=True),
         )
-    except Exception:
-        pass
+        # Verify embed was actually sent
+        if not sent_msg.embeds:
+            logger.warning(
+                f"Armor alert sent but embed was dropped! "
+                f"embed_links={perms.embed_links}, content={content[:50]}"
+            )
+        else:
+            logger.info(f"Posted armor alert for {member.display_name} (tier={tier})")
+    except Exception as e:
+        logger.error(f"Failed to post armor alert for {member.display_name}: {e}")
 
 
 async def _process_armor_integrity_for_aar(
@@ -3616,7 +3637,7 @@ async def on_ready():
                 ]
                 day_name = day_names[SCHEDULE_WEEKLY_MAINTENANCE_DAY]
                 logger.info(
-                    f"Weekly maintenance loop started ({day_name} {SCHEDULE_WEEKLY_MAINTENANCE_HOUR}:00 ET, "
+                    f"Weekly maintenance loop started ({day_name} {SCHEDULE_WEEKLY_MAINTENANCE_HOUR}:00 UTC, "
                     f"sanctify {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span + full audit)."
                 )
     except Exception:
@@ -6973,6 +6994,56 @@ async def _preview_armor_alert(
 
 
 @bot.tree.command(
+    name="test_armor_alert",
+    description="[DEBUG] Force-send a real armor alert to the arming chamber.",
+)
+@app_commands.describe(
+    brother="Brother to test alert for",
+    tier="Damage tier to simulate",
+    critical_count="Number of AARs at critical (for critical tier countdown)",
+)
+@app_commands.choices(
+    tier=[
+        app_commands.Choice(name="Damaged (-1 AAR)", value="damaged"),
+        app_commands.Choice(name="Compromised (-2 AAR)", value="compromised"),
+        app_commands.Choice(name="Critical (-3 AAR)", value="critical"),
+    ]
+)
+async def _test_armor_alert(
+    interaction: discord.Interaction,
+    brother: discord.Member,
+    tier: str = "damaged",
+    critical_count: int = 1,
+):
+    """Force-send a real armor alert to test the system."""
+    # Permission check: admin only
+    user_id = str(interaction.user.id)
+    admin_ids = [str(a) for a in CONFIG.get("admin_user_ids", [])]
+    if user_id not in admin_ids:
+        await interaction.response.send_message("Admin only.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        await _post_armor_alert(
+            member=brother,
+            tier=tier,
+            critical_aar_count=critical_count,
+            guild=interaction.guild,
+        )
+        await interaction.followup.send(
+            f"✅ Alert sent for {brother.display_name} (tier={tier}). Check the arming chamber and logs.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Error: {type(e).__name__}: {e}",
+            ephemeral=True,
+        )
+
+
+@bot.tree.command(
     name="preview_stud_announcement",
     description="[DEBUG] Preview a service stud announcement for a member.",
 )
@@ -8134,8 +8205,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     alert.get("critical_count", 0),
                     guild,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Error calling _post_armor_alert: {e}")
 
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:
