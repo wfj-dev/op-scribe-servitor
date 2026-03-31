@@ -18,8 +18,7 @@ flowchart TB
             MonthlyAudit["Monthly Full Audit"]
             WeeklyMaint["Weekly Maintenance (1h check)"]
             ActivityCheck["Activity Status Check (4h)"]
-            MilestoneCheck["Milestone Check (1h)"]
-            HonoursRunner["Honours Runner (15m)"]
+            MilestoneCheck["Milestone Check (24h)"]
         end
         
         subgraph Locks["Concurrency Control"]
@@ -102,8 +101,7 @@ flowchart TB
 | Monthly Audit | Daily (runs on last day) | Full-history recheck |
 | Weekly Maintenance | Hourly (runs on configured day) | Sanctify + full audit |
 | Activity Status Check | 4 hours | Check for activity status changes and promotions |
-| Milestone Check | Hourly (runs on configured day) | Check and announce collective milestones |
-| Honours Runner | 15 minutes | Post monthly honours on 1st of month |
+| Milestone Check | Daily (runs weekly) | Check and announce collective milestones to ᛭⋅⋅general-chat⋅⋅᛭ |
 
 ## Concurrency Locks
 
