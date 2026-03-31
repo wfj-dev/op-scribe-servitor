@@ -9223,36 +9223,27 @@ async def tally_deeds(
         # Determine Active/Inactive status: Active if any AAR in last 30 days.
 
         try:
-            # Use in-memory records from DATASTORE
-            timestamps = []
-            for rec in DATASTORE.iter_records():
-                if str(target.id) in (rec.get("brother_ids") or []):
-                    ts = rec.get("timestamp")
-                    if not ts:
-                        continue
-                    try:
-                        t = datetime.fromisoformat(ts)
-                    except Exception:
-                        continue
-                    if t.tzinfo is not None:
-                        try:
-                            t = t.astimezone(timezone.utc).replace(tzinfo=None)
-                        except Exception:
-                            t = t.replace(tzinfo=None)
-                    timestamps.append(t)
+            # Use cached last_aar_ts from user_stats_cache to avoid O(N) record scan
+            cached_ts = DATASTORE.get_user_stats(str(target.id)).get("last_aar_ts")
             status = "Inactive"
             last_aar_date: Optional[datetime] = None
             days_since_aar: Optional[int] = None
-            if timestamps:
-                timestamps.sort(reverse=True)
-                last_aar_date = timestamps[0]
-                now = datetime.utcnow()
-                days_since_aar = (now - last_aar_date).days
-                cutoff = now - timedelta(days=28)
-                for t in timestamps:
-                    if t >= cutoff:
+            if cached_ts:
+                try:
+                    last_aar_date = datetime.fromisoformat(cached_ts)
+                except Exception:
+                    last_aar_date = None
+                if last_aar_date is not None:
+                    if last_aar_date.tzinfo is not None:
+                        try:
+                            last_aar_date = last_aar_date.astimezone(timezone.utc).replace(tzinfo=None)
+                        except Exception:
+                            last_aar_date = last_aar_date.replace(tzinfo=None)
+                    now = datetime.utcnow()
+                    days_since_aar = (now - last_aar_date).days
+                    cutoff = now - timedelta(days=28)
+                    if last_aar_date >= cutoff:
                         status = "Active"
-                        break
         except Exception:
             status = "Inactive"
             last_aar_date = None
@@ -10767,32 +10758,27 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Active/Inactive status
     try:
-        timestamps = []
-        for rec in DATASTORE.iter_records():
-            if str(target.id) in (rec.get("brother_ids") or []):
-                ts = rec.get("timestamp")
-                if not ts:
-                    continue
-                try:
-                    t = datetime.fromisoformat(ts)
-                except Exception:
-                    continue
-                if t.tzinfo is not None:
-                    t = t.astimezone(timezone.utc).replace(tzinfo=None)
-                timestamps.append(t)
+        # Use cached last_aar_ts from user_stats_cache to avoid O(N) record scan
+        cached_ts = DATASTORE.get_user_stats(str(target.id)).get("last_aar_ts")
         status = "Inactive"
         last_aar_date = None
         days_since_aar = None
-        if timestamps:
-            timestamps.sort(reverse=True)
-            last_aar_date = timestamps[0]
-            now = datetime.utcnow()
-            days_since_aar = (now - last_aar_date).days
-            cutoff = now - timedelta(days=28)
-            for t in timestamps:
-                if t >= cutoff:
+        if cached_ts:
+            try:
+                last_aar_date = datetime.fromisoformat(cached_ts)
+            except Exception:
+                last_aar_date = None
+            if last_aar_date is not None:
+                if last_aar_date.tzinfo is not None:
+                    try:
+                        last_aar_date = last_aar_date.astimezone(timezone.utc).replace(tzinfo=None)
+                    except Exception:
+                        last_aar_date = last_aar_date.replace(tzinfo=None)
+                now = datetime.utcnow()
+                days_since_aar = (now - last_aar_date).days
+                cutoff = now - timedelta(days=28)
+                if last_aar_date >= cutoff:
                     status = "Active"
-                    break
     except Exception:
         status = "Inactive"
         last_aar_date = None
