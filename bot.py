@@ -10012,7 +10012,15 @@ async def tally_deeds(
 
                 # ▸ Bearer field (styled like forge_rite/stud announcement)
                 rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-                bearer_value = f"{rank_prefix}**{member_rank_name} {name_val}**"
+                # Strip any leading rank prefix from the stored name to avoid duplication
+                clean_name_val = name_val
+                if member_rank_name and isinstance(clean_name_val, str):
+                    prefixed = f"{member_rank_name} "
+                    if clean_name_val.startswith(prefixed):
+                        clean_name_val = clean_name_val[len(prefixed) :]
+                    elif clean_name_val.startswith(member_rank_name):
+                        clean_name_val = clean_name_val[len(member_rank_name) :].lstrip()
+                bearer_value = f"{rank_prefix}**{member_rank_name} {clean_name_val}**"
                 if home_ch and home_ch != "Unknown":
                     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
                     lineage_display = (
