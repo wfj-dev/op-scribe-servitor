@@ -12,11 +12,18 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
     gene_carries = 0
     gene_seed_points = 0
     waves_participated = 0
+    last_aar_ts: Optional[str] = None
     for record in records:
         brother_ids = record.get("brother_ids", [])
         if user_id in brother_ids:
             ops += 1
             difficulty_class = record.get("difficulty_class")
+
+            # Track most recent AAR timestamp for this user
+            ts = record.get("timestamp")
+            if ts:
+                if last_aar_ts is None or ts > last_aar_ts:
+                    last_aar_ts = ts
 
             # Get armor penalty for this user in this record
             armor_penalties = record.get("armor_penalties") or {}
@@ -75,6 +82,7 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
         "gene_carries": gene_carries,
         "gene_seed_points": gene_seed_points,
         "waves_participated": waves_participated,
+        "last_aar_ts": last_aar_ts,
     }
 
 
@@ -300,6 +308,7 @@ class DataStore:
                 "gene_carries": 0,
                 "gene_seed_points": 0,
                 "waves_participated": 0,
+                "last_aar_ts": None,
             },
         )
 
