@@ -14911,6 +14911,9 @@ async def _scheduled_milestone_check():
         if not crossed:
             logger.info("Milestone check complete: no new milestones")
             LAST_MILESTONE_CHECK_DATE = str(today)
+            # Persist last_check_date even when there are no announcements
+            tracking["last_check_date"] = str(today)
+            _save_milestone_tracking(tracking)
             return
 
         # Find Watch Brother role for mention
