@@ -3179,6 +3179,7 @@ def _get_armor_status_for_blessing(
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
+    Also handles forum channel format 'Kill-Team X' (hyphen between Kill and Team).
     If no match, returns the original name (or 'Unknown' if empty).
     Ignores role names like 'Kill Team Champion' that aren't actual kill teams.
     """
@@ -3186,7 +3187,8 @@ def _extract_killteam_name(name: str) -> str:
         # Skip non-KT role names that start with "Kill Team"
         if name and name.lower().strip() == "kill team champion":
             return name or "Unknown"
-        m = re.match(r"(?i)\s*kill\s*team\s*[:\-]?\s*(.+)", (name or ""))
+        # Match 'Kill Team X', 'Kill-Team X', 'KillTeam X', etc.
+        m = re.match(r"(?i)\s*kill[\s\-]*team\s*[:\-]?\s*(.+)", (name or ""))
         if m:
             return m.group(1).strip()
     except Exception:
