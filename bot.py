@@ -14673,6 +14673,7 @@ def _load_milestone_tracking() -> dict:
 def _save_milestone_tracking(data: dict) -> None:
     """Save milestone tracking data to JSON file with atomic write."""
     try:
+        os.makedirs(DATA_DIR, exist_ok=True)
         tmp_path = MILESTONE_TRACKING_PATH + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
