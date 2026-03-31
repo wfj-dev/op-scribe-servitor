@@ -101,7 +101,7 @@ flowchart TB
 | Monthly Audit | Daily (runs on last day) | Full-history recheck |
 | Weekly Maintenance | Hourly (runs on configured day) | Sanctify + full audit |
 | Activity Status Check | 4 hours | Check for activity status changes and promotions |
-| Milestone Check | Daily (runs weekly) | Check and announce collective milestones to #data-vault |
+| Milestone Check | Daily (runs weekly) | Check and announce collective milestones to ᛭⋅⋅general-chat⋅⋅᛭ |
 
 ## Concurrency Locks
 
