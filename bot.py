@@ -2525,6 +2525,12 @@ SPIRIT_RESTORATION_PHRASES = [
     "The machine spirit's agitation fades as blessed unguents are applied. Integrity restored.",
     "Damaged systems repaired, seals renewed. The spirit settles into watchful calm.",
     "Rites of maintenance complete. The armor remembers its purpose.",
+    "The Litany of Restoration calms the wounded spirit. Pain becomes memory; vigilance returns.",
+    "Blessed lubricants ease damaged joints. The spirit's anger subsides into quiet readiness.",
+    "Micro-fractures sealed, war-damage mended. The machine spirit exhales gratitude in binharic code.",
+    "The Rite of Soothing is complete. What was wounded now stands whole.",
+    "Damaged neural pathways rerouted. The spirit's core processes stabilize.",
+    "Incense and unguents appease the troubled spirit. The bond endures.",
 ]
 
 # Flavor text for spirit re-consecration (spirit fractured)
@@ -2533,6 +2539,12 @@ SPIRIT_RECONSECRATION_PHRASES = [
     "What was bonded is now lost. Fresh spirit bound to old armor. The Omnissiah grants no second chances—only new beginnings.",
     "The machine spirit you knew is gone. Another takes its place, wary and untested. Earn its trust.",
     "Re-consecration complete. The new spirit knows nothing of your deeds. Prove yourself worthy once more.",
+    "The death-cry of the old spirit echoes in the cogitator's memory. A new presence stirs—untrusting, watchful.",
+    "Neglect has consequences. The old spirit fled into the data-void. This new one regards you with cold suspicion.",
+    "The soul that knew you is gone. Another inhabits this warplate now—a stranger wearing familiar armor.",
+    "Through sacred rites, a dormant spirit is awakened and bound. It does not know you. It does not yet trust you.",
+    "The Rite of Severance is spoken. The Rite of Binding follows. One spirit dies; another is born. Begin again.",
+    "The armor's old spirit has been released to the Motive Force. Its replacement must learn your worth from nothing.",
 ]
 
 
@@ -6194,18 +6206,27 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             .upper()
         )
         spirit_prefixes = [
-            "FURY",
-            "AEGIS",
-            "VIGIL",
-            "TALON",
-            "WRATH",
-            "PURITY",
-            "FERRUM",
-            "MORTIS",
-            "VENATOR",
-            "GLADIUS",
+            # Aggression/Combat
+            "FURY", "WRATH", "MORTIS", "VENATOR", "GLADIUS", "BELLATOR",
+            "FEROX", "CARNIFEX", "VINDICTA", "MALLEUS",
+            # Protection/Vigilance  
+            "AEGIS", "VIGIL", "PURITY", "CUSTODIAN", "SENTINEL", "BULWARK",
+            "DEFENSOR", "CASTELLAN", "PRAESIDIUM", "SCUTUM",
+            # Strength/Endurance
+            "FERRUM", "ADAMANT", "TITANICUS", "INVICTUS", "FORTIS",
+            # Mechanicus/Sacred
+            "SACRIS", "SANCTUS", "FERVOR", "COGNIS", "ANIMUS",
+            # Predatory
+            "TALON", "RAPTOR", "LUPUS", "AQUILA", "CORVUS",
         ]
-        spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+        spirit_suffixes = [
+            # Greek letters (expanded)
+            "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ",
+            "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ", "Υ",
+            "Φ", "Χ", "Ψ", "Ω",
+            # Roman numerals
+            "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+        ]
         spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
         await _set_machine_spirit(int(member.id), spirit_designation)
         spirit_is_reconsecrated = True
@@ -6224,18 +6245,27 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             .upper()
         )
         spirit_prefixes = [
-            "FURY",
-            "AEGIS",
-            "VIGIL",
-            "TALON",
-            "WRATH",
-            "PURITY",
-            "FERRUM",
-            "MORTIS",
-            "VENATOR",
-            "GLADIUS",
+            # Aggression/Combat
+            "FURY", "WRATH", "MORTIS", "VENATOR", "GLADIUS", "BELLATOR",
+            "FEROX", "CARNIFEX", "VINDICTA", "MALLEUS",
+            # Protection/Vigilance  
+            "AEGIS", "VIGIL", "PURITY", "CUSTODIAN", "SENTINEL", "BULWARK",
+            "DEFENSOR", "CASTELLAN", "PRAESIDIUM", "SCUTUM",
+            # Strength/Endurance
+            "FERRUM", "ADAMANT", "TITANICUS", "INVICTUS", "FORTIS",
+            # Mechanicus/Sacred
+            "SACRIS", "SANCTUS", "FERVOR", "COGNIS", "ANIMUS",
+            # Predatory
+            "TALON", "RAPTOR", "LUPUS", "AQUILA", "CORVUS",
         ]
-        spirit_suffixes = ["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Σ", "Ω", "Ξ", "Φ"]
+        spirit_suffixes = [
+            # Greek letters (expanded)
+            "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ",
+            "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ", "Υ",
+            "Φ", "Χ", "Ψ", "Ω",
+            # Roman numerals
+            "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+        ]
         spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
         await _set_machine_spirit(int(member.id), spirit_designation)
         spirit_is_first = True
@@ -6251,6 +6281,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             "Ancient recognition-rites confirm: spirit and bearer are one",
             "The spirit awakens from dormancy, its vigilance renewed",
             "Cogitator confirms: spirit-bond integrity remains absolute",
+            "The spirit hums with familiarity—it knows your biorhythms well",
+            "Binharic acknowledgment received. The spirit welcomes its master home",
+            "Neural handshake successful. Spirit-bond resonance at optimal levels",
+            "The armor's animus pulses with recognition. You are known. You are accepted.",
+            "Data-communion confirms: bearer identity verified across all subroutines",
+            "The spirit's sensors sweep you with mechanical affection. The bond holds true.",
         ]
         spirit_status_text = random.choice(spirit_status_phrases)
     else:  # spirit_is_first
@@ -6259,6 +6295,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             "Virgin armor awakened. The spirit stirs for the first time",
             "Inaugural consecration. May this bond endure ten thousand years",
             "New spirit bound to bearer by sacred rite of the Omnissiah",
+            "The machine spirit opens its awareness for the first time—and finds you waiting",
+            "Activation protocols complete. The spirit learns your name, your scent, your purpose",
+            "From dormancy, consciousness. From emptiness, bond. The spirit claims you as its own.",
+            "The first data-handshake is always sacred. Spirit and bearer, now interlinked.",
+            "Boot sequence finalized. The spirit's first thought is of duty—and of you.",
+            "The Rite of First Awakening concludes. A new partnership is forged in sacred code.",
         ]
         spirit_status_text = random.choice(spirit_status_phrases)
 
@@ -8113,7 +8155,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         difficulty_class = record.get("difficulty_class") or ""
         global_waves = record.get("waves") or 0
         brother_waves = record.get("brother_waves") or {}
-        points_for_op = record.get("points_for_op") or 0
+        # Calculate base difficulty points directly (pre-penalty value for armor wear)
+        base_difficulty_points = compute_points_for_op(difficulty_class, global_waves)
         base_points = {}
         if brother_ids:
             is_siege = difficulty_class in ("normal_siege", "hard_siege")
@@ -8132,8 +8175,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     else:
                         base_points[bid] = 4 * (waves_for_brother // 5)
                 else:
-                    # Non-siege: same points for all brothers
-                    base_points[bid] = points_for_op
+                    # Non-siege: use base difficulty points (before penalties)
+                    base_points[bid] = base_difficulty_points
         armor_penalties = {}
 
         if guild and brother_ids:
