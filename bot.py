@@ -59,7 +59,7 @@ ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
 VETERAN_PROMOTION_CHANNEL_ID = 1443813516979994634
 
 # Channel ID for service stud milestone notifications
-SERVICE_STUDS_CHANNEL_ID = 1430055064969674777
+SERVICE_STUDS_CHANNEL_ID = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
 
 # Channel ID for Black Laurels eligibility notifications
 BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
@@ -115,7 +115,7 @@ SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
 # Milestone announcement settings (weekly check)
 MILESTONES_ENABLED = True
-MILESTONES_CHANNEL_ID: int = 1430055064969674777  # general-chat
+MILESTONES_CHANNEL_ID: int = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
 MILESTONES_CHECK_INTERVAL_DAYS = 7  # Check once per week
 MILESTONES_INCREMENTS = {
     "aar_points": 2500,
@@ -14856,7 +14856,7 @@ def _build_milestone_embed(
 async def _scheduled_milestone_check():
     """Run daily; check if a week has passed and announce any new milestones.
 
-    Posts to #general-chat with @Watch Brother mention when thresholds are crossed.
+    Posts to ᛭⋅⋅general-chat⋅⋅᛭ with @Watch Brother mention when thresholds are crossed.
     """
     global LAST_MILESTONE_CHECK_DATE
     try:
