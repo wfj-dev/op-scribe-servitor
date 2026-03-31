@@ -9223,12 +9223,11 @@ async def tally_deeds(
                 # Pip symbols use auramite-only display post-4 (via shared helper)
                 studs_symbols = _studs_pips(studs_count)
 
-                parts: list[str] = []
+                # Once in auramite tier, only show Auramite count (ignore plasteel)
                 if auramite_count:
-                    parts.append(f"{auramite_count} Auramite")
-                if plasteel_count:
-                    parts.append(f"{plasteel_count} Plasteel")
-                types_str = ", ".join(parts) if parts else "0 Plasteel"
+                    types_str = f"{auramite_count} Auramite"
+                else:
+                    types_str = f"{plasteel_count} Plasteel" if plasteel_count else "0 Plasteel"
                 studs_display = f"{studs_symbols} ({types_str})"
 
                 # Compare with studs already present in the display name and add
@@ -10204,11 +10203,7 @@ async def tally_deeds(
                         line_with_sep = prefix + line
 
                         if len(current_chunk) + len(line_with_sep) > 1024:
-                            field_name = (
-                                base_field_name
-                                if field_index == 0
-                                else f"{base_field_name} (cont.)"
-                            )
+                            field_name = base_field_name if field_index == 0 else "\u200b"
                             embed.add_field(
                                 name=field_name, value=current_chunk, inline=False
                             )
@@ -10218,11 +10213,7 @@ async def tally_deeds(
                             current_chunk += line_with_sep
 
                     if current_chunk:
-                        field_name = (
-                            base_field_name
-                            if field_index == 0
-                            else f"{base_field_name} (cont.)"
-                        )
+                        field_name = base_field_name if field_index == 0 else "\u200b"
                         embed.add_field(
                             name=field_name, value=current_chunk, inline=False
                         )
@@ -10800,12 +10791,11 @@ async def my_deeds(interaction: discord.Interaction):
             auramite_count = studs_count // 4
             plasteel_count = studs_count % 4
             studs_symbols = _studs_pips(studs_count)
-            parts = []
+            # Once in auramite tier, only show Auramite count (ignore plasteel)
             if auramite_count:
-                parts.append(f"{auramite_count} Auramite")
-            if plasteel_count:
-                parts.append(f"{plasteel_count} Plasteel")
-            types_str = ", ".join(parts) if parts else "0 Plasteel"
+                types_str = f"{auramite_count} Auramite"
+            else:
+                types_str = f"{plasteel_count} Plasteel" if plasteel_count else "0 Plasteel"
             studs_display = f"{studs_symbols} ({types_str})"
     except Exception:
         studs_display = str(studs_count)
@@ -11059,11 +11049,7 @@ async def my_deeds(interaction: discord.Interaction):
             line_with_sep = prefix + line
 
             if len(current_chunk) + len(line_with_sep) > 1024:
-                field_name = (
-                    base_field_name
-                    if field_index == 0
-                    else f"{base_field_name} (cont.)"
-                )
+                field_name = base_field_name if field_index == 0 else "\u200b"
                 embed.add_field(name=field_name, value=current_chunk, inline=False)
                 field_index += 1
                 current_chunk = line
@@ -11071,9 +11057,7 @@ async def my_deeds(interaction: discord.Interaction):
                 current_chunk += line_with_sep
 
         if current_chunk:
-            field_name = (
-                base_field_name if field_index == 0 else f"{base_field_name} (cont.)"
-            )
+            field_name = base_field_name if field_index == 0 else "\u200b"
             embed.add_field(name=field_name, value=current_chunk, inline=False)
 
     embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
