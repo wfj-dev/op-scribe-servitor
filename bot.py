@@ -14935,7 +14935,7 @@ async def _scheduled_milestone_check():
                 await channel.send(
                     content=wb_mention,
                     embed=embed,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                    allowed_mentions=discord.AllowedMentions(users=False, roles=True, everyone=False),
                 )
                 # Update the last announced value for this metric
                 last_announced[metric] = milestone_value
