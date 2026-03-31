@@ -24,11 +24,6 @@
         "Watch Command"
       ]
     },
-    "preview_honours": {
-      "roles": [
-        "Watch Command"
-      ]
-    },
     "pick_home_chapters": {
       "roles": [
         "Watch Command"
@@ -85,11 +80,6 @@
         "281651485782310914"
       ]
     },
-    "publish_honours": {
-      "user_ids": [
-        "281651485782310914"
-      ]
-    },
     "completed_challenges": {
       "roles": [
         "Watch Brother"
@@ -131,12 +121,9 @@
     "weekly_maintenance_hour": 3,
     "weekly_maintenance_ingest_span_days": 45
   },
-  "honours_channel_id": 1467699484581691414,
   "milestones": {
     "enabled": true,
-    "channel_id": 1467699484581691414,
-    "check_day": 1,
-    "check_hour": 4,
+    "check_interval_days": 7,
     "increments": {
       "aar_points": 2500,
       "aar_count": 500,

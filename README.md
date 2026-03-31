@@ -25,8 +25,6 @@ Commands
 - `/roster_audit [company:str]` — Audit roster data for a watch company (admin-only).
 - `/promotion_queue` — Show brothers approaching promotion milestones (Watch Command only).
 - `/company_roster company:str` — Display the full roster for a watch company.
-- `/preview_honours` — Preview monthly honours (Forgemaster only).
-- `/publish_honours` — Publish monthly honours to the designated channel (Forgemaster only).
 
 Quick notes
 - Permissions: Several commands are restricted by roles and admin IDs defined in the bot configuration (`config/config.json`). If a command is denied, check role aliases and configured admin IDs.
@@ -86,14 +84,6 @@ Detailed command descriptions
 - `/audit_service_studs`
 	- Purpose: List members whose displayed service studs do not match computed entitlement.
 	- Who can run: Watch Command only. Use this to find and correct display mismatches.
-
-- `/preview_honours`
-	- Purpose: Produce a preview of monthly honours (leaderboard-like summary of service).
-	- Who can run: Forgemaster-only.
-
-- `/publish_honours`
-	- Purpose: Post monthly honours to the designated channel.
-	- Who can run: Forgemaster-only.
 
 - `/litany_of_function`
 	- Purpose: Show a concise summary of available commands.
