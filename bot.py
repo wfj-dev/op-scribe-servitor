@@ -3183,6 +3183,23 @@ def _get_armor_status_for_blessing(
         return ARMOR_STATUS_NOMINAL
 
 
+def _should_show_extended_blessing_fields(
+    spirit_is_first: bool,
+    spirit_is_reconsecrated: bool,
+    spirit_is_returning: bool,
+    spirit_is_restored: bool,
+) -> bool:
+    """Determine whether to show extended blessing fields (Honor of Long Watch, Litany).
+
+    Returns True for unbound (first binding) or fractured (reconsecrated) spirits.
+    Returns False for returning (normal maintenance) or restored (damage repaired) spirits.
+    """
+    # Extended fields shown for significant spiritual events:
+    # - First binding: new spirit awakening
+    # - Reconsecration: spirit was lost and must be re-bound
+    return spirit_is_first or spirit_is_reconsecrated
+
+
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
@@ -6487,40 +6504,50 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     )
     embed.add_field(name="▸ Machine-Spirit", value=status_value, inline=True)
 
-    # Honor of the Long Watch
-    tier_for_honor = _studs_tier(bearer_studs)
-    if tier_for_honor == 1:
-        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER1)
-    elif tier_for_honor == 2:
-        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER2)
-    else:
-        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER3)
+    # Determine whether to show extended fields (Honor of Long Watch, Litany)
+    # Only show for unbound (first) or fractured (reconsecrated) spirits
+    show_extended_fields = _should_show_extended_blessing_fields(
+        spirit_is_first=spirit_is_first,
+        spirit_is_reconsecrated=spirit_is_reconsecrated,
+        spirit_is_returning=spirit_is_returning,
+        spirit_is_restored=spirit_is_restored,
+    )
 
-    # Format pronouns based on self-blessing
-    if is_self_blessing:
-        ordo_honor_embed = ordo_honor_embed.format(
-            possessive="my", possessive_cap="My", object="me"
-        )
-    else:
-        ordo_honor_embed = ordo_honor_embed.format(
-            possessive="your", possessive_cap="Your", object="you"
-        )
+    # Honor of the Long Watch (only for unbound/fractured spirits)
+    if show_extended_fields:
+        tier_for_honor = _studs_tier(bearer_studs)
+        if tier_for_honor == 1:
+            ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER1)
+        elif tier_for_honor == 2:
+            ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER2)
+        else:
+            ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER3)
 
-    if chapter_blessing:
-        embed.add_field(
-            name="▸ Honor of the Long Watch",
-            value=f'*"{ordo_honor_embed} {stud_acknowledgment} {chapter_blessing}"*',
-            inline=False,
-        )
-    else:
-        embed.add_field(
-            name="▸ Honor of the Long Watch",
-            value=f'*"{ordo_honor_embed} {stud_acknowledgment}"*',
-            inline=False,
-        )
+        # Format pronouns based on self-blessing
+        if is_self_blessing:
+            ordo_honor_embed = ordo_honor_embed.format(
+                possessive="my", possessive_cap="My", object="me"
+            )
+        else:
+            ordo_honor_embed = ordo_honor_embed.format(
+                possessive="your", possessive_cap="Your", object="you"
+            )
 
-    # Litany to the Machine-Spirit (user's custom rite)
-    if rite_text:
+        if chapter_blessing:
+            embed.add_field(
+                name="▸ Honor of the Long Watch",
+                value=f'*"{ordo_honor_embed} {stud_acknowledgment} {chapter_blessing}"*',
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="▸ Honor of the Long Watch",
+                value=f'*"{ordo_honor_embed} {stud_acknowledgment}"*',
+                inline=False,
+            )
+
+    # Litany to the Machine-Spirit (only for unbound/fractured spirits with custom rite)
+    if show_extended_fields and rite_text:
         rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
         embed.add_field(
             name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False
