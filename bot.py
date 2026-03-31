@@ -4661,6 +4661,74 @@ SACRED_MECHANICUS_PHRASES: List[str] = [
     "The Void Dragon stirs not against this work.",
 ]
 
+# Phrases for when the Forgemaster performs rites upon their own armor
+# Blends Mechanicus reverence with Hawk Lords identity (raptor/sky/hunt imagery)
+# Generic Mechanicus self-attestation phrases (role-focused)
+FORGEMASTER_SELF_ATTESTATION_GENERIC: List[str] = [
+    "The Omnissiah witnesses—I am both priest and supplicant.",
+    "The master's hand tends to the master's plate—this burden is mine alone.",
+    "None may bless what I have wrought but I who forged it.",
+    "In solitude, the Forgemaster communes with his own machine-spirit.",
+    "I speak the canticles to myself, for who else would understand?",
+    "From my forge, to my flesh, to my faith—the circle closes.",
+    "The Long Watch demands self-reliance. I answer.",
+    "My armor knows no other hand. This rite is mine to perform.",
+]
+
+# Chapter-specific self-attestation phrases (chapter identity when self-blessing)
+FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
+    "Hawk Lords": [
+        "The raptor tends its own talons—who else knows where they have struck?",
+        "From forge to sky, I bless the wings that carry me to war.",
+        "Swift as the hawk, patient as the artisan—the rite is mine alone.",
+    ],
+    "Iron Hands": [
+        "Flesh is weak; I trust only myself to tend the machine.",
+        "The Gorgon would approve—self-sufficiency in all things.",
+        "Logic dictates: who better to bless my iron than I?",
+    ],
+    "Salamanders": [
+        "Vulkan's fire and my own hands—no other blessing is needed.",
+        "The forge knows its master. I tend what I have wrought.",
+        "In Nocturne's heart, we learn to rely upon ourselves.",
+    ],
+    "Imperial Fists": [
+        "Dorn built his walls alone when needed. So do I.",
+        "Stone and iron bend to my will; I need no other hand.",
+        "The Praetorian taught self-reliance. I honor that lesson.",
+    ],
+    "Space Wolves": [
+        "The lone wolf maintains his own fangs.",
+        "No pack needed for this hunt—the rite is mine.",
+        "Fenris bred self-reliance into my bones.",
+    ],
+    "Blood Angels": [
+        "By Sanguinius, I hold the Thirst at bay with my own hands.",
+        "The angel's grace flows through my work upon myself.",
+        "Baal's nobility demands I tend my own perfection.",
+    ],
+    "Dark Angels": [
+        "Some secrets are kept even from the forge. This rite is one.",
+        "The Lion trusted few; I trust only myself for this.",
+        "In solitude, the Unforgiven find their own absolution.",
+    ],
+    "Raven Guard": [
+        "From shadow I emerged; in shadow I bless my own war-plate.",
+        "Corax worked alone when stealth demanded. So do I.",
+        "The silent hand tends its own talons.",
+    ],
+    "Ultramarines": [
+        "The Codex permits self-maintenance. I exercise that right.",
+        "Guilliman's wisdom: know thyself, tend thyself.",
+        "Macragge's sons are trained to be complete. I am complete.",
+    ],
+    "White Scars": [
+        "The lone rider tends his own mount on the endless steppe.",
+        "Speed demands self-reliance—no time to wait for others.",
+        "The Khan rode alone when needed. So do I bless alone.",
+    ],
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Service Studs Announcement Components
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5095,6 +5163,27 @@ def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
         if emoji.name.lower() == normalized.lower():
             return str(emoji)
     return None
+
+
+def _blend_forgemaster_self_attestation(member_chapter: str) -> str:
+    """Blend chapter identity and role identity for Forgemaster self-blessing.
+
+    Follows High Command Specialist ratio: 80% role (generic Mechanicus), 20% chapter.
+    Falls back to generic if chapter not found.
+    """
+    import random
+
+    chapter_options = FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER.get(member_chapter, [])
+
+    # 80% role (generic Mechanicus), 20% chapter
+    if random.random() < 0.8:
+        return random.choice(FORGEMASTER_SELF_ATTESTATION_GENERIC)
+    
+    if chapter_options:
+        return random.choice(chapter_options)
+    
+    # Fallback to generic if chapter not in dict
+    return random.choice(FORGEMASTER_SELF_ATTESTATION_GENERIC)
 
 
 def _get_chapter_emoji(guild: discord.Guild, chapter_name: str) -> str:
@@ -6184,8 +6273,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
     # Techmarine acknowledgment (dynamically blended by rank prestige vs stud count)
     stud_acknowledgment = _get_techmarine_acknowledgment_blended(member, bearer_studs)
 
-    # Random sacred Mechanicus phrase
-    sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
+    # Random sacred Mechanicus phrase (special phrases for self-blessing)
+    is_self_blessing = attestor_member.id == member.id
+    if is_self_blessing:
+        sacred_phrase = _blend_forgemaster_self_attestation(bearer_chapter)
+    else:
+        sacred_phrase = random.choice(SACRED_MECHANICUS_PHRASES)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Machine-spirit designation with armor integrity awareness
@@ -6418,11 +6511,12 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
             name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False
         )
 
-    # Attestation
+    # Attestation (self-blessing uses different field name)
     rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
     attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
     tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
-    embed.add_field(name="▸ Attestation", value=tech_value, inline=False)
+    attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
+    embed.add_field(name=attestation_field_name, value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Send embed (no toggle view needed)
