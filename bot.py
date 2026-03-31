@@ -5519,7 +5519,7 @@ def _get_service_studs_announcement(
         inline=False,
     )
 
-    # Bearer field with rank emoji
+    # Bearer field with rank emoji (exactly matching forge_rite format)
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
     # to put title on one line and rank + name on the next
@@ -5530,13 +5530,14 @@ def _get_service_studs_announcement(
         bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
     if member_title:
         bearer_value += f"\n*{member_title}*"
-    if member_chapter != "Unknown":
+    if member_chapter and member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = (
             "REDACTED" if member_chapter == "Black Shield" else member_chapter
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    bearer_value += f"\nService Studs: **[{studs_pips}]** ({new_total})"
+    if new_total > 0:
+        bearer_value += f"\nService Studs: [{studs_pips}] ({new_total})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what pips change from BEFORE to AFTER)
@@ -10066,25 +10067,27 @@ async def tally_deeds(
                     color=0x2ECC71,
                 )
 
-                # ▸ Bearer field (styled like forge_rite/stud announcement)
+                # ▸ Bearer field (exactly matching forge_rite format)
+                bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
+                bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
                 rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-                # Strip any leading rank prefix from the stored name to avoid duplication
-                clean_name_val = name_val
-                if member_rank_name and isinstance(clean_name_val, str):
-                    prefixed = f"{member_rank_name} "
-                    if clean_name_val.startswith(prefixed):
-                        clean_name_val = clean_name_val[len(prefixed) :]
-                    elif clean_name_val.startswith(member_rank_name):
-                        clean_name_val = clean_name_val[len(member_rank_name) :].lstrip()
-                bearer_value = f"{rank_prefix}**{member_rank_name} {clean_name_val}**"
-                if home_ch and home_ch != "Unknown":
+                if ", " in bearer_honorific:
+                    title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+                    bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+                else:
+                    bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+                if bearer_title:
+                    bearer_value += f"\n*{bearer_title}*"
+                if home_ch and home_ch not in ("Unknown", "REDACTED"):
                     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
                     lineage_display = (
                         "REDACTED" if home_ch == "Black Shield" else home_ch
                     )
                     bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-                studs_val = stat_dict.get("Service Studs", "—")
-                bearer_value += f"\nService Studs: **{studs_val}**"
+                bearer_studs = roster_items[0].get("studs_count", 0) if roster_items else 0
+                if bearer_studs > 0:
+                    studs_pips = _studs_pips(bearer_studs)
+                    bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
                 embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
                 # ▸ Status field
@@ -10930,15 +10933,24 @@ async def my_deeds(interaction: discord.Interaction):
         color=0x2ECC71,
     )
 
-    # ▸ Bearer field
+    # ▸ Bearer field (exactly matching forge_rite format)
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    bearer_value = f"{rank_prefix}**{current_rank} {name_val}**"
-    if home_chapter and home_chapter != "Unknown":
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+    else:
+        bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+    if bearer_title:
+        bearer_value += f"\n*{bearer_title}*"
+    if home_chapter and home_chapter not in ("Unknown", "REDACTED"):
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    studs_val = stat_dict.get("Service Studs", "—")
-    bearer_value += f"\nService Studs: **{studs_val}**"
+    if studs_count > 0:
+        studs_pips_display = _studs_pips(studs_count)
+        bearer_value += f"\nService Studs: [{studs_pips_display}] ({studs_count})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # ▸ Status field
