@@ -261,6 +261,10 @@ class DataStore:
     def get_record(self, aar_id: str | int) -> Optional[dict]:
         return self._records.get(str(aar_id))
 
+    def get_all_records(self) -> Dict[str, dict]:
+        """Return a shallow copy of all records as a dict keyed by aar_id."""
+        return dict(self._records)
+
     def iter_records(self) -> Iterator[dict]:
         return iter(self._records.values())
 
