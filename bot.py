@@ -4923,37 +4923,37 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
 # Ordo Xenos / Deathwatch-wide honor phrases (tiered by service studs)
 # Tier 1 (1-3 studs): Foundational acknowledgments of watch membership
 ORDO_XENOS_HONORS_TIER1: List[str] = [
-    "The Ordo Xenos records your vigilance against the alien threat.",
-    "Your service to the Long Watch brings honor to the Deathwatch.",
-    "Watch Fortress Jericho acknowledges your presence in the Long Watch.",
+    "The Ordo Xenos records {possessive} vigilance against the alien threat.",
+    "{possessive_cap} service to the Long Watch brings honor to the Deathwatch.",
+    "Watch Fortress Jericho acknowledges {possessive} presence in the Long Watch.",
     "The Long Watch welcomes those steadfast in duty.",
-    "Your place among the Deathwatch is cemented by service.",
+    "{possessive_cap} place among the Deathwatch is cemented by service.",
     "The Vigil takes note of those who stand firm.",
-    "Jericho's halls hear your name spoken in service.",
+    "Jericho's halls hear {possessive} name spoken in service.",
 ]
 
 # Tier 2 (4-11 studs): Formal record-keeping and established honor
 ORDO_XENOS_HONORS_TIER2: List[str] = [
-    "The Ordo Xenos archives record your steadfast vigilance against the xenos.",
-    "Watch Fortress Jericho's ledgers mark your exceptional service and dedication.",
-    "The Vigil Eternal inscribes your deeds in adamantium records.",
-    "By the Vigil Oathstone, your commitment is formally recognized.",
-    "The Deathwatch itself stands stronger for your continued presence.",
-    "The Long Watch is strengthened by warriors such as you.",
+    "The Ordo Xenos archives record {possessive} steadfast vigilance against the xenos.",
+    "Watch Fortress Jericho's ledgers mark {possessive} exceptional service and dedication.",
+    "The Vigil Eternal inscribes {possessive} deeds in adamantium records.",
+    "By the Vigil Oathstone, {possessive} commitment is formally recognized.",
+    "The Deathwatch itself stands stronger for {possessive} continued presence.",
+    "The Long Watch is strengthened by warriors such as {object}.",
     "Inquisitorial records acknowledge one whose vigilance spans the years.",
-    "Your service echoes through corridors of the Fortress itself.",
+    "{possessive_cap} service echoes through corridors of the Fortress itself.",
 ]
 
 # Tier 3 (12-16 studs): Supreme honors and legendary status
 ORDO_XENOS_HONORS_TIER3: List[str] = [
     "The Ordo Xenos bows before one whose vigilance spans decades of endless war.",
-    "Watch Fortress Jericho's highest honors are inscribed upon your name in perpetuity.",
-    "The very archives of the Deathwatch tremble at the magnitude of your service.",
+    "Watch Fortress Jericho's highest honors are inscribed upon {possessive} name in perpetuity.",
+    "The very archives of the Deathwatch tremble at the magnitude of {possessive} service.",
     "By the Vigil Oathstone, the Inquisition itself takes note of legendary duty.",
-    "The Long Watch shall sing of your deeds until the stars themselves fade.",
-    "Only legends of the Deathwatch stand so marked; your name echoes eternal.",
-    "The Machine God itself records your deeds in the holiest data-vaults of the Imperium.",
-    "Generations hence, brothers will speak your name in reverence and awe.",
+    "The Long Watch shall sing of {possessive} deeds until the stars themselves fade.",
+    "Only legends of the Deathwatch stand so marked; {possessive} name echoes eternal.",
+    "The Machine God itself records {possessive} deeds in the holiest data-vaults of the Imperium.",
+    "Generations hence, brothers will speak {possessive} name in reverence and awe.",
 ]
 
 # Rank-specific commentary on service studs - how different ranks view this achievement
@@ -5691,6 +5691,11 @@ def _get_service_studs_announcement(
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER2)
     else:
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
+
+    # Format pronouns (always second person for awarding to others)
+    ordo_honor = ordo_honor.format(
+        possessive="your", possessive_cap="Your", object="you"
+    )
 
     # Determine which pip type is being earned (priority: auramite > plasteel)
     if delta_auramite > 0:
@@ -6490,6 +6495,16 @@ async def _attest(interaction: discord.Interaction, member: discord.Member):
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER2)
     else:
         ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER3)
+
+    # Format pronouns based on self-blessing
+    if is_self_blessing:
+        ordo_honor_embed = ordo_honor_embed.format(
+            possessive="my", possessive_cap="My", object="me"
+        )
+    else:
+        ordo_honor_embed = ordo_honor_embed.format(
+            possessive="your", possessive_cap="Your", object="you"
+        )
 
     if chapter_blessing:
         embed.add_field(
