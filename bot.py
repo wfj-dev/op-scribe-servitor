@@ -8155,7 +8155,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         difficulty_class = record.get("difficulty_class") or ""
         global_waves = record.get("waves") or 0
         brother_waves = record.get("brother_waves") or {}
-        points_for_op = record.get("points_for_op") or 0
+        # Calculate base difficulty points directly (pre-penalty value for armor wear)
+        base_difficulty_points = compute_points_for_op(difficulty_class, global_waves)
         base_points = {}
         if brother_ids:
             is_siege = difficulty_class in ("normal_siege", "hard_siege")
@@ -8174,8 +8175,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     else:
                         base_points[bid] = 4 * (waves_for_brother // 5)
                 else:
-                    # Non-siege: same points for all brothers
-                    base_points[bid] = points_for_op
+                    # Non-siege: use base difficulty points (before penalties)
+                    base_points[bid] = base_difficulty_points
         armor_penalties = {}
 
         if guild and brother_ids:
