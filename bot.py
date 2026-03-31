@@ -10060,6 +10060,57 @@ async def tally_deeds(
                 )
                 embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
 
+                # ▸ Armor Integrity field
+                try:
+                    armor_state = await _get_armor_state(int(target.id))
+                    points_since_blessing = armor_state.get("points_since_blessing", 0)
+                    spirit_fractured = armor_state.get("spirit_fractured", False)
+                    armor_tier = _get_member_damage_tier(target)
+                    penalty = _get_damage_penalty(armor_tier)
+                    damage_probability = _get_damage_probability(points_since_blessing)
+                    prob_percent = damage_probability * 100
+                    machine_spirit = await _get_machine_spirit(int(target.id))
+
+                    if spirit_fractured:
+                        armor_icon = "💀"
+                        armor_status = "FRACTURED"
+                        spirit_status = "SEVERED"
+                    elif armor_tier == "critical":
+                        armor_icon = "🔴"
+                        armor_status = f"CRITICAL (-{penalty} AAR)"
+                        spirit_status = "UNSTABLE"
+                    elif armor_tier == "compromised":
+                        armor_icon = "🟠"
+                        armor_status = f"COMPROMISED (-{penalty} AAR)"
+                        spirit_status = "AGITATED"
+                    elif armor_tier == "damaged":
+                        armor_icon = "🟡"
+                        armor_status = f"DAMAGED (-{penalty} AAR)"
+                        spirit_status = "STABLE"
+                    else:
+                        armor_icon = "🟢"
+                        armor_status = "NOMINAL"
+                        spirit_status = "STABLE"
+
+                    if spirit_fractured:
+                        spirit_display = "Spirit: SEVERED"
+                    elif machine_spirit:
+                        spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
+                    else:
+                        spirit_display = "Spirit: *UNBOUND*"
+
+                    armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
+                    if not spirit_fractured:
+                        armor_lines.append(f"Risk: {prob_percent:.0f}% | Cycles: {points_since_blessing}")
+
+                    embed.add_field(
+                        name="▸ Armor Integrity",
+                        value="\n".join(armor_lines),
+                        inline=False,
+                    )
+                except Exception:
+                    pass  # Skip armor field if data unavailable
+
                 # ▸ Challenges field
                 target_role_names_ch = {
                     getattr(r, "name", "") for r in getattr(target, "roles", [])
@@ -10874,6 +10925,57 @@ async def my_deeds(interaction: discord.Interaction):
         f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
     )
     embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
+
+    # ▸ Armor Integrity field
+    try:
+        armor_state = await _get_armor_state(int(target.id))
+        points_since_blessing = armor_state.get("points_since_blessing", 0)
+        spirit_fractured = armor_state.get("spirit_fractured", False)
+        armor_tier = _get_member_damage_tier(target)
+        penalty = _get_damage_penalty(armor_tier)
+        damage_probability = _get_damage_probability(points_since_blessing)
+        prob_percent = damage_probability * 100
+        machine_spirit = await _get_machine_spirit(int(target.id))
+
+        if spirit_fractured:
+            armor_icon = "💀"
+            armor_status = "FRACTURED"
+            spirit_status = "SEVERED"
+        elif armor_tier == "critical":
+            armor_icon = "🔴"
+            armor_status = f"CRITICAL (-{penalty} AAR)"
+            spirit_status = "UNSTABLE"
+        elif armor_tier == "compromised":
+            armor_icon = "🟠"
+            armor_status = f"COMPROMISED (-{penalty} AAR)"
+            spirit_status = "AGITATED"
+        elif armor_tier == "damaged":
+            armor_icon = "🟡"
+            armor_status = f"DAMAGED (-{penalty} AAR)"
+            spirit_status = "STABLE"
+        else:
+            armor_icon = "🟢"
+            armor_status = "NOMINAL"
+            spirit_status = "STABLE"
+
+        if spirit_fractured:
+            spirit_display = "Spirit: SEVERED"
+        elif machine_spirit:
+            spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
+        else:
+            spirit_display = "Spirit: *UNBOUND*"
+
+        armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
+        if not spirit_fractured:
+            armor_lines.append(f"Risk: {prob_percent:.0f}% | Cycles: {points_since_blessing}")
+
+        embed.add_field(
+            name="▸ Armor Integrity",
+            value="\n".join(armor_lines),
+            inline=False,
+        )
+    except Exception:
+        pass  # Skip armor field if data unavailable
 
     # ▸ Challenges field
     target_role_names = {getattr(r, "name", "") for r in getattr(target, "roles", [])}
