@@ -7,7 +7,6 @@ Commands
 - `/tally_deeds brother:@User` — Show the Deeds Ledger for a single Brother (lifetime tallies and recent activity).
 - `/tally_deeds killteam:@Role` — Show the roster for a Kill Team role and a short 7‑day summary (operational tempo, averages).
 - `/combat_bonds [brother:@User] [window:int]` — Show top combat bonds globally or limited to a Brother; `window` is days (default 30).
-- `/completed_challenges` — List completed chapter challenges and accomplishments.
 - `/set_rite rite_text` — Set your personal consecration rite text (multiline allowed).
 - `/forge_rite member:@User` — Generate and post an attestation block for a member (role-restricted).
 - `/pick_home_chapters member:@User` — Randomly select home chapter(s) for a member from rotation pool.
@@ -112,10 +111,6 @@ Detailed command descriptions
 - `/librarian_audit`
 	- Purpose: Audit data integrity across all stored records.
 	- Who can run: Watch Command only (or as configured via permissions).
-
-- `/completed_challenges`
-	- Purpose: List completed chapter challenges and accomplishments.
-	- Who can run: general use.
 
 - `/roster_audit [company:str]`
 	- Purpose: Audit roster data for a watch company.

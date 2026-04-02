@@ -52,7 +52,7 @@
     },
     "reconcile_records": {
       "roles": [
-        "Watch Techmarine",
+        "Forgemaster",
         "Watch Master"
       ]
     },
@@ -80,14 +80,33 @@
         "281651485782310914"
       ]
     },
-    "completed_challenges": {
-      "roles": [
-        "Watch Brother"
-      ]
-    },
     "company_roster": {
       "roles": [
         "Watch Command"
+      ]
+    },
+    "forge_rite": {
+      "roles": [
+        "Watch Techmarine",
+        "Forgemaster"
+      ]
+    },
+    "set_rite": {
+      "roles": [
+        "Watch Techmarine",
+        "Forgemaster"
+      ]
+    },
+    "armor_status": {
+      "roles": [
+        "Watch Techmarine",
+        "Forgemaster"
+      ]
+    },
+    "preview_armor_alert": {
+      "roles": [
+        "Watch Techmarine",
+        "Forgemaster"
       ]
     }
   },
@@ -103,6 +122,12 @@
       "rosterChannelId": "1458255466189684999",
       "companyRoleId": "1458254417152184477",
       "companyCommandRoleId": "1468797860014325902"
+    },
+    "tertius": {
+      "name": "Tertius",
+      "rosterChannelId": "1486238310836732004",
+      "companyRoleId": "1486221925977034944",
+      "companyCommandRoleId": "1468797905740759082"
     }
   },
   "logging": {
@@ -168,11 +193,6 @@
     "❖⋅data-vault⋅❖": {
       "deny": [
         "forge_rite"
-      ]
-    },
-    "1480965300089389136": {
-      "allow": [
-        "completed_challenges"
       ]
     }
   },
