@@ -7374,6 +7374,7 @@ async def _preview_armor_alert(
     # Affected brother field with proper rank display
     tier_display = tier.title() if tier else "Unknown"
     penalty_risk = _get_tier_risk_display(tier, spirit_fractured=False)
+    penalty = _get_damage_penalty(tier)
     embed.add_field(
         name="▸ Affected Brother",
         value=(
