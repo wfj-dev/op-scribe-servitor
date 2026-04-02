@@ -3096,7 +3096,9 @@ async def _check_techmarine_can_bless(user_id: int) -> Tuple[bool, int, Optional
         except Exception:
             pass
     
-    available = BLESSING_POOL_MAX - len(active_timestamps)
+    # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
+    active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
+    available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
     
     if available > 0:
         return True, available, None
@@ -3140,7 +3142,9 @@ async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timede
         except Exception:
             pass
     
-    available = BLESSING_POOL_MAX - len(active_timestamps)
+    # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
+    active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
+    available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
     
     # If pool is full, no regen time needed
     if available >= BLESSING_POOL_MAX:
@@ -3175,11 +3179,15 @@ async def _consume_blessing(user_id: int):
         except Exception:
             pass
     
+    # Trim to most recent (BLESSING_POOL_MAX - 1) entries before adding the new one,
+    # to keep the list bounded and prevent the pool from going negative.
+    active_timestamps = active_timestamps[-(BLESSING_POOL_MAX - 1):]
+    
     # Add current blessing timestamp
     active_timestamps.append(now.isoformat())
     
     await _set_techmarine_pool_state(user_id, {
-        "remaining_blessings": BLESSING_POOL_MAX - len(active_timestamps),
+        "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
         "blessing_timestamps": active_timestamps,
     })
 
