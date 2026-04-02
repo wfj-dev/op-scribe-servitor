@@ -350,20 +350,23 @@ async def _send_watch_command_notice(kind: str):
     # Respect broadcast toggle (e.g., when debug mode disables broadcasts)
     try:
         if not BROADCAST_STATUS:
+            logger.info("Status broadcast skipped (BROADCAST_STATUS=False)")
             return
     except Exception:
         # If BROADCAST_STATUS is undefined for any reason, continue safely
         pass
     guild = _resolve_notification_guild()
     if not guild:
-        logger.debug("No guild available for notification.")
+        logger.warning("No guild available for status notification.")
         return
+    logger.info(f"Sending {kind} notice to guild: {guild.name}")
     try:
         channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Channel lookup failed: {e}")
         channel = None
     if not channel:
-        logger.debug("Notification channel '❖⋅data-vault⋅❖' not found.")
+        logger.warning(f"Notification channel '❖⋅data-vault⋅❖' not found in {guild.name}. Available channels: {[c.name for c in guild.channels][:20]}")
         return
     try:
         role = discord.utils.get(guild.roles, name="Watch Command")
@@ -402,8 +405,9 @@ async def _send_watch_command_notice(kind: str):
         await channel.send(
             content, allowed_mentions=discord.AllowedMentions(roles=True)
         )
+        logger.info(f"Status notification sent: {status}")
     except Exception as e:
-        logger.debug(f"Failed to send notification: {e}")
+        logger.warning(f"Failed to send status notification: {e}")
 
 
 async def _announce_shutdown_and_close():
@@ -4144,10 +4148,13 @@ async def on_ready():
 
     # Announce startup to Watch Command in data-vault
     if BROADCAST_STATUS:
+        logger.info("Sending ONLINE status broadcast...")
         try:
             await _send_watch_command_notice("ONLINE")
         except Exception as e:
-            logger.debug(f"Startup announce failed: {e}")
+            logger.warning(f"Startup announce failed: {e}")
+    else:
+        logger.info("Status broadcast disabled (debug mode or BROADCAST_STATUS=False)")
 
     # Register graceful shutdown signal handlers
     try:
