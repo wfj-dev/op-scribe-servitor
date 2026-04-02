@@ -187,7 +187,8 @@
       "allow": [
         "forge_rite",
         "set_rite",
-        "litany_of_function"
+        "litany_of_function",
+        "armor_status"
       ]
     },
     "❖⋅data-vault⋅❖": {
