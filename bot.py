@@ -409,8 +409,10 @@ async def _send_watch_command_notice(kind: str):
 async def _announce_shutdown_and_close():
     global SHUTDOWN_INITIATED
     if SHUTDOWN_INITIATED:
+        logger.debug("Shutdown already initiated, skipping duplicate call.")
         return
     SHUTDOWN_INITIATED = True
+    logger.info("Beginning graceful shutdown sequence...")
 
     # Fast shutdown path for debug mode: skip broadcasts and avoid waiting
     # for a full DataStore flush to make Ctrl-C immediate during development.
@@ -448,28 +450,37 @@ async def _announce_shutdown_and_close():
 
     try:
         if BROADCAST_STATUS:
+            logger.info("Sending OFFLINE status to Watch Command...")
             try:
                 await asyncio.wait_for(_send_watch_command_notice("OFFLINE"), timeout=8)
+                logger.info("OFFLINE status sent successfully.")
+            except asyncio.TimeoutError:
+                logger.warning("Shutdown announce timed out after 8s.")
             except Exception as e:
-                logger.debug(f"Shutdown announce failed or timed out: {e}")
+                logger.warning(f"Shutdown announce failed: {e}")
     except Exception:
         logger.debug("Shutdown announce threw an unexpected error")
 
     # Flush DataStore before closing, but don't block indefinitely
     try:
         if DATASTORE:
+            logger.info("Flushing DataStore...")
             try:
                 await asyncio.wait_for(DATASTORE.shutdown(), timeout=15)
+                logger.info("DataStore flush complete.")
             except asyncio.TimeoutError:
                 logger.warning("DataStore shutdown timed out; proceeding with close.")
             except Exception as e:
-                logger.debug(f"DataStore shutdown failed: {e}")
+                logger.warning(f"DataStore shutdown failed: {e}")
     except Exception:
         logger.debug("Error during DataStore shutdown sequence")
 
+    logger.info("Closing Discord connection...")
     try:
         await asyncio.wait_for(bot.close(), timeout=10)
-    except Exception:
+        logger.info("Discord connection closed.")
+    except Exception as e:
+        logger.warning(f"bot.close() failed or timed out: {e}")
         try:
             await bot.close()
         except Exception:
@@ -4142,22 +4153,38 @@ async def on_ready():
     try:
         loop = asyncio.get_running_loop()
 
-        def _sig_handler():
+        def _sig_handler(sig_name: str = "SIGNAL"):
+            logger.info(f"Received {sig_name}, initiating graceful shutdown...")
             try:
-                loop.create_task(_announce_shutdown_and_close())
-            except Exception:
-                pass
+                # Create shutdown task
+                task = loop.create_task(_announce_shutdown_and_close())
+                # Add a callback to force-stop if the task completes but loop continues
+                def _on_shutdown_done(fut):
+                    try:
+                        logger.info("Shutdown task completed, stopping event loop.")
+                    except Exception:
+                        pass
+                    # Give a moment for cleanup, then stop the loop as fallback
+                    loop.call_later(2.0, loop.stop)
+                task.add_done_callback(_on_shutdown_done)
+            except Exception as e:
+                logger.error(f"Signal handler failed to create shutdown task: {e}")
+                # Fallback: just close the bot directly
+                try:
+                    loop.create_task(bot.close())
+                except Exception:
+                    loop.stop()
 
         try:
-            loop.add_signal_handler(signal.SIGTERM, _sig_handler)
-        except Exception:
-            pass
+            loop.add_signal_handler(signal.SIGTERM, lambda: _sig_handler("SIGTERM"))
+        except Exception as e:
+            logger.warning(f"Failed to register SIGTERM handler: {e}")
         try:
-            loop.add_signal_handler(signal.SIGINT, _sig_handler)
-        except Exception:
-            pass
+            loop.add_signal_handler(signal.SIGINT, lambda: _sig_handler("SIGINT"))
+        except Exception as e:
+            logger.warning(f"Failed to register SIGINT handler: {e}")
     except Exception as e:
-        logger.debug(f"Failed to register signal handlers: {e}")
+        logger.error(f"Failed to register signal handlers: {e}")
     # Start scheduled audit loop if enabled in config
     try:
         if SCHEDULE_DAILY_AUDIT_ENABLED:
