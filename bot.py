@@ -10550,13 +10550,7 @@ async def tally_deeds(
                 # ▸ Status field
                 status_val = stat_dict.get("Status", "Unknown")
                 last_aar_val = stat_dict.get("Last AAR", "—")
-                company_val = stat_dict.get("Company")
-                kt_val = stat_dict.get("Kill Team")
                 status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-                if company_val:
-                    status_lines.append(f"Company: {company_val}")
-                if kt_val:
-                    status_lines.append(f"Kill Team: {kt_val}")
                 embed.add_field(
                     name="▸ Status", value="\n".join(status_lines), inline=True
                 )
@@ -11413,13 +11407,7 @@ async def my_deeds(interaction: discord.Interaction):
     # ▸ Status field
     status_val = stat_dict.get("Status", "Unknown")
     last_aar_val = stat_dict.get("Last AAR", "—")
-    company_val = stat_dict.get("Company")
-    kt_val = stat_dict.get("Kill Team")
     status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-    if company_val:
-        status_lines.append(f"Company: {company_val}")
-    if kt_val:
-        status_lines.append(f"Kill Team: {kt_val}")
     embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
 
     # ▸ Service Record field
