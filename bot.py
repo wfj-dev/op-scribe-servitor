@@ -2272,8 +2272,8 @@ def _is_techmarine_or_forgemaster(
         return True, "forgemaster"
     if "watch techmarine" in names:
         return True, "techmarine"
-    # Fallback: if permitted by config but role key unclear, default to techmarine
-    return True, "techmarine"
+    # If no explicit forgemaster/techmarine role is present, treat as no role.
+    return False, ""
 
 
 def _find_responsible_attestor(
