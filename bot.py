@@ -109,7 +109,16 @@ BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
 BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
 BLESSING_RECIPIENT_MAX_PER_DAY = 2  # Maximum blessings per recipient per 24h
 
-# Blessing roll configuration (5/90/5 split)
+# Blessing roll configuration - asymmetric state-based probabilities
+# Format: (crit_fail_chance, crit_success_chance) - normal is remainder
+BLESSING_ROLL_PROBABILITIES = {
+    None: (0.01, 0.01),        # Nominal: 1/98/1 - routine maintenance
+    "damaged": (0.03, 0.03),   # Damaged: 3/94/3 - minor repair
+    "compromised": (0.05, 0.05),  # Compromised: 5/90/5 - agitated spirit
+    "critical": (0.08, 0.06),  # Critical: 8/86/6 - volatile, asymmetric
+    "fractured": (0.10, 0.10), # Fractured: 10/80/10 - desperate spirit
+}
+# Legacy thresholds (used as fallback)
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
 BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
 BLESSING_CRIT_SUCCESS_GRACE_POINTS = -25  # Grace points on crit success
@@ -2511,6 +2520,24 @@ async def _set_machine_spirit(user_id: int, spirit: str):
 ARMOR_DAMAGE_TIERS = ["damaged", "compromised", "critical"]
 ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}  # Legacy fixed
 
+# Mission name to planet mapping (for armor alert debrief)
+MISSION_TO_PLANET = {
+    "inferno": "Kadaku",
+    "termination": "Kadaku",
+    "normal_siege": "Kadaku",
+    "hard_siege": "Kadaku",
+    "decapitation": "Avarax",
+    "vox liberatis": "Avarax",
+    "ballistic engine": "Avarax",
+    "exfiltration": "Avarax",
+    "reclamation": "Avarax",
+    "disruption": "Avarax",
+    "reliquary": "Demerium",
+    "fall of atreus": "Demerium",
+    "obelisk": "Demerium",
+    "vortex": "Demerium",
+}
+
 # Probability distributions for AAR penalties per damage tier
 # Format: {tier: {penalty: probability}} where probabilities must sum to 1.0
 # Penalty 0 = no penalty, 1-4 = AAR reduction
@@ -3396,17 +3423,39 @@ async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timede
     return True, None, 0
 
 
-def _roll_blessing_outcome() -> str:
-    """Roll for blessing outcome: crit_fail (5%), normal (90%), crit_success (5%).
+def _roll_blessing_outcome(
+    damage_tier: Optional[str] = None,
+    spirit_fractured: bool = False,
+) -> str:
+    """Roll for blessing outcome based on armor state.
+    
+    Probabilities vary by state (asymmetric spread):
+    - Nominal: 1% fail / 98% normal / 1% crit
+    - Damaged: 3% fail / 94% normal / 3% crit
+    - Compromised: 5% fail / 90% normal / 5% crit
+    - Critical: 8% fail / 86% normal / 6% crit (asymmetric - less punishing)
+    - Fractured: 10% fail / 80% normal / 10% crit
     
     Returns one of: 'crit_fail', 'normal', 'crit_success'
     """
     import random
+    
+    # Determine which probability set to use
+    if spirit_fractured:
+        state_key = "fractured"
+    else:
+        state_key = damage_tier  # None, "damaged", "compromised", or "critical"
+    
+    # Get probabilities for this state (fallback to nominal)
+    crit_fail_chance, crit_success_chance = BLESSING_ROLL_PROBABILITIES.get(
+        state_key, BLESSING_ROLL_PROBABILITIES[None]
+    )
+    
     roll = random.random()
     
-    if roll < BLESSING_ROLL_CRIT_FAIL_THRESHOLD:
+    if roll < crit_fail_chance:
         return "crit_fail"
-    elif roll >= BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD:
+    elif roll >= (1.0 - crit_success_chance):
         return "crit_success"
     else:
         return "normal"
@@ -3473,8 +3522,23 @@ async def _post_armor_alert(
     tier: str,
     critical_aar_count: int = 0,
     guild: Optional[discord.Guild] = None,
+    op_mission: Optional[str] = None,
+    op_difficulty_class: Optional[str] = None,
+    op_url: Optional[str] = None,
+    squad_member_ids: Optional[List[str]] = None,
 ):
-    """Post an armor damage alert to the arming chamber channel."""
+    """Post an armor damage alert to the arming chamber channel.
+    
+    Args:
+        member: The brother whose armor was damaged
+        tier: Damage tier (damaged, compromised, critical)
+        critical_aar_count: Number of AARs at critical (for fracture warning)
+        guild: Discord guild
+        op_mission: Mission name from the AAR that triggered the damage
+        op_difficulty_class: Difficulty class (e.g., normal_siege, hard_siege) for planet lookup
+        op_url: Jump URL to the AAR message
+        squad_member_ids: List of brother IDs on the same op (for debrief)
+    """
     channel_id = _get_arming_chamber_channel_id()
     if not channel_id:
         return
@@ -3572,6 +3636,48 @@ async def _post_armor_alert(
         inline=False,
     )
 
+    # Debrief field (if op context provided)
+    if op_mission or op_difficulty_class or op_url or squad_member_ids:
+        debrief_lines = []
+        # Look up planet name - check difficulty_class first (for siege ops), then mission
+        planet = None
+        if op_difficulty_class:
+            planet = MISSION_TO_PLANET.get(op_difficulty_class.lower().strip())
+        if not planet and op_mission:
+            planet = MISSION_TO_PLANET.get(op_mission.lower().strip())
+        
+        if planet:
+            debrief_lines.append(f"Integrity degraded during deployment to **{planet}**")
+        elif op_mission:
+            debrief_lines.append(f"Integrity degraded during **{op_mission}** deployment")
+        
+        # Build squad list (exclude the affected brother)
+        if squad_member_ids and guild:
+            squad_names = []
+            for sid in squad_member_ids:
+                if str(sid) == str(member.id):
+                    continue  # Skip the affected brother
+                try:
+                    squad_member = guild.get_member(int(sid))
+                    if squad_member:
+                        # Get display name stripped of pips
+                        name = squad_member.display_name.replace("●", "").replace("⚬", "").strip()
+                        squad_names.append(name)
+                except Exception:
+                    pass
+            if squad_names:
+                debrief_lines.append(f"Squad: {', '.join(squad_names)}")
+        
+        if op_url:
+            debrief_lines.append(f"[View After Action Report]({op_url})")
+        
+        if debrief_lines:
+            embed.add_field(
+                name="▸ Debrief",
+                value="\n".join(debrief_lines),
+                inline=False,
+            )
+
     # Warning field for critical
     if tier == "critical":
         remaining = fracture_threshold - critical_aar_count
@@ -3636,6 +3742,10 @@ async def _process_armor_integrity_for_aar(
     base_points: int,
     guild: discord.Guild,
     armor_batch: Optional[dict] = None,
+    op_mission: Optional[str] = None,
+    op_difficulty_class: Optional[str] = None,
+    op_url: Optional[str] = None,
+    squad_member_ids: Optional[List[str]] = None,
 ) -> Tuple[int, Optional[dict]]:
     """Process armor integrity for a single brother in an AAR.
 
@@ -3646,10 +3756,14 @@ async def _process_armor_integrity_for_aar(
         armor_batch: Optional pre-loaded armor data dict for batch processing.
                      If provided, state is read/written to this dict (no file I/O).
                      If None, uses individual file I/O per call.
+        op_mission: Mission name from the AAR (for debrief in alerts)
+        op_difficulty_class: Difficulty class (e.g., normal_siege) for planet lookup
+        op_url: Jump URL to the AAR message (for debrief in alerts)
+        squad_member_ids: List of all brother IDs in this AAR (for debrief in alerts)
 
     Returns:
         Tuple of (penalty_amount, alert_info_or_none)
-        alert_info is a dict with member, tier, critical_count if an alert should be posted.
+        alert_info is a dict with member, tier, critical_count, and op context if an alert should be posted.
     """
     alert_info = None
     penalty = 0
@@ -3701,6 +3815,10 @@ async def _process_armor_integrity_for_aar(
                     "member": member,
                     "tier": new_tier,
                     "critical_count": 0,
+                    "op_mission": op_mission,
+                    "op_difficulty_class": op_difficulty_class,
+                    "op_url": op_url,
+                    "squad_member_ids": squad_member_ids,
                 }
 
         # If at critical (whether damage occurred or not), increment fracture countdown
@@ -6856,40 +6974,39 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     blessing_pool_user_id = None  # Track whose pool to consume
     if not force:
-        # Serialize blessing pool checks to avoid concurrent decisions on stale state
-        async with BLESSING_POOL_LOCK:
-            # First try the attestor's pool (bearer's company Techmarine)
-            attestor_can_bless, _, attestor_time_until_regen = await _check_techmarine_can_bless(
-                int(attestor_member.id)
-            )
-            if attestor_can_bless:
-                blessing_pool_user_id = int(attestor_member.id)
-            else:
-                # Attestor's pool depleted - try the invoker's pool as fallback
-                # (only if invoker is different from attestor)
-                if int(interaction.user.id) != int(attestor_member.id):
-                    invoker_can_bless, _, invoker_time_until_regen = await _check_techmarine_can_bless(
-                        int(interaction.user.id)
-                    )
-                    if invoker_can_bless:
-                        blessing_pool_user_id = int(interaction.user.id)
-                    else:
-                        # Both pools depleted
-                        await interaction.response.send_message(
-                            "Both the attesting Techmarine and your blessing pools are depleted. "
-                            "Seek another Techmarine to perform this rite.",
-                            ephemeral=True,
-                        )
-                        return
+        # Note: inner functions handle their own locking; no outer lock needed
+        # First try the attestor's pool (bearer's company Techmarine)
+        attestor_can_bless, _, attestor_time_until_regen = await _check_techmarine_can_bless(
+            int(attestor_member.id)
+        )
+        if attestor_can_bless:
+            blessing_pool_user_id = int(attestor_member.id)
+        else:
+            # Attestor's pool depleted - try the invoker's pool as fallback
+            # (only if invoker is different from attestor)
+            if int(interaction.user.id) != int(attestor_member.id):
+                invoker_can_bless, _, invoker_time_until_regen = await _check_techmarine_can_bless(
+                    int(interaction.user.id)
+                )
+                if invoker_can_bless:
+                    blessing_pool_user_id = int(interaction.user.id)
                 else:
-                    # Invoker IS the attestor, just one pool to check
-                    regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
+                    # Both pools depleted
                     await interaction.response.send_message(
-                        f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
-                        f"Next blessing available in: **{regen_str}**",
+                        "Both the attesting Techmarine and your blessing pools are depleted. "
+                        "Seek another Techmarine to perform this rite.",
                         ephemeral=True,
                     )
                     return
+            else:
+                # Invoker IS the attestor, just one pool to check
+                regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
+                await interaction.response.send_message(
+                    f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
+                    f"Next blessing available in: **{regen_str}**",
+                    ephemeral=True,
+                )
+                return
 
     # Build attestation using standardized Imperial date format
     try:
@@ -7077,9 +7194,12 @@ async def _attest(
         spirit_status_text = random.choice(spirit_status_phrases)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Roll blessing outcome and apply effect (5% crit fail, 90% normal, 5% crit)
+    # Roll blessing outcome and apply effect (state-based probabilities)
     # ─────────────────────────────────────────────────────────────────────────
-    blessing_roll_outcome = _roll_blessing_outcome()
+    blessing_roll_outcome = _roll_blessing_outcome(
+        damage_tier=current_damage_tier,
+        spirit_fractured=spirit_fractured,
+    )
     blessing_result_tier = current_damage_tier  # Track resulting damage tier
     
     if interaction.guild:
@@ -7472,7 +7592,9 @@ async def _show_armor_leaderboard(
             tier_str = f" · {current_tier.upper()}"
         else:
             tier_str = ""
-        prob_str = f" · {prob:.0f}%" if not current_tier and prob > 0 else ""
+        # Show escalation risk % for all brothers with non-zero probability
+        # (damaged brothers can escalate to compromised/critical)
+        prob_str = f" · {prob:.0f}%" if prob > 0 else ""
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
             f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}{prob_str}"
@@ -8916,12 +9038,22 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 
         # --- Armor Integrity: Run checks and post alerts AFTER saving ---
         alerts_to_post = []
+        # Extract op context for debrief in alerts
+        op_mission = record.get("mission")
+        op_url = record.get("message_url")
         if guild and brother_ids:
             for bid in brother_ids:
                 try:
                     bid_base_points = base_points.get(bid, 0)
                     penalty, alert_info = await _process_armor_integrity_for_aar(
-                        bid, bid_base_points, guild, armor_batch
+                        bid,
+                        bid_base_points,
+                        guild,
+                        armor_batch,
+                        op_mission=op_mission,
+                        op_difficulty_class=difficulty_class,
+                        op_url=op_url,
+                        squad_member_ids=brother_ids,
                     )
                     if alert_info:
                         alerts_to_post.append(alert_info)
@@ -8940,6 +9072,10 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     alert["tier"],
                     alert.get("critical_count", 0),
                     guild,
+                    op_mission=alert.get("op_mission"),
+                    op_difficulty_class=alert.get("op_difficulty_class"),
+                    op_url=alert.get("op_url"),
+                    squad_member_ids=alert.get("squad_member_ids"),
                 )
             except Exception as e:
                 logger.error(f"Error calling _post_armor_alert: {e}")
