@@ -106,7 +106,13 @@ BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
 # Blessing pool configuration
 BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
 BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
-BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Recipient can only be blessed once per 24h
+BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
+BLESSING_RECIPIENT_MAX_PER_DAY = 2  # Maximum blessings per recipient per 24h
+
+# Blessing roll configuration (5/90/5 split)
+BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
+BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
+BLESSING_CRIT_SUCCESS_GRACE_POINTS = -25  # Grace points on crit success
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -147,6 +153,22 @@ BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Leviathan Protocol role ID for parsing
 LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
+# Pipehitter role IDs for parsing
+PIPEHITTER_ROLE_ID = 1435812894532042843
+DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
+# Missions eligible for Pipehitter mentions
+PIPEHITTER_ELIGIBLE_MISSIONS = {
+    "inferno",
+    "vox liberatis",
+    "reliquary",
+    "fall of atreus",
+    "termination",
+    "obelisk",
+    "exfiltration",
+    "vortex",
+    "reclamation",
+    "disruption",
+}
 # Required missions for Black Laurels eligibility (all required for new earners)
 BLACK_LAURELS_REQUIRED_MISSIONS = {
     "inferno",
@@ -2957,8 +2979,12 @@ async def _apply_damage_tier(
         return None
 
 
-async def _clear_armor_damage(member: discord.Member, guild: discord.Guild):
-    """Remove all damage roles from a member and reset their armor state."""
+async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grace_points: int = 0):
+    """Remove all damage roles from a member and reset their armor state.
+    
+    Args:
+        grace_points: Starting points (negative = grace period, e.g., -25 for crit success)
+    """
     role_ids = _get_armor_damage_role_ids()
 
     # Remove all damage roles
@@ -2974,17 +3000,132 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild):
             except Exception:
                 pass
 
-    # Reset armor state
+    # Get current state to preserve/update blessing timestamps
+    current_state = await _get_armor_state(member.id)
+    blessing_timestamps = current_state.get("blessing_timestamps", [])
+    
+    # Filter old timestamps and add current
+    now = datetime.utcnow()
+    cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    active_timestamps = []
+    for ts_str in blessing_timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if now - ts < cooldown_window:
+                active_timestamps.append(ts_str)
+        except Exception:
+            continue
+    active_timestamps.append(now.isoformat())
+
+    # Reset armor state with updated timestamps
+    await _set_armor_state(
+        member.id,
+        {
+            "points_since_blessing": grace_points,
+            "damage_tier": None,
+            "critical_aar_count": 0,
+            "spirit_fractured": False,
+            "last_blessing_timestamp": now.isoformat(),
+            "blessing_timestamps": active_timestamps,
+        },
+    )
+
+
+async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild):
+    """Apply crit fail blessing result: reset points but keep damage tier.
+    
+    Returns the current damage tier (unchanged).
+    """
+    current_tier = _get_member_damage_tier(member)
+    
+    # Get current state to preserve/update blessing timestamps
+    current_state = await _get_armor_state(member.id)
+    blessing_timestamps = current_state.get("blessing_timestamps", [])
+    
+    # Filter old timestamps and add current
+    now = datetime.utcnow()
+    cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    active_timestamps = []
+    for ts_str in blessing_timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if now - ts < cooldown_window:
+                active_timestamps.append(ts_str)
+        except Exception:
+            continue
+    active_timestamps.append(now.isoformat())
+    
+    # Reset points but keep damage_tier and spirit_fractured unchanged
     await _set_armor_state(
         member.id,
         {
             "points_since_blessing": 0,
-            "damage_tier": None,
-            "critical_aar_count": 0,
-            "spirit_fractured": False,
-            "last_blessing_timestamp": datetime.utcnow().isoformat(),
+            "damage_tier": current_tier,
+            "critical_aar_count": current_state.get("critical_aar_count", 0),
+            "spirit_fractured": current_state.get("spirit_fractured", False),
+            "last_blessing_timestamp": now.isoformat(),
+            "blessing_timestamps": active_timestamps,
         },
     )
+    
+    return current_tier
+
+
+async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -> Optional[str]:
+    """Apply normal blessing result: drop one damage tier.
+    
+    Returns the new damage tier (or None if now nominal).
+    """
+    current_tier = _get_member_damage_tier(member)
+    
+    if not current_tier:
+        # Already nominal - just reset points and add timestamp
+        await _clear_armor_damage(member, guild)
+        return None
+    
+    # Drop one tier
+    new_tier = await _drop_armor_tier(member, guild)
+    
+    # Get current state to preserve/update blessing timestamps
+    current_state = await _get_armor_state(member.id)
+    blessing_timestamps = current_state.get("blessing_timestamps", [])
+    
+    # Filter old timestamps and add current
+    now = datetime.utcnow()
+    cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    active_timestamps = []
+    for ts_str in blessing_timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if now - ts < cooldown_window:
+                active_timestamps.append(ts_str)
+        except Exception:
+            continue
+    active_timestamps.append(now.isoformat())
+    
+    # Update state with new tier
+    await _set_armor_state(
+        member.id,
+        {
+            "points_since_blessing": 0,
+            "damage_tier": new_tier,
+            "critical_aar_count": 0 if not new_tier else current_state.get("critical_aar_count", 0),
+            "spirit_fractured": False if not new_tier else current_state.get("spirit_fractured", False),
+            "last_blessing_timestamp": now.isoformat(),
+            "blessing_timestamps": active_timestamps,
+        },
+    )
+    
+    return new_tier
+
+
+async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Guild):
+    """Apply crit success blessing result: full heal + grace period.
+    
+    Returns None (always results in nominal status).
+    """
+    await _clear_armor_damage(member, guild, grace_points=BLESSING_CRIT_SUCCESS_GRACE_POINTS)
+    return None
 
 
 async def _check_spirit_fracture(user_id: int) -> bool:
@@ -3192,30 +3333,109 @@ async def _consume_blessing(user_id: int):
     })
 
 
-async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta]]:
-    """Check if a recipient can receive a blessing (24h cooldown).
+async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta], int]:
+    """Check if a recipient can receive a blessing (max 2 per 24h).
     
-    Returns (can_receive, time_remaining if on cooldown).
+    Returns (can_receive, time_until_next_slot, blessings_used_today).
     """
     state = await _get_armor_state(user_id)
-    last_blessing = state.get("last_blessing_timestamp")
+    blessing_timestamps = state.get("blessing_timestamps", [])
     
-    if not last_blessing:
-        return True, None
+    # Also check legacy field for backwards compatibility
+    if not blessing_timestamps:
+        last_blessing = state.get("last_blessing_timestamp")
+        if last_blessing:
+            blessing_timestamps = [last_blessing]
     
+    if not blessing_timestamps:
+        return True, None, 0
+    
+    now = datetime.utcnow()
+    cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    
+    # Filter to timestamps within the last 24h
+    active_timestamps = []
+    for ts_str in blessing_timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if now - ts < cooldown_window:
+                active_timestamps.append(ts)
+        except Exception:
+            continue
+    
+    blessings_used = len(active_timestamps)
+    
+    if blessings_used < BLESSING_RECIPIENT_MAX_PER_DAY:
+        return True, None, blessings_used
+    
+    # At max - find when the oldest one expires
+    if active_timestamps:
+        oldest = min(active_timestamps)
+        time_until_slot = (oldest + cooldown_window) - now
+        return False, time_until_slot, blessings_used
+    
+    return True, None, 0
+
+
+def _roll_blessing_outcome() -> str:
+    """Roll for blessing outcome: crit_fail (5%), normal (90%), crit_success (5%).
+    
+    Returns one of: 'crit_fail', 'normal', 'crit_success'
+    """
+    import random
+    roll = random.random()
+    
+    if roll < BLESSING_ROLL_CRIT_FAIL_THRESHOLD:
+        return "crit_fail"
+    elif roll >= BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD:
+        return "crit_success"
+    else:
+        return "normal"
+
+
+async def _drop_armor_tier(member: discord.Member, guild: discord.Guild) -> Optional[str]:
+    """Drop a member's armor damage by one tier.
+    
+    Returns the new tier (or None if now undamaged).
+    Tier progression: critical -> compromised -> damaged -> None (nominal)
+    """
+    current_tier = _get_member_damage_tier(member)
+    role_ids = _get_armor_damage_role_ids()
+    
+    if not current_tier:
+        return None  # Already undamaged
+    
+    # Remove current tier role
+    current_role_id = role_ids.get(current_tier)
+    if current_role_id:
+        try:
+            role = guild.get_role(int(current_role_id))
+            if role and role in member.roles:
+                await member.remove_roles(role, reason="Armor integrity: blessing reduced damage tier")
+        except Exception:
+            pass
+    
+    # Determine new tier (one level better)
+    tier_order = ["damaged", "compromised", "critical"]
     try:
-        ts = datetime.fromisoformat(last_blessing.replace("Z", "+00:00").replace("+00:00", ""))
-        now = datetime.utcnow()
-        elapsed = now - ts
-        cooldown = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
-        
-        if elapsed >= cooldown:
-            return True, None
-        
-        remaining = cooldown - elapsed
-        return False, remaining
-    except Exception:
-        return True, None
+        current_idx = tier_order.index(current_tier)
+        if current_idx == 0:
+            # Was damaged, now nominal
+            return None
+        else:
+            # Drop one tier
+            new_tier = tier_order[current_idx - 1]
+            new_role_id = role_ids.get(new_tier)
+            if new_role_id:
+                try:
+                    new_role = guild.get_role(int(new_role_id))
+                    if new_role:
+                        await member.add_roles(new_role, reason="Armor integrity: blessing reduced damage tier")
+                except Exception:
+                    pass
+            return new_tier
+    except ValueError:
+        return None
 
 
 def _format_cooldown_time(td: timedelta) -> str:
@@ -5733,8 +5953,11 @@ def _get_stud_marking_recipients(
         "Watch Captain",
         "Watch Lieutenant",
         "Company Champion",
+        "Watch Apothecary",
         "Watch Chaplain",
         "Watch Librarian",
+        "Watch Techmarine",
+        "Watch Sergeant",
     }
     # Watch Apothecary is handled separately - they can't mark themselves
     if member_rank_name == "Watch Apothecary":
@@ -5754,15 +5977,15 @@ def _get_stud_marking_recipients(
         if company:
             captains, lieutenants = _find_company_command_staff(guild, company)
             co_member = (
-                captains[0] if captains else (lieutenants[0] if lieutenants else None)
+                lieutenants[0] if lieutenants else (captains[0] if captains else None)
             )
             if co_member:
                 # Determine CO's rank for emoji
                 co_roles = {getattr(r, "name", "") for r in co_member.roles}
                 co_rank = (
-                    "Watch Captain"
-                    if "Watch Captain" in co_roles
-                    else "Watch Lieutenant"
+                    "Watch Lieutenant"
+                    if "Watch Lieutenant" in co_roles
+                    else "Watch Captain"
                 )
                 emoji = _get_rank_emoji(guild, co_rank)
                 emoji_prefix = f"{emoji} " if emoji else ""
@@ -6556,16 +6779,16 @@ async def _attest(
         pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Recipient cooldown check (24h between blessings)
+    # Recipient cooldown check (max 2 blessings per 24h)
     # ─────────────────────────────────────────────────────────────────────────
     if not force:
-        can_receive, cooldown_remaining = await _check_recipient_cooldown(int(member.id))
+        can_receive, cooldown_remaining, blessings_used = await _check_recipient_cooldown(int(member.id))
         if not can_receive and cooldown_remaining:
             bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
             cooldown_str = _format_cooldown_time(cooldown_remaining)
             await interaction.response.send_message(
-                f"**{bearer_name}** was recently blessed. "
-                f"Their armor's machine-spirit requires {cooldown_str} before another rite can be performed.",
+                f"**{bearer_name}** has reached their blessing limit ({BLESSING_RECIPIENT_MAX_PER_DAY} per day). "
+                f"Next blessing slot available in {cooldown_str}.",
                 ephemeral=True,
             )
             return
@@ -6816,10 +7039,21 @@ async def _attest(
         spirit_status_text = random.choice(spirit_status_phrases)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Clear armor damage (roles and state) - this is the blessing effect
+    # Roll blessing outcome and apply effect (5% crit fail, 90% normal, 5% crit)
     # ─────────────────────────────────────────────────────────────────────────
+    blessing_roll_outcome = _roll_blessing_outcome()
+    blessing_result_tier = current_damage_tier  # Track resulting damage tier
+    
     if interaction.guild:
-        await _clear_armor_damage(member, interaction.guild)
+        if blessing_roll_outcome == "crit_fail":
+            # Crit fail: reset points but damage stays
+            blessing_result_tier = await _apply_blessing_crit_fail(member, interaction.guild)
+        elif blessing_roll_outcome == "crit_success":
+            # Crit success: full heal + grace period
+            blessing_result_tier = await _apply_blessing_crit_success(member, interaction.guild)
+        else:
+            # Normal: drop one damage tier
+            blessing_result_tier = await _apply_blessing_normal(member, interaction.guild)
 
     # Consume a blessing from the appropriate Techmarine's pool (unless force override)
     if not force and blessing_pool_user_id:
@@ -6903,6 +7137,37 @@ async def _attest(
         f"{rite_emoji} Rite: {rite_status}"
     )
     embed.add_field(name="▸ Machine-Spirit", value=status_value, inline=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Rite Outcome field (shows roll result)
+    # ─────────────────────────────────────────────────────────────────────────
+    if blessing_roll_outcome == "crit_fail":
+        outcome_emoji = "⚠️"
+        outcome_title = "RITE RESISTED"
+        if current_damage_tier:
+            tier_display = current_damage_tier.upper()
+            outcome_text = f"The machine spirit resists the sacred oils.\nDamage persists: **{tier_display}**"
+        else:
+            outcome_text = "The machine spirit stirs uneasily.\nThe rite takes imperfect hold."
+    elif blessing_roll_outcome == "crit_success":
+        outcome_emoji = "✨"
+        outcome_title = "SACRED COMMUNION"
+        if current_damage_tier:
+            outcome_text = "The Omnissiah's blessing flows through the armor.\nAll damage purged. Grace period granted."
+        else:
+            outcome_text = "Perfect communion achieved.\nThe machine spirit radiates contentment. Grace period granted."
+    else:  # normal
+        outcome_emoji = "🟢"
+        outcome_title = "RITE COMPLETE"
+        if current_damage_tier and blessing_result_tier:
+            outcome_text = f"Damage reduced: {current_damage_tier.upper()} → {blessing_result_tier.upper()}"
+        elif current_damage_tier and not blessing_result_tier:
+            outcome_text = f"Damage repaired: {current_damage_tier.upper()} → NOMINAL"
+        else:
+            outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
+    
+    outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
+    embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=False)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
     # Only show for unbound (first) or fractured (reconsecrated) spirits
@@ -11956,6 +12221,8 @@ def parse_aar(message: discord.Message):
     # Leviathan Protocol tracking
     leviathan_protocol_in_mission = False
     leviathan_protocol_in_difficulty = False
+    # Pipehitter tracking
+    pipehitter_mentioned = False
     # Watch Command role mention (required for Initiation Trials)
     watch_command_mentioned = False
 
@@ -12203,6 +12470,15 @@ def parse_aar(message: discord.Message):
     ):
         black_laurels_mentioned_elsewhere = True
 
+    # Detect Pipehitter role mentions anywhere in the message.
+    pipehitter_mentioned = role_mentioned(
+        message,
+        role_id=PIPEHITTER_ROLE_ID,
+    ) or role_mentioned(
+        message,
+        role_id=DISTINGUISHED_PIPEHITTER_ROLE_ID,
+    )
+
     # Detect Watch Command role mention anywhere in the message (required for Initiation Trials).
     watch_command_mentioned = role_mentioned(
         message,
@@ -12300,6 +12576,8 @@ def parse_aar(message: discord.Message):
         "black_laurels_mentioned_elsewhere": black_laurels_mentioned_elsewhere,
         "leviathan_protocol_in_mission": leviathan_protocol_in_mission,
         "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
+        # Pipehitter tracking for validation
+        "pipehitter_mentioned": pipehitter_mentioned,
         # Link back to the original Discord message (if available)
         "message_url": (
             f"https://discord.com/channels/{getattr(getattr(message, 'guild', None), 'id', None)}/"
@@ -12487,6 +12765,17 @@ def validate_aar(record: dict):
             errors.append(
                 "@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line."
             )
+
+        # Pipehitter validation: only allowed on eligible missions
+        if record.get("pipehitter_mentioned", False):
+            mission_lower = (mission or "").lower().strip()
+            mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+            if mission_clean and mission_clean not in PIPEHITTER_ELIGIBLE_MISSIONS:
+                errors.append(
+                    "@Pipehitter/@Distinguished_Pipehitter may only be used on eligible missions: "
+                    "Inferno, Vox Liberatis, Reliquary, Fall of Atreus, Termination, Obelisk, "
+                    "Exfiltration, Vortex, Reclamation, Disruption."
+                )
 
     # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
     if "normal-siege" in dlower or "hard-siege" in dlower:
