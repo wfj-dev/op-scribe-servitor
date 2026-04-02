@@ -7376,7 +7376,12 @@ async def _preview_armor_alert(
     penalty_risk = _get_tier_risk_display(tier, spirit_fractured=False)
     embed.add_field(
         name="▸ Affected Brother",
-        value=f"{bearer_display}\n**Status:** {tier_display}\n**Penalty Risk:** {penalty_risk}",
+        value=(
+            f"{bearer_display}"
+            f"\n**Status:** {tier_display}"
+            f"\n**Penalty Risk:** {penalty_risk}"
+            f"\n**Fixed Penalty:** {penalty}"
+        ),
         inline=False,
     )
 
