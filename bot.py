@@ -2553,30 +2553,30 @@ ARMOR_PENALTY_PROBABILITIES = {
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
     {
         "min": 0,
-        "max": 20,
+        "max": 40,
         "chance": 0.0,
         "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0},
     },
     {
-        "min": 21,
-        "max": 50,
+        "min": 41,
+        "max": 100,
         "chance": 0.02,
         "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2},
     },
     {
-        "min": 51,
-        "max": 100,
+        "min": 101,
+        "max": 200,
         "chance": 0.08,
         "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5},
     },
     {
-        "min": 101,
-        "max": 175,
+        "min": 201,
+        "max": 350,
         "chance": 0.20,
         "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10},
     },
     {
-        "min": 176,
+        "min": 351,
         "max": None,
         "chance": 0.40,
         "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15},
