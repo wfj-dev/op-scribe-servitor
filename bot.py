@@ -7207,7 +7207,9 @@ async def _show_armor_leaderboard(
 async def _armor_status(interaction: discord.Interaction):
     """Display armor integrity leaderboard scoped by role."""
     # Permission check: caller must be techmarine or forgemaster
-    allowed, role_key = _is_techmarine_or_forgemaster(interaction.user)
+    allowed, role_key = _is_techmarine_or_forgemaster(
+        interaction.user, command_name="armor_status"
+    )
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
