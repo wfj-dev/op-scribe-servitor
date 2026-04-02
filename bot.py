@@ -3248,7 +3248,6 @@ async def _post_armor_alert(
     if not channel:
         return
 
-    penalty = _get_damage_penalty(tier)
     config = _get_armor_config()
     fracture_threshold = config.get(
         "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
@@ -7296,7 +7295,6 @@ async def _preview_armor_alert(
         return
 
     guild = interaction.guild
-    penalty = _get_damage_penalty(tier)
     config = _get_armor_config()
     fracture_threshold = config.get(
         "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
