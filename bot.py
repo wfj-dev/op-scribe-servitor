@@ -343,7 +343,7 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
 
 
 async def _send_watch_command_notice(kind: str):
-    """Post a concise status notice to ❖⋅data-vault⋅❖ and replace the previous one.
+    """Post a concise status notice to the status channel and replace the previous one.
     kind: 'ONLINE' or 'OFFLINE' (case-insensitive).
     Behavior: always delete the most recent prior status bulletin (regardless of
     its previous state), then send the new bulletin so only one is visible."""
@@ -360,19 +360,23 @@ async def _send_watch_command_notice(kind: str):
         logger.warning("No guild available for status notification.")
         return
     logger.info(f"Sending {kind} notice to guild: {guild.name}")
+    # Use channel ID directly for reliability
+    STATUS_CHANNEL_ID = 1430055064969674777
     try:
-        channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
+        channel = bot.get_channel(STATUS_CHANNEL_ID)
+        if not channel:
+            channel = await bot.fetch_channel(STATUS_CHANNEL_ID)
     except Exception as e:
-        logger.warning(f"Channel lookup failed: {e}")
+        logger.warning(f"Channel fetch failed: {e}")
         channel = None
     if not channel:
-        logger.warning(f"Notification channel '❖⋅data-vault⋅❖' not found in {guild.name}. Available channels: {[c.name for c in guild.channels][:20]}")
+        logger.warning(f"Status channel ID {STATUS_CHANNEL_ID} not accessible.")
         return
     try:
-        role = discord.utils.get(guild.roles, name="Watch Command")
+        role = discord.utils.get(guild.roles, name="Watch Brother")
     except Exception:
         role = None
-    mention = f"<@&{role.id}>" if role else "@Watch Command"
+    mention = f"<@&{role.id}>" if role else "@Watch Brother"
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
     # Always delete the most recent status bulletin (regardless of prior status)
     try:
