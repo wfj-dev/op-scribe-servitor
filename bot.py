@@ -6596,38 +6596,40 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     blessing_pool_user_id = None  # Track whose pool to consume
     if not force:
-        # First try the attestor's pool (bearer's company Techmarine)
-        attestor_can_bless, _, attestor_time_until_regen = await _check_techmarine_can_bless(
-            int(attestor_member.id)
-        )
-        if attestor_can_bless:
-            blessing_pool_user_id = int(attestor_member.id)
-        else:
-            # Attestor's pool depleted - try the invoker's pool as fallback
-            # (only if invoker is different from attestor)
-            if int(interaction.user.id) != int(attestor_member.id):
-                invoker_can_bless, _, invoker_time_until_regen = await _check_techmarine_can_bless(
-                    int(interaction.user.id)
-                )
-                if invoker_can_bless:
-                    blessing_pool_user_id = int(interaction.user.id)
+        # Serialize blessing pool checks to avoid concurrent decisions on stale state
+        async with BLESSING_POOL_LOCK:
+            # First try the attestor's pool (bearer's company Techmarine)
+            attestor_can_bless, _, attestor_time_until_regen = await _check_techmarine_can_bless(
+                int(attestor_member.id)
+            )
+            if attestor_can_bless:
+                blessing_pool_user_id = int(attestor_member.id)
+            else:
+                # Attestor's pool depleted - try the invoker's pool as fallback
+                # (only if invoker is different from attestor)
+                if int(interaction.user.id) != int(attestor_member.id):
+                    invoker_can_bless, _, invoker_time_until_regen = await _check_techmarine_can_bless(
+                        int(interaction.user.id)
+                    )
+                    if invoker_can_bless:
+                        blessing_pool_user_id = int(interaction.user.id)
+                    else:
+                        # Both pools depleted
+                        await interaction.response.send_message(
+                            "Both the attesting Techmarine and your blessing pools are depleted. "
+                            "Seek another Techmarine to perform this rite.",
+                            ephemeral=True,
+                        )
+                        return
                 else:
-                    # Both pools depleted
+                    # Invoker IS the attestor, just one pool to check
+                    regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
                     await interaction.response.send_message(
-                        "Both the attesting Techmarine and your blessing pools are depleted. "
-                        "Seek another Techmarine to perform this rite.",
+                        f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
+                        f"Next blessing available in: **{regen_str}**",
                         ephemeral=True,
                     )
                     return
-            else:
-                # Invoker IS the attestor, just one pool to check
-                regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
-                await interaction.response.send_message(
-                    f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
-                    f"Next blessing available in: **{regen_str}**",
-                    ephemeral=True,
-                )
-                return
 
     # Build attestation using standardized Imperial date format
     try:
