@@ -3428,11 +3428,10 @@ async def _consume_multiple_blessings(user_id: int, count: int):
         except Exception:
             pass
     
-    # Add multiple timestamps with slight offsets for proper regen ordering
-    for i in range(count):
-        # Stagger by 1 second each to maintain proper regen order
-        ts = now + timedelta(seconds=i)
-        active_timestamps.append(ts.isoformat())
+    # Record simultaneous consumption at the same timestamp and rely on list order.
+    now_iso = now.isoformat()
+    for _ in range(count):
+        active_timestamps.append(now_iso)
     
     # Trim to BLESSING_POOL_MAX entries to keep bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
