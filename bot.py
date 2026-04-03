@@ -8194,7 +8194,6 @@ async def _show_armor_leaderboard(
     for i, (member, state, current_tier, risk_score, scan_result) in enumerate(top_10, 1):
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
-        prob = _get_damage_probability(points) * 100
         predictive_warning = scan_result.get("predictive_warning", False)
         scan_missed = not scan_result["detected"]
 
@@ -8249,7 +8248,6 @@ async def _show_armor_leaderboard(
             icon = "🟢"
 
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · CRITICAL"
-        # Show tier name instead of fixed penalty (since penalties are now probabilistic)
         if spirit_fractured:
             tier_str = " · FRACTURED"
         elif current_tier:
@@ -8258,12 +8256,9 @@ async def _show_armor_leaderboard(
             tier_str = " · AT RISK"
         else:
             tier_str = ""
-        # Show escalation risk % for all brothers with non-zero probability
-        # (damaged brothers can escalate to compromised/critical)
-        prob_str = f" · {prob:.0f}%" if prob > 0 else ""
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}{prob_str}"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}"
         )
 
     embed.add_field(
