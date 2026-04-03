@@ -103,6 +103,14 @@ ARMOR_INTEGRITY_LOCK = asyncio.Lock()
 BLESSING_POOL_LOCK = asyncio.Lock()
 BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
 
+# Lock for forge requisition pool (community armory -> blessing charges)
+FORGE_POOL_LOCK = asyncio.Lock()
+FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
+
+# Forge requisition pool configuration
+FORGE_POOL_COST_PER_CHARGE = 200  # Armory points spent per blessing charge
+FORGE_POOL_DAILY_LIMIT = 2  # Max requisitions per Techmarine per day
+
 # Blessing pool configuration
 BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
 BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
@@ -2526,6 +2534,7 @@ ARMOR_PENALTY_PROBABILITIES = {
 }
 
 # Default probability tiers (can be overridden in config)
+# Gaps shrink as cycles increase to create mounting pressure
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
     {
         "min": 0,
@@ -2535,24 +2544,24 @@ DEFAULT_ARMOR_PROBABILITY_TIERS = [
     },
     {
         "min": 41,
-        "max": 100,
+        "max": 80,
         "chance": 0.02,
         "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2},
     },
     {
-        "min": 101,
-        "max": 200,
+        "min": 81,
+        "max": 110,
         "chance": 0.08,
         "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5},
     },
     {
-        "min": 201,
-        "max": 350,
+        "min": 111,
+        "max": 130,
         "chance": 0.20,
         "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10},
     },
     {
-        "min": 351,
+        "min": 131,
         "max": None,
         "chance": 0.40,
         "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15},
@@ -3491,6 +3500,134 @@ def _format_cooldown_time(td: timedelta) -> str:
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Forge Requisition Pool (Community armory -> blessing charges)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _load_forge_pool() -> dict:
+    """Load forge requisition pool data from disk."""
+    try:
+        if not os.path.exists(FORGE_POOL_PATH):
+            return {"total_spent": 0, "daily_usage": {}}
+        with open(FORGE_POOL_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {"total_spent": 0, "daily_usage": {}}
+    except Exception:
+        return {"total_spent": 0, "daily_usage": {}}
+
+
+def _save_forge_pool(data: dict):
+    """Save forge requisition pool data to disk."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(FORGE_POOL_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _compute_total_armory_points() -> int:
+    """Compute total armory_points from all AAR records."""
+    try:
+        if DATASTORE:
+            records = DATASTORE.records
+        else:
+            if not os.path.exists(AAR_RECORDS_PATH):
+                return 0
+            with open(AAR_RECORDS_PATH, "r", encoding="utf-8") as f:
+                records = json.load(f) or {}
+        
+        total = 0
+        for rec in records.values():
+            pts = rec.get("armory_challenge_points", 0) or 0
+            total += pts
+        return total
+    except Exception:
+        return 0
+
+
+async def _get_forge_pool_available() -> int:
+    """Get the number of armory points available in the community forge pool."""
+    async with FORGE_POOL_LOCK:
+        total_armory = _compute_total_armory_points()
+        pool_data = _load_forge_pool()
+        total_spent = pool_data.get("total_spent", 0)
+        return max(0, total_armory - total_spent)
+
+
+async def _get_techmarine_daily_requisitions(user_id: int) -> int:
+    """Get how many requisitions a Techmarine has used today."""
+    async with FORGE_POOL_LOCK:
+        pool_data = _load_forge_pool()
+        daily_usage = pool_data.get("daily_usage", {})
+        
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        user_data = daily_usage.get(str(user_id), {})
+        
+        # Check if the usage is from today
+        if user_data.get("date") == today:
+            return user_data.get("count", 0)
+        return 0
+
+
+async def _consume_forge_requisition(user_id: int) -> Tuple[bool, str]:
+    """Attempt to consume a forge requisition for a Techmarine.
+    
+    Returns (success, message).
+    """
+    async with FORGE_POOL_LOCK:
+        # Check daily limit
+        pool_data = _load_forge_pool()
+        daily_usage = pool_data.get("daily_usage", {})
+        
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        user_data = daily_usage.get(str(user_id), {})
+        
+        # Reset if different day
+        if user_data.get("date") != today:
+            user_data = {"date": today, "count": 0}
+        
+        if user_data.get("count", 0) >= FORGE_POOL_DAILY_LIMIT:
+            return False, f"Daily requisition limit reached ({FORGE_POOL_DAILY_LIMIT} per day)."
+        
+        # Check pool availability
+        total_armory = _compute_total_armory_points()
+        total_spent = pool_data.get("total_spent", 0)
+        available = total_armory - total_spent
+        
+        if available < FORGE_POOL_COST_PER_CHARGE:
+            return False, f"Insufficient forge supplies ({available}/{FORGE_POOL_COST_PER_CHARGE} armory points available)."
+        
+        # Consume
+        pool_data["total_spent"] = total_spent + FORGE_POOL_COST_PER_CHARGE
+        user_data["count"] = user_data.get("count", 0) + 1
+        daily_usage[str(user_id)] = user_data
+        pool_data["daily_usage"] = daily_usage
+        
+        _save_forge_pool(pool_data)
+        
+        remaining = total_armory - pool_data["total_spent"]
+        return True, f"Requisition approved. Forge pool: {remaining} armory points remaining."
+
+
+async def _get_forge_pool_status() -> dict:
+    """Get full forge pool status for display."""
+    async with FORGE_POOL_LOCK:
+        total_armory = _compute_total_armory_points()
+        pool_data = _load_forge_pool()
+        total_spent = pool_data.get("total_spent", 0)
+        available = max(0, total_armory - total_spent)
+        charges_available = available // FORGE_POOL_COST_PER_CHARGE
+        
+        return {
+            "total_armory": total_armory,
+            "total_spent": total_spent,
+            "available": available,
+            "charges_available": charges_available,
+            "cost_per_charge": FORGE_POOL_COST_PER_CHARGE,
+        }
 
 
 async def _post_armor_alert(
@@ -7602,8 +7739,21 @@ async def _show_armor_leaderboard(
         embed.add_field(
             name="▸ Your Blessing Pool",
             value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}",
-            inline=False,
+            inline=True,
         )
+
+    # Add forge requisition pool status
+    try:
+        forge_status = await _get_forge_pool_status()
+        forge_available = forge_status["available"]
+        forge_charges = forge_status["charges_available"]
+        embed.add_field(
+            name="▸ Forge Reserves",
+            value=f"**{forge_available}** pts ({forge_charges} charges)\n`/requisition_supplies`",
+            inline=True,
+        )
+    except Exception:
+        pass
 
     embed.set_footer(text="Use /forge_rite @brother to restore armor integrity")
 
@@ -7664,6 +7814,172 @@ async def _armor_status(interaction: discord.Interaction):
         pool_remaining=pool_remaining,
         pool_next_regen=pool_next_regen,
     )
+
+
+@bot.tree.command(
+    name="requisition_supplies",
+    description="Spend community armory reserves to restore a blessing charge.",
+)
+async def _requisition_supplies(interaction: discord.Interaction):
+    """Techmarine command to requisition supplies from the forge pool."""
+    # Permission check: caller must be techmarine or forgemaster
+    allowed, role_key = _is_techmarine_or_forgemaster(
+        interaction.user, command_name="requisition_supplies"
+    )
+    if not allowed:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    # Channel restriction (same as armor_status)
+    channel_id = getattr(interaction.channel, "id", None)
+    allowed_channels = _get_armor_status_allowed_channels()
+    if channel_id not in allowed_channels:
+        await interaction.response.send_message(
+            "This command may only be used in the arming chamber or Techmarine channels.",
+            ephemeral=True,
+        )
+        return
+
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message("Guild not found.", ephemeral=True)
+        return
+
+    # Check current blessing pool status
+    pool_remaining, pool_next_regen = await _get_blessing_pool_display(interaction.user.id)
+    
+    # Don't allow requisition if pool is full
+    if pool_remaining >= BLESSING_POOL_MAX:
+        await interaction.response.send_message(
+            f"Your blessing pool is already full ({pool_remaining}/{BLESSING_POOL_MAX}). "
+            "No requisition needed.",
+            ephemeral=True,
+        )
+        return
+
+    # Check daily usage
+    daily_used = await _get_techmarine_daily_requisitions(interaction.user.id)
+    if daily_used >= FORGE_POOL_DAILY_LIMIT:
+        await interaction.response.send_message(
+            f"Daily requisition limit reached ({FORGE_POOL_DAILY_LIMIT} per day). "
+            "The Forge requires time to process additional requests.",
+            ephemeral=True,
+        )
+        return
+
+    # Get forge pool status for display
+    forge_status = await _get_forge_pool_status()
+    available = forge_status["available"]
+    cost = forge_status["cost_per_charge"]
+    
+    if available < cost:
+        await interaction.response.send_message(
+            f"**Forge Requisition Denied**\n\n"
+            f"Community armory reserves: **{available}** points\n"
+            f"Required for blessing charge: **{cost}** points\n\n"
+            f"*The Chapter must recover more armory data before supplies can be requisitioned.*",
+            ephemeral=True,
+        )
+        return
+
+    # Attempt to consume the requisition
+    success, message = await _consume_forge_requisition(interaction.user.id)
+    
+    if not success:
+        await interaction.response.send_message(
+            f"**Forge Requisition Failed**\n\n{message}",
+            ephemeral=True,
+        )
+        return
+
+    # Grant an immediate blessing charge by resetting the oldest timestamp
+    # This effectively gives them back one blessing slot immediately
+    await _grant_blessing_charge(interaction.user.id)
+    
+    # Get updated pool status
+    new_pool, _ = await _get_blessing_pool_display(interaction.user.id)
+    new_forge_status = await _get_forge_pool_status()
+    
+    # Get the Techmarine's name 
+    tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+    
+    embed = discord.Embed(
+        title="⚙️ FORGE REQUISITION APPROVED",
+        description="*Sacred oils and blessed unguents have been allocated.*",
+        color=0x2ECC71,
+    )
+    
+    embed.add_field(
+        name="▸ Requisitioner",
+        value=f"**{tech_name}**",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Blessing Pool",
+        value=f"{'●' * new_pool}{'○' * (BLESSING_POOL_MAX - new_pool)} ({new_pool}/{BLESSING_POOL_MAX})",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Forge Reserves",
+        value=f"**{new_forge_status['available']}** armory points\n({new_forge_status['charges_available']} charges available)",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Daily Usage",
+        value=f"{daily_used + 1}/{FORGE_POOL_DAILY_LIMIT} requisitions today",
+        inline=True,
+    )
+    
+    embed.set_footer(text="The Omnissiah provides. Use these gifts wisely.")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+async def _grant_blessing_charge(user_id: int):
+    """Grant one blessing charge to a Techmarine by removing the oldest timestamp."""
+    async with BLESSING_POOL_LOCK:
+        data = _load_blessing_pool()
+        state = data.get(str(user_id), {
+            "remaining_blessings": BLESSING_POOL_MAX,
+            "blessing_timestamps": [],
+        })
+        
+        timestamps = state.get("blessing_timestamps", [])
+        
+        if not timestamps:
+            # Already at max, nothing to remove
+            return
+        
+        # Sort timestamps and remove the oldest one
+        now = datetime.utcnow()
+        regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+        
+        # Find active (non-regenerated) timestamps
+        active_timestamps = []
+        for ts_str in timestamps:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+                elapsed = (now - ts).total_seconds()
+                if elapsed < regen_seconds:
+                    active_timestamps.append((ts, ts_str))
+            except Exception:
+                pass
+        
+        if active_timestamps:
+            # Remove the oldest active timestamp (grants one blessing back)
+            active_timestamps.sort(key=lambda x: x[0])
+            remaining_ts = [ts_str for _, ts_str in active_timestamps[1:]]
+        else:
+            remaining_ts = []
+        
+        state["blessing_timestamps"] = remaining_ts
+        state["remaining_blessings"] = BLESSING_POOL_MAX - len(remaining_ts)
+        
+        data[str(user_id)] = state
+        _save_blessing_pool(data)
 
 
 @bot.tree.command(
