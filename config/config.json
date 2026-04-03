@@ -2,7 +2,8 @@
   "guild_id": null,
   "guild_name": "Watch Fortress Jericho",
   "allowed_command_channel_ids": [
-    1445526714749943898
+    1445526714749943898,
+    1429303902343401575
   ],
   "admin_user_ids": [
     281651485782310914
