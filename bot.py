@@ -116,7 +116,17 @@ FORGE_POOL_MAX_CHARGES = 30  # Maximum charges the forge can hold
 BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
 BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
 BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
-BLESSING_RECIPIENT_MAX_PER_DAY = 2  # Maximum blessings per recipient per 24h
+BLESSING_RECIPIENT_MAX_PER_DAY = 3  # Maximum blessings per recipient per 24h
+
+# Intensive blessing charge costs (full heal to nominal)
+# Maps damage tier to number of charges required for intensive blessing
+INTENSIVE_BLESSING_COSTS = {
+    None: 0,           # Nominal: cannot use intensive
+    "damaged": 1,      # Damaged -> Nominal: 1 charge (same as standard)
+    "compromised": 2,  # Compromised -> Nominal: 2 charges
+    "critical": 3,     # Critical -> Nominal: 3 charges
+    "fractured": 4,    # Fractured -> Nominal: 4 charges
+}
 
 # Blessing roll configuration - asymmetric state-based probabilities
 # Format: (crit_fail_chance, crit_success_chance) - normal is remainder
@@ -211,9 +221,9 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
 }
 
 # Specialist award thresholds and role mappings
-# Award role names (looked up dynamically)
-ARDENT_RAIDER_ROLE_NAME = "Ardent Raider"
-FOR_THE_FALLEN_ROLE_NAME = "Centurion of the Fallen"
+# Award role IDs (looked up by ID to avoid name change issues)
+ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
+APOTHECARION_SERVICE_MEDAL_ROLE_ID = 1436434868652212275  # Apothecarion Service Medal
 CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
 
 # Specialist role names for mentions (looked up dynamically)
@@ -1496,22 +1506,18 @@ async def _check_promotion_milestones():
             librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
         )
 
-        # Get award roles
-        ardent_raider_role = discord.utils.get(
-            guild.roles, name=ARDENT_RAIDER_ROLE_NAME
-        )
+        # Get award roles (by ID to avoid name change issues)
+        ardent_raider_role = guild.get_role(ARDENT_RAIDER_ROLE_ID)
         ardent_raider_mention = (
             ardent_raider_role.mention
             if ardent_raider_role
-            else f"@{ARDENT_RAIDER_ROLE_NAME}"
+            else f"<@&{ARDENT_RAIDER_ROLE_ID}>"
         )
-        for_the_fallen_role = discord.utils.get(
-            guild.roles, name=FOR_THE_FALLEN_ROLE_NAME
-        )
-        for_the_fallen_mention = (
-            for_the_fallen_role.mention
-            if for_the_fallen_role
-            else f"@{FOR_THE_FALLEN_ROLE_NAME}"
+        apothecarion_medal_role = guild.get_role(APOTHECARION_SERVICE_MEDAL_ROLE_ID)
+        apothecarion_medal_mention = (
+            apothecarion_medal_role.mention
+            if apothecarion_medal_role
+            else f"<@&{APOTHECARION_SERVICE_MEDAL_ROLE_ID}>"
         )
         crimson_laurels_role = discord.utils.get(
             guild.roles, name=CRIMSON_LAURELS_ROLE_NAME
@@ -1811,14 +1817,14 @@ async def _check_promotion_milestones():
                             notifications_sent += 1
                             await asyncio.sleep(0.5)
 
-                # Check For the Fallen eligibility (150 geneseed points)
+                # Check Apothecarion Service Medal eligibility (150 geneseed points)
                 if black_laurels_channel:
                     gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
                     is_ftf_eligible = (
                         gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
                     )
                     has_ftf_role = (
-                        for_the_fallen_role and for_the_fallen_role in member.roles
+                        apothecarion_medal_role and apothecarion_medal_role in member.roles
                     )
                     # If already has role, mark as notified without sending
                     if has_ftf_role:
@@ -1828,7 +1834,7 @@ async def _check_promotion_milestones():
                         if is_ftf_eligible:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {for_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {apothecarion_medal_mention}   <:Deathwatch:1433161009106780170>\n"
                                 f"᛭⋅ {apothecary_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
@@ -3365,8 +3371,80 @@ async def _consume_blessing(user_id: int):
     })
 
 
+def _get_intensive_charge_cost(damage_tier: Optional[str], spirit_fractured: bool) -> int:
+    """Get the number of charges required for an intensive blessing.
+    
+    Returns 0 if target is nominal (intensive not applicable).
+    """
+    if spirit_fractured:
+        return INTENSIVE_BLESSING_COSTS.get("fractured", 4)
+    return INTENSIVE_BLESSING_COSTS.get(damage_tier, 0)
+
+
+async def _get_techmarine_available_charges(user_id: int) -> int:
+    """Get the number of available blessing charges for a Techmarine."""
+    state = await _get_techmarine_pool_state(user_id)
+    timestamps = state.get("blessing_timestamps", [])
+    
+    now = datetime.utcnow()
+    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+    
+    # Count active (non-expired) timestamps
+    active_count = 0
+    for ts_str in timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            elapsed = (now - ts).total_seconds()
+            if elapsed < regen_seconds:
+                active_count += 1
+        except Exception:
+            pass
+    
+    return max(0, BLESSING_POOL_MAX - active_count)
+
+
+async def _consume_multiple_blessings(user_id: int, count: int):
+    """Record that a Techmarine has used multiple blessings at once.
+    
+    Used for intensive blessings which consume 2-4 charges.
+    """
+    if count <= 0:
+        return
+    
+    state = await _get_techmarine_pool_state(user_id)
+    timestamps = state.get("blessing_timestamps", [])
+    
+    # Filter out expired timestamps first
+    now = datetime.utcnow()
+    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+    active_timestamps = []
+    
+    for ts_str in timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            elapsed = (now - ts).total_seconds()
+            if elapsed < regen_seconds:
+                active_timestamps.append(ts_str)
+        except Exception:
+            pass
+    
+    # Add multiple timestamps with slight offsets for proper regen ordering
+    for i in range(count):
+        # Stagger by 1 second each to maintain proper regen order
+        ts = now + timedelta(seconds=i)
+        active_timestamps.append(ts.isoformat())
+    
+    # Trim to BLESSING_POOL_MAX entries to keep bounded
+    active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
+    
+    await _set_techmarine_pool_state(user_id, {
+        "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
+        "blessing_timestamps": active_timestamps,
+    })
+
+
 async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta], int]:
-    """Check if a recipient can receive a blessing (max 2 per 24h).
+    """Check if a recipient can receive a blessing (max 3 per 24h).
     
     Returns (can_receive, time_until_next_slot, blessings_used_today).
     """
@@ -7015,11 +7093,13 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 )
 @app_commands.describe(
     member="Member to attest",
+    intensive="Full heal to nominal (costs more charges based on damage severity)",
     force="[Forgemaster only] Override cooldowns and company restrictions",
 )
 async def _attest(
     interaction: discord.Interaction,
     member: discord.Member,
+    intensive: bool = False,
     force: bool = False,
 ):
     import random
@@ -7086,43 +7166,90 @@ async def _attest(
         role_key = _caller_role_key
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Techmarine blessing pool check with fallback logic
-    # Check attestor's pool first, then invoker's pool, then fail if both empty
+    # Intensive mode validation and charge calculation
     # ─────────────────────────────────────────────────────────────────────────
-    blessing_pool_user_id = None  # Track whose pool to consume
+    charges_required = 1  # Standard blessing
+    is_intensive = intensive
+    
+    if intensive:
+        charges_required = _get_intensive_charge_cost(current_damage_tier, spirit_fractured)
+        if charges_required == 0:
+            # Target is nominal - intensive not applicable
+            await interaction.response.send_message(
+                "No damage to repair. Use standard blessing for routine maintenance.",
+                ephemeral=True,
+            )
+            return
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Techmarine blessing pool check with collaborative pooling for intensive
+    # ─────────────────────────────────────────────────────────────────────────
+    # Track charge contributions: list of (user_id, charges_to_consume)
+    blessing_pool_contributions = []
+    is_collaborative = False
+    
     if not force:
-        # Note: inner functions handle their own locking; no outer lock needed
-        # First try the attestor's pool (bearer's company Techmarine)
-        attestor_can_bless, _, attestor_time_until_regen = await _check_techmarine_can_bless(
-            int(attestor_member.id)
-        )
-        if attestor_can_bless:
-            blessing_pool_user_id = int(attestor_member.id)
-        else:
-            # Attestor's pool depleted - try the invoker's pool as fallback
-            # (only if invoker is different from attestor)
-            if int(interaction.user.id) != int(attestor_member.id):
-                invoker_can_bless, _, invoker_time_until_regen = await _check_techmarine_can_bless(
-                    int(interaction.user.id)
-                )
-                if invoker_can_bless:
-                    blessing_pool_user_id = int(interaction.user.id)
+        invoker_id = int(interaction.user.id)
+        attestor_id = int(attestor_member.id)
+        invoker_is_attestor = (invoker_id == attestor_id)
+        
+        # Get available charges for both parties
+        attestor_charges = await _get_techmarine_available_charges(attestor_id)
+        invoker_charges = await _get_techmarine_available_charges(invoker_id) if not invoker_is_attestor else 0
+        
+        if invoker_is_attestor:
+            # Solo mode: invoker IS the attestor
+            if attestor_charges >= charges_required:
+                blessing_pool_contributions = [(attestor_id, charges_required)]
+            else:
+                if intensive:
+                    await interaction.response.send_message(
+                        f"Intensive blessing requires **{charges_required}** charges. You have **{attestor_charges}**.\n"
+                        f"Ask another Techmarine to invoke this rite for collaborative pooling.",
+                        ephemeral=True,
+                    )
                 else:
-                    # Both pools depleted
+                    _, _, attestor_time_until_regen = await _check_techmarine_can_bless(attestor_id)
+                    regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
+                    await interaction.response.send_message(
+                        f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
+                        f"Next blessing available in: **{regen_str}**",
+                        ephemeral=True,
+                    )
+                return
+        else:
+            # Invoker is different from attestor - collaborative pooling possible
+            combined_charges = attestor_charges + invoker_charges
+            
+            if attestor_charges >= charges_required:
+                # Attestor alone can handle it
+                blessing_pool_contributions = [(attestor_id, charges_required)]
+            elif combined_charges >= charges_required:
+                # Collaborative: attestor contributes what they have, invoker covers rest
+                is_collaborative = True
+                attestor_contribution = attestor_charges
+                invoker_contribution = charges_required - attestor_charges
+                blessing_pool_contributions = []
+                if attestor_contribution > 0:
+                    blessing_pool_contributions.append((attestor_id, attestor_contribution))
+                if invoker_contribution > 0:
+                    blessing_pool_contributions.append((invoker_id, invoker_contribution))
+            else:
+                # Neither has enough even combined
+                if intensive:
+                    await interaction.response.send_message(
+                        f"Intensive blessing requires **{charges_required}** charges.\n"
+                        f"**{attestor_member.display_name}** has {attestor_charges}, you have {invoker_charges} "
+                        f"(combined: {combined_charges}).\n"
+                        f"Requisition more supplies or reduce scope.",
+                        ephemeral=True,
+                    )
+                else:
                     await interaction.response.send_message(
                         "Both the attesting Techmarine and your blessing pools are depleted. "
                         "Seek another Techmarine to perform this rite.",
                         ephemeral=True,
                     )
-                    return
-            else:
-                # Invoker IS the attestor, just one pool to check
-                regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
-                await interaction.response.send_message(
-                    f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
-                    f"Next blessing available in: **{regen_str}**",
-                    ephemeral=True,
-                )
                 return
 
     # Build attestation using standardized Imperial date format
@@ -7131,9 +7258,16 @@ async def _attest(
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Authority based on attestor's company/role
+    # Authority based on attestor's company/role (or combined for collab)
     if role_key == "forgemaster":
         authority = "Jericho High Command"
+    elif is_collaborative:
+        attestor_comp = _find_company_or_chapter(attestor_member) or "Unknown"
+        invoker_comp = _find_company_or_chapter(interaction.user) or "Unknown"
+        if attestor_comp != invoker_comp:
+            authority = f"{attestor_comp} & {invoker_comp}"
+        else:
+            authority = attestor_comp
     else:
         comp = _find_company_or_chapter(attestor_member) or "Unknown Company"
         authority = comp
@@ -7321,18 +7455,27 @@ async def _attest(
     
     if interaction.guild:
         if blessing_roll_outcome == "crit_fail":
-            # Crit fail: reset points but damage stays
+            # Crit fail: reset points but damage stays (same for standard and intensive)
             blessing_result_tier = await _apply_blessing_crit_fail(member, interaction.guild)
         elif blessing_roll_outcome == "crit_success":
-            # Crit success: full heal + grace period
+            # Crit success: full heal + grace period (same for standard and intensive)
             blessing_result_tier = await _apply_blessing_crit_success(member, interaction.guild)
         else:
-            # Normal: drop one damage tier
-            blessing_result_tier = await _apply_blessing_normal(member, interaction.guild)
+            # Normal outcome depends on intensive mode
+            if is_intensive:
+                # Intensive: full heal to nominal
+                blessing_result_tier = await _apply_blessing_crit_success(member, interaction.guild)
+            else:
+                # Standard: drop one damage tier
+                blessing_result_tier = await _apply_blessing_normal(member, interaction.guild)
 
-    # Consume a blessing from the appropriate Techmarine's pool (unless force override)
-    if not force and blessing_pool_user_id:
-        await _consume_blessing(blessing_pool_user_id)
+    # Consume blessings from the contributing Techmarine(s) pools (unless force override)
+    if not force and blessing_pool_contributions:
+        for contrib_user_id, contrib_charges in blessing_pool_contributions:
+            if contrib_charges == 1:
+                await _consume_blessing(contrib_user_id)
+            elif contrib_charges > 1:
+                await _consume_multiple_blessings(contrib_user_id, contrib_charges)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build embed
@@ -7416,12 +7559,17 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     # Rite Outcome field (shows roll result)
     # ─────────────────────────────────────────────────────────────────────────
+    charges_text = f" ({charges_required} charges)" if is_intensive and charges_required > 1 else ""
+    
     if blessing_roll_outcome == "crit_fail":
         outcome_emoji = "⚠️"
         outcome_title = "RITE RESISTED"
         if current_damage_tier:
             tier_display = current_damage_tier.upper()
-            outcome_text = f"The machine spirit resists the sacred oils.\nDamage persists: **{tier_display}**"
+            if is_intensive:
+                outcome_text = f"The machine spirit resists the intensive rites{charges_text}.\nDamage persists: **{tier_display}**"
+            else:
+                outcome_text = f"The machine spirit resists the sacred oils.\nDamage persists: **{tier_display}**"
         else:
             outcome_text = "The machine spirit stirs uneasily.\nThe rite takes imperfect hold."
     elif blessing_roll_outcome == "crit_success":
@@ -7432,14 +7580,22 @@ async def _attest(
         else:
             outcome_text = "Perfect communion achieved.\nThe machine spirit radiates contentment. Grace period granted."
     else:  # normal
-        outcome_emoji = "🟢"
-        outcome_title = "RITE COMPLETE"
-        if current_damage_tier and blessing_result_tier:
-            outcome_text = f"Damage reduced: {current_damage_tier.upper()} → {blessing_result_tier.upper()}"
-        elif current_damage_tier and not blessing_result_tier:
-            outcome_text = f"Damage repaired: {current_damage_tier.upper()} → NOMINAL"
+        if is_intensive:
+            outcome_emoji = "✨"
+            outcome_title = "INTENSIVE RITE COMPLETE"
+            if current_damage_tier:
+                outcome_text = f"Full restoration{charges_text}: {current_damage_tier.upper()} → NOMINAL\nThe armor is whole once more."
+            else:
+                outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
         else:
-            outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
+            outcome_emoji = "🟢"
+            outcome_title = "RITE COMPLETE"
+            if current_damage_tier and blessing_result_tier:
+                outcome_text = f"Damage reduced: {current_damage_tier.upper()} → {blessing_result_tier.upper()}"
+            elif current_damage_tier and not blessing_result_tier:
+                outcome_text = f"Damage repaired: {current_damage_tier.upper()} → NOMINAL"
+            else:
+                outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
     
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=False)
@@ -7493,11 +7649,33 @@ async def _attest(
             name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False
         )
 
-    # Attestation (self-blessing uses different field name)
+    # Attestation (self-blessing uses different field name, collaborative shows both Techmarines)
     rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
-    attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
-    tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
-    attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
+    
+    if is_collaborative:
+        # Collaborative attestation: show both Techmarines with charge contributions
+        # Get invoker's rank emoji
+        invoker_rank_name = "Forgemaster" if _caller_role_key == "forgemaster" else "Watch Techmarine"
+        invoker_rank_emoji = _get_rank_emoji(interaction.guild, invoker_rank_name) if interaction.guild else ""
+        invoker_prefix = f"{invoker_rank_emoji} " if invoker_rank_emoji else ""
+        invoker_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+        
+        # Build contribution lines
+        contrib_lines = []
+        for contrib_user_id, contrib_charges in blessing_pool_contributions:
+            if contrib_user_id == int(attestor_member.id):
+                contrib_lines.append(f"{rank_emoji_prefix}**{attester}** ({contrib_charges})")
+            else:
+                contrib_lines.append(f"{invoker_prefix}**{invoker_name}** ({contrib_charges})")
+        
+        tech_value = f'{chr(10).join(contrib_lines)}\n{authority} • {ts}\n*"{sacred_phrase}"*'
+        attestation_field_name = "▸ Attestation"
+    else:
+        # Solo attestation (original logic)
+        attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
+        tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
+        attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
+    
     embed.add_field(name=attestation_field_name, value=tech_value, inline=False)
 
     # ─────────────────────────────────────────────────────────────────────────

@@ -98,17 +98,18 @@ def test_recipient_cooldown_allows_second_blessing_within_24h():
 
 
 def test_recipient_cooldown_blocked_at_max_blessings():
-    """A recipient blessed twice within 24h is blocked until oldest expires."""
-    ts1 = _hours_ago(12)
-    ts2 = _hours_ago(6)
+    """A recipient blessed three times within 24h is blocked until oldest expires."""
+    ts1 = _hours_ago(18)
+    ts2 = _hours_ago(12)
+    ts3 = _hours_ago(6)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
-        mock_state.return_value = {"blessing_timestamps": [ts1, ts2]}
+        mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
         can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(2))
     assert can_receive is False
     assert remaining is not None
-    assert blessings_used == 2
-    # Remaining should be roughly 12h until the first timestamp expires
-    assert timedelta(hours=11, minutes=55) <= remaining <= timedelta(hours=12, minutes=5)
+    assert blessings_used == 3
+    # Remaining should be roughly 6h until the first timestamp expires
+    assert timedelta(hours=5, minutes=55) <= remaining <= timedelta(hours=6, minutes=5)
 
 
 # ---------------------------------------------------------------------------
@@ -332,16 +333,17 @@ def test_force_override_skips_cooldown_check():
     that passing force=True into the conditional in bot.py (reproduced below)
     bypasses the call.
     """
-    # Two blessings within 24h = at max
-    ts1 = _hours_ago(12)
-    ts2 = _hours_ago(6)
+    # Three blessings within 24h = at max
+    ts1 = _hours_ago(18)
+    ts2 = _hours_ago(12)
+    ts3 = _hours_ago(6)
 
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
-        mock_state.return_value = {"blessing_timestamps": [ts1, ts2]}
+        mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
         # Without force: cooldown is active (at max blessings)
         can_receive, _, blessings_used = _run(_check_recipient_cooldown(30))
     assert can_receive is False
-    assert blessings_used == 2
+    assert blessings_used == 3
 
     # With force=True the forge_rite handler does `if not force:` before calling
     # _check_recipient_cooldown.  Simulate that short-circuit here:
