@@ -218,56 +218,32 @@ FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
 CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 
 # Challenge roles for /completed_challenges command
-# Each entry is (role_name, display_name, emoji_hint)
+# Each entry is (role_id, display_name, emoji_hint)
 # emoji_hint can be a custom emoji name to look up, "unicode:<char>" for a literal unicode emoji, or None to skip
 CHALLENGE_ROLES = [
     # SOK-G Elite
-    (
-        "Distinguished SOK-G: Pipehitter",
-        "Distinguished SOK-G: Pipehitter",
-        "DistinguishedSOKGServiceMedal",
-    ),
-    ("SOK-G: Pipehitter", "SOK-G: Pipehitter", "SOKGServiceMedal"),
+    (1480420419063386275, "Distinguished SOK-G: Pipehitter", "DistinguishedSOKGServiceMedal"),
+    (1435812894532042843, "SOK-G: Pipehitter", "SOKGServiceMedal"),
     # Terminus Slayer variants
-    ("Master Terminus Slayer", "Master Terminus Slayer", "MasterTerminusSlayer"),
-    (
-        "Terminus Slayer - Assault",
-        "Terminus Slayer (Assault)",
-        "1stAwardTerminusSlayer",
-    ),
-    (
-        "Terminus Slayer - Tactical",
-        "Terminus Slayer (Tactical)",
-        "1stAwardTerminusSlayer",
-    ),
-    (
-        "Terminus Slayer - Vanguard",
-        "Terminus Slayer (Vanguard)",
-        "1stAwardTerminusSlayer",
-    ),
-    (
-        "Terminus Slayer - Bulwark",
-        "Terminus Slayer (Bulwark)",
-        "1stAwardTerminusSlayer",
-    ),
-    ("Terminus Slayer - Sniper", "Terminus Slayer (Sniper)", "1stAwardTerminusSlayer"),
-    ("Terminus Slayer - Heavy", "Terminus Slayer (Heavy)", "1stAwardTerminusSlayer"),
-    (
-        "Terminus Slayer - Techmarine",
-        "Terminus Slayer (Techmarine)",
-        "1stAwardTerminusSlayer",
-    ),
+    (1452803611477147668, "Master Terminus Slayer", "MasterTerminusSlayer"),
+    (1449257352112111646, "Terminus Slayer (Assault)", "1stAwardTerminusSlayer"),
+    (1450230281599713451, "Terminus Slayer (Tactical)", "1stAwardTerminusSlayer"),
+    (1450230501804609697, "Terminus Slayer (Vanguard)", "1stAwardTerminusSlayer"),
+    (1450230789034737748, "Terminus Slayer (Bulwark)", "1stAwardTerminusSlayer"),
+    (1450231020686278656, "Terminus Slayer (Sniper)", "1stAwardTerminusSlayer"),
+    (1450231189028737166, "Terminus Slayer (Heavy)", "1stAwardTerminusSlayer"),
+    (1476623936254115992, "Terminus Slayer (Techmarine)", "1stAwardTerminusSlayer"),
     # Laurels
-    ("Crimson Laurels", "Crimson Laurels", "CrimsonLaurelsMedal"),
-    ("Black Laurels", "Black Laurels", "BlackLaurelsMedal"),
+    (1450595241508733183, "Crimson Laurels", "CrimsonLaurelsMedal"),
+    (1440108298115485716, "Black Laurels", "BlackLaurelsMedal"),
     # Service awards
-    ("Centurion of the Fallen", "Centurion of the Fallen", "ApothecarionServiceMedal"),
-    ("Ardent Raider", "Ardent Raider", "ArdentRaiderRibbon"),
+    (1436434868652212275, "Centurion of the Fallen", "ApothecarionServiceMedal"),
+    (1436170746283163770, "Ardent Raider", "ArdentRaiderRibbon"),
     # Elite challenges
-    ("Crux Terminatus", "Crux Terminatus", "CruxTerminatusMedal"),
-    ("White Hand of Death", "White Hand of Death", "ClandestineOperationsMedal"),
-    ("Red Hand of Doom", "Red Hand of Doom", "DistinguishedClandestineoperati"),
-    ("Kadaku Campaign Medal", "Kadaku Campaign Medal", "KadakuCampaignMedal"),
+    (1476288996756820109, "Crux Terminatus", "CruxTerminatusMedal"),
+    (1465020459794956349, "White Hand of Death", "ClandestineOperationsMedal"),
+    (1465021610812637214, "Red Hand of Doom", "DistinguishedClandestineoperati"),
+    (1486067010747236472, "Kadaku Campaign Medal", "KadakuCampaignMedal"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -11069,12 +11045,12 @@ async def tally_deeds(
                     pass  # Skip armor field if data unavailable
 
                 # ▸ Challenges field
-                target_role_names_ch = {
-                    getattr(r, "name", "") for r in getattr(target, "roles", [])
+                target_role_ids_ch = {
+                    getattr(r, "id", 0) for r in getattr(target, "roles", [])
                 }
                 completed_challenges = []
-                for role_name_ch, display_name_ch, emoji_hint in CHALLENGE_ROLES:
-                    if role_name_ch in target_role_names_ch:
+                for role_id_ch, display_name_ch, emoji_hint in CHALLENGE_ROLES:
+                    if role_id_ch in target_role_ids_ch:
                         emoji_str = ""
                         if emoji_hint:
                             if emoji_hint.startswith("unicode:"):
@@ -11920,10 +11896,10 @@ async def my_deeds(interaction: discord.Interaction):
         pass  # Skip armor field if data unavailable
 
     # ▸ Challenges field
-    target_role_names = {getattr(r, "name", "") for r in getattr(target, "roles", [])}
+    target_role_ids = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
     completed_challenges = []
-    for role_name, display_name_ch, emoji_hint in CHALLENGE_ROLES:
-        if role_name in target_role_names:
+    for role_id, display_name_ch, emoji_hint in CHALLENGE_ROLES:
+        if role_id in target_role_ids:
             emoji_str = ""
             if emoji_hint:
                 if emoji_hint.startswith("unicode:"):
