@@ -8299,7 +8299,7 @@ async def _show_armor_leaderboard(
         embed.add_field(
             name="▸ Forge Reserves",
             value=(
-                f"**{forge_available:,}** pts │ {forge_charges} charges │ Scan × {intensive_scans_available}\n"
+                f"**{forge_available:,}** pts │ {forge_charges} charges │ {intensive_scans_available} intensive scans\n"
                 f"`/requisition_supplies`"
             ),
             inline=True,
@@ -9798,6 +9798,85 @@ async def _run_recheck_errors(
                     still_broken += 1
                 else:
                     await save_aar_record(record)
+
+                    # --- Armor Integrity: Process cycles for reingested AAR ---
+                    try:
+                        guild = aar_channel.guild
+                        brother_ids = record.get("brother_ids") or []
+                        difficulty_class = record.get("difficulty_class")
+                        if guild and brother_ids:
+                            # Calculate base points per brother (same logic as _run_ingest_new)
+                            base_points = {}
+                            is_siege = difficulty_class in ("normal_siege", "hard_siege")
+                            brother_waves = record.get("brother_waves") or {}
+                            global_waves = record.get("waves") or 0
+                            try:
+                                global_waves = int(global_waves)
+                            except Exception:
+                                global_waves = 0
+                            base_difficulty_points = {
+                                "normal_op": 3,
+                                "hard_op": 4,
+                                "lethal_op": 5,
+                                "suicide_op": 6,
+                                "omega_op": 10,
+                            }.get(difficulty_class, 0)
+                            for bid in brother_ids:
+                                if is_siege:
+                                    waves_for_brother = brother_waves.get(bid)
+                                    if waves_for_brother is None:
+                                        waves_for_brother = global_waves
+                                    try:
+                                        waves_for_brother = int(waves_for_brother or 0)
+                                    except Exception:
+                                        waves_for_brother = 0
+                                    if difficulty_class == "normal_siege":
+                                        base_points[bid] = 3 * (waves_for_brother // 5)
+                                    else:
+                                        base_points[bid] = 4 * (waves_for_brother // 5)
+                                else:
+                                    base_points[bid] = base_difficulty_points
+
+                            # Process armor integrity for each brother
+                            op_mission = record.get("mission")
+                            op_url = record.get("message_url")
+                            alerts_to_post = []
+                            for bid in brother_ids:
+                                try:
+                                    bid_base_points = base_points.get(bid, 0)
+                                    penalty, alert_info = await _process_armor_integrity_for_aar(
+                                        bid,
+                                        bid_base_points,
+                                        guild,
+                                        None,  # No batch mode for recheck
+                                        op_mission=op_mission,
+                                        op_difficulty_class=difficulty_class,
+                                        op_url=op_url,
+                                        squad_member_ids=brother_ids,
+                                    )
+                                    if alert_info:
+                                        alerts_to_post.append(alert_info)
+                                except Exception:
+                                    pass
+                            # Post any armor alerts
+                            for alert in alerts_to_post:
+                                try:
+                                    await _post_armor_alert(
+                                        alert["member"],
+                                        alert["tier"],
+                                        alert.get("critical_count", 0),
+                                        guild,
+                                        op_mission=alert.get("op_mission"),
+                                        op_difficulty_class=alert.get("op_difficulty_class"),
+                                        op_url=alert.get("op_url"),
+                                        squad_member_ids=alert.get("squad_member_ids"),
+                                        alert_type=alert.get("alert_type", "sustained"),
+                                    )
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
                     # If an error entry exists for this AAR, attempt to remove
                     # the bot's previous reply and clear the error record.
                     try:
