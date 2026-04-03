@@ -117,6 +117,7 @@ BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
 BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
 BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
 BLESSING_RECIPIENT_MAX_PER_DAY = 3  # Maximum blessings per recipient per 24h
+BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS = 4  # Minimum hours between blessings for same recipient
 
 # Intensive blessing charge costs (full heal to nominal)
 # Maps damage tier to number of charges required for intensive blessing
@@ -3404,10 +3405,11 @@ async def _consume_multiple_blessings(user_id: int, count: int):
     })
 
 
-async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta], int]:
-    """Check if a recipient can receive a blessing (max 3 per 24h).
+async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta], int, Optional[str]]:
+    """Check if a recipient can receive a blessing (max 3 per 24h, 4h between each).
     
-    Returns (can_receive, time_until_next_slot, blessings_used_today).
+    Returns (can_receive, time_until_next_slot, blessings_used, block_reason).
+    block_reason is None if can_receive, 'per_blessing' for 4h cooldown, 'daily_cap' for 3/day limit.
     """
     state = await _get_armor_state(user_id)
     blessing_timestamps = state.get("blessing_timestamps", [])
@@ -3419,33 +3421,40 @@ async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timede
             blessing_timestamps = [last_blessing]
     
     if not blessing_timestamps:
-        return True, None, 0
+        return True, None, 0, None
     
     now = datetime.utcnow()
-    cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    daily_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
+    per_blessing_window = timedelta(hours=BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS)
     
-    # Filter to timestamps within the last 24h
+    # Filter to timestamps within the last 24h for daily cap
     active_timestamps = []
     for ts_str in blessing_timestamps:
         try:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            if now - ts < cooldown_window:
+            if now - ts < daily_window:
                 active_timestamps.append(ts)
         except Exception:
             continue
     
     blessings_used = len(active_timestamps)
     
-    if blessings_used < BLESSING_RECIPIENT_MAX_PER_DAY:
-        return True, None, blessings_used
-    
-    # At max - find when the oldest one expires
+    # Check per-blessing cooldown first (most recent blessing must be 4h+ ago)
     if active_timestamps:
-        oldest = min(active_timestamps)
-        time_until_slot = (oldest + cooldown_window) - now
-        return False, time_until_slot, blessings_used
+        most_recent = max(active_timestamps)
+        time_since_last = now - most_recent
+        if time_since_last < per_blessing_window:
+            time_until_next = per_blessing_window - time_since_last
+            return False, time_until_next, blessings_used, "per_blessing"
     
-    return True, None, 0
+    # Check daily cap
+    if blessings_used >= BLESSING_RECIPIENT_MAX_PER_DAY:
+        # At max - find when the oldest one expires
+        oldest = min(active_timestamps)
+        time_until_slot = (oldest + daily_window) - now
+        return False, time_until_slot, blessings_used, "daily_cap"
+    
+    return True, None, blessings_used, None
 
 
 def _roll_blessing_outcome(
@@ -7093,18 +7102,25 @@ async def _attest(
         pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Recipient cooldown check (max 2 blessings per 24h)
+    # Recipient cooldown check (max 3 blessings per 24h, 4h between each)
     # ─────────────────────────────────────────────────────────────────────────
     if not force:
-        can_receive, cooldown_remaining, blessings_used = await _check_recipient_cooldown(int(member.id))
+        can_receive, cooldown_remaining, blessings_used, block_reason = await _check_recipient_cooldown(int(member.id))
         if not can_receive and cooldown_remaining:
             bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
             cooldown_str = _format_cooldown_time(cooldown_remaining)
-            await interaction.response.send_message(
-                f"**{bearer_name}** has reached their blessing limit ({BLESSING_RECIPIENT_MAX_PER_DAY} per day). "
-                f"Next blessing slot available in {cooldown_str}.",
-                ephemeral=True,
-            )
+            if block_reason == "per_blessing":
+                await interaction.response.send_message(
+                    f"**{bearer_name}** was recently blessed. The machine spirit must settle before further rites.\n"
+                    f"Next blessing available in {cooldown_str}.",
+                    ephemeral=True,
+                )
+            else:  # daily_cap
+                await interaction.response.send_message(
+                    f"**{bearer_name}** has reached their daily blessing limit ({BLESSING_RECIPIENT_MAX_PER_DAY} per day).\n"
+                    f"Next blessing slot available in {cooldown_str}.",
+                    ephemeral=True,
+                )
             return
 
     # ─────────────────────────────────────────────────────────────────────────
