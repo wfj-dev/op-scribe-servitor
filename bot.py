@@ -3166,6 +3166,15 @@ async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Gu
     return None
 
 
+async def _apply_blessing_intensive_normal(member: discord.Member, guild: discord.Guild):
+    """Apply intensive blessing normal result: full heal to nominal, no crit-success grace.
+    
+    Returns None (always results in nominal status).
+    """
+    await _clear_armor_damage(member, guild)
+    return None
+
+
 async def _check_spirit_fracture(user_id: int) -> bool:
     """Check if a user's machine spirit has fractured (should be replaced on blessing)."""
     state = await _get_armor_state(user_id)
@@ -7463,8 +7472,8 @@ async def _attest(
         else:
             # Normal outcome depends on intensive mode
             if is_intensive:
-                # Intensive: full heal to nominal
-                blessing_result_tier = await _apply_blessing_crit_success(member, interaction.guild)
+                # Intensive: full heal to nominal (no crit-success grace period)
+                blessing_result_tier = await _apply_blessing_intensive_normal(member, interaction.guild)
             else:
                 # Standard: drop one damage tier
                 blessing_result_tier = await _apply_blessing_normal(member, interaction.guild)
