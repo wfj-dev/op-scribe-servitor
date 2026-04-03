@@ -3532,7 +3532,7 @@ def _compute_total_armory_points() -> int:
     """Compute total armory_points from all AAR records."""
     try:
         if DATASTORE:
-            records = DATASTORE.records
+            records = DATASTORE._records
         else:
             if not os.path.exists(AAR_RECORDS_PATH):
                 return 0
@@ -7738,7 +7738,7 @@ async def _show_armor_leaderboard(
             regen_str = ""
         embed.add_field(
             name="▸ Your Blessing Pool",
-            value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}",
+            value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}\n`/forge_rite @brother`",
             inline=True,
         )
 
@@ -7754,8 +7754,6 @@ async def _show_armor_leaderboard(
         )
     except Exception:
         pass
-
-    embed.set_footer(text="Use /forge_rite @brother to restore armor integrity")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
