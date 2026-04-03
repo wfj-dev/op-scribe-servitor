@@ -8299,9 +8299,7 @@ async def _show_armor_leaderboard(
         embed.add_field(
             name="▸ Forge Reserves",
             value=(
-                f"**{forge_available}** pts\n"
-                f"{forge_charges} charges · {FORGE_POOL_COST_PER_CHARGE} pts ea\n"
-                f"Intensive Scan: {INTENSIVE_SCAN_COST} pts ({intensive_scans_available} avail)\n"
+                f"**{forge_available:,}** pts │ {forge_charges} charges │ Scan × {intensive_scans_available}\n"
                 f"`/requisition_supplies`"
             ),
             inline=True,
