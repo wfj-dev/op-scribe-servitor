@@ -3238,27 +3238,31 @@ async def _set_techmarine_pool_state(user_id: int, state: dict):
         pass
 
 
+def _filter_active_blessing_timestamps(timestamps: List[str]) -> List[str]:
+    """Return only the blessing timestamps still within the regen window.
+
+    Malformed or unparseable entries are silently discarded.
+    """
+    now = datetime.utcnow()
+    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+    active = []
+    for ts_str in timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if (now - ts).total_seconds() < regen_seconds:
+                active.append(ts_str)
+        except Exception:
+            pass
+    return active
+
+
 def _calculate_regenerated_blessings(blessing_timestamps: List[str]) -> int:
     """Calculate how many blessings have regenerated based on timestamps.
     
     Each blessing regenerates after BLESSING_POOL_REGEN_HOURS (4.8h).
     Returns the number of blessings currently available.
     """
-    now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    
-    # Count how many blessings are still on cooldown
-    on_cooldown = 0
-    for ts_str in blessing_timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                on_cooldown += 1
-        except Exception:
-            pass
-    
-    # Available = max pool - still on cooldown
+    on_cooldown = len(_filter_active_blessing_timestamps(blessing_timestamps))
     return max(0, BLESSING_POOL_MAX - on_cooldown)
 
 
@@ -3270,20 +3274,7 @@ async def _check_techmarine_can_bless(user_id: int) -> Tuple[bool, int, Optional
     state = await _get_techmarine_pool_state(user_id)
     timestamps = state.get("blessing_timestamps", [])
     
-    # Filter out expired timestamps (older than BLESSING_POOL_REGEN_HOURS)
-    now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    active_timestamps = []
-    
-    for ts_str in timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                active_timestamps.append(ts_str)
-        except Exception:
-            pass
-    
+    active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
     available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
@@ -3292,6 +3283,8 @@ async def _check_techmarine_can_bless(user_id: int) -> Tuple[bool, int, Optional
         return True, available, None
     
     # Calculate when next blessing will be available
+    now = datetime.utcnow()
+    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
     oldest_ts = None
     for ts_str in active_timestamps:
         try:
@@ -3317,19 +3310,7 @@ async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timede
     state = await _get_techmarine_pool_state(user_id)
     timestamps = state.get("blessing_timestamps", [])
     
-    now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    active_timestamps = []
-    
-    for ts_str in timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                active_timestamps.append((ts, ts_str))
-        except Exception:
-            pass
-    
+    active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
     available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
@@ -3339,7 +3320,16 @@ async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timede
         return available, None
     
     # Calculate when next blessing will regenerate (oldest timestamp)
-    oldest_ts = min((ts for ts, _ in active_timestamps), default=None)
+    now = datetime.utcnow()
+    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+    oldest_ts = None
+    for ts_str in active_timestamps:
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+            if oldest_ts is None or ts < oldest_ts:
+                oldest_ts = ts
+        except Exception:
+            pass
     if oldest_ts:
         time_until_regen = timedelta(seconds=regen_seconds) - (now - oldest_ts)
         if time_until_regen.total_seconds() > 0:
@@ -3353,20 +3343,8 @@ async def _consume_blessing(user_id: int):
     state = await _get_techmarine_pool_state(user_id)
     timestamps = state.get("blessing_timestamps", [])
     
-    # Filter out expired timestamps first
     now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    active_timestamps = []
-    
-    for ts_str in timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                active_timestamps.append(ts_str)
-        except Exception:
-            pass
-    
+    active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to most recent (BLESSING_POOL_MAX - 1) entries before adding the new one,
     # to keep the list bounded and prevent the pool from going negative.
     active_timestamps = active_timestamps[-(BLESSING_POOL_MAX - 1):]
@@ -3394,21 +3372,7 @@ async def _get_techmarine_available_charges(user_id: int) -> int:
     """Get the number of available blessing charges for a Techmarine."""
     state = await _get_techmarine_pool_state(user_id)
     timestamps = state.get("blessing_timestamps", [])
-    
-    now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    
-    # Count active (non-expired) timestamps
-    active_count = 0
-    for ts_str in timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                active_count += 1
-        except Exception:
-            pass
-    
+    active_count = len(_filter_active_blessing_timestamps(timestamps))
     return max(0, BLESSING_POOL_MAX - active_count)
 
 
@@ -3423,19 +3387,8 @@ async def _consume_multiple_blessings(user_id: int, count: int):
     state = await _get_techmarine_pool_state(user_id)
     timestamps = state.get("blessing_timestamps", [])
     
-    # Filter out expired timestamps first
     now = datetime.utcnow()
-    regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-    active_timestamps = []
-    
-    for ts_str in timestamps:
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
-            elapsed = (now - ts).total_seconds()
-            if elapsed < regen_seconds:
-                active_timestamps.append(ts_str)
-        except Exception:
-            pass
+    active_timestamps = _filter_active_blessing_timestamps(timestamps)
     
     # Record simultaneous consumption at the same timestamp and rely on list order.
     now_iso = now.isoformat()
