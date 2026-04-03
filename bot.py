@@ -8094,7 +8094,6 @@ async def _show_armor_leaderboard(
 
     # Build list of (member, state, risk_score, scan_result)
     risk_list = []
-    missed_count = 0  # Track how many damaged brothers were missed
     for user_id_str, state in armor_data.items():
         try:
             user_id = int(user_id_str)
@@ -8124,29 +8123,22 @@ async def _show_armor_leaderboard(
         # Intensive scan bypasses miss chance
         if has_intensive and not scan_result["detected"]:
             scan_result = {"detected": True, "predictive_warning": False, "miss_reason": None}
-        
-        # Track missed detections for damaged brothers
-        if not scan_result["detected"] and current_tier:
-            missed_count += 1
 
         risk_score = _calculate_armor_risk_score(
             current_tier, points_since_blessing, spirit_fractured
         )
 
-        # Include if they have risk OR if there's a predictive warning
-        if risk_score > 0 or scan_result.get("predictive_warning"):
+        # Include if they have risk OR if there's a predictive warning OR if scan missed (damaged but undetected)
+        if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
             risk_list.append((member, state, current_tier, risk_score, scan_result))
 
-    # Filter out missed detections (they won't show in the leaderboard)
-    visible_list = [(m, s, t, r, scan) for m, s, t, r, scan in risk_list if scan["detected"]]
-    
-    # Sort by risk score descending
-    visible_list.sort(key=lambda x: x[3], reverse=True)
+    # Sort by risk score descending (missed brothers sort based on their actual risk, even if masked)
+    risk_list.sort(key=lambda x: x[3], reverse=True)
 
     # Take top 10
-    top_10 = visible_list[:10]
+    top_10 = risk_list[:10]
 
-    # Build description based on company filter and detection status
+    # Build description based on company filter
     if company_filter:
         company_short = _extract_company_short_name(company_filter)
         no_risk_desc = f"*All brothers in {company_short} nominal. No maintenance required.*"
@@ -8154,10 +8146,6 @@ async def _show_armor_leaderboard(
     else:
         no_risk_desc = "*All brothers nominal. No maintenance required.*"
         with_risk_desc = "*Top 10 brothers requiring attention*"
-    
-    # Add missed detection note if applicable
-    if missed_count > 0:
-        with_risk_desc += f"\n⚠️ *{missed_count} spirit{'s' if missed_count > 1 else ''} uncommunicative*"
 
     if not top_10:
         embed = discord.Embed(
@@ -8165,9 +8153,6 @@ async def _show_armor_leaderboard(
             description=no_risk_desc,
             color=0x2ECC71,  # Green
         )
-        # Add note about missed detections even if no visible brothers
-        if missed_count > 0:
-            embed.description += f"\n⚠️ *{missed_count} spirit{'s' if missed_count > 1 else ''} uncommunicative*"
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
@@ -8184,22 +8169,9 @@ async def _show_armor_leaderboard(
         spirit_fractured = state.get("spirit_fractured", False)
         prob = _get_damage_probability(points) * 100
         predictive_warning = scan_result.get("predictive_warning", False)
+        scan_missed = not scan_result["detected"]
 
-        # Status icon - predictive warnings get special indicator
-        if spirit_fractured:
-            icon = "💀"
-        elif current_tier == "critical":
-            icon = "🔴"
-        elif current_tier == "compromised":
-            icon = "🟠"
-        elif current_tier == "damaged":
-            icon = "🟡"
-        elif predictive_warning:
-            icon = "⚡"  # Warning for nominal brothers at risk
-        else:
-            icon = "🟢"
-
-        # Get display name (short)
+        # Get display name (short) - always show name even if scan missed
         bearer_honorific, bearer_name, _ = _get_bearer_rank_and_title(member)
         bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
         # Truncate long names
@@ -8226,6 +8198,29 @@ async def _show_armor_leaderboard(
         )
         chapter_str = f"{chapter_emoji}" if chapter_emoji else ""
 
+        # Handle missed scans - show name but mask data
+        if scan_missed:
+            icon = "⚫"
+            chapter_sep = f"{chapter_str} · " if chapter_str else "· "
+            lines.append(
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}??? · UNREADABLE"
+            )
+            continue
+
+        # Status icon - predictive warnings get special indicator
+        if spirit_fractured:
+            icon = "💀"
+        elif current_tier == "critical":
+            icon = "🔴"
+        elif current_tier == "compromised":
+            icon = "🟠"
+        elif current_tier == "damaged":
+            icon = "🟡"
+        elif predictive_warning:
+            icon = "⚡"  # Warning for nominal brothers at risk
+        else:
+            icon = "🟢"
+
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · CRITICAL"
         # Show tier name instead of fixed penalty (since penalties are now probabilistic)
         if spirit_fractured:
@@ -8250,8 +8245,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include predictive warning symbol
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal"
+    # Add legend (compact) - include unreadable symbol
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Unreadable"
     embed.add_field(
         name="▸ Key",
         value=legend,
