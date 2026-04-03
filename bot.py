@@ -7224,13 +7224,14 @@ async def _attest(
                 # Attestor alone can handle it
                 blessing_pool_contributions = [(attestor_id, charges_required)]
             elif combined_charges >= charges_required:
-                # Collaborative: attestor contributes what they have, invoker covers rest
-                is_collaborative = True
+                # Combined pool is sufficient. Only treat this as collaborative
+                # when both parties materially contribute charges.
                 attestor_contribution = attestor_charges
                 invoker_contribution = charges_required - attestor_charges
-                blessing_pool_contributions = []
-                if attestor_contribution > 0:
-                    blessing_pool_contributions.append((attestor_id, attestor_contribution))
+                is_collaborative = attestor_contribution > 0 and invoker_contribution > 0
+                blessing_pool_contributions = [
+                    (attestor_id, attestor_contribution),
+                ]
                 if invoker_contribution > 0:
                     blessing_pool_contributions.append((invoker_id, invoker_contribution))
             else:
