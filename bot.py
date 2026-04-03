@@ -224,7 +224,7 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
 # Specialist award thresholds and role mappings
 # Award role IDs (looked up by ID to avoid name change issues)
 ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
-APOTHECARION_SERVICE_MEDAL_ROLE_ID = 1436434868652212275  # Apothecarion Service Medal
+CENTURION_OF_THE_FALLEN_ROLE_ID = 1436434868652212275  # Centurion of the Fallen
 CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
 
 # Specialist role names for mentions (looked up dynamically)
@@ -1514,11 +1514,11 @@ async def _check_promotion_milestones():
             if ardent_raider_role
             else f"<@&{ARDENT_RAIDER_ROLE_ID}>"
         )
-        apothecarion_medal_role = guild.get_role(APOTHECARION_SERVICE_MEDAL_ROLE_ID)
-        apothecarion_medal_mention = (
-            apothecarion_medal_role.mention
-            if apothecarion_medal_role
-            else f"<@&{APOTHECARION_SERVICE_MEDAL_ROLE_ID}>"
+        centurion_of_the_fallen_role = guild.get_role(CENTURION_OF_THE_FALLEN_ROLE_ID)
+        centurion_of_the_fallen_mention = (
+            centurion_of_the_fallen_role.mention
+            if centurion_of_the_fallen_role
+            else f"<@&{CENTURION_OF_THE_FALLEN_ROLE_ID}>"
         )
         crimson_laurels_role = discord.utils.get(
             guild.roles, name=CRIMSON_LAURELS_ROLE_NAME
@@ -1818,14 +1818,14 @@ async def _check_promotion_milestones():
                             notifications_sent += 1
                             await asyncio.sleep(0.5)
 
-                # Check Apothecarion Service Medal eligibility (150 geneseed points)
+                # Check Centurion of the Fallen eligibility (150 geneseed points)
                 if black_laurels_channel:
                     gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
                     is_ftf_eligible = (
                         gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
                     )
                     has_ftf_role = (
-                        apothecarion_medal_role and apothecarion_medal_role in member.roles
+                        centurion_of_the_fallen_role and centurion_of_the_fallen_role in member.roles
                     )
                     # If already has role, mark as notified without sending
                     if has_ftf_role:
@@ -1835,7 +1835,7 @@ async def _check_promotion_milestones():
                         if is_ftf_eligible:
                             msg = (
                                 f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {apothecarion_medal_mention}   <:Deathwatch:1433161009106780170>\n"
+                                f"᛭⋅ <:Deathwatch:1433161009106780170> {centurion_of_the_fallen_mention}   <:Deathwatch:1433161009106780170>\n"
                                 f"᛭⋅ {apothecary_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
@@ -3361,8 +3361,10 @@ async def _consume_blessing(user_id: int):
 
 def _get_intensive_charge_cost(damage_tier: Optional[str], spirit_fractured: bool) -> int:
     """Get the number of charges required for an intensive blessing.
-    
-    Returns 0 if target is nominal (intensive not applicable).
+
+    `spirit_fractured` takes priority and always returns 4 regardless of
+    `damage_tier`.  Returns 0 when `damage_tier` is nominal (i.e. not in
+    INTENSIVE_BLESSING_COSTS) and `spirit_fractured` is False.
     """
     if spirit_fractured:
         return INTENSIVE_BLESSING_COSTS.get("fractured", 4)
