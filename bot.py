@@ -3158,12 +3158,17 @@ async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -
     return new_tier
 
 
-async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Guild):
+async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Guild, charges_invested: int = 1):
     """Apply crit success blessing result: full heal + grace period.
+    
+    Args:
+        charges_invested: Number of charges used (1 for standard, 2-4 for intensive).
+            Grace period scales with charges: -25 × charges_invested.
     
     Returns None (always results in nominal status).
     """
-    await _clear_armor_damage(member, guild, grace_points=BLESSING_CRIT_SUCCESS_GRACE_POINTS)
+    grace_points = BLESSING_CRIT_SUCCESS_GRACE_POINTS * charges_invested
+    await _clear_armor_damage(member, guild, grace_points=grace_points)
     return None
 
 
@@ -7438,8 +7443,10 @@ async def _attest(
             # Crit fail: reset points but damage stays (same for standard and intensive)
             blessing_result_tier = await _apply_blessing_crit_fail(member, interaction.guild)
         elif blessing_roll_outcome == "crit_success":
-            # Crit success: full heal + grace period (same for standard and intensive)
-            blessing_result_tier = await _apply_blessing_crit_success(member, interaction.guild)
+            # Crit success: full heal + grace period (scales with charges for intensive)
+            blessing_result_tier = await _apply_blessing_crit_success(
+                member, interaction.guild, charges_invested=charges_required
+            )
         else:
             # Normal outcome depends on intensive mode
             if is_intensive:
@@ -7555,7 +7562,13 @@ async def _attest(
     elif blessing_roll_outcome == "crit_success":
         outcome_emoji = "✨"
         outcome_title = "SACRED COMMUNION"
-        if current_damage_tier:
+        if is_intensive and charges_required > 1:
+            grace_multiplier = f"×{charges_required}"
+            if current_damage_tier:
+                outcome_text = f"The Omnissiah rewards the {charges_required}-charge offering.\nAll damage purged. **Enhanced grace period** ({grace_multiplier}) granted."
+            else:
+                outcome_text = f"Perfect communion achieved through intensive rites.\nThe machine spirit radiates profound contentment. **Enhanced grace period** ({grace_multiplier}) granted."
+        elif current_damage_tier:
             outcome_text = "The Omnissiah's blessing flows through the armor.\nAll damage purged. Grace period granted."
         else:
             outcome_text = "Perfect communion achieved.\nThe machine spirit radiates contentment. Grace period granted."
