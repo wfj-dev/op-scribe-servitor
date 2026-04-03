@@ -1605,6 +1605,7 @@ async def _check_promotion_milestones():
                         "Watch Librarian",
                         "Watch Apothecary",
                         "Watch Chaplain",
+                        "Watch Keeper",
                         "Company Champion",
                         "Watch Lieutenant",
                         "Watch Captain",
@@ -1613,6 +1614,7 @@ async def _check_promotion_milestones():
                         "Void Warden",
                         "High Chaplain",
                         "Chief Apothecary",
+                        "Castellan",
                         "Lord Executioner",
                         "Watch Master",
                     ]
@@ -1901,6 +1903,7 @@ async def _check_promotion_milestones():
                             "Watch Librarian",
                             "Watch Apothecary",
                             "Watch Chaplain",
+                            "Watch Keeper",
                             "Company Champion",
                             "Watch Lieutenant",
                             "Watch Captain",
@@ -1909,6 +1912,7 @@ async def _check_promotion_milestones():
                             "Void Warden",
                             "High Chaplain",
                             "Chief Apothecary",
+                            "Castellan",
                             "Lord Executioner",
                             "Watch Master",
                         ]
@@ -2002,6 +2006,7 @@ RANK_ROLES_PRIORITY = [
     "Chief Apothecary",
     "High Chaplain",
     "Forgemaster",
+    "Castellan",
     "Void Warden",
     "Venerable",
     "Watch Captain",
@@ -2011,6 +2016,7 @@ RANK_ROLES_PRIORITY = [
     "Watch Chaplain",
     "Watch Librarian",
     "Watch Techmarine",
+    "Watch Keeper",
     "Watch Sergeant",
     "Kill Team Champion",
     "Oathsworn",
@@ -4556,6 +4562,8 @@ SPECIALIST_TRACKS = {
     "High Chaplain": {"High Chaplain"},
     "Watch Apothecary": {"Watch Apothecary", "Chief Apothecary"},
     "Chief Apothecary": {"Chief Apothecary"},
+    "Watch Keeper": {"Watch Keeper", "Castellan"},
+    "Castellan": {"Castellan"},
 }
 SPECIALIST_RANKS = set(SPECIALIST_TRACKS.keys())
 
@@ -4565,6 +4573,7 @@ HIGH_COMMAND_RANKS = {
     "Chief Apothecary",
     "Void Warden",
     "Forgemaster",
+    "Castellan",
     "Watch Master",
     "Venerable",
 }
@@ -4584,11 +4593,13 @@ WATCH_COMMAND_ROLES = {
     "Watch Apothecary",
     "Watch Librarian",
     "Watch Techmarine",
+    "Watch Keeper",
     # High Command
     "High Chaplain",
     "Chief Apothecary",
     "Void Warden",
     "Forgemaster",
+    "Castellan",
     "Watch Master",
     "Venerable",
 }
@@ -5591,6 +5602,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Chief Apothecary": "Keeper of Purity, Chief Apothecary",
     "Void Warden": "Aegis against the Void, Void Warden",
     "Forgemaster": "Hand of the Machine God, Forgemaster",
+    "Castellan": "Warden of the Iron Vigil, Castellan",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
     "Venerable": "Ancient of the Long Watch, Venerable",
     # Specialists
@@ -5598,6 +5610,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
     "Watch Librarian": "Warden of the Immaterium, Watch Librarian",
     "Watch Techmarine": "Servant of the Omnissiah, Watch Techmarine",
+    "Watch Keeper": "Guardian of the Watch Fortress, Watch Keeper",
     # Champions
     "Company Champion": "Blade of the Company, Company Champion",
     "Kill Team Champion": "Blade of the Kill Team, Kill Team Champion",
@@ -5700,6 +5713,16 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
         "Brother-Techmarine, your armor deserves the same devotion you show others.",
         "We who serve the Machine God must not neglect our own sacred warplate.",
         "The machine-spirit welcomes the ministrations of a fellow servant.",
+    ],
+    "Watch Keeper": [
+        "Guardian of the Fortress, your armor must be as unyielding as the walls you defend.",
+        "The vaults and armories you ward are reflected in this warplate's vigilance.",
+        "May this armor serve as the first bulwark against any who threaten our sanctum.",
+    ],
+    "Castellan": [
+        "Master of the Fortress's defenses, your warplate must embody impregnable resolve.",
+        "The walls of Jericho stand because of your vigilance—may this armor honor that duty.",
+        "I sanctify the armor of the one who holds the keys to our sacred stronghold.",
     ],
     # Champions
     "Company Champion": [
@@ -6182,6 +6205,10 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
     "Forgemaster": [
         "The Armorium's cogitators record this data-point of dedication.",
         "Machine-spirits sing of your accumulated service.",
+    ],
+    "Castellan": [
+        "The Fortress's own walls bear witness to your enduring vigilance.",
+        "Each mark upon your brow is a bastion held, a threat repelled.",
     ],
     "Venerable": [
         "The Old One's sarcophagus bears another inscription of eternal service.",
@@ -8167,7 +8194,6 @@ async def _show_armor_leaderboard(
     for i, (member, state, current_tier, risk_score, scan_result) in enumerate(top_10, 1):
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
-        prob = _get_damage_probability(points) * 100
         predictive_warning = scan_result.get("predictive_warning", False)
         scan_missed = not scan_result["detected"]
 
@@ -8222,7 +8248,6 @@ async def _show_armor_leaderboard(
             icon = "🟢"
 
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · CRITICAL"
-        # Show tier name instead of fixed penalty (since penalties are now probabilistic)
         if spirit_fractured:
             tier_str = " · FRACTURED"
         elif current_tier:
@@ -8231,12 +8256,9 @@ async def _show_armor_leaderboard(
             tier_str = " · AT RISK"
         else:
             tier_str = ""
-        # Show escalation risk % for all brothers with non-zero probability
-        # (damaged brothers can escalate to compromised/critical)
-        prob_str = f" · {prob:.0f}%" if prob > 0 else ""
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}{prob_str}"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}"
         )
 
     embed.add_field(
