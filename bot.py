@@ -51,6 +51,7 @@ ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
+ARMOR_SCAN_STATE_PATH = os.path.join(DATA_DIR, "armor_scan_state.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -65,7 +66,7 @@ SERVICE_STUDS_CHANNEL_ID = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
 BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 
 # Channel ID for Oathsworn eligibility notifications
-OATHSWORN_CHANNEL_ID = 1430203472669835415
+OATHSWORN_CHANNEL_ID = 1489282103119052903
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -98,6 +99,9 @@ PROMOTION_TRACKING_LOCK = asyncio.Lock()
 
 # Lock for armor integrity operations
 ARMOR_INTEGRITY_LOCK = asyncio.Lock()
+
+# Lock for armor scan state (detection caching per AAR cycle)
+ARMOR_SCAN_STATE_LOCK = asyncio.Lock()
 
 # Lock for blessing pool operations (Techmarine daily blessing limits)
 BLESSING_POOL_LOCK = asyncio.Lock()
@@ -2541,6 +2545,38 @@ ARMOR_PENALTY_PROBABILITIES = {
     "fractured": {0: 0.10, 1: 0.15, 2: 0.25, 3: 0.30, 4: 0.20},  # 90% chance, up to -4
 }
 
+# Detection alert chances per AAR while damaged (early warning system)
+# Roll checked each AAR; if successful, sends detection alert before penalty occurs
+# Only one detection alert per tier (tracked in armor state)
+ARMOR_DETECTION_CHANCES = {
+    "damaged": 0.20,      # 20% chance per AAR
+    "compromised": 0.35,  # 35% chance per AAR
+    "critical": 0.50,     # 50% chance per AAR
+    "fractured": 1.0,     # 100% - always alert
+}
+
+# Scan miss chances for armor_status command (damaged brothers may not show)
+# Higher tiers are harder to miss (more obvious damage)
+ARMOR_SCAN_MISS_CHANCES = {
+    "damaged": 0.30,      # 30% chance to miss
+    "compromised": 0.15,  # 15% chance to miss
+    "critical": 0.05,     # 5% chance to miss
+    "fractured": 0.0,     # 0% - always visible
+}
+
+# Predictive detection chances for nominal brothers based on cycle count
+# Used to warn Techmarines of impending damage risk
+ARMOR_SCAN_PREDICTIVE_TIERS = [
+    {"min": 0, "max": 40, "chance": 0.0},    # No warning in safe zone
+    {"min": 41, "max": 80, "chance": 0.10},  # 10% chance to detect risk
+    {"min": 81, "max": 110, "chance": 0.25}, # 25% chance
+    {"min": 111, "max": 130, "chance": 0.40},# 40% chance
+    {"min": 131, "max": None, "chance": 0.60},# 60% chance
+]
+
+# Intensive scan cost (armory points via requisition_supplies)
+INTENSIVE_SCAN_COST = 3000
+
 # Default probability tiers (can be overridden in config)
 # Gaps shrink as cycles increase to create mounting pressure
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
@@ -2701,6 +2737,164 @@ async def _save_armor_batch(batch_data: dict):
         pass
 
 
+# ---------------------------------------------------------------------------
+# Armor Scan State - Detection caching per AAR cycle
+# ---------------------------------------------------------------------------
+
+
+def _load_scan_state() -> dict:
+    """Load armor scan state from disk."""
+    try:
+        if not os.path.exists(ARMOR_SCAN_STATE_PATH):
+            return {"aar_generation": 0, "intensive_scans": {}, "scan_cache": {}}
+        with open(ARMOR_SCAN_STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+            # Ensure all required keys exist
+            data.setdefault("aar_generation", 0)
+            data.setdefault("intensive_scans", {})
+            data.setdefault("scan_cache", {})
+            return data
+    except Exception:
+        return {"aar_generation": 0, "intensive_scans": {}, "scan_cache": {}}
+
+
+def _save_scan_state(data: dict):
+    """Save armor scan state to disk."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(ARMOR_SCAN_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+async def _increment_aar_generation():
+    """Increment AAR generation counter and clear stale scan cache."""
+    async with ARMOR_SCAN_STATE_LOCK:
+        data = _load_scan_state()
+        data["aar_generation"] = data.get("aar_generation", 0) + 1
+        # Clear scan cache on new AAR cycle (all results are now stale)
+        data["scan_cache"] = {}
+        # Intensive scans purchased in previous cycles are now expired
+        # (will be checked when used, but we can prune here)
+        current_gen = data["aar_generation"]
+        data["intensive_scans"] = {
+            k: v for k, v in data.get("intensive_scans", {}).items()
+            if v >= current_gen
+        }
+        _save_scan_state(data)
+        return data["aar_generation"]
+
+
+async def _get_aar_generation() -> int:
+    """Get the current AAR generation counter."""
+    async with ARMOR_SCAN_STATE_LOCK:
+        data = _load_scan_state()
+        return data.get("aar_generation", 0)
+
+
+async def _purchase_intensive_scan(techmarine_id: int) -> bool:
+    """Mark a Techmarine as having an active intensive scan for this AAR cycle."""
+    async with ARMOR_SCAN_STATE_LOCK:
+        data = _load_scan_state()
+        current_gen = data.get("aar_generation", 0)
+        data.setdefault("intensive_scans", {})[str(techmarine_id)] = current_gen
+        _save_scan_state(data)
+        return True
+
+
+async def _has_intensive_scan(techmarine_id: int) -> bool:
+    """Check if a Techmarine has an active intensive scan for this AAR cycle."""
+    async with ARMOR_SCAN_STATE_LOCK:
+        data = _load_scan_state()
+        current_gen = data.get("aar_generation", 0)
+        tech_gen = data.get("intensive_scans", {}).get(str(techmarine_id))
+        # Intensive scan is active if purchased in current generation
+        return tech_gen is not None and tech_gen >= current_gen
+
+
+async def _get_or_roll_scan_result(
+    brother_id: int,
+    current_tier: Optional[str],
+    points_since_blessing: int,
+    spirit_fractured: bool,
+) -> dict:
+    """Get cached scan result or roll a new one for this AAR cycle.
+    
+    Returns dict with:
+        - detected: bool (True if brother shows up in scan)
+        - predictive_warning: bool (True if risk warning triggered for nominal)
+        - miss_reason: str or None (if not detected, why)
+    """
+    async with ARMOR_SCAN_STATE_LOCK:
+        data = _load_scan_state()
+        current_gen = data.get("aar_generation", 0)
+        cache = data.setdefault("scan_cache", {})
+        brother_key = str(brother_id)
+        
+        # Check if we have a cached result for this AAR cycle
+        cached = cache.get(brother_key)
+        if cached and cached.get("aar_gen") == current_gen:
+            return cached
+        
+        # Roll new scan result
+        result = _roll_scan_result(current_tier, points_since_blessing, spirit_fractured)
+        result["aar_gen"] = current_gen
+        
+        # Cache the result
+        cache[brother_key] = result
+        _save_scan_state(data)
+        
+        return result
+
+
+def _roll_scan_result(
+    current_tier: Optional[str],
+    points_since_blessing: int,
+    spirit_fractured: bool,
+) -> dict:
+    """Roll fresh scan detection result based on tier/points.
+    
+    Returns dict with detected, predictive_warning, miss_reason.
+    """
+    import random
+    
+    # Fractured spirits are always detected
+    if spirit_fractured:
+        return {"detected": True, "predictive_warning": False, "miss_reason": None}
+    
+    # Damaged tiers have miss chances
+    if current_tier and current_tier in ARMOR_SCAN_MISS_CHANCES:
+        miss_chance = ARMOR_SCAN_MISS_CHANCES[current_tier]
+        if random.random() < miss_chance:
+            return {
+                "detected": False,
+                "predictive_warning": False,
+                "miss_reason": "spirit_uncommunicative",
+            }
+        # Detected
+        return {"detected": True, "predictive_warning": False, "miss_reason": None}
+    
+    # Nominal brother - check for predictive warning
+    for tier_info in ARMOR_SCAN_PREDICTIVE_TIERS:
+        min_pts = tier_info["min"]
+        max_pts = tier_info["max"]
+        if max_pts is None:
+            max_pts = float("inf")
+        if min_pts <= points_since_blessing <= max_pts:
+            if random.random() < tier_info["chance"]:
+                return {
+                    "detected": True,
+                    "predictive_warning": True,
+                    "miss_reason": None,
+                }
+            break
+    
+    # No warning triggered for nominal brother with low risk
+    # They are "detected" but without any warning status
+    return {"detected": True, "predictive_warning": False, "miss_reason": None}
+
+
 async def _get_armor_state(user_id: int) -> dict:
     """Get armor integrity state for a user."""
     try:
@@ -2806,6 +3000,22 @@ def _roll_damage_tier(points_since_blessing: int) -> str:
             return damage_tiers[i]
 
     return damage_tiers[-1]
+
+
+def _roll_detection_alert(current_tier: str) -> bool:
+    """Roll whether to send an early detection alert for current damage tier.
+    
+    Args:
+        current_tier: Current damage tier (damaged, compromised, critical, fractured)
+        
+    Returns:
+        True if detection alert should be sent, False otherwise.
+    """
+    if not current_tier:
+        return False
+    
+    chance = ARMOR_DETECTION_CHANCES.get(current_tier, 0.0)
+    return random.random() < chance
 
 
 def _get_armor_damage_role_ids() -> dict:
@@ -3066,6 +3276,7 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
             "spirit_fractured": False,
             "last_blessing_timestamp": now.isoformat(),
             "blessing_timestamps": active_timestamps,
+            "last_detection_alert_tier": None,  # Reset detection tracking
         },
     )
 
@@ -3698,18 +3909,20 @@ async def _post_armor_alert(
     op_difficulty_class: Optional[str] = None,
     op_url: Optional[str] = None,
     squad_member_ids: Optional[List[str]] = None,
+    alert_type: str = "sustained",
 ):
     """Post an armor damage alert to the arming chamber channel.
     
     Args:
         member: The brother whose armor was damaged
-        tier: Damage tier (damaged, compromised, critical)
+        tier: Damage tier (damaged, compromised, critical, fractured)
         critical_aar_count: Number of AARs at critical (for fracture warning)
         guild: Discord guild
         op_mission: Mission name from the AAR that triggered the damage
         op_difficulty_class: Difficulty class (e.g., normal_siege, hard_siege) for planet lookup
         op_url: Jump URL to the AAR message
         squad_member_ids: List of brother IDs on the same op (for debrief)
+        alert_type: "sustained" (damage occurred, guaranteed) or "detected" (early warning)
     """
     channel_id = _get_arming_chamber_channel_id()
     if not channel_id:
@@ -3783,15 +3996,40 @@ async def _post_armor_alert(
     else:
         bearer_display += "\nSpirit: *UNBOUND*"
 
-    # Determine embed color and title based on tier
-    if tier == "critical":
-        color = 0xE74C3C  # Red
-        title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
-        description = "*Machine spirit instability detected*"
-    else:
-        color = 0xE67E22  # Orange
-        title = "᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭"
-        description = "*Maintenance required*"
+    # Determine embed color, title, and description based on tier and alert_type
+    is_detection = alert_type == "detected"
+    
+    if tier == "fractured":
+        color = 0x8B0000  # Dark red
+        title = "᛭⋅ MACHINE SPIRIT FRACTURED ⋅᛭"
+        description = "*The bond is broken — immediate re-consecration required*"
+    elif tier == "critical":
+        if is_detection:
+            color = 0xE74C3C  # Red
+            title = "᛭⋅ CRITICAL DAMAGE DETECTED ⋅᛭"
+            description = "*Machine spirit strains — intervention window open*"
+        else:
+            color = 0xE74C3C  # Red
+            title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
+            description = "*Machine spirit instability detected*"
+    elif tier == "compromised":
+        if is_detection:
+            color = 0xF39C12  # Dark orange/amber
+            title = "᛭⋅ INTEGRITY DEGRADATION DETECTED ⋅᛭"
+            description = "*Structural stress detected — maintenance window open*"
+        else:
+            color = 0xE67E22  # Orange
+            title = "᛭⋅ ARMOR INTEGRITY COMPROMISED ⋅᛭"
+            description = "*Structural damage sustained*"
+    else:  # damaged
+        if is_detection:
+            color = 0xF1C40F  # Yellow
+            title = "᛭⋅ WEAR DETECTED ⋅᛭"
+            description = "*Minor degradation noted — preventive maintenance available*"
+        else:
+            color = 0xE67E22  # Orange
+            title = "᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭"
+            description = "*Maintenance required*"
 
     embed = discord.Embed(
         title=title,
@@ -3801,12 +4039,22 @@ async def _post_armor_alert(
 
     # Affected brother field with proper rank display
     tier_display = tier.title() if tier else "Unknown"
-    penalty_risk = _get_tier_risk_display(tier, spirit_fractured=False)
+    spirit_fractured = tier == "fractured"
+    penalty_risk = _get_tier_risk_display(tier, spirit_fractured=spirit_fractured)
+    
+    # Adjust status display for detection alerts
+    if is_detection:
+        status_label = f"{tier_display} (Early Warning)"
+    else:
+        status_label = tier_display
+    
     embed.add_field(
         name="▸ Affected Brother",
-        value=f"{bearer_display}\n**Status:** {tier_display}\n**Penalty Risk:** {penalty_risk}",
+        value=f"{bearer_display}\n**Status:** {status_label}\n**Penalty Risk:** {penalty_risk}",
         inline=False,
     )
+
+    # Debrief field (if op context provided)
 
     # Debrief field (if op context provided)
     if op_mission or op_difficulty_class or op_url or squad_member_ids:
@@ -3850,25 +4098,50 @@ async def _post_armor_alert(
                 inline=False,
             )
 
-    # Warning field for critical
-    if tier == "critical":
+    # Warning field for critical/fractured and response guidance
+    if tier == "fractured":
+        embed.add_field(
+            name="▸ Emergency",
+            value="⚠️ Machine spirit has **FRACTURED**. No further field operations until re-consecration.",
+            inline=False,
+        )
+        embed.add_field(
+            name="▸ Immediate Techmarine Response Required",
+            value="Administer intensive blessing via `/forge_rite intensive:True` to re-consecrate the spirit.",
+            inline=False,
+        )
+    elif tier == "critical":
         remaining = fracture_threshold - critical_aar_count
         embed.add_field(
             name="▸ Warning",
             value=f"⚠️ AAR submissions until spirit fracture: **{remaining}**",
             inline=False,
         )
-        embed.add_field(
-            name="▸ Immediate Techmarine Response Required",
-            value="Administer blessing via `/forge_rite` to preserve machine spirit bond.",
-            inline=False,
-        )
+        if is_detection:
+            embed.add_field(
+                name="▸ Intervention Window Open",
+                value="Brother is still operational. Administer blessing via `/forge_rite` before penalties accumulate.",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="▸ Immediate Techmarine Response Required",
+                value="Administer blessing via `/forge_rite` to preserve machine spirit bond.",
+                inline=False,
+            )
     else:
-        embed.add_field(
-            name="▸ Techmarine Response Required",
-            value="Administer blessing via `/forge_rite` to restore armor integrity.",
-            inline=False,
-        )
+        if is_detection:
+            embed.add_field(
+                name="▸ Preventive Maintenance Available",
+                value="Damage detected before penalty. Administer blessing via `/forge_rite` to prevent AAR losses.",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="▸ Techmarine Response Required",
+                value="Administer blessing via `/forge_rite` to restore armor integrity.",
+                inline=False,
+            )
 
     # Build message content with Techmarine ping and affected brother mention BEFORE the embed
     content = ""
@@ -3879,7 +4152,7 @@ async def _post_armor_alert(
         content = member.mention
 
     logger.debug(
-        f"Armor alert for {member.display_name}: tier={tier}, "
+        f"Armor alert for {member.display_name}: tier={tier}, alert_type={alert_type}, "
         f"bearer_display_len={len(bearer_display)}, embed_fields={len(embed.fields)}, "
         f"content_len={len(content)}"
     )
@@ -3904,7 +4177,7 @@ async def _post_armor_alert(
                 f"embed_links={perms.embed_links}, content={content[:50]}"
             )
         else:
-            logger.info(f"Posted armor alert for {member.display_name} (tier={tier})")
+            logger.info(f"Posted armor alert for {member.display_name} (tier={tier}, type={alert_type})")
     except Exception as e:
         logger.error(f"Failed to post armor alert for {member.display_name}: {e}")
 
@@ -3935,7 +4208,8 @@ async def _process_armor_integrity_for_aar(
 
     Returns:
         Tuple of (penalty_amount, alert_info_or_none)
-        alert_info is a dict with member, tier, critical_count, and op context if an alert should be posted.
+        alert_info is a dict with member, tier, critical_count, alert_type, and op context if an alert should be posted.
+        alert_type is "sustained" (damage escalated) or "detected" (early warning).
     """
     alert_info = None
     penalty = 0
@@ -3963,16 +4237,21 @@ async def _process_armor_integrity_for_aar(
         else:
             state = await _get_armor_state(int(brother_id))
 
+        # Check for spirit fracture
+        spirit_fractured = state.get("spirit_fractured", False)
+        effective_tier = "fractured" if spirit_fractured else current_tier
+
         # Accumulate points (use base unpenalized points for tracking)
         state["points_since_blessing"] = (
             state.get("points_since_blessing", 0) + base_points
         )
 
-        # Check if damage occurs
+        # Check if damage occurs (escalation)
         damage_occurred = await _run_armor_integrity_check(
             state["points_since_blessing"]
         )
 
+        new_tier = None
         if damage_occurred:
             # Roll which damage tier to apply based on current points
             rolled_tier = _roll_damage_tier(state["points_since_blessing"])
@@ -3983,15 +4262,44 @@ async def _process_armor_integrity_for_aar(
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
                     state["critical_aar_count"] = 0  # Reset on entering critical
+                # Sustained alert for new damage
                 alert_info = {
                     "member": member,
                     "tier": new_tier,
                     "critical_count": 0,
+                    "alert_type": "sustained",
                     "op_mission": op_mission,
                     "op_difficulty_class": op_difficulty_class,
                     "op_url": op_url,
                     "squad_member_ids": squad_member_ids,
                 }
+                # Update detection tracking since we're alerting for this tier
+                state["last_detection_alert_tier"] = new_tier
+
+        # If no new damage but already damaged, try detection alert
+        if alert_info is None and effective_tier:
+            last_detection_tier = state.get("last_detection_alert_tier")
+            
+            # Tier severity for comparison
+            tier_severity = {"damaged": 1, "compromised": 2, "critical": 3, "fractured": 4}
+            current_severity = tier_severity.get(effective_tier, 0)
+            last_severity = tier_severity.get(last_detection_tier, 0)
+            
+            # Only roll detection if we haven't already alerted for this tier level or higher
+            if current_severity > last_severity:
+                if _roll_detection_alert(effective_tier):
+                    alert_info = {
+                        "member": member,
+                        "tier": effective_tier,
+                        "critical_count": state.get("critical_aar_count", 0),
+                        "alert_type": "detected",
+                        "op_mission": op_mission,
+                        "op_difficulty_class": op_difficulty_class,
+                        "op_url": op_url,
+                        "squad_member_ids": squad_member_ids,
+                    }
+                    # Update detection tracking
+                    state["last_detection_alert_tier"] = effective_tier
 
         # If at critical (whether damage occurred or not), increment fracture countdown
         if current_tier == "critical":
@@ -4004,6 +4312,18 @@ async def _process_armor_integrity_for_aar(
             if state["critical_aar_count"] >= fracture_threshold:
                 # Spirit fractures
                 state["spirit_fractured"] = True
+                # Guaranteed alert for fracture
+                if alert_info is None or alert_info.get("tier") != "fractured":
+                    alert_info = {
+                        "member": member,
+                        "tier": "fractured",
+                        "critical_count": state["critical_aar_count"],
+                        "alert_type": "sustained",
+                        "op_mission": op_mission,
+                        "op_difficulty_class": op_difficulty_class,
+                        "op_url": op_url,
+                        "squad_member_ids": squad_member_ids,
+                    }
 
         # Save updated state (to batch if provided, else to file)
         if armor_batch is not None:
@@ -7747,12 +8067,19 @@ async def _show_armor_leaderboard(
     company_filter: Optional[str] = None,
     pool_remaining: Optional[int] = None,
     pool_next_regen: Optional[timedelta] = None,
+    techmarine_id: Optional[int] = None,
 ):
     """Show top 10 brothers at risk of armor damage.
     
     If company_filter is provided, only show brothers in that company.
     pool_remaining/pool_next_regen show invoker's blessing pool status.
+    techmarine_id is used to check intensive scan status.
     """
+    # Check if Techmarine has intensive scan active
+    has_intensive = False
+    if techmarine_id:
+        has_intensive = await _has_intensive_scan(techmarine_id)
+    
     # Load all armor states
     armor_data = _load_armor_integrity()
 
@@ -7765,8 +8092,9 @@ async def _show_armor_leaderboard(
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    # Build list of (member, state, risk_score)
+    # Build list of (member, state, risk_score, scan_result)
     risk_list = []
+    missed_count = 0  # Track how many damaged brothers were missed
     for user_id_str, state in armor_data.items():
         try:
             user_id = int(user_id_str)
@@ -7788,21 +8116,37 @@ async def _show_armor_leaderboard(
         points_since_blessing = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
 
+        # Roll detection for this brother (cached per AAR cycle)
+        scan_result = await _get_or_roll_scan_result(
+            user_id, current_tier, points_since_blessing, spirit_fractured
+        )
+        
+        # Intensive scan bypasses miss chance
+        if has_intensive and not scan_result["detected"]:
+            scan_result = {"detected": True, "predictive_warning": False, "miss_reason": None}
+        
+        # Track missed detections for damaged brothers
+        if not scan_result["detected"] and current_tier:
+            missed_count += 1
+
         risk_score = _calculate_armor_risk_score(
             current_tier, points_since_blessing, spirit_fractured
         )
 
-        # Only include if they have any risk (points > 0 or damage)
-        if risk_score > 0:
-            risk_list.append((member, state, current_tier, risk_score))
+        # Include if they have risk OR if there's a predictive warning
+        if risk_score > 0 or scan_result.get("predictive_warning"):
+            risk_list.append((member, state, current_tier, risk_score, scan_result))
 
+    # Filter out missed detections (they won't show in the leaderboard)
+    visible_list = [(m, s, t, r, scan) for m, s, t, r, scan in risk_list if scan["detected"]]
+    
     # Sort by risk score descending
-    risk_list.sort(key=lambda x: x[3], reverse=True)
+    visible_list.sort(key=lambda x: x[3], reverse=True)
 
     # Take top 10
-    top_10 = risk_list[:10]
+    top_10 = visible_list[:10]
 
-    # Build description based on company filter
+    # Build description based on company filter and detection status
     if company_filter:
         company_short = _extract_company_short_name(company_filter)
         no_risk_desc = f"*All brothers in {company_short} nominal. No maintenance required.*"
@@ -7810,6 +8154,10 @@ async def _show_armor_leaderboard(
     else:
         no_risk_desc = "*All brothers nominal. No maintenance required.*"
         with_risk_desc = "*Top 10 brothers requiring attention*"
+    
+    # Add missed detection note if applicable
+    if missed_count > 0:
+        with_risk_desc += f"\n⚠️ *{missed_count} spirit{'s' if missed_count > 1 else ''} uncommunicative*"
 
     if not top_10:
         embed = discord.Embed(
@@ -7817,6 +8165,9 @@ async def _show_armor_leaderboard(
             description=no_risk_desc,
             color=0x2ECC71,  # Green
         )
+        # Add note about missed detections even if no visible brothers
+        if missed_count > 0:
+            embed.description += f"\n⚠️ *{missed_count} spirit{'s' if missed_count > 1 else ''} uncommunicative*"
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
@@ -7828,12 +8179,13 @@ async def _show_armor_leaderboard(
     )
 
     lines = []
-    for i, (member, state, current_tier, risk_score) in enumerate(top_10, 1):
+    for i, (member, state, current_tier, risk_score, scan_result) in enumerate(top_10, 1):
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
         prob = _get_damage_probability(points) * 100
+        predictive_warning = scan_result.get("predictive_warning", False)
 
-        # Status icon
+        # Status icon - predictive warnings get special indicator
         if spirit_fractured:
             icon = "💀"
         elif current_tier == "critical":
@@ -7842,6 +8194,8 @@ async def _show_armor_leaderboard(
             icon = "🟠"
         elif current_tier == "damaged":
             icon = "🟡"
+        elif predictive_warning:
+            icon = "⚡"  # Warning for nominal brothers at risk
         else:
             icon = "🟢"
 
@@ -7878,6 +8232,8 @@ async def _show_armor_leaderboard(
             tier_str = " · FRACTURED"
         elif current_tier:
             tier_str = f" · {current_tier.upper()}"
+        elif predictive_warning:
+            tier_str = " · AT RISK"
         else:
             tier_str = ""
         # Show escalation risk % for all brothers with non-zero probability
@@ -7894,8 +8250,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact)
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged 🟢Nominal"
+    # Add legend (compact) - include predictive warning symbol
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal"
     embed.add_field(
         name="▸ Key",
         value=legend,
@@ -7986,14 +8342,27 @@ async def _armor_status(interaction: discord.Interaction):
         company_filter=company_filter,
         pool_remaining=pool_remaining,
         pool_next_regen=pool_next_regen,
+        techmarine_id=interaction.user.id,
     )
 
 
 @bot.tree.command(
     name="requisition_supplies",
-    description="Spend community armory reserves to restore a blessing charge.",
+    description="Spend community armory reserves for blessing charges or intensive scans.",
 )
-async def _requisition_supplies(interaction: discord.Interaction):
+@app_commands.describe(
+    requisition_type="What to requisition: blessing charge (restore pool) or intensive scan (guaranteed detection)",
+)
+@app_commands.choices(
+    requisition_type=[
+        app_commands.Choice(name="Blessing Charge (+1 to pool)", value="blessing_charge"),
+        app_commands.Choice(name="Intensive Scan (3000 pts, 100% detection)", value="intensive_scan"),
+    ]
+)
+async def _requisition_supplies(
+    interaction: discord.Interaction,
+    requisition_type: str = "blessing_charge",
+):
     """Techmarine command to requisition supplies from the forge pool."""
     # Permission check: caller must be techmarine or forgemaster
     allowed, role_key = _is_techmarine_or_forgemaster(
@@ -8018,6 +8387,12 @@ async def _requisition_supplies(interaction: discord.Interaction):
         await interaction.response.send_message("Guild not found.", ephemeral=True)
         return
 
+    # Branch based on requisition type
+    if requisition_type == "intensive_scan":
+        await _handle_intensive_scan_requisition(interaction, guild)
+        return
+
+    # Default: blessing charge requisition
     # Check current blessing pool status
     pool_remaining, pool_next_regen = await _get_blessing_pool_display(interaction.user.id)
     
@@ -8153,6 +8528,94 @@ async def _grant_blessing_charge(user_id: int):
         
         data[str(user_id)] = state
         _save_blessing_pool(data)
+
+
+async def _handle_intensive_scan_requisition(
+    interaction: discord.Interaction,
+    guild: discord.Guild,
+):
+    """Handle intensive scan requisition (100% detection for this AAR cycle)."""
+    tech_id = interaction.user.id
+    
+    # Check if already has active intensive scan
+    if await _has_intensive_scan(tech_id):
+        await interaction.response.send_message(
+            "**Intensive Scan Already Active**\n\n"
+            "*Your augur arrays are already operating at maximum sensitivity for this cycle.*\n"
+            "The scan expires when new armory data is ingested.",
+            ephemeral=True,
+        )
+        return
+    
+    # Get forge pool status
+    forge_status = await _get_forge_pool_status()
+    available = forge_status["available"]
+    
+    if available < INTENSIVE_SCAN_COST:
+        await interaction.response.send_message(
+            f"**Intensive Scan Denied**\n\n"
+            f"Community armory reserves: **{available}** points\n"
+            f"Required for intensive scan: **{INTENSIVE_SCAN_COST}** points\n\n"
+            f"*Insufficient resources to power the augur arrays at maximum sensitivity.*",
+            ephemeral=True,
+        )
+        return
+    
+    # Consume the points directly from forge pool
+    async with FORGE_POOL_LOCK:
+        pool_data = _load_forge_pool()
+        pool_data["spent"] = pool_data.get("spent", 0) + INTENSIVE_SCAN_COST
+        _save_forge_pool(pool_data)
+    
+    # Activate intensive scan for this Techmarine
+    await _purchase_intensive_scan(tech_id)
+    
+    # Get updated forge status
+    new_forge_status = await _get_forge_pool_status()
+    
+    # Get the Techmarine's name
+    tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+    
+    embed = discord.Embed(
+        title="🔬 INTENSIVE SCAN ACTIVATED",
+        description=(
+            "*Augur arrays recalibrated to maximum sensitivity.*\n"
+            "*All armor spirits shall be revealed, none shall hide from the Omnissiah's gaze.*"
+        ),
+        color=0x9B59B6,  # Purple for special scan
+    )
+    
+    embed.add_field(
+        name="▸ Requisitioner",
+        value=f"**{tech_name}**",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Cost",
+        value=f"**{INTENSIVE_SCAN_COST}** armory points",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Forge Reserves",
+        value=f"**{new_forge_status['available']}** pts remaining",
+        inline=True,
+    )
+    
+    embed.add_field(
+        name="▸ Effect",
+        value=(
+            "• 100% detection for all armor states\n"
+            "• Bypasses spirit uncommunicative readings\n"
+            "• Expires when new armory data is ingested"
+        ),
+        inline=False,
+    )
+    
+    embed.set_footer(text="The Machine Spirit yields its secrets. Use /armor_status now.")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(
@@ -9541,6 +10004,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     op_difficulty_class=alert.get("op_difficulty_class"),
                     op_url=alert.get("op_url"),
                     squad_member_ids=alert.get("squad_member_ids"),
+                    alert_type=alert.get("alert_type", "sustained"),
                 )
             except Exception as e:
                 logger.error(f"Error calling _post_armor_alert: {e}")
@@ -9591,6 +10055,8 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
     # Save armor batch data once at end (avoid repeated file I/O during loop)
     if armor_batch_modified:
         await _save_armor_batch(armor_batch)
+        # Increment AAR generation to invalidate scan caches
+        await _increment_aar_generation()
 
     return ingested, rejected
 
