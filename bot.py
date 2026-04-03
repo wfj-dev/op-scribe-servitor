@@ -110,7 +110,7 @@ FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
 # Forge requisition pool configuration
 FORGE_POOL_COST_PER_CHARGE = 200  # Armory points spent per blessing charge
 FORGE_POOL_DAILY_LIMIT = 2  # Max requisitions per Techmarine per day
-FORGE_POOL_MAX_CHARGES = 60  # Maximum charges the forge can hold
+FORGE_POOL_MAX_CHARGES = 30  # Maximum charges the forge can hold
 
 # Blessing pool configuration
 BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
