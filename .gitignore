@@ -210,7 +210,6 @@ __marimo__/
 data/*.json
 data/*.bak
 !data/rites.json
-!data/machine_spirits.json
 !data/oaths_index.json
 !data/trophy_hall_index.json
 !data/home_chapter_rotation.json
