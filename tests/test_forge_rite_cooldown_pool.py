@@ -63,10 +63,11 @@ def test_recipient_cooldown_no_prior_blessing():
     """A recipient with no recorded blessing can always receive."""
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(999))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(999))
     assert can_receive is True
     assert remaining is None
     assert blessings_used == 0
+    assert block_reason is None
 
 
 def test_recipient_cooldown_legacy_format_backward_compat():
@@ -75,10 +76,56 @@ def test_recipient_cooldown_legacy_format_backward_compat():
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         # Old format with last_blessing_timestamp instead of blessing_timestamps list
         mock_state.return_value = {"last_blessing_timestamp": recent_ts}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(998))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(998))
     assert can_receive is True  # 1 blessing = can still receive second
     assert remaining is None
     assert blessings_used == 1
+    assert block_reason is None
+
+
+# ---------------------------------------------------------------------------
+# _check_recipient_cooldown – per-blessing cooldown (4h minimum between blessings)
+# ---------------------------------------------------------------------------
+
+
+def test_recipient_blocked_by_per_blessing_cooldown():
+    """A recipient blessed 2h ago is blocked by the 4h per-blessing cooldown."""
+    recent_ts = _hours_ago(2)  # 2 hours ago, within the 4h cooldown
+    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"blessing_timestamps": [recent_ts]}
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(700))
+    assert can_receive is False
+    assert block_reason == "per_blessing"
+    assert blessings_used == 1
+    # Remaining should be roughly 2h
+    assert timedelta(hours=1, minutes=55) <= remaining <= timedelta(hours=2, minutes=5)
+
+
+def test_recipient_allowed_after_per_blessing_cooldown():
+    """A recipient blessed 5h ago (past the 4h cooldown) can receive again."""
+    old_ts = _hours_ago(5)  # 5 hours ago, past the 4h cooldown
+    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"blessing_timestamps": [old_ts]}
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(701))
+    assert can_receive is True
+    assert remaining is None
+    assert blessings_used == 1  # Still counted because within 24h window
+    assert block_reason is None
+
+
+def test_recipient_per_blessing_cooldown_boundary():
+    """A recipient blessed exactly 4h ago can receive (boundary condition)."""
+    # Import the constant to use exact value
+    from bot import BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS
+    exact_4h_ago = _hours_ago(BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS)
+    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"blessing_timestamps": [exact_4h_ago]}
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(702))
+    # elapsed >= per_blessing_cooldown → allowed
+    assert can_receive is True
+    assert remaining is None
+    assert blessings_used == 1
+    assert block_reason is None
 
 
 # ---------------------------------------------------------------------------
@@ -91,24 +138,27 @@ def test_recipient_cooldown_allows_second_blessing_within_24h():
     recent_ts = _hours_ago(12)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [recent_ts]}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(1))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(1))
     assert can_receive is True  # Can still receive second blessing
     assert remaining is None
     assert blessings_used == 1
+    assert block_reason is None
 
 
 def test_recipient_cooldown_blocked_at_max_blessings():
-    """A recipient blessed twice within 24h is blocked until oldest expires."""
-    ts1 = _hours_ago(12)
-    ts2 = _hours_ago(6)
+    """A recipient blessed three times within 24h is blocked until oldest expires."""
+    ts1 = _hours_ago(18)
+    ts2 = _hours_ago(12)
+    ts3 = _hours_ago(6)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
-        mock_state.return_value = {"blessing_timestamps": [ts1, ts2]}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(2))
+        mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(2))
     assert can_receive is False
     assert remaining is not None
-    assert blessings_used == 2
-    # Remaining should be roughly 12h until the first timestamp expires
-    assert timedelta(hours=11, minutes=55) <= remaining <= timedelta(hours=12, minutes=5)
+    assert blessings_used == 3
+    assert block_reason == "daily_cap"
+    # Remaining should be roughly 6h until the first timestamp expires
+    assert timedelta(hours=5, minutes=55) <= remaining <= timedelta(hours=6, minutes=5)
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +171,11 @@ def test_recipient_cooldown_cleared_after_24h():
     old_ts = _hours_ago(25)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [old_ts]}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(3))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(3))
     assert can_receive is True
     assert remaining is None
     assert blessings_used == 0  # Old timestamp is filtered out
+    assert block_reason is None
 
 
 def test_recipient_cooldown_cleared_exactly_at_24h():
@@ -132,11 +183,12 @@ def test_recipient_cooldown_cleared_exactly_at_24h():
     exact_24h_ago = _hours_ago(BLESSING_RECIPIENT_COOLDOWN_HOURS)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [exact_24h_ago]}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(4))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(4))
     # elapsed >= cooldown → cleared
     assert can_receive is True
     assert remaining is None
     assert blessings_used == 0
+    assert block_reason is None
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +200,10 @@ def test_recipient_cooldown_corrupted_timestamp_allows():
     """A corrupted blessing_timestamp defaults to allowing the blessing."""
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": ["not-a-timestamp"]}
-        can_receive, remaining, blessings_used = _run(_check_recipient_cooldown(5))
+        can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(5))
     assert can_receive is True
     assert blessings_used == 0  # Corrupted timestamp is filtered out
+    assert block_reason is None
 
 
 # ---------------------------------------------------------------------------
@@ -332,16 +385,18 @@ def test_force_override_skips_cooldown_check():
     that passing force=True into the conditional in bot.py (reproduced below)
     bypasses the call.
     """
-    # Two blessings within 24h = at max
-    ts1 = _hours_ago(12)
-    ts2 = _hours_ago(6)
+    # Three blessings within 24h = at max
+    ts1 = _hours_ago(18)
+    ts2 = _hours_ago(12)
+    ts3 = _hours_ago(6)
 
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
-        mock_state.return_value = {"blessing_timestamps": [ts1, ts2]}
+        mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
         # Without force: cooldown is active (at max blessings)
-        can_receive, _, blessings_used = _run(_check_recipient_cooldown(30))
+        can_receive, _, blessings_used, block_reason = _run(_check_recipient_cooldown(30))
     assert can_receive is False
-    assert blessings_used == 2
+    assert blessings_used == 3
+    assert block_reason == "daily_cap"
 
     # With force=True the forge_rite handler does `if not force:` before calling
     # _check_recipient_cooldown.  Simulate that short-circuit here:
