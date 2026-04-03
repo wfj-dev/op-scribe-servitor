@@ -8248,12 +8248,11 @@ async def _show_armor_leaderboard(
             icon = "🟢"
 
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · CRITICAL"
+        # Note: ⚡ icon already indicates AT RISK, no text needed
         if spirit_fractured:
             tier_str = " · FRACTURED"
         elif current_tier:
             tier_str = f" · {current_tier.upper()}"
-        elif predictive_warning:
-            tier_str = " · AT RISK"
         else:
             tier_str = ""
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
@@ -8284,9 +8283,10 @@ async def _show_armor_leaderboard(
             regen_str = f" · +1 in {hours}h {minutes}m" if hours else f" · +1 in {minutes}m"
         else:
             regen_str = ""
+        intensive_str = "\n**⚡ Intensive Scan ACTIVE**" if has_intensive else ""
         embed.add_field(
             name="▸ Your Blessing Pool",
-            value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}\n`/forge_rite @brother`",
+            value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}{intensive_str}\n`/forge_rite @brother`",
             inline=True,
         )
 
@@ -8295,9 +8295,15 @@ async def _show_armor_leaderboard(
         forge_status = await _get_forge_pool_status()
         forge_available = forge_status["available"]
         forge_charges = forge_status["charges_available"]
+        intensive_scans_available = forge_available // INTENSIVE_SCAN_COST
         embed.add_field(
             name="▸ Forge Reserves",
-            value=f"**{forge_available}** pts ({forge_charges} charges)\n`/requisition_supplies`",
+            value=(
+                f"**{forge_available}** pts\n"
+                f"{forge_charges} charges · {FORGE_POOL_COST_PER_CHARGE} pts ea\n"
+                f"Intensive Scan: {INTENSIVE_SCAN_COST} pts ({intensive_scans_available} avail)\n"
+                f"`/requisition_supplies`"
+            ),
             inline=True,
         )
     except Exception:
