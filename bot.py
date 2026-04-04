@@ -9126,7 +9126,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"  Newest: **{designation}** ({member_label})")
+        spirit_lines.append(f"  Newest: **{designation}** {member_label}")
     
     spirit_lines.append(f"  Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
     
