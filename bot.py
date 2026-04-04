@@ -12079,44 +12079,58 @@ async def tally_deeds(
                     prob_percent = damage_probability * 100
                     machine_spirit = await _get_machine_spirit(int(target.id))
 
-                    if spirit_fractured:
-                        armor_icon = "💀"
-                        armor_status = "FRACTURED"
-                        spirit_status = "SEVERED"
-                    elif armor_tier == "critical":
-                        armor_icon = "🔴"
-                        armor_status = "CRITICAL"
-                        spirit_status = "UNSTABLE"
-                    elif armor_tier == "compromised":
-                        armor_icon = "🟠"
-                        armor_status = "COMPROMISED"
-                        spirit_status = "AGITATED"
-                    elif armor_tier == "damaged":
-                        armor_icon = "🟡"
-                        armor_status = "DAMAGED"
-                        spirit_status = "STABLE"
-                    else:
-                        armor_icon = "🟢"
-                        armor_status = "NOMINAL"
-                        spirit_status = "STABLE"
-
-                    if spirit_fractured:
-                        spirit_display = "Spirit: SEVERED"
-                    elif machine_spirit:
-                        spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
-                    else:
-                        spirit_display = "Spirit: *UNBOUND*"
-
-                    armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-                    # Show penalty risk (probabilistic) and cycles
-                    penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
-                    armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
-
-                    embed.add_field(
-                        name="▸ Armor Integrity",
-                        value="\n".join(armor_lines),
-                        inline=False,
+                    # Roll scan detection (same as armor_status)
+                    scan_result = await _get_or_roll_scan_result(
+                        int(target.id), armor_tier, points_since_blessing, spirit_fractured
                     )
+                    scan_missed = not scan_result["detected"]
+
+                    if scan_missed:
+                        # Unreadable - mask armor data
+                        embed.add_field(
+                            name="▸ Armor Integrity",
+                            value="⚫ **UNREADABLE** | Spirit: ???\nPenalty Risk: ??? | Cycles: ???",
+                            inline=False,
+                        )
+                    else:
+                        if spirit_fractured:
+                            armor_icon = "💀"
+                            armor_status = "FRACTURED"
+                            spirit_status = "SEVERED"
+                        elif armor_tier == "critical":
+                            armor_icon = "🔴"
+                            armor_status = "CRITICAL"
+                            spirit_status = "UNSTABLE"
+                        elif armor_tier == "compromised":
+                            armor_icon = "🟠"
+                            armor_status = "COMPROMISED"
+                            spirit_status = "AGITATED"
+                        elif armor_tier == "damaged":
+                            armor_icon = "🟡"
+                            armor_status = "DAMAGED"
+                            spirit_status = "STABLE"
+                        else:
+                            armor_icon = "🟢"
+                            armor_status = "NOMINAL"
+                            spirit_status = "STABLE"
+
+                        if spirit_fractured:
+                            spirit_display = "Spirit: SEVERED"
+                        elif machine_spirit:
+                            spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
+                        else:
+                            spirit_display = "Spirit: *UNBOUND*"
+
+                        armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
+                        # Show penalty risk (probabilistic) and cycles
+                        penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
+                        armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
+
+                        embed.add_field(
+                            name="▸ Armor Integrity",
+                            value="\n".join(armor_lines),
+                            inline=False,
+                        )
                 except Exception:
                     pass  # Skip armor field if data unavailable
 
@@ -12930,44 +12944,58 @@ async def my_deeds(interaction: discord.Interaction):
         prob_percent = damage_probability * 100
         machine_spirit = await _get_machine_spirit(int(target.id))
 
-        if spirit_fractured:
-            armor_icon = "💀"
-            armor_status = "FRACTURED"
-            spirit_status = "SEVERED"
-        elif armor_tier == "critical":
-            armor_icon = "🔴"
-            armor_status = "CRITICAL"
-            spirit_status = "UNSTABLE"
-        elif armor_tier == "compromised":
-            armor_icon = "🟠"
-            armor_status = "COMPROMISED"
-            spirit_status = "AGITATED"
-        elif armor_tier == "damaged":
-            armor_icon = "🟡"
-            armor_status = "DAMAGED"
-            spirit_status = "STABLE"
-        else:
-            armor_icon = "🟢"
-            armor_status = "NOMINAL"
-            spirit_status = "STABLE"
-
-        if spirit_fractured:
-            spirit_display = "Spirit: SEVERED"
-        elif machine_spirit:
-            spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
-        else:
-            spirit_display = "Spirit: *UNBOUND*"
-
-        armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-        # Show penalty risk (probabilistic) and cycles
-        penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
-        armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
-
-        embed.add_field(
-            name="▸ Armor Integrity",
-            value="\n".join(armor_lines),
-            inline=False,
+        # Roll scan detection (same as armor_status)
+        scan_result = await _get_or_roll_scan_result(
+            int(target.id), armor_tier, points_since_blessing, spirit_fractured
         )
+        scan_missed = not scan_result["detected"]
+
+        if scan_missed:
+            # Unreadable - mask armor data
+            embed.add_field(
+                name="▸ Armor Integrity",
+                value="⚫ **UNREADABLE** | Spirit: ???\nPenalty Risk: ??? | Cycles: ???",
+                inline=False,
+            )
+        else:
+            if spirit_fractured:
+                armor_icon = "💀"
+                armor_status = "FRACTURED"
+                spirit_status = "SEVERED"
+            elif armor_tier == "critical":
+                armor_icon = "🔴"
+                armor_status = "CRITICAL"
+                spirit_status = "UNSTABLE"
+            elif armor_tier == "compromised":
+                armor_icon = "🟠"
+                armor_status = "COMPROMISED"
+                spirit_status = "AGITATED"
+            elif armor_tier == "damaged":
+                armor_icon = "🟡"
+                armor_status = "DAMAGED"
+                spirit_status = "STABLE"
+            else:
+                armor_icon = "🟢"
+                armor_status = "NOMINAL"
+                spirit_status = "STABLE"
+
+            if spirit_fractured:
+                spirit_display = "Spirit: SEVERED"
+            elif machine_spirit:
+                spirit_display = f"Spirit: `{machine_spirit}` ({spirit_status})"
+            else:
+                spirit_display = "Spirit: *UNBOUND*"
+
+            armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
+            # Show penalty risk (probabilistic) and cycles
+            penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
+            armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
+
+            embed.add_field(
+                name="▸ Armor Integrity",
+                value="\n".join(armor_lines),
+                inline=False,
+            )
     except Exception:
         pass  # Skip armor field if data unavailable
 
