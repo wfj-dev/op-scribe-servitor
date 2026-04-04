@@ -4560,6 +4560,84 @@ def _should_show_extended_blessing_fields(
     return spirit_is_first or spirit_is_reconsecrated
 
 
+def _classify_forge_rite_event(
+    spirit_is_first: bool,
+    spirit_is_reconsecrated: bool,
+    spirit_is_restored: bool,
+) -> tuple:
+    """Classify a forge rite into a verbosity tier and a chronicle event type.
+
+    Returns (is_significant, spirit_event) where:
+    - is_significant (bool): True when a full embed with @mention should be sent
+      (first binding or rebirth), False for routine compact-format responses.
+    - spirit_event (str): one of "first_binding", "rebirth", "restoration",
+      "maintenance" — used to record the event in the forge chronicle.
+    """
+    is_significant = spirit_is_first or spirit_is_reconsecrated
+    if spirit_is_first:
+        spirit_event = "first_binding"
+    elif spirit_is_reconsecrated:
+        spirit_event = "rebirth"
+    elif spirit_is_restored:
+        spirit_event = "restoration"
+    else:
+        spirit_event = "maintenance"
+    return is_significant, spirit_event
+
+
+def _get_compact_rite_status(
+    blessing_roll_outcome: str,
+    is_intensive: bool,
+    was_damaged: bool,
+) -> tuple:
+    """Return the (status_icon, status_text) pair for a routine forge rite.
+
+    Used when building the compact 3-line response for non-significant events.
+    """
+    if blessing_roll_outcome == "crit_fail":
+        return "⚠️", "RESISTED"
+    elif blessing_roll_outcome == "crit_success":
+        return "✨", "BLESSED *(grace)*"
+    elif is_intensive:
+        return "✨", "RESTORED"
+    elif was_damaged:
+        return "🟢", "REPAIRED"
+    else:
+        return "🟢", "MAINTAINED"
+
+
+def _get_thread_reply_text(
+    spirit_is_reconsecrated: bool,
+    blessing_roll_outcome: str,
+    attester: str,
+    machine_spirit_emoji: str,
+    spirit_designation: str,
+) -> str:
+    """Build the reply text for the original armor-alert thread.
+
+    Returns the appropriate reply based on the rite outcome:
+    - Reconsecrated spirit → Spirit Reborn message
+    - Critical failure → Rite Resisted message
+    - Otherwise → Armor Restored message
+    """
+    if spirit_is_reconsecrated:
+        return (
+            f"✨ **Spirit Reborn**\n"
+            f"The machine spirit has been re-consecrated by {attester}.\n"
+            f"{machine_spirit_emoji} New designation: `{spirit_designation}`"
+        )
+    elif blessing_roll_outcome == "crit_fail":
+        return (
+            "⚠️ **Rite Resisted**\n"
+            "The machine spirit rejected the sacred oils. Damage persists."
+        )
+    else:
+        return (
+            f"🟢 **Armor Restored**\n"
+            f"Blessed by {attester}. {machine_spirit_emoji} Spirit `{spirit_designation}` pacified."
+        )
+
+
 def _extract_killteam_name(name: str) -> str:
     """Return a display-friendly Kill Team name by stripping the 'Kill Team' prefix.
     Handles optional separators like ':', '-', and varying whitespace/case.
@@ -8221,17 +8299,9 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     # Tiered Verbosity: Full embed for first binding/rebirth, compact otherwise
     # ─────────────────────────────────────────────────────────────────────────
-    is_significant_event = spirit_is_first or spirit_is_reconsecrated
-    
-    # Determine spirit event type for chronicle
-    if spirit_is_first:
-        spirit_event = "first_binding"
-    elif spirit_is_reconsecrated:
-        spirit_event = "rebirth"
-    elif spirit_is_restored:
-        spirit_event = "restoration"
-    else:
-        spirit_event = "maintenance"
+    is_significant_event, spirit_event = _classify_forge_rite_event(
+        spirit_is_first, spirit_is_reconsecrated, spirit_is_restored
+    )
     
     # Check for pending alert to reply to
     pending_alert = await _get_pending_alert(int(member.id))
@@ -8265,23 +8335,9 @@ async def _attest(
         # ⚙️ Name • SPIRIT-ID
         # 🟢 STATUS | Restored by Techmarine
         # *"Quote"*
-        
-        # Status icon based on result
-        if blessing_roll_outcome == "crit_fail":
-            status_icon = "⚠️"
-            status_text = "RESISTED"
-        elif blessing_roll_outcome == "crit_success":
-            status_icon = "✨"
-            status_text = "BLESSED *(grace)*"
-        elif is_intensive:
-            status_icon = "✨"
-            status_text = "RESTORED"
-        elif was_damaged:
-            status_icon = "🟢"
-            status_text = "REPAIRED"
-        else:
-            status_icon = "🟢"
-            status_text = "MAINTAINED"
+        status_icon, status_text = _get_compact_rite_status(
+            blessing_roll_outcome, is_intensive, was_damaged
+        )
         
         # Build compact message
         compact_line1 = f"{machine_spirit_emoji} **{bearer_name}** • `{spirit_designation}`"
@@ -8330,22 +8386,13 @@ async def _attest(
                         alert_msg = await alert_channel.fetch_message(int(alert_message_id))
                         
                         # Build reply based on event type
-                        if spirit_is_reconsecrated:
-                            reply_text = (
-                                f"✨ **Spirit Reborn**\n"
-                                f"The machine spirit has been re-consecrated by {attester}.\n"
-                                f"{machine_spirit_emoji} New designation: `{spirit_designation}`"
-                            )
-                        elif blessing_roll_outcome == "crit_fail":
-                            reply_text = (
-                                f"⚠️ **Rite Resisted**\n"
-                                f"The machine spirit rejected the sacred oils. Damage persists."
-                            )
-                        else:
-                            reply_text = (
-                                f"🟢 **Armor Restored**\n"
-                                f"Blessed by {attester}. {machine_spirit_emoji} Spirit `{spirit_designation}` pacified."
-                            )
+                        reply_text = _get_thread_reply_text(
+                            spirit_is_reconsecrated,
+                            blessing_roll_outcome,
+                            attester,
+                            machine_spirit_emoji,
+                            spirit_designation,
+                        )
                         
                         await alert_msg.reply(
                             content=reply_text,
