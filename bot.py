@@ -9518,12 +9518,13 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
     
-    # Channel restriction: arming chamber only (config-driven)
+    # Channel restriction: arming chamber or techmarine channel
     channel_id = getattr(interaction.channel, "id", None)
     arming_chamber_id = _get_arming_chamber_channel_id()
-    if channel_id != arming_chamber_id:
+    allowed_channels = _get_armor_status_allowed_channels()
+    if channel_id not in allowed_channels:
         await interaction.followup.send(
-            "This command may only be used in the arming chamber.",
+            "This command may only be used in the arming chamber or Techmarine channels.",
             ephemeral=True,
         )
         return
@@ -9533,9 +9534,10 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
         await interaction.followup.send("Guild not found.", ephemeral=True)
         return
     
-    channel = interaction.channel
+    # Always post to arming chamber regardless of where command was invoked
+    channel = guild.get_channel(arming_chamber_id)
     if not channel:
-        await interaction.followup.send("Channel not found.", ephemeral=True)
+        await interaction.followup.send("Arming chamber not found.", ephemeral=True)
         return
     
     # Build the new dashboard embed
