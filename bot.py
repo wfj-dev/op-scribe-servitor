@@ -8267,7 +8267,15 @@ async def _show_armor_leaderboard(
     embed.add_field(
         name="▸ Brothers at Risk",
         value="\n".join(lines),
-        inline=False,
+        inline=True,
+    )
+
+    # Add legend (compact) - include unreadable symbol
+    legend = "💀Fractured 🔴Critical\n🟠Compromised 🟡Damaged\n⚡At Risk 🟢Nominal\n⚫Unreadable"
+    embed.add_field(
+        name="▸ Key",
+        value=legend,
+        inline=True,
     )
 
     # Add invoker's blessing pool status
@@ -8286,14 +8294,6 @@ async def _show_armor_leaderboard(
             inline=True,
         )
 
-    # Add legend (compact) - include unreadable symbol
-    legend = "💀Fractured 🔴Critical\n🟠Compromised 🟡Damaged\n⚡At Risk 🟢Nominal\n⚫Unreadable"
-    embed.add_field(
-        name="▸ Key",
-        value=legend,
-        inline=True,
-    )
-
     # Add forge requisition pool status
     try:
         forge_status = await _get_forge_pool_status()
@@ -8306,7 +8306,7 @@ async def _show_armor_leaderboard(
                 f"**{forge_available:,}** pts │ {forge_charges} charges │ {intensive_scans_available} intensive scans\n"
                 f"`/requisition_supplies`"
             ),
-            inline=False,
+            inline=True,
         )
     except Exception:
         pass
