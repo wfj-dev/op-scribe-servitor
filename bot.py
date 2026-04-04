@@ -355,11 +355,16 @@ def _resolve_notification_guild() -> Optional[discord.Guild]:
         return None
 
 
+# Store the status bulletin message ID for edit-in-place behavior
+_STATUS_BULLETIN_MSG_ID: Optional[int] = None
+
+
 async def _send_watch_command_notice(kind: str):
-    """Post a concise status notice to the status channel and replace the previous one.
+    """Post or update a pinned status notice in the status channel.
     kind: 'ONLINE' or 'OFFLINE' (case-insensitive).
-    Behavior: always delete the most recent prior status bulletin (regardless of
-    its previous state), then send the new bulletin so only one is visible."""
+    Behavior: edit the existing pinned bulletin if found, otherwise create and pin."""
+    global _STATUS_BULLETIN_MSG_ID
+    
     # Respect broadcast toggle (e.g., when debug mode disables broadcasts)
     try:
         if not BROADCAST_STATUS:
@@ -386,38 +391,58 @@ async def _send_watch_command_notice(kind: str):
         logger.warning(f"Status channel ID {STATUS_CHANNEL_ID} not accessible.")
         return
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
-    # Always delete the most recent status bulletin (regardless of prior status)
-    try:
-        async for msg in channel.history(limit=50):
-            try:
-                if getattr(msg.author, "id", None) != getattr(bot.user, "id", None):
-                    continue
-                content = msg.content or ""
-                # Identify our prior bulletin by a concise marker or legacy header
-                if ("V-1 STATUS:" in content) or (
-                    "OPERATION-SCRIBE SERVITOR — STATUS BULLETIN" in content
-                ):
-                    await msg.delete()
-                    break
-            except Exception:
-                continue
-    except Exception as e:
-        logger.debug(f"Failed to delete previous status bulletin: {e}")
-
+    
     emoji = "✅" if status == "ONLINE" else "⛔"
     flavor = (
         "Machine-spirit standing by."
         if status == "ONLINE"
         else "Machine-spirit at rest."
     )
-    # Concise, at-a-glance status with a touch of flavor
-    # Omit explicit timestamp; Discord shows message time in the UI.
     content = f"V-1 STATUS: {status} {emoji}\n{flavor}"
+    
+    # Try to find and edit existing bulletin (from memory or by scanning pinned)
+    existing_msg = None
+    
+    # First check cached ID
+    if _STATUS_BULLETIN_MSG_ID:
+        try:
+            existing_msg = await channel.fetch_message(_STATUS_BULLETIN_MSG_ID)
+        except discord.NotFound:
+            _STATUS_BULLETIN_MSG_ID = None
+        except Exception:
+            pass
+    
+    # If not cached, scan pinned messages for our bulletin
+    if not existing_msg:
+        try:
+            pinned = await channel.pins()
+            for msg in pinned:
+                if getattr(msg.author, "id", None) != getattr(bot.user, "id", None):
+                    continue
+                msg_content = msg.content or ""
+                if "V-1 STATUS:" in msg_content:
+                    existing_msg = msg
+                    _STATUS_BULLETIN_MSG_ID = msg.id
+                    break
+        except Exception as e:
+            logger.debug(f"Failed to scan pinned messages: {e}")
+    
+    # Edit existing or create new
     try:
-        await channel.send(content)
-        logger.info(f"Status notification sent: {status}")
+        if existing_msg:
+            await existing_msg.edit(content=content)
+            logger.info(f"Status bulletin updated: {status}")
+        else:
+            sent_msg = await channel.send(content)
+            _STATUS_BULLETIN_MSG_ID = sent_msg.id
+            # Try to pin
+            try:
+                await sent_msg.pin()
+            except Exception:
+                pass  # Don't fail if we can't pin
+            logger.info(f"Status bulletin posted and pinned: {status}")
     except Exception as e:
-        logger.warning(f"Failed to send status notification: {e}")
+        logger.warning(f"Failed to send/update status notification: {e}")
 
 
 async def _announce_shutdown_and_close():
@@ -2491,21 +2516,37 @@ def _save_machine_spirits(data: dict):
 
 
 async def _get_machine_spirit(user_id: int) -> Optional[str]:
-    """Get the stored machine spirit designation for a user's armor."""
+    """Get the stored machine spirit designation for a user's armor.
+    
+    Handles both old format (string) and new format (dict with designation/bound_ts).
+    Always returns just the designation string for backward compatibility.
+    """
     try:
         async with MACHINE_SPIRITS_LOCK:
             data = _load_machine_spirits()
-            return data.get(str(user_id))
+            entry = data.get(str(user_id))
+            if entry is None:
+                return None
+            # Handle both formats
+            if isinstance(entry, dict):
+                return entry.get("designation")
+            return entry  # Old string format
     except Exception:
         return None
 
 
 async def _set_machine_spirit(user_id: int, spirit: str):
-    """Store the machine spirit designation for a user's armor."""
+    """Store the machine spirit designation for a user's armor.
+    
+    Saves in new format with designation and bound_ts for Forge Chronicle tracking.
+    """
     try:
         async with MACHINE_SPIRITS_LOCK:
             data = _load_machine_spirits()
-            data[str(user_id)] = spirit
+            data[str(user_id)] = {
+                "designation": spirit,
+                "bound_ts": datetime.utcnow().isoformat(),
+            }
             _save_machine_spirits(data)
     except Exception:
         pass
@@ -3929,10 +3970,15 @@ async def _record_rite_in_chronicle(
         if tech_key not in data["techmarine_stats"]:
             data["techmarine_stats"][tech_key] = {
                 "total_rites": 0,
+                "successes": 0,
                 "first_bindings": 0,
                 "rebirths": 0,
             }
         data["techmarine_stats"][tech_key]["total_rites"] += 1
+        # Track successes (anything except resisted)
+        if spirit_event != "resisted":
+            data["techmarine_stats"][tech_key].setdefault("successes", 0)
+            data["techmarine_stats"][tech_key]["successes"] += 1
         if spirit_event == "first_binding":
             data["techmarine_stats"][tech_key]["first_bindings"] += 1
         elif spirit_event == "rebirth":
@@ -9026,6 +9072,25 @@ async def _handle_intensive_scan_requisition(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _format_time_ago(ts: datetime) -> str:
+    """Format a timestamp as a human-readable 'X ago' string."""
+    now = datetime.utcnow()
+    delta = now - ts
+    total_seconds = int(delta.total_seconds())
+    
+    if total_seconds < 60:
+        return "just now"
+    elif total_seconds < 3600:
+        mins = total_seconds // 60
+        return f"{mins}m ago"
+    elif total_seconds < 86400:
+        hours = total_seconds // 3600
+        return f"{hours}h ago"
+    else:
+        days = total_seconds // 86400
+        return f"{days}d ago"
+
+
 async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     """Build the Forge Chronicle dashboard embed with atmospheric stats."""
     # Load chronicle data
@@ -9040,9 +9105,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     available = forge_status["available"]
     max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
     
-    # Count rites this month
+    # Load machine spirits
+    spirits_data = _load_machine_spirits()
+    total_spirits = len(spirits_data)
+    
     now = datetime.utcnow()
     first_of_month = datetime(now.year, now.month, 1)
+    
+    # Get MachineSpirit emoji
+    machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
+    
+    # ─────────────────────────────────────────────────────────────
+    # Section 1: Recent Rites (This Month)
+    # ─────────────────────────────────────────────────────────────
     monthly_rites = []
     for entry in rite_history:
         try:
@@ -9052,53 +9127,114 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         except Exception:
             pass
     
-    # Machine spirit stats from rite history
-    first_bindings_month = sum(1 for r in monthly_rites if r.get("event") == "first_binding")
-    rebirths_month = sum(1 for r in monthly_rites if r.get("event") == "rebirth")
-    total_rites_month = len(monthly_rites)
+    # Sort by timestamp descending (most recent first), take last 5
+    monthly_rites.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    recent_rites = monthly_rites[:5]
     
-    # Load machine spirits for count
-    spirits_data = _load_machine_spirits()
-    total_spirits = len(spirits_data)
+    recent_lines = []
+    event_labels = {
+        "first_binding": "Bound",
+        "rebirth": "Restored",
+        "maintenance": "Maintenance",
+        "resisted": "Resisted",
+    }
+    for entry in recent_rites:
+        event = entry.get("event", "unknown")
+        member_id = entry.get("bearer_id")  # stored as bearer_id in rite history
+        tech_id = entry.get("techmarine_id")
+        ts_str = entry.get("ts", "")
+        
+        # Get member name with rank emoji
+        member_name = "Unknown"
+        if member_id:
+            member_name = _format_member_styled(guild, str(member_id), include_chapter=False)
+        
+        # Get techmarine name with rank emoji
+        tech_name = "Unknown"
+        if tech_id:
+            tech_name = _format_member_styled(guild, str(tech_id), include_chapter=False)
+        
+        # Format time ago
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            time_ago = _format_time_ago(ts)
+        except Exception:
+            time_ago = "?"
+        
+        # Status icon
+        icon = "⚠️" if event == "resisted" else "✅"
+        label = event_labels.get(event, event.title())
+        
+        recent_lines.append(f"  {icon} {member_name} — {label} — {tech_name} ({time_ago})")
     
-    # Get MachineSpirit emoji for the dashboard
-    machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
+    if not recent_lines:
+        recent_lines.append("  *No rites performed this cycle.*")
     
-    # Build forge reserve bar
+    # ─────────────────────────────────────────────────────────────
+    # Section 2: Machine Spirits of the Watch
+    # ─────────────────────────────────────────────────────────────
+    # Filter eldest to only active members (avoid stale "oldest" from inactive players)
+    activity_status = _load_activity_status()
+    
+    eldest_spirit = None
+    newest_spirit = None
+    eldest_date = None
+    newest_date = None
+    
+    for member_id, spirit_info in spirits_data.items():
+        # Handle both old format (string) and new format (dict with bound_ts)
+        if isinstance(spirit_info, str):
+            # Old format: just the designation string, no bound_ts
+            continue
+        bound_ts = spirit_info.get("bound_ts")
+        if bound_ts:
+            try:
+                bound_dt = datetime.fromisoformat(bound_ts)
+                # For eldest: only consider active members
+                member_status = activity_status.get(member_id, {}).get("status")
+                if member_status == "active":
+                    if eldest_date is None or bound_dt < eldest_date:
+                        eldest_date = bound_dt
+                        eldest_spirit = (member_id, spirit_info)
+                # For newest: any member (recent bindings are interesting regardless)
+                if newest_date is None or bound_dt > newest_date:
+                    newest_date = bound_dt
+                    newest_spirit = (member_id, spirit_info)
+            except Exception:
+                pass
+    
+    # Count lost spirits this month (rebirths = spirit was lost and rebound)
+    lost_this_month = sum(1 for r in monthly_rites if r.get("event") == "rebirth")
+    
+    spirit_lines = []
+    if eldest_spirit:
+        member_id, info = eldest_spirit
+        designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
+        member_label = _format_member_styled(guild, member_id, include_chapter=True)
+        age_str = _format_time_ago(eldest_date) if eldest_date else "?"
+        spirit_lines.append(f"  🏛️ Eldest: **{designation}** ({member_label}) — bound {age_str}")
+    
+    if newest_spirit and newest_spirit != eldest_spirit:
+        member_id, info = newest_spirit
+        designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
+        member_label = _format_member_styled(guild, member_id, include_chapter=True)
+        age_str = _format_time_ago(newest_date) if newest_date else "?"
+        spirit_lines.append(f"  ✨ Newest: **{designation}** ({member_label}) — bound {age_str}")
+    
+    spirit_lines.append(f"  Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
+    
+    # ─────────────────────────────────────────────────────────────
+    # Section 3: Forge Reserve
+    # ─────────────────────────────────────────────────────────────
     reserve_pct = (available / max_balance) * 100 if max_balance > 0 else 0
     filled_blocks = int(reserve_pct / 10)
     empty_blocks = 10 - filled_blocks
     reserve_bar = "█" * filled_blocks + "░" * empty_blocks
     
-    # Build embed
-    embed = discord.Embed(
-        title="᛭⋅ FORGE CHRONICLE ⋅᛭",
-        description="*The Forge rests in prepared silence...*",
-        color=0x5D6D7E,  # Steel gray
-    )
-    
-    # Forge Reserve field
-    embed.add_field(
-        name="▸ Forge Reserve",
-        value=f"`[{reserve_bar}]` {reserve_pct:.0f}%\n{available}/{max_balance} armory pts",
-        inline=True,
-    )
-    
-    # This Month field
-    embed.add_field(
-        name="▸ Rites This Cycle",
-        value=f"**{total_rites_month}** total\n{first_bindings_month} bindings • {rebirths_month} rebirths",
-        inline=True,
-    )
-    
-    # Machine Spirits field
-    embed.add_field(
-        name=f"▸ {machine_spirit_emoji} Spirits Bound",
-        value=f"**{total_spirits}** active designations",
-        inline=True,
-    )
-    
-    # Techmarine activity (most active this month)
+    # ─────────────────────────────────────────────────────────────
+    # Section 4: Artificers of the Watch
+    # ─────────────────────────────────────────────────────────────
+    artificer_lines = []
     if techmarine_stats:
         # Sort by total rites descending
         sorted_techs = sorted(
@@ -9107,24 +9243,62 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             reverse=True,
         )[:3]  # Top 3
         
-        tech_lines = []
         for tech_id, stats in sorted_techs:
             total = stats.get("total_rites", 0)
+            successes = stats.get("successes", 0)
             if total > 0:
                 member = guild.get_member(int(tech_id))
                 if member:
-                    name = member.display_name.replace("●", "").replace("⚬", "").strip()
-                    tech_lines.append(f"• {name}: {total} rites")
-        
-        if tech_lines:
-            embed.add_field(
-                name="▸ Forge Keepers",
-                value="\n".join(tech_lines),
-                inline=False,
-            )
+                    # Use styled format with rank emoji
+                    name = _format_member_styled(guild, str(tech_id), include_chapter=False)
+                    success_rate = (successes / total) * 100 if total > 0 else 0
+                    artificer_lines.append(f"  {name}: {total} rites ({success_rate:.0f}% success)")
     
-    # Footer with timestamp
-    embed.set_footer(text=f"᛭⋅ Chronicle updated {now.strftime('%Y-%m-%d %H:%M')} UTC ⋅᛭")
+    # ─────────────────────────────────────────────────────────────
+    # Build the embed description (text format matching design)
+    # ─────────────────────────────────────────────────────────────
+    divider = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Reserve status emoji based on percentage
+    if reserve_pct >= 70:
+        reserve_emoji = "🟢"
+    elif reserve_pct >= 40:
+        reserve_emoji = "🟡"
+    else:
+        reserve_emoji = "🔴"
+    
+    sections = []
+    sections.append(divider)
+    
+    # Recent Rites
+    sections.append("**⚒️ Recent Rites (This Month)**")
+    sections.extend(recent_lines)
+    sections.append("")
+    
+    # Machine Spirits
+    sections.append(f"**{machine_spirit_emoji} Machine Spirits of the Watch**")
+    sections.extend(spirit_lines)
+    sections.append("")
+    
+    # Forge Reserve
+    sections.append("**🏭 Forge Reserve**")
+    sections.append(f"  {reserve_emoji} {reserve_bar} {available:,} / {max_balance:,} pts")
+    sections.append("")
+    
+    # Artificers (only if we have data)
+    if artificer_lines:
+        sections.append("**🛠️ Artificers of the Watch**")
+        sections.extend(artificer_lines)
+        sections.append("")
+    
+    sections.append(divider)
+    sections.append("*The machine spirits await the sacred oils.*")
+    
+    embed = discord.Embed(
+        title=f"{machine_spirit_emoji} FORGE CHRONICLE {machine_spirit_emoji}",
+        description="\n".join(sections),
+        color=0x5D6D7E,  # Steel gray
+    )
     
     return embed
 
@@ -9160,47 +9334,39 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
         await interaction.response.send_message("Channel not found.", ephemeral=True)
         return
     
-    # Check if we have an existing dashboard message to update
-    existing_msg_id = await _get_dashboard_message_id()
+    # Defer immediately since we need to do async work
+    await interaction.response.defer(ephemeral=True)
     
-    # Build the dashboard embed
+    # Delete existing chronicle message if present
+    existing_msg_id = await _get_dashboard_message_id()
+    if existing_msg_id:
+        try:
+            existing_msg = await channel.fetch_message(existing_msg_id)
+            await existing_msg.delete()
+        except discord.NotFound:
+            pass  # Already deleted
+        except Exception as e:
+            logger.debug(f"Failed to delete old chronicle: {e}")
+    
+    # Build and post the new dashboard embed
     embed = await _build_forge_chronicle_embed(guild)
     
     try:
-        if existing_msg_id:
-            # Try to update existing message
-            try:
-                existing_msg = await channel.fetch_message(existing_msg_id)
-                await existing_msg.edit(embed=embed)
-                await interaction.response.send_message(
-                    "Forge Chronicle updated.", ephemeral=True
-                )
-                return
-            except discord.NotFound:
-                # Message was deleted, create new one
-                pass
-        
-        # Create new dashboard message
-        await interaction.response.defer(thinking=False)
         sent_msg = await channel.send(embed=embed)
         await _set_dashboard_message_id(sent_msg.id)
         
-        # Try to pin the message
+        # Pin the message
         try:
             await sent_msg.pin()
-        except Exception:
-            pass  # Don't fail if we can't pin
-        
-        await interaction.followup.send(
-            "Forge Chronicle posted.", ephemeral=True
-        )
+            await interaction.followup.send("Forge Chronicle posted and pinned.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send("Forge Chronicle posted (pinning failed - missing permissions).", ephemeral=True)
+        except Exception as e:
+            logger.debug(f"Pin failed: {e}")
+            await interaction.followup.send("Forge Chronicle posted.", ephemeral=True)
+            
     except Exception as e:
-        try:
-            await interaction.response.send_message(
-                f"Failed to post chronicle: {e}", ephemeral=True
-            )
-        except Exception:
-            pass
+        await interaction.followup.send(f"Failed to post chronicle: {e}", ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
