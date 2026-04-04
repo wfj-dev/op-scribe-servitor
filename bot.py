@@ -261,8 +261,8 @@ CHALLENGE_ROLES = [
     (1450595241508733183, "Crimson Laurels", "CrimsonLaurelsMedal"),
     (1440108298115485716, "Black Laurels", "BlackLaurelsMedal"),
     # Service awards
-    (1436434868652212275, "Centurion of the Fallen", "ApothecarionServiceMedal"),
-    (1436170746283163770, "Ardent Raider", "ArdentRaiderRibbon"),
+    (1436434868652212275, "Apothecarion Service Medal", "ApothecarionServiceMedal"),
+    (1436170746283163770, "Ardent Raider Ribbon", "ArdentRaiderRibbon"),
     # Elite challenges
     (1476288996756820109, "Crux Terminatus", "CruxTerminatusMedal"),
     (1465020459794956349, "White Hand of Death", "ClandestineOperationsMedal"),
@@ -8585,7 +8585,8 @@ async def _handle_intensive_scan_requisition(
     # Consume the points directly from forge pool
     async with FORGE_POOL_LOCK:
         pool_data = _load_forge_pool()
-        pool_data["spent"] = pool_data.get("spent", 0) + INTENSIVE_SCAN_COST
+        max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
+        pool_data["balance"] = pool_data.get("balance", max_balance) - INTENSIVE_SCAN_COST
         _save_forge_pool(pool_data)
     
     # Activate intensive scan for this Techmarine
