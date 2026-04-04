@@ -4362,16 +4362,11 @@ async def _post_armor_alert(
             )
 
     # Build message content with Techmarine ping BEFORE the embed
-    # Only mention the affected brother for sustained alerts (AAR loss), not detection alerts
+    # Only ping techmarine role, not the affected brother
     content = ""
     tech_role_id = _get_techmarine_role_id()
     if tech_role_id:
-        if is_detection:
-            content = f"<@&{tech_role_id}>"
-        else:
-            content = f"<@&{tech_role_id}> {member.mention}"
-    elif not is_detection:
-        content = member.mention
+        content = f"<@&{tech_role_id}>"
 
     logger.debug(
         f"Armor alert for {member.display_name}: tier={tier}, alert_type={alert_type}, "
