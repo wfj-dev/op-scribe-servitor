@@ -9275,7 +9275,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     spirit_lines.append(f"  Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
     
     # ─────────────────────────────────────────────────────────────
-    # Section 3: Watchlist (Top 5 at-risk brothers)
+    # Section 3: Watchlist (5 random brothers with armor)
     # ─────────────────────────────────────────────────────────────
     watchlist_entries = []
     for member in guild.members:
@@ -9287,23 +9287,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
+        # Include any brother with armor record
+        if not state:
+            continue
+            
         damage_tier = state.get("damage_tier")
         spirit_fractured = state.get("spirit_fractured", False)
         points = state.get("points_since_blessing", 0)
         detected = state.get("detected", True)
-        
-        # Calculate risk score (same logic as armor_status)
         risk_score = _calculate_armor_risk_score(damage_tier, points, spirit_fractured)
         
-        # Only include if: damaged/fractured, unreadable, or high points (150+) nominal
-        if spirit_fractured or damage_tier in ("damaged", "compromised", "critical"):
-            watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected))
-        elif not detected:
-            watchlist_entries.append((member, "unreadable", False, points, 100, False))
-        elif points >= 150:  # High points nominal = at risk
-            watchlist_entries.append((member, None, False, points, risk_score, detected))
+        watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected))
     
-    # Randomly select 5 from watchlist (cycles through different brothers each refresh)
+    # Randomly select 5 from all brothers (cycles through different brothers each refresh)
     import random
     if len(watchlist_entries) > 5:
         watchlist_top5 = random.sample(watchlist_entries, 5)
@@ -9316,7 +9312,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
         cooldown_indicator = " ⏳" if not can_receive else ""
         
-        if not detected or tier == "unreadable":
+        if not detected:
             icon = "⚫"
         elif fractured:
             icon = "💀"
@@ -9326,13 +9322,15 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             icon = "🟠"
         elif tier == "damaged":
             icon = "🟡"
+        elif pts >= 150:
+            icon = "⚡"  # At risk (high points approaching damage)
         else:
-            icon = "⚡"  # At risk but nominal (high points)
+            icon = "🟢"  # Nominal
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
         watchlist_lines.append(f"  {icon} {name} · {pts}c{cooldown_indicator}")
     
     if not watchlist_lines:
-        watchlist_lines.append("  *All brothers nominal.*")
+        watchlist_lines.append("  *No armor records found.*")
     
     # ─────────────────────────────────────────────────────────────
     # Section 4: Forge Readiness (Enhanced)
@@ -9434,7 +9432,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         sections.append(f"  Requiring attention: {' '.join(damage_parts)}")
     sections.append("")
     
-    # Watchlist (at-risk brothers)
+    # Watchlist (random brothers)
     if watchlist_top5:
         sections.append("**▸ Watchlist**")
         sections.extend(watchlist_lines)
@@ -9456,8 +9454,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         sections.extend(memorial_lines)
         sections.append("")
     
-    # Forge Readiness
-    sections.append("**▸ Forge Readiness**")
+    # Forge Reserves
+    sections.append("**▸ Forge Reserves**")
     sections.append(f"  {reserve_bar} {available:,} / {max_balance:,} pts")
     sections.append("")
     
