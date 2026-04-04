@@ -8235,6 +8235,10 @@ async def _show_armor_leaderboard(
             )
             continue
 
+        # Check if brother is on blessing cooldown
+        can_receive, _, _, block_reason = await _check_recipient_cooldown(member.id)
+        cooldown_indicator = " ⏳" if not can_receive else ""
+
         # Status icon - predictive warnings get special indicator
         if spirit_fractured:
             icon = "💀"
@@ -8249,11 +8253,11 @@ async def _show_armor_leaderboard(
         else:
             icon = "🟢"
 
-        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c"
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c ⏳"
         # Status indicated by icon only (no text label needed)
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{cooldown_indicator}"
         )
 
     embed.add_field(
@@ -8262,8 +8266,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include unreadable symbol
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Unreadable"
+    # Add legend (compact) - include unreadable symbol and cooldown
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Unreadable ⏳On Cooldown"
     embed.add_field(
         name="▸ Key",
         value=legend,
