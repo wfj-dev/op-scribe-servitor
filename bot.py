@@ -8325,12 +8325,8 @@ async def _attest(
                 pass
     else:
         # ─────────────────────────────────────────────────────────────────────
-        # ROUTINE EVENT: Compact 3-line format, no mention
+        # ROUTINE EVENT: Compact embed format, no mention
         # ─────────────────────────────────────────────────────────────────────
-        # Build compact format:
-        # :rank: Name :chapter:, :MachineSpirit: `SPIRIT-ID`
-        # 🟢 STATUS | Blessed by :rank: Name :chapter:
-        # *"Quote"*
         status_icon, status_text = _get_compact_rite_status(
             blessing_roll_outcome, is_intensive, was_damaged
         )
@@ -8339,15 +8335,20 @@ async def _attest(
         bearer_styled = _format_member_styled(interaction.guild, str(member.id), include_chapter=True)
         attester_styled = _format_member_styled(interaction.guild, str(attestor_member.id), include_chapter=True)
         
-        # Build compact message
-        compact_line1 = f"{bearer_styled}, {machine_spirit_emoji} `{spirit_designation}`"
-        compact_line2 = f"{status_icon} {status_text} | Blessed by {attester_styled}"
-        compact_line3 = f'*"{sacred_phrase}"*'
-        compact_message = f"{compact_line1}\n{compact_line2}\n{compact_line3}"
+        # Build compact embed
+        compact_embed = discord.Embed(
+            title="▸ Maintenance Blessing",
+            color=0x2ECC71 if status_icon == "🟢" else 0xF1C40F,  # Green for maintained, yellow otherwise
+        )
+        compact_embed.description = (
+            f"{bearer_styled}, {machine_spirit_emoji} `{spirit_designation}`\n"
+            f"{status_icon} {status_text} | Blessed by {attester_styled}\n"
+            f'*"{sacred_phrase}"*'
+        )
         
         try:
             await interaction.response.send_message(
-                content=compact_message,
+                embed=compact_embed,
                 allowed_mentions=discord.AllowedMentions.none(),
                 ephemeral=DEBUG_MODE,
             )
