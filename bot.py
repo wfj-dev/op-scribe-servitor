@@ -7933,7 +7933,7 @@ async def _attest(
                 outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
     
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
-    embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
+    embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=False)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
     # Only show for unbound (first) or fractured (reconsecrated) spirits
