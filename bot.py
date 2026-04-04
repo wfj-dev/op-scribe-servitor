@@ -9081,10 +9081,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
 )
 async def _forge_chronicle_cmd(interaction: discord.Interaction):
     """Post or update the Forge Chronicle dashboard in the current channel."""
-    # Permission check: caller must be techmarine or forgemaster
-    allowed, _ = _is_techmarine_or_forgemaster(interaction.user)
-    if not allowed:
+    # Permission check: uses config command_permissions (Forgemaster only)
+    if not check_command_permission(interaction.user, "forge_chronicle"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    
+    # Channel restriction: arming chamber only (config-driven)
+    channel_id = getattr(interaction.channel, "id", None)
+    arming_chamber_id = _get_arming_chamber_channel_id()
+    if channel_id != arming_chamber_id:
+        await interaction.response.send_message(
+            "This command may only be used in the arming chamber.",
+            ephemeral=True,
+        )
         return
     
     guild = interaction.guild
