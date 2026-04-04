@@ -8233,19 +8233,11 @@ async def _attest(
     else:
         spirit_event = "maintenance"
     
-    # Record rite in chronicle for dashboard stats
-    await _record_rite_in_chronicle(
-        bearer_id=int(member.id),
-        techmarine_id=int(attestor_member.id),
-        rite_type="intensive" if is_intensive else "standard",
-        spirit_designation=spirit_designation,
-        spirit_event=spirit_event,
-    )
-    
     # Check for pending alert to reply to
     pending_alert = await _get_pending_alert(int(member.id))
     
     # Build response based on verbosity tier
+    send_succeeded = False
     if is_significant_event:
         # ─────────────────────────────────────────────────────────────────────
         # SIGNIFICANT EVENT: Full embed with @mention
@@ -8257,6 +8249,7 @@ async def _attest(
                 allowed_mentions=discord.AllowedMentions(users=True),
                 ephemeral=DEBUG_MODE,
             )
+            send_succeeded = True
         except Exception:
             try:
                 await interaction.response.send_message(
@@ -8302,6 +8295,7 @@ async def _attest(
                 allowed_mentions=discord.AllowedMentions.none(),
                 ephemeral=DEBUG_MODE,
             )
+            send_succeeded = True
         except Exception:
             try:
                 await interaction.response.send_message(
@@ -8309,6 +8303,16 @@ async def _attest(
                 )
             except Exception:
                 pass
+    
+    # Record rite in chronicle only after a successful send
+    if send_succeeded:
+        await _record_rite_in_chronicle(
+            bearer_id=int(member.id),
+            techmarine_id=int(attestor_member.id),
+            rite_type="intensive" if is_intensive else "standard",
+            spirit_designation=spirit_designation,
+            spirit_event=spirit_event,
+        )
     
     # ─────────────────────────────────────────────────────────────────────────
     # Thread Reply: If there's a pending alert for this brother, reply to it
