@@ -9224,10 +9224,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             tech_name = _format_member_styled(guild, str(tech_id), include_chapter=True)
         
         event_icon = event_emojis.get(event, "❓")
-        recent_lines.append(f"  {event_icon} {member_name} ← {tech_name}")
+        recent_lines.append(f"{event_icon} {member_name} ← {tech_name}")
     
     if not recent_lines:
-        recent_lines.append("  *No rites performed this cycle.*")
+        recent_lines.append("*No rites performed this cycle.*")
     
     # ─────────────────────────────────────────────────────────────
     # Section 2: Machine Spirits of the Watch
@@ -9264,15 +9264,15 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_id, info = eldest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"  Eldest: **{designation}** {member_label}")
+        spirit_lines.append(f"Eldest: **{designation}** {member_label}")
     
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"  Newest: **{designation}** {member_label}")
+        spirit_lines.append(f"Newest: **{designation}** {member_label}")
     
-    spirit_lines.append(f"  Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
+    spirit_lines.append(f"Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
     
     # ─────────────────────────────────────────────────────────────
     # Section 3: Watchlist (5 random brothers with armor)
@@ -9330,10 +9330,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         else:
             icon = "🟢"  # Nominal
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        watchlist_lines.append(f"  {icon} {name} · {pts}c{cooldown_indicator}")
+        watchlist_lines.append(f"{icon} {name} · {pts}c{cooldown_indicator}")
     
     if not watchlist_lines:
-        watchlist_lines.append("  *No armor records found.*")
+        watchlist_lines.append("*No armor records found.*")
     
     # ─────────────────────────────────────────────────────────────
     # Section 4: Forge Readiness (Enhanced)
@@ -9378,7 +9378,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = tech_pool.get("charges", 0)
                     pool_bar = "●" * charges + "○" * (BLESSING_POOL_MAX - charges)
-                    artificer_lines.append(f"  {name}: {total} rites ({success_rate:.0f}%) {pool_bar}")
+                    artificer_lines.append(f"{name}: {total} rites ({success_rate:.0f}%) {pool_bar}")
     
     # ─────────────────────────────────────────────────────────────
     # Section 6: Litany of Endurance (Longest unbroken service)
@@ -9398,7 +9398,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     honor_lines = []
     for member, pts in honor_top3:
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        honor_lines.append(f"  {name} ({pts} cycles)")
+        honor_lines.append(f"{name} ({pts} cycles)")
     
     # ─────────────────────────────────────────────────────────────
     # Section 7: Spirit Memorial (Lost this month)
@@ -9411,19 +9411,24 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if bearer_id:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=False)
             if old_spirit:
-                memorial_lines.append(f"  **{old_spirit}** — {member_label}")
+                memorial_lines.append(f"**{old_spirit}** — {member_label}")
             else:
-                memorial_lines.append(f"  *Spirit lost* — {member_label}")
+                memorial_lines.append(f"*Spirit lost* — {member_label}")
     
     # ─────────────────────────────────────────────────────────────
     # Build the embed description
     # ─────────────────────────────────────────────────────────────
-    sections = []
+    # Build the embed with fields for inline layout
+    # ─────────────────────────────────────────────────────────────
     
-    # Fortress Status (top for visibility)
+    embed = discord.Embed(
+        title=f"{machine_spirit_emoji} FORGE CHRONICLE {machine_spirit_emoji}",
+        color=0x5D6D7E,
+    )
+    
+    # Fortress Status (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
-    sections.append("**▸ Fortress Status**")
-    sections.append(f"  {fortress_icon} **{nominal_pct:.0f}%** Nominal ({nominal_count}/{total_brothers_with_armor})")
+    fortress_text = f"{fortress_icon} **{nominal_pct:.0f}%** Nominal ({nominal_count}/{total_brothers_with_armor})"
     if total_damaged > 0:
         damage_parts = []
         if critical_count > 0 or fractured_count > 0:
@@ -9432,60 +9437,69 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             damage_parts.append(f"🟠{compromised_count}")
         if damaged_count > 0:
             damage_parts.append(f"🟡{damaged_count}")
-        sections.append(f"  Requiring attention: {' '.join(damage_parts)}")
-    sections.append("")
+        fortress_text += f"\nRequiring attention: {' '.join(damage_parts)}"
+    embed.description = fortress_text
     
-    # Watchlist (random brothers)
+    # Watchlist + Recent Rites (inline pair)
     if watchlist_top5:
-        sections.append("**▸ Watchlist**")
-        sections.extend(watchlist_lines)
-        sections.append("")
+        embed.add_field(
+            name="▸ Watchlist",
+            value="\n".join(watchlist_lines),
+            inline=True,
+        )
     
-    # Recent Rites
-    sections.append("**▸ Recent Rites**")
-    sections.extend(recent_lines)
-    sections.append("")
-    
-    # Machine Spirits
-    sections.append(f"**▸ {machine_spirit_emoji} Machine Spirits**")
-    sections.extend(spirit_lines)
-    sections.append("")
-    
-    # Spirit Memorial (if any lost)
-    if memorial_lines:
-        sections.append("**▸ Spirit Memorial**")
-        sections.extend(memorial_lines)
-        sections.append("")
-    
-    # Forge Reserves
-    sections.append("**▸ Forge Reserves**")
-    sections.append(f"  {reserve_bar} {available:,} / {max_balance:,} pts")
-    sections.append("")
-    
-    # Artificers
-    if artificer_lines:
-        sections.append("**▸ Artificers**")
-        sections.extend(artificer_lines)
-        sections.append("")
-    
-    # Litany of Endurance
-    if honor_lines:
-        sections.append("**▸ Litany of Endurance**")
-        sections.extend(honor_lines)
-        sections.append("")
-    
-    # Key
-    sections.append("**▸ Key**")
-    sections.append("  ⛓️Bound 🔄Restored 🔧Maint ⚠️Resisted | 💀🔴🟠🟡⚡🟢⚫ Status")
-    sections.append("")
-    
-    sections.append("*The machine spirits await the sacred oils.*")
-    
-    embed = discord.Embed(
-        title=f"{machine_spirit_emoji} FORGE CHRONICLE {machine_spirit_emoji}",
-        description="\n".join(sections),
-        color=0x5D6D7E,
+    embed.add_field(
+        name="▸ Recent Rites",
+        value="\n".join(recent_lines),
+        inline=True,
     )
+    
+    # Machine Spirits (full width)
+    spirit_text = "\n".join(spirit_lines)
+    embed.add_field(
+        name=f"▸ {machine_spirit_emoji} Machine Spirits",
+        value=spirit_text,
+        inline=False,
+    )
+    
+    # Litany of Endurance (full width)
+    if honor_lines:
+        embed.add_field(
+            name="▸ Litany of Endurance",
+            value="\n".join(honor_lines),
+            inline=False,
+        )
+    
+    # Spirit Memorial (full width, only if exists)
+    if memorial_lines:
+        embed.add_field(
+            name="▸ Spirit Memorial",
+            value="\n".join(memorial_lines),
+            inline=False,
+        )
+    
+    # Forge Reserves + Artificers (inline pair)
+    embed.add_field(
+        name="▸ Forge Reserves",
+        value=f"{reserve_bar} {available:,} / {max_balance:,} pts",
+        inline=True,
+    )
+    
+    if artificer_lines:
+        embed.add_field(
+            name="▸ Artificers",
+            value="\n".join(artificer_lines),
+            inline=True,
+        )
+    
+    # Key (full width - bottom)
+    embed.add_field(
+        name="▸ Key",
+        value="⛓️Bound 🔄Restored 🔧Maint ⚠️Resisted | 💀🔴🟠🟡⚡🟢⚫ Status",
+        inline=False,
+    )
+    
+    embed.set_footer(text="The machine spirits await the sacred oils.")
     
     return embed
 
