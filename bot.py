@@ -8347,7 +8347,10 @@ async def _attest(
                                 f"Blessed by {attester}. {machine_spirit_emoji} Spirit `{spirit_designation}` pacified."
                             )
                         
-                        await alert_msg.reply(content=reply_text)
+                        await alert_msg.reply(
+                            content=reply_text,
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
                         await _clear_pending_alert(int(member.id))
                     except discord.NotFound:
                         # Message was deleted, clear the pending alert
