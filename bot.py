@@ -3916,6 +3916,7 @@ async def _post_armor_alert(
     op_url: Optional[str] = None,
     squad_member_ids: Optional[List[str]] = None,
     alert_type: str = "sustained",
+    penalty_amount: int = 0,
 ):
     """Post an armor damage alert to the arming chamber channel.
     
@@ -3928,7 +3929,8 @@ async def _post_armor_alert(
         op_difficulty_class: Difficulty class (e.g., normal_siege, hard_siege) for planet lookup
         op_url: Jump URL to the AAR message
         squad_member_ids: List of brother IDs on the same op (for debrief)
-        alert_type: "sustained" (damage occurred, guaranteed) or "detected" (early warning)
+        alert_type: "sustained" (penalty applied, AAR loss) or "detected" (early warning)
+        penalty_amount: How many AAR points were lost (for sustained alerts)
     """
     channel_id = _get_arming_chamber_channel_id()
     if not channel_id:
@@ -4005,6 +4007,9 @@ async def _post_armor_alert(
     # Determine embed color, title, and description based on tier and alert_type
     is_detection = alert_type == "detected"
     
+    # Build penalty string for sustained alerts
+    penalty_str = f" (-{penalty_amount} AAR)" if penalty_amount > 0 else ""
+    
     if tier == "fractured":
         color = 0x8B0000  # Dark red
         title = "᛭⋅ MACHINE SPIRIT FRACTURED ⋅᛭"
@@ -4016,8 +4021,8 @@ async def _post_armor_alert(
             description = "*Machine spirit strains — intervention window open*"
         else:
             color = 0xE74C3C  # Red
-            title = "᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭"
-            description = "*Machine spirit instability detected*"
+            title = f"᛭⋅ CRITICAL ARMOR FAILURE ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to machine spirit instability*"
     elif tier == "compromised":
         if is_detection:
             color = 0xF39C12  # Dark orange/amber
@@ -4025,8 +4030,8 @@ async def _post_armor_alert(
             description = "*Structural stress detected — maintenance window open*"
         else:
             color = 0xE67E22  # Orange
-            title = "᛭⋅ ARMOR INTEGRITY COMPROMISED ⋅᛭"
-            description = "*Structural damage sustained*"
+            title = f"᛭⋅ ARMOR INTEGRITY COMPROMISED ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to structural damage*"
     else:  # damaged
         if is_detection:
             color = 0xF1C40F  # Yellow
@@ -4034,8 +4039,8 @@ async def _post_armor_alert(
             description = "*Minor degradation noted — preventive maintenance available*"
         else:
             color = 0xE67E22  # Orange
-            title = "᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭"
-            description = "*Maintenance required*"
+            title = f"᛭⋅ ARMOR INTEGRITY ALERT ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to armor wear*"
 
     embed = discord.Embed(
         title=title,
@@ -4197,6 +4202,7 @@ async def _process_armor_integrity_for_aar(
     op_difficulty_class: Optional[str] = None,
     op_url: Optional[str] = None,
     squad_member_ids: Optional[List[str]] = None,
+    actual_penalty: int = 0,
 ) -> Tuple[int, Optional[dict]]:
     """Process armor integrity for a single brother in an AAR.
 
@@ -4211,11 +4217,12 @@ async def _process_armor_integrity_for_aar(
         op_difficulty_class: Difficulty class (e.g., normal_siege) for planet lookup
         op_url: Jump URL to the AAR message (for debrief in alerts)
         squad_member_ids: List of all brother IDs in this AAR (for debrief in alerts)
+        actual_penalty: The penalty that was actually applied to this AAR (0 = no loss)
 
     Returns:
         Tuple of (penalty_amount, alert_info_or_none)
         alert_info is a dict with member, tier, critical_count, alert_type, and op context if an alert should be posted.
-        alert_type is "sustained" (damage escalated) or "detected" (early warning).
+        alert_type is "sustained" (penalty applied, AAR loss) or "detected" (early warning, no loss yet).
     """
     alert_info = None
     penalty = 0
@@ -4268,22 +4275,25 @@ async def _process_armor_integrity_for_aar(
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
                     state["critical_aar_count"] = 0  # Reset on entering critical
-                # Sustained alert for new damage
-                alert_info = {
-                    "member": member,
-                    "tier": new_tier,
-                    "critical_count": 0,
-                    "alert_type": "sustained",
-                    "op_mission": op_mission,
-                    "op_difficulty_class": op_difficulty_class,
-                    "op_url": op_url,
-                    "squad_member_ids": squad_member_ids,
-                }
-                # Update detection tracking since we're alerting for this tier
-                state["last_detection_alert_tier"] = new_tier
 
-        # If no new damage but already damaged, try detection alert
-        if alert_info is None and effective_tier:
+        # Sustained alert: fires when brother actually lost AAR points (penalty > 0)
+        if actual_penalty > 0 and effective_tier:
+            alert_info = {
+                "member": member,
+                "tier": effective_tier,
+                "critical_count": state.get("critical_aar_count", 0),
+                "alert_type": "sustained",
+                "op_mission": op_mission,
+                "op_difficulty_class": op_difficulty_class,
+                "op_url": op_url,
+                "squad_member_ids": squad_member_ids,
+                "penalty_amount": actual_penalty,
+            }
+            # Update detection tracking since we're alerting for this tier
+            state["last_detection_alert_tier"] = effective_tier
+
+        # Detection alert: fires when damaged but no penalty this AAR (early warning)
+        if alert_info is None and effective_tier and actual_penalty == 0:
             last_detection_tier = state.get("last_detection_alert_tier")
             
             # Tier severity for comparison
@@ -8159,8 +8169,14 @@ async def _show_armor_leaderboard(
         if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
             risk_list.append((member, state, current_tier, risk_score, scan_result))
 
-    # Sort by risk score descending (missed brothers sort based on their actual risk, even if masked)
-    risk_list.sort(key=lambda x: x[3], reverse=True)
+    # Sort by risk score descending, but unreadable (scan missed) go to bottom
+    # Unreadable brothers get -1 risk for sorting since we don't know their actual state
+    def sort_key(entry):
+        member, state, current_tier, risk_score, scan_result = entry
+        if not scan_result["detected"]:
+            return -1  # Unreadable goes to bottom
+        return risk_score
+    risk_list.sort(key=sort_key, reverse=True)
 
     # Take top 10
     top_10 = risk_list[:10]
@@ -8229,7 +8245,7 @@ async def _show_armor_leaderboard(
             icon = "⚫"
             chapter_sep = f"{chapter_str} · " if chapter_str else "· "
             lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}??? · UNREADABLE"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}???"
             )
             continue
 
@@ -8247,17 +8263,11 @@ async def _show_armor_leaderboard(
         else:
             icon = "🟢"
 
-        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c · CRITICAL"
-        # Note: ⚡ icon already indicates AT RISK, no text needed
-        if spirit_fractured:
-            tier_str = " · FRACTURED"
-        elif current_tier:
-            tier_str = f" · {current_tier.upper()}"
-        else:
-            tier_str = ""
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c"
+        # Status indicated by icon only (no text label needed)
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{tier_str}"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
         )
 
     embed.add_field(
@@ -9837,6 +9847,21 @@ async def _run_recheck_errors(
                                 else:
                                     base_points[bid] = base_difficulty_points
 
+                            # Roll penalties for each brother (same logic as _run_ingest_new)
+                            armor_penalties = {}
+                            for bid in brother_ids:
+                                try:
+                                    member = guild.get_member(int(bid))
+                                    if member:
+                                        tier = _get_member_damage_tier(member)
+                                        armor_state = await _get_armor_state(int(bid))
+                                        spirit_fractured = armor_state.get("spirit_fractured", False)
+                                        rolled_penalty = _roll_armor_penalty(tier, spirit_fractured)
+                                        if rolled_penalty > 0:
+                                            armor_penalties[bid] = rolled_penalty
+                                except Exception:
+                                    pass
+
                             # Process armor integrity for each brother
                             op_mission = record.get("mission")
                             op_url = record.get("message_url")
@@ -9844,6 +9869,7 @@ async def _run_recheck_errors(
                             for bid in brother_ids:
                                 try:
                                     bid_base_points = base_points.get(bid, 0)
+                                    bid_actual_penalty = armor_penalties.get(bid, 0)
                                     penalty, alert_info = await _process_armor_integrity_for_aar(
                                         bid,
                                         bid_base_points,
@@ -9853,6 +9879,7 @@ async def _run_recheck_errors(
                                         op_difficulty_class=difficulty_class,
                                         op_url=op_url,
                                         squad_member_ids=brother_ids,
+                                        actual_penalty=bid_actual_penalty,
                                     )
                                     if alert_info:
                                         alerts_to_post.append(alert_info)
@@ -9871,6 +9898,7 @@ async def _run_recheck_errors(
                                         op_url=alert.get("op_url"),
                                         squad_member_ids=alert.get("squad_member_ids"),
                                         alert_type=alert.get("alert_type", "sustained"),
+                                        penalty_amount=alert.get("penalty_amount", 0),
                                     )
                                 except Exception:
                                     pass
@@ -10073,6 +10101,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             for bid in brother_ids:
                 try:
                     bid_base_points = base_points.get(bid, 0)
+                    bid_actual_penalty = armor_penalties.get(bid, 0)
                     penalty, alert_info = await _process_armor_integrity_for_aar(
                         bid,
                         bid_base_points,
@@ -10082,6 +10111,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                         op_difficulty_class=difficulty_class,
                         op_url=op_url,
                         squad_member_ids=brother_ids,
+                        actual_penalty=bid_actual_penalty,
                     )
                     if alert_info:
                         alerts_to_post.append(alert_info)
@@ -10105,6 +10135,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     op_url=alert.get("op_url"),
                     squad_member_ids=alert.get("squad_member_ids"),
                     alert_type=alert.get("alert_type", "sustained"),
+                    penalty_amount=alert.get("penalty_amount", 0),
                 )
             except Exception as e:
                 logger.error(f"Error calling _post_armor_alert: {e}")
