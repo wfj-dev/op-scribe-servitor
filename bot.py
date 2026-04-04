@@ -9159,6 +9159,7 @@ async def _maybe_post_ambient_message():
         return
     
     guild = None
+    channel = None
     for g in bot.guilds:
         channel = g.get_channel(channel_id)
         if channel:
