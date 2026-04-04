@@ -8169,13 +8169,12 @@ async def _show_armor_leaderboard(
         if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
             risk_list.append((member, state, current_tier, risk_score, scan_result))
 
-    # Sort by risk score descending, but unreadable (scan missed) go to bottom
-    # Unreadable brothers get -1 risk for sorting since we don't know their actual state
+    # Sort by risk score descending, but unreadable (scan missed) go to bottom of list
+    # Use tuple key: (is_readable, risk_score) so readable sorts before unreadable
     def sort_key(entry):
         member, state, current_tier, risk_score, scan_result = entry
-        if not scan_result["detected"]:
-            return -1  # Unreadable goes to bottom
-        return risk_score
+        is_readable = 1 if scan_result["detected"] else 0
+        return (is_readable, risk_score)
     risk_list.sort(key=sort_key, reverse=True)
 
     # Take top 10
