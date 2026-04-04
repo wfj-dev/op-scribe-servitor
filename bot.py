@@ -381,11 +381,6 @@ async def _send_watch_command_notice(kind: str):
     if not channel:
         logger.warning(f"Status channel ID {STATUS_CHANNEL_ID} not accessible.")
         return
-    try:
-        role = discord.utils.get(guild.roles, name="Watch Brother")
-    except Exception:
-        role = None
-    mention = f"<@&{role.id}>" if role else "@Watch Brother"
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
     # Always delete the most recent status bulletin (regardless of prior status)
     try:
@@ -413,11 +408,9 @@ async def _send_watch_command_notice(kind: str):
     )
     # Concise, at-a-glance status with a touch of flavor
     # Omit explicit timestamp; Discord shows message time in the UI.
-    content = f"{mention} V-1 STATUS: {status} {emoji}\n{flavor}"
+    content = f"V-1 STATUS: {status} {emoji}\n{flavor}"
     try:
-        await channel.send(
-            content, allowed_mentions=discord.AllowedMentions(roles=True)
-        )
+        await channel.send(content)
         logger.info(f"Status notification sent: {status}")
     except Exception as e:
         logger.warning(f"Failed to send status notification: {e}")
@@ -8169,19 +8162,18 @@ async def _show_armor_leaderboard(
         if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
             risk_list.append((member, state, current_tier, risk_score, scan_result))
 
-    # Sort by risk score descending, but unreadable (scan missed) go to bottom of list
-    # Readable brothers sort by risk score; unreadable brothers get randomized at bottom
-    import random
-    def sort_key(entry):
-        member, state, current_tier, risk_score, scan_result = entry
-        if scan_result["detected"]:
-            return (1, risk_score, 0)  # Readable: sort by risk score
-        else:
-            return (0, 0, random.random())  # Unreadable: random order at bottom
-    risk_list.sort(key=sort_key, reverse=True)
+    # Sort by risk score descending to get the highest-risk brothers
+    risk_list.sort(key=lambda x: x[3], reverse=True)
 
     # Take top 10
     top_10 = risk_list[:10]
+    
+    # Within top 10, move unreadable brothers to the bottom in random order
+    import random
+    readable = [e for e in top_10 if e[4]["detected"]]
+    unreadable = [e for e in top_10 if not e[4]["detected"]]
+    random.shuffle(unreadable)
+    top_10 = readable + unreadable
 
     # Build description based on company filter
     if company_filter:
