@@ -4207,9 +4207,9 @@ async def _post_armor_alert(
     # Machine spirit
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
     if machine_spirit:
-        bearer_display += f"\n{machine_spirit_emoji} Spirit: `{machine_spirit}`"
+        bearer_display += f"\n{machine_spirit_emoji} `{machine_spirit}`"
     else:
-        bearer_display += f"\n{machine_spirit_emoji} Spirit: *UNBOUND*"
+        bearer_display += f"\n{machine_spirit_emoji} *UNBOUND*"
 
     # Determine embed color, title, and description based on tier and alert_type
     is_detection = alert_type == "detected"
@@ -8206,7 +8206,7 @@ async def _attest(
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
     
     status_value = (
-        f"{machine_spirit_emoji} Spirit: `{spirit_designation}`\n"
+        f"{machine_spirit_emoji} `{spirit_designation}`\n"
         f"*{spirit_status_text}*\n"
         f"{plate_emoji} Plate: {plate_status}\n"
         f"{spirit_emoji} Spirit: {spirit_status}\n"
@@ -8378,16 +8378,20 @@ async def _attest(
         # ROUTINE EVENT: Compact 3-line format, no mention
         # ─────────────────────────────────────────────────────────────────────
         # Build compact format:
-        # ⚙️ Name • SPIRIT-ID
-        # 🟢 STATUS | Restored by Techmarine
+        # :rank: Name :chapter:, :MachineSpirit: `SPIRIT-ID`
+        # 🟢 STATUS | Blessed by :rank: Name :chapter:
         # *"Quote"*
         status_icon, status_text = _get_compact_rite_status(
             blessing_roll_outcome, is_intensive, was_damaged
         )
         
+        # Build styled names with rank + chapter
+        bearer_styled = _format_member_styled(interaction.guild, str(member.id), include_chapter=True)
+        attester_styled = _format_member_styled(interaction.guild, str(attestor_member.id), include_chapter=True)
+        
         # Build compact message
-        compact_line1 = f"{machine_spirit_emoji} **{bearer_name}** • `{spirit_designation}`"
-        compact_line2 = f"{status_icon} {status_text} | {attester}"
+        compact_line1 = f"{bearer_styled}, {machine_spirit_emoji} `{spirit_designation}`"
+        compact_line2 = f"{status_icon} {status_text} | Blessed by {attester_styled}"
         compact_line3 = f'*"{sacred_phrase}"*'
         compact_message = f"{compact_line1}\n{compact_line2}\n{compact_line3}"
         
@@ -9132,40 +9136,33 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     recent_rites = monthly_rites[:5]
     
     recent_lines = []
-    event_labels = {
-        "first_binding": "Bound",
-        "rebirth": "Restored",
-        "maintenance": "Maintenance",
-        "resisted": "Resisted",
+    # Event-specific emojis for rite outcomes
+    event_emojis = {
+        "first_binding": "⚡",  # New spirit bound
+        "rebirth": "🔄",       # Spirit reborn after fracture
+        "maintenance": "🔧",   # Routine maintenance
+        "resisted": "⚠️",       # Rite failed
     }
     for entry in recent_rites:
         event = entry.get("event", "unknown")
         member_id = entry.get("bearer_id")  # stored as bearer_id in rite history
         tech_id = entry.get("techmarine_id")
-        ts_str = entry.get("ts", "")
         
-        # Get member name with rank emoji
+        # Get member name with rank emoji and chapter
         member_name = "Unknown"
         if member_id:
-            member_name = _format_member_styled(guild, str(member_id), include_chapter=False)
+            member_name = _format_member_styled(guild, str(member_id), include_chapter=True)
         
-        # Get techmarine name with rank emoji
+        # Get techmarine name with rank emoji and chapter
         tech_name = "Unknown"
         if tech_id:
-            tech_name = _format_member_styled(guild, str(tech_id), include_chapter=False)
+            tech_name = _format_member_styled(guild, str(tech_id), include_chapter=True)
         
-        # Format time ago
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            time_ago = _format_time_ago(ts)
-        except Exception:
-            time_ago = "?"
+        # Event emoji for result column
+        event_icon = event_emojis.get(event, "❓")
         
-        # Status icon
-        icon = "⚠️" if event == "resisted" else "✅"
-        label = event_labels.get(event, event.title())
-        
-        recent_lines.append(f"  {icon} {member_name} — {label} — {tech_name} ({time_ago})")
+        # Format as columns: bearer | emoji | techmarine
+        recent_lines.append(f"  {member_name} ┃ {event_icon} ┃ {tech_name}")
     
     if not recent_lines:
         recent_lines.append("  *No rites performed this cycle.*")
@@ -9211,15 +9208,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_id, info = eldest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        age_str = _format_time_ago(eldest_date) if eldest_date else "?"
-        spirit_lines.append(f"  🏛️ Eldest: **{designation}** ({member_label}) — bound {age_str}")
+        spirit_lines.append(f"  Eldest: **{designation}** {member_label}")
     
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        age_str = _format_time_ago(newest_date) if newest_date else "?"
-        spirit_lines.append(f"  ✨ Newest: **{designation}** ({member_label}) — bound {age_str}")
+        spirit_lines.append(f"  Newest: **{designation}** ({member_label})")
     
     spirit_lines.append(f"  Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
     
@@ -9268,36 +9263,39 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         reserve_emoji = "🔴"
     
     sections = []
-    sections.append(divider)
     
     # Recent Rites
-    sections.append("**⚒️ Recent Rites (This Month)**")
+    sections.append("**▸ Recent Rites (This Month)**")
     sections.extend(recent_lines)
     sections.append("")
     
     # Machine Spirits
-    sections.append(f"**{machine_spirit_emoji} Machine Spirits of the Watch**")
+    sections.append(f"**▸ {machine_spirit_emoji} Machine Spirits of the Watch**")
     sections.extend(spirit_lines)
     sections.append("")
     
     # Forge Reserve
-    sections.append("**🏭 Forge Reserve**")
-    sections.append(f"  {reserve_emoji} {reserve_bar} {available:,} / {max_balance:,} pts")
+    sections.append("**▸ Forge Reserve**")
+    sections.append(f"  {reserve_bar} {available:,} / {max_balance:,} pts")
     sections.append("")
     
     # Artificers (only if we have data)
     if artificer_lines:
-        sections.append("**🛠️ Artificers of the Watch**")
+        sections.append("**▸ 🛠️ Artificers of the Watch**")
         sections.extend(artificer_lines)
         sections.append("")
     
-    sections.append(divider)
+    # Key for rite outcomes
+    sections.append("**▸ Key**")
+    sections.append("  ⚡ Bound ┃ 🔄 Restored ┃ 🔧 Maintenance ┃ ⚠️ Resisted")
+    sections.append("")
+    
     sections.append("*The machine spirits await the sacred oils.*")
     
     embed = discord.Embed(
         title=f"{machine_spirit_emoji} FORGE CHRONICLE {machine_spirit_emoji}",
         description="\n".join(sections),
-        color=0x5D6D7E,  # Steel gray
+        color=0x5D6D7E,  # mechanicus red
     )
     
     return embed
@@ -9309,16 +9307,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
 )
 async def _forge_chronicle_cmd(interaction: discord.Interaction):
     """Post or update the Forge Chronicle dashboard in the current channel."""
+    # Defer immediately to avoid 3-second timeout
+    await interaction.response.defer(ephemeral=True)
+    
     # Permission check: uses config command_permissions (Forgemaster only)
     if not check_command_permission(interaction.user, "forge_chronicle"):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
+        await interaction.followup.send("Access denied.", ephemeral=True)
         return
     
     # Channel restriction: arming chamber only (config-driven)
     channel_id = getattr(interaction.channel, "id", None)
     arming_chamber_id = _get_arming_chamber_channel_id()
     if channel_id != arming_chamber_id:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "This command may only be used in the arming chamber.",
             ephemeral=True,
         )
@@ -9326,31 +9327,31 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
     
     guild = interaction.guild
     if not guild:
-        await interaction.response.send_message("Guild not found.", ephemeral=True)
+        await interaction.followup.send("Guild not found.", ephemeral=True)
         return
     
     channel = interaction.channel
     if not channel:
-        await interaction.response.send_message("Channel not found.", ephemeral=True)
+        await interaction.followup.send("Channel not found.", ephemeral=True)
         return
     
-    # Defer immediately since we need to do async work
-    await interaction.response.defer(ephemeral=True)
+    # Build the new dashboard embed
+    embed = await _build_forge_chronicle_embed(guild)
     
-    # Delete existing chronicle message if present
+    # Try to edit existing chronicle message in place
     existing_msg_id = await _get_dashboard_message_id()
     if existing_msg_id:
         try:
             existing_msg = await channel.fetch_message(existing_msg_id)
-            await existing_msg.delete()
+            await existing_msg.edit(embed=embed)
+            await interaction.followup.send("Forge Chronicle updated.", ephemeral=True)
+            return
         except discord.NotFound:
-            pass  # Already deleted
+            pass  # Message was deleted, create new one
         except Exception as e:
-            logger.debug(f"Failed to delete old chronicle: {e}")
+            logger.debug(f"Failed to edit chronicle: {e}")
     
-    # Build and post the new dashboard embed
-    embed = await _build_forge_chronicle_embed(guild)
-    
+    # Create new message if no existing one found
     try:
         sent_msg = await channel.send(embed=embed)
         await _set_dashboard_message_id(sent_msg.id)
@@ -9588,9 +9589,9 @@ async def _preview_armor_alert(
     # Machine spirit
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
     if machine_spirit:
-        bearer_display += f"\n{machine_spirit_emoji} Spirit: `{machine_spirit}`"
+        bearer_display += f"\n{machine_spirit_emoji} `{machine_spirit}`"
     else:
-        bearer_display += f"\n{machine_spirit_emoji} Spirit: *UNBOUND*"
+        bearer_display += f"\n{machine_spirit_emoji} *UNBOUND*"
 
     # Determine embed color and title based on tier
     if tier == "critical":
@@ -12981,11 +12982,11 @@ async def tally_deeds(
                         machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
                         
                         if spirit_fractured:
-                            spirit_display = f"{machine_spirit_emoji} Spirit: SEVERED"
+                            spirit_display = f"{machine_spirit_emoji} SEVERED"
                         elif machine_spirit:
-                            spirit_display = f"{machine_spirit_emoji} Spirit: `{machine_spirit}` ({spirit_status})"
+                            spirit_display = f"{machine_spirit_emoji} `{machine_spirit}` ({spirit_status})"
                         else:
-                            spirit_display = f"{machine_spirit_emoji} Spirit: *UNBOUND*"
+                            spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
 
                         armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
                         # Show penalty risk (probabilistic) and cycles
@@ -13849,11 +13850,11 @@ async def my_deeds(interaction: discord.Interaction):
             machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
             
             if spirit_fractured:
-                spirit_display = f"{machine_spirit_emoji} Spirit: SEVERED"
+                spirit_display = f"{machine_spirit_emoji} SEVERED"
             elif machine_spirit:
-                spirit_display = f"{machine_spirit_emoji} Spirit: `{machine_spirit}` ({spirit_status})"
+                spirit_display = f"{machine_spirit_emoji} `{machine_spirit}` ({spirit_status})"
             else:
-                spirit_display = f"{machine_spirit_emoji} Spirit: *UNBOUND*"
+                spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
 
             armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
             # Show penalty risk (probabilistic) and cycles
