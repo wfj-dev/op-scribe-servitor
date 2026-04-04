@@ -3775,13 +3775,22 @@ def _format_cooldown_time(td: timedelta) -> str:
 
 def _load_forge_pool() -> dict:
     """Load forge requisition pool data from disk."""
+    max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
+    default = {"balance": max_balance, "daily_usage": {}}
     try:
         if not os.path.exists(FORGE_POOL_PATH):
-            return {"total_spent": 0, "daily_usage": {}}
+            return default
         with open(FORGE_POOL_PATH, "r", encoding="utf-8") as f:
-            return json.load(f) or {"total_spent": 0, "daily_usage": {}}
+            data = json.load(f) or {}
+        # Migration: if old format (total_spent) exists, convert to balance
+        if "balance" not in data and "total_spent" in data:
+            # Start at max, already spent some
+            data["balance"] = max(0, max_balance - data.get("total_spent", 0))
+        elif "balance" not in data:
+            data["balance"] = max_balance
+        return data
     except Exception:
-        return {"total_spent": 0, "daily_usage": {}}
+        return default
 
 
 def _save_forge_pool(data: dict):
@@ -3794,33 +3803,23 @@ def _save_forge_pool(data: dict):
         pass
 
 
-def _compute_total_armory_points() -> int:
-    """Compute total armory_points from all AAR records."""
-    try:
-        if DATASTORE:
-            records = DATASTORE._records
-        else:
-            if not os.path.exists(AAR_RECORDS_PATH):
-                return 0
-            with open(AAR_RECORDS_PATH, "r", encoding="utf-8") as f:
-                records = json.load(f) or {}
-        
-        total = 0
-        for rec in records.values():
-            pts = rec.get("armory_challenge_points", 0) or 0
-            total += pts
-        return total
-    except Exception:
-        return 0
+async def _increment_forge_pool_balance(points: int):
+    """Add armory points to the forge pool balance (capped at max)."""
+    if points <= 0:
+        return
+    max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
+    async with FORGE_POOL_LOCK:
+        pool_data = _load_forge_pool()
+        current = pool_data.get("balance", max_balance)
+        pool_data["balance"] = min(current + points, max_balance)
+        _save_forge_pool(pool_data)
 
 
 async def _get_forge_pool_available() -> int:
     """Get the number of armory points available in the community forge pool."""
     async with FORGE_POOL_LOCK:
-        total_armory = _compute_total_armory_points()
         pool_data = _load_forge_pool()
-        total_spent = pool_data.get("total_spent", 0)
-        return max(0, total_armory - total_spent)
+        return pool_data.get("balance", FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE)
 
 
 async def _get_techmarine_daily_requisitions(user_id: int) -> int:
@@ -3843,6 +3842,7 @@ async def _consume_forge_requisition(user_id: int) -> Tuple[bool, str]:
     
     Returns (success, message).
     """
+    max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
     async with FORGE_POOL_LOCK:
         # Check daily limit
         pool_data = _load_forge_pool()
@@ -3858,41 +3858,33 @@ async def _consume_forge_requisition(user_id: int) -> Tuple[bool, str]:
         if user_data.get("count", 0) >= FORGE_POOL_DAILY_LIMIT:
             return False, f"Daily requisition limit reached ({FORGE_POOL_DAILY_LIMIT} per day)."
         
-        # Check pool availability
-        total_armory = _compute_total_armory_points()
-        total_spent = pool_data.get("total_spent", 0)
-        available = total_armory - total_spent
+        # Check pool availability (balance-based)
+        balance = pool_data.get("balance", max_balance)
         
-        if available < FORGE_POOL_COST_PER_CHARGE:
-            return False, f"Insufficient forge supplies ({available}/{FORGE_POOL_COST_PER_CHARGE} armory points available)."
+        if balance < FORGE_POOL_COST_PER_CHARGE:
+            return False, f"Insufficient forge supplies ({balance}/{FORGE_POOL_COST_PER_CHARGE} armory points available)."
         
-        # Consume
-        pool_data["total_spent"] = total_spent + FORGE_POOL_COST_PER_CHARGE
+        # Consume from balance
+        pool_data["balance"] = balance - FORGE_POOL_COST_PER_CHARGE
         user_data["count"] = user_data.get("count", 0) + 1
         daily_usage[str(user_id)] = user_data
         pool_data["daily_usage"] = daily_usage
         
         _save_forge_pool(pool_data)
         
-        remaining = total_armory - pool_data["total_spent"]
-        return True, f"Requisition approved. Forge pool: {remaining} armory points remaining."
+        return True, f"Requisition approved. Forge pool: {pool_data['balance']} armory points remaining."
 
 
 async def _get_forge_pool_status() -> dict:
     """Get full forge pool status for display."""
+    max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
     async with FORGE_POOL_LOCK:
-        total_armory = _compute_total_armory_points()
         pool_data = _load_forge_pool()
-        total_spent = pool_data.get("total_spent", 0)
-        available = max(0, total_armory - total_spent)
-        charges_available = min(available // FORGE_POOL_COST_PER_CHARGE, FORGE_POOL_MAX_CHARGES)
-        # Cap displayed points to max charges worth
-        available_capped = min(available, FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE)
+        balance = pool_data.get("balance", max_balance)
+        charges_available = balance // FORGE_POOL_COST_PER_CHARGE
         
         return {
-            "total_armory": total_armory,
-            "total_spent": total_spent,
-            "available": available_capped,
+            "available": balance,
             "charges_available": charges_available,
             "cost_per_charge": FORGE_POOL_COST_PER_CHARGE,
             "max_charges": FORGE_POOL_MAX_CHARGES,
@@ -14527,6 +14519,10 @@ async def save_aar_record(record: dict):
     key = str(record["aar_id"])
     await DATASTORE.set_record(key, record)
     await DATASTORE.add_processed_id(key)
+    # Add armory points to the community forge pool
+    armory_pts = record.get("armory_challenge_points", 0) or 0
+    if armory_pts > 0:
+        await _increment_forge_pool_balance(armory_pts)
 
 
 # Use DataStore for processed IDs
