@@ -9304,7 +9304,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if len(watchlist_entries) > 5:
         watchlist_top5 = random.sample(watchlist_entries, 5)
     else:
-        watchlist_top5 = watchlist_entries
+        watchlist_top5 = list(watchlist_entries)
+    
+    # Sort by risk score descending (most critical first)
+    watchlist_top5.sort(key=lambda x: x[4], reverse=True)
     
     watchlist_lines = []
     for member, tier, fractured, pts, score, detected in watchlist_top5:
