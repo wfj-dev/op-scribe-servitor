@@ -9350,9 +9350,18 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     artificer_lines = []
     if techmarine_stats:
+        # Sort by: charges (desc), success rate (desc), total rites (desc)
+        def artificer_sort_key(item):
+            tech_id, stats = item
+            total = stats.get("total_rites", 0)
+            successes = stats.get("successes", 0)
+            success_rate = (successes / total) * 100 if total > 0 else 0
+            charges = blessing_pool_data.get(str(tech_id), {}).get("charges", 0)
+            return (charges, success_rate, total)
+        
         sorted_techs = sorted(
             techmarine_stats.items(),
-            key=lambda x: x[1].get("total_rites", 0),
+            key=artificer_sort_key,
             reverse=True,
         )[:3]
         
