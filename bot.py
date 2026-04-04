@@ -381,11 +381,6 @@ async def _send_watch_command_notice(kind: str):
     if not channel:
         logger.warning(f"Status channel ID {STATUS_CHANNEL_ID} not accessible.")
         return
-    try:
-        role = discord.utils.get(guild.roles, name="Watch Brother")
-    except Exception:
-        role = None
-    mention = f"<@&{role.id}>" if role else "@Watch Brother"
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
     # Always delete the most recent status bulletin (regardless of prior status)
     try:
@@ -413,11 +408,9 @@ async def _send_watch_command_notice(kind: str):
     )
     # Concise, at-a-glance status with a touch of flavor
     # Omit explicit timestamp; Discord shows message time in the UI.
-    content = f"{mention} V-1 STATUS: {status} {emoji}\n{flavor}"
+    content = f"V-1 STATUS: {status} {emoji}\n{flavor}"
     try:
-        await channel.send(
-            content, allowed_mentions=discord.AllowedMentions(roles=True)
-        )
+        await channel.send(content)
         logger.info(f"Status notification sent: {status}")
     except Exception as e:
         logger.warning(f"Failed to send status notification: {e}")
@@ -8221,6 +8214,17 @@ async def _show_armor_leaderboard(
         if len(bearer_name) > 18:
             bearer_name = bearer_name[:16] + "…"
 
+        # Get rank emoji
+        bearer_rank_name = None
+        for rank, hon in RANK_HONORIFICS.items():
+            if hon == bearer_honorific or rank in bearer_honorific:
+                bearer_rank_name = rank
+                break
+        if not bearer_rank_name:
+            bearer_rank_name = "Watch Brother"
+        rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+        rank_str = f"{rank_emoji} " if rank_emoji else ""
+
         # Get home chapter emoji
         bearer_chapter = _get_bearer_home_chapter(member)
         chapter_emoji = (
@@ -8235,7 +8239,7 @@ async def _show_armor_leaderboard(
             icon = "⚫"
             chapter_sep = f"{chapter_str} · " if chapter_str else "· "
             lines.append(
-                f"`{i:>2}.` {icon} {bearer_name} {chapter_sep}???"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}???"
             )
             continue
 
@@ -8253,11 +8257,11 @@ async def _show_armor_leaderboard(
         else:
             icon = "🟢"
 
-        # Format compact line: "1. 🔴 Name :chapter: · 275c"
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c"
         # Status indicated by icon only (no text label needed)
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         lines.append(
-            f"`{i:>2}.` {icon} {bearer_name} {chapter_sep}{points}c"
+            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
         )
 
     embed.add_field(
