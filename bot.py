@@ -8267,15 +8267,15 @@ async def _show_armor_leaderboard(
     embed.add_field(
         name="▸ Brothers at Risk",
         value="\n".join(lines),
-        inline=True,
+        inline=False,
     )
 
     # Add legend (compact) - include unreadable symbol
-    legend = "💀Fractured 🔴Critical\n🟠Compromised 🟡Damaged\n⚡At Risk 🟢Nominal\n⚫Unreadable"
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Unreadable"
     embed.add_field(
         name="▸ Key",
         value=legend,
-        inline=True,
+        inline=False,
     )
 
     # Add invoker's blessing pool status
