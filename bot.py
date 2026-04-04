@@ -7941,7 +7941,7 @@ async def _attest(
                 outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
     
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
-    embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=False)
+    embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
     # Only show for unbound (first) or fractured (reconsecrated) spirits
@@ -8019,7 +8019,7 @@ async def _attest(
         tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
         attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
     
-    embed.add_field(name=attestation_field_name, value=tech_value, inline=False)
+    embed.add_field(name=attestation_field_name, value=tech_value, inline=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Send embed (no toggle view needed)
