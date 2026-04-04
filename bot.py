@@ -8170,11 +8170,14 @@ async def _show_armor_leaderboard(
             risk_list.append((member, state, current_tier, risk_score, scan_result))
 
     # Sort by risk score descending, but unreadable (scan missed) go to bottom of list
-    # Use tuple key: (is_readable, risk_score) so readable sorts before unreadable
+    # Readable brothers sort by risk score; unreadable brothers get randomized at bottom
+    import random
     def sort_key(entry):
         member, state, current_tier, risk_score, scan_result = entry
-        is_readable = 1 if scan_result["detected"] else 0
-        return (is_readable, risk_score)
+        if scan_result["detected"]:
+            return (1, risk_score, 0)  # Readable: sort by risk score
+        else:
+            return (0, 0, random.random())  # Unreadable: random order at bottom
     risk_list.sort(key=sort_key, reverse=True)
 
     # Take top 10
