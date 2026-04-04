@@ -2635,12 +2635,12 @@ ARMOR_STATUS_COMPROMISED = {
     "rite": "EMERGENCY RITES",
 }
 ARMOR_STATUS_CRITICAL = {
-    "plate": "CRITICAL FAILURE",
+    "plate": "CRIT FAIL",
     "spirit": "UNSTABLE",
     "rite": "STABILIZATION",
 }
 ARMOR_STATUS_FRACTURED = {
-    "plate": "CRITICAL FAILURE",
+    "plate": "CRIT FAIL",
     "spirit": "FRACTURED",
     "rite": "RE-CONSECRATION",
 }
@@ -8299,7 +8299,7 @@ async def _show_armor_leaderboard(
         embed.add_field(
             name="▸ Forge Reserves",
             value=(
-                f"**{forge_available:,}** pts │ {forge_charges} charges │ {intensive_scans_available} intensive scans\n"
+                f"**{forge_available:,}** pts │ {forge_charges} charges │ {intensive_scans_available} scans\n"
                 f"`/requisition_supplies`"
             ),
             inline=True,
