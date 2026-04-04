@@ -109,6 +109,11 @@
         "Watch Techmarine",
         "Forgemaster"
       ]
+    },
+    "forge_chronicle": {
+      "roles": [
+        "Forgemaster"
+      ]
     }
   },
   "companies": {
