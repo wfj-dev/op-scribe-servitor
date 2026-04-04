@@ -2599,12 +2599,13 @@ ARMOR_DETECTION_CHANCES = {
     "fractured": 1.0,     # 100% - always alert
 }
 
-# Scan miss chances for armor_status command (damaged brothers may not show)
-# Higher tiers are harder to miss (more obvious damage)
+# Scan miss chances for armor_status command (brothers may not show)
+# Flat 20% unreadable chance across all tiers except fractured
 ARMOR_SCAN_MISS_CHANCES = {
-    "damaged": 0.30,      # 30% chance to miss
-    "compromised": 0.15,  # 15% chance to miss
-    "critical": 0.05,     # 5% chance to miss
+    "nominal": 0.20,      # 20% chance to miss
+    "damaged": 0.20,      # 20% chance to miss
+    "compromised": 0.20,  # 20% chance to miss
+    "critical": 0.20,     # 20% chance to miss
     "fractured": 0.0,     # 0% - always visible
 }
 
@@ -2938,7 +2939,16 @@ def _roll_scan_result(
         # Detected
         return {"detected": True, "predictive_warning": False, "miss_reason": None}
     
-    # Nominal brother - check for predictive warning
+    # Nominal brother - first roll for miss chance
+    nominal_miss_chance = ARMOR_SCAN_MISS_CHANCES.get("nominal", 0.20)
+    if random.random() < nominal_miss_chance:
+        return {
+            "detected": False,
+            "predictive_warning": False,
+            "miss_reason": "spirit_uncommunicative",
+        }
+    
+    # Nominal brother detected - check for predictive warning
     for tier_info in ARMOR_SCAN_PREDICTIVE_TIERS:
         min_pts = tier_info["min"]
         max_pts = tier_info["max"]
