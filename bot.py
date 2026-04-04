@@ -3906,31 +3906,18 @@ def _save_forge_chronicle(data: dict):
 
 
 async def _store_pending_alert(user_id: int, message_id: int, channel_id: int):
-    """Store a pending armor alert for thread reply tracking."""
-    async with FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
-        data["pending_alerts"][str(user_id)] = {
-            "message_id": message_id,
-            "channel_id": channel_id,
-            "ts": datetime.utcnow().isoformat(),
-        }
-        _save_forge_chronicle(data)
+    """Store a pending armor alert for thread reply tracking. (UNUSED - kept for schema compat)"""
+    pass
 
 
 async def _get_pending_alert(user_id: int) -> Optional[dict]:
-    """Get pending alert info for a user (if any)."""
-    async with FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
-        return data.get("pending_alerts", {}).get(str(user_id))
+    """Get pending alert info for a user (if any). (UNUSED - kept for schema compat)"""
+    return None
 
 
 async def _clear_pending_alert(user_id: int):
-    """Clear a pending alert after responding with a forge_rite thread."""
-    async with FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
-        if str(user_id) in data.get("pending_alerts", {}):
-            del data["pending_alerts"][str(user_id)]
-            _save_forge_chronicle(data)
+    """Clear a pending alert. (UNUSED - kept for schema compat)"""
+    pass
 
 
 async def _record_rite_in_chronicle(
@@ -4395,17 +4382,6 @@ async def _post_armor_alert(
             )
         else:
             logger.info(f"Posted armor alert for {member.display_name} (tier={tier}, type={alert_type})")
-        
-        # Store pending alert for thread reply tracking
-        # This allows forge_rite to reply to this alert when repairing this brother
-        try:
-            await _store_pending_alert(
-                user_id=int(member.id),
-                message_id=sent_msg.id,
-                channel_id=channel.id,
-            )
-        except Exception:
-            pass  # Non-critical, don't block on storage failure
     except Exception as e:
         logger.error(f"Failed to post armor alert for {member.display_name}: {e}")
 
@@ -4649,38 +4625,6 @@ def _get_compact_rite_status(
         return "🟢", "REPAIRED"
     else:
         return "🟢", "MAINTAINED"
-
-
-def _get_thread_reply_text(
-    spirit_is_reconsecrated: bool,
-    blessing_roll_outcome: str,
-    attester: str,
-    machine_spirit_emoji: str,
-    spirit_designation: str,
-) -> str:
-    """Build the reply text for the original armor-alert thread.
-
-    Returns the appropriate reply based on the rite outcome:
-    - Reconsecrated spirit → Spirit Reborn message
-    - Critical failure → Rite Resisted message
-    - Otherwise → Armor Restored message
-    """
-    if spirit_is_reconsecrated:
-        return (
-            f"✨ **Spirit Reborn**\n"
-            f"The machine spirit has been re-consecrated by {attester}.\n"
-            f"{machine_spirit_emoji} New designation: `{spirit_designation}`"
-        )
-    elif blessing_roll_outcome == "crit_fail":
-        return (
-            "⚠️ **Rite Resisted**\n"
-            "The machine spirit rejected the sacred oils. Damage persists."
-        )
-    else:
-        return (
-            f"🟢 **Armor Restored**\n"
-            f"Blessed by {attester}. {machine_spirit_emoji} Spirit `{spirit_designation}` pacified."
-        )
 
 
 def _extract_killteam_name(name: str) -> str:
@@ -8348,9 +8292,6 @@ async def _attest(
         spirit_is_first, spirit_is_reconsecrated, spirit_is_restored
     )
     
-    # Check for pending alert to reply to
-    pending_alert = await _get_pending_alert(int(member.id))
-    
     # Build response based on verbosity tier
     send_succeeded = False
     if is_significant_event:
@@ -8419,44 +8360,6 @@ async def _attest(
             spirit_event=spirit_event,
         )
     
-    # ─────────────────────────────────────────────────────────────────────────
-    # Thread Reply: If there's a pending alert for this brother, reply to it
-    # ─────────────────────────────────────────────────────────────────────────
-    if pending_alert and interaction.guild:
-        try:
-            alert_channel_id = pending_alert.get("channel_id")
-            alert_message_id = pending_alert.get("message_id")
-            
-            if alert_channel_id and alert_message_id:
-                alert_channel = interaction.guild.get_channel(int(alert_channel_id))
-                if alert_channel:
-                    # Fetch the original alert message
-                    try:
-                        alert_msg = await alert_channel.fetch_message(int(alert_message_id))
-                        
-                        # Build reply based on event type
-                        reply_text = _get_thread_reply_text(
-                            spirit_is_reconsecrated,
-                            blessing_roll_outcome,
-                            attester,
-                            machine_spirit_emoji,
-                            spirit_designation,
-                        )
-                        
-                        await alert_msg.reply(
-                            content=reply_text,
-                            allowed_mentions=discord.AllowedMentions.none(),
-                        )
-                        await _clear_pending_alert(int(member.id))
-                    except discord.NotFound:
-                        # Message was deleted, clear the pending alert
-                        await _clear_pending_alert(int(member.id))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Armor Status Command
 # ─────────────────────────────────────────────────────────────────────────────
@@ -9346,11 +9249,18 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
             await interaction.followup.send("Forge Chronicle updated.", ephemeral=True)
             return
         except discord.NotFound:
-            pass  # Message was deleted, create new one
+            logger.debug(f"Chronicle message {existing_msg_id} not found, will create new")
         except Exception as e:
-            logger.debug(f"Failed to edit chronicle: {e}")
+            logger.warning(f"Failed to edit chronicle {existing_msg_id}: {e}")
+            # Try to delete the old message since we couldn't edit it
+            try:
+                existing_msg = await channel.fetch_message(existing_msg_id)
+                await existing_msg.delete()
+                logger.debug(f"Deleted old chronicle message {existing_msg_id}")
+            except Exception:
+                pass
     
-    # Create new message if no existing one found
+    # Create new message
     try:
         sent_msg = await channel.send(embed=embed)
         await _set_dashboard_message_id(sent_msg.id)
