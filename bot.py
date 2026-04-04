@@ -7800,12 +7800,14 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 @app_commands.describe(
     member="Member to attest",
     intensive="Full heal to nominal (costs more charges based on damage severity)",
+    verbose="Use detailed format instead of compact (for important blessings)",
     force="[Forgemaster only] Override cooldowns and company restrictions",
 )
 async def _attest(
     interaction: discord.Interaction,
     member: discord.Member,
     intensive: bool = False,
+    verbose: bool = False,
     force: bool = False,
 ):
     import random
@@ -8422,8 +8424,9 @@ async def _attest(
     )
     
     # Determine which embed to use for the view
-    if is_significant_event:
-        # Significant events use the full embed
+    # Verbose flag forces full embed even for routine blessings
+    if is_significant_event or verbose:
+        # Significant events (or verbose mode) use the full embed
         display_embed = embed
     else:
         # Routine events use compact embed
@@ -9221,7 +9224,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             tech_name = _format_member_styled(guild, str(tech_id), include_chapter=True)
         
         event_icon = event_emojis.get(event, "❓")
-        recent_lines.append(f"  {member_name} ┃ {event_icon} ┃ {tech_name}")
+        recent_lines.append(f"  {event_icon} {member_name} ← {tech_name}")
     
     if not recent_lines:
         recent_lines.append("  *No rites performed this cycle.*")
@@ -9300,8 +9303,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         elif points >= 150:  # High points nominal = at risk
             watchlist_entries.append((member, None, False, points, risk_score, detected))
     
-    watchlist_entries.sort(key=lambda x: x[4], reverse=True)
-    watchlist_top5 = watchlist_entries[:5]
+    # Randomly select 5 from watchlist (cycles through different brothers each refresh)
+    import random
+    if len(watchlist_entries) > 5:
+        watchlist_top5 = random.sample(watchlist_entries, 5)
+    else:
+        watchlist_top5 = watchlist_entries
     
     watchlist_lines = []
     for member, tier, fractured, pts, score, detected in watchlist_top5:
@@ -9335,23 +9342,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     empty_blocks = 10 - filled_blocks
     reserve_bar = "█" * filled_blocks + "░" * empty_blocks
     
-    if reserve_pct >= 70:
-        reserve_emoji = "🟢"
-    elif reserve_pct >= 40:
-        reserve_emoji = "🟡"
-    else:
-        reserve_emoji = "🔴"
-    
-    # Get techmarines with charges
-    techs_with_charges = []
+    # Load blessing pool data for artificers section
     blessing_pool_data = _load_blessing_pool()
-    for tech_id_str, tech_data in blessing_pool_data.items():
-        charges = tech_data.get("charges", 0)
-        if charges > 0:
-            tech_member = guild.get_member(int(tech_id_str))
-            if tech_member:
-                tech_name = _format_member_styled(guild, tech_id_str, include_chapter=True)
-                techs_with_charges.append(f"{tech_name} ({charges})")
     
     # ─────────────────────────────────────────────────────────────
     # Section 5: Artificers of the Watch
@@ -9372,7 +9364,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                 if member:
                     name = _format_member_styled(guild, str(tech_id), include_chapter=True)
                     success_rate = (successes / total) * 100 if total > 0 else 0
-                    artificer_lines.append(f"  {name}: {total} rites ({success_rate:.0f}%)")
+                    # Get current charges for this techmarine
+                    tech_pool = blessing_pool_data.get(str(tech_id), {})
+                    charges = tech_pool.get("charges", 0)
+                    pool_bar = "●" * charges + "○" * (BLESSING_POOL_MAX - charges)
+                    artificer_lines.append(f"  {name}: {total} rites ({success_rate:.0f}%) {pool_bar}")
     
     # ─────────────────────────────────────────────────────────────
     # Section 6: Litany of Endurance (Longest unbroken service)
@@ -9392,7 +9388,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     honor_lines = []
     for member, pts in honor_top3:
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        honor_lines.append(f"  {name} — {pts} cycles nominal")
+        honor_lines.append(f"  {name} ({pts} cycles)")
     
     # ─────────────────────────────────────────────────────────────
     # Section 7: Spirit Memorial (Lost this month)
@@ -9454,8 +9450,6 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Forge Readiness
     sections.append("**▸ Forge Readiness**")
     sections.append(f"  {reserve_bar} {available:,} / {max_balance:,} pts")
-    if techs_with_charges:
-        sections.append(f"  On Watch: {', '.join(techs_with_charges[:3])}")
     sections.append("")
     
     # Artificers
