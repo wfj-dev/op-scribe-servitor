@@ -9435,16 +9435,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Fortress Status (description - top prominence)
     # Thresholds adjusted for 20% scan miss: max achievable is ~80%
     fortress_icon = "🟢" if nominal_pct >= 75 else ("🟡" if nominal_pct >= 55 else "🔴")
-    fortress_text = f"{fortress_icon} **{nominal_pct:.0f}%** Nominal"
-    if total_damaged > 0:
-        damage_parts = []
-        if critical_count > 0 or fractured_count > 0:
-            damage_parts.append(f"🔴{critical_count + fractured_count}")
-        if compromised_count > 0:
-            damage_parts.append(f"🟠{compromised_count}")
-        if damaged_count > 0:
-            damage_parts.append(f"🟡{damaged_count}")
-        fortress_text += f"\nRequiring attention: {' '.join(damage_parts)}"
+    fortress_text = f"**▸ Noospheric Integrity**\n{fortress_icon} **{nominal_pct:.0f}%** Nominal"
     embed.description = fortress_text
     
     # Watchlist + Recent Rites (inline pair)
