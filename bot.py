@@ -8338,8 +8338,8 @@ async def _attest(
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
-    # Only show for unbound (first) or fractured (reconsecrated) spirits
-    show_extended_fields = _should_show_extended_blessing_fields(
+    # Show for unbound/fractured spirits OR when verbose flag is set
+    show_extended_fields = verbose or _should_show_extended_blessing_fields(
         spirit_is_first=spirit_is_first,
         spirit_is_reconsecrated=spirit_is_reconsecrated,
         spirit_is_returning=spirit_is_returning,
