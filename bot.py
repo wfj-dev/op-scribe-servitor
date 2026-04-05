@@ -4275,16 +4275,24 @@ async def _post_armor_alert(
     if op_mission or op_difficulty_class or op_url or squad_member_ids:
         debrief_lines = []
         # Look up planet name - check difficulty_class first (for siege ops), then mission
+        # Strip any mentions from mission name for lookup
         planet = None
+        clean_mission = None
+        if op_mission:
+            # Strip role/user mentions from mission name (e.g., "Vortex @Black Laurels" -> "Vortex")
+            clean_mission = re.sub(r'\s*<@[!&]?\d+>.*$', '', op_mission).strip()
+            # Also strip any text after @ if @ is present (fallback for resolved mentions)
+            if '@' in clean_mission:
+                clean_mission = clean_mission.split('@')[0].strip()
         if op_difficulty_class:
             planet = MISSION_TO_PLANET.get(op_difficulty_class.lower().strip())
-        if not planet and op_mission:
-            planet = MISSION_TO_PLANET.get(op_mission.lower().strip())
+        if not planet and clean_mission:
+            planet = MISSION_TO_PLANET.get(clean_mission.lower().strip())
         
         if planet:
             debrief_lines.append(f"Integrity degraded during deployment to **{planet}**")
-        elif op_mission:
-            debrief_lines.append(f"Integrity degraded during **{op_mission}** deployment")
+        elif clean_mission:
+            debrief_lines.append(f"Integrity degraded during **{clean_mission}** deployment")
         
         # Build squad list (exclude the affected brother)
         if squad_member_ids and guild:
@@ -4301,7 +4309,7 @@ async def _post_armor_alert(
                 except Exception:
                     pass
             if squad_names:
-                debrief_lines.append(f"Squad: {', '.join(squad_names)}")
+                debrief_lines.append(f"Kill Team: {', '.join(squad_names)}")
         
         if op_url:
             debrief_lines.append(f"[View After Action Report]({op_url})")
@@ -9193,7 +9201,22 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             except Exception:
                 pass
     
-    lost_this_month = sum(1 for r in monthly_rites if r.get("event") == "rebirth")
+    # Find most attended spirit (most maintenance rites this month)
+    maintenance_counts = {}
+    for r in monthly_rites:
+        if r.get("event") == "maintenance":
+            spirit = r.get("spirit")
+            bearer_id = r.get("bearer_id")
+            if spirit and bearer_id:
+                key = (bearer_id, spirit)
+                maintenance_counts[key] = maintenance_counts.get(key, 0) + 1
+    
+    most_attended = None
+    most_attended_count = 0
+    for (bearer_id, spirit), count in maintenance_counts.items():
+        if count > most_attended_count:
+            most_attended_count = count
+            most_attended = (bearer_id, spirit)
     
     spirit_lines = []
     if eldest_spirit:
@@ -9208,7 +9231,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
         spirit_lines.append(f"Newest: **{designation}** {member_label}")
     
-    spirit_lines.append(f"Spirits Bound: **{total_spirits}** | Lost This Month: **{lost_this_month}**")
+    # Show most attended spirit or fallback to total bound
+    if most_attended:
+        bearer_id, spirit = most_attended
+        member_label = _format_member_styled(guild, bearer_id, include_chapter=False)
+        spirit_lines.append(f"Most Attended: **{spirit}** {member_label}")
+
     
     # ─────────────────────────────────────────────────────────────
     # Section 3: Watchlist (5 random brothers with armor)
