@@ -8679,10 +8679,18 @@ async def _show_armor_leaderboard(
 
         # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c ⏳"
         # Status indicated by icon only (no text label needed)
+        # Only show cycles for at-risk/damaged brothers, not nominal
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
-        lines.append(
-            f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{cooldown_indicator}"
-        )
+        if icon == "🟢":
+            # Nominal brothers don't need cycle count shown
+            lines.append(
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}{cooldown_indicator}"
+            )
+        else:
+            # At-risk/damaged brothers show cycles for triage
+            lines.append(
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{cooldown_indicator}"
+            )
 
     embed.add_field(
         name="▸ Brothers at Risk",
@@ -9339,7 +9347,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         else:
             icon = "🟢"  # Nominal
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        watchlist_lines.append(f"{icon} {name} · {pts}c{cooldown_indicator}")
+        # Only show cycles for at-risk/damaged brothers, not nominal
+        if icon == "🟢":
+            watchlist_lines.append(f"{icon} {name}{cooldown_indicator}")
+        else:
+            watchlist_lines.append(f"{icon} {name} · {pts}c{cooldown_indicator}")
     
     if not watchlist_lines:
         watchlist_lines.append("*No armor records found.*")
