@@ -9346,6 +9346,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Load blessing pool data for artificers section
     blessing_pool_data = _load_blessing_pool()
     
+    def _get_charges_from_pool_state(state: dict) -> int:
+        """Calculate available charges from pool state timestamps."""
+        timestamps = state.get("blessing_timestamps", [])
+        active = _filter_active_blessing_timestamps(timestamps)
+        return max(0, min(BLESSING_POOL_MAX - len(active), BLESSING_POOL_MAX))
+    
     # ─────────────────────────────────────────────────────────────
     # Section 5: Artificers of the Watch
     # ─────────────────────────────────────────────────────────────
@@ -9357,7 +9363,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             total = stats.get("total_rites", 0)
             successes = stats.get("successes", 0)
             success_rate = (successes / total) * 100 if total > 0 else 0
-            charges = blessing_pool_data.get(str(tech_id), {}).get("charges", 0)
+            tech_pool = blessing_pool_data.get(str(tech_id), {})
+            charges = _get_charges_from_pool_state(tech_pool)
             return (charges, success_rate, total)
         
         sorted_techs = sorted(
@@ -9376,7 +9383,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     success_rate = (successes / total) * 100 if total > 0 else 0
                     # Get current charges for this techmarine
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
-                    charges = tech_pool.get("charges", 0)
+                    charges = _get_charges_from_pool_state(tech_pool)
                     pool_bar = "●" * charges + "○" * (BLESSING_POOL_MAX - charges)
                     artificer_lines.append(f"{name}: {total} rites ({success_rate:.0f}%) {pool_bar}")
     
