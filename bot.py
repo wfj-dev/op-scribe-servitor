@@ -4576,23 +4576,6 @@ def _get_armor_status_for_blessing(
         return ARMOR_STATUS_NOMINAL
 
 
-def _should_show_extended_blessing_fields(
-    spirit_is_first: bool,
-    spirit_is_reconsecrated: bool,
-    spirit_is_returning: bool,
-    spirit_is_restored: bool,
-) -> bool:
-    """Determine whether to show extended blessing fields (Honor of Long Watch, Litany).
-
-    Returns True for unbound (first binding) or fractured (reconsecrated) spirits.
-    Returns False for returning (normal maintenance) or restored (damage repaired) spirits.
-    """
-    # Extended fields shown for significant spiritual events:
-    # - First binding: new spirit awakening
-    # - Reconsecration: spirit was lost and must be re-bound
-    return spirit_is_first or spirit_is_reconsecrated
-
-
 def _classify_forge_rite_event(
     spirit_is_first: bool,
     spirit_is_reconsecrated: bool,
@@ -4616,27 +4599,6 @@ def _classify_forge_rite_event(
     else:
         spirit_event = "maintenance"
     return is_significant, spirit_event
-
-
-def _get_compact_rite_status(
-    blessing_roll_outcome: str,
-    is_intensive: bool,
-    was_damaged: bool,
-) -> tuple:
-    """Return the (status_icon, status_text) pair for a routine forge rite.
-
-    Used when building the compact 3-line response for non-significant events.
-    """
-    if blessing_roll_outcome == "crit_fail":
-        return "⚠️", "RESISTED"
-    elif blessing_roll_outcome == "crit_success":
-        return "✨", "BLESSED *(grace)*"
-    elif is_intensive:
-        return "✨", "RESTORED"
-    elif was_damaged:
-        return "🟢", "REPAIRED"
-    else:
-        return "🟢", "MAINTAINED"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7800,14 +7762,12 @@ async def _set_rite(interaction: discord.Interaction, rite_text: str):
 @app_commands.describe(
     member="Member to attest",
     intensive="Full heal to nominal (costs more charges based on damage severity)",
-    verbose="Use detailed format instead of compact (for important blessings)",
     force="[Forgemaster only] Override cooldowns and company restrictions",
 )
 async def _attest(
     interaction: discord.Interaction,
     member: discord.Member,
     intensive: bool = False,
-    verbose: bool = False,
     force: bool = False,
 ):
     import random
@@ -8338,13 +8298,8 @@ async def _attest(
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
-    # Show for unbound/fractured spirits OR when verbose flag is set
-    show_extended_fields = verbose or _should_show_extended_blessing_fields(
-        spirit_is_first=spirit_is_first,
-        spirit_is_reconsecrated=spirit_is_reconsecrated,
-        spirit_is_returning=spirit_is_returning,
-        spirit_is_restored=spirit_is_restored,
-    )
+    # Always show extended fields for all blessings
+    show_extended_fields = True
 
     # Honor of the Long Watch (only for unbound/fractured spirits)
     if show_extended_fields:
@@ -8423,28 +8378,8 @@ async def _attest(
         spirit_is_first, spirit_is_reconsecrated, spirit_is_restored
     )
     
-    # Determine which embed to use for the view
-    # Verbose flag forces full embed even for routine blessings
-    if is_significant_event or verbose:
-        # Significant events (or verbose mode) use the full embed
-        display_embed = embed
-    else:
-        # Routine events use compact embed
-        status_icon, status_text = _get_compact_rite_status(
-            blessing_roll_outcome, is_intensive, was_damaged
-        )
-        bearer_styled = _format_member_styled(interaction.guild, str(member.id), include_chapter=True)
-        attester_styled = _format_member_styled(interaction.guild, str(attestor_member.id), include_chapter=True)
-        
-        display_embed = discord.Embed(
-            title="▸ Maintenance Blessing",
-            color=0x2ECC71 if status_icon == "🟢" else 0xF1C40F,
-        )
-        display_embed.description = (
-            f"{bearer_styled}, {machine_spirit_emoji} `{spirit_designation}`\n"
-            f"{status_icon} {status_text} | Blessed by {attester_styled}\n"
-            f'*"{sacred_phrase}"*'
-        )
+    # Always use the full embed format
+    display_embed = embed
     
     # Create the view with Log to Forge button
     log_view = LogToForgeView(
@@ -8458,10 +8393,11 @@ async def _attest(
         is_significant=is_significant_event,
     )
     
-    # Send ephemeral blessing with button
+    # Send ephemeral blessing with button and mention
     send_succeeded = False
     try:
         await interaction.response.send_message(
+            content=member.mention,
             embed=display_embed,
             view=log_view,
             ephemeral=True,
