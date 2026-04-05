@@ -8459,9 +8459,12 @@ async def _attest(
     )
     
     # Send ephemeral blessing with button
+    # Verbose mode includes a mention of the brother before the embed
     send_succeeded = False
+    mention_content = member.mention if verbose else None
     try:
         await interaction.response.send_message(
+            content=mention_content,
             embed=display_embed,
             view=log_view,
             ephemeral=True,
