@@ -3356,9 +3356,15 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
 
 
 async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild):
-    """Apply crit fail blessing result: reset points but keep damage tier.
+    """Apply crit fail blessing result: escalate damage tier.
     
-    Returns the current damage tier (unchanged).
+    A botched rite agitates the machine spirit, causing it to worsen:
+    - Nominal → Damaged
+    - Damaged → Compromised
+    - Compromised → Critical
+    - Critical → Fractured (spirit breaks!)
+    
+    Returns the new damage tier after escalation.
     """
     current_tier = _get_member_damage_tier(member)
     
@@ -3379,20 +3385,28 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
             continue
     active_timestamps.append(now.isoformat())
     
-    # Reset points but keep damage_tier and spirit_fractured unchanged
+    # Escalate damage tier
+    tier_order = [None, "damaged", "compromised", "critical", "fractured"]
+    current_idx = tier_order.index(current_tier) if current_tier in tier_order else 0
+    new_idx = min(current_idx + 1, len(tier_order) - 1)
+    new_tier = tier_order[new_idx]
+    
+    # Check if spirit fractured from this escalation
+    spirit_fractured = new_tier == "fractured"
+    
     await _set_armor_state(
         member.id,
         {
             "points_since_blessing": 0,
-            "damage_tier": current_tier,
+            "damage_tier": new_tier if not spirit_fractured else "critical",  # Store as critical, flag as fractured
             "critical_aar_count": current_state.get("critical_aar_count", 0),
-            "spirit_fractured": current_state.get("spirit_fractured", False),
+            "spirit_fractured": spirit_fractured or current_state.get("spirit_fractured", False),
             "last_blessing_timestamp": now.isoformat(),
             "blessing_timestamps": active_timestamps,
         },
     )
     
-    return current_tier
+    return new_tier
 
 
 async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -> Optional[str]:
@@ -9135,11 +9149,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             nominal_count += 1
     
     total_damaged = damaged_count + compromised_count + critical_count + fractured_count
-    # Apply scan miss chance - unreadable brothers count against nominal percentage
-    # 20% of each tier (except fractured) are "unreadable" and can't be confirmed
-    miss_chance = ARMOR_SCAN_MISS_CHANCES.get("nominal", 0.20)
-    readable_nominal = nominal_count * (1 - miss_chance)
-    nominal_pct = (readable_nominal / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
+    nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
     
     # ─────────────────────────────────────────────────────────────
     # Section 1: Recent Rites (This Month)
@@ -9433,8 +9443,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     )
     
     # Fortress Status (description - top prominence)
-    # Thresholds adjusted for 20% scan miss: max achievable is ~80%
-    fortress_icon = "🟢" if nominal_pct >= 75 else ("🟡" if nominal_pct >= 55 else "🔴")
+    fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
     fortress_text = f"**▸ Noospheric Integrity**\n{fortress_icon} **{nominal_pct:.0f}%** Nominal"
     embed.description = fortress_text
     
