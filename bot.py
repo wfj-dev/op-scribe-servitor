@@ -9270,7 +9270,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if most_resilient:
         bearer_id, spirit = most_resilient
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
-        spirit_lines.append(f"Most Resilient: **{spirit}** ({most_resilient_count}× restored)")
+        spirit_lines.append(f"Most Resilient: **{spirit}** {member_label}")
 
     
     # ─────────────────────────────────────────────────────────────
