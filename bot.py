@@ -2069,6 +2069,7 @@ HOME_CHAPTERS = [
     "Iron Hounds",
     "Knights of the Raven",
     "Lamenters",
+    "Marines Errant",
     "Mentors",
     "Minotaurs",
     "Raptors",
@@ -5937,6 +5938,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
     "Lamenters": "Though cursed, your armor shall not fail—for those we cherish, we die.",
+    "Marines Errant": "The stars are your homeworld, brother—your armor carries Dorn's quest eternal.",
     "Mentors": "Precision and wisdom are encoded in your warplate's machine-spirit.",
     "Minotaurs": "The fury of the bull charges forth; your armor is wrath incarnate.",
     "Raptors": "Silent and lethal, your armor whispers death to the enemies of Man.",
@@ -6434,6 +6436,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Though cursed, your studs shine with undimmed hope.",
         "For those we cherish—each mark a sacrifice willingly made.",
         "Your service defies the doom that follows.",
+    ],
+    "Marines Errant": [
+        "The void is your home; your studs chart a quest across the stars.",
+        "Dorn's wandering sons earn marks far from Terra's light.",
+        "Each stud a waypoint on the eternal errantry of duty.",
     ],
     "Mentors": [
         "Precision and wisdom mark each earned stud.",
@@ -9128,7 +9135,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             nominal_count += 1
     
     total_damaged = damaged_count + compromised_count + critical_count + fractured_count
-    nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
+    # Apply scan miss chance - unreadable brothers count against nominal percentage
+    # 20% of each tier (except fractured) are "unreadable" and can't be confirmed
+    miss_chance = ARMOR_SCAN_MISS_CHANCES.get("nominal", 0.20)
+    readable_nominal = nominal_count * (1 - miss_chance)
+    nominal_pct = (readable_nominal / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
     
     # ─────────────────────────────────────────────────────────────
     # Section 1: Recent Rites (This Month)
@@ -9151,6 +9162,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     event_emojis = {
         "first_binding": "⛓️",  # New spirit bound
         "rebirth": "🔄",       # Spirit reborn after fracture
+        "restoration": "🛠️",  # Damage repaired
         "maintenance": "🔧",   # Routine maintenance
         "resisted": "⚠️",       # Rite failed
     }
@@ -9229,13 +9241,36 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"Newest: **{designation}** {member_label}")
+        spirit_lines.append(f"Youngest: **{designation}** {member_label}")
     
-    # Show most attended spirit or fallback to total bound
+    # Find most resilient spirit (most restoration events - survived most damage)
+    restoration_counts = {}
+    for r in monthly_rites:
+        if r.get("event") == "restoration":
+            spirit = r.get("spirit")
+            bearer_id = r.get("bearer_id")
+            if spirit and bearer_id:
+                key = (bearer_id, spirit)
+                restoration_counts[key] = restoration_counts.get(key, 0) + 1
+    
+    most_resilient = None
+    most_resilient_count = 0
+    for (bearer_id, spirit), count in restoration_counts.items():
+        if count > most_resilient_count:
+            most_resilient_count = count
+            most_resilient = (bearer_id, spirit)
+    
+    # Show most attended spirit
     if most_attended:
         bearer_id, spirit = most_attended
-        member_label = _format_member_styled(guild, bearer_id, include_chapter=False)
+        member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
         spirit_lines.append(f"Most Attended: **{spirit}** {member_label}")
+    
+    # Show most resilient spirit (if any restorations this month)
+    if most_resilient:
+        bearer_id, spirit = most_resilient
+        member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
+        spirit_lines.append(f"Most Resilient: **{spirit}** ({most_resilient_count}× restored)")
 
     
     # ─────────────────────────────────────────────────────────────
@@ -9398,8 +9433,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     )
     
     # Fortress Status (description - top prominence)
-    fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
-    fortress_text = f"{fortress_icon} **{nominal_pct:.0f}%** Nominal ({nominal_count}/{total_brothers_with_armor})"
+    # Thresholds adjusted for 20% scan miss: max achievable is ~80%
+    fortress_icon = "🟢" if nominal_pct >= 75 else ("🟡" if nominal_pct >= 55 else "🔴")
+    fortress_text = f"{fortress_icon} **{nominal_pct:.0f}%** Nominal"
     if total_damaged > 0:
         damage_parts = []
         if critical_count > 0 or fractured_count > 0:
