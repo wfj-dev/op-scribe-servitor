@@ -19399,22 +19399,10 @@ async def promotion_queue(interaction: discord.Interaction):
 # TODO: include vacant command positions in output and whether or not there is an outstanding oath for that role. need to work on the oath parsing logic.
 @bot.tree.command(
     name="company_roster",
-    description="Show Kill Teams and member counts for a Watch Company.",
+    description="Show Kill Teams and member counts for the entire Fortress.",
 )
-@app_commands.describe(
-    company="The Watch Company to display roster for.",
-)
-@app_commands.choices(
-    company=[
-        app_commands.Choice(name="Primus", value="Watch Company Primus"),
-        app_commands.Choice(name="Secundus", value="Watch Company Secundus"),
-        app_commands.Choice(name="Tertius", value="Watch Company Tertius"),
-        app_commands.Choice(name="Quartus", value="Watch Company Quartus"),
-        app_commands.Choice(name="Quintus", value="Watch Company Quintus"),
-    ]
-)
-async def company_roster(interaction: discord.Interaction, company: str):
-    """Show Kill Teams and their member counts for a given Watch Company."""
+async def company_roster(interaction: discord.Interaction):
+    """Show Kill Teams and their member counts for all Watch Companies."""
     # Permission check: Watch Command only, in the designated channel
     if not (
         check_command_permission(interaction.user, "company_roster")
@@ -19432,80 +19420,136 @@ async def company_roster(interaction: discord.Interaction, company: str):
 
     await interaction.response.defer(ephemeral=True)
 
-    # Find the company role
-    company_role = discord.utils.get(guild.roles, name=company)
-    if not company_role:
-        await interaction.followup.send(
-            f"Company role '{company}' not found.", ephemeral=True
-        )
-        return
-
-    # Find all members with this company role
-    company_members = [
-        m for m in guild.members if company_role in m.roles and not m.bot
+    # All company names to iterate through
+    all_companies = [
+        "Watch Company Primus",
+        "Watch Company Secundus",
+        "Watch Company Tertius",
+        "Watch Company Quartus",
+        "Watch Company Quintus",
     ]
 
-    if not company_members:
+    # Command roles that are fine without a Kill Team assignment
+    company_command_roles = {
+        "Primus Command",
+        "Secundus Command",
+        "Tertius Command",
+        "Quartus Command",
+        "Quintus Command",
+    }
+
+    embeds = []
+    fortress_total = 0
+    fortress_in_kts = 0
+    fortress_unassigned = 0
+
+    for company in all_companies:
+        # Find the company role
+        company_role = discord.utils.get(guild.roles, name=company)
+        if not company_role:
+            continue
+
+        # Find all members with this company role
+        company_members = [
+            m for m in guild.members if company_role in m.roles and not m.bot
+        ]
+
+        if not company_members:
+            continue
+
+        # Group members by their Kill Team role
+        kt_counts: Dict[str, List[discord.Member]] = {}
+        no_kt_members: List[discord.Member] = []
+
+        for member in company_members:
+            # Find member's kill team role from ALLOWED_KT_ROLE_IDS
+            member_kt = None
+            for role in member.roles:
+                if role.id in ALLOWED_KT_ROLE_IDS:
+                    member_kt = role.name
+                    break
+
+            if member_kt:
+                kt_counts.setdefault(member_kt, []).append(member)
+            else:
+                # Check if member has a company command role - if so, they're fine
+                has_command_role = any(
+                    role.name in company_command_roles for role in member.roles
+                )
+                if not has_command_role:
+                    no_kt_members.append(member)
+
+        # Sort kill teams by name
+        sorted_kts = sorted(kt_counts.items(), key=lambda x: x[0])
+
+        # Build embed for this company
+        short_name = _extract_company_short_name(company)
+        embed = discord.Embed(
+            title=f"᛭⋅ {short_name.upper()} COMPANY ⋅᛭",
+            description=f"*⌾ {company} ⌾*",
+            color=0x2ECC71,
+        )
+
+        # Add kill team fields
+        kt_lines = []
+        for kt_name, members in sorted_kts:
+            kt_lines.append(f"**{kt_name}:** {len(members)}")
+
+        if kt_lines:
+            embed.add_field(
+                name="▸ Kill Teams",
+                value="\n".join(kt_lines),
+                inline=False,
+            )
+
+        # Add unassigned members if any
+        if no_kt_members:
+            embed.add_field(
+                name="▸ No Kill Team",
+                value=f"{len(no_kt_members)} member(s)",
+                inline=False,
+            )
+
+        # Summary for this company
+        total_in_kts = sum(len(m) for m in kt_counts.values())
+        embed.set_footer(
+            text=f"᛭⋅ {total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total ⋅᛭"
+        )
+
+        embeds.append(embed)
+        fortress_total += len(company_members)
+        fortress_in_kts += total_in_kts
+        fortress_unassigned += len(no_kt_members)
+
+    if not embeds:
         await interaction.followup.send(
-            f"No members found in {company}.", ephemeral=True
+            "No companies found with members.", ephemeral=True
         )
         return
 
-    # Group members by their Kill Team role
-    kt_counts: Dict[str, List[discord.Member]] = {}
-    no_kt_members: List[discord.Member] = []
-
-    for member in company_members:
-        # Find member's kill team role from ALLOWED_KT_ROLE_IDS
-        member_kt = None
-        for role in member.roles:
-            if role.id in ALLOWED_KT_ROLE_IDS:
-                member_kt = role.name
-                break
-
-        if member_kt:
-            kt_counts.setdefault(member_kt, []).append(member)
-        else:
-            no_kt_members.append(member)
-
-    # Sort kill teams by name
-    sorted_kts = sorted(kt_counts.items(), key=lambda x: x[0])
-
-    # Build embed
-    short_name = _extract_company_short_name(company)
-    embed = discord.Embed(
-        title=f"᛭⋅ {short_name.upper()} COMPANY ROSTER ⋅᛭",
-        description=f"*⌾ {company} ⌾*",
-        color=0x2ECC71,
+    # Add a summary embed at the end
+    summary_embed = discord.Embed(
+        title="᛭⋅ FORTRESS SUMMARY ⋅᛭",
+        color=0xFFD700,
     )
-
-    # Add kill team fields
-    kt_lines = []
-    for kt_name, members in sorted_kts:
-        kt_lines.append(f"**{kt_name}:** {len(members)}")
-
-    if kt_lines:
-        embed.add_field(
-            name="▸ Kill Teams",
-            value="\n".join(kt_lines),
-            inline=False,
-        )
-
-    # Add unassigned members if any
-    if no_kt_members:
-        embed.add_field(
-            name="▸ No Kill Team",
-            value=f"{len(no_kt_members)} member(s)",
-            inline=False,
-        )
-
-    # Summary
-    total_in_kts = sum(len(m) for m in kt_counts.values())
-    embed.set_footer(
-        text=f"᛭⋅ {total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total ⋅᛭"
+    summary_embed.add_field(
+        name="Total Marines",
+        value=str(fortress_total),
+        inline=True,
     )
+    summary_embed.add_field(
+        name="In Kill Teams",
+        value=str(fortress_in_kts),
+        inline=True,
+    )
+    summary_embed.add_field(
+        name="Unassigned",
+        value=str(fortress_unassigned),
+        inline=True,
+    )
+    embeds.append(summary_embed)
 
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
 if __name__ == "__main__":
