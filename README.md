@@ -23,7 +23,7 @@ Commands
 - `/librarian_audit` — Audit data integrity and identify inconsistencies (admin-only).
 - `/roster_audit [company:str]` — Audit roster data for a watch company (admin-only).
 - `/promotion_queue` — Show brothers approaching promotion milestones (Watch Command only).
-- `/company_roster company:str` — Display the full roster for a watch company.
+- `/company_roster` — Display the full roster for the entire Fortress.
 
 Quick notes
 - Permissions: Several commands are restricted by roles and admin IDs defined in the bot configuration (`config/config.json`). If a command is denied, check role aliases and configured admin IDs.
@@ -120,8 +120,8 @@ Detailed command descriptions
 	- Purpose: Show brothers approaching promotion milestones.
 	- Who can run: Watch Command only.
 
-- `/company_roster company:str`
-	- Purpose: Display full roster for a watch company (Primus, Secundus, Tertius, Quartus, Quintus).
+- `/company_roster`
+	- Purpose: Display full roster for the entire Fortress (all Watch Companies). Members with company command roles are not shown as unassigned.
 	- Who can run: general use.
 
 How to interpret outputs
