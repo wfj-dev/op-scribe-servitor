@@ -2601,7 +2601,7 @@ ARMOR_DETECTION_CHANCES = {
 }
 
 # Scan miss chances for armor_status command (brothers may not show)
-# Flat 20% unreadable chance across all tiers except fractured
+# Flat 20% occulted chance across all tiers except fractured
 ARMOR_SCAN_MISS_CHANCES = {
     "nominal": 0.20,      # 20% chance to miss
     "damaged": 0.20,      # 20% chance to miss
@@ -8578,12 +8578,30 @@ async def _show_armor_leaderboard(
     # Take top 10
     top_10 = risk_list[:10]
     
-    # Within top 10, move unreadable brothers to the bottom in random order
+    # Randomize only nominal and occulted brothers (damaged tiers stay risk-ordered)
     import random
-    readable = [e for e in top_10 if e[4]["detected"]]
-    unreadable = [e for e in top_10 if not e[4]["detected"]]
-    random.shuffle(unreadable)
-    top_10 = readable + unreadable
+    
+    def _get_display_tier(entry):
+        """Get display tier for grouping (detected status + damage tier)."""
+        _, state, tier, _, scan_result = entry
+        if not scan_result["detected"]:
+            return "occulted"
+        fractured = state.get("spirit_fractured", False)
+        if fractured:
+            return "fractured"
+        return tier or "nominal"
+    
+    # Split into risk-ordered (damaged tiers) and randomized (nominal/occulted)
+    damaged_entries = [e for e in top_10 if _get_display_tier(e) not in ("nominal", "occulted")]
+    nominal_entries = [e for e in top_10 if _get_display_tier(e) == "nominal"]
+    occulted_entries = [e for e in top_10 if _get_display_tier(e) == "occulted"]
+    
+    # Damaged stay sorted by risk score (already sorted), randomize nominal/occulted
+    random.shuffle(nominal_entries)
+    random.shuffle(occulted_entries)
+    
+    # Reassemble: damaged first (by risk), then nominal (random), then occulted (random)
+    top_10 = damaged_entries + nominal_entries + occulted_entries
 
     # Build description based on company filter
     if company_filter:
@@ -8698,8 +8716,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include unreadable symbol and cooldown
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Unreadable ⏳Cooldown"
+    # Add legend (compact) - include occulted symbol and cooldown
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Occulted ⏳Cooldown"
     embed.add_field(
         name="▸ Key",
         value=legend,
@@ -9323,8 +9341,31 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     else:
         watchlist_top5 = list(watchlist_entries)
     
-    # Sort by risk score descending (most critical first)
-    watchlist_top5.sort(key=lambda x: x[4], reverse=True)
+    # Sort by risk, but randomize only nominal and occulted (damaged tiers stay risk-ordered)
+    def _watchlist_tier(entry):
+        """Get tier for sorting watchlist entries."""
+        _, tier, fractured, pts, _, detected = entry
+        if not detected:
+            return "occulted"
+        if fractured:
+            return "fractured"
+        if tier in ("critical", "compromised", "damaged"):
+            return tier
+        if pts >= 150:
+            return "at_risk"
+        return "nominal"
+    
+    # Split: damaged tiers stay risk-ordered, nominal/occulted get randomized
+    damaged_wl = [e for e in watchlist_top5 if _watchlist_tier(e) not in ("nominal", "occulted")]
+    nominal_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "nominal"]
+    occulted_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "occulted"]
+    
+    # Sort damaged by risk score (desc), randomize nominal/occulted
+    damaged_wl.sort(key=lambda x: x[4], reverse=True)
+    random.shuffle(nominal_wl)
+    random.shuffle(occulted_wl)
+    
+    watchlist_top5 = damaged_wl + nominal_wl + occulted_wl
     
     watchlist_lines = []
     for member, tier, fractured, pts, score, detected in watchlist_top5:
@@ -13162,10 +13203,10 @@ async def tally_deeds(
                     scan_missed = not scan_result["detected"]
 
                     if scan_missed:
-                        # Unreadable - mask armor data
+                        # Occulted - mask armor data
                         embed.add_field(
                             name="▸ Armor Integrity",
-                            value="⚫ **UNREADABLE** | Spirit: ???\nPenalty Risk: ??? | Cycles: ???",
+                            value="⚫ **OCCULTED** | Spirit: ???\nPenalty Risk: ???",
                             inline=False,
                         )
                     else:
@@ -13201,9 +13242,12 @@ async def tally_deeds(
                             spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
 
                         armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-                        # Show penalty risk (probabilistic) and cycles
+                        # Show penalty risk and cycles (hide cycles for nominal brothers)
                         penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
-                        armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
+                        if armor_status == "NOMINAL":
+                            armor_lines.append(f"Penalty Risk: {penalty_risk}")
+                        else:
+                            armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
 
                         embed.add_field(
                             name="▸ Armor Integrity",
@@ -14030,10 +14074,10 @@ async def my_deeds(interaction: discord.Interaction):
         scan_missed = not scan_result["detected"]
 
         if scan_missed:
-            # Unreadable - mask armor data
+            # Occulted - mask armor data
             embed.add_field(
                 name="▸ Armor Integrity",
-                value="⚫ **UNREADABLE** | Spirit: ???\nPenalty Risk: ??? | Cycles: ???",
+                value="⚫ **OCCULTED** | Spirit: ???\nPenalty Risk: ???",
                 inline=False,
             )
         else:
@@ -14069,9 +14113,12 @@ async def my_deeds(interaction: discord.Interaction):
                 spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
 
             armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-            # Show penalty risk (probabilistic) and cycles
+            # Show penalty risk and cycles (hide cycles for nominal brothers)
             penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
-            armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
+            if armor_status == "NOMINAL":
+                armor_lines.append(f"Penalty Risk: {penalty_risk}")
+            else:
+                armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
 
             embed.add_field(
                 name="▸ Armor Integrity",
