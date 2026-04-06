@@ -8544,6 +8544,11 @@ async def _show_armor_leaderboard(
         if not member:
             continue
 
+        # Skip members without a Watch rank role
+        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+        if not has_rank:
+            continue
+
         # Apply company filter if specified
         if company_filter:
             member_company = _get_member_company_name(member)
