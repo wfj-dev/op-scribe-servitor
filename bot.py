@@ -4460,6 +4460,11 @@ async def _process_armor_integrity_for_aar(
         if not member:
             return 0, None
 
+        # Only process members with a watch role (RANK_HONORIFICS)
+        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+        if not has_rank:
+            return 0, None
+
         # Check current damage tier from roles
         current_tier = _get_member_damage_tier(member)
         penalty = _get_damage_penalty(current_tier)
@@ -8542,6 +8547,11 @@ async def _show_armor_leaderboard(
 
         member = guild.get_member(user_id)
         if not member:
+            continue
+
+        # Only include members with a watch role (RANK_HONORIFICS)
+        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+        if not has_rank:
             continue
 
         # Apply company filter if specified
