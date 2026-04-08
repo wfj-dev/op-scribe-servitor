@@ -2081,6 +2081,7 @@ HOME_CHAPTERS = [
     "Sons of Medusa",
     "Space Wolves",
     "Storm Giants",
+    "Tempestuous Angels",
     "The Drakes",
     "Ultramarines",
     "White Scars",
@@ -5964,6 +5965,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Sons of Medusa": "Steel and logic strengthen your armor against all adversity.",
     "Space Wolves": "The spirit of Fenris howls within your blessed warplate.",
     "Storm Giants": "The giant's strength flows through your armor; towering might breaks all foes.",
+    "Tempestuous Angels": "Vulkan's altruism lives on—your armor shields the defenseless against the storm.",
     "The Drakes": "Fire cleanses all—your armor emerges purified and ready.",
     "Ultramarines": "The Codex guides us; your armor upholds Guilliman's legacy.",
     "White Scars": "The wind of Chogoris propels your armor to swift victory.",
@@ -6510,6 +6512,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The giant's strength is measured in your studs.",
         "Towering might forges these marks upon your brow.",
         "At close quarters your service is proven; your marks speak of victories hard-won.",
+    ],
+    "Tempestuous Angels": [
+        "The Emperor's Altruists mark your service—each stud a life defended.",
+        "From Drossmire's ashes, your studs honor those who fell protecting the people.",
+        "Vulkan's fire tempers your devotion; your marks shine with the Salamanders' legacy.",
     ],
     "The Drakes": [
         "Fire-cleansed, your service marks emerge purified.",
