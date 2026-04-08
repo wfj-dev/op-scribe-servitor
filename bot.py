@@ -2602,7 +2602,7 @@ ARMOR_DETECTION_CHANCES = {
 }
 
 # Scan miss chances for armor_status command (brothers may not show)
-# Flat 20% occulted chance across all tiers except fractured
+# Flat 20% undetected chance across all tiers except fractured
 ARMOR_SCAN_MISS_CHANCES = {
     "nominal": 0.20,      # 20% chance to miss
     "damaged": 0.20,      # 20% chance to miss
@@ -8447,8 +8447,9 @@ async def _attest(
         except Exception:
             pass
     
-    # Always record rite in chronicle (tracks all blessings, not just logged ones)
-    if send_succeeded:
+    # Record rite in chronicle (tracks all blessings, not just logged ones)
+    # Skip chronicle entry when force override is used (Forgemaster testing/admin use)
+    if send_succeeded and not force:
         await _record_rite_in_chronicle(
             bearer_id=int(member.id),
             techmarine_id=int(attestor_member.id),
@@ -8590,30 +8591,30 @@ async def _show_armor_leaderboard(
     # Take top 10
     top_10 = risk_list[:10]
     
-    # Randomize only nominal and occulted brothers (damaged tiers stay risk-ordered)
+    # Randomize only nominal and undetected brothers (damaged tiers stay risk-ordered)
     import random
     
     def _get_display_tier(entry):
         """Get display tier for grouping (detected status + damage tier)."""
         _, state, tier, _, scan_result = entry
         if not scan_result["detected"]:
-            return "occulted"
+            return "undetected"
         fractured = state.get("spirit_fractured", False)
         if fractured:
             return "fractured"
         return tier or "nominal"
     
-    # Split into risk-ordered (damaged tiers) and randomized (nominal/occulted)
-    damaged_entries = [e for e in top_10 if _get_display_tier(e) not in ("nominal", "occulted")]
+    # Split into risk-ordered (damaged tiers) and randomized (nominal/undetected)
+    damaged_entries = [e for e in top_10 if _get_display_tier(e) not in ("nominal", "undetected")]
     nominal_entries = [e for e in top_10 if _get_display_tier(e) == "nominal"]
-    occulted_entries = [e for e in top_10 if _get_display_tier(e) == "occulted"]
+    undetected_entries = [e for e in top_10 if _get_display_tier(e) == "undetected"]
     
-    # Damaged stay sorted by risk score (already sorted), randomize nominal/occulted
+    # Damaged stay sorted by risk score (already sorted), randomize nominal/undetected
     random.shuffle(nominal_entries)
-    random.shuffle(occulted_entries)
+    random.shuffle(undetected_entries)
     
-    # Reassemble: damaged first (by risk), then nominal (random), then occulted (random)
-    top_10 = damaged_entries + nominal_entries + occulted_entries
+    # Reassemble: damaged first (by risk), then nominal (random), then undetected (random)
+    top_10 = damaged_entries + nominal_entries + undetected_entries
 
     # Build description based on company filter
     if company_filter:
@@ -8728,8 +8729,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include occulted symbol and cooldown
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Occulted ⏳Cooldown"
+    # Add legend (compact) - include undetected symbol and cooldown
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Undetected ⏳Cooldown"
     embed.add_field(
         name="▸ Key",
         value=legend,
@@ -9353,12 +9354,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     else:
         watchlist_top5 = list(watchlist_entries)
     
-    # Sort by risk, but randomize only nominal and occulted (damaged tiers stay risk-ordered)
+    # Sort by risk, but randomize only nominal and undetected (damaged tiers stay risk-ordered)
     def _watchlist_tier(entry):
         """Get tier for sorting watchlist entries."""
         _, tier, fractured, pts, _, detected = entry
         if not detected:
-            return "occulted"
+            return "undetected"
         if fractured:
             return "fractured"
         if tier in ("critical", "compromised", "damaged"):
@@ -9367,17 +9368,17 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             return "at_risk"
         return "nominal"
     
-    # Split: damaged tiers stay risk-ordered, nominal/occulted get randomized
-    damaged_wl = [e for e in watchlist_top5 if _watchlist_tier(e) not in ("nominal", "occulted")]
+    # Split: damaged tiers stay risk-ordered, nominal/undetected get randomized
+    damaged_wl = [e for e in watchlist_top5 if _watchlist_tier(e) not in ("nominal", "undetected")]
     nominal_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "nominal"]
-    occulted_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "occulted"]
+    undetected_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "undetected"]
     
-    # Sort damaged by risk score (desc), randomize nominal/occulted
+    # Sort damaged by risk score (desc), randomize nominal/undetected
     damaged_wl.sort(key=lambda x: x[4], reverse=True)
     random.shuffle(nominal_wl)
-    random.shuffle(occulted_wl)
+    random.shuffle(undetected_wl)
     
-    watchlist_top5 = damaged_wl + nominal_wl + occulted_wl
+    watchlist_top5 = damaged_wl + nominal_wl + undetected_wl
     
     watchlist_lines = []
     for member, tier, fractured, pts, score, detected in watchlist_top5:
@@ -13215,10 +13216,10 @@ async def tally_deeds(
                     scan_missed = not scan_result["detected"]
 
                     if scan_missed:
-                        # Occulted - mask armor data
+                        # Undetected - mask armor data
                         embed.add_field(
                             name="▸ Armor Integrity",
-                            value="⚫ **OCCULTED** | Spirit: ???\nPenalty Risk: ???",
+                            value="⚫ **UNDETECTED** | Spirit: ???\nPenalty Risk: ???",
                             inline=False,
                         )
                     else:
@@ -14086,10 +14087,10 @@ async def my_deeds(interaction: discord.Interaction):
         scan_missed = not scan_result["detected"]
 
         if scan_missed:
-            # Occulted - mask armor data
+            # Undetected - mask armor data
             embed.add_field(
                 name="▸ Armor Integrity",
-                value="⚫ **OCCULTED** | Spirit: ???\nPenalty Risk: ???",
+                value="⚫ **UNDETECTED** | Spirit: ???\nPenalty Risk: ???",
                 inline=False,
             )
         else:
