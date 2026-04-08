@@ -2073,6 +2073,7 @@ HOME_CHAPTERS = [
     "Marines Errant",
     "Mentors",
     "Minotaurs",
+    "Necropolis Hawks",
     "Raptors",
     "Raven Guard",
     "Red Scorpions",
@@ -5397,10 +5398,8 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         # Check if this was a processed AAR
         if not DATASTORE.is_processed(message_id):
             return
-        # Get the stored record for details
-        record = DATASTORE.get_record(message_id)
-        if not record:
-            return
+        # Get the stored record for details (may be None for errored AARs)
+        record = DATASTORE.get_record(message_id) or {}
         # Resolve guild and notification channel
         guild = None
         try:
@@ -5408,6 +5407,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         except Exception:
             pass
         if not guild:
+            logger.warning(f"AAR {message_id} deleted but guild not found.")
             return
         # Verify this was from the AAR channel
         aar_channel = discord.utils.get(
@@ -5477,6 +5477,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
                 alert_content,
                 allowed_mentions=discord.AllowedMentions(roles=True, users=True),
             )
+            logger.info(f"AAR deletion notification sent for message {message_id}")
         except Exception as e:
             logger.error(f"Failed to send AAR deletion notification: {e}")
     except Exception as e:
@@ -5958,6 +5959,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Marines Errant": "The stars are your homeworld, brother—your armor carries Dorn's quest eternal.",
     "Mentors": "Precision and wisdom are encoded in your warplate's machine-spirit.",
     "Minotaurs": "The fury of the bull charges forth; your armor is wrath incarnate.",
+    "Necropolis Hawks": "From ruin to ruin, your armor claims each domain for the Emperor—stoic, efficient, relentless.",
     "Raptors": "Silent and lethal, your armor whispers death to the enemies of Man.",
     "Raven Guard": "In the shadow of the Raven, your armor moves unseen.",
     "Red Scorpions": "Purity above all; your armor meets the Apothecary's exacting standards.",
@@ -6329,6 +6331,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "Self-reliance is the hunter's way—I tend what carries me to the kill.",
         "Vulkan's sons learn to forge alone; I honor that teaching.",
     ],
+    "Necropolis Hawks": [
+        "In the choking dust of ruins, I maintain my own armor—pragmatic and efficient.",
+        "The urban hunter tends his own war-plate between city-fights.",
+        "Corax's sons claim their own domains; I claim mastery over my armor.",
+    ],
     "Raven Guard": [
         "From shadow I emerged; in shadow I bless my own war-plate.",
         "Corax worked alone when stealth demanded. So do I.",
@@ -6479,6 +6486,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The fury of the bull is measured in your studs.",
         "Your marks proclaim wrath harnessed and directed.",
         "The bronze glare of your service intimidates all foes.",
+    ],
+    "Necropolis Hawks": [
+        "Building by building, your studs claim domains for the Emperor.",
+        "Stoic and efficient—your marks speak of city-fights endured and won.",
+        "Corax's shadow falls upon the urban sprawl; your service clears every ruin.",
     ],
     "Raptors": [
         "Silent, lethal, enduring—your studs speak of all three.",
