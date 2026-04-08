@@ -5437,7 +5437,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
         mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
         
         if error_entry:
-            # Errored AAR deletion notification
+            # Errored AAR deletion notification - PUBLIC SHAMING EDITION
             author_info = error_entry.get("author", {})
             author_id = author_info.get("id")
             author_mention = f"<@{author_id}>" if author_id else "Unknown"
@@ -5447,18 +5447,65 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             if len(errors) > 5:
                 error_preview += f"\n... and {len(errors) - 5} more"
             
+            # Get preserved content if available
+            preserved_content = error_entry.get("content", "")
+            content_preview = (
+                preserved_content[:300] + "..."
+                if len(preserved_content) > 300
+                else preserved_content
+            )
+            error_timestamp = error_entry.get("timestamp", "Unknown")
+            
             alert_lines = [
-                f"{mention} ⚠️ **ERRORED AAR DELETED**",
+                "# ☠️ UNAUTHORIZED AAR DELETION ☠️",
                 "",
+                f"## {author_mention} deleted an AAR with errors instead of fixing it",
+                "",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"**Brother:** {author_mention} ({author_name})",
+                f"**Original Timestamp:** {error_timestamp}",
                 f"**Message ID:** `{message_id}`",
-                f"**Author:** {author_mention} ({author_name})",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                 "",
-                "**Errors that were flagged:**",
+                "**The errors that needed correction:**",
                 f"```\n{error_preview}\n```",
-                "",
-                "*This AAR had parsing errors. Verify the user resubmitted correctly before deletion.*",
             ]
+            
+            if content_preview:
+                alert_lines.extend([
+                    "",
+                    "**Deleted Content:**",
+                    f"```\n{content_preview}\n```",
+                ])
+            
+            alert_lines.extend([
+                "",
+                "⚠️ **AARs with errors must be EDITED and CORRECTED, not deleted.**",
+                "",
+                "If you made a mistake, repost the AAR with the correct format.",
+                f"Watch Command has been notified. {mention}",
+            ])
             alert_content = "\n".join(alert_lines)
+            
+            # Truncate if too long
+            if len(alert_content) > 1900 and content_preview:
+                # Shrink content preview
+                content_preview = preserved_content[:150] + "..." if preserved_content else ""
+                alert_lines = [
+                    "# ☠️ UNAUTHORIZED AAR DELETION ☠️",
+                    "",
+                    f"## {author_mention} deleted an AAR with errors instead of fixing it",
+                    "",
+                    f"**Brother:** {author_mention} ({author_name})",
+                    f"**Message ID:** `{message_id}`",
+                    "",
+                    "**Errors:**",
+                    f"```\n{error_preview}\n```",
+                ]
+                if content_preview:
+                    alert_lines.extend(["**Content:**", f"```\n{content_preview}\n```"])
+                alert_lines.extend(["", f"⚠️ AARs must be EDITED, not deleted. {mention}"])
+                alert_content = "\n".join(alert_lines)
             
             # Remove from error tracking since the message is gone
             try:
@@ -5469,7 +5516,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             except Exception:
                 pass
         else:
-            # Normal processed AAR deletion notification
+            # Processed AAR deletion - THIS IS WORSE, IT WAS A VALID RECORD
             brother_ids = record.get("brother_ids", [])
             mission = record.get("mission", "Unknown")
             difficulty = record.get("difficulty", "Unknown")
@@ -5477,26 +5524,35 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
             preserved_content = record.get("content", "")
             content_preview = (
-                preserved_content[:500] + "..."
-                if len(preserved_content) > 500
+                preserved_content[:300] + "..."
+                if len(preserved_content) > 300
                 else preserved_content
             )
             
             # Build alert content, shrinking the preview as needed to stay within limits
             while True:
                 alert_lines = [
-                    f"{mention} ⚠️ **AAR DELETION DETECTED**",
+                    "# 🚨 ARCHIVE TAMPERING DETECTED 🚨",
                     "",
-                    f"**Message ID:** `{message_id}`",
-                    f"**Likely Author:** {author_mention}",
+                    f"## {author_mention} DELETED A PROCESSED AAR",
+                    "",
+                    "**This record was VALIDATED and ARCHIVED. Deletion is FORBIDDEN.**",
+                    "",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                    f"**Brother:** {author_mention}",
                     f"**Mission:** {mission}",
                     f"**Difficulty:** {difficulty}",
                     f"**Original Timestamp:** {timestamp}",
+                    f"**Message ID:** `{message_id}`",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                     "",
-                    "**Preserved Content:**",
+                    "**Deleted Content:**",
                     f"```\n{content_preview}\n```",
                     "",
-                    "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
+                    "⛔ **AARs are PERMANENT RECORDS. They cannot be deleted without Watch Command authorization.**",
+                    "",
+                    "The record has been preserved in the archive. This incident has been logged.",
+                    f"{mention}",
                 ]
                 alert_content = "\n".join(alert_lines)
                 if len(alert_content) <= 1900 or not content_preview:
@@ -15422,6 +15478,8 @@ def log_aar_error_with_meta(aar_id: int, errors: list[str], msg: discord.Message
     entry = {
         "errors": errors,
         "author": _author_info_from_message(msg),
+        "content": msg.content[:2000] if msg.content else "",
+        "timestamp": msg.created_at.isoformat() if msg.created_at else None,
     }
     # Preserve reply_id if present so we don't lose reference to previous bot reply
     try:
