@@ -5392,14 +5392,23 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
 
 @bot.event
 async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
-    """Detect when a processed AAR message is deleted and notify staff."""
+    """Detect when a processed or errored AAR message is deleted and notify staff."""
     try:
         message_id = str(payload.message_id)
-        # Check if this was a processed AAR
-        if not DATASTORE.is_processed(message_id):
-            return
+        
+        # Check if this was a processed AAR or an errored AAR
+        is_processed = DATASTORE.is_processed(message_id)
+        error_entry = None
+        if not is_processed:
+            # Check if it was an errored AAR
+            error_data = _load_json_dict(AAR_ERRORS_PATH)
+            error_entry = error_data.get(message_id)
+            if not error_entry:
+                return  # Not a tracked AAR at all
+        
         # Get the stored record for details (may be None for errored AARs)
         record = DATASTORE.get_record(message_id) or {}
+        
         # Resolve guild and notification channel
         guild = None
         try:
@@ -5422,62 +5431,94 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
                 f"AAR {message_id} deleted but notification channel not found."
             )
             return
-        # Build notification message
-        brother_ids = record.get("brother_ids", [])
-        brother_names = record.get("brother_names", [])
-        mission = record.get("mission", "Unknown")
-        difficulty = record.get("difficulty", "Unknown")
-        timestamp = record.get("timestamp", "Unknown")
-        # Try to identify who posted it (first brother is usually the author)
-        author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
-        # Format preserved content preview (truncated)
-        preserved_content = record.get("content", "")
-        content_preview = (
-            preserved_content[:500] + "..."
-            if len(preserved_content) > 500
-            else preserved_content
-        )
+        
         # Get Watch Command role for ping
         watch_role = discord.utils.get(guild.roles, name="Watch Command")
         mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
-        # Build alert content, shrinking the preview as needed to stay within limits
-        while True:
+        
+        if error_entry:
+            # Errored AAR deletion notification
+            author_info = error_entry.get("author", {})
+            author_id = author_info.get("id")
+            author_mention = f"<@{author_id}>" if author_id else "Unknown"
+            author_name = author_info.get("nickname") or author_info.get("username") or "Unknown"
+            errors = error_entry.get("errors", [])
+            error_preview = "\n".join(errors[:5])  # Show first 5 errors
+            if len(errors) > 5:
+                error_preview += f"\n... and {len(errors) - 5} more"
+            
             alert_lines = [
-                f"{mention} ⚠️ **AAR DELETION DETECTED**",
+                f"{mention} ⚠️ **ERRORED AAR DELETED**",
                 "",
                 f"**Message ID:** `{message_id}`",
-                f"**Likely Author:** {author_mention}",
-                f"**Mission:** {mission}",
-                f"**Difficulty:** {difficulty}",
-                f"**Original Timestamp:** {timestamp}",
+                f"**Author:** {author_mention} ({author_name})",
                 "",
-                "**Preserved Content:**",
-                f"```\n{content_preview}\n```",
+                "**Errors that were flagged:**",
+                f"```\n{error_preview}\n```",
                 "",
-                "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
+                "*This AAR had parsing errors. Verify the user resubmitted correctly before deletion.*",
             ]
             alert_content = "\n".join(alert_lines)
-            if len(alert_content) <= 1900 or not content_preview:
-                break
-            # Reduce the preview length to fit within the limit, preserving markdown fences.
-            overflow = len(alert_content) - 1900
-            if overflow >= len(content_preview):
-                content_preview = ""
-            else:
-                # Target length for the preview after shrinking.
-                target_len = len(content_preview) - overflow
-                if len(preserved_content) > target_len:
-                    # Leave room for ellipsis if we still need to truncate the preserved content.
-                    body_len = max(0, target_len - 3)
-                    content_preview = preserved_content[:body_len] + "..."
+            
+            # Remove from error tracking since the message is gone
+            try:
+                error_data = _load_json_dict(AAR_ERRORS_PATH)
+                if message_id in error_data:
+                    del error_data[message_id]
+                    _save_json_dict(AAR_ERRORS_PATH, error_data)
+            except Exception:
+                pass
+        else:
+            # Normal processed AAR deletion notification
+            brother_ids = record.get("brother_ids", [])
+            mission = record.get("mission", "Unknown")
+            difficulty = record.get("difficulty", "Unknown")
+            timestamp = record.get("timestamp", "Unknown")
+            author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
+            preserved_content = record.get("content", "")
+            content_preview = (
+                preserved_content[:500] + "..."
+                if len(preserved_content) > 500
+                else preserved_content
+            )
+            
+            # Build alert content, shrinking the preview as needed to stay within limits
+            while True:
+                alert_lines = [
+                    f"{mention} ⚠️ **AAR DELETION DETECTED**",
+                    "",
+                    f"**Message ID:** `{message_id}`",
+                    f"**Likely Author:** {author_mention}",
+                    f"**Mission:** {mission}",
+                    f"**Difficulty:** {difficulty}",
+                    f"**Original Timestamp:** {timestamp}",
+                    "",
+                    "**Preserved Content:**",
+                    f"```\n{content_preview}\n```",
+                    "",
+                    "*The AAR record remains in the archive. Review whether this deletion was authorized.*",
+                ]
+                alert_content = "\n".join(alert_lines)
+                if len(alert_content) <= 1900 or not content_preview:
+                    break
+                overflow = len(alert_content) - 1900
+                if overflow >= len(content_preview):
+                    content_preview = ""
                 else:
-                    content_preview = preserved_content[:target_len]
+                    target_len = len(content_preview) - overflow
+                    if len(preserved_content) > target_len:
+                        body_len = max(0, target_len - 3)
+                        content_preview = preserved_content[:body_len] + "..."
+                    else:
+                        content_preview = preserved_content[:target_len]
+        
         try:
             await notify_channel.send(
                 alert_content,
                 allowed_mentions=discord.AllowedMentions(roles=True, users=True),
             )
-            logger.info(f"AAR deletion notification sent for message {message_id}")
+            log_type = "errored" if error_entry else "processed"
+            logger.info(f"AAR deletion notification sent for {log_type} message {message_id}")
         except Exception as e:
             logger.error(f"Failed to send AAR deletion notification: {e}")
     except Exception as e:
