@@ -1,31 +1,28 @@
 {
   "remaining": [
     "Black Templars",
-    "Carcharodons",
     "Cowled Wardens",
     "Crimson Fists",
     "Dark Angels",
     "Dark Krakens",
-    "Epsilon Paladins",
     "Exorcists",
     "Flesh Tearers",
     "Imperial Fists",
-    "Iron Hands",
     "Mentors",
     "Raptors",
     "Raven Guard",
     "Red Scorpions",
-    "Scythes of the Emperor",
     "Space Wolves",
     "Tempestuous Angels",
     "White Scars",
     "Black Shield",
     "Angels of Vengeance",
     "Blood Angels",
-    "Knights of the Raven",
     "Salamanders",
-    "The Drakes",
-    "Ultramarines"
+    "Ultramarines",
+    "Bleeding Hearts",
+    "Blood Ravens",
+    "Minotaurs"
   ],
   "selected": {
     "2026-02": [
@@ -39,6 +36,10 @@
     "2026-04": [
       "Hawk Lords",
       "Lamenters"
+    ],
+    "2026-05": [
+      "Marines Errant",
+      "Carcharodons"
     ]
   }
 }
