@@ -2058,6 +2058,7 @@ HOME_CHAPTERS = [
     "Crimson Fists",
     "Dark Angels",
     "Dark Krakens",
+    "Dragonspears",
     "Death Spectres",
     "Epsilon Paladins",
     "Exorcists",
@@ -2614,11 +2615,11 @@ ARMOR_SCAN_MISS_CHANCES = {
 # Predictive detection chances for nominal brothers based on cycle count
 # Used to warn Techmarines of impending damage risk
 ARMOR_SCAN_PREDICTIVE_TIERS = [
-    {"min": 0, "max": 40, "chance": 0.0},    # No warning in safe zone
-    {"min": 41, "max": 80, "chance": 0.10},  # 10% chance to detect risk
-    {"min": 81, "max": 110, "chance": 0.25}, # 25% chance
-    {"min": 111, "max": 130, "chance": 0.40},# 40% chance
-    {"min": 131, "max": None, "chance": 0.60},# 60% chance
+    {"min": 0, "max": 20, "chance": 0.0},     # No warning in safe zone
+    {"min": 21, "max": 40, "chance": 0.10},   # 10% chance to detect risk
+    {"min": 41, "max": 55, "chance": 0.25},   # 25% chance
+    {"min": 56, "max": 65, "chance": 0.40},   # 40% chance
+    {"min": 66, "max": None, "chance": 0.60}, # 60% chance
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)
@@ -5942,6 +5943,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Crimson Fists": "The fist of Dorn strikes true; let your armor be unyielding.",
     "Dark Angels": "The secrets of the First are woven into your warplate's spirit.",
     "Dark Krakens": "From the abyssal depths, your armor rises to crush the foe.",
+    "Dragonspears": "Vulkan's flame endures in your armor; the memory of fallen brothers drives you to hunt the Greenskin unto extinction.",
     "Death Spectres": "The shroud of death clings to your armor; let enemies despair.",
     "Epsilon Paladins": "For Honour! For Duty! For Dorn!—your armor gleams with the Paladin's steadfast resolve.",
     "Exorcists": "Thrice-bound against the Warp, your armor stands inviolate.",
@@ -6322,6 +6324,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "The Lion trusted few; I trust only myself for this.",
         "In solitude, the Unforgiven find their own absolution.",
     ],
+    "Dragonspears": [
+        "The memories of fallen brothers guide my hand upon my own armor.",
+        "Self-reliance is the hunter's way—I tend what carries me to the kill.",
+        "Vulkan's sons learn to forge alone; I honor that teaching.",
+    ],
     "Raven Guard": [
         "From shadow I emerged; in shadow I bless my own war-plate.",
         "Corax worked alone when stealth demanded. So do I.",
@@ -6397,6 +6404,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "From the deep places, your service rises to be marked.",
         "The abyssal void reflects in each earned stud.",
         "Pressure and darkness forge these marks of honor.",
+    ],
+    "Dragonspears": [
+        "Each stud holds the memory of a brother consumed—their sacrifice endures in you.",
+        "Vulkan's fire and the hunt eternal mark your service upon the stars.",
+        "Fleet-born, Ork-slayer—your studs proclaim a legacy written in Greenskin blood.",
     ],
     "Death Spectres": [
         "Between life and death, your service is eternal.",
