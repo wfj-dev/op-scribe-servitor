@@ -9401,17 +9401,20 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             most_attended = (bearer_id, spirit)
     
     spirit_lines = []
+    now = datetime.utcnow()
     if eldest_spirit:
         member_id, info = eldest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"Eldest: **{designation}** {member_label}")
+        eldest_days = (now - eldest_date).days if eldest_date else 0
+        spirit_lines.append(f"Eldest ({eldest_days}d): **{designation}** {member_label}")
     
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        spirit_lines.append(f"Youngest: **{designation}** {member_label}")
+        newest_days = (now - newest_date).days if newest_date else 0
+        spirit_lines.append(f"Youngest ({newest_days}d): **{designation}** {member_label}")
     
     # Find most resilient spirit (most restoration events - survived most damage)
     restoration_counts = {}
@@ -9434,13 +9437,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if most_attended:
         bearer_id, spirit = most_attended
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
-        spirit_lines.append(f"Most Attended: **{spirit}** {member_label}")
+        spirit_lines.append(f"Devoted ({most_attended_count} rites): **{spirit}** {member_label}")
     
     # Show most resilient spirit (if any restorations this month)
     if most_resilient:
         bearer_id, spirit = most_resilient
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
-        spirit_lines.append(f"Most Resilient: **{spirit}** {member_label}")
+        spirit_lines.append(f"Unbowed ({most_resilient_count} wounds): **{spirit}** {member_label}")
 
     
     # ─────────────────────────────────────────────────────────────
