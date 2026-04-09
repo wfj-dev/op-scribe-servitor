@@ -126,8 +126,8 @@ def test_predictive_tiers_are_valid_probabilities():
 # ---------------------------------------------------------------------------
 
 def test_intensive_scan_cost():
-    """Intensive scan should cost 3000 armory points."""
-    assert INTENSIVE_SCAN_COST == 3000
+    """Intensive scan should cost 500 armory points."""
+    assert INTENSIVE_SCAN_COST == 500
 
 
 # ---------------------------------------------------------------------------

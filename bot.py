@@ -2624,7 +2624,7 @@ ARMOR_SCAN_PREDICTIVE_TIERS = [
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)
-INTENSIVE_SCAN_COST = 3000
+INTENSIVE_SCAN_COST = 500
 
 # Default probability tiers (can be overridden in config)
 # Gaps shrink as cycles increase to create mounting pressure
@@ -8960,7 +8960,7 @@ async def _armor_status(interaction: discord.Interaction):
 @app_commands.choices(
     requisition_type=[
         app_commands.Choice(name="Blessing Charge (+1 to pool)", value="blessing_charge"),
-        app_commands.Choice(name="Intensive Scan (3000 pts, 100% detection)", value="intensive_scan"),
+        app_commands.Choice(name="Intensive Scan (500 pts, 100% detection)", value="intensive_scan"),
     ]
 )
 async def _requisition_supplies(
