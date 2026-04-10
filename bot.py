@@ -4506,6 +4506,11 @@ async def _process_armor_integrity_for_aar(
         if not member:
             return 0, None
 
+        # Must have a Watch rank role to be in the armor system
+        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+        if not has_rank:
+            return 0, None
+
         # Check current damage tier from roles
         current_tier = _get_member_damage_tier(member)
         penalty = _get_damage_penalty(current_tier)
@@ -9431,23 +9436,27 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     activity_status = _load_activity_status()
     
-    # Helper to check if a member is active (not in Reserves)
-    def _is_member_active(member_id_str: str) -> bool:
-        member_status = activity_status.get(member_id_str, {}).get("status")
-        if member_status == "active":
-            return True
-        # Also check guild roles directly
+    # Helper to check if a member is active (not in Reserves) AND has Watch rank
+    def _is_member_eligible(member_id_str: str) -> bool:
         try:
             member = guild.get_member(int(member_id_str))
-            if member:
-                role_ids = {r.id for r in member.roles}
-                role_names = {r.name.lower() for r in member.roles}
-                if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
-                    return False
-                return True
+            if not member:
+                return False
+            # Must have a Watch rank role
+            has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+            if not has_rank:
+                return False
+            # Must not be in Reserves
+            role_ids = {r.id for r in member.roles}
+            role_names = {r.name.lower() for r in member.roles}
+            if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                return False
+            return True
         except Exception:
             pass
-        return False
+        # Fallback to activity_status
+        member_status = activity_status.get(member_id_str, {}).get("status")
+        return member_status == "active"
     
     eldest_spirit = None
     newest_spirit = None
@@ -9462,7 +9471,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             try:
                 bound_dt = datetime.fromisoformat(bound_ts)
                 # Only consider active members for both eldest and youngest
-                if _is_member_active(member_id):
+                if _is_member_eligible(member_id):
                     if eldest_date is None or bound_dt < eldest_date:
                         eldest_date = bound_dt
                         eldest_spirit = (member_id, spirit_info)
@@ -9478,7 +9487,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if r.get("event") == "maintenance":
             spirit = r.get("spirit")
             bearer_id = r.get("bearer_id")
-            if spirit and bearer_id and _is_member_active(bearer_id):
+            if spirit and bearer_id and _is_member_eligible(bearer_id):
                 key = (bearer_id, spirit)
                 maintenance_counts[key] = maintenance_counts.get(key, 0) + 1
     
@@ -9511,7 +9520,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if r.get("event") == "restoration":
             spirit = r.get("spirit")
             bearer_id = r.get("bearer_id")
-            if spirit and bearer_id and _is_member_active(bearer_id):
+            if spirit and bearer_id and _is_member_eligible(bearer_id):
                 key = (bearer_id, spirit)
                 restoration_counts[key] = restoration_counts.get(key, 0) + 1
     
@@ -9685,7 +9694,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             if points >= 15:  # Only show veterans past safe zone (12 cycles)
                 member = guild.get_member(int(member_id_str))
                 if member:
-                    honor_entries.append((member, points))
+                    # Must have a Watch rank role
+                    has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
+                    if has_rank:
+                        honor_entries.append((member, points))
     
     honor_entries.sort(key=lambda x: x[1], reverse=True)
     honor_top3 = honor_entries[:3]
