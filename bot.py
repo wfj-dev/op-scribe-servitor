@@ -8132,6 +8132,12 @@ async def _attest(
             if attestor_charges >= charges_required:
                 # Attestor alone can handle it
                 blessing_pool_contributions = [(attestor_id, charges_required)]
+            elif attestor_charges == 0 and invoker_charges >= charges_required:
+                # Attestor has no charges - invoker takes over as attestor entirely
+                attestor_member = interaction.user
+                attestor_id = invoker_id
+                role_key = _caller_role_key
+                blessing_pool_contributions = [(invoker_id, charges_required)]
             elif combined_charges >= charges_required:
                 # Combined pool is sufficient. Only treat this as collaborative
                 # when both parties materially contribute charges.
