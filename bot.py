@@ -2635,11 +2635,11 @@ ARMOR_SCAN_MISS_CHANCES = {
 # Predictive detection chances for nominal brothers based on cycle count
 # Used to warn Techmarines of impending damage risk
 ARMOR_SCAN_PREDICTIVE_TIERS = [
-    {"min": 0, "max": 20, "chance": 0.0},     # No warning in safe zone
-    {"min": 21, "max": 40, "chance": 0.10},   # 10% chance to detect risk
-    {"min": 41, "max": 55, "chance": 0.25},   # 25% chance
-    {"min": 56, "max": 65, "chance": 0.40},   # 40% chance
-    {"min": 66, "max": None, "chance": 0.60}, # 60% chance
+    {"min": 0, "max": 12, "chance": 0.0},     # No warning in safe zone
+    {"min": 13, "max": 18, "chance": 0.10},   # 10% chance to detect risk
+    {"min": 19, "max": 28, "chance": 0.25},   # 25% chance
+    {"min": 29, "max": 35, "chance": 0.40},   # 40% chance
+    {"min": 36, "max": None, "chance": 0.60}, # 60% chance
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)
@@ -2650,30 +2650,30 @@ INTENSIVE_SCAN_COST = 500
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
     {
         "min": 0,
-        "max": 40,
+        "max": 12,
         "chance": 0.0,
         "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0},
     },
     {
-        "min": 41,
-        "max": 80,
+        "min": 13,
+        "max": 24,
         "chance": 0.02,
         "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2},
     },
     {
-        "min": 81,
-        "max": 110,
+        "min": 25,
+        "max": 33,
         "chance": 0.08,
         "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5},
     },
     {
-        "min": 111,
-        "max": 130,
+        "min": 34,
+        "max": 39,
         "chance": 0.20,
         "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10},
     },
     {
-        "min": 131,
+        "min": 40,
         "max": None,
         "chance": 0.40,
         "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15},
