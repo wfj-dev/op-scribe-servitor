@@ -9682,7 +9682,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     for member_id_str, state in armor_data.items():
         if state.get("damage_tier") is None and not state.get("spirit_fractured"):
             points = state.get("points_since_blessing", 0)
-            if points >= 50:  # Only show veterans with significant cycles
+            if points >= 15:  # Only show veterans past safe zone (12 cycles)
                 member = guild.get_member(int(member_id_str))
                 if member:
                     honor_entries.append((member, points))
