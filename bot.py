@@ -68,6 +68,9 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 # Channel ID for Oathsworn eligibility notifications
 OATHSWORN_CHANNEL_ID = 1489282103119052903
 
+# Role ID for Reserves (inactive members)
+RESERVES_ROLE_ID = 1443825801345765386
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -2556,6 +2559,22 @@ async def _set_machine_spirit(user_id: int, spirit: str):
         pass
 
 
+async def _delete_machine_spirit(user_id: int) -> Optional[str]:
+    """Delete a machine spirit and return its designation if it existed."""
+    try:
+        async with MACHINE_SPIRITS_LOCK:
+            data = _load_machine_spirits()
+            entry = data.pop(str(user_id), None)
+            if entry:
+                _save_machine_spirits(data)
+                if isinstance(entry, dict):
+                    return entry.get("designation")
+                return entry
+            return None
+    except Exception:
+        return None
+
+
 # --- Armor Integrity System ---
 # Tracks armor wear and damage for brothers, with Techmarine maintenance requirements.
 
@@ -4002,6 +4021,30 @@ async def _record_rite_in_chronicle(
         _save_forge_chronicle(data)
 
 
+async def _record_spirit_released(bearer_id: int, spirit_designation: str):
+    """Record a spirit release (member went inactive) in the chronicle.
+    
+    This creates a 'released' event in rite_history for the memorial.
+    No techmarine is involved - this is an automatic system event.
+    """
+    async with FORGE_CHRONICLE_LOCK:
+        data = _load_forge_chronicle()
+        
+        entry = {
+            "ts": datetime.utcnow().isoformat(),
+            "bearer_id": str(bearer_id),
+            "techmarine_id": None,
+            "rite_type": None,
+            "spirit": spirit_designation,
+            "event": "released",
+        }
+        data["rite_history"].append(entry)
+        if len(data["rite_history"]) > 500:
+            data["rite_history"] = data["rite_history"][-500:]
+        
+        _save_forge_chronicle(data)
+
+
 async def _get_dashboard_message_id() -> Optional[int]:
     """Get the stored dashboard message ID (if any)."""
     async with FORGE_CHRONICLE_LOCK:
@@ -5293,6 +5336,34 @@ def _extract_args_from_interaction_data(data: dict) -> dict:
     except Exception:
         pass
     return out
+
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Handle member role changes - release spirit when member goes inactive."""
+    try:
+        # Check if Reserves role was added
+        before_role_ids = {r.id for r in before.roles}
+        after_role_ids = {r.id for r in after.roles}
+        
+        # Also check by name in case ID doesn't match
+        before_role_names = {r.name.lower() for r in before.roles}
+        after_role_names = {r.name.lower() for r in after.roles}
+        
+        reserves_added = (
+            (RESERVES_ROLE_ID in after_role_ids and RESERVES_ROLE_ID not in before_role_ids)
+            or ("reserves" in after_role_names and "reserves" not in before_role_names)
+        )
+        
+        if reserves_added:
+            # Member went inactive - release their machine spirit
+            spirit = await _delete_machine_spirit(after.id)
+            if spirit:
+                # Record the release in the chronicle
+                await _record_spirit_released(after.id, spirit)
+                logger.info(f"Released machine spirit {spirit} for {after.display_name} (went inactive)")
+    except Exception as e:
+        logger.debug(f"Error in on_member_update: {e}")
 
 
 @bot.event
@@ -9360,6 +9431,24 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     activity_status = _load_activity_status()
     
+    # Helper to check if a member is active (not in Reserves)
+    def _is_member_active(member_id_str: str) -> bool:
+        member_status = activity_status.get(member_id_str, {}).get("status")
+        if member_status == "active":
+            return True
+        # Also check guild roles directly
+        try:
+            member = guild.get_member(int(member_id_str))
+            if member:
+                role_ids = {r.id for r in member.roles}
+                role_names = {r.name.lower() for r in member.roles}
+                if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                    return False
+                return True
+        except Exception:
+            pass
+        return False
+    
     eldest_spirit = None
     newest_spirit = None
     eldest_date = None
@@ -9372,24 +9461,24 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if bound_ts:
             try:
                 bound_dt = datetime.fromisoformat(bound_ts)
-                member_status = activity_status.get(member_id, {}).get("status")
-                if member_status == "active":
+                # Only consider active members for both eldest and youngest
+                if _is_member_active(member_id):
                     if eldest_date is None or bound_dt < eldest_date:
                         eldest_date = bound_dt
                         eldest_spirit = (member_id, spirit_info)
-                if newest_date is None or bound_dt > newest_date:
-                    newest_date = bound_dt
-                    newest_spirit = (member_id, spirit_info)
+                    if newest_date is None or bound_dt > newest_date:
+                        newest_date = bound_dt
+                        newest_spirit = (member_id, spirit_info)
             except Exception:
                 pass
     
-    # Find most attended spirit (most maintenance rites this month)
+    # Find most attended spirit (lifetime maintenance rites, active members only)
     maintenance_counts = {}
-    for r in monthly_rites:
+    for r in rite_history:
         if r.get("event") == "maintenance":
             spirit = r.get("spirit")
             bearer_id = r.get("bearer_id")
-            if spirit and bearer_id:
+            if spirit and bearer_id and _is_member_active(bearer_id):
                 key = (bearer_id, spirit)
                 maintenance_counts[key] = maintenance_counts.get(key, 0) + 1
     
@@ -9416,13 +9505,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         newest_days = (now - newest_date).days if newest_date else 0
         spirit_lines.append(f"Youngest ({newest_days}d): **{designation}** {member_label}")
     
-    # Find most resilient spirit (most restoration events - survived most damage)
+    # Find most resilient spirit (lifetime restoration events, active members only)
     restoration_counts = {}
-    for r in monthly_rites:
+    for r in rite_history:
         if r.get("event") == "restoration":
             spirit = r.get("spirit")
             bearer_id = r.get("bearer_id")
-            if spirit and bearer_id:
+            if spirit and bearer_id and _is_member_active(bearer_id):
                 key = (bearer_id, spirit)
                 restoration_counts[key] = restoration_counts.get(key, 0) + 1
     
@@ -9610,14 +9699,18 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Section 7: Spirit Memorial (Lost this month)
     # ─────────────────────────────────────────────────────────────
     memorial_lines = []
-    lost_spirits = [r for r in monthly_rites if r.get("event") == "rebirth"]
+    # Include both rebirths (fractured) and releases (inactive)
+    lost_spirits = [r for r in monthly_rites if r.get("event") in ("rebirth", "released")]
     for entry in lost_spirits[:3]:  # Max 3
         bearer_id = entry.get("bearer_id")
-        old_spirit = entry.get("old_spirit")  # May not be recorded
+        spirit = entry.get("spirit") or entry.get("old_spirit")
+        event_type = entry.get("event")
         if bearer_id:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=False)
-            if old_spirit:
-                memorial_lines.append(f"**{old_spirit}** — {member_label}")
+            if spirit:
+                # Add icon: 💀 for fractured, 💤 for released (dormant)
+                icon = "💤" if event_type == "released" else "💀"
+                memorial_lines.append(f"{icon} **{spirit}** — {member_label}")
             else:
                 memorial_lines.append(f"*Spirit lost* — {member_label}")
     
