@@ -90,9 +90,9 @@ def test_intensive_cost_nominal_returns_zero():
 
 
 def test_intensive_cost_damaged():
-    """Damaged tier costs 1 charge."""
+    """Damaged tier costs 2 charges (minimum for intensive)."""
     assert _get_intensive_charge_cost("damaged", False) == INTENSIVE_BLESSING_COSTS["damaged"]
-    assert _get_intensive_charge_cost("damaged", False) == 1
+    assert _get_intensive_charge_cost("damaged", False) == 2
 
 
 def test_intensive_cost_compromised():

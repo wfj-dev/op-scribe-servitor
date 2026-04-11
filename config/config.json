@@ -115,6 +115,11 @@
       "roles": [
         "Forgemaster"
       ]
+    },
+    "set_induction": {
+      "roles": [
+        "Forgemaster"
+      ]
     }
   },
   "companies": {
