@@ -9626,11 +9626,18 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         # Include any brother with armor record
         if not state:
             continue
-            
-        damage_tier = state.get("damage_tier")
+        
+        # Get damage tier from roles (consistent with armor_status command)
+        damage_tier = _get_member_damage_tier(member)
         spirit_fractured = state.get("spirit_fractured", False)
         points = state.get("points_since_blessing", 0)
-        detected = state.get("detected", True)
+        
+        # Use same scan detection as armor_status (cached per AAR cycle)
+        scan_result = await _get_or_roll_scan_result(
+            member.id, damage_tier, points, spirit_fractured
+        )
+        detected = scan_result["detected"]
+        
         risk_score = _calculate_armor_risk_score(damage_tier, points, spirit_fractured)
         
         watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected))
