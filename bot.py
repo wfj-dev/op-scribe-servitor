@@ -52,6 +52,7 @@ PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
 ARMOR_SCAN_STATE_PATH = os.path.join(DATA_DIR, "armor_scan_state.json")
+INDUCTION_OVERRIDES_PATH = os.path.join(DATA_DIR, "induction_overrides.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -106,6 +107,9 @@ ARMOR_INTEGRITY_LOCK = asyncio.Lock()
 # Lock for armor scan state (detection caching per AAR cycle)
 ARMOR_SCAN_STATE_LOCK = asyncio.Lock()
 
+# Lock for induction date overrides
+INDUCTION_OVERRIDES_LOCK = asyncio.Lock()
+
 # Lock for blessing pool operations (Techmarine daily blessing limits)
 BLESSING_POOL_LOCK = asyncio.Lock()
 BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
@@ -130,24 +134,25 @@ BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing
 BLESSING_RECIPIENT_MAX_PER_DAY = 3  # Maximum blessings per recipient per 24h
 BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS = 4  # Minimum hours between blessings for same recipient
 
-# Intensive blessing charge costs (full heal to nominal)
+# Intensive blessing charge costs (full heal to nominal, guaranteed - no roll)
 # Maps damage tier to number of charges required for intensive blessing
+# Intensive always costs minimum 2 charges to differentiate from standard
 INTENSIVE_BLESSING_COSTS = {
     None: 0,           # Nominal: cannot use intensive
-    "damaged": 1,      # Damaged -> Nominal: 1 charge (same as standard)
-    "compromised": 2,  # Compromised -> Nominal: 2 charges
-    "critical": 3,     # Critical -> Nominal: 3 charges
-    "fractured": 4,    # Fractured -> Nominal: 4 charges
+    "damaged": 2,      # Damaged -> Nominal: 2 charges (guaranteed)
+    "compromised": 2,  # Compromised -> Nominal: 2 charges (guaranteed)
+    "critical": 3,     # Critical -> Nominal: 3 charges (guaranteed)
+    "fractured": 4,    # Fractured -> Nominal: 4 charges (guaranteed)
 }
 
 # Blessing roll configuration - asymmetric state-based probabilities
 # Format: (crit_fail_chance, crit_success_chance) - normal is remainder
 BLESSING_ROLL_PROBABILITIES = {
-    None: (0.01, 0.01),        # Nominal: 1/98/1 - routine maintenance
-    "damaged": (0.03, 0.03),   # Damaged: 3/94/3 - minor repair
-    "compromised": (0.05, 0.05),  # Compromised: 5/90/5 - agitated spirit
-    "critical": (0.08, 0.06),  # Critical: 8/86/6 - volatile, asymmetric
-    "fractured": (0.10, 0.10), # Fractured: 10/80/10 - desperate spirit
+    None: (0.015, 0.015),        # Nominal: 1.5/97/1.5 - routine maintenance
+    "damaged": (0.045, 0.045),   # Damaged: 4.5/91/4.5 - minor repair
+    "compromised": (0.075, 0.075),  # Compromised: 7.5/85/7.5 - agitated spirit
+    "critical": (0.12, 0.09),    # Critical: 12/79/9 - volatile, asymmetric
+    "fractured": (0.15, 0.15),   # Fractured: 15/70/15 - desperate spirit
 }
 # Legacy thresholds (used as fallback)
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
@@ -964,6 +969,57 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         logger.exception(f"Failed to save promotion tracking: {e}")
 
 
+def _load_induction_overrides() -> Dict[str, str]:
+    """Load induction date overrides: user_id -> ISO date string (YYYY-MM-DD)."""
+    try:
+        if os.path.exists(INDUCTION_OVERRIDES_PATH):
+            with open(INDUCTION_OVERRIDES_PATH, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_induction_overrides(overrides: Dict[str, str]):
+    """Persist induction overrides to disk with backup."""
+    try:
+        tmp_path = INDUCTION_OVERRIDES_PATH + ".tmp"
+        bak_path = INDUCTION_OVERRIDES_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(overrides, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(INDUCTION_OVERRIDES_PATH):
+            try:
+                os.replace(INDUCTION_OVERRIDES_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, INDUCTION_OVERRIDES_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save induction overrides: {e}")
+
+
+def _get_effective_induction_date(member: discord.Member) -> Optional[datetime]:
+    """Return the effective induction date for a member.
+
+    If an override exists, returns that date (as datetime at midnight UTC).
+    Otherwise, returns the member's Discord server join date.
+    """
+    user_id = str(getattr(member, "id", ""))
+    overrides = _load_induction_overrides()
+    if user_id in overrides:
+        try:
+            # Parse ISO date string to datetime
+            date_str = overrides[user_id]
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            return dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+    # Fallback to Discord join date
+    joined_at = getattr(member, "joined_at", None)
+    return joined_at
+
+
 def _get_member_company_name(member: discord.Member) -> Optional[str]:
     """Return the Watch Company name for a member (e.g., 'Watch Company Primus'), or None."""
     company_roles = {
@@ -1657,8 +1713,8 @@ async def _check_promotion_milestones():
                 stats = compute_stats_for_user(user_id)
                 aar_points = int(stats.get("aar_points", 0) or 0)
 
-                # Get member join time
-                joined_at = getattr(member, "joined_at", None)
+                # Get member induction time (supports override)
+                joined_at = _get_effective_induction_date(member)
                 if joined_at:
                     if joined_at.tzinfo is not None:
                         joined_at = joined_at.replace(tzinfo=None)
@@ -3245,8 +3301,8 @@ def _check_armor_grace_period(member: discord.Member, total_aar_points: int) -> 
     if total_aar_points < min_points:
         return False
 
-    # Check time threshold
-    joined_at = getattr(member, "joined_at", None)
+    # Check time threshold (supports induction override)
+    joined_at = _get_effective_induction_date(member)
     if not joined_at:
         return False
 
@@ -7703,7 +7759,7 @@ def _compute_member_service_studs(member: discord.Member) -> int:
             return 0
 
         now = datetime.utcnow()
-        joined_at = getattr(member, "joined_at", None)
+        joined_at = _get_effective_induction_date(member)
 
         if not joined_at:
             return 0
@@ -8370,30 +8426,34 @@ async def _attest(
         spirit_status_text = random.choice(spirit_status_phrases)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Roll blessing outcome and apply effect (state-based probabilities)
+    # Roll blessing outcome and apply effect
+    # Standard: rolls for crit_fail/normal/crit_success based on damage state
+    # Intensive: guaranteed full heal to nominal (no roll, no crits)
     # ─────────────────────────────────────────────────────────────────────────
-    blessing_roll_outcome = _roll_blessing_outcome(
-        damage_tier=current_damage_tier,
-        spirit_fractured=spirit_fractured,
-    )
     blessing_result_tier = current_damage_tier  # Track resulting damage tier
     
-    if interaction.guild:
-        if blessing_roll_outcome == "crit_fail":
-            # Crit fail: reset points but damage stays (same for standard and intensive)
-            blessing_result_tier = await _apply_blessing_crit_fail(member, interaction.guild)
-        elif blessing_roll_outcome == "crit_success":
-            # Crit success: full heal + grace period (scales with charges for intensive)
-            blessing_result_tier = await _apply_blessing_crit_success(
-                member, interaction.guild, charges_invested=charges_required
-            )
-        else:
-            # Normal outcome depends on intensive mode
-            if is_intensive:
-                # Intensive: full heal to nominal (no crit-success grace period)
-                blessing_result_tier = await _apply_blessing_intensive_normal(member, interaction.guild)
+    if is_intensive:
+        # Intensive mode: guaranteed full heal, no roll
+        blessing_roll_outcome = "normal"  # For display purposes
+        if interaction.guild:
+            blessing_result_tier = await _apply_blessing_intensive_normal(member, interaction.guild)
+    else:
+        # Standard mode: roll for outcome
+        blessing_roll_outcome = _roll_blessing_outcome(
+            damage_tier=current_damage_tier,
+            spirit_fractured=spirit_fractured,
+        )
+        if interaction.guild:
+            if blessing_roll_outcome == "crit_fail":
+                # Crit fail: reset points but damage stays
+                blessing_result_tier = await _apply_blessing_crit_fail(member, interaction.guild)
+            elif blessing_roll_outcome == "crit_success":
+                # Crit success: full heal + grace period
+                blessing_result_tier = await _apply_blessing_crit_success(
+                    member, interaction.guild, charges_invested=charges_required
+                )
             else:
-                # Standard: drop one damage tier
+                # Normal: drop one damage tier
                 blessing_result_tier = await _apply_blessing_normal(member, interaction.guild)
 
     # Consume blessings from the contributing Techmarine(s) pools (unless force override)
@@ -9517,8 +9577,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
-        newest_days = (now - newest_date).days if newest_date else 0
-        spirit_lines.append(f"Youngest ({newest_days}d): **{designation}** {member_label}")
+        newest_hours = int((now - newest_date).total_seconds() // 3600) if newest_date else 0
+        spirit_lines.append(f"Youngest ({newest_hours}h): **{designation}** {member_label}")
     
     # Find most resilient spirit (lifetime restoration events, active members only)
     restoration_counts = {}
@@ -10259,8 +10319,8 @@ async def _preview_stud_announcement(
     stats = compute_stats_for_user(user_id)
     aar_points = int(stats.get("aar_points", 0) or 0)
 
-    # Get weeks in server
-    joined_at = getattr(member, "joined_at", None)
+    # Get weeks since induction (supports override)
+    joined_at = _get_effective_induction_date(member)
     if joined_at:
         if joined_at.tzinfo is not None:
             joined_at = joined_at.replace(tzinfo=None)
@@ -11608,6 +11668,94 @@ async def cache_stats(interaction: discord.Interaction):
 
 
 @bot.tree.command(
+    name="set_induction",
+    description="[Forgemaster] Set or clear a custom induction date for a member.",
+)
+@app_commands.describe(
+    member="The member whose induction date to set",
+    date="Induction date in YYYY-MM-DD format (e.g., 2024-06-15). Leave blank to clear override.",
+)
+async def set_induction(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    date: Optional[str] = None,
+):
+    """Set or clear a custom induction date override for a member.
+
+    Only Forgemaster can use this command. If date is omitted,
+    any existing override is cleared and the Discord join date will be used.
+    """
+    # Require Forgemaster (via config permissions)
+    if not check_command_permission(interaction.user, "set_induction"):
+        await interaction.response.send_message(
+            "Only the Forgemaster can set induction dates.", ephemeral=True
+        )
+        return
+
+    user_id = str(member.id)
+
+    async with INDUCTION_OVERRIDES_LOCK:
+        overrides = _load_induction_overrides()
+
+        if date is None or date.strip() == "":
+            # Clear override
+            if user_id in overrides:
+                del overrides[user_id]
+                _save_induction_overrides(overrides)
+                # Get Discord join date to show what it reverts to
+                discord_join = getattr(member, "joined_at", None)
+                if discord_join:
+                    if discord_join.tzinfo is None:
+                        discord_join = discord_join.replace(tzinfo=timezone.utc)
+                    discord_date = discord_join.strftime("%Y-%m-%d")
+                    await interaction.response.send_message(
+                        f"Cleared induction override for {member.mention}. "
+                        f"Now using Discord join date: **{discord_date}**",
+                        ephemeral=True,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        f"Cleared induction override for {member.mention}.",
+                        ephemeral=True,
+                    )
+            else:
+                await interaction.response.send_message(
+                    f"No induction override exists for {member.mention}.",
+                    ephemeral=True,
+                )
+            return
+
+        # Validate date format
+        date_str = date.strip()
+        try:
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid date format. Please use YYYY-MM-DD (e.g., 2024-06-15).",
+                ephemeral=True,
+            )
+            return
+
+        # Validate date is not in the future
+        if parsed_date.date() > datetime.now().date():
+            await interaction.response.send_message(
+                "Induction date cannot be in the future.", ephemeral=True
+            )
+            return
+
+        # Save override
+        overrides[user_id] = date_str
+        _save_induction_overrides(overrides)
+
+        # Calculate days since induction for display
+        days_ago = (datetime.now().date() - parsed_date.date()).days
+        await interaction.response.send_message(
+            f"Set induction date for {member.mention} to **{date_str}** ({days_ago}d ago).",
+            ephemeral=True,
+        )
+
+
+@bot.tree.command(
     name="audit_service_studs",
     description="List brothers whose displayed service studs differ from computed entitlement (Watch Command only).",
 )
@@ -11645,7 +11793,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                 and (highest_idx is not None)
                 and (highest_idx <= idx_veteran)
             ):
-                joined_at = getattr(member, "joined_at", None)
+                joined_at = _get_effective_induction_date(member)
                 if joined_at:
                     ja = joined_at
                     if ja.tzinfo is not None:
@@ -12463,9 +12611,9 @@ async def tally_deeds(
 
         display_name = target.nick or target.display_name
 
-        # Member join date (server join time); fallback to 'Unknown' if unavailable
+        # Member induction date (custom override or server join time); fallback to 'Unknown'
         try:
-            joined_at = getattr(target, "joined_at", None)
+            joined_at = _get_effective_induction_date(target)
             if joined_at:
                 try:
                     # Ensure joined_at is timezone-aware, defaulting to UTC
@@ -14070,9 +14218,9 @@ async def my_deeds(interaction: discord.Interaction):
 
     display_name = target.nick or target.display_name
 
-    # Join date
+    # Induction date (custom override or server join time)
     try:
-        joined_at = getattr(target, "joined_at", None)
+        joined_at = _get_effective_induction_date(target)
         if joined_at:
             if joined_at.tzinfo is None:
                 joined_at = joined_at.replace(tzinfo=timezone.utc)
@@ -19242,8 +19390,8 @@ async def promotion_queue(interaction: discord.Interaction):
         is_veteran_or_higher = any(r in role_names for r in veteran_or_higher_roles)
         is_watch_brother_only = is_watch_brother and not is_veteran_or_higher
 
-        # Get join date and calculate weeks
-        joined_at = getattr(member, "joined_at", None)
+        # Get induction date and calculate weeks (supports override)
+        joined_at = _get_effective_induction_date(member)
         if joined_at:
             if joined_at.tzinfo is not None:
                 joined_at = joined_at.replace(tzinfo=None)
