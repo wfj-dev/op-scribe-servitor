@@ -9696,9 +9696,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         else:
             icon = "🟢"  # Nominal
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        # Only show cycles for at-risk/damaged brothers, not nominal
+        # Only show cycles for at-risk/damaged brothers, not nominal or unreadable
         if icon == "🟢":
             watchlist_lines.append(f"{icon} {name}{cooldown_indicator}")
+        elif icon == "⚫":
+            # Unreadable - mask data like armor_status does
+            watchlist_lines.append(f"{icon} {name} · ???")
         else:
             watchlist_lines.append(f"{icon} {name} · {pts}c{cooldown_indicator}")
     
@@ -10057,7 +10060,7 @@ async def _forge_dashboard_loop():
             msg = await channel.fetch_message(dashboard_msg_id)
             embed = await _build_forge_chronicle_embed(guild)
             await msg.edit(embed=embed)
-            logger.debug("Updated Forge Chronicle dashboard")
+            logger.info("Updated Forge Chronicle dashboard")
         except discord.NotFound:
             # Dashboard message was deleted, clear the stored ID
             async with FORGE_CHRONICLE_LOCK:
