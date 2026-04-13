@@ -2691,11 +2691,11 @@ ARMOR_SCAN_MISS_CHANCES = {
 # Predictive detection chances for nominal brothers based on cycle count
 # Used to warn Techmarines of impending damage risk
 ARMOR_SCAN_PREDICTIVE_TIERS = [
-    {"min": 0, "max": 12, "chance": 0.0},     # No warning in safe zone
-    {"min": 13, "max": 18, "chance": 0.10},   # 10% chance to detect risk
-    {"min": 19, "max": 28, "chance": 0.25},   # 25% chance
-    {"min": 29, "max": 35, "chance": 0.40},   # 40% chance
-    {"min": 36, "max": None, "chance": 0.60}, # 60% chance
+    {"min": 0, "max": 4, "chance": 0.0},      # No warning in safe zone
+    {"min": 5, "max": 9, "chance": 0.10},     # 10% chance to detect risk
+    {"min": 10, "max": 14, "chance": 0.25},   # 25% chance
+    {"min": 15, "max": 19, "chance": 0.40},   # 40% chance
+    {"min": 20, "max": None, "chance": 0.60}, # 60% chance
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)
@@ -2706,30 +2706,30 @@ INTENSIVE_SCAN_COST = 500
 DEFAULT_ARMOR_PROBABILITY_TIERS = [
     {
         "min": 0,
-        "max": 12,
+        "max": 4,
         "chance": 0.0,
         "damage_weights": {"damaged": 100, "compromised": 0, "critical": 0},
     },
     {
-        "min": 13,
-        "max": 24,
+        "min": 5,
+        "max": 9,
         "chance": 0.02,
         "damage_weights": {"damaged": 90, "compromised": 8, "critical": 2},
     },
     {
-        "min": 25,
-        "max": 33,
+        "min": 10,
+        "max": 14,
         "chance": 0.08,
         "damage_weights": {"damaged": 80, "compromised": 15, "critical": 5},
     },
     {
-        "min": 34,
-        "max": 39,
+        "min": 15,
+        "max": 19,
         "chance": 0.20,
         "damage_weights": {"damaged": 65, "compromised": 25, "critical": 10},
     },
     {
-        "min": 40,
+        "min": 20,
         "max": None,
         "chance": 0.40,
         "damage_weights": {"damaged": 50, "compromised": 35, "critical": 15},
@@ -3471,6 +3471,54 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
     
     # Check if spirit fractured from this escalation
     spirit_fractured = new_tier == "fractured"
+    
+    # Apply the damage role to the member
+    role_ids = _get_armor_damage_role_ids()
+    if role_ids and new_tier and new_tier != "fractured":
+        try:
+            # Remove current damage role if any
+            if current_tier:
+                current_role_id = role_ids.get(current_tier)
+                if current_role_id:
+                    current_role = guild.get_role(int(current_role_id))
+                    if current_role and current_role in member.roles:
+                        await member.remove_roles(
+                            current_role, reason="Armor integrity: crit fail escalation"
+                        )
+            
+            # Add new damage role
+            new_role_id = role_ids.get(new_tier)
+            if new_role_id:
+                new_role = guild.get_role(int(new_role_id))
+                if new_role:
+                    await member.add_roles(
+                        new_role, reason=f"Armor integrity: crit fail → {new_tier}"
+                    )
+        except Exception:
+            pass  # Role application failed but state update should still proceed
+    
+    # If fractured, apply critical role (fractured is critical + flag)
+    if spirit_fractured and role_ids:
+        try:
+            # Remove current damage role if any
+            if current_tier:
+                current_role_id = role_ids.get(current_tier)
+                if current_role_id:
+                    current_role = guild.get_role(int(current_role_id))
+                    if current_role and current_role in member.roles:
+                        await member.remove_roles(
+                            current_role, reason="Armor integrity: spirit fractured"
+                        )
+            # Add critical role for fractured state
+            critical_role_id = role_ids.get("critical")
+            if critical_role_id:
+                critical_role = guild.get_role(int(critical_role_id))
+                if critical_role:
+                    await member.add_roles(
+                        critical_role, reason="Armor integrity: spirit fractured"
+                    )
+        except Exception:
+            pass
     
     await _set_armor_state(
         member.id,
