@@ -9685,10 +9685,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             member.id, damage_tier, points, spirit_fractured
         )
         detected = scan_result["detected"]
+        predictive_warning = scan_result.get("predictive_warning", False)
         
         risk_score = _calculate_armor_risk_score(damage_tier, points, spirit_fractured)
         
-        watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected))
+        watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected, predictive_warning))
     
     # Randomly select 5 from all brothers (cycles through different brothers each refresh)
     import random
@@ -9700,14 +9701,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Sort by risk, but randomize only nominal and undetected (damaged tiers stay risk-ordered)
     def _watchlist_tier(entry):
         """Get tier for sorting watchlist entries."""
-        _, tier, fractured, pts, _, detected = entry
+        _, tier, fractured, pts, _, detected, predictive_warning = entry
         if not detected:
             return "undetected"
         if fractured:
             return "fractured"
         if tier in ("critical", "compromised", "damaged"):
             return tier
-        if pts >= 10:
+        if predictive_warning:
             return "at_risk"
         return "nominal"
     
@@ -9724,7 +9725,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     watchlist_top5 = damaged_wl + nominal_wl + undetected_wl
     
     watchlist_lines = []
-    for member, tier, fractured, pts, score, detected in watchlist_top5:
+    for member, tier, fractured, pts, score, detected, predictive_warning in watchlist_top5:
         # Check cooldown status
         can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
         cooldown_indicator = " ⏳" if not can_receive else ""
@@ -9739,8 +9740,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             icon = "🟠"
         elif tier == "damaged":
             icon = "🟡"
-        elif pts >= 10:
-            icon = "⚡"  # At risk (high points approaching damage)
+        elif predictive_warning:
+            icon = "⚡"  # At risk (predictive warning from scan)
         else:
             icon = "🟢"  # Nominal
         name = _format_member_styled(guild, str(member.id), include_chapter=True)
