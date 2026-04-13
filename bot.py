@@ -157,7 +157,7 @@ BLESSING_ROLL_PROBABILITIES = {
 # Legacy thresholds (used as fallback)
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
 BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
-BLESSING_CRIT_SUCCESS_GRACE_POINTS = -25  # Grace points on crit success
+BLESSING_CRIT_SUCCESS_GRACE_POINTS = -10  # Grace points on crit success
 
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
@@ -9707,7 +9707,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             return "fractured"
         if tier in ("critical", "compromised", "damaged"):
             return tier
-        if pts >= 150:
+        if pts >= 10:
             return "at_risk"
         return "nominal"
     
@@ -9739,7 +9739,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             icon = "🟠"
         elif tier == "damaged":
             icon = "🟡"
-        elif pts >= 150:
+        elif pts >= 10:
             icon = "⚡"  # At risk (high points approaching damage)
         else:
             icon = "🟢"  # Nominal
@@ -9815,7 +9815,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     for member_id_str, state in armor_data.items():
         if state.get("damage_tier") is None and not state.get("spirit_fractured"):
             points = state.get("points_since_blessing", 0)
-            if points >= 15:  # Only show veterans past safe zone (12 cycles)
+            if points >= 5:  # Only show veterans past safe zone (4 cycles)
                 member = guild.get_member(int(member_id_str))
                 if member:
                     # Must have a Watch rank role
