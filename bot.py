@@ -5057,8 +5057,9 @@ class LFGQueueView(discord.ui.View):
             logger.warning(f"Failed to update LFG embed: {e}")
     
     async def join_queue(self, interaction: discord.Interaction):
-        # Defer with ephemeral=True so "thinking" is hidden
-        await interaction.response.defer(ephemeral=True)
+        # Only defer if not already acknowledged
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         member = interaction.user
         if not isinstance(member, discord.Member):
@@ -5148,8 +5149,9 @@ class LFGQueueView(discord.ui.View):
                     pass
     
     async def leave_queue(self, interaction: discord.Interaction):
-        # Defer with ephemeral=True so "thinking" is hidden
-        await interaction.response.defer(ephemeral=True)
+        # Only defer if not already acknowledged
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         member = interaction.user
         error_message = None
@@ -5181,8 +5183,9 @@ class LFGQueueView(discord.ui.View):
         await self._update_embed(interaction)
     
     async def close_queue(self, interaction: discord.Interaction):
-        # Defer with ephemeral=True so "thinking" is hidden
-        await interaction.response.defer(ephemeral=True)
+        # Only defer if not already acknowledged
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         queue_data = await self._get_queue_data()
         if not queue_data:
