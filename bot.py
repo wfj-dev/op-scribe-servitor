@@ -4835,6 +4835,13 @@ def _get_lfg_queue_types() -> dict:
     return cfg.get("queue_types") or LFG_QUEUE_TYPES_DEFAULT
 
 
+def _get_lfg_initiation_trial_role_id() -> Optional[int]:
+    """Get Initiation Trial ping role ID from config, or None if not configured."""
+    cfg = _get_lfg_config()
+    role_id = cfg.get("initiation_trial_role_id")
+    return int(role_id) if role_id else None
+
+
 def _load_lfg_queues() -> dict:
     """Load LFG queues from disk."""
     try:
@@ -4898,6 +4905,8 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     creator_id = queue_data["creator_id"]
     players = queue_data["players"]  # List of {"user_id": int, "platform": str}
     expires_at = queue_data.get("expires_at")
+    initiation_trial = queue_data.get("initiation_trial", False)
+    custom_message = queue_data.get("message")
     
     # Count players and console players
     player_count = len(players)
@@ -4915,6 +4924,8 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     
     # Build title
     title = f"⚔️ {type_config['display']} Queue"
+    if initiation_trial:
+        title += " (Initiation Trial)"
     if player_count >= max_players:
         title += " [FULL]"
     
@@ -4924,6 +4935,20 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     creator = guild.get_member(creator_id)
     creator_name = creator.display_name if creator else f"User {creator_id}"
     embed.set_author(name=f"Created by {creator_name}")
+    
+    # Build description with expires time and custom message
+    desc_parts = []
+    if expires_at:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at)
+            exp_ts = int(exp_dt.timestamp())
+            desc_parts.append(f"⏰ Expires <t:{exp_ts}:R>")
+        except Exception:
+            pass
+    if custom_message:
+        desc_parts.append(f"📝 *{custom_message}*")
+    if desc_parts:
+        embed.description = "\n".join(desc_parts)
     
     # Player slots
     slot_lines = []
@@ -4949,15 +4974,6 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         if console_count >= max_console:
             console_status += " (limit reached)"
         embed.add_field(name="Platform Limits", value=console_status, inline=False)
-    
-    # Expiration time - use description since footer doesn't render timestamps
-    if expires_at:
-        try:
-            exp_dt = datetime.fromisoformat(expires_at)
-            exp_ts = int(exp_dt.timestamp())
-            embed.description = f"⏰ Expires <t:{exp_ts}:R>"
-        except Exception:
-            pass
     
     embed.set_footer(text="Click buttons to join/leave")
     
@@ -20516,9 +20532,6 @@ async def company_roster(interaction: discord.Interaction):
     name="lfg_queue",
     description="Create a Looking For Group queue for operations or omega missions.",
 )
-@app_commands.describe(
-    queue_type="Type of mission: operation (3 players) or omega (5 players, max 2 console)",
-)
 @app_commands.choices(
     queue_type=[
         app_commands.Choice(name="Operation (3 players)", value="operation"),
@@ -20528,12 +20541,16 @@ async def company_roster(interaction: discord.Interaction):
 )
 @app_commands.describe(
     queue_type="The type of queue to create",
-    expire_minutes="Minutes until queue expires (default: 30, max: 120)"
+    initiation_trial="Is this an Initiation Trial? (pings additional role)",
+    expire_minutes="Minutes until queue expires (default: 30, max: 120)",
+    message="Optional message (e.g. 'need slays', 'teaching run')"
 )
 async def lfg_queue(
     interaction: discord.Interaction,
     queue_type: app_commands.Choice[str],
+    initiation_trial: bool = False,
     expire_minutes: Optional[int] = None,
+    message: Optional[str] = None,
 ):
     # Use channel_policies to check if command is allowed here
     if not is_allowed_channel(interaction):
@@ -20598,6 +20615,8 @@ async def lfg_queue(
     # Build initial queue data (creator auto-joins)
     queue_data = {
         "queue_type": queue_type.value,
+        "initiation_trial": initiation_trial,
+        "message": message,
         "creator_id": member.id,
         "channel_id": interaction.channel_id,
         "players": [{"user_id": member.id, "platform": platform}],
@@ -20608,9 +20627,16 @@ async def lfg_queue(
     # Build embed
     embed = _build_lfg_embed(queue_data, interaction.guild)
     
-    # Build ping content from queue type config
+    # Build ping content from queue type config (add initiation trial role if applicable)
     ping_role_id = type_config.get("ping_role_id")
-    content = f"<@&{ping_role_id}>" if ping_role_id else None
+    pings = []
+    if ping_role_id:
+        pings.append(f"<@&{ping_role_id}>")
+    if initiation_trial:
+        trial_role_id = _get_lfg_initiation_trial_role_id()
+        if trial_role_id:
+            pings.append(f"<@&{trial_role_id}>")
+    content = " ".join(pings) if pings else None
     
     # Send message with view
     await interaction.response.send_message(
@@ -20633,8 +20659,9 @@ async def lfg_queue(
     view = LFGQueueView(msg.id)
     await msg.edit(view=view)
     
+    trial_str = " [Initiation Trial]" if initiation_trial else ""
     logger.info(
-        f"LFG queue created: {queue_type.value} by {member.display_name} "
+        f"LFG queue created: {queue_type.value}{trial_str} by {member.display_name} "
         f"(msg={msg.id}, expires={expires_at.isoformat()})"
     )
 
