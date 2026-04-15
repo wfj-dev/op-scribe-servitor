@@ -6008,8 +6008,52 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         logger.debug(f"Error in on_member_update: {e}")
 
 
+async def _handle_lfg_button(interaction: discord.Interaction, custom_id: str):
+    """Handle LFG button interactions globally."""
+    try:
+        parts = custom_id.split(":")
+        if len(parts) != 2:
+            return
+        
+        action, queue_id_str = parts
+        queue_id = int(queue_id_str)
+        
+        # Create a view instance to use its methods
+        view = LFGQueueView(queue_id)
+        
+        if action == "lfg_join":
+            await view.join_queue(interaction)
+        elif action == "lfg_leave":
+            await view.leave_queue(interaction)
+        elif action == "lfg_close":
+            await view.close_queue(interaction)
+    except Exception as e:
+        logger.warning(f"Error in _handle_lfg_button: {e}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An error occurred processing this button.", ephemeral=True
+                )
+        except Exception:
+            pass
+
+
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
+    # Handle LFG button interactions
+    try:
+        if (
+            interaction
+            and interaction.type == discord.InteractionType.component
+            and interaction.data
+        ):
+            custom_id = interaction.data.get("custom_id", "")
+            if custom_id.startswith("lfg_"):
+                await _handle_lfg_button(interaction, custom_id)
+                return
+    except Exception as e:
+        logger.warning(f"Error handling LFG button: {e}")
+    
     # Pre-invocation logging for slash commands
     try:
         if (
