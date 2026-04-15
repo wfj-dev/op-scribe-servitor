@@ -5050,13 +5050,15 @@ class LFGQueueView(discord.ui.View):
         
         embed = _build_lfg_embed(queue_data, interaction.guild)
         try:
+            # After defer(), we need to edit the original message directly
+            # interaction.message is the message containing the button
             await interaction.message.edit(embed=embed, view=self)
         except Exception as e:
-            logger.debug(f"Failed to update LFG embed: {e}")
+            logger.warning(f"Failed to update LFG embed: {e}")
     
     async def join_queue(self, interaction: discord.Interaction):
-        # Defer immediately to avoid timeout on slow connections
-        await interaction.response.defer()
+        # Defer with ephemeral=True so "thinking" is hidden
+        await interaction.response.defer(ephemeral=True)
         
         member = interaction.user
         if not isinstance(member, discord.Member):
@@ -5146,8 +5148,8 @@ class LFGQueueView(discord.ui.View):
                     pass
     
     async def leave_queue(self, interaction: discord.Interaction):
-        # Defer immediately to avoid timeout on slow connections
-        await interaction.response.defer()
+        # Defer with ephemeral=True so "thinking" is hidden
+        await interaction.response.defer(ephemeral=True)
         
         member = interaction.user
         error_message = None
@@ -5179,8 +5181,8 @@ class LFGQueueView(discord.ui.View):
         await self._update_embed(interaction)
     
     async def close_queue(self, interaction: discord.Interaction):
-        # Defer immediately to avoid timeout on slow connections
-        await interaction.response.defer()
+        # Defer with ephemeral=True so "thinking" is hidden
+        await interaction.response.defer(ephemeral=True)
         
         queue_data = await self._get_queue_data()
         if not queue_data:
