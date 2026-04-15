@@ -195,6 +195,32 @@
     "grace_period_min_days": 7,
     "fracture_threshold": 3
   },
+  "lfg": {
+    "pc_player_role_id": 1470455014022582343,
+    "console_player_role_id": 1470455285230469180,
+    "default_expiry_minutes": 30,
+    "max_expiry_minutes": 120,
+    "queue_types": {
+      "operation": {
+        "max_players": 3,
+        "max_console": null,
+        "display": "Operation",
+        "ping_role_id": 1429678423290281984
+      },
+      "siege": {
+        "max_players": 3,
+        "max_console": null,
+        "display": "Siege",
+        "ping_role_id": 1429678850442264767
+      },
+      "omega": {
+        "max_players": 5,
+        "max_console": 2,
+        "display": "Omega",
+        "ping_role_id": 1463286559540252754
+      }
+    }
+  },
   "channel_policies": {
     "❖⋅arming-chamber⋅❖": {
       "allow": [
@@ -207,6 +233,14 @@
     "❖⋅data-vault⋅❖": {
       "deny": [
         "forge_rite"
+      ]
+    },
+    "1429942816741523570": {
+      "allow": [
+        "lfg_queue",
+        "lfg_join",
+        "lfg_leave",
+        "lfg_close"
       ]
     }
   },

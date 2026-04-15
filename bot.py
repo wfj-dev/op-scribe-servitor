@@ -122,6 +122,22 @@ FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
 FORGE_CHRONICLE_LOCK = asyncio.Lock()
 FORGE_CHRONICLE_PATH = os.path.join(DATA_DIR, "forge_chronicle.json")
 
+# Lock for LFG queue operations
+LFG_QUEUE_LOCK = asyncio.Lock()
+LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
+
+# LFG Queue defaults (can be overridden in config.json under "lfg")
+LFG_PC_PLAYER_ROLE_ID_DEFAULT = 1470455014022582343
+LFG_CONSOLE_PLAYER_ROLE_ID_DEFAULT = 1470455285230469180
+LFG_QUEUE_EXPIRY_MINUTES_DEFAULT = 30
+LFG_QUEUE_TYPES_DEFAULT = {
+    "operation": {"max_players": 3, "max_console": None, "display": "Operation/Siege"},
+    "omega": {"max_players": 5, "max_console": 2, "display": "Omega"},
+}
+
+# In-memory LFG queues: {message_id: LFGQueue data}
+LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
+
 # Forge requisition pool configuration
 FORGE_POOL_COST_PER_CHARGE = 200  # Armory points spent per blessing charge
 FORGE_POOL_DAILY_LIMIT = 6  # Max requisitions per Techmarine per day
@@ -4780,6 +4796,482 @@ def _classify_forge_rite_event(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LFG Queue System - Sign-up queues for operations and omega missions
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _get_lfg_config() -> dict:
+    """Get LFG configuration from config.json, with defaults."""
+    return CONFIG.get("lfg") or {}
+
+
+def _get_lfg_pc_role_id() -> int:
+    """Get PC Player role ID from config or default."""
+    cfg = _get_lfg_config()
+    return int(cfg.get("pc_player_role_id") or LFG_PC_PLAYER_ROLE_ID_DEFAULT)
+
+
+def _get_lfg_console_role_id() -> int:
+    """Get Console Player role ID from config or default."""
+    cfg = _get_lfg_config()
+    return int(cfg.get("console_player_role_id") or LFG_CONSOLE_PLAYER_ROLE_ID_DEFAULT)
+
+
+def _get_lfg_default_expiry_minutes() -> int:
+    """Get default queue expiry time in minutes from config or default."""
+    cfg = _get_lfg_config()
+    return int(cfg.get("default_expiry_minutes") or LFG_QUEUE_EXPIRY_MINUTES_DEFAULT)
+
+
+def _get_lfg_max_expiry_minutes() -> int:
+    """Get maximum queue expiry time in minutes from config or default (120)."""
+    cfg = _get_lfg_config()
+    return int(cfg.get("max_expiry_minutes") or 120)
+
+
+def _get_lfg_queue_types() -> dict:
+    """Get queue type configurations from config or defaults."""
+    cfg = _get_lfg_config()
+    return cfg.get("queue_types") or LFG_QUEUE_TYPES_DEFAULT
+
+
+def _load_lfg_queues() -> dict:
+    """Load LFG queues from disk."""
+    try:
+        if not os.path.exists(LFG_QUEUE_PATH):
+            return {}
+        with open(LFG_QUEUE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_lfg_queues(data: dict):
+    """Save LFG queues to disk."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = LFG_QUEUE_PATH + ".tmp"
+        bak = LFG_QUEUE_PATH + ".bak"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        if os.path.exists(LFG_QUEUE_PATH):
+            try:
+                os.replace(LFG_QUEUE_PATH, bak)
+            except Exception:
+                pass
+        os.replace(tmp, LFG_QUEUE_PATH)
+    except Exception as e:
+        logger.warning(f"Failed to save LFG queues: {e}")
+
+
+def _get_player_platform(member: discord.Member) -> Optional[str]:
+    """Determine if a member is PC or Console player based on roles.
+    
+    Returns:
+        "pc" if they have PC Player role (or both roles)
+        "console" if they have only Console Player role
+        None if they have neither role
+    """
+    role_ids = {r.id for r in member.roles}
+    pc_role_id = _get_lfg_pc_role_id()
+    console_role_id = _get_lfg_console_role_id()
+    has_pc = pc_role_id in role_ids
+    has_console = console_role_id in role_ids
+    
+    if has_pc:
+        return "pc"  # PC takes priority if they have both
+    elif has_console:
+        return "console"
+    return None
+
+
+def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
+    """Build the embed for an LFG queue display."""
+    queue_type = queue_data["queue_type"]
+    queue_types = _get_lfg_queue_types()
+    type_config = queue_types.get(queue_type, {})
+    creator_id = queue_data["creator_id"]
+    players = queue_data["players"]  # List of {"user_id": int, "platform": str}
+    expires_at = queue_data.get("expires_at")
+    
+    # Count players and console players
+    player_count = len(players)
+    max_players = type_config.get("max_players", 3)
+    console_count = sum(1 for p in players if p["platform"] == "console")
+    max_console = type_config.get("max_console")
+    
+    # Determine embed color based on fill status
+    if player_count >= max_players:
+        color = 0x2ECC71  # Green - full
+    elif player_count > 0:
+        color = 0xF1C40F  # Yellow - partially filled
+    else:
+        color = 0x3498DB  # Blue - empty
+    
+    # Build title
+    title = f"⚔️ {type_config['display']} Queue"
+    if player_count >= max_players:
+        title += " [FULL]"
+    
+    embed = discord.Embed(title=title, color=color)
+    
+    # Creator info
+    creator = guild.get_member(creator_id)
+    creator_name = creator.display_name if creator else f"User {creator_id}"
+    embed.set_author(name=f"Created by {creator_name}")
+    
+    # Player slots
+    slot_lines = []
+    for i in range(max_players):
+        if i < len(players):
+            p = players[i]
+            member = guild.get_member(p["user_id"])
+            name = member.display_name if member else f"User {p['user_id']}"
+            platform_emoji = "🖥️" if p["platform"] == "pc" else "🎮"
+            slot_lines.append(f"{i+1}. {platform_emoji} {name}")
+        else:
+            slot_lines.append(f"{i+1}. ─ *Empty* ─")
+    
+    embed.add_field(
+        name=f"Players ({player_count}/{max_players})",
+        value="\n".join(slot_lines),
+        inline=False,
+    )
+    
+    # Console limit info for Omega
+    if max_console is not None:
+        console_status = f"🎮 Console: {console_count}/{max_console}"
+        if console_count >= max_console:
+            console_status += " (limit reached)"
+        embed.add_field(name="Platform Limits", value=console_status, inline=False)
+    
+    # Expiration time - use description since footer doesn't render timestamps
+    if expires_at:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at)
+            exp_ts = int(exp_dt.timestamp())
+            embed.description = f"⏰ Expires <t:{exp_ts}:R>"
+        except Exception:
+            pass
+    
+    embed.set_footer(text="Click buttons to join/leave")
+    
+    return embed
+
+
+class LFGQueueView(discord.ui.View):
+    """View with Join/Leave buttons for LFG queue sign-ups.
+    
+    Uses dynamic custom_ids with queue_id to ensure buttons work
+    across bot restarts and don't conflict between different queues.
+    """
+    
+    def __init__(self, queue_id: int):
+        super().__init__(timeout=None)  # Persistent view
+        self.queue_id = queue_id
+        
+        # Add buttons with dynamic custom_ids including queue_id
+        join_button = discord.ui.Button(
+            label="Join Queue",
+            style=discord.ButtonStyle.success,
+            emoji="✅",
+            custom_id=f"lfg_join:{queue_id}",
+        )
+        join_button.callback = self.join_queue
+        self.add_item(join_button)
+        
+        leave_button = discord.ui.Button(
+            label="Leave Queue",
+            style=discord.ButtonStyle.danger,
+            emoji="❌",
+            custom_id=f"lfg_leave:{queue_id}",
+        )
+        leave_button.callback = self.leave_queue
+        self.add_item(leave_button)
+        
+        close_button = discord.ui.Button(
+            label="Close Queue",
+            style=discord.ButtonStyle.secondary,
+            emoji="🔒",
+            custom_id=f"lfg_close:{queue_id}",
+        )
+        close_button.callback = self.close_queue
+        self.add_item(close_button)
+    
+    async def _get_queue_data(self) -> Optional[dict]:
+        """Get queue data from memory or disk."""
+        async with LFG_QUEUE_LOCK:
+            if self.queue_id in LFG_ACTIVE_QUEUES:
+                return LFG_ACTIVE_QUEUES[self.queue_id]
+            # Try loading from disk
+            all_queues = _load_lfg_queues()
+            if str(self.queue_id) in all_queues:
+                queue_data = all_queues[str(self.queue_id)]
+                LFG_ACTIVE_QUEUES[self.queue_id] = queue_data
+                return queue_data
+        return None
+    
+    async def _save_queue_data(self, queue_data: dict):
+        """Save queue data to memory and disk."""
+        async with LFG_QUEUE_LOCK:
+            LFG_ACTIVE_QUEUES[self.queue_id] = queue_data
+            all_queues = _load_lfg_queues()
+            all_queues[str(self.queue_id)] = queue_data
+            _save_lfg_queues(all_queues)
+    
+    async def _update_embed(self, interaction: discord.Interaction):
+        """Update the queue embed with current state."""
+        queue_data = await self._get_queue_data()
+        if not queue_data:
+            return
+        
+        embed = _build_lfg_embed(queue_data, interaction.guild)
+        try:
+            await interaction.message.edit(embed=embed, view=self)
+        except Exception as e:
+            logger.debug(f"Failed to update LFG embed: {e}")
+    
+    async def join_queue(self, interaction: discord.Interaction):
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            member = interaction.guild.get_member(interaction.user.id)
+        
+        if not member:
+            await interaction.response.send_message(
+                "Could not resolve your membership.", ephemeral=True
+            )
+            return
+        
+        # Check platform role
+        platform = _get_player_platform(member)
+        if not platform:
+            pc_role = _get_lfg_pc_role_id()
+            console_role = _get_lfg_console_role_id()
+            await interaction.response.send_message(
+                f"❌ You must have either the <@&{pc_role}> or "
+                f"<@&{console_role}> role to join a queue.\n"
+                "Please assign yourself one of these roles first.",
+                ephemeral=True,
+            )
+            return
+        
+        queue_data = await self._get_queue_data()
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        queue_types = _get_lfg_queue_types()
+        type_config = queue_types.get(queue_data["queue_type"], {})
+        players = queue_data["players"]
+        
+        # Check if already in queue
+        if any(p["user_id"] == member.id for p in players):
+            await interaction.response.send_message(
+                "You are already in this queue.", ephemeral=True
+            )
+            return
+        
+        # Check if queue is full
+        if len(players) >= type_config.get("max_players", 3):
+            await interaction.response.send_message(
+                "This queue is already full.", ephemeral=True
+            )
+            return
+        
+        # Check console limit for Omega
+        max_console = type_config.get("max_console")
+        if max_console is not None and platform == "console":
+            console_count = sum(1 for p in players if p["platform"] == "console")
+            if console_count >= max_console:
+                await interaction.response.send_message(
+                    f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
+                    "Only PC players can join at this time.",
+                    ephemeral=True,
+                )
+                return
+        
+        # Add player to queue
+        players.append({"user_id": member.id, "platform": platform})
+        queue_data["players"] = players
+        await self._save_queue_data(queue_data)
+        
+        # Update embed
+        await interaction.response.defer()
+        await self._update_embed(interaction)
+        
+        # Check if queue is now full and notify creator
+        if len(players) >= type_config.get("max_players", 3):
+            creator = interaction.guild.get_member(queue_data["creator_id"])
+            if creator:
+                player_mentions = []
+                for p in players:
+                    m = interaction.guild.get_member(p["user_id"])
+                    if m:
+                        player_mentions.append(m.mention)
+                try:
+                    await interaction.followup.send(
+                        f"🎉 **Queue Full!** {creator.mention}, your {type_config.get('display', 'Mission')} queue is ready!\n"
+                        f"Players: {', '.join(player_mentions)}",
+                        allowed_mentions=discord.AllowedMentions(users=True),
+                    )
+                except Exception:
+                    pass
+    
+    async def leave_queue(self, interaction: discord.Interaction):
+        member = interaction.user
+        
+        queue_data = await self._get_queue_data()
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        players = queue_data["players"]
+        
+        # Check if in queue
+        player_entry = next((p for p in players if p["user_id"] == member.id), None)
+        if not player_entry:
+            await interaction.response.send_message(
+                "You are not in this queue.", ephemeral=True
+            )
+            return
+        
+        # Remove player
+        players.remove(player_entry)
+        queue_data["players"] = players
+        await self._save_queue_data(queue_data)
+        
+        # Update embed
+        await interaction.response.defer()
+        await self._update_embed(interaction)
+    
+    async def close_queue(self, interaction: discord.Interaction):
+        queue_data = await self._get_queue_data()
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        # Only creator can close
+        if interaction.user.id != queue_data["creator_id"]:
+            await interaction.response.send_message(
+                "Only the queue creator can close this queue.", ephemeral=True
+            )
+            return
+        
+        # Remove from storage
+        async with LFG_QUEUE_LOCK:
+            if self.queue_id in LFG_ACTIVE_QUEUES:
+                del LFG_ACTIVE_QUEUES[self.queue_id]
+            all_queues = _load_lfg_queues()
+            if str(self.queue_id) in all_queues:
+                del all_queues[str(self.queue_id)]
+                _save_lfg_queues(all_queues)
+        
+        # Update message to show closed
+        embed = discord.Embed(
+            title="🔒 Queue Closed",
+            description="This queue has been closed by the creator.",
+            color=0x95A5A6,
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+async def _restore_lfg_queue_views():
+    """Restore persistent views for existing LFG queues on bot startup."""
+    try:
+        all_queues = _load_lfg_queues()
+        for queue_id_str, queue_data in all_queues.items():
+            try:
+                queue_id = int(queue_id_str)
+                LFG_ACTIVE_QUEUES[queue_id] = queue_data
+                # Register the view with unique custom_ids per queue
+                bot.add_view(LFGQueueView(queue_id))
+            except Exception as e:
+                logger.debug(f"Failed to restore LFG queue view {queue_id_str}: {e}")
+        if all_queues:
+            logger.info(f"Restored {len(all_queues)} LFG queue view(s)")
+    except Exception as e:
+        logger.warning(f"Failed to restore LFG queue views: {e}")
+
+
+async def _expire_old_lfg_queues():
+    """Check for and expire old LFG queues."""
+    try:
+        now = datetime.now(timezone.utc)
+        expired = []
+        
+        async with LFG_QUEUE_LOCK:
+            all_queues = _load_lfg_queues()
+            
+            for queue_id_str, queue_data in list(all_queues.items()):
+                expires_at_str = queue_data.get("expires_at")
+                if not expires_at_str:
+                    continue
+                
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_str)
+                    if now >= expires_at:
+                        expired.append((int(queue_id_str), queue_data))
+                        del all_queues[queue_id_str]
+                        if int(queue_id_str) in LFG_ACTIVE_QUEUES:
+                            del LFG_ACTIVE_QUEUES[int(queue_id_str)]
+                except Exception:
+                    continue
+            
+            if expired:
+                _save_lfg_queues(all_queues)
+        
+        # Update expired queue messages
+        for queue_id, queue_data in expired:
+            try:
+                guild = _resolve_notification_guild()
+                if not guild:
+                    continue
+                # Get channel from stored channel_id in queue_data
+                channel_id = queue_data.get("channel_id")
+                if not channel_id:
+                    continue
+                channel = guild.get_channel(int(channel_id))
+                if not channel:
+                    continue
+                msg = await channel.fetch_message(queue_id)
+                embed = discord.Embed(
+                    title="⏰ Queue Expired",
+                    description="This queue has expired and is no longer accepting sign-ups.",
+                    color=0x95A5A6,
+                )
+                await msg.edit(embed=embed, view=None)
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.debug(f"Failed to update expired queue message {queue_id}: {e}")
+        
+        if expired:
+            logger.info(f"Expired {len(expired)} LFG queue(s)")
+    except Exception as e:
+        logger.warning(f"Failed to expire LFG queues: {e}")
+
+
+@tasks.loop(minutes=5)
+async def _lfg_queue_expiration_loop():
+    """Check for expired LFG queues every 5 minutes."""
+    try:
+        await _expire_old_lfg_queues()
+    except Exception:
+        logger.exception("Error in LFG queue expiration loop")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Log to Forge View - Button for posting ephemeral blessings publicly
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -5410,6 +5902,17 @@ async def on_ready():
             logger.info("Forge ambient message loop started (every 30 min).")
     except Exception:
         logger.exception("Failed to start forge ambient loop")
+
+    # Restore LFG queue views and start expiration loop
+    try:
+        await _restore_lfg_queue_views()
+        if not _lfg_queue_expiration_loop.is_running():
+            _lfg_queue_expiration_loop.start()
+            default_expiry_mins = _get_lfg_default_expiry_minutes()
+            max_expiry_mins = _get_lfg_max_expiry_minutes()
+            logger.info(f"LFG queue expiration loop started (default: {default_expiry_mins} min, max: {max_expiry_mins} min).")
+    except Exception:
+        logger.exception("Failed to start LFG queue system")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
@@ -20007,6 +20510,464 @@ async def company_roster(interaction: discord.Interaction):
     embeds.append(summary_embed)
 
     await interaction.followup.send(embeds=embeds, ephemeral=True)
+
+
+@bot.tree.command(
+    name="lfg_queue",
+    description="Create a Looking For Group queue for operations or omega missions.",
+)
+@app_commands.describe(
+    queue_type="Type of mission: operation (3 players) or omega (5 players, max 2 console)",
+)
+@app_commands.choices(
+    queue_type=[
+        app_commands.Choice(name="Operation (3 players)", value="operation"),
+        app_commands.Choice(name="Siege (3 players)", value="siege"),
+        app_commands.Choice(name="Omega (5 players, max 2 console)", value="omega"),
+    ]
+)
+@app_commands.describe(
+    queue_type="The type of queue to create",
+    expire_minutes="Minutes until queue expires (default: 30, max: 120)"
+)
+async def lfg_queue(
+    interaction: discord.Interaction,
+    queue_type: app_commands.Choice[str],
+    expire_minutes: Optional[int] = None,
+):
+    # Use channel_policies to check if command is allowed here
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(
+            "This command cannot be used in this channel.",
+            ephemeral=True,
+        )
+        return
+    
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        member = interaction.guild.get_member(interaction.user.id)
+    
+    if not member:
+        await interaction.response.send_message(
+            "Could not resolve your membership.", ephemeral=True
+        )
+        return
+    
+    # Check platform role
+    platform = _get_player_platform(member)
+    if not platform:
+        pc_role = _get_lfg_pc_role_id()
+        console_role = _get_lfg_console_role_id()
+        await interaction.response.send_message(
+            f"❌ You must have either the <@&{pc_role}> or "
+            f"<@&{console_role}> role to create a queue.\n"
+            "Please assign yourself one of these roles first.",
+            ephemeral=True,
+        )
+        return
+    
+    # Get queue type config
+    queue_types = _get_lfg_queue_types()
+    type_config = queue_types.get(queue_type.value, {})
+    
+    # Validate and set expiry time
+    default_expiry = _get_lfg_default_expiry_minutes()
+    max_expiry = _get_lfg_max_expiry_minutes()
+    
+    if expire_minutes is not None:
+        if expire_minutes < 1:
+            await interaction.response.send_message(
+                "❌ Expire time must be at least 1 minute.",
+                ephemeral=True,
+            )
+            return
+        if expire_minutes > max_expiry:
+            await interaction.response.send_message(
+                f"❌ Expire time cannot exceed {max_expiry} minutes.",
+                ephemeral=True,
+            )
+            return
+        expiry_minutes = expire_minutes
+    else:
+        expiry_minutes = default_expiry
+    
+    # Calculate expiration time
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=expiry_minutes)
+    
+    # Build initial queue data (creator auto-joins)
+    queue_data = {
+        "queue_type": queue_type.value,
+        "creator_id": member.id,
+        "channel_id": interaction.channel_id,
+        "players": [{"user_id": member.id, "platform": platform}],
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+    }
+    
+    # Build embed
+    embed = _build_lfg_embed(queue_data, interaction.guild)
+    
+    # Build ping content from queue type config
+    ping_role_id = type_config.get("ping_role_id")
+    content = f"<@&{ping_role_id}>" if ping_role_id else None
+    
+    # Send message with view
+    await interaction.response.send_message(
+        content=content,
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(roles=True) if content else discord.AllowedMentions.none(),
+    )
+    msg = await interaction.original_response()
+    
+    # Store queue data keyed by message ID
+    queue_data["message_id"] = msg.id
+    
+    async with LFG_QUEUE_LOCK:
+        LFG_ACTIVE_QUEUES[msg.id] = queue_data
+        all_queues = _load_lfg_queues()
+        all_queues[str(msg.id)] = queue_data
+        _save_lfg_queues(all_queues)
+    
+    # Add view to message
+    view = LFGQueueView(msg.id)
+    await msg.edit(view=view)
+    
+    logger.info(
+        f"LFG queue created: {queue_type.value} by {member.display_name} "
+        f"(msg={msg.id}, expires={expires_at.isoformat()})"
+    )
+
+
+async def _lfg_queue_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete for LFG queue selection."""
+    choices = []
+    try:
+        all_queues = _load_lfg_queues()
+        guild = interaction.guild
+        queue_types = _get_lfg_queue_types()
+        
+        for queue_id_str, queue_data in all_queues.items():
+            queue_type = queue_data.get("queue_type", "unknown")
+            type_config = queue_types.get(queue_type, {})
+            display_type = type_config.get("display", queue_type)
+            
+            creator_id = queue_data.get("creator_id")
+            creator = guild.get_member(creator_id) if guild and creator_id else None
+            creator_name = creator.display_name if creator else f"User {creator_id}"
+            
+            players = queue_data.get("players", [])
+            player_count = len(players)
+            max_players = type_config.get("max_players", "?")
+            
+            label = f"{display_type} by {creator_name} ({player_count}/{max_players})"
+            
+            # Filter by current input
+            if current.lower() in label.lower() or current in queue_id_str:
+                choices.append(app_commands.Choice(name=label[:100], value=queue_id_str))
+            
+            if len(choices) >= 25:
+                break
+    except Exception:
+        pass
+    
+    return choices
+
+
+@bot.tree.command(
+    name="lfg_close",
+    description="Close/delete your LFG queue.",
+)
+@app_commands.describe(
+    queue="Select the queue to close (only your own queues can be closed)",
+)
+@app_commands.autocomplete(queue=_lfg_queue_autocomplete)
+async def lfg_close(
+    interaction: discord.Interaction,
+    queue: str,
+):
+    # Use channel_policies to check if command is allowed here
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(
+            "This command cannot be used in this channel.",
+            ephemeral=True,
+        )
+        return
+    
+    try:
+        queue_id = int(queue)
+    except ValueError:
+        await interaction.response.send_message(
+            "Invalid queue selection.", ephemeral=True
+        )
+        return
+    
+    # Get queue data
+    async with LFG_QUEUE_LOCK:
+        all_queues = _load_lfg_queues()
+        queue_data = all_queues.get(str(queue_id))
+        
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        # Only creator can close
+        if interaction.user.id != queue_data.get("creator_id"):
+            await interaction.response.send_message(
+                "Only the queue creator can close this queue.", ephemeral=True
+            )
+            return
+        
+        # Save channel_id before removing from storage
+        channel_id = queue_data.get("channel_id")
+        
+        # Remove from storage
+        if queue_id in LFG_ACTIVE_QUEUES:
+            del LFG_ACTIVE_QUEUES[queue_id]
+        del all_queues[str(queue_id)]
+        _save_lfg_queues(all_queues)
+    
+    # Update the queue message
+    try:
+        if channel_id:
+            channel = interaction.guild.get_channel(int(channel_id))
+        else:
+            channel = interaction.channel
+        if channel:
+            msg = await channel.fetch_message(queue_id)
+            embed = discord.Embed(
+                title="🔒 Queue Closed",
+                description="This queue has been closed by the creator.",
+                color=0x95A5A6,
+            )
+            await msg.edit(embed=embed, view=None)
+    except discord.NotFound:
+        pass
+    except Exception as e:
+        logger.debug(f"Failed to update closed queue message: {e}")
+    
+    await interaction.response.send_message(
+        "✅ Queue closed successfully.", ephemeral=True
+    )
+    logger.info(f"LFG queue {queue_id} closed by {interaction.user.display_name}")
+
+
+@bot.tree.command(
+    name="lfg_join",
+    description="Join an existing LFG queue.",
+)
+@app_commands.describe(
+    queue="Select the queue to join",
+)
+@app_commands.autocomplete(queue=_lfg_queue_autocomplete)
+async def lfg_join(
+    interaction: discord.Interaction,
+    queue: str,
+):
+    # Use channel_policies to check if command is allowed here
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(
+            "This command cannot be used in this channel.",
+            ephemeral=True,
+        )
+        return
+    
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        member = interaction.guild.get_member(interaction.user.id)
+    
+    if not member:
+        await interaction.response.send_message(
+            "Could not resolve your membership.", ephemeral=True
+        )
+        return
+    
+    # Check platform role
+    platform = _get_player_platform(member)
+    if not platform:
+        pc_role = _get_lfg_pc_role_id()
+        console_role = _get_lfg_console_role_id()
+        await interaction.response.send_message(
+            f"❌ You must have either the <@&{pc_role}> or "
+            f"<@&{console_role}> role to join a queue.\n"
+            "Please assign yourself one of these roles first.",
+            ephemeral=True,
+        )
+        return
+    
+    try:
+        queue_id = int(queue)
+    except ValueError:
+        await interaction.response.send_message(
+            "Invalid queue selection.", ephemeral=True
+        )
+        return
+    
+    async with LFG_QUEUE_LOCK:
+        all_queues = _load_lfg_queues()
+        queue_data = all_queues.get(str(queue_id))
+        
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        queue_types = _get_lfg_queue_types()
+        type_config = queue_types.get(queue_data["queue_type"], {})
+        players = queue_data["players"]
+        
+        # Check if already in queue
+        if any(p["user_id"] == member.id for p in players):
+            await interaction.response.send_message(
+                "You are already in this queue.", ephemeral=True
+            )
+            return
+        
+        # Check if queue is full
+        if len(players) >= type_config.get("max_players", 3):
+            await interaction.response.send_message(
+                "This queue is already full.", ephemeral=True
+            )
+            return
+        
+        # Check console limit for Omega
+        max_console = type_config.get("max_console")
+        if max_console is not None and platform == "console":
+            console_count = sum(1 for p in players if p["platform"] == "console")
+            if console_count >= max_console:
+                await interaction.response.send_message(
+                    f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
+                    "Only PC players can join at this time.",
+                    ephemeral=True,
+                )
+                return
+        
+        # Add player to queue
+        players.append({"user_id": member.id, "platform": platform})
+        queue_data["players"] = players
+        LFG_ACTIVE_QUEUES[queue_id] = queue_data
+        all_queues[str(queue_id)] = queue_data
+        _save_lfg_queues(all_queues)
+    
+    # Update the queue message embed
+    try:
+        channel_id = queue_data.get("channel_id")
+        if channel_id:
+            channel = interaction.guild.get_channel(int(channel_id))
+        else:
+            channel = interaction.channel
+        if channel:
+            msg = await channel.fetch_message(queue_id)
+            embed = _build_lfg_embed(queue_data, interaction.guild)
+            view = LFGQueueView(queue_id)
+            await msg.edit(embed=embed, view=view)
+    except Exception as e:
+        logger.debug(f"Failed to update queue embed: {e}")
+    
+    await interaction.response.send_message(
+        "✅ You joined the queue!", ephemeral=True
+    )
+    
+    # Check if queue is now full and notify
+    if len(players) >= type_config.get("max_players", 3):
+        creator = interaction.guild.get_member(queue_data["creator_id"])
+        if creator:
+            player_mentions = []
+            for p in players:
+                m = interaction.guild.get_member(p["user_id"])
+                if m:
+                    player_mentions.append(m.mention)
+            try:
+                await interaction.followup.send(
+                    f"🎉 **Queue Full!** {creator.mention}, your {type_config.get('display', 'Mission')} queue is ready!\n"
+                    f"Players: {', '.join(player_mentions)}",
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
+            except Exception:
+                pass
+
+
+@bot.tree.command(
+    name="lfg_leave",
+    description="Leave an LFG queue you're in.",
+)
+@app_commands.describe(
+    queue="Select the queue to leave",
+)
+@app_commands.autocomplete(queue=_lfg_queue_autocomplete)
+async def lfg_leave(
+    interaction: discord.Interaction,
+    queue: str,
+):
+    # Use channel_policies to check if command is allowed here
+    if not is_allowed_channel(interaction):
+        await interaction.response.send_message(
+            "This command cannot be used in this channel.",
+            ephemeral=True,
+        )
+        return
+    
+    member = interaction.user
+    
+    try:
+        queue_id = int(queue)
+    except ValueError:
+        await interaction.response.send_message(
+            "Invalid queue selection.", ephemeral=True
+        )
+        return
+    
+    async with LFG_QUEUE_LOCK:
+        all_queues = _load_lfg_queues()
+        queue_data = all_queues.get(str(queue_id))
+        
+        if not queue_data:
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        players = queue_data["players"]
+        
+        # Check if in queue
+        player_entry = next((p for p in players if p["user_id"] == member.id), None)
+        if not player_entry:
+            await interaction.response.send_message(
+                "You are not in this queue.", ephemeral=True
+            )
+            return
+        
+        # Remove player
+        players.remove(player_entry)
+        queue_data["players"] = players
+        LFG_ACTIVE_QUEUES[queue_id] = queue_data
+        all_queues[str(queue_id)] = queue_data
+        _save_lfg_queues(all_queues)
+    
+    # Update the queue message embed
+    try:
+        channel_id = queue_data.get("channel_id")
+        if channel_id:
+            channel = interaction.guild.get_channel(int(channel_id))
+        else:
+            channel = interaction.channel
+        if channel:
+            msg = await channel.fetch_message(queue_id)
+            embed = _build_lfg_embed(queue_data, interaction.guild)
+            view = LFGQueueView(queue_id)
+            await msg.edit(embed=embed, view=view)
+    except Exception as e:
+        logger.debug(f"Failed to update queue embed: {e}")
+    
+    await interaction.response.send_message(
+        "✅ You left the queue.", ephemeral=True
+    )
 
 
 if __name__ == "__main__":
