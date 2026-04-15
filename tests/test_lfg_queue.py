@@ -108,6 +108,7 @@ def test_join_queue_enforces_console_limit():
             {"user_id": 12, "platform": "pc"},
         ],
     }
+    original_players = list(queue_data["players"])
 
     with (
         patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
@@ -121,6 +122,7 @@ def test_join_queue_enforces_console_limit():
 
     message = interaction.response.send_message.await_args.args[0]
     assert "reached the console player limit (2)" in message
+    assert queue_data["players"] == original_players
 
 
 def test_expire_old_lfg_queues_removes_expired_and_updates_message():
