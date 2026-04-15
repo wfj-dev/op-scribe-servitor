@@ -6013,10 +6013,12 @@ async def _handle_lfg_button(interaction: discord.Interaction, custom_id: str):
     try:
         parts = custom_id.split(":")
         if len(parts) != 2:
+            logger.warning(f"Invalid LFG custom_id format: {custom_id}")
             return
         
         action, queue_id_str = parts
         queue_id = int(queue_id_str)
+        logger.info(f"LFG button: action={action} queue_id={queue_id} user={interaction.user.id}")
         
         # Create a view instance to use its methods
         view = LFGQueueView(queue_id)
@@ -6027,8 +6029,10 @@ async def _handle_lfg_button(interaction: discord.Interaction, custom_id: str):
             await view.leave_queue(interaction)
         elif action == "lfg_close":
             await view.close_queue(interaction)
+        
+        logger.info(f"LFG button handler completed: {action} queue_id={queue_id}")
     except Exception as e:
-        logger.warning(f"Error in _handle_lfg_button: {e}")
+        logger.warning(f"Error in _handle_lfg_button: {e}", exc_info=True)
         try:
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -6048,7 +6052,9 @@ async def on_interaction(interaction: discord.Interaction):
             and interaction.data
         ):
             custom_id = interaction.data.get("custom_id", "")
+            logger.info(f"Button interaction received: custom_id={custom_id}")
             if custom_id.startswith("lfg_"):
+                logger.info(f"Routing to LFG button handler: {custom_id}")
                 await _handle_lfg_button(interaction, custom_id)
                 return
     except Exception as e:
