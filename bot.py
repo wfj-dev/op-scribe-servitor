@@ -4924,7 +4924,8 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         color = 0x3498DB  # Blue - empty
     
     # Build title
-    title = f"⚔️ {type_config['display']} Queue"
+    queue_display = type_config.get("display", queue_data.get("type", "Unknown"))
+    title = f"⚔️ {queue_display} Queue"
     if initiation_trial:
         title += " (Initiation Trial)"
     if player_count >= max_players:
