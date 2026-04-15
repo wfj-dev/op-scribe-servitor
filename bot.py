@@ -5145,28 +5145,30 @@ class LFGQueueView(discord.ui.View):
     
     async def leave_queue(self, interaction: discord.Interaction):
         member = interaction.user
+        error_message = None
         
-        queue_data = await self._get_queue_data()
-        if not queue_data:
+        async with LFG_QUEUE_LOCK:
+            queue_data = await self._get_queue_data()
+            if not queue_data:
+                error_message = "This queue no longer exists."
+            else:
+                players = queue_data["players"]
+                
+                # Check if in queue
+                player_entry = next((p for p in players if p["user_id"] == member.id), None)
+                if not player_entry:
+                    error_message = "You are not in this queue."
+                else:
+                    # Remove player
+                    players.remove(player_entry)
+                    queue_data["players"] = players
+                    await self._save_queue_data(queue_data)
+        
+        if error_message:
             await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
+                error_message, ephemeral=True
             )
             return
-        
-        players = queue_data["players"]
-        
-        # Check if in queue
-        player_entry = next((p for p in players if p["user_id"] == member.id), None)
-        if not player_entry:
-            await interaction.response.send_message(
-                "You are not in this queue.", ephemeral=True
-            )
-            return
-        
-        # Remove player
-        players.remove(player_entry)
-        queue_data["players"] = players
-        await self._save_queue_data(queue_data)
         
         # Update embed
         await interaction.response.defer()
