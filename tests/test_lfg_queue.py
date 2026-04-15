@@ -126,7 +126,7 @@ def test_join_queue_enforces_console_limit():
 
 
 def test_expire_old_lfg_queues_removes_expired_and_updates_message():
-    now = datetime.now(timezone.utc)
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     expired_at = (now - timedelta(minutes=1)).isoformat()
     future_at = (now + timedelta(minutes=10)).isoformat()
 
@@ -148,7 +148,10 @@ def test_expire_old_lfg_queues_removes_expired_and_updates_message():
         patch("bot._load_lfg_queues", return_value=dict(all_queues)),
         patch("bot._save_lfg_queues") as mock_save,
         patch("bot._resolve_notification_guild", return_value=guild),
+        patch("bot.datetime") as mock_datetime,
     ):
+        mock_datetime.now.return_value = now
+        mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
         _run(bot._expire_old_lfg_queues())
 
     saved_payload = mock_save.call_args.args[0]
