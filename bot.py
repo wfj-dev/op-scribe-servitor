@@ -131,8 +131,9 @@ LFG_PC_PLAYER_ROLE_ID_DEFAULT = 1470455014022582343
 LFG_CONSOLE_PLAYER_ROLE_ID_DEFAULT = 1470455285230469180
 LFG_QUEUE_EXPIRY_MINUTES_DEFAULT = 30
 LFG_QUEUE_TYPES_DEFAULT = {
-    "operation": {"max_players": 3, "max_console": None, "display": "Operation/Siege"},
-    "omega": {"max_players": 5, "max_console": 2, "display": "Omega"},
+    "operation": {"max_players": 3, "max_console": None, "display": "Operation", "ping_role_id": None},
+    "siege": {"max_players": 3, "max_console": None, "display": "Siege", "ping_role_id": None},
+    "omega": {"max_players": 5, "max_console": 2, "display": "Omega", "ping_role_id": None},
 }
 
 # In-memory LFG queues: {message_id: LFGQueue data}
