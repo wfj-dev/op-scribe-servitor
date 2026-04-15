@@ -9822,7 +9822,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     # Must have a Watch rank role
                     has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
                     if has_rank:
-                        honor_entries.append((member, points))
+                        # Check scan detection - don't show unreadable brothers
+                        scan_result = await _get_or_roll_scan_result(
+                            member.id, None, points, False
+                        )
+                        if scan_result["detected"]:
+                            honor_entries.append((member, points))
     
     honor_entries.sort(key=lambda x: x[1], reverse=True)
     honor_top3 = honor_entries[:3]
