@@ -5055,16 +5055,12 @@ class LFGQueueView(discord.ui.View):
             logger.warning(f"Failed to update LFG embed: {e}")
     
     async def join_queue(self, interaction: discord.Interaction):
-        # Only defer if not already acknowledged
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
-        
         member = interaction.user
         if not isinstance(member, discord.Member):
             member = interaction.guild.get_member(interaction.user.id)
         
         if not member:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "Could not resolve your membership.", ephemeral=True
             )
             return
@@ -5074,7 +5070,7 @@ class LFGQueueView(discord.ui.View):
         if not platform:
             pc_role = _get_lfg_pc_role_id()
             console_role = _get_lfg_console_role_id()
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ You must have either the <@&{pc_role}> or "
                 f"<@&{console_role}> role to join a queue.\n"
                 "Please assign yourself one of these roles first.",
@@ -5084,49 +5080,49 @@ class LFGQueueView(discord.ui.View):
         
         queue_data = await self._get_queue_data()
         if not queue_data:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "This queue no longer exists.", ephemeral=True
             )
             return
         
         queue_types = _get_lfg_queue_types()
-        async with LFG_QUEUE_LOCK:
-            type_config = queue_types.get(queue_data["queue_type"], {})
-            players = queue_data["players"]
-            
-            # Check if already in queue
-            if any(p["user_id"] == member.id for p in players):
-                await interaction.followup.send(
-                    "You are already in this queue.", ephemeral=True
-                )
-                return
-            
-            # Check if queue is full
-            if len(players) >= type_config.get("max_players", 3):
-                await interaction.followup.send(
-                    "This queue is already full.", ephemeral=True
-                )
-                return
-            
-            # Check console limit for Omega
-            max_console = type_config.get("max_console")
-            if max_console is not None and platform == "console":
-                console_count = sum(1 for p in players if p["platform"] == "console")
-                if console_count >= max_console:
-                    await interaction.followup.send(
-                        f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
-                        "Only PC players can join at this time.",
-                        ephemeral=True,
-                    )
-                    return
-            
-            # Add player to queue
-            players.append({"user_id": member.id, "platform": platform})
-            queue_data["players"] = players
-            await self._save_queue_data(queue_data)
+        type_config = queue_types.get(queue_data["queue_type"], {})
+        players = queue_data["players"]
         
-        # Update embed
-        await self._update_embed(interaction)
+        # Check if already in queue
+        if any(p["user_id"] == member.id for p in players):
+            await interaction.response.send_message(
+                "You are already in this queue.", ephemeral=True
+            )
+            return
+        
+        # Check if queue is full
+        if len(players) >= type_config.get("max_players", 3):
+            await interaction.response.send_message(
+                "This queue is already full.", ephemeral=True
+            )
+            return
+        
+        # Check console limit for Omega
+        max_console = type_config.get("max_console")
+        if max_console is not None and platform == "console":
+            console_count = sum(1 for p in players if p["platform"] == "console")
+            if console_count >= max_console:
+                await interaction.response.send_message(
+                    f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
+                    "Only PC players can join at this time.",
+                    ephemeral=True,
+                )
+                return
+        
+        # Add player to queue
+        players.append({"user_id": member.id, "platform": platform})
+        queue_data["players"] = players
+        await self._save_queue_data(queue_data)
+        
+        # Update embed by editing the message directly
+        embed = _build_lfg_embed(queue_data, interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
         
         # Check if queue is now full and notify creator
         if len(players) >= type_config.get("max_players", 3):
@@ -5147,54 +5143,45 @@ class LFGQueueView(discord.ui.View):
                     pass
     
     async def leave_queue(self, interaction: discord.Interaction):
-        # Only defer if not already acknowledged
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
-        
         member = interaction.user
-        error_message = None
-        
-        async with LFG_QUEUE_LOCK:
-            queue_data = await self._get_queue_data()
-            if not queue_data:
-                error_message = "This queue no longer exists."
-            else:
-                players = queue_data["players"]
-                
-                # Check if in queue
-                player_entry = next((p for p in players if p["user_id"] == member.id), None)
-                if not player_entry:
-                    error_message = "You are not in this queue."
-                else:
-                    # Remove player
-                    players.remove(player_entry)
-                    queue_data["players"] = players
-                    await self._save_queue_data(queue_data)
-        
-        if error_message:
-            await interaction.followup.send(
-                error_message, ephemeral=True
-            )
-            return
-        
-        # Update embed
-        await self._update_embed(interaction)
-    
-    async def close_queue(self, interaction: discord.Interaction):
-        # Only defer if not already acknowledged
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
         
         queue_data = await self._get_queue_data()
         if not queue_data:
-            await interaction.followup.send(
+            await interaction.response.send_message(
+                "This queue no longer exists.", ephemeral=True
+            )
+            return
+        
+        players = queue_data["players"]
+        
+        # Check if in queue
+        player_entry = next((p for p in players if p["user_id"] == member.id), None)
+        if not player_entry:
+            await interaction.response.send_message(
+                "You are not in this queue.", ephemeral=True
+            )
+            return
+        
+        # Remove player
+        players.remove(player_entry)
+        queue_data["players"] = players
+        await self._save_queue_data(queue_data)
+        
+        # Update embed by editing the message directly
+        embed = _build_lfg_embed(queue_data, interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    async def close_queue(self, interaction: discord.Interaction):
+        queue_data = await self._get_queue_data()
+        if not queue_data:
+            await interaction.response.send_message(
                 "This queue no longer exists.", ephemeral=True
             )
             return
         
         # Only creator can close
         if interaction.user.id != queue_data["creator_id"]:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "Only the queue creator can close this queue.", ephemeral=True
             )
             return
@@ -5214,7 +5201,7 @@ class LFGQueueView(discord.ui.View):
             description="This queue has been closed by the creator.",
             color=0x95A5A6,
         )
-        await interaction.message.edit(embed=embed, view=None)
+        await interaction.response.edit_message(embed=embed, view=None)
 
 
 async def _restore_lfg_queue_views():
