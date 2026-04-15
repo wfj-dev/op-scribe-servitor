@@ -200,6 +200,7 @@
     "console_player_role_id": 1470455285230469180,
     "default_expiry_minutes": 30,
     "max_expiry_minutes": 120,
+    "initiation_trial_role_id": 1434942334914662501,
     "queue_types": {
       "operation": {
         "max_players": 3,
