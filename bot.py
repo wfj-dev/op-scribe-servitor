@@ -5086,39 +5086,40 @@ class LFGQueueView(discord.ui.View):
             return
         
         queue_types = _get_lfg_queue_types()
-        type_config = queue_types.get(queue_data["queue_type"], {})
-        players = queue_data["players"]
-        
-        # Check if already in queue
-        if any(p["user_id"] == member.id for p in players):
-            await interaction.response.send_message(
-                "You are already in this queue.", ephemeral=True
-            )
-            return
-        
-        # Check if queue is full
-        if len(players) >= type_config.get("max_players", 3):
-            await interaction.response.send_message(
-                "This queue is already full.", ephemeral=True
-            )
-            return
-        
-        # Check console limit for Omega
-        max_console = type_config.get("max_console")
-        if max_console is not None and platform == "console":
-            console_count = sum(1 for p in players if p["platform"] == "console")
-            if console_count >= max_console:
+        async with LFG_QUEUE_LOCK:
+            type_config = queue_types.get(queue_data["queue_type"], {})
+            players = queue_data["players"]
+            
+            # Check if already in queue
+            if any(p["user_id"] == member.id for p in players):
                 await interaction.response.send_message(
-                    f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
-                    "Only PC players can join at this time.",
-                    ephemeral=True,
+                    "You are already in this queue.", ephemeral=True
                 )
                 return
-        
-        # Add player to queue
-        players.append({"user_id": member.id, "platform": platform})
-        queue_data["players"] = players
-        await self._save_queue_data(queue_data)
+            
+            # Check if queue is full
+            if len(players) >= type_config.get("max_players", 3):
+                await interaction.response.send_message(
+                    "This queue is already full.", ephemeral=True
+                )
+                return
+            
+            # Check console limit for Omega
+            max_console = type_config.get("max_console")
+            if max_console is not None and platform == "console":
+                console_count = sum(1 for p in players if p["platform"] == "console")
+                if console_count >= max_console:
+                    await interaction.response.send_message(
+                        f"❌ This Omega queue has reached the console player limit ({max_console}).\n"
+                        "Only PC players can join at this time.",
+                        ephemeral=True,
+                    )
+                    return
+            
+            # Add player to queue
+            players.append({"user_id": member.id, "platform": platform})
+            queue_data["players"] = players
+            await self._save_queue_data(queue_data)
         
         # Update embed
         await interaction.response.defer()
