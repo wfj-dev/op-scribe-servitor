@@ -4993,14 +4993,14 @@ class LFGQueueView(discord.ui.View):
         super().__init__(timeout=None)  # Persistent view
         self.queue_id = queue_id
         
-        # Add buttons with dynamic custom_ids including queue_id
+        # Add buttons with dynamic custom_ids - NO callbacks here
+        # Interactions are handled by on_interaction -> _handle_lfg_button
         join_button = discord.ui.Button(
             label="Join Queue",
             style=discord.ButtonStyle.success,
             emoji="✅",
             custom_id=f"lfg_join:{queue_id}",
         )
-        join_button.callback = self.join_queue
         self.add_item(join_button)
         
         leave_button = discord.ui.Button(
@@ -5009,7 +5009,6 @@ class LFGQueueView(discord.ui.View):
             emoji="❌",
             custom_id=f"lfg_leave:{queue_id}",
         )
-        leave_button.callback = self.leave_queue
         self.add_item(leave_button)
         
         close_button = discord.ui.Button(
@@ -5018,7 +5017,6 @@ class LFGQueueView(discord.ui.View):
             emoji="🔒",
             custom_id=f"lfg_close:{queue_id}",
         )
-        close_button.callback = self.close_queue
         self.add_item(close_button)
     
     async def _get_queue_data(self) -> Optional[dict]:
