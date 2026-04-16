@@ -5357,13 +5357,12 @@ class LogToForgeView(discord.ui.View):
         if not channel:
             return
         
-        # Post the blessing
+        # Post the blessing - always mention the blessed brother before embed
         try:
-            content = self.member_mention if self.is_significant else None
             await channel.send(
-                content=content,
+                content=self.member_mention,
                 embed=self.embed,
-                allowed_mentions=discord.AllowedMentions(users=True) if content else discord.AllowedMentions.none(),
+                allowed_mentions=discord.AllowedMentions(users=True),
             )
         except Exception as e:
             logger.warning(f"Failed to log blessing to forge: {e}")
@@ -10472,10 +10471,15 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
     # Format mean AAR risk - show one decimal if fractional, otherwise integer
     aar_risk_str = f"{mean_aar_risk:.1f}" if mean_aar_risk % 1 else f"{int(mean_aar_risk)}"
+    # Format strain - show "< 1%" if non-zero but rounds to 0
+    if mean_damage_prob > 0 and mean_damage_prob < 1:
+        strain_str = "< 1%"
+    else:
+        strain_str = f"{mean_damage_prob:.0f}%"
     fortress_text = (
         f"**▸ Armory Telemetry**\n"
         f"{fortress_icon} **{nominal_pct:.0f}%** Nominal  "
-        f"⚔️ **{mean_damage_prob:.0f}%** Strain  "
+        f"⚔️ **{strain_str}** Strain  "
         f"📉 **{aar_risk_str}** AAR Risk"
     )
     embed.description = fortress_text
