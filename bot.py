@@ -10049,13 +10049,17 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     # Section 0: Fortress Status (NEW)
     # ─────────────────────────────────────────────────────────────
-    # Count brothers by damage status
+    # Count brothers by damage status + calculate risk metrics
     total_brothers_with_armor = 0
     nominal_count = 0
     damaged_count = 0
     compromised_count = 0
     critical_count = 0
     fractured_count = 0
+    
+    # Risk metric accumulators
+    total_damage_probability = 0.0  # Sum of damage probabilities
+    total_expected_penalty = 0.0    # Sum of expected AAR losses
     
     for member in guild.members:
         if member.bot:
@@ -10069,19 +10073,36 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
         
+        # Get damage probability based on cycles
+        points = state.get("points_since_blessing", 0)
+        total_damage_probability += _get_damage_probability(points)
+        
+        # Calculate expected AAR penalty based on current state
         if state.get("spirit_fractured"):
             fractured_count += 1
+            probs = ARMOR_PENALTY_PROBABILITIES.get("fractured", {0: 1.0})
         elif state.get("damage_tier") == "critical":
             critical_count += 1
+            probs = ARMOR_PENALTY_PROBABILITIES.get("critical", {0: 1.0})
         elif state.get("damage_tier") == "compromised":
             compromised_count += 1
+            probs = ARMOR_PENALTY_PROBABILITIES.get("compromised", {0: 1.0})
         elif state.get("damage_tier") == "damaged":
             damaged_count += 1
+            probs = ARMOR_PENALTY_PROBABILITIES.get("damaged", {0: 1.0})
         else:
             nominal_count += 1
+            probs = {0: 1.0}  # Nominal = no penalty
+        
+        # Expected value: sum(penalty * probability)
+        total_expected_penalty += sum(p * prob for p, prob in probs.items())
     
     total_damaged = damaged_count + compromised_count + critical_count + fractured_count
     nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
+    
+    # Calculate mean risk metrics
+    mean_damage_prob = (total_damage_probability / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 0.0
+    mean_aar_risk = (total_expected_penalty / total_brothers_with_armor) if total_brothers_with_armor > 0 else 0.0
     
     # ─────────────────────────────────────────────────────────────
     # Section 1: Recent Rites (This Month)
@@ -10379,17 +10400,15 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         
         for tech_id, stats in sorted_techs:
             total = stats.get("total_rites", 0)
-            successes = stats.get("successes", 0)
             if total > 0:
                 member = guild.get_member(int(tech_id))
                 if member:
                     name = _format_member_styled(guild, str(tech_id), include_chapter=True)
-                    success_rate = (successes / total) * 100 if total > 0 else 0
                     # Get current charges for this techmarine
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = _get_charges_from_pool_state(tech_pool)
                     pool_bar = "●" * charges + "○" * (BLESSING_POOL_MAX - charges)
-                    artificer_lines.append(f"{name}: {total} rites ({success_rate:.0f}%) {pool_bar}")
+                    artificer_lines.append(f"{name}: {total} rites {pool_bar}")
     
     # ─────────────────────────────────────────────────────────────
     # Section 6: Litany of Endurance (Longest unbroken service)
@@ -10449,9 +10468,16 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         color=0x5D6D7E,
     )
     
-    # Fortress Status (description - top prominence)
+    # Armory Telemetry (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
-    fortress_text = f"**▸ Noospheric Integrity**\n{fortress_icon} **{nominal_pct:.0f}%** Nominal"
+    # Format mean AAR risk - show one decimal if fractional, otherwise integer
+    aar_risk_str = f"{mean_aar_risk:.1f}" if mean_aar_risk % 1 else f"{int(mean_aar_risk)}"
+    fortress_text = (
+        f"**▸ Armory Telemetry**\n"
+        f"{fortress_icon} **{nominal_pct:.0f}%** Nominal  "
+        f"⚔️ **{mean_damage_prob:.0f}%** Strain  "
+        f"📉 **{aar_risk_str}** AAR Risk"
+    )
     embed.description = fortress_text
     
     # Watchlist + Recent Rites (inline pair)
