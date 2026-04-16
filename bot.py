@@ -6801,6 +6801,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
     "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
     "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
+    "Iron Snakes": "The waters of Ithaka anoint your armor; as the Snakes strike, so shall you.",
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
     "Lamenters": "Though cursed, your armor shall not fail—for those we cherish, we die.",
@@ -7149,6 +7150,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "The Gorgon would approve—self-sufficiency in all things.",
         "Logic dictates: who better to bless my iron than I?",
     ],
+    "Iron Snakes": [
+        "The Wyrm-hunter tends his own lance—none know its balance better.",
+        "Ithaka's sons know solitude upon the waves; I renew my own armor.",
+        "The serpent sheds its skin unaided; so do I maintain my warplate.",
+    ],
     "Salamanders": [
         "Vulkan's fire and my own hands—no other blessing is needed.",
         "The forge knows its master. I tend what I have wrought.",
@@ -7309,6 +7315,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Relentless as the hunt—your studs mark each pursuit to the end.",
         "Orinus breeds no weakness; your marks prove Guilliman's lineage.",
         "The pack honors your enduring service until every foe is slain.",
+    ],
+    "Iron Snakes": [
+        "The waters of Ithaka witness your marks—each stud a testament to the phratry.",
+        "Your studs gleam like pearls won from Ithaka's depths.",
+        "For the Reef Stars and the Emperor, your service is inscribed in adamantium.",
     ],
     "Knights of the Raven": [
         "In cunning and patience, your studs are earned.",
