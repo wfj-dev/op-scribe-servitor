@@ -10053,6 +10053,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Section 0: Fortress Status (NEW)
     # ─────────────────────────────────────────────────────────────
     # Count brothers by damage status + calculate risk metrics
+    # Only includes brothers whose armor status is readable (scan detected)
     total_brothers_with_armor = 0
     nominal_count = 0
     damaged_count = 0
@@ -10072,25 +10073,35 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if not has_rank:
             continue
         
-        total_brothers_with_armor += 1
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
+        points = state.get("points_since_blessing", 0)
+        spirit_fractured = state.get("spirit_fractured", False)
+        damage_tier = _get_member_damage_tier(member)
+        
+        # Check scan detection - skip unreadable brothers
+        scan_result = await _get_or_roll_scan_result(
+            member.id, damage_tier, points, spirit_fractured
+        )
+        if not scan_result["detected"]:
+            continue
+        
+        total_brothers_with_armor += 1
         
         # Get damage probability based on cycles
-        points = state.get("points_since_blessing", 0)
         total_damage_probability += _get_damage_probability(points)
         
         # Calculate expected AAR penalty based on current state
-        if state.get("spirit_fractured"):
+        if spirit_fractured:
             fractured_count += 1
             probs = ARMOR_PENALTY_PROBABILITIES.get("fractured", {0: 1.0})
-        elif state.get("damage_tier") == "critical":
+        elif damage_tier == "critical":
             critical_count += 1
             probs = ARMOR_PENALTY_PROBABILITIES.get("critical", {0: 1.0})
-        elif state.get("damage_tier") == "compromised":
+        elif damage_tier == "compromised":
             compromised_count += 1
             probs = ARMOR_PENALTY_PROBABILITIES.get("compromised", {0: 1.0})
-        elif state.get("damage_tier") == "damaged":
+        elif damage_tier == "damaged":
             damaged_count += 1
             probs = ARMOR_PENALTY_PROBABILITIES.get("damaged", {0: 1.0})
         else:
