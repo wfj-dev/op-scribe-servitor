@@ -4923,9 +4923,13 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     else:
         color = 0x3498DB  # Blue - empty
     
-    # Build title
+    # Build title with queue-specific emoji
     queue_display = type_config.get("display", queue_data.get("type", "Unknown"))
-    title = f"⚔️ {queue_display} Queue"
+    if queue_type == "omega":
+        queue_emoji = _get_emoji_by_name(guild, "Omega") or "⚔️"
+    else:
+        queue_emoji = "⚔️"
+    title = f"{queue_emoji} {queue_display} Queue"
     if initiation_trial:
         title += " (Initiation Trial)"
     if player_count >= max_players:
@@ -10469,6 +10473,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     # Armory Telemetry (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
+    # Strain status: green if < 5%, yellow if < 15%, red if >= 15%
+    strain_icon = "🟢" if mean_damage_prob < 5 else ("🟡" if mean_damage_prob < 15 else "🔴")
+    # AAR Risk status: green if < 0.5, yellow if < 1.5, red if >= 1.5
+    aar_icon = "🟢" if mean_aar_risk < 0.5 else ("🟡" if mean_aar_risk < 1.5 else "🔴")
     # Format mean AAR risk - show one decimal if fractional, otherwise integer
     aar_risk_str = f"{mean_aar_risk:.1f}" if mean_aar_risk % 1 else f"{int(mean_aar_risk)}"
     # Format strain - show "< 1%" if non-zero but rounds to 0
@@ -10479,8 +10487,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     fortress_text = (
         f"**▸ Armory Telemetry**\n"
         f"{fortress_icon} **{nominal_pct:.0f}%** Nominal  "
-        f"⚔️ **{strain_str}** Strain  "
-        f"📉 **{aar_risk_str}** AAR Risk"
+        f"{strain_icon} **{strain_str}** Strain  "
+        f"{aar_icon} **{aar_risk_str}** AAR Risk"
     )
     embed.description = fortress_text
     
