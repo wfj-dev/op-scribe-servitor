@@ -140,9 +140,9 @@ LFG_QUEUE_TYPES_DEFAULT = {
 LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 
 # Forge requisition pool configuration
-FORGE_POOL_COST_PER_CHARGE = 200  # Armory points spent per blessing charge
+FORGE_POOL_COST_PER_CHARGE = 10  # Armory points spent per blessing charge
 FORGE_POOL_DAILY_LIMIT = 6  # Max requisitions per Techmarine per day
-FORGE_POOL_MAX_CHARGES = 30  # Maximum charges the forge can hold
+FORGE_POOL_MAX_CHARGES = 60  # Maximum charges the forge can hold (600 pts)
 
 # Blessing pool configuration
 BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
@@ -2716,7 +2716,7 @@ ARMOR_SCAN_PREDICTIVE_TIERS = [
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)
-INTENSIVE_SCAN_COST = 500
+INTENSIVE_SCAN_COST = 20
 
 # Default probability tiers (can be overridden in config)
 # Gaps shrink as cycles increase to create mounting pressure
