@@ -10050,9 +10050,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
     
     # ─────────────────────────────────────────────────────────────
-    # Section 0: Fortress Status (NEW)
+    # Section 0: Fortress Status
     # ─────────────────────────────────────────────────────────────
-    # Count brothers by damage status + calculate risk metrics
+    # Count brothers by damage status + calculate forge pressure metrics
     # Only includes brothers whose armor status is readable (scan detected)
     total_brothers_with_armor = 0
     nominal_count = 0
@@ -10061,9 +10061,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     critical_count = 0
     fractured_count = 0
     
-    # Risk metric accumulators
-    total_damage_probability = 0.0  # Sum of damage probabilities
-    total_expected_penalty = 0.0    # Sum of expected AAR losses
+    # Brothers needing attention: damaged+ OR nominal at 5+ cycles (entering risk zone)
+    brothers_needing_attention = 0
     
     for member in guild.members:
         if member.bot:
@@ -10088,35 +10087,27 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         
         total_brothers_with_armor += 1
         
-        # Get damage probability based on cycles
-        total_damage_probability += _get_damage_probability(points)
-        
-        # Calculate expected AAR penalty based on current state
+        # Count by damage tier and track brothers needing attention
         if spirit_fractured:
             fractured_count += 1
-            probs = ARMOR_PENALTY_PROBABILITIES.get("fractured", {0: 1.0})
+            brothers_needing_attention += 1
         elif damage_tier == "critical":
             critical_count += 1
-            probs = ARMOR_PENALTY_PROBABILITIES.get("critical", {0: 1.0})
+            brothers_needing_attention += 1
         elif damage_tier == "compromised":
             compromised_count += 1
-            probs = ARMOR_PENALTY_PROBABILITIES.get("compromised", {0: 1.0})
+            brothers_needing_attention += 1
         elif damage_tier == "damaged":
             damaged_count += 1
-            probs = ARMOR_PENALTY_PROBABILITIES.get("damaged", {0: 1.0})
+            brothers_needing_attention += 1
         else:
             nominal_count += 1
-            probs = {0: 1.0}  # Nominal = no penalty
-        
-        # Expected value: sum(penalty * probability)
-        total_expected_penalty += sum(p * prob for p, prob in probs.items())
+            # Nominal brothers at 5+ cycles are entering risk zone
+            if points >= 5:
+                brothers_needing_attention += 1
     
     total_damaged = damaged_count + compromised_count + critical_count + fractured_count
     nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
-    
-    # Calculate mean risk metrics
-    mean_damage_prob = (total_damage_probability / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 0.0
-    mean_aar_risk = (total_expected_penalty / total_brothers_with_armor) if total_brothers_with_armor > 0 else 0.0
     
     # ─────────────────────────────────────────────────────────────
     # Section 1: Recent Rites (This Month)
@@ -10382,7 +10373,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     empty_blocks = 10 - filled_blocks
     reserve_bar = "█" * filled_blocks + "░" * empty_blocks
     
-    # Load blessing pool data for artificers section
+    # Load blessing pool data for artificers section AND forge pressure calculation
     blessing_pool_data = _load_blessing_pool()
     
     def _get_charges_from_pool_state(state: dict) -> int:
@@ -10390,6 +10381,61 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         timestamps = state.get("blessing_timestamps", [])
         active = _filter_active_blessing_timestamps(timestamps)
         return max(0, min(BLESSING_POOL_MAX - len(active), BLESSING_POOL_MAX))
+    
+    def _get_soonest_regen_from_pool_state(state: dict) -> Optional[timedelta]:
+        """Get time until next charge regenerates for a pool state, or None if full."""
+        timestamps = state.get("blessing_timestamps", [])
+        active = _filter_active_blessing_timestamps(timestamps)
+        if len(active) == 0:
+            return None  # Pool is full
+        
+        now = datetime.utcnow()
+        regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
+        oldest_ts = None
+        for ts_str in active:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+                if oldest_ts is None or ts < oldest_ts:
+                    oldest_ts = ts
+            except Exception:
+                pass
+        
+        if oldest_ts:
+            time_until_regen = timedelta(seconds=regen_seconds) - (now - oldest_ts)
+            if time_until_regen.total_seconds() > 0:
+                return time_until_regen
+        return timedelta(seconds=0)  # About to regen
+    
+    # Calculate total Techmarine charges and soonest regen across all Techmarines
+    techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
+    total_techmarine_charges = 0
+    soonest_regen: Optional[timedelta] = None
+    total_regenning = 0  # Count of charges currently regenerating
+    
+    if techmarine_role:
+        for member in techmarine_role.members:
+            if member.bot:
+                continue
+            tech_pool = blessing_pool_data.get(str(member.id), {})
+            charges = _get_charges_from_pool_state(tech_pool)
+            total_techmarine_charges += charges
+            
+            # Track regenning charges and soonest regen time
+            timestamps = tech_pool.get("blessing_timestamps", [])
+            active = _filter_active_blessing_timestamps(timestamps)
+            total_regenning += len(active)
+            
+            regen_time = _get_soonest_regen_from_pool_state(tech_pool)
+            if regen_time is not None:
+                if soonest_regen is None or regen_time < soonest_regen:
+                    soonest_regen = regen_time
+    
+    # Calculate Forge Pressure = demand / available charges
+    # If no charges available, pressure is infinite (shown as "∞")
+    if total_techmarine_charges > 0:
+        forge_pressure = brothers_needing_attention / total_techmarine_charges
+    else:
+        forge_pressure = float('inf') if brothers_needing_attention > 0 else 0.0
     
     # ─────────────────────────────────────────────────────────────
     # Section 5: Artificers of the Watch
@@ -10484,22 +10530,41 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     # Armory Telemetry (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
-    # Strain status: green if < 5%, yellow if < 15%, red if >= 15%
-    strain_icon = "🟢" if mean_damage_prob < 5 else ("🟡" if mean_damage_prob < 15 else "🔴")
-    # AAR Risk status: green if < 0.5, yellow if < 1.5, red if >= 1.5
-    aar_icon = "🟢" if mean_aar_risk < 0.5 else ("🟡" if mean_aar_risk < 1.5 else "🔴")
-    # Format mean AAR risk - show one decimal if fractional, otherwise integer
-    aar_risk_str = f"{mean_aar_risk:.1f}" if mean_aar_risk % 1 else f"{int(mean_aar_risk)}"
-    # Format strain - show "< 1%" if non-zero but rounds to 0
-    if mean_damage_prob > 0 and mean_damage_prob < 1:
-        strain_str = "< 1%"
+    # Forge Pressure: green if < 1.0 (covered), yellow if < 2.0, red if >= 2.0
+    if forge_pressure == float('inf'):
+        pressure_icon = "🔴"
+        pressure_str = "∞"
+    elif forge_pressure < 1.0:
+        pressure_icon = "🟢"
+        pressure_str = f"{forge_pressure:.1f}x"
+    elif forge_pressure < 2.0:
+        pressure_icon = "🟡"
+        pressure_str = f"{forge_pressure:.1f}x"
     else:
-        strain_str = f"{mean_damage_prob:.0f}%"
+        pressure_icon = "🔴"
+        pressure_str = f"{forge_pressure:.1f}x"
+    
+    # Regen display: show "+N in Xh" or "Full" if all techmarines at max
+    if total_regenning == 0:
+        regen_icon = "🟢"
+        regen_str = "Full"
+    elif soonest_regen is not None:
+        regen_icon = "🟡"
+        regen_hours = soonest_regen.total_seconds() / 3600
+        if regen_hours < 1:
+            regen_mins = int(soonest_regen.total_seconds() / 60)
+            regen_str = f"+{total_regenning} in {regen_mins}m"
+        else:
+            regen_str = f"+{total_regenning} in {regen_hours:.1f}h"
+    else:
+        regen_icon = "🟢"
+        regen_str = "Full"
+    
     fortress_text = (
         f"**▸ Armory Telemetry**\n"
         f"{fortress_icon} **{nominal_pct:.0f}%** Nominal  "
-        f"{strain_icon} **{strain_str}** Strain  "
-        f"{aar_icon} **{aar_risk_str}** AAR Risk"
+        f"{pressure_icon} **{pressure_str}** Pressure  "
+        f"{regen_icon} **{regen_str}** Regen"
     )
     embed.description = fortress_text
     
