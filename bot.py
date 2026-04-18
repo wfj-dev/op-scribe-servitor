@@ -10155,7 +10155,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     for entry in rite_history:
         try:
             ts = datetime.fromisoformat(entry.get("ts", ""))
-            if ts >= first_of_month:
+            # Exclude fractured/released (system events shown in Spirit Memorial)
+            if ts >= first_of_month and entry.get("event") not in ("fractured", "released"):
                 monthly_rites.append(entry)
         except Exception:
             pass
