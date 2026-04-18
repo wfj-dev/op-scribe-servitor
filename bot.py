@@ -10556,7 +10556,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Sort by most recent first
     lost_spirits.sort(key=lambda x: x.get("ts", ""), reverse=True)
     
-    for entry in lost_spirits[:5]:  # Max 5
+    for entry in lost_spirits[:3]:  # Max 3
         bearer_id = entry.get("bearer_id")
         spirit = entry.get("spirit")
         event_type = entry.get("event")
