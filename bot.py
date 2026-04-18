@@ -9635,16 +9635,25 @@ async def _show_armor_leaderboard(
 
     # Add invoker's blessing pool status
     if pool_remaining is not None:
-        pool_bar = "●" * pool_remaining + "○" * (BLESSING_POOL_MAX - pool_remaining)
+        # Compact pip display: ● = 2 charges, ○ = 1 charge
+        if pool_remaining == 0:
+            pool_bar = ""
+        elif pool_remaining >= 5:
+            filled = pool_remaining - 5  # ● count
+            empty = 5 - filled           # ○ count (= 10 - charges)
+            pool_bar = "●" * filled + "○" * empty
+        else:
+            pool_bar = "○" * pool_remaining
         if pool_next_regen and pool_remaining < BLESSING_POOL_MAX:
             hours, remainder = divmod(int(pool_next_regen.total_seconds()), 3600)
             minutes = remainder // 60
             regen_str = f" · +1 in {hours}h {minutes}m" if hours else f" · +1 in {minutes}m"
         else:
             regen_str = ""
+        pool_display = f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX})" if pool_bar else f"({pool_remaining}/{BLESSING_POOL_MAX})"
         embed.add_field(
             name="▸ Your Blessing Pool",
-            value=f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}\n`/forge_rite @brother`",
+            value=f"{pool_display}{regen_str}\n`/forge_rite @brother`",
             inline=True,
         )
 
