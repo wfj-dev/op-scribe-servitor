@@ -10565,7 +10565,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=True)
             # 💀 for fractured with age, 💤 for released (dormant)
             if event_type == "fractured":
-                age_str = f" ({age_days}d)" if age_days else ""
+                age_str = f"({age_days}d) " if age_days else ""
                 memorial_lines.append(f"💀 **{spirit}** {age_str}{member_label}")
             else:
                 memorial_lines.append(f"💤 **{spirit}** {member_label}")
