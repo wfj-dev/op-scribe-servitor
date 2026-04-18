@@ -141,12 +141,12 @@ LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 
 # Forge requisition pool configuration
 FORGE_POOL_COST_PER_CHARGE = 10  # Armory points spent per blessing charge
-FORGE_POOL_DAILY_LIMIT = 6  # Max requisitions per Techmarine per day
+FORGE_POOL_DAILY_LIMIT = 5  # Max requisitions per Techmarine per day
 FORGE_POOL_MAX_CHARGES = 60  # Maximum charges the forge can hold (600 pts)
 
 # Blessing pool configuration
-BLESSING_POOL_MAX = 5  # Maximum blessings per Techmarine
-BLESSING_POOL_REGEN_HOURS = 24 / 5  # 4.8 hours per blessing regeneration
+BLESSING_POOL_MAX = 10  # Maximum blessings per Techmarine
+BLESSING_POOL_REGEN_HOURS = 24 / 10  # 2.4 hours per blessing regeneration
 BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
 BLESSING_RECIPIENT_MAX_PER_DAY = 3  # Maximum blessings per recipient per 24h
 BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS = 4  # Minimum hours between blessings for same recipient
@@ -10467,8 +10467,17 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     # Get current charges for this techmarine
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = _get_charges_from_pool_state(tech_pool)
-                    pool_bar = "●" * charges + "○" * (BLESSING_POOL_MAX - charges)
-                    artificer_lines.append(f"{name}: {total} rites {pool_bar}")
+                    # Compact pip display: ● = 2 charges, ○ = 1 charge
+                    # 5 positions shown for 5+ charges, fewer for <5
+                    if charges == 0:
+                        pool_bar = ""
+                    elif charges >= 5:
+                        filled = charges - 5  # ● count
+                        empty = 5 - filled    # ○ count (= 10 - charges)
+                        pool_bar = "●" * filled + "○" * empty
+                    else:
+                        pool_bar = "○" * charges
+                    artificer_lines.append(f"{name} {pool_bar}" if pool_bar else name)
     
     # ─────────────────────────────────────────────────────────────
     # Section 6: Litany of Endurance (Longest unbroken service)
