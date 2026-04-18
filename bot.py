@@ -10556,7 +10556,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Sort by most recent first
     lost_spirits.sort(key=lambda x: x.get("ts", ""), reverse=True)
     
-    for entry in lost_spirits[:3]:  # Max 3
+    for entry in lost_spirits[:5]:  # Max 5
         bearer_id = entry.get("bearer_id")
         spirit = entry.get("spirit")
         event_type = entry.get("event")
@@ -10643,20 +10643,20 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         inline=False,
     )
     
-    # Litany of Endurance + Spirit Memorial (inline pair)
+    # Litany of Endurance (full width)
     if honor_lines:
         embed.add_field(
             name="▸ Litany of Endurance",
             value="\n".join(honor_lines),
-            inline=True,
+            inline=False,
         )
     
-    # Spirit Memorial (inline with Litany, only if exists)
+    # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
-            name="▸ Spirit Memorial",
+            name="▸ Spirit Memorial (age at death)",
             value="\n".join(memorial_lines),
-            inline=True,
+            inline=False,
         )
     
     # Forge Reserves + Artificers (inline pair)
@@ -10668,7 +10668,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     if artificer_lines:
         embed.add_field(
-            name="▸ Artificers",
+            name="▸ Artificers (blessing charges)",
             value="\n".join(artificer_lines),
             inline=True,
         )
