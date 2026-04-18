@@ -2129,6 +2129,7 @@ HOME_CHAPTERS = [
     "Bleeding Hearts",
     "Blood Angels",
     "Blood Ravens",
+    "Brazen Minotaurs",
     "Carcharodons",
     "Cowled Wardens",
     "Crimson Fists",
@@ -6830,6 +6831,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
     "Blood Angels": "By the Blood of Sanguinius, your armor is sanctified.",
     "Blood Ravens": "Knowledge is power; guard it well within these sacred plates.",
+    "Brazen Minotaurs": "Bronze and fury—your armor embodies the unstoppable siege.",
     "Carcharodons": "From the void you came, and to the void your enemies shall fall.",
     "Cowled Wardens": "The Unforgiven hunt eternal; your armor conceals the Lion's secret purpose.",
     "Crimson Fists": "The fist of Dorn strikes true; let your armor be unyielding.",
@@ -7283,6 +7285,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Knowledge accumulated, service recorded—your studs speak of both.",
         "The Librarius records your marks alongside your collected wisdom.",
         "Each stud is a chapter in your quest for knowledge.",
+    ],
+    "Brazen Minotaurs": [
+        "Each stud is a bastion breached—your marks proclaim the siege eternal.",
+        "Methodical fury burns bright; your studs gleam like bronze in the sun.",
+        "The bull charges ever onward—your service marks the walls that fell before you.",
     ],
     "Carcharodons": [
         "From the void's depths, your service marks emerge.",
