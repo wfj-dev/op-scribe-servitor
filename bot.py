@@ -10654,7 +10654,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
-            name="▸ Spirit Memorial (age at death)",
+            name="▸ Spirit Memorial",
             value="\n".join(memorial_lines),
             inline=False,
         )
@@ -10668,7 +10668,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     if artificer_lines:
         embed.add_field(
-            name="▸ Artificers (blessing charges)",
+            name="▸ Artificers",
             value="\n".join(artificer_lines),
             inline=True,
         )
