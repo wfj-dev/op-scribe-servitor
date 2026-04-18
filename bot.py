@@ -4166,6 +4166,31 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
         _save_forge_chronicle(data)
 
 
+async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_days: int):
+    """Record a spirit fracture in the chronicle.
+    
+    This creates a 'fractured' event in rite_history for the memorial.
+    The spirit is lost - will require a new binding.
+    """
+    async with FORGE_CHRONICLE_LOCK:
+        data = _load_forge_chronicle()
+        
+        entry = {
+            "ts": datetime.utcnow().isoformat(),
+            "bearer_id": str(bearer_id),
+            "techmarine_id": None,
+            "rite_type": None,
+            "spirit": spirit_designation,
+            "event": "fractured",
+            "age_days": age_days,
+        }
+        data["rite_history"].append(entry)
+        if len(data["rite_history"]) > 500:
+            data["rite_history"] = data["rite_history"][-500:]
+        
+        _save_forge_chronicle(data)
+
+
 async def _get_dashboard_message_id() -> Optional[int]:
     """Get the stored dashboard message ID (if any)."""
     async with FORGE_CHRONICLE_LOCK:
@@ -4728,6 +4753,21 @@ async def _process_armor_integrity_for_aar(
             if state["critical_aar_count"] >= fracture_threshold:
                 # Spirit fractures
                 state["spirit_fractured"] = True
+                
+                # Record fracture in chronicle with spirit age
+                spirits_data = _load_machine_spirits()
+                spirit_info = spirits_data.get(str(brother_id), {})
+                spirit_name = spirit_info.get("designation") if isinstance(spirit_info, dict) else spirit_info
+                age_days = 0
+                if isinstance(spirit_info, dict) and spirit_info.get("bound_ts"):
+                    try:
+                        bound_dt = datetime.fromisoformat(spirit_info["bound_ts"])
+                        age_days = (datetime.utcnow() - bound_dt).days
+                    except Exception:
+                        pass
+                if spirit_name:
+                    await _record_spirit_fractured(int(brother_id), spirit_name, age_days)
+                
                 # Guaranteed alert for fracture
                 if alert_info is None or alert_info.get("tier") != "fractured":
                     alert_info = {
@@ -9635,25 +9675,15 @@ async def _show_armor_leaderboard(
 
     # Add invoker's blessing pool status
     if pool_remaining is not None:
-        # Compact pip display: ● = 2 charges, ○ = 1 charge
-        if pool_remaining == 0:
-            pool_bar = ""
-        elif pool_remaining >= 5:
-            filled = pool_remaining - 5  # ● count
-            empty = 5 - filled           # ○ count (= 10 - charges)
-            pool_bar = "●" * filled + "○" * empty
-        else:
-            pool_bar = "○" * pool_remaining
         if pool_next_regen and pool_remaining < BLESSING_POOL_MAX:
             hours, remainder = divmod(int(pool_next_regen.total_seconds()), 3600)
             minutes = remainder // 60
             regen_str = f" · +1 in {hours}h {minutes}m" if hours else f" · +1 in {minutes}m"
         else:
             regen_str = ""
-        pool_display = f"{pool_bar} ({pool_remaining}/{BLESSING_POOL_MAX})" if pool_bar else f"({pool_remaining}/{BLESSING_POOL_MAX})"
         embed.add_field(
             name="▸ Your Blessing Pool",
-            value=f"{pool_display}{regen_str}\n`/forge_rite @brother`",
+            value=f"({pool_remaining}/{BLESSING_POOL_MAX}){regen_str}\n`/forge_rite @brother`",
             inline=True,
         )
 
@@ -9853,7 +9883,7 @@ async def _requisition_supplies(
     
     embed.add_field(
         name="▸ Blessing Pool",
-        value=f"{'●' * new_pool}{'○' * (BLESSING_POOL_MAX - new_pool)} ({new_pool}/{BLESSING_POOL_MAX})",
+        value=f"({new_pool}/{BLESSING_POOL_MAX})",
         inline=True,
     )
     
@@ -10476,17 +10506,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     # Get current charges for this techmarine
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = _get_charges_from_pool_state(tech_pool)
-                    # Compact pip display: ● = 2 charges, ○ = 1 charge
-                    # 5 positions shown for 5+ charges, fewer for <5
-                    if charges == 0:
-                        pool_bar = ""
-                    elif charges >= 5:
-                        filled = charges - 5  # ● count
-                        empty = 5 - filled    # ○ count (= 10 - charges)
-                        pool_bar = "●" * filled + "○" * empty
-                    else:
-                        pool_bar = "○" * charges
-                    artificer_lines.append(f"{name} {pool_bar}" if pool_bar else name)
+                    artificer_lines.append(f"{name} ({charges})")
     
     # ─────────────────────────────────────────────────────────────
     # Section 6: Litany of Endurance (Longest unbroken service)
@@ -10517,23 +10537,38 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         honor_lines.append(f"{name} ({pts} cycles)")
     
     # ─────────────────────────────────────────────────────────────
-    # Section 7: Spirit Memorial (Lost this month)
+    # Section 7: Spirit Memorial (Spirits lost in last 28 days)
     # ─────────────────────────────────────────────────────────────
     memorial_lines = []
-    # Include both rebirths (fractured) and releases (inactive)
-    lost_spirits = [r for r in monthly_rites if r.get("event") in ("rebirth", "released")]
-    for entry in lost_spirits[:3]:  # Max 3
+    
+    # Show fractured/released events from the last 28 days
+    cutoff = now - timedelta(days=28)
+    lost_spirits = []
+    for r in rite_history:
+        if r.get("event") in ("fractured", "released"):
+            try:
+                ts = datetime.fromisoformat(r.get("ts", ""))
+                if ts >= cutoff:
+                    lost_spirits.append(r)
+            except Exception:
+                pass
+    
+    # Sort by most recent first
+    lost_spirits.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    
+    for entry in lost_spirits[:5]:  # Max 5
         bearer_id = entry.get("bearer_id")
-        spirit = entry.get("spirit") or entry.get("old_spirit")
+        spirit = entry.get("spirit")
         event_type = entry.get("event")
-        if bearer_id:
+        age_days = entry.get("age_days")
+        if bearer_id and spirit:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=False)
-            if spirit:
-                # Add icon: 💀 for fractured, 💤 for released (dormant)
-                icon = "💤" if event_type == "released" else "💀"
-                memorial_lines.append(f"{icon} **{spirit}** — {member_label}")
+            # 💀 for fractured with age, 💤 for released (dormant)
+            if event_type == "fractured":
+                age_str = f" ({age_days}d)" if age_days else ""
+                memorial_lines.append(f"💀 **{spirit}**{age_str} — {member_label}")
             else:
-                memorial_lines.append(f"*Spirit lost* — {member_label}")
+                memorial_lines.append(f"💤 **{spirit}** — {member_label}")
     
     # ─────────────────────────────────────────────────────────────
     # Build the embed description
@@ -10633,7 +10668,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     if artificer_lines:
         embed.add_field(
-            name="▸ Artificers",
+            name="▸ Artificers (blessing charges)",
             value="\n".join(artificer_lines),
             inline=True,
         )
