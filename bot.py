@@ -9774,7 +9774,7 @@ async def _armor_status(interaction: discord.Interaction):
 @app_commands.choices(
     requisition_type=[
         app_commands.Choice(name="Blessing Charge (+1 to pool)", value="blessing_charge"),
-        app_commands.Choice(name="Intensive Scan (500 pts, 100% detection)", value="intensive_scan"),
+        app_commands.Choice(name="Intensive Scan (20 pts, 100% detection)", value="intensive_scan"),
     ]
 )
 async def _requisition_supplies(
@@ -10562,7 +10562,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         event_type = entry.get("event")
         age_days = entry.get("age_days")
         if bearer_id and spirit:
-            member_label = _format_member_styled(guild, str(bearer_id), include_chapter=False)
+            member_label = _format_member_styled(guild, str(bearer_id), include_chapter=True)
             # 💀 for fractured with age, 💤 for released (dormant)
             if event_type == "fractured":
                 age_str = f" ({age_days}d)" if age_days else ""
@@ -10654,7 +10654,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
-            name="▸ Spirit Memorial",
+            name="▸ Spirit Memorial (age at death)",
             value="\n".join(memorial_lines),
             inline=False,
         )
