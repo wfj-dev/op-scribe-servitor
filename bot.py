@@ -2679,10 +2679,10 @@ MISSION_TO_PLANET = {
 # Penalty 0 = no penalty, 1-4 = AAR reduction
 ARMOR_PENALTY_PROBABILITIES = {
     None: {0: 1.0},  # Nominal: no penalty
-    "damaged": {0: 0.70, 1: 0.25, 2: 0.04, 3: 0.01},  # 30% chance of penalty
-    "compromised": {0: 0.50, 1: 0.30, 2: 0.15, 3: 0.05},  # 50% chance of penalty
-    "critical": {0: 0.25, 1: 0.25, 2: 0.30, 3: 0.20},  # 75% chance of penalty
-    "fractured": {0: 0.10, 1: 0.15, 2: 0.25, 3: 0.30, 4: 0.20},  # 90% chance, up to -4
+    "damaged": {0: 0.80, 1: 0.17, 2: 0.02, 3: 0.01},      # 20% penalty chance
+    "compromised": {0: 0.67, 1: 0.20, 2: 0.10, 3: 0.03},  # 33% penalty chance
+    "critical": {0: 0.50, 1: 0.17, 2: 0.20, 3: 0.13},     # 50% penalty chance
+    "fractured": {0: 0.40, 1: 0.10, 2: 0.17, 3: 0.20, 4: 0.13},  # 60% penalty chance
 }
 
 # Detection alert chances per AAR while damaged (early warning system)
