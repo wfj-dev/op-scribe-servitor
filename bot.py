@@ -16087,14 +16087,14 @@ def parse_aar(message: discord.Message):
     )
 
     # If Chapter Approved tag present, apply +1 point only when the AAR
-    # is recorded on the 1st or 3rd Saturday of the month.
+    # is recorded on the 1st or 3rd weekend (Saturday or Sunday) of the month.
     try:
         if chapter_approved and getattr(message, "created_at", None):
             dt = message.created_at
-            # weekday(): Monday=0 .. Sunday=6 ; Saturday == 5
+            # weekday(): Monday=0 .. Sunday=6 ; Saturday == 5, Sunday == 6
             day = getattr(dt, "day", None)
             wd = getattr(dt, "weekday", lambda: None)()
-            if wd == 5 and day is not None and ((1 <= day <= 7) or (15 <= day <= 21)):
+            if wd in (5, 6) and day is not None and ((1 <= day <= 8) or (15 <= day <= 22)):
                 try:
                     points_for_op = int(points_for_op) + 1
                     chapter_approved_extra_point_applied = True
