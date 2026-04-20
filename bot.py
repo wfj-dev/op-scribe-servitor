@@ -3708,7 +3708,7 @@ def _filter_active_blessing_timestamps(timestamps: List[str]) -> List[str]:
 def _calculate_regenerated_blessings(blessing_timestamps: List[str]) -> int:
     """Calculate how many blessings have regenerated based on timestamps.
     
-    Each blessing regenerates after BLESSING_POOL_REGEN_HOURS (4.8h).
+    Each blessing regenerates after BLESSING_POOL_REGEN_HOURS (2.4h).
     Returns the number of blessings currently available.
     """
     on_cooldown = len(_filter_active_blessing_timestamps(blessing_timestamps))
@@ -3841,10 +3841,12 @@ async def _consume_multiple_blessings(user_id: int, count: int):
     now = datetime.utcnow()
     active_timestamps = _filter_active_blessing_timestamps(timestamps)
     
-    # Record simultaneous consumption at the same timestamp and rely on list order.
-    now_iso = now.isoformat()
-    for _ in range(count):
-        active_timestamps.append(now_iso)
+    # Stagger timestamps by one regen interval each so charges recharge
+    # one at a time rather than all simultaneously.
+    regen_delta = timedelta(hours=BLESSING_POOL_REGEN_HOURS)
+    for i in range(count):
+        staggered_ts = now + regen_delta * i
+        active_timestamps.append(staggered_ts.isoformat())
     
     # Trim to BLESSING_POOL_MAX entries to keep bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
