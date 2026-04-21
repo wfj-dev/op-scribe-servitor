@@ -10616,9 +10616,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         regen_hours = soonest_regen.total_seconds() / 3600
         if regen_hours < 1:
             regen_mins = int(soonest_regen.total_seconds() / 60)
-            regen_str = f"+{total_regenning} in {regen_mins}m"
+            regen_str = f"+1 in {regen_mins}m ({total_regenning} on CD)"
         else:
-            regen_str = f"+{total_regenning} in {regen_hours:.1f}h"
+            regen_str = f"+1 in {regen_hours:.1f}h ({total_regenning} on CD)"
     else:
         regen_icon = "🟢"
         regen_str = "Full"
