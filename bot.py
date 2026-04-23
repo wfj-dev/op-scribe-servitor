@@ -10706,6 +10706,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(honor_lines),
             inline=True,
         )
+
+    embed.add_field(name="\u200b",  value="\u200b", inline=True)
     
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
@@ -10714,8 +10716,6 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(memorial_lines),
             inline=True,
         )
-    
-    embed.add_field(name="\u200b",  value="\u200b", inline=True)
     
     # Forge Reserves + Artificers (inline pair)
     embed.add_field(
