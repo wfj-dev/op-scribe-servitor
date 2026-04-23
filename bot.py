@@ -10719,7 +10719,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     embed.add_field(
         name="▸ Forge Reserves",
         value=f"{reserve_bar} {available:,} / {max_balance:,} pts",
-        inline=True,
+        inline=False,
     )
     
     if artificer_lines:
