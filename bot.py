@@ -10714,8 +10714,6 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(memorial_lines),
             inline=True,
         )
-
-    embed.add_field(name="\u200b", value="\u200b", inline=False)
     
     # Forge Reserves + Artificers (inline pair)
     embed.add_field(
