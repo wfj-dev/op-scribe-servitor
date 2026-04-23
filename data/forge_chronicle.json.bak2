@@ -1,0 +1,3444 @@
+{
+  "pending_alerts": {},
+  "rite_history": [
+    {
+      "ts": "2026-04-04T18:08:01.651773",
+      "bearer_id": "1215705529318637682",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "COGNIS-74EEFA-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-04T18:08:23.713698",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T18:46:20.216285",
+      "bearer_id": "1444810056821637133",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "ANIMUS-0DE1EB-Ι",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T19:10:13.789129",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T20:28:05.921806",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-04T20:28:29.258416",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T20:28:44.832981",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T22:08:58.845622",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-04T22:09:23.897727",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-04T23:15:14.778356",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T01:08:30.652948",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-05T01:09:42.843779",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T01:10:02.377541",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T01:12:45.697155",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T01:49:56.001628",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T01:50:07.045909",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T02:00:28.688917",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T02:21:11.323446",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T03:19:35.177937",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T06:24:50.297206",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T06:30:32.610314",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-05T13:57:13.719410",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T13:57:28.717425",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-05T15:03:21.912735",
+      "bearer_id": "1444810056821637133",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-0DE1EB-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T19:21:03.292271",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T19:21:15.194403",
+      "bearer_id": "571035376135962645",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SENTINEL-22E7B9-Φ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T19:54:29.859941",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T20:53:59.847439",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T20:57:39.718784",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-05T20:57:48.800353",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T23:22:52.792205",
+      "bearer_id": "710530020803870730",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-47B746-Κ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-05T23:24:16.073724",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T00:11:16.128561",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T00:24:10.435469",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-06T01:36:57.418439",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-6306A3-Μ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-06T01:47:20.899821",
+      "bearer_id": "1215705529318637682",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "COGNIS-74EEFA-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T02:48:40.527357",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T03:23:11.771252",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-06T04:05:03.426400",
+      "bearer_id": "1317207422510694456",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "COGNIS-553BA3-I",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-06T04:05:11.728241",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T04:05:18.841930",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T04:06:28.075854",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T04:06:35.499622",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-06T05:33:57.068364",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T05:34:55.283877",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T05:35:10.241724",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-06T05:36:13.564568",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:43:27.715413",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:43:40.246503",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:44:45.022087",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:44:56.746912",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:45:04.976490",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:45:30.285662",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T04:45:41.012761",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T17:33:45.340880",
+      "bearer_id": "483733346548056065",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-D53389-Ε",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-07T20:00:33.484889",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-07T23:19:57.568735",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T00:20:45.164461",
+      "bearer_id": "711688004091248693",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-1DBF23-Θ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-08T00:25:18.754373",
+      "bearer_id": "711688004091248693",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-1DBF23-Θ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T04:59:01.264420",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T14:15:48.959581",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T16:53:40.191053",
+      "bearer_id": "1215705529318637682",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "COGNIS-74EEFA-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T16:56:42.078648",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T17:21:51.065920",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T17:21:57.951447",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T17:22:03.907425",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T18:38:56.187319",
+      "bearer_id": "571035376135962645",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SENTINEL-22E7B9-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-08T18:39:06.598628",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-08T20:59:45.430086",
+      "bearer_id": "1230587967559700644",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-5C06FC-VIII",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-08T23:12:07.759114",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-08T23:12:20.766934",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-08T23:12:53.122069",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T00:08:10.450032",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T01:13:26.872787",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T01:44:41.654222",
+      "bearer_id": "141769315085975552",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AEGIS-103315-Ζ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-09T02:21:08.431763",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T02:35:59.764157",
+      "bearer_id": "839979148280987691",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "LUPUS-CACFB4-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T02:36:18.728079",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T02:55:01.986477",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T04:09:57.086492",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T13:13:40.453921",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T13:13:56.193627",
+      "bearer_id": "366794454830546946",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-0F8D2A-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-09T18:10:01.833203",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T18:10:16.608065",
+      "bearer_id": "1215705529318637682",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "COGNIS-74EEFA-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-09T18:51:31.751356",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T01:54:56.804407",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T01:55:14.754097",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T01:55:31.848979",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T01:55:53.961506",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T01:56:35.682514",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T03:46:59.393845",
+      "bearer_id": "512474407768293379",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D5A155-Ρ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T03:47:07.642741",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T03:47:21.293533",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T03:47:28.340996",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T03:47:36.851077",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T03:47:40.957367",
+      "bearer_id": "1203139026111168522",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-824468-III",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T03:47:51.678959",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T04:12:04.814579",
+      "bearer_id": "543868630996353024",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-DA087A-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T04:12:12.145423",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T04:50:03.913423",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T05:15:50.662565",
+      "bearer_id": "608286735276834845",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-339197-Α",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T06:03:52.328732",
+      "bearer_id": "775986735477424148",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-E7B82B-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T13:49:55.532510",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T14:24:03.735589",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T14:24:13.859960",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T14:24:44.907920",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T14:45:27.449551",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T15:25:50.915462",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T17:50:22.418783",
+      "bearer_id": "608286735276834845",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-339197-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T17:52:46.996919",
+      "bearer_id": "1014712606503739392",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-FD45D9-Θ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T17:53:00.665023",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T17:53:42.141380",
+      "bearer_id": "727577031914815508",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-0F6800-IX",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-10T19:08:02.329280",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T19:08:09.026832",
+      "bearer_id": "710530020803870730",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-47B746-Κ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-10T22:40:22.753043",
+      "bearer_id": "366794454830546946",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-0F8D2A-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T22:42:32.513904",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-10T22:42:40.475710",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T00:53:02.749145",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T00:56:06.048789",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-11T00:56:13.766053",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T00:56:22.334361",
+      "bearer_id": "444912473280348160",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-10660E-Μ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-11T00:56:36.424128",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T00:56:41.268696",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T00:56:46.167415",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T02:12:09.149623",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T02:12:27.104350",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T04:28:23.665394",
+      "bearer_id": "387344967200145412",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-AB846F-II",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-11T04:29:51.855628",
+      "bearer_id": "366794454830546946",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "SACRIS-0F8D2A-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T04:30:03.674656",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T14:35:53.871431",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T14:36:01.664328",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T14:38:53.397024",
+      "bearer_id": "775986735477424148",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-E7B82B-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T14:56:58.162271",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T20:07:13.279362",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T20:07:35.451331",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T20:07:44.934702",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-11T21:05:47.394188",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T21:05:53.372779",
+      "bearer_id": "1317207422510694456",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "COGNIS-553BA3-I",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-11T21:06:31.745059",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T00:14:55.773412",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T00:15:51.964995",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T00:17:36.215341",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T02:35:40.592598",
+      "bearer_id": "141769315085975552",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AEGIS-103315-Ζ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T02:36:04.391669",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T03:24:20.110029",
+      "bearer_id": "710530020803870730",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-47B746-Κ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T04:10:49.020109",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T04:10:54.201807",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T04:11:06.020812",
+      "bearer_id": "1203139026111168522",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-824468-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T12:41:04.968138",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T12:46:11.074732",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T12:46:48.754255",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T12:48:08.082300",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T12:48:48.125407",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T14:11:45.933419",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T14:11:53.977593",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T17:51:20.898818",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T17:51:25.996234",
+      "bearer_id": "512474407768293379",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D5A155-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T18:52:07.751982",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T21:50:31.626377",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-12T21:50:54.954185",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T21:51:09.429569",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T21:51:29.179229",
+      "bearer_id": "444912473280348160",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-10660E-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-12T21:55:20.601380",
+      "bearer_id": "543868630996353024",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-DA087A-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T00:57:46.084180",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T00:57:50.972566",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T03:15:35.806752",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-13T03:16:20.471847",
+      "bearer_id": "442531791845457920",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FEROX-1E7F17-II",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-13T03:16:37.175092",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T03:16:44.063766",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T03:18:02.613536",
+      "bearer_id": "95276058542080000",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERRUM-ACAD7D-Δ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-13T13:05:38.592647",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T13:05:47.027796",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T13:05:56.048258",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T13:39:16.168159",
+      "bearer_id": "1215705529318637682",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "COGNIS-74EEFA-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T21:20:32.289505",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T21:41:21.246309",
+      "bearer_id": "289566101023621121",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-489AEC-Ψ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-13T22:14:15.229797",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T22:14:21.055326",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T22:14:26.768495",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-13T22:26:48.633668",
+      "bearer_id": "1455947665782210782",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-4EF178-Ξ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-14T00:25:05.220359",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-14T00:25:22.816751",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-14T00:25:41.672667",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T00:25:51.014802",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T02:10:11.362031",
+      "bearer_id": "993706776920854578",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-E93C79-Γ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-14T02:20:14.970577",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-14T12:47:12.703579",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-14T14:02:19.059925",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T14:02:30.784505",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T14:02:40.618930",
+      "bearer_id": "775986735477424148",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-E7B82B-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T14:02:50.625881",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T14:03:10.198406",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T16:01:18.696393",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T16:01:29.801291",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T20:51:37.848955",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T20:51:53.515503",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T21:41:22.959789",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T21:41:30.414553",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T21:41:42.575490",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T21:41:53.500308",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-14T21:42:19.653130",
+      "bearer_id": "106830484616511488",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-D22CC2-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-15T00:33:18.316081",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T04:19:45.883574",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-15T04:20:15.470354",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-15T04:20:33.863384",
+      "bearer_id": "1317207422510694456",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "COGNIS-553BA3-I",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T04:20:44.900485",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T13:42:16.780332",
+      "bearer_id": "444912473280348160",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-10660E-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T13:42:23.378229",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T13:56:20.042514",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-15T16:42:13.334146",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T00:15:48.022602",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T00:15:53.240135",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T00:16:10.190903",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T00:16:21.687901",
+      "bearer_id": "775986735477424148",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERVOR-E7B82B-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T00:16:28.335067",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T03:56:24.972925",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T04:32:52.085465",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T04:33:12.199579",
+      "bearer_id": "1217601361571610716",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-03EBAE-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T04:33:22.564075",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T04:34:09.254170",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T04:34:21.211751",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T04:34:59.286897",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T12:15:58.503108",
+      "bearer_id": "1493784189890465932",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-15B7F5-Η",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-16T12:16:20.858716",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T12:16:53.437026",
+      "bearer_id": "1408165974775042221",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AEGIS-315851-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-16T12:18:16.089781",
+      "bearer_id": "604101779889586196",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "PRAESIDIUM-A692E9-Θ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-16T12:57:55.703422",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T12:58:09.573023",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T12:58:15.066156",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T13:58:55.457199",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T17:08:11.631166",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T17:08:27.059465",
+      "bearer_id": "1444810056821637133",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-0DE1EB-Ι",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T19:09:45.453397",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-6306A3-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T19:10:16.228349",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T19:10:23.646384",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T19:17:40.878359",
+      "bearer_id": "262574494286086146",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-F6DA60-Η",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-16T21:35:48.326382",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-16T22:32:00.145224",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T22:32:18.981719",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T22:32:32.296059",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T22:32:40.479785",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-16T22:32:54.607765",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T01:54:04.053976",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T01:54:18.539400",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T01:54:32.509556",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T01:55:02.054108",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T01:55:18.527491",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T03:43:55.037336",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T04:31:36.045753",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T04:31:48.989651",
+      "bearer_id": "1444810056821637133",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-0DE1EB-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T04:32:18.747582",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T04:32:29.481854",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T04:32:39.158943",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T04:34:22.802395",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T12:03:20.898457",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T12:04:09.977765",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:04:34.471716",
+      "bearer_id": "223870048366755840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AEGIS-FBE1C4-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-17T12:06:25.186461",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:06:45.118857",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:07:09.661366",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:07:33.023728",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:08:53.927073",
+      "bearer_id": "442531791845457920",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FEROX-1E7F17-II",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:09:08.175736",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T12:11:38.540082",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T15:37:41.020060",
+      "bearer_id": "835352763176190013",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FERRUM-DB30B5-Μ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-17T17:00:20.088675",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T17:00:34.568608",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T17:02:16.079901",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T17:02:26.250598",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T17:02:39.035921",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T17:10:29.301662",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T17:10:43.034821",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T18:00:36.610425",
+      "bearer_id": "352606122349428736",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-34A9D6-Ν",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-17T21:56:18.525071",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T21:57:06.404273",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T21:57:13.727274",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-6306A3-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T21:57:55.769299",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T21:58:08.300418",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T21:58:28.198611",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-17T22:03:28.761501",
+      "bearer_id": "571035376135962645",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "SENTINEL-22E7B9-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T22:03:44.217176",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T22:03:53.152697",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-17T23:07:58.975302",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T01:04:04.786060",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T01:04:15.310111",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T04:20:37.102313",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:21:26.076765",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-6306A3-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:21:36.057638",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:26:25.272826",
+      "bearer_id": "512474407768293379",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FURY-D5A155-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:26:45.904245",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:27:27.454438",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:44:48.825647",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:45:17.505513",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:46:19.680529",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:46:27.530900",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T04:57:38.263243",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-6306A3-Μ",
+      "event": "fractured",
+      "age_days": 12
+    },
+    {
+      "ts": "2026-04-18T05:02:44.241455",
+      "bearer_id": "1203139026111168522",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "BELLATOR-824468-III",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T05:21:20.360072",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:18:57.220365",
+      "bearer_id": "993706776920854578",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AQUILA-E93C79-Γ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:19:14.249268",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FORTIS-10EFA7-Ο",
+      "event": "rebirth"
+    },
+    {
+      "ts": "2026-04-18T13:19:43.635956",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:21:53.191514",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:22:00.340330",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:22:07.685694",
+      "bearer_id": "710530020803870730",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "BELLATOR-47B746-Κ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:22:21.192784",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:22:33.254861",
+      "bearer_id": "266088909467811840",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-6F5BEB-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T13:23:24.045077",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:25:09.985287",
+      "bearer_id": "477133017769574402",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-98EBE7-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:25:27.199467",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:25:43.806960",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:25:58.668215",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:26:31.078446",
+      "bearer_id": "1250841802429300796",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-3918F8-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:26:52.505987",
+      "bearer_id": "604101779889586196",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "PRAESIDIUM-A692E9-Θ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T13:27:15.156798",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T18:26:46.481927",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T18:27:27.262534",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T18:27:39.026183",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T18:27:55.154669",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T20:28:41.444546",
+      "bearer_id": "1245385215040290867",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FERVOR-BE3B7A-Π",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-18T20:57:33.736868",
+      "bearer_id": "495038887169753129",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "RAPTOR-75DAEA-Γ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-18T20:59:40.420912",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-18T21:00:01.842622",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T21:00:05.731726",
+      "bearer_id": "1317207422510694456",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "COGNIS-553BA3-I",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T21:00:16.050891",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T21:00:24.266833",
+      "bearer_id": "442531791845457920",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FEROX-1E7F17-II",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-18T21:00:34.776190",
+      "bearer_id": "1137683909337944104",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "CORVUS-D3067C-Ζ",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-19T00:08:37.428784",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:08:44.534430",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:09:46.331465",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:10:13.918115",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:10:34.684909",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:10:53.796193",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:11:04.029466",
+      "bearer_id": "141769315085975552",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AEGIS-103315-Ζ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T00:11:25.631652",
+      "bearer_id": "1397282700167086141",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "WRATH-190066-Ο",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-19T00:11:35.989984",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-19T00:11:44.645767",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-19T00:12:08.283480",
+      "bearer_id": "551110381876281364",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FURY-33C659-Α",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-19T03:42:29.965645",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T03:42:35.062366",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:32:08.595138",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:34:52.704223",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:37:12.331047",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:37:29.742895",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:37:48.454531",
+      "bearer_id": "141769315085975552",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AEGIS-103315-Ζ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:38:01.567756",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:38:11.618061",
+      "bearer_id": "442531791845457920",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "FEROX-1E7F17-II",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T14:38:24.698791",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T17:16:29.815425",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T18:44:21.243693",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:30:13.782205",
+      "bearer_id": "281651485782310914",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "WRATH-300A14-Ι",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:30:31.528805",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:30:42.054710",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:30:46.856536",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:31:08.226397",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-19T21:46:14.649202",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T02:40:19.749119",
+      "bearer_id": "571035376135962645",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SENTINEL-22E7B9-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T12:08:05.284554",
+      "bearer_id": "1177315146629128312",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "FEROX-D0C368-VII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:08:15.194279",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:08:27.638445",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:09:16.354043",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T12:09:24.119066",
+      "bearer_id": "604101779889586196",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "PRAESIDIUM-A692E9-Θ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T12:09:30.140292",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T12:10:39.213867",
+      "bearer_id": "437645667838590976",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "FURY-85A62F-Ξ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:10:58.021583",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:11:21.466304",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:11:32.407869",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:11:42.132501",
+      "bearer_id": "301998534754959370",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "SANCTUS-E1B8BA-III",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-20T12:12:05.787969",
+      "bearer_id": "1107074905993904198",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "INVICTUS-5F27AC-IV",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-20T12:12:18.526464",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T12:12:27.376433",
+      "bearer_id": "571035376135962645",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SENTINEL-22E7B9-Φ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T17:30:32.470309",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T17:31:44.895641",
+      "bearer_id": "1493784189890465932",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "VENATOR-15B7F5-Η",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T20:57:27.448825",
+      "bearer_id": "106830484616511488",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SACRIS-D22CC2-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-20T20:57:32.853185",
+      "bearer_id": "624772672349405204",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FEROX-EEF628-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T00:05:55.091392",
+      "bearer_id": "737764008924545085",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "FURY-3A10EE-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:38:37.927990",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:38:48.521875",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:39:00.015086",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:39:08.568683",
+      "bearer_id": "1107074905993904198",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "INVICTUS-5F27AC-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:39:12.498860",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T02:39:42.650519",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T02:39:48.967946",
+      "bearer_id": "107101884757598208",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "SCUTUM-886884-Ψ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T02:40:00.268465",
+      "bearer_id": "318123902960140299",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "SACRIS-424A77-III",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T12:36:36.871327",
+      "bearer_id": "440987777039990786",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "AQUILA-8C7830-Ρ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:37:14.050228",
+      "bearer_id": "737778434478178325",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FERVOR-A6846B-Φ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:37:18.810340",
+      "bearer_id": "1317207422510694456",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "COGNIS-553BA3-I",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:37:28.830084",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:37:52.289486",
+      "bearer_id": "1294159011331051530",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-752391-Ε",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:37:58.809336",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T12:39:32.015045",
+      "bearer_id": "604101779889586196",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "PRAESIDIUM-A692E9-Θ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:39:48.033353",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:39:57.560539",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:40:27.788756",
+      "bearer_id": "734497256534835210",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "VINDICTA-D19DF8-VIII",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-21T12:40:33.868614",
+      "bearer_id": "228703987816202240",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "TITANICUS-197F4A-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T12:40:43.613705",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-21T17:28:28.630741",
+      "bearer_id": "152625031183073281",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "LUPUS-14040B-Ω",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T11:12:42.451792",
+      "bearer_id": "993706776920854578",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "standard",
+      "spirit": "AQUILA-E93C79-Γ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-22T11:13:21.785532",
+      "bearer_id": "1059255753900298251",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "DEFENSOR-BBB9CB-Δ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T11:15:16.022140",
+      "bearer_id": "554000605627285514",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "CASTELLAN-A5C4E2-V",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T11:16:13.871524",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T11:16:30.773594",
+      "bearer_id": "878402547960926238",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "AQUILA-FFA5E0-Α",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T15:10:14.807516",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T15:10:29.955669",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T15:10:41.956372",
+      "bearer_id": "1107074905993904198",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "INVICTUS-5F27AC-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T15:10:53.590551",
+      "bearer_id": "629045241651134497",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "standard",
+      "spirit": "ANIMUS-E2E824-VI",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T22:18:41.044356",
+      "bearer_id": "205788575587893249",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "GLADIUS-6236DA-Ν",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-22T22:19:59.126562",
+      "bearer_id": "226166830006403072",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "MORTIS-7F44B6-Τ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-23T00:13:57.849530",
+      "bearer_id": "600176413890576394",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D82444-Ψ",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-23T00:14:45.808098",
+      "bearer_id": "512474407768293379",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-D5A155-Ρ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-23T00:16:03.794756",
+      "bearer_id": "444912473280348160",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "GLADIUS-10660E-Μ",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-23T00:16:52.952085",
+      "bearer_id": "308032160089243649",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "FURY-FBA93E-IV",
+      "event": "maintenance"
+    },
+    {
+      "ts": "2026-04-23T12:33:12.683971",
+      "bearer_id": "131481261867794432",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "standard",
+      "spirit": "TALON-2A3379-III",
+      "event": "first_binding"
+    },
+    {
+      "ts": "2026-04-23T12:33:53.493254",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-FD35EE-Μ",
+      "event": "fractured",
+      "age_days": 4
+    },
+    {
+      "ts": "2026-04-23T12:33:58.691861",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-FD35EE-Μ",
+      "event": "fractured",
+      "age_days": 4
+    },
+    {
+      "ts": "2026-04-23T12:34:04.020836",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-FD35EE-Μ",
+      "event": "fractured",
+      "age_days": 4
+    },
+    {
+      "ts": "2026-04-23T12:34:04.027991",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "fractured",
+      "age_days": 18
+    },
+    {
+      "ts": "2026-04-23T12:34:25.128543",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "fractured",
+      "age_days": 18
+    },
+    {
+      "ts": "2026-04-23T12:34:25.518225",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-FD35EE-Μ",
+      "event": "fractured",
+      "age_days": 4
+    },
+    {
+      "ts": "2026-04-23T12:34:29.853218",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "TITANICUS-EB61B4-Α",
+      "event": "fractured",
+      "age_days": 18
+    },
+    {
+      "ts": "2026-04-23T12:34:31.284787",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": null,
+      "rite_type": null,
+      "spirit": "SANCTUS-FD35EE-Μ",
+      "event": "fractured",
+      "age_days": 4
+    },
+    {
+      "ts": "2026-04-23T12:35:59.981737",
+      "bearer_id": "333364344710758400",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "CASTELLAN-A48349-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-23T12:36:18.176390",
+      "bearer_id": "316977356176621588",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "VINDICTA-826852-II",
+      "event": "rebirth"
+    },
+    {
+      "ts": "2026-04-23T12:36:35.499543",
+      "bearer_id": "488551994806501396",
+      "techmarine_id": "1217601361571610716",
+      "rite_type": "intensive",
+      "spirit": "MORTIS-168551-Α",
+      "event": "rebirth"
+    },
+    {
+      "ts": "2026-04-23T12:36:49.699648",
+      "bearer_id": "1107074905993904198",
+      "techmarine_id": "281651485782310914",
+      "rite_type": "intensive",
+      "spirit": "INVICTUS-5F27AC-IV",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-23T12:39:46.947834",
+      "bearer_id": "539139736581832710",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-FEDB6D-Β",
+      "event": "restoration"
+    },
+    {
+      "ts": "2026-04-23T12:40:20.814227",
+      "bearer_id": "1493784189890465932",
+      "techmarine_id": "405887897171001345",
+      "rite_type": "intensive",
+      "spirit": "VENATOR-15B7F5-Η",
+      "event": "restoration"
+    }
+  ],
+  "techmarine_stats": {
+    "405887897171001345": {
+      "total_rites": 150,
+      "successes": 150,
+      "first_bindings": 18,
+      "rebirths": 0
+    },
+    "281651485782310914": {
+      "total_rites": 156,
+      "successes": 156,
+      "first_bindings": 20,
+      "rebirths": 0
+    },
+    "1217601361571610716": {
+      "total_rites": 111,
+      "successes": 111,
+      "first_bindings": 16,
+      "rebirths": 3
+    }
+  },
+  "dashboard_message_id": 1496852395848765502,
+  "last_ambient_ts": "2026-04-23T09:47:57.981553"
+}

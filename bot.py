@@ -10704,7 +10704,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         embed.add_field(
             name="▸ Litany of Endurance",
             value="\n".join(honor_lines),
-            inline=False,
+            inline=True,
         )
     
     # Spirit Memorial (full width, only if exists)
@@ -10712,7 +10712,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         embed.add_field(
             name="▸ Spirit Memorial",
             value="\n".join(memorial_lines),
-            inline=False,
+            inline=True,
         )
     
     # Forge Reserves + Artificers (inline pair)
