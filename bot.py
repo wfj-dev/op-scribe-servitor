@@ -10075,6 +10075,18 @@ async def _handle_intensive_scan_requisition(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _abbreviate_spirit(designation: str) -> str:
+    """Abbreviate a machine spirit designation for compact display.
+
+    'SANCTUS-FD35EE-Μ' → 'FD35-Μ'
+    Falls back to the original string if the format is unexpected.
+    """
+    parts = designation.split("-")
+    if len(parts) == 3:
+        return f"{parts[1][:4]}-{parts[2]}"
+    return designation
+
+
 def _format_time_ago(ts: datetime) -> str:
     """Format a timestamp as a human-readable 'X ago' string."""
     now = datetime.utcnow()
@@ -10300,14 +10312,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
         eldest_days = (now - eldest_date).days if eldest_date else 0
-        spirit_lines.append(f"Eldest ({eldest_days}d): **{designation}** {member_label}")
+        spirit_lines.append(f"Eldest ({eldest_days}d): **{_abbreviate_spirit(designation)}** {member_label}")
     
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
         newest_hours = int((now - newest_date).total_seconds() // 3600) if newest_date else 0
-        spirit_lines.append(f"Youngest ({newest_hours}h): **{designation}** {member_label}")
+        spirit_lines.append(f"Youngest ({newest_hours}h): **{_abbreviate_spirit(designation)}** {member_label}")
     
     # Find most resilient spirit (lifetime restoration events, active members only)
     restoration_counts = {}
@@ -10330,13 +10342,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if most_attended:
         bearer_id, spirit = most_attended
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
-        spirit_lines.append(f"Devoted ({most_attended_count} rites): **{spirit}** {member_label}")
+        spirit_lines.append(f"Devoted ({most_attended_count} rites): **{_abbreviate_spirit(spirit)}** {member_label}")
     
     # Show most resilient spirit (if any restorations this month)
     if most_resilient:
         bearer_id, spirit = most_resilient
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
-        spirit_lines.append(f"Unbowed ({most_resilient_count} wounds): **{spirit}** {member_label}")
+        spirit_lines.append(f"Unbowed ({most_resilient_count} wounds): **{_abbreviate_spirit(spirit)}** {member_label}")
 
     
     # ─────────────────────────────────────────────────────────────
@@ -10610,9 +10622,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             # 💀 for fractured with age, 💤 for released (dormant)
             if event_type == "fractured":
                 age_str = f"({age_days}d) " if age_days else ""
-                memorial_lines.append(f"💀 **{spirit}** {age_str}{member_label}")
+                memorial_lines.append(f"💀 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
             else:
-                memorial_lines.append(f"💤 **{spirit}** {member_label}")
+                memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {member_label}")
     
     # ─────────────────────────────────────────────────────────────
     # Build the embed description
