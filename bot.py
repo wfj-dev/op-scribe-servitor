@@ -2680,10 +2680,10 @@ MISSION_TO_PLANET = {
 # Penalty 0 = no penalty, 1-4 = AAR reduction
 ARMOR_PENALTY_PROBABILITIES = {
     None: {0: 1.0},  # Nominal: no penalty
-    "damaged": {0: 0.80, 1: 0.17, 2: 0.02, 3: 0.01},      # 20% penalty chance
-    "compromised": {0: 0.67, 1: 0.20, 2: 0.10, 3: 0.03},  # 33% penalty chance
-    "critical": {0: 0.50, 1: 0.17, 2: 0.20, 3: 0.13},     # 50% penalty chance
-    "fractured": {0: 0.40, 1: 0.10, 2: 0.17, 3: 0.20, 4: 0.13},  # 60% penalty chance
+    "damaged": {0: 0.90, 1: 0.085, 2: 0.010, 3: 0.005},          # 10% penalty chance
+    "compromised": {0: 0.835, 1: 0.10, 2: 0.05, 3: 0.015},       # ~17% penalty chance
+    "critical": {0: 0.75, 1: 0.085, 2: 0.10, 3: 0.065},          # 25% penalty chance
+    "fractured": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},  # 30% penalty chance
 }
 
 # Detection alert chances per AAR while damaged (early warning system)
@@ -4154,8 +4154,20 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
     async with FORGE_CHRONICLE_LOCK:
         data = _load_forge_chronicle()
         
+        # Guard: skip if this spirit already has a recent released/fractured entry (within 10 min)
+        now_dt = datetime.utcnow()
+        for r in reversed(data["rite_history"]):
+            if r.get("bearer_id") == str(bearer_id) and r.get("spirit") == spirit_designation and r.get("event") in ("released", "fractured"):
+                try:
+                    existing_ts = datetime.fromisoformat(r["ts"])
+                    if (now_dt - existing_ts).total_seconds() < 600:
+                        return
+                except Exception:
+                    pass
+                break
+        
         entry = {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": now_dt.isoformat(),
             "bearer_id": str(bearer_id),
             "techmarine_id": None,
             "rite_type": None,
@@ -4178,8 +4190,20 @@ async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_
     async with FORGE_CHRONICLE_LOCK:
         data = _load_forge_chronicle()
         
+        # Guard: skip if this spirit already has a recent fractured/released entry (within 10 min)
+        now_dt = datetime.utcnow()
+        for r in reversed(data["rite_history"]):
+            if r.get("bearer_id") == str(bearer_id) and r.get("spirit") == spirit_designation and r.get("event") in ("fractured", "released"):
+                try:
+                    existing_ts = datetime.fromisoformat(r["ts"])
+                    if (now_dt - existing_ts).total_seconds() < 600:
+                        return
+                except Exception:
+                    pass
+                break
+        
         entry = {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": now_dt.isoformat(),
             "bearer_id": str(bearer_id),
             "techmarine_id": None,
             "rite_type": None,
@@ -10565,6 +10589,16 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     
     # Sort by most recent first
     lost_spirits.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    
+    # Deduplicate: keep only the most recent event per (bearer_id, spirit) pair
+    seen_spirits: set = set()
+    deduped_spirits = []
+    for r in lost_spirits:
+        key = (r.get("bearer_id"), r.get("spirit"))
+        if key not in seen_spirits:
+            seen_spirits.add(key)
+            deduped_spirits.append(r)
+    lost_spirits = deduped_spirits
     
     for entry in lost_spirits[:3]:  # Max 3
         bearer_id = entry.get("bearer_id")
