@@ -190,6 +190,11 @@ SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
+# Monthly archive audit settings (runs audit_archive_discrepancies on the 1st of each month)
+SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = True
+SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = 45  # Recheck errors from the last 45 days
+SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = 10  # Hour in UTC (after weekly maintenance)
+
 # Milestone announcement settings (weekly check)
 MILESTONES_ENABLED = True
 MILESTONES_CHANNEL_ID: int = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
@@ -723,6 +728,71 @@ async def _before_weekly_maintenance_loop():
     await bot.wait_until_ready()
 
 
+# Track last monthly archive audit run date to prevent duplicate runs
+LAST_MONTHLY_ARCHIVE_AUDIT_DATE: Optional[str] = None
+
+
+@tasks.loop(minutes=60)
+async def _monthly_archive_audit_loop():
+    """Run hourly; on the 1st of each month at the configured hour, recheck
+    the error archive for the last SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS days.
+
+    This is a lighter, targeted sweep distinct from the full-history monthly audit
+    (_monthly_audit_loop) and complements the weekly maintenance cycle.
+    """
+    global LAST_MONTHLY_ARCHIVE_AUDIT_DATE
+    try:
+        if DATASTORE is None:
+            return
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
+
+        # Only run on the 1st of the month at the configured hour
+        if today.day != 1 or now_utc.hour != SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR:
+            return
+
+        # Prevent duplicate runs on same date
+        if LAST_MONTHLY_ARCHIVE_AUDIT_DATE == str(today):
+            return
+
+        if RECONCILE_LOCK.locked():
+            logger.info("Monthly archive audit: reconcile lock held; skipping.")
+            return
+
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.warning("Monthly archive audit: no guild available; skipping.")
+            return
+
+        aar_channel = discord.utils.get(
+            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
+        )
+        if not aar_channel:
+            logger.warning("Monthly archive audit: AAR channel not found; skipping.")
+            return
+
+        logger.info(
+            f"Monthly archive audit starting: rechecking errors from last "
+            f"{SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS} days."
+        )
+        async with RECONCILE_LOCK:
+            fixed, still_broken = await _run_recheck_errors(
+                aar_channel, SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS
+            )
+            logger.info(
+                f"Monthly archive audit complete: restored={fixed}, broken_remaining={still_broken}"
+            )
+
+        LAST_MONTHLY_ARCHIVE_AUDIT_DATE = str(today)
+    except Exception:
+        logger.exception("Monthly archive audit failed")
+
+
+@_monthly_archive_audit_loop.before_loop
+async def _before_monthly_archive_audit_loop():
+    await bot.wait_until_ready()
+
+
 # Config load
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
@@ -765,6 +835,19 @@ try:
     if schedules_cfg.get("weekly_maintenance_hour") is not None:
         SCHEDULE_WEEKLY_MAINTENANCE_HOUR = int(
             schedules_cfg.get("weekly_maintenance_hour")
+        )
+    # Monthly archive audit settings
+    if "monthly_archive_audit_enabled" in schedules_cfg:
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = _is_truthy(
+            schedules_cfg.get("monthly_archive_audit_enabled")
+        )
+    if schedules_cfg.get("monthly_archive_audit_span_days") is not None:
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = int(
+            schedules_cfg.get("monthly_archive_audit_span_days")
+        )
+    if schedules_cfg.get("monthly_archive_audit_hour") is not None:
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = int(
+            schedules_cfg.get("monthly_archive_audit_hour")
         )
 except Exception:
     pass
@@ -5966,6 +6049,18 @@ async def on_ready():
                 )
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
+
+    # Start monthly archive audit loop if enabled (default: enabled)
+    try:
+        if SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED:
+            if not _monthly_archive_audit_loop.is_running():
+                _monthly_archive_audit_loop.start()
+                logger.info(
+                    f"Monthly archive audit loop started (1st of month {SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR}:00 UTC, "
+                    f"{SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS}-day span)."
+                )
+    except Exception:
+        logger.exception("Failed to start monthly archive audit loop")
 
     # Start milestone check loop if enabled (default: enabled)
     try:
@@ -16356,7 +16451,8 @@ def validate_aar(record: dict):
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
             # Black Laurels on Omega requires 5 brothers and 0 KIA
-            # Black Laurels on Absolute (or Hard-Stratagem+Black Reef Persecution) requires exactly 3 brothers
+            # Black Laurels on Absolute requires exactly 3 brothers
+            # Black Laurels with Black Reef Persecution (Hard-Stratagem) requires exactly 2 brothers
             if has_omega:
                 if len(brothers) != 5:
                     errors.append(
@@ -16366,6 +16462,11 @@ def validate_aar(record: dict):
                 if kia != 0:
                     errors.append(
                         "@Black_Laurels on @Omega requires 0 KIA (no deaths)."
+                    )
+            elif bl_hard_strat_unlocked:
+                if len(brothers) != 2:
+                    errors.append(
+                        "@Black_Laurels with @Black_Reef_Persecution requires exactly 2 Brothers."
                     )
             else:
                 if len(brothers) != 3:
