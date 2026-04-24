@@ -16464,9 +16464,9 @@ def validate_aar(record: dict):
                         "@Black_Laurels on @Omega requires 0 KIA (no deaths)."
                     )
             elif bl_hard_strat_unlocked:
-                if len(brothers) != 2:
+                if len(brothers) not in (2, 3):
                     errors.append(
-                        "@Black_Laurels with @Black_Reef_Persecution requires exactly 2 Brothers."
+                        "@Black_Laurels with @Black_Reef_Persecution requires 2 or 3 Brothers."
                     )
             else:
                 if len(brothers) != 3:
@@ -16480,8 +16480,8 @@ def validate_aar(record: dict):
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
-                # Check eligible missions (Omega allows any mission)
-                if not has_omega:
+                # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
+                if not has_omega and not bl_hard_strat_unlocked:
                     mission_lower = (mission or "").lower().strip()
                     mission_clean = re.sub(r"<.*", "", mission_lower).strip()
                     if (
@@ -16505,8 +16505,8 @@ def validate_aar(record: dict):
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
                         "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line)."
                     )
-                # Check eligible missions (Omega allows any mission)
-                if not has_omega:
+                # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
+                if not has_omega and not bl_hard_strat_unlocked:
                     mission_lower = (mission or "").lower().strip()
                     mission_clean = re.sub(r"<.*", "", mission_lower).strip()
                     if (
