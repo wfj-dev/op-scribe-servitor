@@ -215,6 +215,8 @@ BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Leviathan Protocol role ID for parsing
 LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
+# Black Reef Persecution role ID - allows Black Laurels with Hard-Stratagem when present on Mission line
+BLACK_REEF_PERSECUTION_ROLE_ID = 1496892435496833054
 # Pipehitter role IDs for parsing
 PIPEHITTER_ROLE_ID = 1435812894532042843
 DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
@@ -15869,6 +15871,8 @@ def parse_aar(message: discord.Message):
     # Leviathan Protocol tracking
     leviathan_protocol_in_mission = False
     leviathan_protocol_in_difficulty = False
+    # Black Reef Persecution tracking (allows Black Laurels on Hard-Stratagem when present on Mission line)
+    black_reef_persecution_in_mission = False
     # Pipehitter tracking
     pipehitter_mentioned = False
     # Watch Command role mention (required for Initiation Trials)
@@ -15892,6 +15896,11 @@ def parse_aar(message: discord.Message):
                 "leviathan" in mission.lower() and "protocol" in mission.lower()
             ):
                 leviathan_protocol_in_mission = True
+            # Check if Black Reef Persecution is in mission line
+            if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or (
+                "black reef persecution" in mission.lower()
+            ):
+                black_reef_persecution_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
                 import re
@@ -16224,6 +16233,8 @@ def parse_aar(message: discord.Message):
         "black_laurels_mentioned_elsewhere": black_laurels_mentioned_elsewhere,
         "leviathan_protocol_in_mission": leviathan_protocol_in_mission,
         "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
+        # Black Reef Persecution tracking for validation
+        "black_reef_persecution_in_mission": black_reef_persecution_in_mission,
         # Pipehitter tracking for validation
         "pipehitter_mentioned": pipehitter_mentioned,
         # Link back to the original Discord message (if available)
@@ -16338,10 +16349,14 @@ def validate_aar(record: dict):
         has_black_laurels_mission = record.get("black_laurels_in_mission", False)
         has_absolute = "absolute" in dlower
         has_omega = "omega" in dlower
+        has_hard_stratagem = "hard-stratagem" in dlower
+        has_black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
+        # Black Reef Persecution on Mission line unlocks Black Laurels with Hard-Stratagem
+        bl_hard_strat_unlocked = has_hard_stratagem and has_black_reef_persecution
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
             # Black Laurels on Omega requires 5 brothers and 0 KIA
-            # Black Laurels on Absolute requires exactly 3 brothers
+            # Black Laurels on Absolute (or Hard-Stratagem+Black Reef Persecution) requires exactly 3 brothers
             if has_omega:
                 if len(brothers) != 5:
                     errors.append(
@@ -16360,7 +16375,7 @@ def validate_aar(record: dict):
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute or @Omega when Black Laurels is present
-                if not has_absolute and not has_omega:
+                if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
                     )
@@ -16379,13 +16394,15 @@ def validate_aar(record: dict):
                         )
             else:
                 # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute/@Omega on Difficulty
+                # Exception: @Hard-Stratagem is also allowed when @Black_Reef_Persecution is on the Mission line
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append(
                         "@Black_Laurels must be placed on the Mission line only."
                     )
-                if not has_absolute and not has_omega:
+                if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
                     errors.append(
-                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
+                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
+                        "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line)."
                     )
                 # Check eligible missions (Omega allows any mission)
                 if not has_omega:
