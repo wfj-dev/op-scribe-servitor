@@ -315,6 +315,8 @@ CHALLENGE_ROLES = [
     (1465020459794956349, "White Hand of Death", "ClandestineOperationsMedal"),
     (1465021610812637214, "Red Hand of Doom", "DistinguishedClandestineoperati"),
     (1486067010747236472, "Kadaku Campaign Medal", "KadakuCampaignMedal"),
+    (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
+    (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaignMe"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
