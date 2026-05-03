@@ -315,6 +315,12 @@ BLACK_REEF_REQUIRED_MISSIONS = {
     "reclamation",
 }
 
+# Challenge award role IDs for eligibility checking
+KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1486067010747236472
+BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
+DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
+CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
+
 # Specialist award thresholds and role mappings
 # Award role IDs (looked up by ID to avoid name change issues)
 ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
@@ -1390,13 +1396,21 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     
                     # Check if qualified for SOK-G: Pipehitter (10 missions)
                     unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
-                    if len(unique_missions) >= 10 and "sok_g_pipehitter" not in notified_challenges:
+                    if (
+                        len(unique_missions) >= 10
+                        and "sok_g_pipehitter" not in notified_challenges
+                        and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
+                    ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
                         notifications.append((user_id_str, "SOK-G: Pipehitter", aar_urls))
                         notified_challenges.append("sok_g_pipehitter")
                     
                     # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
-                    if len(unique_missions) >= 2 and "distinguished_sok_g_pipehitter" not in notified_challenges:
+                    if (
+                        len(unique_missions) >= 2
+                        and "distinguished_sok_g_pipehitter" not in notified_challenges
+                        and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
+                    ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
                         notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", aar_urls))
                         notified_challenges.append("distinguished_sok_g_pipehitter")
@@ -1422,6 +1436,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     len(unique_missions) >= 3
                     and unique_missions == KADAKU_CAMPAIGN_REQUIRED_MISSIONS
                     and "kadaku_campaign" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=KADAKU_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
                     notifications.append((user_id_str, "Kadaku Campaign Medal", aar_urls))
@@ -1448,6 +1464,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     len(unique_missions) >= 8
                     and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
                     and "black_reef" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Black Reef Campaign Medal", aar_urls))
@@ -1478,6 +1496,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     len(unique_missions) >= 8
                     and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
                     and "distinguished_black_reef" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", aar_urls))
@@ -1505,6 +1525,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and has_black_laurels
                     and terminus_slayer_count >= 2
                     and "crux_terminatus" not in notified_challenges
+                    and not discord.utils.get(member.roles, id=CRUX_TERMINATUS_ROLE_ID)
                 ):
                     # Gather AAR URLs for SOK-G missions
                     aar_urls = [m["message_url"] for m in user_progress.get("sok_g_pipehitter", []) if m["message_url"]]
