@@ -10408,6 +10408,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
         if not has_rank:
             continue
+        # Exclude Reserves members
+        role_ids = {r.id for r in member.roles}
+        role_names = {r.name.lower() for r in member.roles}
+        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+            continue
         
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
@@ -10615,6 +10620,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if not has_rank:
             continue
         
+        # Exclude Reserves members (same as Machine Spirits section)
+        role_ids = {r.id for r in member.roles}
+        role_names = {r.name.lower() for r in member.roles}
+        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+            continue
+        
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
         # Include any brother with armor record
@@ -10819,13 +10830,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                 if member:
                     # Must have a Watch rank role
                     has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-                    if has_rank:
-                        # Check scan detection - don't show unreadable brothers
-                        scan_result = await _get_or_roll_scan_result(
-                            member.id, None, points, False
-                        )
-                        if scan_result["detected"]:
-                            honor_entries.append((member, points))
+                    if not has_rank:
+                        continue
+                    # Exclude Reserves members
+                    role_ids = {r.id for r in member.roles}
+                    role_names = {r.name.lower() for r in member.roles}
+                    if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                        continue
+                    # Check scan detection - don't show unreadable brothers
+                    scan_result = await _get_or_roll_scan_result(
+                        member.id, None, points, False
+                    )
+                    if scan_result["detected"]:
+                        honor_entries.append((member, points))
     
     honor_entries.sort(key=lambda x: x[1], reverse=True)
     honor_top3 = honor_entries[:3]
@@ -19119,6 +19136,9 @@ def _format_member_styled(
         display_name = member.nick or member.display_name
         # Strip stud pips first
         name = display_name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+        # Strip [R] prefix for Reserves members
+        if name.startswith("[R] "):
+            name = name[4:].strip()
         # Get member's roles
         member_role_names = {
             (getattr(r, "name", "") or "").strip()
@@ -19133,11 +19153,9 @@ def _format_member_styled(
                 break
         if member_rank:
             rank_emoji = _get_rank_emoji(guild, member_rank)
-            # Strip rank prefix from name (case-insensitive)
-            for rp in RANK_ROLES_PRIORITY:
-                if name.lower().startswith(rp.lower()):
-                    name = name[len(rp) :].lstrip()
-                    break
+            # Strip the member's actual rank prefix from name (case-insensitive)
+            if name.lower().startswith(member_rank.lower()):
+                name = name[len(member_rank):].lstrip()
 
         # Resolve chapter if requested
         if include_chapter:
