@@ -2361,6 +2361,7 @@ RANK_ROLES_PRIORITY = [
 
 # Canonical list of known home chapters for lookup
 HOME_CHAPTERS = [
+    "Angels of Defiance",
     "Angels of Vengeance",
     "Black Templars",
     "Bleeding Hearts",
@@ -2379,9 +2380,11 @@ HOME_CHAPTERS = [
     "Flesh Tearers",
     "Genesis Chapter",
     "Hawk Lords",
+    "Hospitallers",
     "Imperial Fists",
     "Iron Hands",
     "Iron Hounds",
+    "Iron Ravens",
     "Knights of the Raven",
     "Lamenters",
     "Marines Errant",
@@ -7101,6 +7104,7 @@ MAX_RITE_LENGTH = 250
 
 # Chapter-specific blessings keyed by home chapter name
 CHAPTER_BLESSINGS: Dict[str, str] = {
+    "Angels of Defiance": "Unyielding as the Lion, defiant unto death—your armor bears the Unforgiven's resolve.",
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
     "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
@@ -7557,6 +7561,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
 
 # Chapter-specific service stud flavor - how each chapter views/honors service marks
 CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
+    "Angels of Defiance": [
+        "The Unforgiven stand defiant; your studs mark battles where retreat was never considered.",
+        "Each stud bears witness to the Lion's unyielding legacy—defiance in the face of all enemies.",
+        "Your service marks honor the hunt eternal; the Fallen shall know no sanctuary.",
+    ],
     "Angels of Vengeance": [
         "Each stud marks another debt repaid to the Lion's memory.",
         "The Unforgiven count your studs among the honors earned in penance.",
@@ -8208,10 +8217,9 @@ def _get_stud_marking_recipients(
     The Apothecarion always performs the actual stud implantation (surgical procedure).
     This function determines who witnesses/authorizes based on chain of command:
     - Watch Master: The Chief Apothecary personally attends
-    - High Command: The Chief Apothecary attends, Watch Master witnesses
-    - Company Command/Specialists: Report to their Company CO
-    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage)
-    - Line: Report to the Apothecarion
+    - High Command: The Chief Apothecary attends
+    - Company members: Report to their Company Apothecary → Chief Apothecary → CO (in order)
+    - Line/Kill Team: Same as company members
 
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
@@ -8219,6 +8227,32 @@ def _get_stud_marking_recipients(
     def strip_studs(name: str) -> str:
         """Remove service studs (●⚬) from a name."""
         return name.replace("●", "").replace("⚬", "").strip()
+    
+    def find_company_apothecary(company_name: str) -> Optional[discord.Member]:
+        """Find the Watch Apothecary for a specific company."""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Watch Apothecary" not in mbr_roles:
+                    continue
+                # Check if this apothecary is in the same company
+                mbr_company = _find_company_or_chapter(mbr)
+                if mbr_company and mbr_company == company_name:
+                    return mbr
+        except Exception:
+            pass
+        return None
+    
+    def find_chief_apothecary() -> Optional[discord.Member]:
+        """Find the Chief Apothecary."""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    return mbr
+        except Exception:
+            pass
+        return None
 
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
@@ -8232,141 +8266,83 @@ def _get_stud_marking_recipients(
 
     # Watch Master: Chief Apothecary personally attends
     if member_rank_name == "Watch Master":
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
         return "The Chief Apothecary personally attends.", ""
 
-    # High Command: Chief Apothecary attends, witnessed by Watch Master
+    # High Command: Chief Apothecary attends
     high_cmd = {
         "High Chaplain",
         "Chief Apothecary",
         "Void Warden",
         "Lord Executioner",
         "Forgemaster",
-        "Watch Techmarine",
+        "Castellan",
     }
     if member_rank_name in high_cmd:
-        # For High Command, Chief Apothecary performs the marking
         # If they ARE the Chief Apothecary, another Apothecary handles it
         if member_rank_name == "Chief Apothecary":
             return "Another Apothecary of the Watch attends.", ""
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** attends.", ""
         return "Report to the Chief Apothecary.", ""
 
-    # Company Command and Specialists: Apothecarion handles, CO witnesses
-    company_cmd_and_spec = {
-        "Watch Captain",
-        "Watch Lieutenant",
-        "Company Champion",
-        "Watch Apothecary",
-        "Watch Chaplain",
-        "Watch Librarian",
-        "Watch Techmarine",
-        "Watch Sergeant",
-    }
-    # Watch Apothecary is handled separately - they can't mark themselves
+    # All company members (command, specialists, line, kill team):
+    # Try Company Apothecary → Chief Apothecary → CO
+    member_company = _find_company_or_chapter(member)
+    
+    # Special case: if member IS the Watch Apothecary, go to Chief directly
     if member_rank_name == "Watch Apothecary":
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** attends.", ""
         return "Report to the Chief Apothecary.", ""
-    if member_rank_name in company_cmd_and_spec:
-        company = _find_company_or_chapter(member)
-        if company:
-            captains, lieutenants = _find_company_command_staff(guild, company)
-            co_member = (
-                lieutenants[0] if lieutenants else (captains[0] if captains else None)
+    
+    # Try to find Company Apothecary first
+    if member_company:
+        company_apo = find_company_apothecary(member_company)
+        if company_apo and company_apo.id != member.id:
+            emoji = _get_rank_emoji(guild, "Watch Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(company_apo.display_name)
+            return f"Report to {emoji_prefix}**{clean_name}**.", ""
+    
+    # Fallback: Chief Apothecary
+    chief_apo = find_chief_apothecary()
+    if chief_apo:
+        emoji = _get_rank_emoji(guild, "Chief Apothecary")
+        emoji_prefix = f"{emoji} " if emoji else ""
+        clean_name = strip_studs(chief_apo.display_name)
+        return f"Report to {emoji_prefix}**{clean_name}**.", ""
+    
+    # Fallback: Company CO (Captain/Lieutenant)
+    if member_company:
+        captains, lieutenants = _find_company_command_staff(guild, member_company)
+        co_member = (
+            lieutenants[0] if lieutenants else (captains[0] if captains else None)
+        )
+        if co_member:
+            co_roles = {getattr(r, "name", "") for r in co_member.roles}
+            co_rank = (
+                "Watch Lieutenant"
+                if "Watch Lieutenant" in co_roles
+                else "Watch Captain"
             )
-            if co_member:
-                # Determine CO's rank for emoji
-                co_roles = {getattr(r, "name", "") for r in co_member.roles}
-                co_rank = (
-                    "Watch Lieutenant"
-                    if "Watch Lieutenant" in co_roles
-                    else "Watch Captain"
-                )
-                emoji = _get_rank_emoji(guild, co_rank)
-                emoji_prefix = f"{emoji} " if emoji else ""
-                clean_name = strip_studs(co_member.display_name)
-                return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        # Fallback: find any Captain in the guild
-        captains, _ = _find_all_captains_and_lieutenants(guild)
-        if captains:
-            cap = captains[0]
-            emoji = _get_rank_emoji(guild, "Watch Captain")
+            emoji = _get_rank_emoji(guild, co_rank)
             emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(cap.display_name)
+            clean_name = strip_studs(co_member.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        return "Report to your Company Captain.", ""
-
-    # Kill Team members: try Sergeant first; fallback to Lt/Cpt; fallback to Apothecary
-    kt_name = _resolve_killteam_for_member(member)
-    if kt_name:
-        # Try to find Sergeant (but not the member themselves)
-        sgt = _find_kt_sergeant(guild, kt_name)
-        if sgt and sgt.id != member.id:
-            emoji = _get_rank_emoji(guild, "Watch Sergeant")
-            emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(sgt.display_name)
-            return f"Report to {emoji_prefix}**{clean_name}**.", ""
-
-        # If no Sergeant (or member IS the Sergeant), search for Lt/Cpt in same KT
-        try:
-            for mbr in guild.members:
-                if mbr.id == member.id:
-                    continue
-                mbr_teams = _resolve_killteams_for_member(mbr)
-                if kt_name not in mbr_teams:
-                    continue
-                mbr_role_names = {getattr(r, "name", "") for r in mbr.roles}
-                if "Watch Lieutenant" in mbr_role_names:
-                    emoji = _get_rank_emoji(guild, "Watch Lieutenant")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"Report to {emoji_prefix}**{clean_name}**.", ""
-                if "Watch Captain" in mbr_role_names:
-                    emoji = _get_rank_emoji(guild, "Watch Captain")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        except Exception:
-            pass
-
-    # Fallback: find Watch Apothecary
-    try:
-        for mbr in guild.members:
-            mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-            if "Watch Apothecary" in mbr_roles:
-                emoji = _get_rank_emoji(guild, "Watch Apothecary")
-                emoji_prefix = f"{emoji} " if emoji else ""
-                clean_name = strip_studs(mbr.display_name)
-                return f"Report to {emoji_prefix}**{clean_name}**.", ""
-    except Exception:
-        pass
 
     return "Report to the Apothecarion.", ""
 
@@ -8457,10 +8433,13 @@ def _get_service_studs_announcement(
 
     stud_word = "Stud" if new_studs == 1 else "Studs"
 
-    # Determine tier and pip display based on NEW total (after earning these studs)
+    # Determine tier and pip display based on EARNED studs (actual total earned)
+    # This is the true count based on time and AAR, not displayed count
+    tier = _studs_tier(earned_studs)
+    studs_pips = _studs_pips(earned_studs)
+    
+    # Also track what they'll have after this announcement for pip change display
     new_total = displayed_studs + new_studs
-    tier = _studs_tier(new_total)
-    studs_pips = _studs_pips(new_total)
 
     # Get Watch Brother role for pinging in content (outside embed)
     watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
@@ -8487,7 +8466,7 @@ def _get_service_studs_announcement(
     opening = opening_template.format(name=display_name)
 
     # Use first-stud templates when earning stud #1 to avoid "another" phrasing
-    if new_total == 1:
+    if earned_studs == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_FIRST)
     elif tier == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER1)
@@ -8522,8 +8501,8 @@ def _get_service_studs_announcement(
             "REDACTED" if member_chapter == "Black Shield" else member_chapter
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    if new_total > 0:
-        bearer_value += f"\nService Studs: [{studs_pips}] ({new_total})"
+    if earned_studs > 0:
+        bearer_value += f"\nService Studs: [{studs_pips}] ({earned_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what pips change from BEFORE to AFTER)
@@ -8563,8 +8542,8 @@ def _get_service_studs_announcement(
         record_value += f"\nOwed: **{owed_studs}**"
     embed.add_field(name="▸ Service Record", value=record_value, inline=True)
 
-    # Special milestone callout (bold labels, plain narrative - check against new total they'll display)
-    special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(new_total)
+    # Special milestone callout (bold labels, plain narrative - check against earned studs)
+    special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(earned_studs)
     if special_milestone:
         embed.add_field(name="▸ Milestone", value=special_milestone, inline=False)
 
@@ -10016,12 +9995,24 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add invoker's blessing pool status
+    # Add invoker's blessing pool status with color-coded regen indicator
     if pool_remaining is not None:
+        # Color code regen based on pool level (percentage of max):
+        # 🔴 Red: 0-33% (critical/empty)
+        # 🟡 Yellow: 33-66% (depleted)
+        # 🟢 Green: 66-100% (nominal/full)
+        pool_percent = pool_remaining / BLESSING_POOL_MAX if BLESSING_POOL_MAX > 0 else 0
+        if pool_percent <= 0.33:
+            regen_icon = "🔴"
+        elif pool_percent <= 0.66:
+            regen_icon = "🟡"
+        else:
+            regen_icon = "🟢"
+        
         if pool_next_regen and pool_remaining < BLESSING_POOL_MAX:
             hours, remainder = divmod(int(pool_next_regen.total_seconds()), 3600)
             minutes = remainder // 60
-            regen_str = f" · +1 in {hours}h {minutes}m" if hours else f" · +1 in {minutes}m"
+            regen_str = f" · {regen_icon} +1 in {hours}h {minutes}m" if hours else f" · {regen_icon} +1 in {minutes}m"
         else:
             regen_str = ""
         embed.add_field(
@@ -20686,10 +20677,18 @@ async def company_roster(interaction: discord.Interaction):
         if not company_role:
             continue
 
-        # Find all members with this company role
-        company_members = [
-            m for m in guild.members if company_role in m.roles and not m.bot
-        ]
+        # Find all members with this company role (excluding those above Sergeant)
+        # Watch Sergeant and below are indices 16+ in RANK_ROLES_PRIORITY
+        sergeant_idx = _role_index("Watch Sergeant")
+        company_members = []
+        for m in guild.members:
+            if company_role not in m.roles or m.bot:
+                continue
+            # Get highest rank index
+            highest_idx = get_highest_rank_index(m)
+            # Include if no rank role, or if rank is Sergeant or below (higher index = lower rank)
+            if highest_idx is None or (sergeant_idx is not None and highest_idx >= sergeant_idx):
+                company_members.append(m)
 
         if not company_members:
             continue
