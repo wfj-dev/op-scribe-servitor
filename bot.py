@@ -2534,7 +2534,7 @@ async def _check_promotion_milestones():
                             f"᛭⋅ {member_line}\n"
                             f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
                             f"᛭⋅ {member_chapter}\n"
-                            f"᛭⋅ {watch_command_mention} {watch_sergeant_mention}\n"
+                            f"᛭⋅ {watch_sergeant_mention}\n"
                             f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                         )
                         await veteran_channel.send(
@@ -2659,14 +2659,19 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("ardent_raider_notified"):
                         if is_ar_eligible:
-                            # Get kill team or company
-                            kt_or_company = _resolve_killteam_for_member(member)
-                            if not kt_or_company:
-                                kt_or_company = _get_member_company_name(member) or "Unknown"
+                            # Get kill team or company role for mention
+                            team_mention = "Unknown"
+                            for r in member.roles:
+                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                    team_mention = r.mention
+                                    break
+                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                    team_mention = r.mention
+                                    break
                             msg = (
                                 f"᛭⋅ Name: {member.mention}\n"
                                 f"᛭⋅ 🎖️{ardent_raider_mention}\n"
-                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ Team: {team_mention}\n"
                                 f"᛭⋅ {watch_command_role_mention} {techmarine_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
@@ -2695,14 +2700,19 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("for_the_fallen_notified"):
                         if is_ftf_eligible:
-                            # Get kill team or company
-                            kt_or_company = _resolve_killteam_for_member(member)
-                            if not kt_or_company:
-                                kt_or_company = _get_member_company_name(member) or "Unknown"
+                            # Get kill team or company role for mention
+                            team_mention = "Unknown"
+                            for r in member.roles:
+                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                    team_mention = r.mention
+                                    break
+                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                    team_mention = r.mention
+                                    break
                             msg = (
                                 f"᛭⋅ Name: {member.mention}\n"
                                 f"᛭⋅ 🎖️{apothecarion_medal_mention}\n"
-                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ Team: {team_mention}\n"
                                 f"᛭⋅ {watch_command_role_mention} {apothecary_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
@@ -2735,14 +2745,19 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("crimson_laurels_notified"):
                         if is_cl_eligible:
-                            # Get kill team or company
-                            kt_or_company = _resolve_killteam_for_member(member)
-                            if not kt_or_company:
-                                kt_or_company = _get_member_company_name(member) or "Unknown"
+                            # Get kill team or company role for mention
+                            team_mention = "Unknown"
+                            for r in member.roles:
+                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                    team_mention = r.mention
+                                    break
+                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                    team_mention = r.mention
+                                    break
                             msg = (
                                 f"᛭⋅ Name: {member.mention}\n"
                                 f"᛭⋅ 🎖️{crimson_laurels_mention}\n"
-                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ Team: {team_mention}\n"
                                 f"᛭⋅ {watch_command_role_mention} {librarian_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
