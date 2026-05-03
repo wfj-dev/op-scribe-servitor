@@ -10,7 +10,6 @@
 import os
 import asyncio
 import json
-import calendar
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
@@ -15722,7 +15721,6 @@ async def my_deeds(interaction: discord.Interaction):
     avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
     gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
     armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
-    pres_data = individual_rankings.get("pres", {}).get(target_id, (0, 0, 0))
     risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
     black_laurels_data = individual_rankings.get("black_laurels", {}).get(
         target_id, (0, 0, 0)
@@ -15748,21 +15746,14 @@ async def my_deeds(interaction: discord.Interaction):
     # Kill team rankings
     target_killteams = []
     try:
-        for r in getattr(target, "roles", []):
-            rn = getattr(r, "name", "") or ""
-            if (
-                "kill" in rn.lower()
-                and "team" in rn.lower()
-                and "champion" not in rn.lower()
-            ):
-                target_killteams.append(_extract_killteam_name(rn))
+        target_killteams = _resolve_killteams_for_member(target)
     except Exception:
         pass
 
     # Build Monthly Honours embed
     honours_embed = discord.Embed(
         title="᛭⋅ MONTHLY HONOURS ⋅᛭",
-        description=f"*⌾ {target_name} — {calendar.month_name[now_mtd.month]} {now_mtd.year} ⌾*",
+        description=f"*⌾ {target_name} ⌾*\nMonth to Date ({mtd_span_days} Days)",
         color=0x2ECC71,
     )
 
@@ -15774,15 +15765,41 @@ async def my_deeds(interaction: discord.Interaction):
         indiv_value = (
             f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
             f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-            f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
+            f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
+            f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
             f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
             f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
         )
+        # Compute overall rank as median of individual rankings
+        individual_ranks = []
+        if ops_data[2] > 0:
+            individual_ranks.append(ops_data[1])
+        if avg_data[2] > 0:
+            individual_ranks.append(avg_data[1])
+        if gene_data[2] > 0:
+            individual_ranks.append(gene_data[1])
+        if armory_data[2] > 0:
+            individual_ranks.append(armory_data[1])
+        if risk_data[2] > 0:
+            individual_ranks.append(risk_data[1])
+        if black_laurels_data[2] > 0:
+            individual_ranks.append(black_laurels_data[1])
+        if individual_ranks:
+            overall_rank = statistics.median(individual_ranks)
+            indiv_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
     else:
         indiv_value = "No ranking data available"
-    honours_embed.add_field(name="▸ Individual", value=indiv_value, inline=False)
+    honours_embed.add_field(name="▸ Individual Distinctions", value=indiv_value, inline=False)
 
     # Chapter distinctions
+    chapter_emoji = (
+        _get_emoji_by_name(guild, home_chapter)
+        if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
+        else None
+    )
+    chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+    lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
+    
     if ch_ops_data[2] > 0:
         ch_omega_suffix = (
             f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
@@ -15790,14 +15807,29 @@ async def my_deeds(interaction: discord.Interaction):
         ch_value = (
             f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
             f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
-            f"**Armory+Gene:** #({ch_pres_data[1]}/{ch_pres_data[2]})\n"
+            f"**Armory + Gene:** (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
             f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
             f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
         )
+        # Compute overall rank as median of chapter rankings
+        chapter_ranks = []
+        if ch_ops_data[2] > 0:
+            chapter_ranks.append(ch_ops_data[1])
+        if ch_avg_data[2] > 0:
+            chapter_ranks.append(ch_avg_data[1])
+        if ch_pres_data[2] > 0:
+            chapter_ranks.append(ch_pres_data[1])
+        if ch_risk_data[2] > 0:
+            chapter_ranks.append(ch_risk_data[1])
+        if ch_aar_data[2] > 0:
+            chapter_ranks.append(ch_aar_data[1])
+        if chapter_ranks:
+            ch_overall_rank = statistics.median(chapter_ranks)
+            ch_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
     else:
-        ch_value = "Chapter does not meet minimum threshold"
+        ch_value = "Below minimum threshold"
     honours_embed.add_field(
-        name=f"▸ Chapter ({home_chapter})", value=ch_value, inline=False
+        name=f"▸ {chapter_prefix}{lineage_display} Chapter", value=ch_value, inline=False
     )
 
     # Kill Team distinctions
@@ -15805,6 +15837,8 @@ async def my_deeds(interaction: discord.Interaction):
         kt_ops_data = team_rankings.get("ops", {}).get(kt_n, (0, 0, 0))
         kt_avg_data = team_rankings.get("avg", {}).get(kt_n, (0.0, 0, 0))
         kt_pres_data = team_rankings.get("pres", {}).get(kt_n, (0, 0, 0))
+        kt_armory_val = team_rankings.get("armory", {}).get(kt_n, (0, 0, 0))[0]
+        kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_n, (0, 0, 0))[0]
         kt_risk_data = team_rankings.get("high_risk", {}).get(kt_n, (0, 0, 0))
         kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_n, (0.0, 0, 0))
         kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_n, (0.0, 0, 0))
@@ -15819,11 +15853,28 @@ async def my_deeds(interaction: discord.Interaction):
             kt_value = (
                 f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                 f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
-                f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
+                f"**Armory + Gene:** (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}\n"
                 f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
                 f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
                 f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
             )
+            # Compute overall rank as median of kill team rankings
+            kt_ranks = []
+            if kt_ops_data[2] > 0:
+                kt_ranks.append(kt_ops_data[1])
+            if kt_avg_data[2] > 0:
+                kt_ranks.append(kt_avg_data[1])
+            if kt_pres_data[2] > 0:
+                kt_ranks.append(kt_pres_data[1])
+            if kt_risk_data[2] > 0:
+                kt_ranks.append(kt_risk_data[1])
+            if kt_aar_data[2] > 0:
+                kt_ranks.append(kt_aar_data[1])
+            if kt_cohesion_data[2] > 0:
+                kt_ranks.append(kt_cohesion_data[1])
+            if kt_ranks:
+                kt_overall_rank = statistics.median(kt_ranks)
+                kt_value += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
         else:
             kt_value = "No ranking data available"
         honours_embed.add_field(name=f"▸ {kt_n}", value=kt_value, inline=False)
