@@ -277,6 +277,15 @@ ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
 FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
 CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
 
+# Dreadnought role IDs
+DREADNOUGHT_CADRE_ROLE_ID = 1497783424792924331
+VENERABLE_DREADNOUGHT_ROLE_ID = 1436522565110726686
+HONORED_DREADNOUGHT_ROLE_ID = 1497089446833819658
+INTERRED_BROTHER_ROLE_ID = 1497089965685739582
+
+# Dreadnought inactivity notification channel (High Command)
+DREADNOUGHT_INACTIVITY_CHANNEL_ID = 1443813516979994634
+
 # Challenge roles for /completed_challenges command
 # Each entry is (role_id, display_name, emoji_hint)
 # emoji_hint can be a custom emoji name to look up, "unicode:<char>" for a literal unicode emoji, or None to skip
@@ -1124,6 +1133,14 @@ def _get_effective_induction_date(member: discord.Member) -> Optional[datetime]:
 
 def _get_member_company_name(member: discord.Member) -> Optional[str]:
     """Return the Watch Company name for a member (e.g., 'Watch Company Primus'), or None."""
+    # Check for Dreadnought Cadre first
+    try:
+        for r in getattr(member, "roles", []) or []:
+            if getattr(r, "id", 0) == DREADNOUGHT_CADRE_ROLE_ID:
+                return "Dreadnought Cadre"
+    except Exception:
+        pass
+    
     company_roles = {
         "Watch Company Primus",
         "Watch Company Secundus",
@@ -1252,6 +1269,85 @@ def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
                 best_idx = idx
                 best_role = role
     return best_role
+
+
+async def _handle_dreadnought_inactivity(member: discord.Member):
+    """Handle dreadnought interment when they become inactive (28 days no AAR).
+    
+    Removes Venerable/Honored Dreadnought role and adds Interred Brother role.
+    Sends a notification about the interment.
+    """
+    try:
+        guild = member.guild
+        if not guild:
+            return
+        
+        role_ids = {getattr(r, "id", 0) for r in getattr(member, "roles", [])}
+        
+        # Check if member has a dreadnought role
+        dreadnought_role_to_remove = None
+        dreadnought_type = None
+        
+        if VENERABLE_DREADNOUGHT_ROLE_ID in role_ids:
+            dreadnought_role_to_remove = guild.get_role(VENERABLE_DREADNOUGHT_ROLE_ID)
+            dreadnought_type = "Venerable Dreadnought"
+        elif HONORED_DREADNOUGHT_ROLE_ID in role_ids:
+            dreadnought_role_to_remove = guild.get_role(HONORED_DREADNOUGHT_ROLE_ID)
+            dreadnought_type = "Honored Dreadnought"
+        
+        # If member has a dreadnought role, inter them
+        if dreadnought_role_to_remove and dreadnought_type:
+            interred_role = guild.get_role(INTERRED_BROTHER_ROLE_ID)
+            
+            if not interred_role:
+                logger.warning(f"Interred Brother role {INTERRED_BROTHER_ROLE_ID} not found")
+                return
+            
+            # Remove dreadnought role and add interred brother role
+            await member.remove_roles(dreadnought_role_to_remove, reason="Dreadnought inactive for 28 days")
+            await member.add_roles(interred_role, reason="Dreadnought interred due to inactivity")
+            
+            # Send notification
+            channel = guild.get_channel(DREADNOUGHT_INACTIVITY_CHANNEL_ID)
+            if channel:
+                member_name = _get_member_display_name(member)
+                
+                # Get Watch Master and Forgemaster for notification
+                watch_master_role = discord.utils.get(guild.roles, name="Watch Master")
+                forgemaster_role = discord.utils.get(guild.roles, name="Forgemaster")
+                
+                role_mentions = []
+                if watch_master_role:
+                    role_mentions.append(watch_master_role.mention)
+                if forgemaster_role:
+                    role_mentions.append(forgemaster_role.mention)
+                
+                mention_str = " ".join(role_mentions) if role_mentions else ""
+                
+                # Get venerable emoji
+                venerable_emoji = _get_emoji_by_name(guild, "venerable") or "⚙️"
+                
+                lines = [
+                    f"{venerable_emoji} **INTERMENT PROTOCOL INITIATED** {venerable_emoji}",
+                    "",
+                    f"᛭⋅ {dreadnought_type}: **{member_name}** {member.mention}",
+                    "᛭⋅ Status: **Interred** (28 days inactive)",
+                    "᛭⋅ Sarcophagus sealed and preserved in stasis",
+                    "᛭⋅ The machine-spirit awaits the call to war",
+                    "",
+                    "*May the Omnissiah watch over this ancient warrior's slumber.*",
+                ]
+                
+                if mention_str:
+                    content = f"{mention_str}\n" + "\n".join(lines)
+                else:
+                    content = "\n".join(lines)
+                
+                await channel.send(content)
+                logger.info(f"Interred {dreadnought_type} {member.id} due to inactivity")
+    
+    except Exception as e:
+        logger.exception(f"Failed to handle dreadnought inactivity: {e}")
 
 
 async def _send_activity_status_notification(
@@ -1557,6 +1653,16 @@ async def _check_activity_status_changes():
             # Save member last post times (status map saved after notifications below)
             _save_member_last_post_times(member_last_posts)
 
+            # Handle Dreadnought inactivity: if a dreadnought becomes inactive, inter them
+            for member, old, new, uid in changes:
+                if new == "inactive":
+                    try:
+                        await _handle_dreadnought_inactivity(member)
+                    except Exception as e:
+                        logger.exception(
+                            f"Failed to handle dreadnought inactivity for {member.id}: {e}"
+                        )
+
             # Send notifications for changes; mark notified_inactive only on confirmed delivery
             for member, old, new, uid in changes:
                 try:
@@ -1792,7 +1898,8 @@ async def _check_promotion_milestones():
                         "Company Champion",
                         "Watch Lieutenant",
                         "Watch Captain",
-                        "Venerable",
+                        "Venerable Dreadnought",
+                        "Honored Dreadnought",
                         "Forgemaster",
                         "Void Warden",
                         "High Chaplain",
@@ -2090,7 +2197,8 @@ async def _check_promotion_milestones():
                             "Company Champion",
                             "Watch Lieutenant",
                             "Watch Captain",
-                            "Venerable",
+                            "Venerable Dreadnought",
+                            "Honored Dreadnought",
                             "Forgemaster",
                             "Void Warden",
                             "High Chaplain",
@@ -2191,8 +2299,8 @@ RANK_ROLES_PRIORITY = [
     "Forgemaster",
     "Castellan",
     "Void Warden",
-    "Venerable",
     "Watch Captain",
+    "Venerable Dreadnought",
     "Watch Lieutenant",
     "Company Champion",
     "Watch Apothecary",
@@ -2201,8 +2309,10 @@ RANK_ROLES_PRIORITY = [
     "Watch Techmarine",
     "Watch Keeper",
     "Watch Sergeant",
-    "Kill Team Champion",
+    "Honored Dreadnought",
+    "Interred Brother",
     "Oathsworn",
+    "Kill Team Champion",
     "Watch Veteran",
     "Watch Brother",
 ]
@@ -5756,7 +5866,7 @@ HIGH_COMMAND_RANKS = {
     "Forgemaster",
     "Castellan",
     "Watch Master",
-    "Venerable",
+    "Venerable Dreadnought",
 }
 
 # Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
@@ -5782,7 +5892,8 @@ WATCH_COMMAND_ROLES = {
     "Forgemaster",
     "Castellan",
     "Watch Master",
-    "Venerable",
+    "Venerable Dreadnought",
+    "Honored Dreadnought",
 }
 
 
@@ -7004,7 +7115,10 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Castellan": "Warden of the Iron Vigil, Castellan",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
-    "Venerable": "Ancient of the Long Watch, Venerable",
+    # Dreadnoughts
+    "Venerable Dreadnought": "Ancient of the Long Watch, Venerable Dreadnought",
+    "Honored Dreadnought": "Honored Dreadnought",
+    "Interred Brother": "Interred Brother",
     # Specialists
     "Watch Chaplain": "Keeper of the faith, Watch Chaplain",
     "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
@@ -7077,10 +7191,21 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
         "Your armor has tasted the blood of traitors; I sanctify it for more to come.",
         "The machine-spirit hungers for righteous execution at your command.",
     ],
-    "Venerable": [
-        "Ancient warrior, your armor has witnessed ages beyond reckoning—I approach this rite with reverence.",
-        "The centuries of your service are writ in every plate; I am honored to tend such sacred warplate.",
-        "To minister to one so Venerable is a privilege granted to few—the machine-spirit itself bows in respect.",
+    # Dreadnoughts
+    "Venerable Dreadnought": [
+        "Ancient of the Long Watch, your sarcophagus is a reliquary of war eternal—I am humbled to tend it.",
+        "Venerable One, the machine-spirits of ages past whisper your deeds—may your dreadnought frame endure as your legend.",
+        "To service the war-casket of one so ancient is the highest honor the Omnissiah could bestow upon this servant.",
+    ],
+    "Honored Dreadnought": [
+        "Honored warrior, your sarcophagus has become your eternal throne—may it carry you to glory unending.",
+        "The Dreadnought frame is blessed to bear one of such valor—your service transcends mortal flesh.",
+        "Your interment honors the Chapter; your continued crusade honors the Emperor.",
+    ],
+    "Interred Brother": [
+        "Interred Brother, your sarcophagus awaits the call to war—the machine-spirit keeps vigil in your slumber.",
+        "Rest now, warrior; when the Long Watch requires, your dreadnought shall rise once more.",
+        "Your sacred rest preserves you for the battles yet to come—the fortress remembers.",
     ],
     # Company Command
     "Watch Captain": [
@@ -7169,7 +7294,11 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     "Void Warden": 0.9,
     "Forgemaster": 0.9,
     "Lord Executioner": 0.9,
-    "Venerable": 0.85,
+    "Castellan": 0.85,
+    # Dreadnoughts - high prestige
+    "Venerable Dreadnought": 0.85,
+    "Honored Dreadnought": 0.75,
+    "Interred Brother": 0.2,  # Inactive, lower prestige
     # Company Command - high prestige
     "Watch Captain": 0.75,
     "Watch Lieutenant": 0.65,
@@ -7178,6 +7307,7 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     "Watch Apothecary": 0.6,
     "Watch Librarian": 0.6,
     "Watch Techmarine": 0.6,
+    "Watch Keeper": 0.55,
     # Champions - medium prestige
     "Company Champion": 0.5,
     "Kill Team Champion": 0.45,
@@ -7655,9 +7785,21 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
         "The Fortress's own walls bear witness to your enduring vigilance.",
         "Each mark upon your brow is a bastion held, a threat repelled.",
     ],
-    "Venerable": [
-        "The Old One's sarcophagus bears another inscription of eternal service.",
-        "Centuries of slumber cannot diminish such devotion—the sepulchre records all.",
+    # Dreadnoughts - eternal service beyond mortal flesh
+    "Venerable Dreadnought": [
+        "The Ancient's war-casket bears witness to service spanning ages.",
+        "Centuries entombed cannot diminish such devotion—the sarcophagus records all.",
+        "Your studs predate the living memory of the Watch—legend made manifest.",
+    ],
+    "Honored Dreadnought": [
+        "Even death cannot halt your accumulation of honor.",
+        "The Dreadnought's service transcends mortal limitation—these marks endure.",
+        "Your sarcophagus preserves not just flesh, but a legacy of endless duty.",
+    ],
+    "Interred Brother": [
+        "Though dormant, your service studs gleam eternal in the Fortress's halls.",
+        "The marks you earned in war await your awakening—they are not forgotten.",
+        "Interred, but never diminished—your studs speak of battles past and future.",
     ],
     # Senior Officers - respectful acknowledgments
     "Watch Captain": [
@@ -7909,11 +8051,17 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
         "Watch Techmarine",
         "Forgemaster",
         "Void Warden",
+        "Venerable Dreadnought",  # Ancient of the Long Watch, high command level
     }
     if rank_name in high_cmd_roles:
         return "high_cmd_specialist"
 
-    company_cmd_roles = {"Watch Captain", "Watch Lieutenant", "Company Champion"}
+    company_cmd_roles = {
+        "Watch Captain",
+        "Watch Lieutenant",
+        "Company Champion",
+        "Honored Dreadnought",  # Honored warriors, company command level
+    }
     if rank_name in company_cmd_roles:
         return "company_cmd"
 
@@ -7921,6 +8069,7 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     if rank_name in specialist_roles:
         return "specialist"
 
+    # Interred Brother falls into "line" category (inactive, lowest priority)
     return "line"
 
 
@@ -8749,11 +8898,19 @@ def _get_bearer_rank_and_title(
     display_name = display_name.replace("●", "").replace("⚬", "").strip()
 
     # Build combined title: prefer "Kill Team X, Company Y" format
+    # Dreadnoughts show "Dreadnought Cadre" instead of their company
     title_parts = []
     if kill_team:
         title_parts.append(kill_team)
-    if company:
+    
+    # Check if member is in Dreadnought Cadre
+    role_ids = {getattr(r, "id", 0) for r in roles}
+    is_dreadnought = DREADNOUGHT_CADRE_ROLE_ID in role_ids
+    if is_dreadnought:
+        title_parts.append("Dreadnought Cadre")
+    elif company:
         title_parts.append(company)
+    
     if not title_parts and command_team:
         title_parts.append(command_team)
 
@@ -19323,7 +19480,9 @@ POSITION_LABEL_MAP = {
     "HighChaplain": "High Chaplain",
     "Forgemaster": "Forgemaster",
     "VoidWarden": "Void Warden",
-    "Venerable": "Venerable",
+    "VenerableDreadnought": "Venerable Dreadnought",
+    "HonoredDreadnought": "Honored Dreadnought",
+    "InterredBrother": "Interred Brother",
     "WatchCaptain": "Watch Captain",
     "WatchLieutenant": "Watch Lieutenant",
     "CompanyChampion": "Company Champion",
@@ -20354,7 +20513,8 @@ async def promotion_queue(interaction: discord.Interaction):
         "Company Champion",
         "Watch Lieutenant",
         "Watch Captain",
-        "Venerable",
+        "Venerable Dreadnought",
+        "Honored Dreadnought",
         "Forgemaster",
         "Void Warden",
         "High Chaplain",
