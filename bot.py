@@ -11596,6 +11596,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             rec_ts_str = record.get("timestamp", "")
             if rec_ts_str:
                 rec_ts = datetime.fromisoformat(rec_ts_str)
+                # Make rec_ts naive to match cutoff_7d (both UTC)
+                if rec_ts.tzinfo is not None:
+                    rec_ts = rec_ts.replace(tzinfo=None)
                 if rec_ts >= cutoff_7d:
                     weekly_intake += record.get("armory_challenge_points", 0) or 0
         except Exception:
