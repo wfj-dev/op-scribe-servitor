@@ -33,6 +33,9 @@ from datastore import DataStore
 # Role IDs
 WATCH_COMMAND_ROLE_ID = 1429281421931057283
 
+# Watch Sergeant Role ID (for vet promotions)
+WATCH_SERGEANT_ROLE_ID = 1429339146371203112
+
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
 
@@ -1357,6 +1360,15 @@ async def _send_activity_status_notification(
 ):
     """Send a notification to the activity status channel when a member's status changes."""
     try:
+        # Skip notifications for members who aren't Watch Brothers (don't have any Watch rank role)
+        member_role_names = {r.name for r in member.roles}
+        qualifying_roles = set(RANK_ROLES_PRIORITY) | {"Watch Sister"}
+        if not any(r in member_role_names for r in qualifying_roles):
+            logger.debug(
+                f"Skipping activity notification for {member.name}: not a Watch Brother"
+            )
+            return
+
         channel = guild.get_channel(ACTIVITY_STATUS_CHANNEL_ID)
         if not channel:
             try:
@@ -1779,6 +1791,14 @@ async def _check_promotion_milestones():
             watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
         )
 
+        # Get Watch Sergeant role for vet promotion mentions
+        watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
+        watch_sergeant_mention = (
+            watch_sergeant_role.mention
+            if watch_sergeant_role
+            else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
+        )
+
         # Get Black Laurels role for mentions
         black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
         black_laurels_mention = (
@@ -1980,7 +2000,7 @@ async def _check_promotion_milestones():
                             f"᛭⋅ {member_line}\n"
                             f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
                             f"᛭⋅ {member_chapter}\n"
-                            f"᛭⋅ {watch_command_mention}\n"
+                            f"᛭⋅ {watch_command_mention} {watch_sergeant_mention}\n"
                             f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                         )
                         await veteran_channel.send(
@@ -2423,6 +2443,7 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
         1433355179020914688,
         1444348999401210037,
         1486476398058012712,
+        1498104968513847386,
     ]
 )
 
@@ -6015,7 +6036,6 @@ def check_command_permission(
         "sanctify_battle_records",
         "audit_archive_discrepancies",
         "reparse_records",
-        "roster_audit",
     }
     if command_name in admin_commands:
         return any(r in user_roles for r in ("Watch Master", "Forgemaster"))
@@ -6657,7 +6677,6 @@ async def litany_of_function(interaction: discord.Interaction):
         "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
         "/cache_stats — Show DataStore cache and flush stats (admin).",
         "/audit_service_studs — List service-stud mismatches (Watch Command only).",
-        "/librarian_audit — Check Black Laurels role discrepancies (Watch Command only).",
         "",
         "Notes: Some commands are restricted by role/config; outputs are capped or paginated.",
     ]
@@ -7100,8 +7119,10 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
     "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
+    "Hospitallers": "Mercy and wrath unite—your armor shields the weak and smites the wicked.",
     "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
     "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
+    "Iron Ravens": "Silent shadow, tempered iron—your armor moves unseen and strikes with precision.",
     "Iron Snakes": "The waters of Ithaka anoint your armor; as the Snakes strike, so shall you.",
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
@@ -7626,6 +7647,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The skies of countless worlds have witnessed your service.",
         "Each mark a feather in your chapter's proud plumage.",
     ],
+    "Hospitallers": [
+        "Healers and warriors both—your studs honor those saved and those avenged.",
+        "The Hospitaller's vow endures in each mark upon your brow.",
+        "Mercy and wrath in balance—your service studs attest to both.",
+    ],
     "Imperial Fists": [
         "Dorn's own fortitude is measured in your studs.",
         "Stone and iron—your service stands unbreakable.",
@@ -7640,6 +7666,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Relentless as the hunt—your studs mark each pursuit to the end.",
         "Orinus breeds no weakness; your marks prove Guilliman's lineage.",
         "The pack honors your enduring service until every foe is slain.",
+    ],
+    "Iron Ravens": [
+        "Silent as shadow, enduring as iron—your studs mark both cunning and strength.",
+        "The raven's wisdom and the machine's precision are etched upon your brow.",
+        "From darkness, your service emerges tempered in steel.",
     ],
     "Iron Snakes": [
         "The waters of Ithaka witness your marks—each stud a testament to the phratry.",
@@ -9833,8 +9864,15 @@ async def _show_armor_leaderboard(
     # Sort by risk score descending to get the highest-risk brothers
     risk_list.sort(key=lambda x: x[3], reverse=True)
 
-    # Take top 10
-    top_10 = risk_list[:10]
+    # Filter out brothers on cooldown before taking top 10
+    available_brothers = []
+    for member, state, tier, risk_score, scan_result in risk_list:
+        can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
+        if can_receive:
+            available_brothers.append((member, state, tier, risk_score, scan_result))
+    
+    # Take top 10 from available brothers
+    top_10 = available_brothers[:10]
     
     # Randomize only nominal and undetected brothers (damaged tiers stay risk-ordered)
     import random
@@ -9935,10 +9973,6 @@ async def _show_armor_leaderboard(
             )
             continue
 
-        # Check if brother is on blessing cooldown
-        can_receive, _, _, block_reason = await _check_recipient_cooldown(member.id)
-        cooldown_indicator = " ⏳" if not can_receive else ""
-
         # Status icon - predictive warnings get special indicator
         if spirit_fractured:
             icon = "💀"
@@ -9953,19 +9987,19 @@ async def _show_armor_leaderboard(
         else:
             icon = "🟢"
 
-        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c ⏳"
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c"
         # Status indicated by icon only (no text label needed)
         # Only show cycles for at-risk/damaged brothers, not nominal
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         if icon == "🟢":
             # Nominal brothers don't need cycle count shown
             lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}{cooldown_indicator}"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}"
             )
         else:
             # At-risk/damaged brothers show cycles for triage
             lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{cooldown_indicator}"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
             )
 
     embed.add_field(
@@ -9974,8 +10008,8 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include undetected symbol and cooldown
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Undetected ⏳Cooldown"
+    # Add legend (compact) - include undetected symbol
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Undetected"
     embed.add_field(
         name="▸ Key",
         value=legend,
@@ -10914,7 +10948,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=True)
             # 💀 for fractured with age, 💤 for released (dormant)
             if event_type == "fractured":
-                age_str = f"({age_days}d) " if age_days else ""
+                age_str = f"({age_days}d) " if age_days is not None else ""
                 memorial_lines.append(f"💀 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
             else:
                 memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {member_label}")
@@ -13140,218 +13174,6 @@ async def audit_service_studs(interaction: discord.Interaction):
     else:
         # Report too long for toggle, send embed only
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-@bot.tree.command(
-    name="librarian_audit",
-    description="Check Black Laurels role discrepancies (Watch Command only).",
-)
-async def librarian_audit(interaction: discord.Interaction):
-    """Check for discrepancies in Black Laurels role assignment.
-
-    A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
-    an AAR with the @Black_Laurels mention on each of the required maps at least once.
-    """
-    if not (
-        check_command_permission(interaction.user, "librarian_audit")
-        and is_allowed_channel(interaction)
-    ):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    await interaction.response.defer(thinking=True, ephemeral=True)
-
-    guild = interaction.guild or _resolve_notification_guild()
-    if not guild:
-        await interaction.followup.send("Guild not available.", ephemeral=True)
-        return
-
-    if DATASTORE is None:
-        await interaction.followup.send("DATASTORE not available.", ephemeral=True)
-        return
-
-    # Get the Black Laurels role
-    black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
-    if not black_laurels_role:
-        await interaction.followup.send(
-            "Black Laurels role not found in guild.", ephemeral=True
-        )
-        return
-
-    # Build a map of user_id -> set of completed Black Laurels missions
-    user_bl_missions: Dict[str, set] = {}
-
-    for rec in DATASTORE.iter_records():
-        mission = rec.get("mission") or ""
-        # Black Laurels is indicated by the role mention in mission field
-        has_black_laurels = "<@&1440108298115485716>" in mission
-
-        if not has_black_laurels:
-            continue
-
-        # Strip any Discord role mentions (e.g., "<@&1440108298115485716>") from mission name
-        mission_clean = re.sub(r"<@&\d+>", "", mission).strip().lower()
-        # Only track required missions
-        if mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
-            continue
-
-        # For black laurels, missions must have exactly 3 members to be valid
-        brother_ids = rec.get("brother_ids") or []
-        if len(brother_ids) != 3:
-            continue
-
-        # Add this mission to each brother's completed set
-        for uid in brother_ids:
-            uid_str = str(uid)
-            if uid_str not in user_bl_missions:
-                user_bl_missions[uid_str] = set()
-            user_bl_missions[uid_str].add(mission_clean)
-
-    # Check each member for discrepancies
-    missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
-    needs_new_missions: List[
-        Tuple[discord.Member, set, set]
-    ] = []  # Has role but missing new missions
-
-    # Missions added after grandfathering (must be explicitly completed by existing role holders)
-    new_missions = (
-        BLACK_LAURELS_REQUIRED_MISSIONS - BLACK_LAURELS_GRANDFATHERED_MISSIONS
-    )
-
-    for member in getattr(guild, "members", []) or []:
-        if member.bot:
-            continue
-
-        try:
-            # Check if member is Watch Brother+ (has any rank role)
-            member_role_names = _canonical_role_names(member)
-            if not any(r in member_role_names for r in RANK_ROLES_PRIORITY):
-                continue
-
-            user_id = str(member.id)
-            completed = user_bl_missions.get(user_id, set())
-            has_role = black_laurels_role in member.roles
-            should_have_role = (
-                len(completed) >= len(BLACK_LAURELS_REQUIRED_MISSIONS)
-                and completed >= BLACK_LAURELS_REQUIRED_MISSIONS
-            )
-
-            if should_have_role and not has_role:
-                missing_role.append((member, completed))
-            elif has_role:
-                # Grandfathered role holders - check if they're missing any NEW missions
-                missing_new = new_missions - completed
-                if missing_new:
-                    needs_new_missions.append((member, completed, missing_new))
-
-        except Exception:
-            continue
-
-    if not missing_role and not needs_new_missions:
-        await interaction.followup.send(
-            "No Black Laurels discrepancies found.", ephemeral=True
-        )
-        return
-
-    # Build report
-    lines: List[str] = []
-    lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
-    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUM AUDIT")
-    lines.append("  BLACK LAURELS DISCREPANCY REPORT")
-    lines.append(
-        "=============================================================================="
-    )
-
-    if missing_role:
-        lines.append("")
-        lines.append(f"  ELIGIBLE BUT MISSING ROLE ({len(missing_role)}):")
-        lines.append("  " + "-" * 72)
-        for member, completed in missing_role:
-            name = getattr(member, "display_name", str(member.id))
-            lines.append(f"    ✓ {name}")
-            lines.append(
-                f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions"
-            )
-
-    if needs_new_missions:
-        lines.append("")
-        lines.append(f"  HAS ROLE BUT NEEDS NEW MISSIONS ({len(needs_new_missions)}):")
-        lines.append("  " + "-" * 72)
-        for member, completed, missing in needs_new_missions:
-            name = getattr(member, "display_name", str(member.id))
-            missing_list = ", ".join(sorted(m.title() for m in missing))
-            lines.append(f"    ⚠ {name}")
-            lines.append(f"      Missing: {missing_list}")
-
-    lines.append("")
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append("\u001b[0m```")
-
-    report = "\n".join(lines)
-
-    # Build mobile-friendly embed
-    embed = discord.Embed(
-        title="Librarium Audit — Black Laurels",
-        color=0x2ECC71,
-    )
-
-    if missing_role:
-        missing_text = "\n".join(
-            f"✓ {getattr(m, 'display_name', str(m.id))}" for m, _ in missing_role[:10]
-        )
-        if len(missing_role) > 10:
-            missing_text += f"\n... and {len(missing_role) - 10} more"
-        embed.add_field(
-            name=f"Eligible but Missing Role ({len(missing_role)})",
-            value=missing_text,
-            inline=False,
-        )
-
-    if needs_new_missions:
-        needs_text = ""
-        for member, _, missing in needs_new_missions[:8]:
-            name = getattr(member, "display_name", str(member.id))
-            missing_list = ", ".join(sorted(m.title() for m in missing))
-            needs_text += f"⚠ {name}\n  Missing: {missing_list}\n"
-        if len(needs_new_missions) > 8:
-            needs_text += f"... and {len(needs_new_missions) - 8} more"
-        embed.add_field(
-            name=f"Needs New Missions ({len(needs_new_missions)})",
-            value=needs_text.strip(),
-            inline=False,
-        )
-
-    if not missing_role and not needs_new_missions:
-        embed.description = "No discrepancies found"
-
-    embed.set_footer(text="Use PC/Console button for detailed ANSI view")
-
-    # Handle long reports
-    if len(report) <= 1900:
-        view = ToggleFormatView(text_content=report, embed=embed, default="embed")
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-    else:
-        # Report too long for toggle, send embed with file attachment
-        import io
-
-        fp = io.BytesIO(report.encode("utf-8"))
-        fp.seek(0)
-        try:
-            await interaction.followup.send(
-                embed=embed,
-                file=discord.File(fp, filename="librarian_audit.txt"),
-                ephemeral=True,
-            )
-        finally:
-            try:
-                fp.close()
-            except Exception:
-                pass
 
 
 @bot.tree.command(
@@ -20320,223 +20142,6 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
     lines.append("\u001b[0m```")
 
     return "\n".join(lines)
-
-
-@bot.tree.command(
-    name="roster_audit",
-    description="Audit company rosters for discrepancies.",
-)
-@app_commands.describe(
-    scope="Type of discrepancies to show: all, missing, extra, or mismatch",
-    format="Output format: summary or full",
-)
-async def roster_audit(
-    interaction: discord.Interaction,
-    scope: str = "all",
-    format: str = "full",
-):
-    """Audit company rosters.
-
-    scope: all|missing|extra|mismatch
-    format: summary|full
-
-    Permission: Forgemaster OR Watch Master only.
-    """
-    if not (
-        check_command_permission(interaction.user, "roster_audit")
-        and is_allowed_channel(interaction)
-    ):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    # Defer for long-running operation
-    try:
-        await interaction.response.defer(ephemeral=True, thinking=True)
-    except Exception:
-        logger.debug("Could not defer interaction; continuing")
-
-    try:
-        scope = (scope or "all").lower()
-        format = (format or "summary").lower()
-
-        if scope not in ("all", "missing", "extra", "mismatch"):
-            scope = "all"
-        if format not in ("summary", "full"):
-            format = "summary"
-
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send("Guild not found.", ephemeral=True)
-            return
-
-        # Determine which companies to audit
-        companies = CONFIG.get("companies") or {}
-
-        # Check if invoked in a roster channel
-        channel_id = (
-            getattr(interaction.channel, "id", None) if interaction.channel else None
-        )
-        audit_companies = {}
-
-        if channel_id:
-            # Find company by roster channel ID
-            for key, config in companies.items():
-                if int(config.get("rosterChannelId", 0)) == channel_id:
-                    audit_companies[key] = config
-                    break
-
-        # If no specific company found, audit all
-        if not audit_companies:
-            audit_companies = companies
-
-        if not audit_companies:
-            await interaction.followup.send(
-                "No companies configured. Add entries to `companies` in config.json.",
-                ephemeral=True,
-            )
-            return
-
-        # Parse High Command once (it's shared across all companies)
-        # Use the first company's roster channel to find High Command
-        high_cmd_roster = {}
-        try:
-            first_company_config = next(iter(audit_companies.values()))
-            roster_channel_id = int(first_company_config.get("rosterChannelId"))
-            high_cmd_msg, _, _ = await _find_roster_messages(guild, roster_channel_id)
-            if high_cmd_msg:
-                high_cmd_roster = _parse_roster_section(high_cmd_msg.content)
-        except Exception:
-            logger.exception("Error parsing shared High Command")
-
-        # Run audits
-        results = []
-        for company_key, company_config in audit_companies.items():
-            result = await _audit_company_roster(
-                guild, company_key, company_config, high_cmd_roster
-            )
-            results.append(result)
-
-        # Filter by scope
-        if scope == "missing":
-            for r in results:
-                r["extra"] = []
-                r["mismatch"] = []
-        elif scope == "extra":
-            for r in results:
-                r["missing"] = []
-                r["mismatch"] = []
-        elif scope == "mismatch":
-            for r in results:
-                r["missing"] = []
-                r["extra"] = []
-
-        # Format output
-        if format == "summary":
-            output = _format_audit_summary(results)
-        else:
-            output = _format_audit_full(results)
-
-        # Build mobile-friendly embed with user mentions
-        embed = discord.Embed(
-            title="Roster Audit",
-            color=0x2ECC71,
-        )
-
-        total_missing = sum(len(r.get("missing", [])) for r in results)
-        total_extra = sum(len(r.get("extra", [])) for r in results)
-        total_mismatch = sum(len(r.get("mismatch", [])) for r in results)
-
-        if total_missing == 0 and total_extra == 0 and total_mismatch == 0:
-            embed.description = "✅ No discrepancies found."
-        else:
-            embed.description = (
-                f"**Scope:** {scope}\n\n"
-                f"• **Need Roles** — Listed in roster but missing required Discord roles\n"
-                f"• **Not Listed** — Have company role but not in roster channel\n"
-                f"• **Conflicts** — Multiple teams, sections, or company roles"
-            )
-            for result in results:
-                company = result.get("company_name", "Unknown")
-                missing = result.get("missing", [])
-                extra = result.get("extra", [])
-                mismatch = result.get("mismatch", [])
-
-                if not missing and not extra and not mismatch:
-                    continue
-
-                # Build field text with actual user mentions (up to limits)
-                field_parts = []
-                if missing:
-                    missing_users = [
-                        f"<@{item.get('user_id')}>" for item in missing[:5]
-                    ]
-                    # These users are in the roster but missing required roles
-                    missing_text = (
-                        "**Need Roles** (in roster, missing roles):\n"
-                        + ", ".join(missing_users)
-                    )
-                    if len(missing) > 5:
-                        missing_text += f" (+{len(missing) - 5} more)"
-                    field_parts.append(missing_text)
-                if extra:
-                    extra_users = [f"<@{item.get('user_id')}>" for item in extra[:5]]
-                    # These users have company role but aren't listed in the roster
-                    extra_text = (
-                        "**Not Listed** (have role, not in roster):\n"
-                        + ", ".join(extra_users)
-                    )
-                    if len(extra) > 5:
-                        extra_text += f" (+{len(extra) - 5} more)"
-                    field_parts.append(extra_text)
-                if mismatch:
-                    mismatch_users = [
-                        f"<@{item.get('user_id')}>" for item in mismatch[:5]
-                    ]
-                    # These users have conflicting assignments (multiple teams, etc.)
-                    mismatch_text = (
-                        "**Conflicts** (multiple teams, sections):\n"
-                        + ", ".join(mismatch_users)
-                    )
-                    if len(mismatch) > 5:
-                        mismatch_text += f" (+{len(mismatch) - 5} more)"
-                    field_parts.append(mismatch_text)
-
-                field_value = "\n".join(field_parts) if field_parts else "—"
-                # Truncate if too long for embed field
-                if len(field_value) > 1024:
-                    field_value = field_value[:1020] + "..."
-                embed.add_field(name=company, value=field_value, inline=False)
-
-        embed.set_footer(text="Use PC/Console button for detailed ANSI view")
-
-        # Send output with toggle view
-        if len(output) <= 1900:
-            view = ToggleFormatView(text_content=output, embed=embed, default="embed")
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-        else:
-            # Output too long for toggle, send embed with file attachment
-            import io
-
-            fp = io.BytesIO(output.encode("utf-8"))
-            fp.seek(0)
-            try:
-                await interaction.followup.send(
-                    embed=embed,
-                    file=discord.File(fp, filename="roster_audit.txt"),
-                    ephemeral=True,
-                )
-            finally:
-                try:
-                    fp.close()
-                except Exception:
-                    pass
-
-    except Exception:
-        logger.exception("Error in roster_audit command")
-        await interaction.followup.send(
-            "An error occurred during the audit. Check logs for details.",
-            ephemeral=True,
-        )
 
 
 @bot.tree.command(
