@@ -71,6 +71,9 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 # Channel ID for Oathsworn eligibility notifications
 OATHSWORN_CHANNEL_ID = 1489282103119052903
 
+# Channel ID for Techmarine Staff (scheduled maintenance reports)
+TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
+
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
 
@@ -201,6 +204,13 @@ SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = True
 SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
+
+# Weekly reparse settings (Sunday 6 AM UTC by default, before weekly maintenance)
+# Reparses last 7 days of AAR records to catch parsing improvements
+SCHEDULE_WEEKLY_REPARSE_ENABLED = True
+SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS = 7
+SCHEDULE_WEEKLY_REPARSE_DAY = 6  # 0=Monday, 1=Tuesday, ..., 6=Sunday
+SCHEDULE_WEEKLY_REPARSE_HOUR = 6  # Hour in UTC
 
 # Monthly archive audit settings (runs audit_archive_discrepancies on the 1st of each month)
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = True
@@ -675,6 +685,9 @@ async def _monthly_audit_loop():
 # Track last weekly maintenance run date to prevent duplicate runs
 LAST_WEEKLY_MAINTENANCE_DATE: Optional[str] = None
 
+# Track last weekly reparse run date to prevent duplicate runs
+LAST_WEEKLY_REPARSE_DATE: Optional[str] = None
+
 
 @tasks.loop(minutes=60)
 async def _scheduled_weekly_maintenance_loop():
@@ -748,6 +761,114 @@ async def _scheduled_weekly_maintenance_loop():
 
 @_scheduled_weekly_maintenance_loop.before_loop
 async def _before_weekly_maintenance_loop():
+    await bot.wait_until_ready()
+
+
+@tasks.loop(minutes=60)
+async def _scheduled_weekly_reparse_loop():
+    """Run hourly; on configured day/hour reparse last N days of AAR records.
+
+    Default: Sunday 6 AM UTC. Reparses last 7 days to catch parsing improvements.
+    Posts results to Techmarine Staff channel.
+    """
+    global LAST_WEEKLY_REPARSE_DATE
+    try:
+        if DATASTORE is None:
+            return
+        # Use UTC for consistent scheduling
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
+
+        # Check if it's the right day and hour
+        if (
+            now_utc.weekday() != SCHEDULE_WEEKLY_REPARSE_DAY
+            or now_utc.hour != SCHEDULE_WEEKLY_REPARSE_HOUR
+        ):
+            return
+
+        # Prevent duplicate runs on same date
+        if LAST_WEEKLY_REPARSE_DATE == str(today):
+            return
+
+        logger.info(
+            f"Weekly reparse starting: last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
+        )
+
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.warning("Weekly reparse: no guild available; skipping.")
+            return
+
+        # Get Techmarine Staff channel for results
+        staff_channel = None
+        try:
+            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
+            if staff_channel is None:
+                staff_channel = await bot.fetch_channel(TECHMARINE_STAFF_CHANNEL_ID)
+        except Exception:
+            logger.warning(
+                f"Weekly reparse: Techmarine Staff channel {TECHMARINE_STAFF_CHANNEL_ID} not accessible."
+            )
+
+        # Acquire lock to prevent concurrent reconciliations
+        if RECONCILE_LOCK.locked():
+            logger.info("Weekly reparse: reconcile lock held; skipping.")
+            if staff_channel:
+                try:
+                    await staff_channel.send(
+                        "⚠️ **Weekly Reparse Skipped**: Another reconciliation is in progress."
+                    )
+                except Exception:
+                    pass
+            return
+
+        async with RECONCILE_LOCK:
+            logger.info(
+                f"Weekly reparse: Running reparse for last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
+            )
+            total, updated, failed, changes_by_field = await _run_reparse_records(
+                days=SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS
+            )
+            logger.info(
+                f"Weekly reparse: processed={total}, updated={updated}, failed={failed}"
+            )
+
+            # Post results to Techmarine Staff channel
+            if staff_channel:
+                try:
+                    changes_line = ""
+                    if changes_by_field:
+                        sorted_changes = sorted(
+                            changes_by_field.items(), key=lambda x: -x[1]
+                        )
+                        changes_summary = ", ".join(
+                            f"{k}={v}" for k, v in sorted_changes
+                        )
+                        changes_line = f"\nFields updated: {changes_summary}"
+                    await staff_channel.send(
+                        f"✅ **Weekly Reparse Complete** (last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days)\n"
+                        f"Processed: {total} | Updated: {updated} | Failed: {failed}{changes_line}"
+                    )
+                except Exception:
+                    logger.exception("Failed to post weekly reparse results")
+
+            LAST_WEEKLY_REPARSE_DATE = str(today)
+            logger.info("Weekly reparse completed successfully.")
+    except Exception:
+        logger.exception("Weekly reparse failed")
+        # Try to notify staff channel about failure
+        try:
+            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
+            if staff_channel:
+                await staff_channel.send(
+                    "❌ **Weekly Reparse Failed**: Check logs for details."
+                )
+        except Exception:
+            pass
+
+
+@_scheduled_weekly_reparse_loop.before_loop
+async def _before_weekly_reparse_loop():
     await bot.wait_until_ready()
 
 
@@ -6249,6 +6370,28 @@ async def on_ready():
                 )
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
+
+    # Start weekly reparse loop if enabled (default: enabled)
+    try:
+        if SCHEDULE_WEEKLY_REPARSE_ENABLED:
+            if not _scheduled_weekly_reparse_loop.is_running():
+                _scheduled_weekly_reparse_loop.start()
+                day_names = [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ]
+                day_name = day_names[SCHEDULE_WEEKLY_REPARSE_DAY]
+                logger.info(
+                    f"Weekly reparse loop started ({day_name} {SCHEDULE_WEEKLY_REPARSE_HOUR}:00 UTC, "
+                    f"reparse {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS}-day span)."
+                )
+    except Exception:
+        logger.exception("Failed to start weekly reparse loop")
 
     # Start monthly archive audit loop if enabled (default: enabled)
     try:
@@ -13206,6 +13349,112 @@ async def audit_service_studs(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+async def _run_reparse_records(
+    limit: int | None = None, days: int | None = None
+) -> tuple[int, int, int, dict[str, int]]:
+    """Re-parse AAR records from their message URLs.
+
+    Args:
+        limit: Max number of records to reparse (None = unlimited)
+        days: Only reparse records from the last N days (None = all)
+
+    Returns:
+        Tuple of (total_processed, updated_count, failed_count, changes_by_field)
+    """
+    total = 0
+    updated = 0
+    failed = 0
+    changes_by_field: dict[str, int] = {}
+
+    # Snapshot of records to process
+    now_utc = datetime.now(timezone.utc)
+    if days is not None:
+        if days <= 0:
+            raise ValueError("days must be a positive integer when specified")
+        cutoff = now_utc - timedelta(days=days)
+    else:
+        cutoff = None
+
+    def _in_window(rec: dict) -> bool:
+        if cutoff is None:
+            return True
+        ts_str = rec.get("timestamp")
+        if not ts_str:
+            return False
+        try:
+            ts = _parse_iso8601_to_utc(ts_str)
+            return ts is not None and ts >= cutoff
+        except Exception:
+            return False
+
+    records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
+    if limit is not None and limit > 0:
+        records_list = records_list[:limit]
+    total_records = len(records_list)
+
+    def _print_progress(done: int, total: int) -> None:
+        if not sys.stdout.isatty():
+            return
+        bar_len = 40
+        filled = int(round(bar_len * done / float(total))) if total else bar_len
+        perc = (done / total * 100) if total else 100.0
+        bar = "#" * filled + "-" * (bar_len - filled)
+        sys.stdout.write(
+            f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)"
+        )
+        sys.stdout.flush()
+
+    # Iterate snapshot of records
+    for idx, (key, rec) in enumerate(records_list, start=1):
+        _print_progress(idx - 1, total_records)
+        total += 1
+        msg_url = rec.get("message_url")
+        if not msg_url:
+            _print_progress(idx, total_records)
+            continue
+        try:
+            parts = msg_url.rstrip("/").split("/")
+            # Expect .../channels/<channel_id>/<message_id> or .../<channel_id>/<message_id>
+            if len(parts) < 2:
+                raise ValueError("invalid message_url")
+            message_id = int(parts[-1])
+            channel_id = int(parts[-2])
+            channel = bot.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await bot.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is None:
+                raise RuntimeError(f"channel {channel_id} not available")
+            msg = await channel.fetch_message(message_id)
+            new_rec = parse_aar(msg)
+            if not new_rec:
+                continue
+            # Preserve some metadata from existing record
+            merged = rec.copy()
+            merged.update(new_rec)
+            # Ensure aar_id remains the same key
+            merged["aar_id"] = rec.get("aar_id")
+            if merged != rec:
+                # Track which fields changed
+                for field in set(rec.keys()) | set(merged.keys()):
+                    if rec.get(field) != merged.get(field):
+                        changes_by_field[field] = changes_by_field.get(field, 0) + 1
+                await DATASTORE.set_record(str(merged.get("aar_id")), merged)
+                updated += 1
+        except Exception:
+            failed += 1
+
+    # Finalize progress output in terminal
+    _print_progress(total_records, total_records)
+    if sys.stdout.isatty():
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    return total, updated, failed, changes_by_field
+
+
 @bot.tree.command(
     name="reparse_records",
     description="Re-parse stored AAR records from their message_url and update records (admin).",
@@ -13239,99 +13488,13 @@ async def reparse_records(
     logger.info(f"reparse_records: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
         logger.info(f"reparse_records: lock acquired (user={interaction.user.id})")
-        total = 0
-        updated = 0
-        failed = 0
-        changes_by_field: dict[str, int] = {}  # Track which fields changed
-        # Snapshot of records to process (respect optional limit and days filter)
-        now_utc = datetime.now(timezone.utc)
-        if days is not None:
-            if days <= 0:
-                await interaction.followup.send(
-                    "`days` must be a positive integer when specified.",
-                    ephemeral=True,
-                )
-                return
-            cutoff = now_utc - timedelta(days=days)
-        else:
-            cutoff = None
-
-        def _in_window(rec: dict) -> bool:
-            if cutoff is None:
-                return True
-            ts_str = rec.get("timestamp")
-            if not ts_str:
-                return False
-            try:
-                ts = _parse_iso8601_to_utc(ts_str)
-                return ts is not None and ts >= cutoff
-            except Exception:
-                return False
-
-        records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
-        if limit is not None and limit > 0:
-            records_list = records_list[:limit]
-        total_records = len(records_list)
-
-        def _print_progress(done: int, total: int) -> None:
-            if not sys.stdout.isatty():
-                return
-            bar_len = 40
-            filled = int(round(bar_len * done / float(total))) if total else bar_len
-            perc = (done / total * 100) if total else 100.0
-            bar = "#" * filled + "-" * (bar_len - filled)
-            sys.stdout.write(
-                f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)"
+        try:
+            total, updated, failed, changes_by_field = await _run_reparse_records(
+                limit=limit, days=days
             )
-            sys.stdout.flush()
-
-        # Iterate snapshot of records
-        for idx, (key, rec) in enumerate(records_list, start=1):
-            _print_progress(idx - 1, total_records)
-            total += 1
-            msg_url = rec.get("message_url")
-            if not msg_url:
-                _print_progress(idx, total_records)
-                continue
-            try:
-                parts = msg_url.rstrip("/").split("/")
-                # Expect .../channels/<channel_id>/<message_id> or .../<channel_id>/<message_id>
-                if len(parts) < 2:
-                    raise ValueError("invalid message_url")
-                message_id = int(parts[-1])
-                channel_id = int(parts[-2])
-                channel = bot.get_channel(channel_id)
-                if channel is None:
-                    try:
-                        channel = await bot.fetch_channel(channel_id)
-                    except Exception:
-                        channel = None
-                if channel is None:
-                    raise RuntimeError(f"channel {channel_id} not available")
-                msg = await channel.fetch_message(message_id)
-                new_rec = parse_aar(msg)
-                if not new_rec:
-                    continue
-                # Preserve some metadata from existing record (timestamp/edited_at/message_url)
-                merged = rec.copy()
-                merged.update(new_rec)
-                # Ensure aar_id remains the same key
-                merged["aar_id"] = rec.get("aar_id")
-                if merged != rec:
-                    # Track which fields changed
-                    for field in set(rec.keys()) | set(merged.keys()):
-                        if rec.get(field) != merged.get(field):
-                            changes_by_field[field] = changes_by_field.get(field, 0) + 1
-                    await DATASTORE.set_record(str(merged.get("aar_id")), merged)
-                    updated += 1
-            except Exception:
-                failed += 1
-
-        # Finalize progress output in terminal
-        _print_progress(total_records, total_records)
-        if sys.stdout.isatty():
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
 
         days_info = f" (last {days} days)" if days else ""
         # Build changes summary
