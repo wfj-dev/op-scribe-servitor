@@ -164,6 +164,16 @@ INTENSIVE_BLESSING_COSTS = {
     "fractured": 4,    # Fractured -> Nominal: 4 charges (guaranteed)
 }
 
+# Forge drain per charge used - scales with tier being healed
+# Each blessing charge consumes forge pool points based on target's damage tier
+FORGE_DRAIN_PER_CHARGE = {
+    None: 1,           # Nominal: 1 pt per charge
+    "damaged": 2,      # Damaged: 2 pts per charge
+    "compromised": 3,  # Compromised: 3 pts per charge
+    "critical": 4,     # Critical: 4 pts per charge
+    "fractured": 5,    # Fractured: 5 pts per charge
+}
+
 # Blessing roll configuration - asymmetric state-based probabilities
 # Format: (crit_fail_chance, crit_success_chance) - normal is remainder
 BLESSING_ROLL_PROBABILITIES = {
@@ -4507,6 +4517,38 @@ async def _increment_forge_pool_balance(points: int):
         pool_data = _load_forge_pool()
         current = pool_data.get("balance", max_balance)
         pool_data["balance"] = min(current + points, max_balance)
+        _save_forge_pool(pool_data)
+
+
+async def _deduct_forge_pool_balance(points: int, tier: Optional[str] = None):
+    """Deduct points from forge pool balance and log the drain.
+    
+    Args:
+        points: Forge points to deduct
+        tier: Damage tier being healed (for tracking)
+    """
+    if points <= 0:
+        return
+    async with FORGE_POOL_LOCK:
+        pool_data = _load_forge_pool()
+        current = pool_data.get("balance", 0)
+        pool_data["balance"] = max(0, current - points)
+        
+        # Log drain for weekly tracking
+        drain_log = pool_data.get("weekly_drain_log", [])
+        drain_log.append({
+            "ts": datetime.utcnow().isoformat(),
+            "points": points,
+            "tier": tier,
+        })
+        # Keep only last 30 days of drain history
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        drain_log = [
+            entry for entry in drain_log
+            if datetime.fromisoformat(entry.get("ts", "")) >= cutoff
+        ]
+        pool_data["weekly_drain_log"] = drain_log
+        
         _save_forge_pool(pool_data)
 
 
@@ -9216,6 +9258,30 @@ async def _attest(
                         ephemeral=True,
                     )
                 return
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Forge balance check - every blessing drains forge reserves
+    # ─────────────────────────────────────────────────────────────────────────
+    forge_drain_cost = 0
+    if not force:
+        # Calculate forge drain based on tier being healed
+        drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
+        forge_drain_cost = drain_per_charge * charges_required
+        
+        # Check if forge has sufficient balance
+        forge_available = await _get_forge_pool_available()
+        if forge_available < forge_drain_cost:
+            bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
+            tier_name = current_damage_tier.upper() if current_damage_tier else "NOMINAL"
+            await interaction.response.send_message(
+                f"**FORGE RESERVES DEPLETED**\n\n"
+                f"Target: **{bearer_name}** ({tier_name})\n"
+                f"Forge cost: **{forge_drain_cost}** pts ({drain_per_charge} pts/charge × {charges_required} charges)\n"
+                f"Available: **{forge_available}** pts\n\n"
+                f"*The Chapter must recover more armory data before blessings can continue.*",
+                ephemeral=True,
+            )
+            return
 
     # Build attestation using standardized Imperial date format
     try:
@@ -9457,6 +9523,10 @@ async def _attest(
                 await _consume_blessing(contrib_user_id)
             elif contrib_charges > 1:
                 await _consume_multiple_blessings(contrib_user_id, contrib_charges)
+    
+    # Deduct forge reserves (unless force override)
+    if not force and forge_drain_cost > 0:
+        await _deduct_forge_pool_balance(forge_drain_cost, current_damage_tier)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build embed
@@ -9588,6 +9658,18 @@ async def _attest(
                 outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
     
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
+    
+    # Add forge cost info if applicable
+    if not force and forge_drain_cost > 0:
+        drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
+        forge_remaining = await _get_forge_pool_available()
+        
+        if charges_required > 1:
+            forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts ({drain_per_charge}×{charges_required}) → {forge_remaining} pts"
+        else:
+            forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts → {forge_remaining} pts"
+        outcome_value += forge_cost_text
+    
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
@@ -10502,52 +10584,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
     
     # ─────────────────────────────────────────────────────────────
-    # Section 1: Recent Rites (This Month)
-    # ─────────────────────────────────────────────────────────────
-    monthly_rites = []
-    for entry in rite_history:
-        try:
-            ts = datetime.fromisoformat(entry.get("ts", ""))
-            # Exclude fractured/released (system events shown in Spirit Memorial)
-            if ts >= first_of_month and entry.get("event") not in ("fractured", "released"):
-                monthly_rites.append(entry)
-        except Exception:
-            pass
-    
-    # Sort by timestamp descending (most recent first), take last 5
-    monthly_rites.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    recent_rites = monthly_rites[:5]
-    
-    recent_lines = []
-    # Event-specific emojis for rite outcomes
-    event_emojis = {
-        "first_binding": "⛓️",  # New spirit bound
-        "rebirth": "🔄",       # Spirit reborn after fracture
-        "restoration": "🛠️",  # Damage repaired
-        "maintenance": "🔧",   # Routine maintenance
-        "resisted": "⚠️",       # Rite failed
-    }
-    for entry in recent_rites:
-        event = entry.get("event", "unknown")
-        member_id = entry.get("bearer_id")
-        tech_id = entry.get("techmarine_id")
-        
-        member_name = "Unknown"
-        if member_id:
-            member_name = _format_member_styled(guild, str(member_id), include_chapter=True)
-        
-        tech_name = "Unknown"
-        if tech_id:
-            tech_name = _format_member_styled(guild, str(tech_id), include_chapter=True)
-        
-        event_icon = event_emojis.get(event, "❓")
-        recent_lines.append(f"{event_icon} {member_name} ← {tech_name}")
-    
-    if not recent_lines:
-        recent_lines.append("*No rites performed this cycle.*")
-    
-    # ─────────────────────────────────────────────────────────────
-    # Section 2: Machine Spirits of the Watch
+    # Section 1: Machine Spirits of the Watch
     # ─────────────────────────────────────────────────────────────
     activity_status = _load_activity_status()
     
@@ -10869,41 +10906,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     artificer_lines.append(f"{name} ({charges})")
     
     # ─────────────────────────────────────────────────────────────
-    # Section 6: Litany of Endurance (Longest unbroken service)
-    # ─────────────────────────────────────────────────────────────
-    honor_entries = []
-    for member_id_str, state in armor_data.items():
-        if state.get("damage_tier") is None and not state.get("spirit_fractured"):
-            points = state.get("points_since_blessing", 0)
-            if points >= 5:  # Only show veterans past safe zone (4 cycles)
-                member = guild.get_member(int(member_id_str))
-                if member:
-                    # Must have a Watch rank role
-                    has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-                    if not has_rank:
-                        continue
-                    # Exclude Reserves members
-                    role_ids = {r.id for r in member.roles}
-                    role_names = {r.name.lower() for r in member.roles}
-                    if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
-                        continue
-                    # Check scan detection - don't show unreadable brothers
-                    scan_result = await _get_or_roll_scan_result(
-                        member.id, None, points, False
-                    )
-                    if scan_result["detected"]:
-                        honor_entries.append((member, points))
-    
-    honor_entries.sort(key=lambda x: x[1], reverse=True)
-    honor_top3 = honor_entries[:3]
-    
-    honor_lines = []
-    for member, pts in honor_top3:
-        name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        honor_lines.append(f"{name} ({pts} cycles)")
-    
-    # ─────────────────────────────────────────────────────────────
-    # Section 7: Spirit Memorial (Spirits lost in last 28 days)
+    # Section 6: Spirit Memorial (Spirits lost in last 28 days)
     # ─────────────────────────────────────────────────────────────
     memorial_lines = []
     
@@ -10997,19 +11000,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     )
     embed.description = fortress_text
     
-    # Watchlist + Recent Rites (inline pair)
+    # Watchlist (full width)
     if watchlist_top5:
         embed.add_field(
             name="▸ Watchlist",
             value="\n".join(watchlist_lines),
-            inline=True,
+            inline=False,
         )
-    
-    embed.add_field(
-        name="▸ Recent Rites",
-        value="\n".join(recent_lines),
-        inline=True,
-    )
     
     # Machine Spirits (full width)
     spirit_text = "\n".join(spirit_lines)
@@ -11019,14 +11016,6 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         inline=False,
     )
     
-    # Litany of Endurance (full width)
-    if honor_lines:
-        embed.add_field(
-            name="▸ Litany of Endurance",
-            value="\n".join(honor_lines),
-            inline=False,
-        )
-    
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
@@ -11035,10 +11024,58 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             inline=False,
         )
     
+    # ─────────────────────────────────────────────────────────────
+    # Forge Reserves: Calculate weekly intake/drain/net
+    # ─────────────────────────────────────────────────────────────
+    cutoff_7d = now - timedelta(days=7)
+    
+    # Calculate 7-day intake from AAR records
+    weekly_intake = 0
+    all_records = DATASTORE.get_all_records()
+    for record in all_records.values():
+        try:
+            rec_ts_str = record.get("timestamp", "")
+            if rec_ts_str:
+                rec_ts = datetime.fromisoformat(rec_ts_str)
+                if rec_ts >= cutoff_7d:
+                    weekly_intake += record.get("armory_challenge_points", 0) or 0
+        except Exception:
+            pass
+    
+    # Calculate 7-day drain from forge pool log
+    weekly_drain = 0
+    forge_pool_data = _load_forge_pool()
+    drain_log = forge_pool_data.get("weekly_drain_log", [])
+    for entry in drain_log:
+        try:
+            entry_ts = datetime.fromisoformat(entry.get("ts", ""))
+            if entry_ts >= cutoff_7d:
+                weekly_drain += entry.get("points", 0)
+        except Exception:
+            pass
+    
+    weekly_net = weekly_intake - weekly_drain
+    
+    # Format net with trend icon
+    if weekly_net > 0:
+        net_icon = "📈"
+        net_text = f"+{weekly_net}"
+    elif weekly_net < 0:
+        net_icon = "📉"
+        net_text = str(weekly_net)
+    else:
+        net_icon = "➡️"
+        net_text = "0"
+    
+    forge_reserves_value = (
+        f"{reserve_bar} {available:,} / {max_balance:,} pts\n"
+        f"📊 7d: +{weekly_intake} in | -{weekly_drain} out | {net_icon} {net_text} net"
+    )
+    
     # Forge Reserves + Artificers (inline pair)
     embed.add_field(
         name="▸ Forge Reserves",
-        value=f"{reserve_bar} {available:,} / {max_balance:,} pts",
+        value=forge_reserves_value,
         inline=True,
     )
     
@@ -11052,7 +11089,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Key (full width - bottom)
     embed.add_field(
         name="▸ Key",
-        value="⛓️Bound 🔄Restored 🔧Maint ⚠️Resisted | 💀🔴🟠🟡⚡🟢⚫ Status",
+        value="💀🔴🟠🟡⚡🟢⚫ Status | 💤 Dormant",
         inline=False,
     )
     
