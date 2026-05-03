@@ -1785,6 +1785,14 @@ async def _check_promotion_milestones():
             black_laurels_role.mention if black_laurels_role else "@Black Laurels"
         )
 
+        # Get Watch Command role for award mentions
+        watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
+        watch_command_role_mention = (
+            watch_command_role.mention
+            if watch_command_role
+            else f"<@&{WATCH_COMMAND_ROLE_ID}>"
+        )
+
         # Get specialist roles for award mentions
         techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
         techmarine_mention = (
@@ -2097,10 +2105,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("ardent_raider_notified"):
                         if is_ar_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {techmarine_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{ardent_raider_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {techmarine_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
@@ -2128,10 +2141,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("for_the_fallen_notified"):
                         if is_ftf_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {apothecarion_medal_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {apothecary_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{apothecarion_medal_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {apothecary_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
@@ -2163,10 +2181,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("crimson_laurels_notified"):
                         if is_cl_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {librarian_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{crimson_laurels_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {librarian_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
