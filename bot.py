@@ -36,6 +36,12 @@ WATCH_COMMAND_ROLE_ID = 1429281421931057283
 # Watch Sergeant Role ID (for vet promotions)
 WATCH_SERGEANT_ROLE_ID = 1429339146371203112
 
+# Watch Librarian Role ID (for challenge eligibility notifications)
+WATCH_LIBRARIAN_ROLE_ID = 1429339231654924318
+
+# Watch Keeper Role ID
+WATCH_KEEPER_ROLE_ID = 1488211606813806693
+
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
 
@@ -55,6 +61,7 @@ MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
 ARMOR_SCAN_STATE_PATH = os.path.join(DATA_DIR, "armor_scan_state.json")
 INDUCTION_OVERRIDES_PATH = os.path.join(DATA_DIR, "induction_overrides.json")
+CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -73,6 +80,9 @@ OATHSWORN_CHANNEL_ID = 1489282103119052903
 
 # Channel ID for Techmarine Staff (scheduled maintenance reports)
 TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
+
+# Channel ID for Librarius Staff (challenge eligibility notifications)
+LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
 
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
@@ -114,6 +124,9 @@ ARMOR_SCAN_STATE_LOCK = asyncio.Lock()
 
 # Lock for induction date overrides
 INDUCTION_OVERRIDES_LOCK = asyncio.Lock()
+
+# Lock for challenge progress tracking
+CHALLENGE_PROGRESS_LOCK = asyncio.Lock()
 
 # Lock for blessing pool operations (Techmarine daily blessing limits)
 BLESSING_POOL_LOCK = asyncio.Lock()
@@ -283,6 +296,25 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
     "reclamation",
 }
 
+# Kadaku Campaign Medal required missions (all required with @Leviathan Protocol tag)
+KADAKU_CAMPAIGN_REQUIRED_MISSIONS = {
+    "inferno",
+    "termination",
+    "reclamation",
+}
+
+# Black Reef Campaign Medal required missions (all required with @Black Reef Persecution tag)
+BLACK_REEF_REQUIRED_MISSIONS = {
+    "inferno",
+    "decapitation",
+    "fall of atreus",
+    "ballistic engine",
+    "termination",
+    "obelisk",
+    "vortex",
+    "reclamation",
+}
+
 # Specialist award thresholds and role mappings
 # Award role IDs (looked up by ID to avoid name change issues)
 ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
@@ -307,6 +339,18 @@ INTERRED_BROTHER_ROLE_ID = 1497089965685739582
 
 # Dreadnought inactivity notification channel (High Command)
 DREADNOUGHT_INACTIVITY_CHANNEL_ID = 1443813516979994634
+
+# Terminus Slayer role IDs for Crux Terminatus verification
+TERMINUS_SLAYER_ROLE_IDS = {
+    1452803611477147668,  # Master Terminus Slayer
+    1449257352112111646,  # Terminus Slayer (Assault)
+    1450230281599713451,  # Terminus Slayer (Tactical)
+    1450230501804609697,  # Terminus Slayer (Vanguard)
+    1450230789034737748,  # Terminus Slayer (Bulwark)
+    1450231020686278656,  # Terminus Slayer (Sniper)
+    1450231189028737166,  # Terminus Slayer (Heavy)
+    1476623936254115992,  # Terminus Slayer (Techmarine)
+}
 
 # Challenge roles for /completed_challenges command
 # Each entry is (role_id, display_name, emoji_hint)
@@ -1213,6 +1257,342 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         os.replace(tmp_path, PROMOTION_TRACKING_PATH)
     except Exception as e:
         logger.exception(f"Failed to save promotion tracking: {e}")
+
+
+def _load_challenge_progress() -> Dict[str, Dict]:
+    """Load challenge progress tracking data: user_id -> {challenge_key -> [mission_entries]}.
+    
+    Structure:
+    {
+        "user_id": {
+            "sok_g_pipehitter": [
+                {"mission": "inferno", "aar_id": "123", "message_url": "...", "timestamp": "..."},
+                ...
+            ],
+            "kadaku_campaign": [...],
+            "black_reef": [...],
+            "black_reef_distinguished": [...],
+            "notified": ["sok_g_pipehitter", "kadaku_campaign"]  # List of challenges already notified
+        }
+    }
+    """
+    try:
+        if os.path.exists(CHALLENGE_PROGRESS_PATH):
+            with open(CHALLENGE_PROGRESS_PATH, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_challenge_progress(progress_data: Dict[str, Dict]):
+    """Persist challenge progress data to disk with backup."""
+    try:
+        tmp_path = CHALLENGE_PROGRESS_PATH + ".tmp"
+        bak_path = CHALLENGE_PROGRESS_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(progress_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(CHALLENGE_PROGRESS_PATH):
+            try:
+                os.replace(CHALLENGE_PROGRESS_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, CHALLENGE_PROGRESS_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save challenge progress: {e}")
+
+
+async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, List[str]]]:
+    """Process an AAR record for challenge progress tracking.
+    
+    Returns list of (user_id, challenge_name, aar_urls) tuples for newly qualified members.
+    Only returns each challenge once per member (won't notify again).
+    
+    Challenge tracking:
+    - sok_g_pipehitter: 10 SOK-G missions with @SOK-G: Pipehitter tag + existing Pipehitter on team
+    - distinguished_sok_g_pipehitter: 2+ SOK-G missions with tag + team requirement
+    - kadaku_campaign: All 3 Kadaku missions with @Leviathan Protocol tag
+    - black_reef: All 8 Black Reef missions with @Black Reef Persecution tag
+    - distinguished_black_reef: All 8 missions with BOTH @Black Reef Persecution and @Black Laurels
+    - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
+    """
+    notifications = []
+    
+    # Extract AAR fields
+    mission_name = record.get("mission_name", "").lower()
+    brother_ids = record.get("brother_ids", [])
+    aar_id = record.get("id", "")
+    message_url = record.get("message_url", "")
+    timestamp = record.get("timestamp", "")
+    
+    # Tag detection
+    pipehitter_mentioned = record.get("pipehitter_mentioned", False)
+    leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
+    black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
+    black_laurels = record.get("black_laurels_in_mission", False)
+    
+    # Skip if no mission name or no participants
+    if not mission_name or not brother_ids:
+        return notifications
+    
+    # Load current progress
+    async with CHALLENGE_PROGRESS_LOCK:
+        progress_data = _load_challenge_progress()
+        
+        # Check each brother in the AAR
+        for brother_id in brother_ids:
+            user_id_str = str(brother_id)
+            
+            # Initialize user progress if needed
+            if user_id_str not in progress_data:
+                progress_data[user_id_str] = {"notified": []}
+            
+            user_progress = progress_data[user_id_str]
+            notified_challenges = user_progress.get("notified", [])
+            
+            # Get member object for role checks
+            member = guild.get_member(int(brother_id)) if guild else None
+            
+            # === SOK-G: Pipehitter tracking ===
+            if (
+                pipehitter_mentioned
+                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
+            ):
+                # Check if team has existing Pipehitter or Distinguished Pipehitter
+                team_has_pipehitter = False
+                if member:
+                    # Check all team members for Pipehitter role
+                    for other_brother_id in brother_ids:
+                        other_member = guild.get_member(int(other_brother_id))
+                        if other_member and (
+                            discord.utils.get(other_member.roles, id=PIPEHITTER_ROLE_ID)
+                            or discord.utils.get(other_member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
+                        ):
+                            team_has_pipehitter = True
+                            break
+                
+                if team_has_pipehitter:
+                    # Track this mission for SOK-G: Pipehitter
+                    if "sok_g_pipehitter" not in user_progress:
+                        user_progress["sok_g_pipehitter"] = []
+                    
+                    # Check if this mission already tracked
+                    existing_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
+                    if mission_name not in existing_missions:
+                        user_progress["sok_g_pipehitter"].append({
+                            "mission": mission_name,
+                            "aar_id": aar_id,
+                            "message_url": message_url,
+                            "timestamp": timestamp
+                        })
+                    
+                    # Check if qualified for SOK-G: Pipehitter (10 missions)
+                    unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
+                    if len(unique_missions) >= 10 and "sok_g_pipehitter" not in notified_challenges:
+                        aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
+                        notifications.append((user_id_str, "SOK-G: Pipehitter", aar_urls))
+                        notified_challenges.append("sok_g_pipehitter")
+                    
+                    # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
+                    if len(unique_missions) >= 2 and "distinguished_sok_g_pipehitter" not in notified_challenges:
+                        aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
+                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", aar_urls))
+                        notified_challenges.append("distinguished_sok_g_pipehitter")
+            
+            # === Kadaku Campaign Medal tracking ===
+            if leviathan_protocol and mission_name in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
+                if "kadaku_campaign" not in user_progress:
+                    user_progress["kadaku_campaign"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
+                if mission_name not in existing_missions:
+                    user_progress["kadaku_campaign"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 3 missions completed
+                unique_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
+                if (
+                    len(unique_missions) >= 3
+                    and unique_missions == KADAKU_CAMPAIGN_REQUIRED_MISSIONS
+                    and "kadaku_campaign" not in notified_challenges
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
+                    notifications.append((user_id_str, "Kadaku Campaign Medal", aar_urls))
+                    notified_challenges.append("kadaku_campaign")
+            
+            # === Black Reef Campaign Medal tracking ===
+            if black_reef_persecution and mission_name in BLACK_REEF_REQUIRED_MISSIONS:
+                if "black_reef" not in user_progress:
+                    user_progress["black_reef"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["black_reef"]}
+                if mission_name not in existing_missions:
+                    user_progress["black_reef"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 8 missions completed
+                unique_missions = {m["mission"] for m in user_progress["black_reef"]}
+                if (
+                    len(unique_missions) >= 8
+                    and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
+                    and "black_reef" not in notified_challenges
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
+                    notifications.append((user_id_str, "Black Reef Campaign Medal", aar_urls))
+                    notified_challenges.append("black_reef")
+            
+            # === Distinguished Black Reef Campaign Medal tracking ===
+            if (
+                black_reef_persecution
+                and black_laurels
+                and mission_name in BLACK_REEF_REQUIRED_MISSIONS
+            ):
+                if "distinguished_black_reef" not in user_progress:
+                    user_progress["distinguished_black_reef"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
+                if mission_name not in existing_missions:
+                    user_progress["distinguished_black_reef"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 8 missions completed with both tags
+                unique_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
+                if (
+                    len(unique_missions) >= 8
+                    and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
+                    and "distinguished_black_reef" not in notified_challenges
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
+                    notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", aar_urls))
+                    notified_challenges.append("distinguished_black_reef")
+            
+            # === Crux Terminatus tracking (auto-verification) ===
+            # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes
+            # Manual verification needed: Rank A or higher extermination requirement only
+            if member:
+                # Check Watch Veteran rank
+                has_watch_veteran = any(r.name == "Watch Veteran" for r in member.roles)
+                
+                # Check SOK-G missions (2+ required)
+                sok_g_count = len(user_progress.get("sok_g_pipehitter", []))
+                
+                # Check Black Laurels role (implies all 8 missions completed)
+                has_black_laurels = discord.utils.get(member.roles, id=BLACK_LAURELS_ROLE_ID) is not None
+                
+                # Check Terminus Slayer class completions (2+ required)
+                terminus_slayer_count = sum(1 for r in member.roles if r.id in TERMINUS_SLAYER_ROLE_IDS)
+                
+                if (
+                    has_watch_veteran
+                    and sok_g_count >= 2
+                    and has_black_laurels
+                    and terminus_slayer_count >= 2
+                    and "crux_terminatus" not in notified_challenges
+                ):
+                    # Gather AAR URLs for SOK-G missions
+                    aar_urls = [m["message_url"] for m in user_progress.get("sok_g_pipehitter", []) if m["message_url"]]
+                    notifications.append((user_id_str, "Crux Terminatus", aar_urls))
+                    notified_challenges.append("crux_terminatus")
+            
+            # Update notified list
+            user_progress["notified"] = notified_challenges
+        
+        # Save updated progress
+        _save_challenge_progress(progress_data)
+    
+    return notifications
+
+
+async def _send_challenge_eligibility_notifications(
+    notifications: List[Tuple[str, str, List[str]]],
+    guild: discord.Guild
+):
+    """Send challenge eligibility notifications to Librarius Staff channel.
+    
+    Args:
+        notifications: List of (user_id, challenge_name, aar_urls) tuples
+        guild: Discord guild object
+    """
+    if not notifications:
+        return
+    
+    # Get Librarius Staff channel
+    librarius_channel = guild.get_channel(LIBRARIUS_STAFF_CHANNEL_ID)
+    if not librarius_channel:
+        logger.warning(f"Librarius Staff channel {LIBRARIUS_STAFF_CHANNEL_ID} not found")
+        return
+    
+    # Get Watch Librarian and Watch Keeper roles for mention
+    librarian_role = guild.get_role(WATCH_LIBRARIAN_ROLE_ID)
+    librarian_mention = librarian_role.mention if librarian_role else f"<@&{WATCH_LIBRARIAN_ROLE_ID}>"
+    keeper_role = guild.get_role(WATCH_KEEPER_ROLE_ID)
+    keeper_mention = keeper_role.mention if keeper_role else f"<@&{WATCH_KEEPER_ROLE_ID}>"
+    
+    # Send one notification per qualified member+challenge
+    for user_id, challenge_name, aar_urls in notifications:
+        try:
+            member = guild.get_member(int(user_id))
+            member_mention = member.mention if member else f"<@{user_id}>"
+            
+            # Format notification message
+            if "Crux Terminatus" in challenge_name:
+                # Special format for Crux Terminatus (auto-verification complete except Rank A)
+                msg = (
+                    f"{librarian_mention} {keeper_mention}\n\n"
+                    f"**Challenge Qualification Alert: Crux Terminatus**\n\n"
+                    f"{member_mention} has met all auto-verified requirements for **Crux Terminatus**:\n"
+                    f"✅ Watch Veteran rank\n"
+                    f"✅ 2+ SOK-G: Pipehitter missions completed\n"
+                    f"✅ All 8 Black Laurels missions completed\n"
+                    f"✅ 2+ Terminus Slayer class completions\n\n"
+                    f"**Manual verification required:**\n"
+                    f"❓ Rank A or higher extermination (highest difficulty requirement)\n\n"
+                    f"**Relevant SOK-G AAR Links:**\n"
+                )
+                # Add AAR links (limit to first 10 to avoid message length issues)
+                for url in aar_urls[:10]:
+                    msg += f"• {url}\n"
+                if len(aar_urls) > 10:
+                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+                msg += "\nPlease audit the qualifying AARs and verify Rank A extermination requirement."
+            else:
+                # Standard format for other challenges
+                msg = (
+                    f"{librarian_mention}\n\n"
+                    f"{member_mention} has met qualification for **{challenge_name}** — please audit relevant AARs.\n\n"
+                    f"**Qualifying AAR Links:**\n"
+                )
+                # Add AAR links (limit to first 10 to avoid message length issues)
+                for url in aar_urls[:10]:
+                    msg += f"• {url}\n"
+                if len(aar_urls) > 10:
+                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+            
+            await librarius_channel.send(msg)
+            logger.info(f"Sent challenge eligibility notification for {user_id} - {challenge_name}")
+            
+            # Small delay to avoid rate limiting
+            await asyncio.sleep(0.5)
+            
+        except Exception as e:
+            logger.exception(f"Failed to send challenge notification for {user_id} - {challenge_name}: {e}")
 
 
 def _load_induction_overrides() -> Dict[str, str]:
@@ -12923,6 +13303,15 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 )
             except Exception as e:
                 logger.error(f"Error calling _post_armor_alert: {e}")
+
+        # --- Challenge Tracking: Process AAR for challenge eligibility ---
+        if guild:
+            try:
+                challenge_notifications = await _process_challenge_tracking(record, guild)
+                if challenge_notifications:
+                    await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+            except Exception as e:
+                logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
 
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:
