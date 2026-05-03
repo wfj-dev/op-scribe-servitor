@@ -10,7 +10,6 @@
 import os
 import asyncio
 import json
-import calendar
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
@@ -34,6 +33,15 @@ from datastore import DataStore
 # Role IDs
 WATCH_COMMAND_ROLE_ID = 1429281421931057283
 
+# Watch Sergeant Role ID (for vet promotions)
+WATCH_SERGEANT_ROLE_ID = 1429339146371203112
+
+# Watch Librarian Role ID (for challenge eligibility notifications)
+WATCH_LIBRARIAN_ROLE_ID = 1429339231654924318
+
+# Watch Keeper Role ID
+WATCH_KEEPER_ROLE_ID = 1488211606813806693
+
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
 
@@ -53,6 +61,7 @@ MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
 ARMOR_SCAN_STATE_PATH = os.path.join(DATA_DIR, "armor_scan_state.json")
 INDUCTION_OVERRIDES_PATH = os.path.join(DATA_DIR, "induction_overrides.json")
+CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 
 # Channel ID for activity status change notifications
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
@@ -68,6 +77,12 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 
 # Channel ID for Oathsworn eligibility notifications
 OATHSWORN_CHANNEL_ID = 1489282103119052903
+
+# Channel ID for Techmarine Staff (scheduled maintenance reports)
+TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
+
+# Channel ID for Librarius Staff (challenge eligibility notifications)
+LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
 
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
@@ -109,6 +124,9 @@ ARMOR_SCAN_STATE_LOCK = asyncio.Lock()
 
 # Lock for induction date overrides
 INDUCTION_OVERRIDES_LOCK = asyncio.Lock()
+
+# Lock for challenge progress tracking
+CHALLENGE_PROGRESS_LOCK = asyncio.Lock()
 
 # Lock for blessing pool operations (Techmarine daily blessing limits)
 BLESSING_POOL_LOCK = asyncio.Lock()
@@ -162,6 +180,16 @@ INTENSIVE_BLESSING_COSTS = {
     "fractured": 4,    # Fractured -> Nominal: 4 charges (guaranteed)
 }
 
+# Forge drain per charge used - scales with tier being healed
+# Each blessing charge consumes forge pool points based on target's damage tier
+FORGE_DRAIN_PER_CHARGE = {
+    None: 1,           # Nominal: 1 pt per charge
+    "damaged": 2,      # Damaged: 2 pts per charge
+    "compromised": 3,  # Compromised: 3 pts per charge
+    "critical": 4,     # Critical: 4 pts per charge
+    "fractured": 5,    # Fractured: 5 pts per charge
+}
+
 # Blessing roll configuration - asymmetric state-based probabilities
 # Format: (crit_fail_chance, crit_success_chance) - normal is remainder
 BLESSING_ROLL_PROBABILITIES = {
@@ -189,6 +217,13 @@ SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = True
 SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
+
+# Weekly reparse settings (Sunday 6 AM UTC by default, before weekly maintenance)
+# Reparses last 7 days of AAR records to catch parsing improvements
+SCHEDULE_WEEKLY_REPARSE_ENABLED = True
+SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS = 7
+SCHEDULE_WEEKLY_REPARSE_DAY = 6  # 0=Monday, 1=Tuesday, ..., 6=Sunday
+SCHEDULE_WEEKLY_REPARSE_HOUR = 6  # Hour in UTC
 
 # Monthly archive audit settings (runs audit_archive_discrepancies on the 1st of each month)
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = True
@@ -261,6 +296,31 @@ BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
     "reclamation",
 }
 
+# Kadaku Campaign Medal required missions (all required with @Leviathan Protocol tag)
+KADAKU_CAMPAIGN_REQUIRED_MISSIONS = {
+    "inferno",
+    "termination",
+    "reclamation",
+}
+
+# Black Reef Campaign Medal required missions (all required with @Black Reef Persecution tag)
+BLACK_REEF_REQUIRED_MISSIONS = {
+    "inferno",
+    "decapitation",
+    "fall of atreus",
+    "ballistic engine",
+    "termination",
+    "obelisk",
+    "vortex",
+    "reclamation",
+}
+
+# Challenge award role IDs for eligibility checking
+KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1486067010747236472
+BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
+DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
+CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
+
 # Specialist award thresholds and role mappings
 # Award role IDs (looked up by ID to avoid name change issues)
 ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
@@ -276,6 +336,27 @@ LIBRARIAN_ROLE_NAME = "Watch Librarian"
 ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
 FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD = 150
 CRIMSON_LAURELS_AAR_POINTS_THRESHOLD = 1000
+
+# Dreadnought role IDs
+DREADNOUGHT_CADRE_ROLE_ID = 1497783424792924331
+VENERABLE_DREADNOUGHT_ROLE_ID = 1436522565110726686
+HONORED_DREADNOUGHT_ROLE_ID = 1497089446833819658
+INTERRED_BROTHER_ROLE_ID = 1497089965685739582
+
+# Dreadnought inactivity notification channel (High Command)
+DREADNOUGHT_INACTIVITY_CHANNEL_ID = 1443813516979994634
+
+# Terminus Slayer role IDs for Crux Terminatus verification
+TERMINUS_SLAYER_ROLE_IDS = {
+    1452803611477147668,  # Master Terminus Slayer
+    1449257352112111646,  # Terminus Slayer (Assault)
+    1450230281599713451,  # Terminus Slayer (Tactical)
+    1450230501804609697,  # Terminus Slayer (Vanguard)
+    1450230789034737748,  # Terminus Slayer (Bulwark)
+    1450231020686278656,  # Terminus Slayer (Sniper)
+    1450231189028737166,  # Terminus Slayer (Heavy)
+    1476623936254115992,  # Terminus Slayer (Techmarine)
+}
 
 # Challenge roles for /completed_challenges command
 # Each entry is (role_id, display_name, emoji_hint)
@@ -304,6 +385,8 @@ CHALLENGE_ROLES = [
     (1465020459794956349, "White Hand of Death", "ClandestineOperationsMedal"),
     (1465021610812637214, "Red Hand of Doom", "DistinguishedClandestineoperati"),
     (1486067010747236472, "Kadaku Campaign Medal", "KadakuCampaignMedal"),
+    (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
+    (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaignMe"),
 ]
 
 # Control whether startup/shutdown status broadcasts are sent.
@@ -652,6 +735,9 @@ async def _monthly_audit_loop():
 # Track last weekly maintenance run date to prevent duplicate runs
 LAST_WEEKLY_MAINTENANCE_DATE: Optional[str] = None
 
+# Track last weekly reparse run date to prevent duplicate runs
+LAST_WEEKLY_REPARSE_DATE: Optional[str] = None
+
 
 @tasks.loop(minutes=60)
 async def _scheduled_weekly_maintenance_loop():
@@ -725,6 +811,114 @@ async def _scheduled_weekly_maintenance_loop():
 
 @_scheduled_weekly_maintenance_loop.before_loop
 async def _before_weekly_maintenance_loop():
+    await bot.wait_until_ready()
+
+
+@tasks.loop(minutes=60)
+async def _scheduled_weekly_reparse_loop():
+    """Run hourly; on configured day/hour reparse last N days of AAR records.
+
+    Default: Sunday 6 AM UTC. Reparses last 7 days to catch parsing improvements.
+    Posts results to Techmarine Staff channel.
+    """
+    global LAST_WEEKLY_REPARSE_DATE
+    try:
+        if DATASTORE is None:
+            return
+        # Use UTC for consistent scheduling
+        now_utc = datetime.now(timezone.utc)
+        today = now_utc.date()
+
+        # Check if it's the right day and hour
+        if (
+            now_utc.weekday() != SCHEDULE_WEEKLY_REPARSE_DAY
+            or now_utc.hour != SCHEDULE_WEEKLY_REPARSE_HOUR
+        ):
+            return
+
+        # Prevent duplicate runs on same date
+        if LAST_WEEKLY_REPARSE_DATE == str(today):
+            return
+
+        logger.info(
+            f"Weekly reparse starting: last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
+        )
+
+        guild = _resolve_notification_guild()
+        if not guild:
+            logger.warning("Weekly reparse: no guild available; skipping.")
+            return
+
+        # Get Techmarine Staff channel for results
+        staff_channel = None
+        try:
+            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
+            if staff_channel is None:
+                staff_channel = await bot.fetch_channel(TECHMARINE_STAFF_CHANNEL_ID)
+        except Exception:
+            logger.warning(
+                f"Weekly reparse: Techmarine Staff channel {TECHMARINE_STAFF_CHANNEL_ID} not accessible."
+            )
+
+        # Acquire lock to prevent concurrent reconciliations
+        if RECONCILE_LOCK.locked():
+            logger.info("Weekly reparse: reconcile lock held; skipping.")
+            if staff_channel:
+                try:
+                    await staff_channel.send(
+                        "⚠️ **Weekly Reparse Skipped**: Another reconciliation is in progress."
+                    )
+                except Exception:
+                    pass
+            return
+
+        async with RECONCILE_LOCK:
+            logger.info(
+                f"Weekly reparse: Running reparse for last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
+            )
+            total, updated, failed, changes_by_field = await _run_reparse_records(
+                days=SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS
+            )
+            logger.info(
+                f"Weekly reparse: processed={total}, updated={updated}, failed={failed}"
+            )
+
+            # Post results to Techmarine Staff channel
+            if staff_channel:
+                try:
+                    changes_line = ""
+                    if changes_by_field:
+                        sorted_changes = sorted(
+                            changes_by_field.items(), key=lambda x: -x[1]
+                        )
+                        changes_summary = ", ".join(
+                            f"{k}={v}" for k, v in sorted_changes
+                        )
+                        changes_line = f"\nFields updated: {changes_summary}"
+                    await staff_channel.send(
+                        f"✅ **Weekly Reparse Complete** (last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days)\n"
+                        f"Processed: {total} | Updated: {updated} | Failed: {failed}{changes_line}"
+                    )
+                except Exception:
+                    logger.exception("Failed to post weekly reparse results")
+
+            LAST_WEEKLY_REPARSE_DATE = str(today)
+            logger.info("Weekly reparse completed successfully.")
+    except Exception:
+        logger.exception("Weekly reparse failed")
+        # Try to notify staff channel about failure
+        try:
+            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
+            if staff_channel:
+                await staff_channel.send(
+                    "❌ **Weekly Reparse Failed**: Check logs for details."
+                )
+        except Exception:
+            pass
+
+
+@_scheduled_weekly_reparse_loop.before_loop
+async def _before_weekly_reparse_loop():
     await bot.wait_until_ready()
 
 
@@ -1071,6 +1265,357 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         logger.exception(f"Failed to save promotion tracking: {e}")
 
 
+def _load_challenge_progress() -> Dict[str, Dict]:
+    """Load challenge progress tracking data: user_id -> {challenge_key -> [mission_entries]}.
+    
+    Structure:
+    {
+        "user_id": {
+            "sok_g_pipehitter": [
+                {"mission": "inferno", "aar_id": "123", "message_url": "...", "timestamp": "..."},
+                ...
+            ],
+            "kadaku_campaign": [...],
+            "black_reef": [...],
+            "black_reef_distinguished": [...],
+            "notified": ["sok_g_pipehitter", "kadaku_campaign"]  # List of challenges already notified
+        }
+    }
+    """
+    try:
+        if os.path.exists(CHALLENGE_PROGRESS_PATH):
+            with open(CHALLENGE_PROGRESS_PATH, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_challenge_progress(progress_data: Dict[str, Dict]):
+    """Persist challenge progress data to disk with backup."""
+    try:
+        tmp_path = CHALLENGE_PROGRESS_PATH + ".tmp"
+        bak_path = CHALLENGE_PROGRESS_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(progress_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(CHALLENGE_PROGRESS_PATH):
+            try:
+                os.replace(CHALLENGE_PROGRESS_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, CHALLENGE_PROGRESS_PATH)
+    except Exception as e:
+        logger.exception(f"Failed to save challenge progress: {e}")
+
+
+async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, List[str]]]:
+    """Process an AAR record for challenge progress tracking.
+    
+    Returns list of (user_id, challenge_name, aar_urls) tuples for newly qualified members.
+    Only returns each challenge once per member (won't notify again).
+    
+    Challenge tracking:
+    - sok_g_pipehitter: 10 SOK-G missions with @SOK-G: Pipehitter tag + existing Pipehitter on team
+    - distinguished_sok_g_pipehitter: 2+ SOK-G missions with tag + team requirement
+    - kadaku_campaign: All 3 Kadaku missions with @Leviathan Protocol tag
+    - black_reef: All 8 Black Reef missions with @Black Reef Persecution tag
+    - distinguished_black_reef: All 8 missions with BOTH @Black Reef Persecution and @Black Laurels
+    - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
+    """
+    notifications = []
+    
+    # Extract AAR fields
+    mission_name = record.get("mission_name", "").lower()
+    brother_ids = record.get("brother_ids", [])
+    aar_id = record.get("id", "")
+    message_url = record.get("message_url", "")
+    timestamp = record.get("timestamp", "")
+    
+    # Tag detection
+    pipehitter_mentioned = record.get("pipehitter_mentioned", False)
+    leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
+    black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
+    black_laurels = record.get("black_laurels_in_mission", False)
+    
+    # Skip if no mission name or no participants
+    if not mission_name or not brother_ids:
+        return notifications
+    
+    # Load current progress
+    async with CHALLENGE_PROGRESS_LOCK:
+        progress_data = _load_challenge_progress()
+        
+        # Check each brother in the AAR
+        for brother_id in brother_ids:
+            user_id_str = str(brother_id)
+            
+            # Initialize user progress if needed
+            if user_id_str not in progress_data:
+                progress_data[user_id_str] = {"notified": []}
+            
+            user_progress = progress_data[user_id_str]
+            notified_challenges = user_progress.get("notified", [])
+            
+            # Get member object for role checks
+            member = guild.get_member(int(brother_id)) if guild else None
+            
+            # === SOK-G: Pipehitter tracking ===
+            if (
+                pipehitter_mentioned
+                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
+            ):
+                # Check if team has existing Pipehitter or Distinguished Pipehitter
+                team_has_pipehitter = False
+                if member:
+                    # Check all team members for Pipehitter role
+                    for other_brother_id in brother_ids:
+                        other_member = guild.get_member(int(other_brother_id))
+                        if other_member and (
+                            discord.utils.get(other_member.roles, id=PIPEHITTER_ROLE_ID)
+                            or discord.utils.get(other_member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
+                        ):
+                            team_has_pipehitter = True
+                            break
+                
+                if team_has_pipehitter:
+                    # Track this mission for SOK-G: Pipehitter
+                    if "sok_g_pipehitter" not in user_progress:
+                        user_progress["sok_g_pipehitter"] = []
+                    
+                    # Check if this mission already tracked
+                    existing_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
+                    if mission_name not in existing_missions:
+                        user_progress["sok_g_pipehitter"].append({
+                            "mission": mission_name,
+                            "aar_id": aar_id,
+                            "message_url": message_url,
+                            "timestamp": timestamp
+                        })
+                    
+                    # Check if qualified for SOK-G: Pipehitter (10 missions)
+                    unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
+                    if (
+                        len(unique_missions) >= 10
+                        and "sok_g_pipehitter" not in notified_challenges
+                        and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
+                    ):
+                        aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
+                        notifications.append((user_id_str, "SOK-G: Pipehitter", aar_urls))
+                        notified_challenges.append("sok_g_pipehitter")
+                    
+                    # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
+                    if (
+                        len(unique_missions) >= 2
+                        and "distinguished_sok_g_pipehitter" not in notified_challenges
+                        and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
+                    ):
+                        aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
+                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", aar_urls))
+                        notified_challenges.append("distinguished_sok_g_pipehitter")
+            
+            # === Kadaku Campaign Medal tracking ===
+            if leviathan_protocol and mission_name in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
+                if "kadaku_campaign" not in user_progress:
+                    user_progress["kadaku_campaign"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
+                if mission_name not in existing_missions:
+                    user_progress["kadaku_campaign"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 3 missions completed
+                unique_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
+                if (
+                    len(unique_missions) >= 3
+                    and unique_missions == KADAKU_CAMPAIGN_REQUIRED_MISSIONS
+                    and "kadaku_campaign" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=KADAKU_CAMPAIGN_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
+                    notifications.append((user_id_str, "Kadaku Campaign Medal", aar_urls))
+                    notified_challenges.append("kadaku_campaign")
+            
+            # === Black Reef Campaign Medal tracking ===
+            if black_reef_persecution and mission_name in BLACK_REEF_REQUIRED_MISSIONS:
+                if "black_reef" not in user_progress:
+                    user_progress["black_reef"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["black_reef"]}
+                if mission_name not in existing_missions:
+                    user_progress["black_reef"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 8 missions completed
+                unique_missions = {m["mission"] for m in user_progress["black_reef"]}
+                if (
+                    len(unique_missions) >= 8
+                    and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
+                    and "black_reef" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
+                    notifications.append((user_id_str, "Black Reef Campaign Medal", aar_urls))
+                    notified_challenges.append("black_reef")
+            
+            # === Distinguished Black Reef Campaign Medal tracking ===
+            if (
+                black_reef_persecution
+                and black_laurels
+                and mission_name in BLACK_REEF_REQUIRED_MISSIONS
+            ):
+                if "distinguished_black_reef" not in user_progress:
+                    user_progress["distinguished_black_reef"] = []
+                
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
+                if mission_name not in existing_missions:
+                    user_progress["distinguished_black_reef"].append({
+                        "mission": mission_name,
+                        "aar_id": aar_id,
+                        "message_url": message_url,
+                        "timestamp": timestamp
+                    })
+                
+                # Check if all 8 missions completed with both tags
+                unique_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
+                if (
+                    len(unique_missions) >= 8
+                    and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
+                    and "distinguished_black_reef" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
+                    notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", aar_urls))
+                    notified_challenges.append("distinguished_black_reef")
+            
+            # === Crux Terminatus tracking (auto-verification) ===
+            # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes
+            # Manual verification needed: Rank A or higher extermination requirement only
+            if member:
+                # Check Watch Veteran rank
+                has_watch_veteran = any(r.name == "Watch Veteran" for r in member.roles)
+                
+                # Check SOK-G missions (2+ required)
+                sok_g_count = len(user_progress.get("sok_g_pipehitter", []))
+                
+                # Check Black Laurels role (implies all 8 missions completed)
+                has_black_laurels = discord.utils.get(member.roles, id=BLACK_LAURELS_ROLE_ID) is not None
+                
+                # Check Terminus Slayer class completions (2+ required)
+                terminus_slayer_count = sum(1 for r in member.roles if r.id in TERMINUS_SLAYER_ROLE_IDS)
+                
+                if (
+                    has_watch_veteran
+                    and sok_g_count >= 2
+                    and has_black_laurels
+                    and terminus_slayer_count >= 2
+                    and "crux_terminatus" not in notified_challenges
+                    and not discord.utils.get(member.roles, id=CRUX_TERMINATUS_ROLE_ID)
+                ):
+                    # Gather AAR URLs for SOK-G missions
+                    aar_urls = [m["message_url"] for m in user_progress.get("sok_g_pipehitter", []) if m["message_url"]]
+                    notifications.append((user_id_str, "Crux Terminatus", aar_urls))
+                    notified_challenges.append("crux_terminatus")
+            
+            # Update notified list
+            user_progress["notified"] = notified_challenges
+        
+        # Save updated progress
+        _save_challenge_progress(progress_data)
+    
+    return notifications
+
+
+async def _send_challenge_eligibility_notifications(
+    notifications: List[Tuple[str, str, List[str]]],
+    guild: discord.Guild
+):
+    """Send challenge eligibility notifications to Librarius Staff channel.
+    
+    Args:
+        notifications: List of (user_id, challenge_name, aar_urls) tuples
+        guild: Discord guild object
+    """
+    if not notifications:
+        return
+    
+    # Get Librarius Staff channel
+    librarius_channel = guild.get_channel(LIBRARIUS_STAFF_CHANNEL_ID)
+    if not librarius_channel:
+        logger.warning(f"Librarius Staff channel {LIBRARIUS_STAFF_CHANNEL_ID} not found")
+        return
+    
+    # Get Watch Librarian and Watch Keeper roles for mention
+    librarian_role = guild.get_role(WATCH_LIBRARIAN_ROLE_ID)
+    librarian_mention = librarian_role.mention if librarian_role else f"<@&{WATCH_LIBRARIAN_ROLE_ID}>"
+    keeper_role = guild.get_role(WATCH_KEEPER_ROLE_ID)
+    keeper_mention = keeper_role.mention if keeper_role else f"<@&{WATCH_KEEPER_ROLE_ID}>"
+    
+    # Send one notification per qualified member+challenge
+    for user_id, challenge_name, aar_urls in notifications:
+        try:
+            member = guild.get_member(int(user_id))
+            member_mention = member.mention if member else f"<@{user_id}>"
+            
+            # Format notification message
+            if "Crux Terminatus" in challenge_name:
+                # Special format for Crux Terminatus (auto-verification complete except Rank A)
+                msg = (
+                    f"{librarian_mention} {keeper_mention}\n\n"
+                    f"**Challenge Qualification Alert: Crux Terminatus**\n\n"
+                    f"{member_mention} has met all auto-verified requirements for **Crux Terminatus**:\n"
+                    f"✅ Watch Veteran rank\n"
+                    f"✅ 2+ SOK-G: Pipehitter missions completed\n"
+                    f"✅ All 8 Black Laurels missions completed\n"
+                    f"✅ 2+ Terminus Slayer class completions\n\n"
+                    f"**Manual verification required:**\n"
+                    f"❓ Rank A or higher extermination (highest difficulty requirement)\n\n"
+                    f"**Relevant SOK-G AAR Links:**\n"
+                )
+                # Add AAR links (limit to first 10 to avoid message length issues)
+                for url in aar_urls[:10]:
+                    msg += f"• {url}\n"
+                if len(aar_urls) > 10:
+                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+                msg += "\nPlease audit the qualifying AARs and verify Rank A extermination requirement."
+            else:
+                # Standard format for other challenges
+                msg = (
+                    f"{librarian_mention}\n\n"
+                    f"{member_mention} has met qualification for **{challenge_name}** — please audit relevant AARs.\n\n"
+                    f"**Qualifying AAR Links:**\n"
+                )
+                # Add AAR links (limit to first 10 to avoid message length issues)
+                for url in aar_urls[:10]:
+                    msg += f"• {url}\n"
+                if len(aar_urls) > 10:
+                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+            
+            await librarius_channel.send(msg)
+            logger.info(f"Sent challenge eligibility notification for {user_id} - {challenge_name}")
+            
+            # Small delay to avoid rate limiting
+            await asyncio.sleep(0.5)
+            
+        except Exception as e:
+            logger.exception(f"Failed to send challenge notification for {user_id} - {challenge_name}: {e}")
+
+
 def _load_induction_overrides() -> Dict[str, str]:
     """Load induction date overrides: user_id -> ISO date string (YYYY-MM-DD)."""
     try:
@@ -1124,6 +1669,14 @@ def _get_effective_induction_date(member: discord.Member) -> Optional[datetime]:
 
 def _get_member_company_name(member: discord.Member) -> Optional[str]:
     """Return the Watch Company name for a member (e.g., 'Watch Company Primus'), or None."""
+    # Check for Dreadnought Cadre first
+    try:
+        for r in getattr(member, "roles", []) or []:
+            if getattr(r, "id", 0) == DREADNOUGHT_CADRE_ROLE_ID:
+                return "Dreadnought Cadre"
+    except Exception:
+        pass
+    
     company_roles = {
         "Watch Company Primus",
         "Watch Company Secundus",
@@ -1254,6 +1807,85 @@ def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
     return best_role
 
 
+async def _handle_dreadnought_inactivity(member: discord.Member):
+    """Handle dreadnought interment when they become inactive (28 days no AAR).
+    
+    Removes Venerable/Honored Dreadnought role and adds Interred Brother role.
+    Sends a notification about the interment.
+    """
+    try:
+        guild = member.guild
+        if not guild:
+            return
+        
+        role_ids = {getattr(r, "id", 0) for r in getattr(member, "roles", [])}
+        
+        # Check if member has a dreadnought role
+        dreadnought_role_to_remove = None
+        dreadnought_type = None
+        
+        if VENERABLE_DREADNOUGHT_ROLE_ID in role_ids:
+            dreadnought_role_to_remove = guild.get_role(VENERABLE_DREADNOUGHT_ROLE_ID)
+            dreadnought_type = "Venerable Dreadnought"
+        elif HONORED_DREADNOUGHT_ROLE_ID in role_ids:
+            dreadnought_role_to_remove = guild.get_role(HONORED_DREADNOUGHT_ROLE_ID)
+            dreadnought_type = "Honored Dreadnought"
+        
+        # If member has a dreadnought role, inter them
+        if dreadnought_role_to_remove and dreadnought_type:
+            interred_role = guild.get_role(INTERRED_BROTHER_ROLE_ID)
+            
+            if not interred_role:
+                logger.warning(f"Interred Brother role {INTERRED_BROTHER_ROLE_ID} not found")
+                return
+            
+            # Remove dreadnought role and add interred brother role
+            await member.remove_roles(dreadnought_role_to_remove, reason="Dreadnought inactive for 28 days")
+            await member.add_roles(interred_role, reason="Dreadnought interred due to inactivity")
+            
+            # Send notification
+            channel = guild.get_channel(DREADNOUGHT_INACTIVITY_CHANNEL_ID)
+            if channel:
+                member_name = _get_member_display_name(member)
+                
+                # Get Watch Master and Forgemaster for notification
+                watch_master_role = discord.utils.get(guild.roles, name="Watch Master")
+                forgemaster_role = discord.utils.get(guild.roles, name="Forgemaster")
+                
+                role_mentions = []
+                if watch_master_role:
+                    role_mentions.append(watch_master_role.mention)
+                if forgemaster_role:
+                    role_mentions.append(forgemaster_role.mention)
+                
+                mention_str = " ".join(role_mentions) if role_mentions else ""
+                
+                # Get venerable emoji
+                venerable_emoji = _get_emoji_by_name(guild, "venerable") or "⚙️"
+                
+                lines = [
+                    f"{venerable_emoji} **INTERMENT PROTOCOL INITIATED** {venerable_emoji}",
+                    "",
+                    f"᛭⋅ {dreadnought_type}: **{member_name}** {member.mention}",
+                    "᛭⋅ Status: **Interred** (28 days inactive)",
+                    "᛭⋅ Sarcophagus sealed and preserved in stasis",
+                    "᛭⋅ The machine-spirit awaits the call to war",
+                    "",
+                    "*May the Omnissiah watch over this ancient warrior's slumber.*",
+                ]
+                
+                if mention_str:
+                    content = f"{mention_str}\n" + "\n".join(lines)
+                else:
+                    content = "\n".join(lines)
+                
+                await channel.send(content)
+                logger.info(f"Interred {dreadnought_type} {member.id} due to inactivity")
+    
+    except Exception as e:
+        logger.exception(f"Failed to handle dreadnought inactivity: {e}")
+
+
 async def _send_activity_status_notification(
     guild: discord.Guild,
     member: discord.Member,
@@ -1262,6 +1894,15 @@ async def _send_activity_status_notification(
 ):
     """Send a notification to the activity status channel when a member's status changes."""
     try:
+        # Skip notifications for members who aren't Watch Brothers (don't have any Watch rank role)
+        member_role_names = {r.name for r in member.roles}
+        qualifying_roles = set(RANK_ROLES_PRIORITY) | {"Watch Sister"}
+        if not any(r in member_role_names for r in qualifying_roles):
+            logger.debug(
+                f"Skipping activity notification for {member.name}: not a Watch Brother"
+            )
+            return
+
         channel = guild.get_channel(ACTIVITY_STATUS_CHANNEL_ID)
         if not channel:
             try:
@@ -1557,6 +2198,16 @@ async def _check_activity_status_changes():
             # Save member last post times (status map saved after notifications below)
             _save_member_last_post_times(member_last_posts)
 
+            # Handle Dreadnought inactivity: if a dreadnought becomes inactive, inter them
+            for member, old, new, uid in changes:
+                if new == "inactive":
+                    try:
+                        await _handle_dreadnought_inactivity(member)
+                    except Exception as e:
+                        logger.exception(
+                            f"Failed to handle dreadnought inactivity for {member.id}: {e}"
+                        )
+
             # Send notifications for changes; mark notified_inactive only on confirmed delivery
             for member, old, new, uid in changes:
                 try:
@@ -1674,10 +2325,26 @@ async def _check_promotion_milestones():
             watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
         )
 
+        # Get Watch Sergeant role for vet promotion mentions
+        watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
+        watch_sergeant_mention = (
+            watch_sergeant_role.mention
+            if watch_sergeant_role
+            else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
+        )
+
         # Get Black Laurels role for mentions
         black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
         black_laurels_mention = (
             black_laurels_role.mention if black_laurels_role else "@Black Laurels"
+        )
+
+        # Get Watch Command role for award mentions
+        watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
+        watch_command_role_mention = (
+            watch_command_role.mention
+            if watch_command_role
+            else f"<@&{WATCH_COMMAND_ROLE_ID}>"
         )
 
         # Get specialist roles for award mentions
@@ -1792,7 +2459,8 @@ async def _check_promotion_milestones():
                         "Company Champion",
                         "Watch Lieutenant",
                         "Watch Captain",
-                        "Venerable",
+                        "Venerable Dreadnought",
+                        "Honored Dreadnought",
                         "Forgemaster",
                         "Void Warden",
                         "High Chaplain",
@@ -1866,7 +2534,7 @@ async def _check_promotion_milestones():
                             f"᛭⋅ {member_line}\n"
                             f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
                             f"᛭⋅ {member_chapter}\n"
-                            f"᛭⋅ {watch_command_mention}\n"
+                            f"᛭⋅ {watch_command_mention} {watch_sergeant_mention}\n"
                             f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                         )
                         await veteran_channel.send(
@@ -1991,10 +2659,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("ardent_raider_notified"):
                         if is_ar_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {ardent_raider_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {techmarine_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{ardent_raider_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {techmarine_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
@@ -2022,10 +2695,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("for_the_fallen_notified"):
                         if is_ftf_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {apothecarion_medal_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {apothecary_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{apothecarion_medal_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {apothecary_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
@@ -2057,10 +2735,15 @@ async def _check_promotion_milestones():
                     # Notify if eligible, doesn't have role, and not already notified
                     elif not user_tracking.get("crimson_laurels_notified"):
                         if is_cl_eligible:
+                            # Get kill team or company
+                            kt_or_company = _resolve_killteam_for_member(member)
+                            if not kt_or_company:
+                                kt_or_company = _get_member_company_name(member) or "Unknown"
                             msg = (
-                                f"᛭⋅ {member.mention}\n"
-                                f"᛭⋅ <:Deathwatch:1433161009106780170> {crimson_laurels_mention}   <:Deathwatch:1433161009106780170>\n"
-                                f"᛭⋅ {librarian_mention}\n"
+                                f"᛭⋅ Name: {member.mention}\n"
+                                f"᛭⋅ 🎖️{crimson_laurels_mention}\n"
+                                f"᛭⋅ kill team/company: {kt_or_company}\n"
+                                f"᛭⋅ {watch_command_role_mention} {librarian_mention}\n"
                                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
                             )
                             await black_laurels_channel.send(
@@ -2090,7 +2773,8 @@ async def _check_promotion_milestones():
                             "Company Champion",
                             "Watch Lieutenant",
                             "Watch Captain",
-                            "Venerable",
+                            "Venerable Dreadnought",
+                            "Honored Dreadnought",
                             "Forgemaster",
                             "Void Warden",
                             "High Chaplain",
@@ -2191,8 +2875,8 @@ RANK_ROLES_PRIORITY = [
     "Forgemaster",
     "Castellan",
     "Void Warden",
-    "Venerable",
     "Watch Captain",
+    "Venerable Dreadnought",
     "Watch Lieutenant",
     "Company Champion",
     "Watch Apothecary",
@@ -2201,14 +2885,17 @@ RANK_ROLES_PRIORITY = [
     "Watch Techmarine",
     "Watch Keeper",
     "Watch Sergeant",
-    "Kill Team Champion",
+    "Honored Dreadnought",
+    "Interred Brother",
     "Oathsworn",
+    "Kill Team Champion",
     "Watch Veteran",
     "Watch Brother",
 ]
 
 # Canonical list of known home chapters for lookup
 HOME_CHAPTERS = [
+    "Angels of Defiance",
     "Angels of Vengeance",
     "Black Templars",
     "Bleeding Hearts",
@@ -2227,9 +2914,11 @@ HOME_CHAPTERS = [
     "Flesh Tearers",
     "Genesis Chapter",
     "Hawk Lords",
+    "Hospitallers",
     "Imperial Fists",
     "Iron Hands",
     "Iron Hounds",
+    "Iron Ravens",
     "Knights of the Raven",
     "Lamenters",
     "Marines Errant",
@@ -2291,6 +2980,7 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
         1433355179020914688,
         1444348999401210037,
         1486476398058012712,
+        1498104968513847386,
     ]
 )
 
@@ -4352,6 +5042,38 @@ async def _increment_forge_pool_balance(points: int):
         _save_forge_pool(pool_data)
 
 
+async def _deduct_forge_pool_balance(points: int, tier: Optional[str] = None):
+    """Deduct points from forge pool balance and log the drain.
+    
+    Args:
+        points: Forge points to deduct
+        tier: Damage tier being healed (for tracking)
+    """
+    if points <= 0:
+        return
+    async with FORGE_POOL_LOCK:
+        pool_data = _load_forge_pool()
+        current = pool_data.get("balance", 0)
+        pool_data["balance"] = max(0, current - points)
+        
+        # Log drain for weekly tracking
+        drain_log = pool_data.get("weekly_drain_log", [])
+        drain_log.append({
+            "ts": datetime.utcnow().isoformat(),
+            "points": points,
+            "tier": tier,
+        })
+        # Keep only last 30 days of drain history
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        drain_log = [
+            entry for entry in drain_log
+            if datetime.fromisoformat(entry.get("ts", "")) >= cutoff
+        ]
+        pool_data["weekly_drain_log"] = drain_log
+        
+        _save_forge_pool(pool_data)
+
+
 async def _get_forge_pool_available() -> int:
     """Get the number of armory points available in the community forge pool."""
     async with FORGE_POOL_LOCK:
@@ -5756,7 +6478,7 @@ HIGH_COMMAND_RANKS = {
     "Forgemaster",
     "Castellan",
     "Watch Master",
-    "Venerable",
+    "Venerable Dreadnought",
 }
 
 # Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
@@ -5782,7 +6504,8 @@ WATCH_COMMAND_ROLES = {
     "Forgemaster",
     "Castellan",
     "Watch Master",
-    "Venerable",
+    "Venerable Dreadnought",
+    "Honored Dreadnought",
 }
 
 
@@ -5882,7 +6605,6 @@ def check_command_permission(
         "sanctify_battle_records",
         "audit_archive_discrepancies",
         "reparse_records",
-        "roster_audit",
     }
     if command_name in admin_commands:
         return any(r in user_roles for r in ("Watch Master", "Forgemaster"))
@@ -6049,6 +6771,28 @@ async def on_ready():
                 )
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
+
+    # Start weekly reparse loop if enabled (default: enabled)
+    try:
+        if SCHEDULE_WEEKLY_REPARSE_ENABLED:
+            if not _scheduled_weekly_reparse_loop.is_running():
+                _scheduled_weekly_reparse_loop.start()
+                day_names = [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ]
+                day_name = day_names[SCHEDULE_WEEKLY_REPARSE_DAY]
+                logger.info(
+                    f"Weekly reparse loop started ({day_name} {SCHEDULE_WEEKLY_REPARSE_HOUR}:00 UTC, "
+                    f"reparse {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS}-day span)."
+                )
+    except Exception:
+        logger.exception("Failed to start weekly reparse loop")
 
     # Start monthly archive audit loop if enabled (default: enabled)
     try:
@@ -6524,7 +7268,6 @@ async def litany_of_function(interaction: discord.Interaction):
         "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
         "/cache_stats — Show DataStore cache and flush stats (admin).",
         "/audit_service_studs — List service-stud mismatches (Watch Command only).",
-        "/librarian_audit — Check Black Laurels role discrepancies (Watch Command only).",
         "",
         "Notes: Some commands are restricted by role/config; outputs are capped or paginated.",
     ]
@@ -6949,6 +7692,7 @@ MAX_RITE_LENGTH = 250
 
 # Chapter-specific blessings keyed by home chapter name
 CHAPTER_BLESSINGS: Dict[str, str] = {
+    "Angels of Defiance": "Unyielding as the Lion, defiant unto death—your armor bears the Unforgiven's resolve.",
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
     "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
@@ -6967,8 +7711,10 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
     "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
+    "Hospitallers": "Mercy and wrath unite—your armor shields the weak and smites the wicked.",
     "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
     "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
+    "Iron Ravens": "Silent shadow, tempered iron—your armor moves unseen and strikes with precision.",
     "Iron Snakes": "The waters of Ithaka anoint your armor; as the Snakes strike, so shall you.",
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
@@ -7004,7 +7750,10 @@ RANK_HONORIFICS: Dict[str, str] = {
     "Forgemaster": "Hand of the Machine God, Forgemaster",
     "Castellan": "Warden of the Iron Vigil, Castellan",
     "Lord Executioner": "Blade of the Fortress, Lord Executioner",
-    "Venerable": "Ancient of the Long Watch, Venerable",
+    # Dreadnoughts
+    "Venerable Dreadnought": "Ancient of the Long Watch, Venerable Dreadnought",
+    "Honored Dreadnought": "Honored Dreadnought",
+    "Interred Brother": "Interred Brother",
     # Specialists
     "Watch Chaplain": "Keeper of the faith, Watch Chaplain",
     "Watch Apothecary": "Guardian of the gene-seed, Watch Apothecary",
@@ -7077,10 +7826,21 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
         "Your armor has tasted the blood of traitors; I sanctify it for more to come.",
         "The machine-spirit hungers for righteous execution at your command.",
     ],
-    "Venerable": [
-        "Ancient warrior, your armor has witnessed ages beyond reckoning—I approach this rite with reverence.",
-        "The centuries of your service are writ in every plate; I am honored to tend such sacred warplate.",
-        "To minister to one so Venerable is a privilege granted to few—the machine-spirit itself bows in respect.",
+    # Dreadnoughts
+    "Venerable Dreadnought": [
+        "Ancient of the Long Watch, your sarcophagus is a reliquary of war eternal—I am humbled to tend it.",
+        "Venerable One, the machine-spirits of ages past whisper your deeds—may your dreadnought frame endure as your legend.",
+        "To service the war-casket of one so ancient is the highest honor the Omnissiah could bestow upon this servant.",
+    ],
+    "Honored Dreadnought": [
+        "Honored warrior, your sarcophagus has become your eternal throne—may it carry you to glory unending.",
+        "The Dreadnought frame is blessed to bear one of such valor—your service transcends mortal flesh.",
+        "Your interment honors the Chapter; your continued crusade honors the Emperor.",
+    ],
+    "Interred Brother": [
+        "Interred Brother, your sarcophagus awaits the call to war—the machine-spirit keeps vigil in your slumber.",
+        "Rest now, warrior; when the Long Watch requires, your dreadnought shall rise once more.",
+        "Your sacred rest preserves you for the battles yet to come—the fortress remembers.",
     ],
     # Company Command
     "Watch Captain": [
@@ -7169,7 +7929,11 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     "Void Warden": 0.9,
     "Forgemaster": 0.9,
     "Lord Executioner": 0.9,
-    "Venerable": 0.85,
+    "Castellan": 0.85,
+    # Dreadnoughts - high prestige
+    "Venerable Dreadnought": 0.85,
+    "Honored Dreadnought": 0.75,
+    "Interred Brother": 0.2,  # Inactive, lower prestige
     # Company Command - high prestige
     "Watch Captain": 0.75,
     "Watch Lieutenant": 0.65,
@@ -7178,6 +7942,7 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     "Watch Apothecary": 0.6,
     "Watch Librarian": 0.6,
     "Watch Techmarine": 0.6,
+    "Watch Keeper": 0.55,
     # Champions - medium prestige
     "Company Champion": 0.5,
     "Kill Team Champion": 0.45,
@@ -7384,6 +8149,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
 
 # Chapter-specific service stud flavor - how each chapter views/honors service marks
 CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
+    "Angels of Defiance": [
+        "The Unforgiven stand defiant; your studs mark battles where retreat was never considered.",
+        "Each stud bears witness to the Lion's unyielding legacy—defiance in the face of all enemies.",
+        "Your service marks honor the hunt eternal; the Fallen shall know no sanctuary.",
+    ],
     "Angels of Vengeance": [
         "Each stud marks another debt repaid to the Lion's memory.",
         "The Unforgiven count your studs among the honors earned in penance.",
@@ -7474,6 +8244,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The skies of countless worlds have witnessed your service.",
         "Each mark a feather in your chapter's proud plumage.",
     ],
+    "Hospitallers": [
+        "Healers and warriors both—your studs honor those saved and those avenged.",
+        "The Hospitaller's vow endures in each mark upon your brow.",
+        "Mercy and wrath in balance—your service studs attest to both.",
+    ],
     "Imperial Fists": [
         "Dorn's own fortitude is measured in your studs.",
         "Stone and iron—your service stands unbreakable.",
@@ -7488,6 +8263,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Relentless as the hunt—your studs mark each pursuit to the end.",
         "Orinus breeds no weakness; your marks prove Guilliman's lineage.",
         "The pack honors your enduring service until every foe is slain.",
+    ],
+    "Iron Ravens": [
+        "Silent as shadow, enduring as iron—your studs mark both cunning and strength.",
+        "The raven's wisdom and the machine's precision are etched upon your brow.",
+        "From darkness, your service emerges tempered in steel.",
     ],
     "Iron Snakes": [
         "The waters of Ithaka witness your marks—each stud a testament to the phratry.",
@@ -7655,9 +8435,21 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
         "The Fortress's own walls bear witness to your enduring vigilance.",
         "Each mark upon your brow is a bastion held, a threat repelled.",
     ],
-    "Venerable": [
-        "The Old One's sarcophagus bears another inscription of eternal service.",
-        "Centuries of slumber cannot diminish such devotion—the sepulchre records all.",
+    # Dreadnoughts - eternal service beyond mortal flesh
+    "Venerable Dreadnought": [
+        "The Ancient's war-casket bears witness to service spanning ages.",
+        "Centuries entombed cannot diminish such devotion—the sarcophagus records all.",
+        "Your studs predate the living memory of the Watch—legend made manifest.",
+    ],
+    "Honored Dreadnought": [
+        "Even death cannot halt your accumulation of honor.",
+        "The Dreadnought's service transcends mortal limitation—these marks endure.",
+        "Your sarcophagus preserves not just flesh, but a legacy of endless duty.",
+    ],
+    "Interred Brother": [
+        "Though dormant, your service studs gleam eternal in the Fortress's halls.",
+        "The marks you earned in war await your awakening—they are not forgotten.",
+        "Interred, but never diminished—your studs speak of battles past and future.",
     ],
     # Senior Officers - respectful acknowledgments
     "Watch Captain": [
@@ -7909,11 +8701,17 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
         "Watch Techmarine",
         "Forgemaster",
         "Void Warden",
+        "Venerable Dreadnought",  # Ancient of the Long Watch, high command level
     }
     if rank_name in high_cmd_roles:
         return "high_cmd_specialist"
 
-    company_cmd_roles = {"Watch Captain", "Watch Lieutenant", "Company Champion"}
+    company_cmd_roles = {
+        "Watch Captain",
+        "Watch Lieutenant",
+        "Company Champion",
+        "Honored Dreadnought",  # Honored warriors, company command level
+    }
     if rank_name in company_cmd_roles:
         return "company_cmd"
 
@@ -7921,6 +8719,7 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     if rank_name in specialist_roles:
         return "specialist"
 
+    # Interred Brother falls into "line" category (inactive, lowest priority)
     return "line"
 
 
@@ -8006,10 +8805,9 @@ def _get_stud_marking_recipients(
     The Apothecarion always performs the actual stud implantation (surgical procedure).
     This function determines who witnesses/authorizes based on chain of command:
     - Watch Master: The Chief Apothecary personally attends
-    - High Command: The Chief Apothecary attends, Watch Master witnesses
-    - Company Command/Specialists: Report to their Company CO
-    - Kill Team: Report to actual Sergeant (or Lt/Cpt if shortage)
-    - Line: Report to the Apothecarion
+    - High Command: The Chief Apothecary attends
+    - Company members: Report to their Company Apothecary → Chief Apothecary → CO (in order)
+    - Line/Kill Team: Same as company members
 
     Returns (primary_text, secondary_text) where text is bold name with rank emoji.
     """
@@ -8017,6 +8815,32 @@ def _get_stud_marking_recipients(
     def strip_studs(name: str) -> str:
         """Remove service studs (●⚬) from a name."""
         return name.replace("●", "").replace("⚬", "").strip()
+    
+    def find_company_apothecary(company_name: str) -> Optional[discord.Member]:
+        """Find the Watch Apothecary for a specific company."""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Watch Apothecary" not in mbr_roles:
+                    continue
+                # Check if this apothecary is in the same company
+                mbr_company = _find_company_or_chapter(mbr)
+                if mbr_company and mbr_company == company_name:
+                    return mbr
+        except Exception:
+            pass
+        return None
+    
+    def find_chief_apothecary() -> Optional[discord.Member]:
+        """Find the Chief Apothecary."""
+        try:
+            for mbr in guild.members:
+                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
+                if "Chief Apothecary" in mbr_roles:
+                    return mbr
+        except Exception:
+            pass
+        return None
 
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
@@ -8030,141 +8854,83 @@ def _get_stud_marking_recipients(
 
     # Watch Master: Chief Apothecary personally attends
     if member_rank_name == "Watch Master":
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** personally attends.", ""
         return "The Chief Apothecary personally attends.", ""
 
-    # High Command: Chief Apothecary attends, witnessed by Watch Master
+    # High Command: Chief Apothecary attends
     high_cmd = {
         "High Chaplain",
         "Chief Apothecary",
         "Void Warden",
         "Lord Executioner",
         "Forgemaster",
-        "Watch Techmarine",
+        "Castellan",
     }
     if member_rank_name in high_cmd:
-        # For High Command, Chief Apothecary performs the marking
         # If they ARE the Chief Apothecary, another Apothecary handles it
         if member_rank_name == "Chief Apothecary":
             return "Another Apothecary of the Watch attends.", ""
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** attends.", ""
         return "Report to the Chief Apothecary.", ""
 
-    # Company Command and Specialists: Apothecarion handles, CO witnesses
-    company_cmd_and_spec = {
-        "Watch Captain",
-        "Watch Lieutenant",
-        "Company Champion",
-        "Watch Apothecary",
-        "Watch Chaplain",
-        "Watch Librarian",
-        "Watch Techmarine",
-        "Watch Sergeant",
-    }
-    # Watch Apothecary is handled separately - they can't mark themselves
+    # All company members (command, specialists, line, kill team):
+    # Try Company Apothecary → Chief Apothecary → CO
+    member_company = _find_company_or_chapter(member)
+    
+    # Special case: if member IS the Watch Apothecary, go to Chief directly
     if member_rank_name == "Watch Apothecary":
-        try:
-            for mbr in guild.members:
-                mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-                if "Chief Apothecary" in mbr_roles:
-                    emoji = _get_rank_emoji(guild, "Chief Apothecary")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"The {emoji_prefix}**{clean_name}** attends.", ""
-        except Exception:
-            pass
+        chief_apo = find_chief_apothecary()
+        if chief_apo:
+            emoji = _get_rank_emoji(guild, "Chief Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(chief_apo.display_name)
+            return f"The {emoji_prefix}**{clean_name}** attends.", ""
         return "Report to the Chief Apothecary.", ""
-    if member_rank_name in company_cmd_and_spec:
-        company = _find_company_or_chapter(member)
-        if company:
-            captains, lieutenants = _find_company_command_staff(guild, company)
-            co_member = (
-                lieutenants[0] if lieutenants else (captains[0] if captains else None)
+    
+    # Try to find Company Apothecary first
+    if member_company:
+        company_apo = find_company_apothecary(member_company)
+        if company_apo and company_apo.id != member.id:
+            emoji = _get_rank_emoji(guild, "Watch Apothecary")
+            emoji_prefix = f"{emoji} " if emoji else ""
+            clean_name = strip_studs(company_apo.display_name)
+            return f"Report to {emoji_prefix}**{clean_name}**.", ""
+    
+    # Fallback: Chief Apothecary
+    chief_apo = find_chief_apothecary()
+    if chief_apo:
+        emoji = _get_rank_emoji(guild, "Chief Apothecary")
+        emoji_prefix = f"{emoji} " if emoji else ""
+        clean_name = strip_studs(chief_apo.display_name)
+        return f"Report to {emoji_prefix}**{clean_name}**.", ""
+    
+    # Fallback: Company CO (Captain/Lieutenant)
+    if member_company:
+        captains, lieutenants = _find_company_command_staff(guild, member_company)
+        co_member = (
+            lieutenants[0] if lieutenants else (captains[0] if captains else None)
+        )
+        if co_member:
+            co_roles = {getattr(r, "name", "") for r in co_member.roles}
+            co_rank = (
+                "Watch Lieutenant"
+                if "Watch Lieutenant" in co_roles
+                else "Watch Captain"
             )
-            if co_member:
-                # Determine CO's rank for emoji
-                co_roles = {getattr(r, "name", "") for r in co_member.roles}
-                co_rank = (
-                    "Watch Lieutenant"
-                    if "Watch Lieutenant" in co_roles
-                    else "Watch Captain"
-                )
-                emoji = _get_rank_emoji(guild, co_rank)
-                emoji_prefix = f"{emoji} " if emoji else ""
-                clean_name = strip_studs(co_member.display_name)
-                return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        # Fallback: find any Captain in the guild
-        captains, _ = _find_all_captains_and_lieutenants(guild)
-        if captains:
-            cap = captains[0]
-            emoji = _get_rank_emoji(guild, "Watch Captain")
+            emoji = _get_rank_emoji(guild, co_rank)
             emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(cap.display_name)
+            clean_name = strip_studs(co_member.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        return "Report to your Company Captain.", ""
-
-    # Kill Team members: try Sergeant first; fallback to Lt/Cpt; fallback to Apothecary
-    kt_name = _resolve_killteam_for_member(member)
-    if kt_name:
-        # Try to find Sergeant (but not the member themselves)
-        sgt = _find_kt_sergeant(guild, kt_name)
-        if sgt and sgt.id != member.id:
-            emoji = _get_rank_emoji(guild, "Watch Sergeant")
-            emoji_prefix = f"{emoji} " if emoji else ""
-            clean_name = strip_studs(sgt.display_name)
-            return f"Report to {emoji_prefix}**{clean_name}**.", ""
-
-        # If no Sergeant (or member IS the Sergeant), search for Lt/Cpt in same KT
-        try:
-            for mbr in guild.members:
-                if mbr.id == member.id:
-                    continue
-                mbr_teams = _resolve_killteams_for_member(mbr)
-                if kt_name not in mbr_teams:
-                    continue
-                mbr_role_names = {getattr(r, "name", "") for r in mbr.roles}
-                if "Watch Lieutenant" in mbr_role_names:
-                    emoji = _get_rank_emoji(guild, "Watch Lieutenant")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"Report to {emoji_prefix}**{clean_name}**.", ""
-                if "Watch Captain" in mbr_role_names:
-                    emoji = _get_rank_emoji(guild, "Watch Captain")
-                    emoji_prefix = f"{emoji} " if emoji else ""
-                    clean_name = strip_studs(mbr.display_name)
-                    return f"Report to {emoji_prefix}**{clean_name}**.", ""
-        except Exception:
-            pass
-
-    # Fallback: find Watch Apothecary
-    try:
-        for mbr in guild.members:
-            mbr_roles = {getattr(r, "name", "") for r in mbr.roles}
-            if "Watch Apothecary" in mbr_roles:
-                emoji = _get_rank_emoji(guild, "Watch Apothecary")
-                emoji_prefix = f"{emoji} " if emoji else ""
-                clean_name = strip_studs(mbr.display_name)
-                return f"Report to {emoji_prefix}**{clean_name}**.", ""
-    except Exception:
-        pass
 
     return "Report to the Apothecarion.", ""
 
@@ -8255,10 +9021,13 @@ def _get_service_studs_announcement(
 
     stud_word = "Stud" if new_studs == 1 else "Studs"
 
-    # Determine tier and pip display based on NEW total (after earning these studs)
+    # Determine tier and pip display based on EARNED studs (actual total earned)
+    # This is the true count based on time and AAR, not displayed count
+    tier = _studs_tier(earned_studs)
+    studs_pips = _studs_pips(earned_studs)
+    
+    # Also track what they'll have after this announcement for pip change display
     new_total = displayed_studs + new_studs
-    tier = _studs_tier(new_total)
-    studs_pips = _studs_pips(new_total)
 
     # Get Watch Brother role for pinging in content (outside embed)
     watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
@@ -8285,7 +9054,7 @@ def _get_service_studs_announcement(
     opening = opening_template.format(name=display_name)
 
     # Use first-stud templates when earning stud #1 to avoid "another" phrasing
-    if new_total == 1:
+    if earned_studs == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_FIRST)
     elif tier == 1:
         milestone_intro = random.choice(SERVICE_STUDS_MILESTONE_TIER1)
@@ -8320,8 +9089,8 @@ def _get_service_studs_announcement(
             "REDACTED" if member_chapter == "Black Shield" else member_chapter
         )
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    if new_total > 0:
-        bearer_value += f"\nService Studs: [{studs_pips}] ({new_total})"
+    if earned_studs > 0:
+        bearer_value += f"\nService Studs: [{studs_pips}] ({earned_studs})"
     embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what pips change from BEFORE to AFTER)
@@ -8361,8 +9130,8 @@ def _get_service_studs_announcement(
         record_value += f"\nOwed: **{owed_studs}**"
     embed.add_field(name="▸ Service Record", value=record_value, inline=True)
 
-    # Special milestone callout (bold labels, plain narrative - check against new total they'll display)
-    special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(new_total)
+    # Special milestone callout (bold labels, plain narrative - check against earned studs)
+    special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(earned_studs)
     if special_milestone:
         embed.add_field(name="▸ Milestone", value=special_milestone, inline=False)
 
@@ -8749,11 +9518,19 @@ def _get_bearer_rank_and_title(
     display_name = display_name.replace("●", "").replace("⚬", "").strip()
 
     # Build combined title: prefer "Kill Team X, Company Y" format
+    # Dreadnoughts show "Dreadnought Cadre" instead of their company
     title_parts = []
     if kill_team:
         title_parts.append(kill_team)
-    if company:
+    
+    # Check if member is in Dreadnought Cadre
+    role_ids = {getattr(r, "id", 0) for r in roles}
+    is_dreadnought = DREADNOUGHT_CADRE_ROLE_ID in role_ids
+    if is_dreadnought:
+        title_parts.append("Dreadnought Cadre")
+    elif company:
         title_parts.append(company)
+    
     if not title_parts and command_team:
         title_parts.append(command_team)
 
@@ -9025,6 +9802,30 @@ async def _attest(
                         ephemeral=True,
                     )
                 return
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Forge balance check - every blessing drains forge reserves
+    # ─────────────────────────────────────────────────────────────────────────
+    forge_drain_cost = 0
+    if not force:
+        # Calculate forge drain based on tier being healed
+        drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
+        forge_drain_cost = drain_per_charge * charges_required
+        
+        # Check if forge has sufficient balance
+        forge_available = await _get_forge_pool_available()
+        if forge_available < forge_drain_cost:
+            bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
+            tier_name = current_damage_tier.upper() if current_damage_tier else "NOMINAL"
+            await interaction.response.send_message(
+                f"**FORGE RESERVES DEPLETED**\n\n"
+                f"Target: **{bearer_name}** ({tier_name})\n"
+                f"Forge cost: **{forge_drain_cost}** pts ({drain_per_charge} pts/charge × {charges_required} charges)\n"
+                f"Available: **{forge_available}** pts\n\n"
+                f"*The Chapter must recover more armory data before blessings can continue.*",
+                ephemeral=True,
+            )
+            return
 
     # Build attestation using standardized Imperial date format
     try:
@@ -9266,6 +10067,10 @@ async def _attest(
                 await _consume_blessing(contrib_user_id)
             elif contrib_charges > 1:
                 await _consume_multiple_blessings(contrib_user_id, contrib_charges)
+    
+    # Deduct forge reserves (unless force override)
+    if not force and forge_drain_cost > 0:
+        await _deduct_forge_pool_balance(forge_drain_cost, current_damage_tier)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Build embed
@@ -9397,6 +10202,18 @@ async def _attest(
                 outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
     
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
+    
+    # Add forge cost info if applicable
+    if not force and forge_drain_cost > 0:
+        drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
+        forge_remaining = await _get_forge_pool_available()
+        
+        if charges_required > 1:
+            forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts ({drain_per_charge}×{charges_required}) → {forge_remaining} pts"
+        else:
+            forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts → {forge_remaining} pts"
+        outcome_value += forge_cost_text
+    
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
@@ -9654,8 +10471,15 @@ async def _show_armor_leaderboard(
     # Sort by risk score descending to get the highest-risk brothers
     risk_list.sort(key=lambda x: x[3], reverse=True)
 
-    # Take top 10
-    top_10 = risk_list[:10]
+    # Filter out brothers on cooldown before taking top 10
+    available_brothers = []
+    for member, state, tier, risk_score, scan_result in risk_list:
+        can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
+        if can_receive:
+            available_brothers.append((member, state, tier, risk_score, scan_result))
+    
+    # Take top 10 from available brothers
+    top_10 = available_brothers[:10]
     
     # Randomize only nominal and undetected brothers (damaged tiers stay risk-ordered)
     import random
@@ -9756,10 +10580,6 @@ async def _show_armor_leaderboard(
             )
             continue
 
-        # Check if brother is on blessing cooldown
-        can_receive, _, _, block_reason = await _check_recipient_cooldown(member.id)
-        cooldown_indicator = " ⏳" if not can_receive else ""
-
         # Status icon - predictive warnings get special indicator
         if spirit_fractured:
             icon = "💀"
@@ -9774,19 +10594,19 @@ async def _show_armor_leaderboard(
         else:
             icon = "🟢"
 
-        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c ⏳"
+        # Format compact line: "1. 🔴 :rank: Name :chapter: · 275c"
         # Status indicated by icon only (no text label needed)
         # Only show cycles for at-risk/damaged brothers, not nominal
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         if icon == "🟢":
             # Nominal brothers don't need cycle count shown
             lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}{cooldown_indicator}"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}"
             )
         else:
             # At-risk/damaged brothers show cycles for triage
             lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c{cooldown_indicator}"
+                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
             )
 
     embed.add_field(
@@ -9795,20 +10615,32 @@ async def _show_armor_leaderboard(
         inline=False,
     )
 
-    # Add legend (compact) - include undetected symbol and cooldown
-    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Undetected ⏳Cooldown"
+    # Add legend (compact) - include undetected symbol
+    legend = "💀Fractured 🔴Critical 🟠Compromised 🟡Damaged ⚡At Risk 🟢Nominal ⚫Undetected"
     embed.add_field(
         name="▸ Key",
         value=legend,
         inline=False,
     )
 
-    # Add invoker's blessing pool status
+    # Add invoker's blessing pool status with color-coded regen indicator
     if pool_remaining is not None:
+        # Color code regen based on pool level (percentage of max):
+        # 🔴 Red: 0-33% (critical/empty)
+        # 🟡 Yellow: 33-66% (depleted)
+        # 🟢 Green: 66-100% (nominal/full)
+        pool_percent = pool_remaining / BLESSING_POOL_MAX if BLESSING_POOL_MAX > 0 else 0
+        if pool_percent <= 0.33:
+            regen_icon = "🔴"
+        elif pool_percent <= 0.66:
+            regen_icon = "🟡"
+        else:
+            regen_icon = "🟢"
+        
         if pool_next_regen and pool_remaining < BLESSING_POOL_MAX:
             hours, remainder = divmod(int(pool_next_regen.total_seconds()), 3600)
             minutes = remainder // 60
-            regen_str = f" · +1 in {hours}h {minutes}m" if hours else f" · +1 in {minutes}m"
+            regen_str = f" · {regen_icon} +1 in {hours}h {minutes}m" if hours else f" · {regen_icon} +1 in {minutes}m"
         else:
             regen_str = ""
         embed.add_field(
@@ -10252,6 +11084,11 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
         if not has_rank:
             continue
+        # Exclude Reserves members
+        role_ids = {r.id for r in member.roles}
+        role_names = {r.name.lower() for r in member.roles}
+        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+            continue
         
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
@@ -10291,52 +11128,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
     
     # ─────────────────────────────────────────────────────────────
-    # Section 1: Recent Rites (This Month)
-    # ─────────────────────────────────────────────────────────────
-    monthly_rites = []
-    for entry in rite_history:
-        try:
-            ts = datetime.fromisoformat(entry.get("ts", ""))
-            # Exclude fractured/released (system events shown in Spirit Memorial)
-            if ts >= first_of_month and entry.get("event") not in ("fractured", "released"):
-                monthly_rites.append(entry)
-        except Exception:
-            pass
-    
-    # Sort by timestamp descending (most recent first), take last 5
-    monthly_rites.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    recent_rites = monthly_rites[:5]
-    
-    recent_lines = []
-    # Event-specific emojis for rite outcomes
-    event_emojis = {
-        "first_binding": "⛓️",  # New spirit bound
-        "rebirth": "🔄",       # Spirit reborn after fracture
-        "restoration": "🛠️",  # Damage repaired
-        "maintenance": "🔧",   # Routine maintenance
-        "resisted": "⚠️",       # Rite failed
-    }
-    for entry in recent_rites:
-        event = entry.get("event", "unknown")
-        member_id = entry.get("bearer_id")
-        tech_id = entry.get("techmarine_id")
-        
-        member_name = "Unknown"
-        if member_id:
-            member_name = _format_member_styled(guild, str(member_id), include_chapter=True)
-        
-        tech_name = "Unknown"
-        if tech_id:
-            tech_name = _format_member_styled(guild, str(tech_id), include_chapter=True)
-        
-        event_icon = event_emojis.get(event, "❓")
-        recent_lines.append(f"{event_icon} {member_name} ← {tech_name}")
-    
-    if not recent_lines:
-        recent_lines.append("*No rites performed this cycle.*")
-    
-    # ─────────────────────────────────────────────────────────────
-    # Section 2: Machine Spirits of the Watch
+    # Section 1: Machine Spirits of the Watch
     # ─────────────────────────────────────────────────────────────
     activity_status = _load_activity_status()
     
@@ -10457,6 +11249,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             continue
         has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
         if not has_rank:
+            continue
+        
+        # Exclude Reserves members (same as Machine Spirits section)
+        role_ids = {r.id for r in member.roles}
+        role_names = {r.name.lower() for r in member.roles}
+        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
             continue
         
         user_id_str = str(member.id)
@@ -10652,35 +11450,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     artificer_lines.append(f"{name} ({charges})")
     
     # ─────────────────────────────────────────────────────────────
-    # Section 6: Litany of Endurance (Longest unbroken service)
-    # ─────────────────────────────────────────────────────────────
-    honor_entries = []
-    for member_id_str, state in armor_data.items():
-        if state.get("damage_tier") is None and not state.get("spirit_fractured"):
-            points = state.get("points_since_blessing", 0)
-            if points >= 5:  # Only show veterans past safe zone (4 cycles)
-                member = guild.get_member(int(member_id_str))
-                if member:
-                    # Must have a Watch rank role
-                    has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-                    if has_rank:
-                        # Check scan detection - don't show unreadable brothers
-                        scan_result = await _get_or_roll_scan_result(
-                            member.id, None, points, False
-                        )
-                        if scan_result["detected"]:
-                            honor_entries.append((member, points))
-    
-    honor_entries.sort(key=lambda x: x[1], reverse=True)
-    honor_top3 = honor_entries[:3]
-    
-    honor_lines = []
-    for member, pts in honor_top3:
-        name = _format_member_styled(guild, str(member.id), include_chapter=True)
-        honor_lines.append(f"{name} ({pts} cycles)")
-    
-    # ─────────────────────────────────────────────────────────────
-    # Section 7: Spirit Memorial (Spirits lost in last 28 days)
+    # Section 6: Spirit Memorial (Spirits lost in last 28 days)
     # ─────────────────────────────────────────────────────────────
     memorial_lines = []
     
@@ -10718,7 +11488,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             member_label = _format_member_styled(guild, str(bearer_id), include_chapter=True)
             # 💀 for fractured with age, 💤 for released (dormant)
             if event_type == "fractured":
-                age_str = f"({age_days}d) " if age_days else ""
+                age_str = f"({age_days}d) " if age_days is not None else ""
                 memorial_lines.append(f"💀 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
             else:
                 memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {member_label}")
@@ -10774,19 +11544,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     )
     embed.description = fortress_text
     
-    # Watchlist + Recent Rites (inline pair)
+    # Watchlist (full width)
     if watchlist_top5:
         embed.add_field(
             name="▸ Watchlist",
             value="\n".join(watchlist_lines),
-            inline=True,
+            inline=False,
         )
-    
-    embed.add_field(
-        name="▸ Recent Rites",
-        value="\n".join(recent_lines),
-        inline=True,
-    )
     
     # Machine Spirits (full width)
     spirit_text = "\n".join(spirit_lines)
@@ -10796,14 +11560,6 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         inline=False,
     )
     
-    # Litany of Endurance (full width)
-    if honor_lines:
-        embed.add_field(
-            name="▸ Litany of Endurance",
-            value="\n".join(honor_lines),
-            inline=False,
-        )
-    
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
@@ -10812,10 +11568,58 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             inline=False,
         )
     
+    # ─────────────────────────────────────────────────────────────
+    # Forge Reserves: Calculate weekly intake/drain/net
+    # ─────────────────────────────────────────────────────────────
+    cutoff_7d = now - timedelta(days=7)
+    
+    # Calculate 7-day intake from AAR records
+    weekly_intake = 0
+    all_records = DATASTORE.get_all_records()
+    for record in all_records.values():
+        try:
+            rec_ts_str = record.get("timestamp", "")
+            if rec_ts_str:
+                rec_ts = datetime.fromisoformat(rec_ts_str)
+                if rec_ts >= cutoff_7d:
+                    weekly_intake += record.get("armory_challenge_points", 0) or 0
+        except Exception:
+            pass
+    
+    # Calculate 7-day drain from forge pool log
+    weekly_drain = 0
+    forge_pool_data = _load_forge_pool()
+    drain_log = forge_pool_data.get("weekly_drain_log", [])
+    for entry in drain_log:
+        try:
+            entry_ts = datetime.fromisoformat(entry.get("ts", ""))
+            if entry_ts >= cutoff_7d:
+                weekly_drain += entry.get("points", 0)
+        except Exception:
+            pass
+    
+    weekly_net = weekly_intake - weekly_drain
+    
+    # Format net with trend icon
+    if weekly_net > 0:
+        net_icon = "📈"
+        net_text = f"+{weekly_net}"
+    elif weekly_net < 0:
+        net_icon = "📉"
+        net_text = str(weekly_net)
+    else:
+        net_icon = "➡️"
+        net_text = "0"
+    
+    forge_reserves_value = (
+        f"{reserve_bar} {available:,} / {max_balance:,} pts\n"
+        f"📊 7d: +{weekly_intake} in | -{weekly_drain} out | {net_icon} {net_text} net"
+    )
+    
     # Forge Reserves + Artificers (inline pair)
     embed.add_field(
         name="▸ Forge Reserves",
-        value=f"{reserve_bar} {available:,} / {max_balance:,} pts",
+        value=forge_reserves_value,
         inline=True,
     )
     
@@ -10829,7 +11633,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Key (full width - bottom)
     embed.add_field(
         name="▸ Key",
-        value="⛓️Bound 🔄Restored 🔧Maint ⚠️Resisted | 💀🔴🟠🟡⚡🟢⚫ Status",
+        value="💀🔴🟠🟡⚡🟢⚫ Status | 💤 Dormant",
         inline=False,
     )
     
@@ -12521,6 +13325,15 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             except Exception as e:
                 logger.error(f"Error calling _post_armor_alert: {e}")
 
+        # --- Challenge Tracking: Process AAR for challenge eligibility ---
+        if guild:
+            try:
+                challenge_notifications = await _process_challenge_tracking(record, guild)
+                if challenge_notifications:
+                    await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+            except Exception as e:
+                logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
+
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:
             data = _load_json_dict(AAR_ERRORS_PATH)
@@ -12946,216 +13759,110 @@ async def audit_service_studs(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(
-    name="librarian_audit",
-    description="Check Black Laurels role discrepancies (Watch Command only).",
-)
-async def librarian_audit(interaction: discord.Interaction):
-    """Check for discrepancies in Black Laurels role assignment.
+async def _run_reparse_records(
+    limit: int | None = None, days: int | None = None
+) -> tuple[int, int, int, dict[str, int]]:
+    """Re-parse AAR records from their message URLs.
 
-    A member of rank Watch Brother+ should have the Black Laurels role IFF they are in
-    an AAR with the @Black_Laurels mention on each of the required maps at least once.
+    Args:
+        limit: Max number of records to reparse (None = unlimited)
+        days: Only reparse records from the last N days (None = all)
+
+    Returns:
+        Tuple of (total_processed, updated_count, failed_count, changes_by_field)
     """
-    if not (
-        check_command_permission(interaction.user, "librarian_audit")
-        and is_allowed_channel(interaction)
-    ):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
+    total = 0
+    updated = 0
+    failed = 0
+    changes_by_field: dict[str, int] = {}
 
-    await interaction.response.defer(thinking=True, ephemeral=True)
-
-    guild = interaction.guild or _resolve_notification_guild()
-    if not guild:
-        await interaction.followup.send("Guild not available.", ephemeral=True)
-        return
-
-    if DATASTORE is None:
-        await interaction.followup.send("DATASTORE not available.", ephemeral=True)
-        return
-
-    # Get the Black Laurels role
-    black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
-    if not black_laurels_role:
-        await interaction.followup.send(
-            "Black Laurels role not found in guild.", ephemeral=True
-        )
-        return
-
-    # Build a map of user_id -> set of completed Black Laurels missions
-    user_bl_missions: Dict[str, set] = {}
-
-    for rec in DATASTORE.iter_records():
-        mission = rec.get("mission") or ""
-        # Black Laurels is indicated by the role mention in mission field
-        has_black_laurels = "<@&1440108298115485716>" in mission
-
-        if not has_black_laurels:
-            continue
-
-        # Strip any Discord role mentions (e.g., "<@&1440108298115485716>") from mission name
-        mission_clean = re.sub(r"<@&\d+>", "", mission).strip().lower()
-        # Only track required missions
-        if mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
-            continue
-
-        # For black laurels, missions must have exactly 3 members to be valid
-        brother_ids = rec.get("brother_ids") or []
-        if len(brother_ids) != 3:
-            continue
-
-        # Add this mission to each brother's completed set
-        for uid in brother_ids:
-            uid_str = str(uid)
-            if uid_str not in user_bl_missions:
-                user_bl_missions[uid_str] = set()
-            user_bl_missions[uid_str].add(mission_clean)
-
-    # Check each member for discrepancies
-    missing_role: List[Tuple[discord.Member, set]] = []  # Should have role but doesn't
-    needs_new_missions: List[
-        Tuple[discord.Member, set, set]
-    ] = []  # Has role but missing new missions
-
-    # Missions added after grandfathering (must be explicitly completed by existing role holders)
-    new_missions = (
-        BLACK_LAURELS_REQUIRED_MISSIONS - BLACK_LAURELS_GRANDFATHERED_MISSIONS
-    )
-
-    for member in getattr(guild, "members", []) or []:
-        if member.bot:
-            continue
-
-        try:
-            # Check if member is Watch Brother+ (has any rank role)
-            member_role_names = _canonical_role_names(member)
-            if not any(r in member_role_names for r in RANK_ROLES_PRIORITY):
-                continue
-
-            user_id = str(member.id)
-            completed = user_bl_missions.get(user_id, set())
-            has_role = black_laurels_role in member.roles
-            should_have_role = (
-                len(completed) >= len(BLACK_LAURELS_REQUIRED_MISSIONS)
-                and completed >= BLACK_LAURELS_REQUIRED_MISSIONS
-            )
-
-            if should_have_role and not has_role:
-                missing_role.append((member, completed))
-            elif has_role:
-                # Grandfathered role holders - check if they're missing any NEW missions
-                missing_new = new_missions - completed
-                if missing_new:
-                    needs_new_missions.append((member, completed, missing_new))
-
-        except Exception:
-            continue
-
-    if not missing_role and not needs_new_missions:
-        await interaction.followup.send(
-            "No Black Laurels discrepancies found.", ephemeral=True
-        )
-        return
-
-    # Build report
-    lines: List[str] = []
-    lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
-    lines.append("  WATCH FORTRESS JERICHO // LIBRARIUM AUDIT")
-    lines.append("  BLACK LAURELS DISCREPANCY REPORT")
-    lines.append(
-        "=============================================================================="
-    )
-
-    if missing_role:
-        lines.append("")
-        lines.append(f"  ELIGIBLE BUT MISSING ROLE ({len(missing_role)}):")
-        lines.append("  " + "-" * 72)
-        for member, completed in missing_role:
-            name = getattr(member, "display_name", str(member.id))
-            lines.append(f"    ✓ {name}")
-            lines.append(
-                f"      Completed: {len(completed)}/{len(BLACK_LAURELS_REQUIRED_MISSIONS)} required missions"
-            )
-
-    if needs_new_missions:
-        lines.append("")
-        lines.append(f"  HAS ROLE BUT NEEDS NEW MISSIONS ({len(needs_new_missions)}):")
-        lines.append("  " + "-" * 72)
-        for member, completed, missing in needs_new_missions:
-            name = getattr(member, "display_name", str(member.id))
-            missing_list = ", ".join(sorted(m.title() for m in missing))
-            lines.append(f"    ⚠ {name}")
-            lines.append(f"      Missing: {missing_list}")
-
-    lines.append("")
-    lines.append(
-        "=============================================================================="
-    )
-    lines.append("\u001b[0m```")
-
-    report = "\n".join(lines)
-
-    # Build mobile-friendly embed
-    embed = discord.Embed(
-        title="Librarium Audit — Black Laurels",
-        color=0x2ECC71,
-    )
-
-    if missing_role:
-        missing_text = "\n".join(
-            f"✓ {getattr(m, 'display_name', str(m.id))}" for m, _ in missing_role[:10]
-        )
-        if len(missing_role) > 10:
-            missing_text += f"\n... and {len(missing_role) - 10} more"
-        embed.add_field(
-            name=f"Eligible but Missing Role ({len(missing_role)})",
-            value=missing_text,
-            inline=False,
-        )
-
-    if needs_new_missions:
-        needs_text = ""
-        for member, _, missing in needs_new_missions[:8]:
-            name = getattr(member, "display_name", str(member.id))
-            missing_list = ", ".join(sorted(m.title() for m in missing))
-            needs_text += f"⚠ {name}\n  Missing: {missing_list}\n"
-        if len(needs_new_missions) > 8:
-            needs_text += f"... and {len(needs_new_missions) - 8} more"
-        embed.add_field(
-            name=f"Needs New Missions ({len(needs_new_missions)})",
-            value=needs_text.strip(),
-            inline=False,
-        )
-
-    if not missing_role and not needs_new_missions:
-        embed.description = "No discrepancies found"
-
-    embed.set_footer(text="Use PC/Console button for detailed ANSI view")
-
-    # Handle long reports
-    if len(report) <= 1900:
-        view = ToggleFormatView(text_content=report, embed=embed, default="embed")
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    # Snapshot of records to process
+    now_utc = datetime.now(timezone.utc)
+    if days is not None:
+        if days <= 0:
+            raise ValueError("days must be a positive integer when specified")
+        cutoff = now_utc - timedelta(days=days)
     else:
-        # Report too long for toggle, send embed with file attachment
-        import io
+        cutoff = None
 
-        fp = io.BytesIO(report.encode("utf-8"))
-        fp.seek(0)
+    def _in_window(rec: dict) -> bool:
+        if cutoff is None:
+            return True
+        ts_str = rec.get("timestamp")
+        if not ts_str:
+            return False
         try:
-            await interaction.followup.send(
-                embed=embed,
-                file=discord.File(fp, filename="librarian_audit.txt"),
-                ephemeral=True,
-            )
-        finally:
-            try:
-                fp.close()
-            except Exception:
-                pass
+            ts = _parse_iso8601_to_utc(ts_str)
+            return ts is not None and ts >= cutoff
+        except Exception:
+            return False
+
+    records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
+    if limit is not None and limit > 0:
+        records_list = records_list[:limit]
+    total_records = len(records_list)
+
+    def _print_progress(done: int, total: int) -> None:
+        if not sys.stdout.isatty():
+            return
+        bar_len = 40
+        filled = int(round(bar_len * done / float(total))) if total else bar_len
+        perc = (done / total * 100) if total else 100.0
+        bar = "#" * filled + "-" * (bar_len - filled)
+        sys.stdout.write(
+            f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)"
+        )
+        sys.stdout.flush()
+
+    # Iterate snapshot of records
+    for idx, (key, rec) in enumerate(records_list, start=1):
+        _print_progress(idx - 1, total_records)
+        total += 1
+        msg_url = rec.get("message_url")
+        if not msg_url:
+            _print_progress(idx, total_records)
+            continue
+        try:
+            parts = msg_url.rstrip("/").split("/")
+            # Expect .../channels/<channel_id>/<message_id> or .../<channel_id>/<message_id>
+            if len(parts) < 2:
+                raise ValueError("invalid message_url")
+            message_id = int(parts[-1])
+            channel_id = int(parts[-2])
+            channel = bot.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await bot.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is None:
+                raise RuntimeError(f"channel {channel_id} not available")
+            msg = await channel.fetch_message(message_id)
+            new_rec = parse_aar(msg)
+            if not new_rec:
+                continue
+            # Preserve some metadata from existing record
+            merged = rec.copy()
+            merged.update(new_rec)
+            # Ensure aar_id remains the same key
+            merged["aar_id"] = rec.get("aar_id")
+            if merged != rec:
+                # Track which fields changed
+                for field in set(rec.keys()) | set(merged.keys()):
+                    if rec.get(field) != merged.get(field):
+                        changes_by_field[field] = changes_by_field.get(field, 0) + 1
+                await DATASTORE.set_record(str(merged.get("aar_id")), merged)
+                updated += 1
+        except Exception:
+            failed += 1
+
+    # Finalize progress output in terminal
+    _print_progress(total_records, total_records)
+    if sys.stdout.isatty():
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    return total, updated, failed, changes_by_field
 
 
 @bot.tree.command(
@@ -13191,99 +13898,13 @@ async def reparse_records(
     logger.info(f"reparse_records: acquiring lock (user={interaction.user.id})")
     async with RECONCILE_LOCK:
         logger.info(f"reparse_records: lock acquired (user={interaction.user.id})")
-        total = 0
-        updated = 0
-        failed = 0
-        changes_by_field: dict[str, int] = {}  # Track which fields changed
-        # Snapshot of records to process (respect optional limit and days filter)
-        now_utc = datetime.now(timezone.utc)
-        if days is not None:
-            if days <= 0:
-                await interaction.followup.send(
-                    "`days` must be a positive integer when specified.",
-                    ephemeral=True,
-                )
-                return
-            cutoff = now_utc - timedelta(days=days)
-        else:
-            cutoff = None
-
-        def _in_window(rec: dict) -> bool:
-            if cutoff is None:
-                return True
-            ts_str = rec.get("timestamp")
-            if not ts_str:
-                return False
-            try:
-                ts = _parse_iso8601_to_utc(ts_str)
-                return ts is not None and ts >= cutoff
-            except Exception:
-                return False
-
-        records_list = [(k, v) for k, v in DATASTORE._records.items() if _in_window(v)]
-        if limit is not None and limit > 0:
-            records_list = records_list[:limit]
-        total_records = len(records_list)
-
-        def _print_progress(done: int, total: int) -> None:
-            if not sys.stdout.isatty():
-                return
-            bar_len = 40
-            filled = int(round(bar_len * done / float(total))) if total else bar_len
-            perc = (done / total * 100) if total else 100.0
-            bar = "#" * filled + "-" * (bar_len - filled)
-            sys.stdout.write(
-                f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)"
+        try:
+            total, updated, failed, changes_by_field = await _run_reparse_records(
+                limit=limit, days=days
             )
-            sys.stdout.flush()
-
-        # Iterate snapshot of records
-        for idx, (key, rec) in enumerate(records_list, start=1):
-            _print_progress(idx - 1, total_records)
-            total += 1
-            msg_url = rec.get("message_url")
-            if not msg_url:
-                _print_progress(idx, total_records)
-                continue
-            try:
-                parts = msg_url.rstrip("/").split("/")
-                # Expect .../channels/<channel_id>/<message_id> or .../<channel_id>/<message_id>
-                if len(parts) < 2:
-                    raise ValueError("invalid message_url")
-                message_id = int(parts[-1])
-                channel_id = int(parts[-2])
-                channel = bot.get_channel(channel_id)
-                if channel is None:
-                    try:
-                        channel = await bot.fetch_channel(channel_id)
-                    except Exception:
-                        channel = None
-                if channel is None:
-                    raise RuntimeError(f"channel {channel_id} not available")
-                msg = await channel.fetch_message(message_id)
-                new_rec = parse_aar(msg)
-                if not new_rec:
-                    continue
-                # Preserve some metadata from existing record (timestamp/edited_at/message_url)
-                merged = rec.copy()
-                merged.update(new_rec)
-                # Ensure aar_id remains the same key
-                merged["aar_id"] = rec.get("aar_id")
-                if merged != rec:
-                    # Track which fields changed
-                    for field in set(rec.keys()) | set(merged.keys()):
-                        if rec.get(field) != merged.get(field):
-                            changes_by_field[field] = changes_by_field.get(field, 0) + 1
-                    await DATASTORE.set_record(str(merged.get("aar_id")), merged)
-                    updated += 1
-            except Exception:
-                failed += 1
-
-        # Finalize progress output in terminal
-        _print_progress(total_records, total_records)
-        if sys.stdout.isatty():
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
 
         days_info = f" (last {days} days)" if days else ""
         # Build changes summary
@@ -15565,7 +16186,6 @@ async def my_deeds(interaction: discord.Interaction):
     avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
     gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
     armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
-    pres_data = individual_rankings.get("pres", {}).get(target_id, (0, 0, 0))
     risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
     black_laurels_data = individual_rankings.get("black_laurels", {}).get(
         target_id, (0, 0, 0)
@@ -15591,21 +16211,14 @@ async def my_deeds(interaction: discord.Interaction):
     # Kill team rankings
     target_killteams = []
     try:
-        for r in getattr(target, "roles", []):
-            rn = getattr(r, "name", "") or ""
-            if (
-                "kill" in rn.lower()
-                and "team" in rn.lower()
-                and "champion" not in rn.lower()
-            ):
-                target_killteams.append(_extract_killteam_name(rn))
+        target_killteams = _resolve_killteams_for_member(target)
     except Exception:
         pass
 
     # Build Monthly Honours embed
     honours_embed = discord.Embed(
         title="᛭⋅ MONTHLY HONOURS ⋅᛭",
-        description=f"*⌾ {target_name} — {calendar.month_name[now_mtd.month]} {now_mtd.year} ⌾*",
+        description=f"*⌾ {target_name} ⌾*\nMonth to Date ({mtd_span_days} Days)",
         color=0x2ECC71,
     )
 
@@ -15617,15 +16230,41 @@ async def my_deeds(interaction: discord.Interaction):
         indiv_value = (
             f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
             f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-            f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
+            f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
+            f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
             f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
             f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
         )
+        # Compute overall rank as median of individual rankings
+        individual_ranks = []
+        if ops_data[2] > 0:
+            individual_ranks.append(ops_data[1])
+        if avg_data[2] > 0:
+            individual_ranks.append(avg_data[1])
+        if gene_data[2] > 0:
+            individual_ranks.append(gene_data[1])
+        if armory_data[2] > 0:
+            individual_ranks.append(armory_data[1])
+        if risk_data[2] > 0:
+            individual_ranks.append(risk_data[1])
+        if black_laurels_data[2] > 0:
+            individual_ranks.append(black_laurels_data[1])
+        if individual_ranks:
+            overall_rank = statistics.median(individual_ranks)
+            indiv_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
     else:
         indiv_value = "No ranking data available"
-    honours_embed.add_field(name="▸ Individual", value=indiv_value, inline=False)
+    honours_embed.add_field(name="▸ Individual Distinctions", value=indiv_value, inline=False)
 
     # Chapter distinctions
+    chapter_emoji = (
+        _get_emoji_by_name(guild, home_chapter)
+        if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
+        else None
+    )
+    chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+    lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
+    
     if ch_ops_data[2] > 0:
         ch_omega_suffix = (
             f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
@@ -15633,14 +16272,29 @@ async def my_deeds(interaction: discord.Interaction):
         ch_value = (
             f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
             f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
-            f"**Armory+Gene:** #({ch_pres_data[1]}/{ch_pres_data[2]})\n"
+            f"**Armory + Gene:** (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
             f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
             f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
         )
+        # Compute overall rank as median of chapter rankings
+        chapter_ranks = []
+        if ch_ops_data[2] > 0:
+            chapter_ranks.append(ch_ops_data[1])
+        if ch_avg_data[2] > 0:
+            chapter_ranks.append(ch_avg_data[1])
+        if ch_pres_data[2] > 0:
+            chapter_ranks.append(ch_pres_data[1])
+        if ch_risk_data[2] > 0:
+            chapter_ranks.append(ch_risk_data[1])
+        if ch_aar_data[2] > 0:
+            chapter_ranks.append(ch_aar_data[1])
+        if chapter_ranks:
+            ch_overall_rank = statistics.median(chapter_ranks)
+            ch_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
     else:
-        ch_value = "Chapter does not meet minimum threshold"
+        ch_value = "Below minimum threshold"
     honours_embed.add_field(
-        name=f"▸ Chapter ({home_chapter})", value=ch_value, inline=False
+        name=f"▸ {chapter_prefix}{lineage_display} Chapter", value=ch_value, inline=False
     )
 
     # Kill Team distinctions
@@ -15648,6 +16302,8 @@ async def my_deeds(interaction: discord.Interaction):
         kt_ops_data = team_rankings.get("ops", {}).get(kt_n, (0, 0, 0))
         kt_avg_data = team_rankings.get("avg", {}).get(kt_n, (0.0, 0, 0))
         kt_pres_data = team_rankings.get("pres", {}).get(kt_n, (0, 0, 0))
+        kt_armory_val = team_rankings.get("armory", {}).get(kt_n, (0, 0, 0))[0]
+        kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_n, (0, 0, 0))[0]
         kt_risk_data = team_rankings.get("high_risk", {}).get(kt_n, (0, 0, 0))
         kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_n, (0.0, 0, 0))
         kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_n, (0.0, 0, 0))
@@ -15662,11 +16318,28 @@ async def my_deeds(interaction: discord.Interaction):
             kt_value = (
                 f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                 f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
-                f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
+                f"**Armory + Gene:** (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}\n"
                 f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
                 f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
                 f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
             )
+            # Compute overall rank as median of kill team rankings
+            kt_ranks = []
+            if kt_ops_data[2] > 0:
+                kt_ranks.append(kt_ops_data[1])
+            if kt_avg_data[2] > 0:
+                kt_ranks.append(kt_avg_data[1])
+            if kt_pres_data[2] > 0:
+                kt_ranks.append(kt_pres_data[1])
+            if kt_risk_data[2] > 0:
+                kt_ranks.append(kt_risk_data[1])
+            if kt_aar_data[2] > 0:
+                kt_ranks.append(kt_aar_data[1])
+            if kt_cohesion_data[2] > 0:
+                kt_ranks.append(kt_cohesion_data[1])
+            if kt_ranks:
+                kt_overall_rank = statistics.median(kt_ranks)
+                kt_value += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
         else:
             kt_value = "No ranking data available"
         honours_embed.add_field(name=f"▸ {kt_n}", value=kt_value, inline=False)
@@ -18911,6 +19584,9 @@ def _format_member_styled(
         display_name = member.nick or member.display_name
         # Strip stud pips first
         name = display_name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+        # Strip [R] prefix for Reserves members
+        if name.startswith("[R] "):
+            name = name[4:].strip()
         # Get member's roles
         member_role_names = {
             (getattr(r, "name", "") or "").strip()
@@ -18925,11 +19601,9 @@ def _format_member_styled(
                 break
         if member_rank:
             rank_emoji = _get_rank_emoji(guild, member_rank)
-            # Strip rank prefix from name (case-insensitive)
-            for rp in RANK_ROLES_PRIORITY:
-                if name.lower().startswith(rp.lower()):
-                    name = name[len(rp) :].lstrip()
-                    break
+            # Strip the member's actual rank prefix from name (case-insensitive)
+            if name.lower().startswith(member_rank.lower()):
+                name = name[len(member_rank):].lstrip()
 
         # Resolve chapter if requested
         if include_chapter:
@@ -19323,7 +19997,9 @@ POSITION_LABEL_MAP = {
     "HighChaplain": "High Chaplain",
     "Forgemaster": "Forgemaster",
     "VoidWarden": "Void Warden",
-    "Venerable": "Venerable",
+    "VenerableDreadnought": "Venerable Dreadnought",
+    "HonoredDreadnought": "Honored Dreadnought",
+    "InterredBrother": "Interred Brother",
     "WatchCaptain": "Watch Captain",
     "WatchLieutenant": "Watch Lieutenant",
     "CompanyChampion": "Company Champion",
@@ -20072,223 +20748,6 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
 
 
 @bot.tree.command(
-    name="roster_audit",
-    description="Audit company rosters for discrepancies.",
-)
-@app_commands.describe(
-    scope="Type of discrepancies to show: all, missing, extra, or mismatch",
-    format="Output format: summary or full",
-)
-async def roster_audit(
-    interaction: discord.Interaction,
-    scope: str = "all",
-    format: str = "full",
-):
-    """Audit company rosters.
-
-    scope: all|missing|extra|mismatch
-    format: summary|full
-
-    Permission: Forgemaster OR Watch Master only.
-    """
-    if not (
-        check_command_permission(interaction.user, "roster_audit")
-        and is_allowed_channel(interaction)
-    ):
-        await interaction.response.send_message("Access denied.", ephemeral=True)
-        return
-
-    # Defer for long-running operation
-    try:
-        await interaction.response.defer(ephemeral=True, thinking=True)
-    except Exception:
-        logger.debug("Could not defer interaction; continuing")
-
-    try:
-        scope = (scope or "all").lower()
-        format = (format or "summary").lower()
-
-        if scope not in ("all", "missing", "extra", "mismatch"):
-            scope = "all"
-        if format not in ("summary", "full"):
-            format = "summary"
-
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send("Guild not found.", ephemeral=True)
-            return
-
-        # Determine which companies to audit
-        companies = CONFIG.get("companies") or {}
-
-        # Check if invoked in a roster channel
-        channel_id = (
-            getattr(interaction.channel, "id", None) if interaction.channel else None
-        )
-        audit_companies = {}
-
-        if channel_id:
-            # Find company by roster channel ID
-            for key, config in companies.items():
-                if int(config.get("rosterChannelId", 0)) == channel_id:
-                    audit_companies[key] = config
-                    break
-
-        # If no specific company found, audit all
-        if not audit_companies:
-            audit_companies = companies
-
-        if not audit_companies:
-            await interaction.followup.send(
-                "No companies configured. Add entries to `companies` in config.json.",
-                ephemeral=True,
-            )
-            return
-
-        # Parse High Command once (it's shared across all companies)
-        # Use the first company's roster channel to find High Command
-        high_cmd_roster = {}
-        try:
-            first_company_config = next(iter(audit_companies.values()))
-            roster_channel_id = int(first_company_config.get("rosterChannelId"))
-            high_cmd_msg, _, _ = await _find_roster_messages(guild, roster_channel_id)
-            if high_cmd_msg:
-                high_cmd_roster = _parse_roster_section(high_cmd_msg.content)
-        except Exception:
-            logger.exception("Error parsing shared High Command")
-
-        # Run audits
-        results = []
-        for company_key, company_config in audit_companies.items():
-            result = await _audit_company_roster(
-                guild, company_key, company_config, high_cmd_roster
-            )
-            results.append(result)
-
-        # Filter by scope
-        if scope == "missing":
-            for r in results:
-                r["extra"] = []
-                r["mismatch"] = []
-        elif scope == "extra":
-            for r in results:
-                r["missing"] = []
-                r["mismatch"] = []
-        elif scope == "mismatch":
-            for r in results:
-                r["missing"] = []
-                r["extra"] = []
-
-        # Format output
-        if format == "summary":
-            output = _format_audit_summary(results)
-        else:
-            output = _format_audit_full(results)
-
-        # Build mobile-friendly embed with user mentions
-        embed = discord.Embed(
-            title="Roster Audit",
-            color=0x2ECC71,
-        )
-
-        total_missing = sum(len(r.get("missing", [])) for r in results)
-        total_extra = sum(len(r.get("extra", [])) for r in results)
-        total_mismatch = sum(len(r.get("mismatch", [])) for r in results)
-
-        if total_missing == 0 and total_extra == 0 and total_mismatch == 0:
-            embed.description = "✅ No discrepancies found."
-        else:
-            embed.description = (
-                f"**Scope:** {scope}\n\n"
-                f"• **Need Roles** — Listed in roster but missing required Discord roles\n"
-                f"• **Not Listed** — Have company role but not in roster channel\n"
-                f"• **Conflicts** — Multiple teams, sections, or company roles"
-            )
-            for result in results:
-                company = result.get("company_name", "Unknown")
-                missing = result.get("missing", [])
-                extra = result.get("extra", [])
-                mismatch = result.get("mismatch", [])
-
-                if not missing and not extra and not mismatch:
-                    continue
-
-                # Build field text with actual user mentions (up to limits)
-                field_parts = []
-                if missing:
-                    missing_users = [
-                        f"<@{item.get('user_id')}>" for item in missing[:5]
-                    ]
-                    # These users are in the roster but missing required roles
-                    missing_text = (
-                        "**Need Roles** (in roster, missing roles):\n"
-                        + ", ".join(missing_users)
-                    )
-                    if len(missing) > 5:
-                        missing_text += f" (+{len(missing) - 5} more)"
-                    field_parts.append(missing_text)
-                if extra:
-                    extra_users = [f"<@{item.get('user_id')}>" for item in extra[:5]]
-                    # These users have company role but aren't listed in the roster
-                    extra_text = (
-                        "**Not Listed** (have role, not in roster):\n"
-                        + ", ".join(extra_users)
-                    )
-                    if len(extra) > 5:
-                        extra_text += f" (+{len(extra) - 5} more)"
-                    field_parts.append(extra_text)
-                if mismatch:
-                    mismatch_users = [
-                        f"<@{item.get('user_id')}>" for item in mismatch[:5]
-                    ]
-                    # These users have conflicting assignments (multiple teams, etc.)
-                    mismatch_text = (
-                        "**Conflicts** (multiple teams, sections):\n"
-                        + ", ".join(mismatch_users)
-                    )
-                    if len(mismatch) > 5:
-                        mismatch_text += f" (+{len(mismatch) - 5} more)"
-                    field_parts.append(mismatch_text)
-
-                field_value = "\n".join(field_parts) if field_parts else "—"
-                # Truncate if too long for embed field
-                if len(field_value) > 1024:
-                    field_value = field_value[:1020] + "..."
-                embed.add_field(name=company, value=field_value, inline=False)
-
-        embed.set_footer(text="Use PC/Console button for detailed ANSI view")
-
-        # Send output with toggle view
-        if len(output) <= 1900:
-            view = ToggleFormatView(text_content=output, embed=embed, default="embed")
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-        else:
-            # Output too long for toggle, send embed with file attachment
-            import io
-
-            fp = io.BytesIO(output.encode("utf-8"))
-            fp.seek(0)
-            try:
-                await interaction.followup.send(
-                    embed=embed,
-                    file=discord.File(fp, filename="roster_audit.txt"),
-                    ephemeral=True,
-                )
-            finally:
-                try:
-                    fp.close()
-                except Exception:
-                    pass
-
-    except Exception:
-        logger.exception("Error in roster_audit command")
-        await interaction.followup.send(
-            "An error occurred during the audit. Check logs for details.",
-            ephemeral=True,
-        )
-
-
-@bot.tree.command(
     name="promotion_queue",
     description="Shows who's next in line for service studs and veteran promotions.",
 )
@@ -20354,7 +20813,8 @@ async def promotion_queue(interaction: discord.Interaction):
         "Company Champion",
         "Watch Lieutenant",
         "Watch Captain",
-        "Venerable",
+        "Venerable Dreadnought",
+        "Honored Dreadnought",
         "Forgemaster",
         "Void Warden",
         "High Chaplain",
@@ -20829,10 +21289,18 @@ async def company_roster(interaction: discord.Interaction):
         if not company_role:
             continue
 
-        # Find all members with this company role
-        company_members = [
-            m for m in guild.members if company_role in m.roles and not m.bot
-        ]
+        # Find all members with this company role (excluding those above Sergeant)
+        # Watch Sergeant and below are indices 16+ in RANK_ROLES_PRIORITY
+        sergeant_idx = _role_index("Watch Sergeant")
+        company_members = []
+        for m in guild.members:
+            if company_role not in m.roles or m.bot:
+                continue
+            # Get highest rank index
+            highest_idx = get_highest_rank_index(m)
+            # Include if no rank role, or if rank is Sergeant or below (higher index = lower rank)
+            if highest_idx is None or (sergeant_idx is not None and highest_idx >= sergeant_idx):
+                company_members.append(m)
 
         if not company_members:
             continue
