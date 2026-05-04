@@ -2060,10 +2060,13 @@ async def _run_reparse_records(
                 raise ValueError("invalid message_url")
             message_id = int(parts[-1])
             channel_id = int(parts[-2])
-            channel = bot.get_channel(channel_id)
+            bot_obj = getattr(_g, "bot", None) or _b("bot")
+            if bot_obj is None:
+                raise RuntimeError("bot instance is not available")
+            channel = bot_obj.get_channel(channel_id)
             if channel is None:
                 try:
-                    channel = await bot.fetch_channel(channel_id)
+                    channel = await bot_obj.fetch_channel(channel_id)
                 except Exception:
                     channel = None
             if channel is None:
