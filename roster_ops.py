@@ -1451,8 +1451,8 @@ async def _activity_status_check_loop():
 )
 async def litany_of_function(interaction: discord.Interaction):
     if not (
-        check_command_permission(interaction.user, "litany_of_function")
-        and is_allowed_channel(interaction)
+        _b("check_command_permission")(interaction.user, "litany_of_function")
+        and _b("is_allowed_channel")(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
