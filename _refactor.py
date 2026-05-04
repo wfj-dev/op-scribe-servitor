@@ -201,6 +201,10 @@ AAR_OPS_B_SUBS = [
 ROSTER_OPS_B_SUBS = [
     # load_aar_data is patched in test_induction.py; roster_ops calls it too
     (r'(?<!def )load_aar_data\(', "_b('load_aar_data')("),
+    # _resolve_notification_guild lives in bot.py, not roster_ops
+    (r"(?<!def )(?<!_b\(')_resolve_notification_guild\(\)", "_b('_resolve_notification_guild')()"),
+    # bare bot.fetch_channel -> _g.bot.fetch_channel
+    (r'(?<!_g\.)(?<!\w)bot\.fetch_channel\(', '_g.bot.fetch_channel('),
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

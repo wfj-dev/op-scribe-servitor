@@ -568,7 +568,7 @@ async def _check_activity_status_changes():
     """
     async with _g.ACTIVITY_STATUS_LOCK:
         try:
-            guild = _resolve_notification_guild()
+            guild = _b('_resolve_notification_guild')()
             if not guild:
                 _g.logger.debug("Activity status check: no guild available")
                 return
@@ -809,7 +809,7 @@ async def _check_promotion_milestones():
     - Service Studs milestones: new studs earned (1 per 4 weeks AND 400 AAR points)
     """
     try:
-        guild = _resolve_notification_guild()
+        guild = _b('_resolve_notification_guild')()
         if not guild:
             _g.logger.debug("Promotion check: no guild available")
             return
@@ -822,7 +822,7 @@ async def _check_promotion_milestones():
         veteran_channel = guild.get_channel(VETERAN_PROMOTION_CHANNEL_ID)
         if not veteran_channel:
             try:
-                veteran_channel = await bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
+                veteran_channel = await _g.bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
             except Exception:
                 _g.logger.warning(
                     f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found"
@@ -833,7 +833,7 @@ async def _check_promotion_milestones():
         studs_channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
         if not studs_channel:
             try:
-                studs_channel = await bot.fetch_channel(SERVICE_STUDS_CHANNEL_ID)
+                studs_channel = await _g.bot.fetch_channel(SERVICE_STUDS_CHANNEL_ID)
             except Exception:
                 _g.logger.warning(
                     f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found"
@@ -844,7 +844,7 @@ async def _check_promotion_milestones():
         black_laurels_channel = guild.get_channel(BLACK_LAURELS_CHANNEL_ID)
         if not black_laurels_channel:
             try:
-                black_laurels_channel = await bot.fetch_channel(
+                black_laurels_channel = await _g.bot.fetch_channel(
                     BLACK_LAURELS_CHANNEL_ID
                 )
             except Exception:
@@ -857,7 +857,7 @@ async def _check_promotion_milestones():
         oathsworn_channel = guild.get_channel(OATHSWORN_CHANNEL_ID)
         if not oathsworn_channel:
             try:
-                oathsworn_channel = await bot.fetch_channel(OATHSWORN_CHANNEL_ID)
+                oathsworn_channel = await _g.bot.fetch_channel(OATHSWORN_CHANNEL_ID)
             except Exception:
                 _g.logger.warning(f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found")
                 oathsworn_channel = None
@@ -1568,7 +1568,7 @@ async def _select_home_chapters_for_month(
             AAR activity entirely as requested.
             """
             try:
-                g = guild or _resolve_notification_guild()
+                g = guild or _b('_resolve_notification_guild')()
                 if g is None:
                     return _b('HOME_CHAPTERS').copy()
 
@@ -1701,7 +1701,7 @@ async def _select_home_chapters_for_month(
         # Build active pool: chapters with at least one AAR in the last 28 days.
         def _get_active_home_chapters(days: int = 28) -> List[str]:
             try:
-                g = guild or _resolve_notification_guild()
+                g = guild or _b('_resolve_notification_guild')()
                 if g is None:
                     return _b('HOME_CHAPTERS').copy()
 
@@ -1803,7 +1803,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
     # Compute current and next month keys and selections
     this_key = _month_key_for_offset(0)
     next_key = _month_key_for_offset(1)
-    g = interaction.guild or _resolve_notification_guild()
+    g = interaction.guild or _b('_resolve_notification_guild')()
     a1, b1 = await _select_home_chapters_for_month(0, guild=g)
     a2, b2 = await _select_home_chapters_for_month(1, guild=g)
     # Format human-friendly month names
@@ -1973,7 +1973,7 @@ async def tally_deeds(
             channel_id = int(send_to.strip())
             send_to_channel = interaction.guild.get_channel_or_thread(channel_id)
             if send_to_channel is None:
-                send_to_channel = await bot.fetch_channel(channel_id)
+                send_to_channel = await _g.bot.fetch_channel(channel_id)
         except ValueError:
             # Not an ID, try to find by name across forum threads
             name_lower = send_to.lower()
@@ -6610,13 +6610,13 @@ async def _scheduled_milestone_check():
         _g.logger.info("Milestone check starting...")
 
         # Resolve target guild and channel
-        guild = _resolve_notification_guild()
+        guild = _b('_resolve_notification_guild')()
         if not guild:
             _g.logger.warning("Milestone check: Could not resolve guild, skipping")
             return
 
         try:
-            channel = guild.get_channel(MILESTONES_CHANNEL_ID) or await bot.fetch_channel(
+            channel = guild.get_channel(MILESTONES_CHANNEL_ID) or await _g.bot.fetch_channel(
                 MILESTONES_CHANNEL_ID
             )
         except Exception:
@@ -7465,7 +7465,7 @@ async def promotion_queue(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    guild = interaction.guild or _resolve_notification_guild()
+    guild = interaction.guild or _b('_resolve_notification_guild')()
     if not guild:
         await interaction.followup.send("Could not resolve guild.", ephemeral=True)
         return
@@ -7947,7 +7947,7 @@ async def company_roster(interaction: discord.Interaction):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    guild = interaction.guild or _resolve_notification_guild()
+    guild = interaction.guild or _b('_resolve_notification_guild')()
     if not guild:
         await interaction.response.send_message(
             "Could not resolve guild.", ephemeral=True
