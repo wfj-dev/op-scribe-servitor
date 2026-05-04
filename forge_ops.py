@@ -252,7 +252,7 @@ def _save_scan_state(data: dict):
 async def _increment_aar_generation():
     """Increment AAR generation counter and clear stale scan cache."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _load_scan_state()
+        data = _b('_load_scan_state')()
         data["aar_generation"] = data.get("aar_generation", 0) + 1
         # Clear scan cache on new AAR cycle (all results are now stale)
         data["scan_cache"] = {}
@@ -263,31 +263,31 @@ async def _increment_aar_generation():
             k: v for k, v in data.get("intensive_scans", {}).items()
             if v >= current_gen
         }
-        _save_scan_state(data)
+        _b('_save_scan_state')(data)
         return data["aar_generation"]
 
 
 async def _get_aar_generation() -> int:
     """Get the current AAR generation counter."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _load_scan_state()
+        data = _b('_load_scan_state')()
         return data.get("aar_generation", 0)
 
 
 async def _purchase_intensive_scan(techmarine_id: int) -> bool:
     """Mark a Techmarine as having an active intensive scan for this AAR cycle."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _load_scan_state()
+        data = _b('_load_scan_state')()
         current_gen = data.get("aar_generation", 0)
         data.setdefault("intensive_scans", {})[str(techmarine_id)] = current_gen
-        _save_scan_state(data)
+        _b('_save_scan_state')(data)
         return True
 
 
 async def _has_intensive_scan(techmarine_id: int) -> bool:
     """Check if a Techmarine has an active intensive scan for this AAR cycle."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _load_scan_state()
+        data = _b('_load_scan_state')()
         current_gen = data.get("aar_generation", 0)
         tech_gen = data.get("intensive_scans", {}).get(str(techmarine_id))
         # Intensive scan is active if purchased in current generation
@@ -308,7 +308,7 @@ async def _get_or_roll_scan_result(
         - miss_reason: str or None (if not detected, why)
     """
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _load_scan_state()
+        data = _b('_load_scan_state')()
         current_gen = data.get("aar_generation", 0)
         cache = data.setdefault("scan_cache", {})
         brother_key = str(brother_id)
@@ -324,7 +324,7 @@ async def _get_or_roll_scan_result(
         
         # Cache the result
         cache[brother_key] = result
-        _save_scan_state(data)
+        _b('_save_scan_state')(data)
         
         return result
 
@@ -1397,18 +1397,33 @@ def _save_forge_chronicle(data: dict):
 
 
 async def _store_pending_alert(user_id: int, message_id: int, channel_id: int):
-    """Store a pending armor alert for thread reply tracking. (UNUSED - kept for schema compat)"""
-    pass
+    """Store a pending armor alert for thread reply tracking."""
+    async with _g.FORGE_CHRONICLE_LOCK:
+        data = _b('_load_forge_chronicle')()
+        data.setdefault("pending_alerts", {})
+        data["pending_alerts"][str(user_id)] = {
+            "message_id": message_id,
+            "channel_id": channel_id,
+            "ts": datetime.utcnow().isoformat(),
+        }
+        _b('_save_forge_chronicle')(data)
 
 
 async def _get_pending_alert(user_id: int) -> Optional[dict]:
-    """Get pending alert info for a user (if any). (UNUSED - kept for schema compat)"""
-    return None
+    """Get pending alert info for a user (if any)."""
+    async with _g.FORGE_CHRONICLE_LOCK:
+        data = _b('_load_forge_chronicle')()
+        return data.get("pending_alerts", {}).get(str(user_id))
 
 
 async def _clear_pending_alert(user_id: int):
-    """Clear a pending alert. (UNUSED - kept for schema compat)"""
-    pass
+    """Clear a pending alert for a user (no-op if not stored)."""
+    async with _g.FORGE_CHRONICLE_LOCK:
+        data = _b('_load_forge_chronicle')()
+        key = str(user_id)
+        if key in data.get("pending_alerts", {}):
+            data["pending_alerts"].pop(key)
+            _b('_save_forge_chronicle')(data)
 
 
 async def _record_rite_in_chronicle(
@@ -1428,7 +1443,7 @@ async def _record_rite_in_chronicle(
         spirit_event: "first_binding", "rebirth", "restoration", "maintenance"
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         
         # Add to rite history (keep last 500 entries)
         entry = {
@@ -1462,7 +1477,7 @@ async def _record_rite_in_chronicle(
         elif spirit_event == "rebirth":
             data["techmarine_stats"][tech_key]["rebirths"] += 1
         
-        _save_forge_chronicle(data)
+        _b('_save_forge_chronicle')(data)
 
 
 async def _record_spirit_released(bearer_id: int, spirit_designation: str):
@@ -1472,7 +1487,7 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
     No techmarine is involved - this is an automatic system event.
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         
         # Guard: skip if this spirit already has a recent released/fractured entry (within 10 min)
         now_dt = datetime.utcnow()
@@ -1498,7 +1513,7 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
         if len(data["rite_history"]) > 500:
             data["rite_history"] = data["rite_history"][-500:]
         
-        _save_forge_chronicle(data)
+        _b('_save_forge_chronicle')(data)
 
 
 async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_days: int):
@@ -1508,7 +1523,7 @@ async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_
     The spirit is lost - will require a new binding.
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         
         # Guard: skip if this spirit already has a recent fractured/released entry (within 10 min)
         now_dt = datetime.utcnow()
@@ -1535,13 +1550,13 @@ async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_
         if len(data["rite_history"]) > 500:
             data["rite_history"] = data["rite_history"][-500:]
         
-        _save_forge_chronicle(data)
+        _b('_save_forge_chronicle')(data)
 
 
 async def _get_dashboard_message_id() -> Optional[int]:
     """Get the stored dashboard message ID (if any)."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         msg_id = data.get("dashboard_message_id")
         return int(msg_id) if msg_id else None
 
@@ -1549,15 +1564,15 @@ async def _get_dashboard_message_id() -> Optional[int]:
 async def _set_dashboard_message_id(message_id: int):
     """Store the dashboard message ID."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         data["dashboard_message_id"] = message_id
-        _save_forge_chronicle(data)
+        _b('_save_forge_chronicle')(data)
 
 
 async def _get_last_ambient_ts() -> Optional[datetime]:
     """Get the timestamp of the last ambient message."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         ts_str = data.get("last_ambient_ts")
         if ts_str:
             try:
@@ -1570,9 +1585,9 @@ async def _get_last_ambient_ts() -> Optional[datetime]:
 async def _set_last_ambient_ts():
     """Update the timestamp of the last ambient message."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
         data["last_ambient_ts"] = datetime.utcnow().isoformat()
-        _save_forge_chronicle(data)
+        _b('_save_forge_chronicle')(data)
 
 
 async def _increment_forge_pool_balance(points: int):
@@ -5333,7 +5348,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     """Build the Forge Chronicle dashboard embed with atmospheric stats."""
     # Load chronicle data
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
     
     rite_history = data.get("rite_history", [])
     techmarine_stats = data.get("techmarine_stats", {})
@@ -6038,7 +6053,7 @@ async def _maybe_post_ambient_message():
     
     # Check recent rite activity
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _load_forge_chronicle()
+        data = _b('_load_forge_chronicle')()
     
     rite_history = data.get("rite_history", [])
     
@@ -6121,9 +6136,9 @@ async def _forge_dashboard_loop():
         except discord.NotFound:
             # Dashboard message was deleted, clear the stored ID
             async with _g.FORGE_CHRONICLE_LOCK:
-                data = _load_forge_chronicle()
+                data = _b('_load_forge_chronicle')()
                 data["dashboard_message_id"] = None
-                _save_forge_chronicle(data)
+                _b('_save_forge_chronicle')(data)
         except Exception as e:
             _g.logger.warning(f"Failed to update dashboard: {e}")
     except Exception as e:
@@ -6922,3 +6937,233 @@ async def lfg_leave(
 
 if __name__ == "__main__":
     _main()
+
+
+# ---------------------------------------------------------------------------
+# Pure helper functions for forge_rite output
+# ---------------------------------------------------------------------------
+
+def _should_show_extended_blessing_fields(
+    spirit_is_first: bool,
+    spirit_is_reconsecrated: bool,
+    spirit_is_returning: bool,
+    spirit_is_restored: bool,
+) -> bool:
+    """Determine whether to show extended blessing embed fields.
+
+    Returns True for first bindings and reconsecrated (reborn) spirits.
+    Returns False for returning (routine maintenance) and restored spirits.
+    """
+    if spirit_is_first or spirit_is_reconsecrated:
+        return True
+    return False
+
+
+def _get_compact_rite_status(
+    blessing_roll_outcome: str,
+    is_intensive: bool,
+    armor_was_damaged: bool,
+) -> tuple:
+    """Return (icon, status_text) for the compact rite status line.
+
+    Priority: crit_fail / crit_success beat intensive / damage flags.
+    """
+    if blessing_roll_outcome == "crit_fail":
+        return ("\u26a0\ufe0f", "RESISTED")
+    if blessing_roll_outcome == "crit_success":
+        return ("\u2728", "BLESSED *(grace)*")
+    if is_intensive:
+        return ("\u2728", "RESTORED")
+    if armor_was_damaged:
+        return ("\U0001f7e2", "REPAIRED")
+    return ("\U0001f7e2", "MAINTAINED")
+
+
+def _get_thread_reply_text(
+    spirit_is_reconsecrated: bool,
+    blessing_roll_outcome: str,
+    attester: str,
+    machine_spirit_emoji: str,
+    spirit_designation: str,
+) -> str:
+    """Return the short thread-reply text for a completed forge rite."""
+    if spirit_is_reconsecrated:
+        return (
+            f"\u2728 **Spirit Reborn** \u2014 {machine_spirit_emoji} **{spirit_designation}** "
+            f"has been reborn through the rites of the Omnissiah. "
+            f"Consecrated by {attester}."
+        )
+    if blessing_roll_outcome == "crit_fail":
+        return (
+            f"\u26a0\ufe0f **Rite Resisted** \u2014 {machine_spirit_emoji} **{spirit_designation}** "
+            f"resisted the blessing. The spirit stirs but remains unquiet."
+        )
+    return (
+        f"\U0001f7e2 **Armor Restored** \u2014 {machine_spirit_emoji} **{spirit_designation}** "
+        f"has been tended by {attester}."
+    )
+
+
+# ---------------------------------------------------------------------------
+# __all__: export all names needed by tests and bot.py re-imports.
+# Must include underscore-prefixed names (Python's `import *` skips them
+# by default; __all__ overrides that behaviour).
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    # ── Scan / detection ────────────────────────────────────────────────────
+    "_roll_detection_alert",
+    "_roll_scan_result",
+    "_load_scan_state",
+    "_save_scan_state",
+    "_increment_aar_generation",
+    "_get_aar_generation",
+    "_get_or_roll_scan_result",
+    "_purchase_intensive_scan",
+    "_has_intensive_scan",
+    # ── Armor state / damage ─────────────────────────────────────────────────
+    "_get_armor_state",
+    "_set_armor_state",
+    "_save_armor_batch",
+    "_get_armor_state_from_batch",
+    "_set_armor_state_in_batch",
+    "_get_armor_config",
+    "_get_armor_probability_tiers",
+    "_get_probability_tier_for_points",
+    "_get_damage_probability",
+    "_roll_damage_tier",
+    "_run_armor_integrity_check",
+    "_apply_damage_tier",
+    "_clear_armor_damage",
+    "_drop_armor_tier",
+    "_get_member_damage_tier",
+    "_get_damage_penalty",
+    "_roll_armor_penalty",
+    "_get_tier_risk_display",
+    "_check_armor_grace_period",
+    "_get_armor_status_for_blessing",
+    "_get_armor_damage_role_ids",
+    "_get_arming_chamber_channel_id",
+    "_get_techmarine_role_id",
+    "_get_armor_status_allowed_channels",
+    "_calculate_armor_risk_score",
+    "_show_armor_leaderboard",
+    "_post_armor_alert",
+    "_process_armor_integrity_for_aar",
+    # ── Rites / machine spirits ──────────────────────────────────────────────
+    "_load_rites",
+    "_save_rites",
+    "_get_user_rite",
+    "_set_user_rite",
+    "_load_machine_spirits",
+    "_save_machine_spirits",
+    "_get_machine_spirit",
+    "_set_machine_spirit",
+    "_delete_machine_spirit",
+    # ── Blessing pool ────────────────────────────────────────────────────────
+    "_check_recipient_cooldown",
+    "_check_techmarine_can_bless",
+    "_check_spirit_fracture",
+    "_consume_blessing",
+    "_get_intensive_charge_cost",
+    "_get_techmarine_available_charges",
+    "_consume_multiple_blessings",
+    "_get_techmarine_pool_state",
+    "_set_techmarine_pool_state",
+    "_load_blessing_pool",
+    "_save_blessing_pool",
+    "_get_blessing_pool_display",
+    "_filter_active_blessing_timestamps",
+    "_calculate_regenerated_blessings",
+    "_grant_blessing_charge",
+    "_roll_blessing_outcome",
+    "_apply_blessing_crit_fail",
+    "_apply_blessing_normal",
+    "_apply_blessing_crit_success",
+    "_apply_blessing_intensive_normal",
+    "_handle_intensive_scan_requisition",
+    # ── Forge pool ───────────────────────────────────────────────────────────
+    "_load_forge_pool",
+    "_save_forge_pool",
+    "_increment_forge_pool_balance",
+    "_deduct_forge_pool_balance",
+    "_get_forge_pool_available",
+    "_consume_forge_requisition",
+    "_get_techmarine_daily_requisitions",
+    "_get_forge_pool_status",
+    # ── Forge chronicle ──────────────────────────────────────────────────────
+    "_load_forge_chronicle",
+    "_save_forge_chronicle",
+    "_build_forge_chronicle_embed",
+    "_repost_chronicle_at_bottom",
+    "_maybe_post_ambient_message",
+    "_get_dashboard_message_id",
+    "_set_dashboard_message_id",
+    "_get_last_ambient_ts",
+    "_set_last_ambient_ts",
+    "_record_spirit_released",
+    "_record_spirit_fractured",
+    "_abbreviate_spirit",
+    "_format_time_ago",
+    # ── Pending alerts ───────────────────────────────────────────────────────
+    "_store_pending_alert",
+    "_get_pending_alert",
+    "_clear_pending_alert",
+    # ── Rite events / chronicle recording ───────────────────────────────────
+    "_record_rite_in_chronicle",
+    "_classify_forge_rite_event",
+    "_should_show_extended_blessing_fields",
+    "_get_compact_rite_status",
+    "_get_thread_reply_text",
+    # ── Forge rite helpers ───────────────────────────────────────────────────
+    "_get_techmarine_acknowledgment_blended",
+    "_blend_forgemaster_self_attestation",
+    "_get_emoji_by_name",
+    "_get_chapter_emoji",
+    "_get_rank_emoji",
+    "_get_rank_category_for_blend",
+    "_blend_stud_flavor_by_rank",
+    "_get_stud_marking_recipients",
+    "_get_service_studs_announcement",
+    "_get_oathsworn_announcement",
+    "_get_member_rank_title",
+    "_compute_member_service_studs",
+    "_get_bearer_rank_and_title",
+    "_get_bearer_home_chapter",
+    "_find_company_or_chapter",
+    "_format_cooldown_time",
+    # ── LFG ─────────────────────────────────────────────────────────────────
+    "_get_lfg_config",
+    "_get_lfg_pc_role_id",
+    "_get_lfg_console_role_id",
+    "_get_lfg_default_expiry_minutes",
+    "_get_lfg_max_expiry_minutes",
+    "_get_lfg_queue_types",
+    "_get_lfg_initiation_trial_role_id",
+    "_load_lfg_queues",
+    "_save_lfg_queues",
+    "_get_player_platform",
+    "_build_lfg_embed",
+    "_restore_lfg_queue_views",
+    "_expire_old_lfg_queues",
+    "_lfg_queue_autocomplete",
+    "LFGQueueView",
+    "LogToForgeView",
+    # ── Loops (tasks) ────────────────────────────────────────────────────────
+    "_forge_ambient_loop",
+    "_forge_dashboard_loop",
+    "_lfg_queue_expiration_loop",
+    # ── Public command functions ─────────────────────────────────────────────
+    "lfg_queue",
+    "lfg_close",
+    "lfg_join",
+    "lfg_leave",
+    "_set_rite",
+    "_attest",
+    "_armor_status",
+    "_requisition_supplies",
+    "_forge_chronicle_cmd",
+    "_preview_armor_alert",
+    "_test_armor_alert",
+    "_preview_stud_announcement",
+]
