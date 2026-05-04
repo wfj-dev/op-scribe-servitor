@@ -389,8 +389,8 @@ async def reconcile_records(
     interaction: discord.Interaction, span_days: int | None = None
 ):
     if not (
-        check_command_permission(interaction.user, "reconcile_records")
-        and is_allowed_channel(interaction)
+        _b("check_command_permission")(interaction.user, "reconcile_records")
+        and _b("is_allowed_channel")(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
