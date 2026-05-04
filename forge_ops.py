@@ -5964,7 +5964,7 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     
     # Permission check: uses config command_permissions (Forgemaster only)
-    if not check_command_permission(interaction.user, "forge_chronicle"):
+    if not _b("check_command_permission")(interaction.user, "forge_chronicle"):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
     
