@@ -502,9 +502,10 @@ async def record_of_blood(interaction: discord.Interaction):
     # Channel to cross-reference (from the provided URL)
     # URL: https://discord.com/channels/1429264578440597517/1446926555732250674
     target_channel_id = 1446926555732250674
-    target_channel = bot.get_channel(target_channel_id) or guild.get_channel(
-        target_channel_id
-    )
+    resolved_bot = getattr(_g, "bot", None) or _b("bot")
+    target_channel = (
+        resolved_bot.get_channel(target_channel_id) if resolved_bot else None
+    ) or guild.get_channel(target_channel_id)
     if not target_channel:
         await interaction.followup.send(
             f"Unable to find target channel <#{target_channel_id}>.", ephemeral=True
