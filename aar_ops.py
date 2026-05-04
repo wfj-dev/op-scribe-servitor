@@ -1484,16 +1484,19 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         armor_penalties = {}
 
         if guild and brother_ids:
+            get_member_damage_tier = _b("_get_member_damage_tier")
+            get_armor_state = _b("_get_armor_state")
+            roll_armor_penalty = _b("_roll_armor_penalty")
             for bid in brother_ids:
                 try:
                     member = guild.get_member(int(bid))
-                    if member:
-                        tier = _get_member_damage_tier(member)
+                    if member and callable(get_member_damage_tier) and callable(get_armor_state) and callable(roll_armor_penalty):
+                        tier = get_member_damage_tier(member)
                         # Check for spirit fractured state
-                        armor_state = await _get_armor_state(int(bid))
+                        armor_state = await get_armor_state(int(bid))
                         spirit_fractured = armor_state.get("spirit_fractured", False)
                         # Roll probabilistic penalty instead of fixed
-                        penalty = _roll_armor_penalty(tier, spirit_fractured)
+                        penalty = roll_armor_penalty(tier, spirit_fractured)
                         if penalty > 0:
                             armor_penalties[bid] = penalty
                 except Exception:
