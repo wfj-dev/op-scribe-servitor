@@ -193,6 +193,9 @@ FORGE_OPS_B_SUBS = [
 AAR_OPS_B_SUBS = [
     # load_aar_data is patched in test_induction.py
     (r'(?<!def )load_aar_data\(', "_b('load_aar_data')("),
+    # audit_service_studs calls functions defined in roster_ops
+    (r'(?<!def )_get_effective_induction_date\(', "_b('_get_effective_induction_date')("),
+    (r'(?<!def )compute_stats_for_user\(', "_b('compute_stats_for_user')("),
 ]
 
 ROSTER_OPS_B_SUBS = [
