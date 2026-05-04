@@ -3397,7 +3397,10 @@ async def save_aar_record(record: dict):
     # Add armory points to the community forge pool
     armory_pts = record.get("armory_challenge_points", 0) or 0
     if armory_pts > 0:
-        await _increment_forge_pool_balance(armory_pts)
+        increment_forge_pool_balance = _b("_increment_forge_pool_balance")
+        if increment_forge_pool_balance is None:
+            raise NameError("_increment_forge_pool_balance is not available in aar_ops.py or bot")
+        await increment_forge_pool_balance(armory_pts)
 
 
 # Use DataStore for processed IDs
