@@ -90,8 +90,19 @@ flowchart TB
 |-----------|------|----------------|
 | Core Engine | `bot.py` | Discord client, slash commands, event handlers, scheduled tasks |
 | Data Layer | `datastore.py` | Write-behind cache, background flush, user stats |
+| Constants | `constants.py` | Role IDs, channel IDs, file paths, thresholds, mission sets, scheduler defaults |
+| Flavor Text | `flavor_text.py` | Large RP data tables (chapter blessings, rank acknowledgments, stud milestones, armor/forge phrases, etc.) |
+| Permissions | `permissions.py` | Battle line / champion / specialist track membership and High Command / Watch Command groups |
+| Studs | `studs.py` | Pure stud calculation helpers (`_studs_tier`, `_studs_pips`, `_studs_next_target`, `_format_stud_target`, `_get_stud_weight`, `_get_studs_veneration`) |
 | Configuration | `config/config.json` | Guild settings, permissions, channel policies |
 | Persistence | `data/*.json` | AAR records, activity tracking, milestones, rites |
+
+> **Module split note:** `bot.py` re-exports each extracted module via
+> `from <module> import *` so existing references — including the test
+> suite's `from bot import X` imports — keep working unchanged. The
+> extracted modules contain only pure data and pure functions; runtime
+> state (locks, the Discord client, the `DATASTORE` global, mutable
+> trackers) remains in `bot.py`.
 
 ## Scheduled Tasks
 
