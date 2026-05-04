@@ -1803,7 +1803,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                 and (highest_idx is not None)
                 and (highest_idx <= idx_veteran)
             ):
-                joined_at = _get_effective_induction_date(member)
+                joined_at = _b('_get_effective_induction_date')(member)
                 if joined_at:
                     ja = joined_at
                     if ja.tzinfo is not None:
@@ -1816,7 +1816,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                 else:
                     studs_time = 0
 
-                stats = compute_stats_for_user(str(getattr(member, "id", "")))
+                stats = _b('compute_stats_for_user')(str(getattr(member, "id", "")))
                 try:
                     aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
                 except Exception:
