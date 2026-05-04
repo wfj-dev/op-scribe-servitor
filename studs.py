@@ -1,9 +1,11 @@
 """Pure stud calculation helpers extracted from bot.py.
 
-All functions here are deterministic, depend only on stdlib + flavor_text
-data, and have no coupling to the Discord client or runtime state. bot.py
-re-exports them via ``from studs import *`` so existing references and
-tests keep working unchanged.
+Most functions here are deterministic and depend only on stdlib + flavor_text
+data with no coupling to the Discord client or runtime state.  The exception
+is ``_get_studs_veneration``, which uses ``random.choice`` to pick a
+flavour phrase and is therefore non-deterministic. bot.py re-exports all
+symbols via ``from studs import *`` so existing references and tests keep
+working unchanged.
 """
 
 import random
