@@ -471,7 +471,7 @@ async def _send_activity_status_notification(
         channel = guild.get_channel(ACTIVITY_STATUS_CHANNEL_ID)
         if not channel:
             try:
-                channel = await bot.fetch_channel(ACTIVITY_STATUS_CHANNEL_ID)
+                channel = await _g.bot.fetch_channel(ACTIVITY_STATUS_CHANNEL_ID)
             except Exception:
                 _g.logger.warning(
                     f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found"
