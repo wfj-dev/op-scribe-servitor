@@ -92,9 +92,9 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     notifications = []
     
     # Extract AAR fields
-    mission_name = record.get("mission_name", "").lower()
+    mission_name = (record.get("mission") or record.get("mission_name") or "").lower()
     brother_ids = record.get("brother_ids", [])
-    aar_id = record.get("id", "")
+    aar_id = record.get("aar_id") or record.get("id", "")
     message_url = record.get("message_url", "")
     timestamp = record.get("timestamp", "")
     
