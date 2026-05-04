@@ -3399,3 +3399,54 @@ def has_been_processed(aar_id: int):
 
 
 # Use DataStore user_stats_cache for user stats
+
+
+# ---------------------------------------------------------------------------
+# __all__: export all names for `from aar_ops import *` re-export in bot.py
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    # ── Public helpers ───────────────────────────────────────────────────────
+    "load_aar_data",
+    "load_processed_ids",
+    "add_processed_id",
+    "save_aar_record",
+    "has_been_processed",
+    "parse_aar",
+    "validate_aar",
+    "classify_difficulty",
+    "compute_points_for_op",
+    "compute_armory_bonus_points",
+    "compute_gene_seed_base_points_for_carrier",
+    "get_user_ids_in_line",
+    "is_aar_message",
+    "log_aar_errors",
+    "log_aar_error_with_meta",
+    "summarize_error_authors",
+    # ── Commands ─────────────────────────────────────────────────────────────
+    "reconcile_records",
+    "sanctify_battle_records",
+    "audit_archive_discrepancies",
+    "reparse_records",
+    "record_of_blood",
+    "cache_stats",
+    "set_induction",
+    "audit_service_studs",
+    # ── Underscore helpers ───────────────────────────────────────────────────
+    "_load_challenge_progress",
+    "_save_challenge_progress",
+    "_process_challenge_tracking",
+    "_send_challenge_eligibility_notifications",
+    "_reconciliation_core",
+    "_run_ingest_new",
+    "_run_recheck_errors",
+    "_run_reparse_records",
+    "_reply_aar_rejection",
+    "_set_aar_reaction",
+    "_load_json_dict",
+    "_save_json_dict",
+    "_load_json_list",
+    "_save_json_list",
+    "_snowflake_to_datetime",
+    "_author_info_from_message",
+]

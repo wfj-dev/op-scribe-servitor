@@ -4536,7 +4536,7 @@ def _count_inductions_from_records(user_id: str, records) -> int:
 def _induction_count_for_user(user_id: str) -> int:
     """Compute total inductions a brother participated in across all AARs."""
     try:
-        data = load_aar_data(AAR_RECORDS_PATH)
+        data = _b('load_aar_data')(AAR_RECORDS_PATH)
     except Exception:
         data = {}
     return _count_inductions_from_records(user_id, data.values())
@@ -4631,7 +4631,7 @@ def _get_missions_last_days(days: int):
         span = max(1, int(days))
     except Exception:
         span = 7
-    data = load_aar_data(AAR_RECORDS_PATH)
+    data = _b('load_aar_data')(AAR_RECORDS_PATH)
     now_utc = datetime.now(timezone.utc)
     cutoff = now_utc - timedelta(days=span)
     stamped: List[Tuple[datetime, dict]] = []
@@ -6579,7 +6579,7 @@ async def _scheduled_milestone_check():
 
     Posts to ᛭⋅⋅general-chat⋅⋅᛭ with @Watch Brother mention when thresholds are crossed.
     """
-# (_g.LAST_MILESTONE_CHECK_DATE accessed via _g)
+    # (_g.LAST_MILESTONE_CHECK_DATE accessed via _g)
     try:
         if not MILESTONES_ENABLED:
             return
@@ -8096,3 +8096,113 @@ async def company_roster(interaction: discord.Interaction):
     await interaction.followup.send(embeds=embeds, ephemeral=True)
 
 
+
+
+# ---------------------------------------------------------------------------
+# __all__: export all names needed by tests and by bot.py references.
+# Must include underscore-prefixed names explicitly.
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    # ── Activity status ──────────────────────────────────────────────────────
+    "_load_activity_status",
+    "_save_activity_status",
+    "_load_member_last_post_times",
+    "_save_member_last_post_times",
+    "_load_activity_status_last_check",
+    "_check_activity_status_changes",
+    "_send_activity_status_notification",
+    "_handle_dreadnought_inactivity",
+    "_activity_status_check_loop",
+    # ── Induction / member helpers ───────────────────────────────────────────
+    "_load_induction_overrides",
+    "_save_induction_overrides",
+    "_get_effective_induction_date",
+    "_get_member_company_name",
+    "_extract_company_short_name",
+    "_find_company_command_staff",
+    "_find_kt_sergeant",
+    "_find_all_captains_and_lieutenants",
+    "_find_watch_master",
+    "_get_member_display_name",
+    "_get_member_rank_role",
+    # ── Promotion milestones ─────────────────────────────────────────────────
+    "_load_promotion_tracking",
+    "_save_promotion_tracking",
+    "_check_promotion_milestones",
+    # ── Home chapter rotation ────────────────────────────────────────────────
+    "_month_key_for_offset",
+    "_load_home_chapter_rotation",
+    "_save_home_chapter_rotation",
+    "_get_saturdays_for_month",
+    "_select_home_chapters_for_month",
+    "ROTATION_STATE_PATH",
+    # ── Deeds / stats ────────────────────────────────────────────────────────
+    "_get_missions_last_days",
+    "_get_eligible_combat_bonds_ids",
+    "_filter_pair_counts_by_eligible",
+    "_build_pair_counts",
+    "_build_triple_bonds",
+    "_build_group_bonds",
+    "_build_spread_counts",
+    "_select_top_global_bonds",
+    "_select_personal_bonds",
+    "_select_personal_pair_bonds",
+    "_bond_tier",
+    "_percentile",
+    "_compute_bond_cutoffs",
+    "_bond_tier_dynamic",
+    "_resolve_home_chapters",
+    "_format_bonds_for_discord",
+    "_format_bonds_embed",
+    "_format_personal_bonds_jericho_embed",
+    "_embed_from_ansi",
+    "_compute_fortress_rankings",
+    "_parse_iso8601_to_utc",
+    "_format_member_styled",
+    "_format_imperial_date",
+    "_forum_post_autocomplete",
+    "_induction_count_for_user",
+    "_count_inductions_from_records",
+    # ── Milestone announcements ──────────────────────────────────────────────
+    "_load_milestone_tracking",
+    "_save_milestone_tracking",
+    "_calculate_current_milestones",
+    "_check_milestone_thresholds",
+    "_get_milestone_display_info",
+    "_build_milestone_embed",
+    "_scheduled_milestone_check",
+    # ── Roster audit ─────────────────────────────────────────────────────────
+    "_extract_mentions_from_text",
+    "_extract_role_mention_from_text",
+    "_extract_position_label",
+    "_find_roster_messages",
+    "_parse_roster_section",
+    "_parse_kill_teams_section",
+    "_get_user_roles_by_id",
+    "_validate_high_command_roles",
+    "_validate_company_command_roles",
+    "_validate_kill_team_member_roles",
+    "_audit_company_roster",
+    "_format_audit_summary",
+    "_format_audit_full",
+    "_parse_iso_ts_to_utc_naive",
+    # ── Public names ─────────────────────────────────────────────────────────
+    "HIGH_COMMAND_ROLES",
+    "BATTLE_LINE_ORDER",
+    "CHAMPION_ROLES",
+    "SPECIALIST_ROLES",
+    "POSITION_LABEL_MAP",
+    "ToggleFormatView",
+    # ── Public command functions ──────────────────────────────────────────────
+    "litany_of_function",
+    "pick_home_chapters",
+    "tally_deeds",
+    "my_deeds",
+    "combat_bonds",
+    "promotion_queue",
+    "company_roster",
+    # ── Public stats/data functions ───────────────────────────────────────────
+    "compute_stats_for_user",
+    "compute_stats_for_user_in_records",
+]
