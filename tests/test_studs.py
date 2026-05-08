@@ -9,7 +9,7 @@ Covers:
 
 import pytest
 
-from bot import _studs_tier, _studs_pips, _studs_next_target
+from opscribe.bot import _studs_tier, _studs_pips, _studs_next_target
 
 
 # ---------------------------------------------------------------------------

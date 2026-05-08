@@ -31,8 +31,8 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
-import bot
-from bot import (
+import opscribe.bot as bot
+from opscribe.bot import (
     _get_intensive_charge_cost,
     _get_techmarine_available_charges,
     _consume_multiple_blessings,

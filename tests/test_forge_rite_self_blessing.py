@@ -15,7 +15,7 @@ Covers:
 
 import re
 
-from bot import (
+from opscribe.bot import (
     _blend_forgemaster_self_attestation,
     FORGEMASTER_SELF_ATTESTATION_GENERIC,
     FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER,

@@ -1,6 +1,6 @@
 import types
 
-from bot import (
+from opscribe.bot import (
     RANK_ROLES_PRIORITY,
     _role_index,
     is_sergeant_or_higher,

@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot import _check_milestone_thresholds, MILESTONES_INCREMENTS
+from opscribe.bot import _check_milestone_thresholds, MILESTONES_INCREMENTS
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ Covers:
 """
 
 
-from bot import _should_show_extended_blessing_fields
+from opscribe.bot import _should_show_extended_blessing_fields
 
 
 # ---------------------------------------------------------------------------

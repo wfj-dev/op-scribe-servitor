@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from bot import parse_aar, validate_aar
+from opscribe.bot import parse_aar, validate_aar
 
 
 class FakeUser:

@@ -94,7 +94,7 @@ def preview_alert(aar_id: str = None):
 async def send_test_alert(aar_id: str, record: dict):
     """Actually send a test alert to the data-vault channel."""
     import discord
-    from bot import bot, CONFIG
+    from opscribe.bot import bot, CONFIG
 
     token = CONFIG.get("token")
     if not token:

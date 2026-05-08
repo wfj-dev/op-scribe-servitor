@@ -39,7 +39,7 @@ armor system update:
 import asyncio
 from unittest.mock import patch
 
-from bot import (
+from opscribe.bot import (
     _classify_forge_rite_event,
     _get_compact_rite_status,
     _get_thread_reply_text,

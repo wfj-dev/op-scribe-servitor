@@ -28,15 +28,15 @@ import statistics
 import sys
 
 # Import DataStore
-from datastore import DataStore
+from .datastore import DataStore
 
 # Pure literal constants (role IDs, channel IDs, file paths, thresholds,
 # mission sets, etc.) live in constants.py. Re-export everything so that
 # existing references (and `from bot import X` in tests) keep working.
-from constants import *  # noqa: F401,F403
-from flavor_text import *  # noqa: F401,F403
-from permissions import *  # noqa: F401,F403
-from studs import *  # noqa: F401,F403
+from .constants import *  # noqa: F401,F403
+from .flavor_text import *  # noqa: F401,F403
+from .permissions import *  # noqa: F401,F403
+from .studs import *  # noqa: F401,F403
 
 # Global DataStore instance (initialized when bot is ready)
 DATASTORE: Optional[DataStore] = None
@@ -830,7 +830,7 @@ except Exception:
 # Populate shared globals, then import extracted domain modules.
 # Must come after all locks, CONFIG, and logger are defined above.
 # ─────────────────────────────────────────────────────────────────────────────
-import _bot_globals as _g
+from . import _bot_globals as _g
 _g.bot = bot
 _g.DATASTORE = DATASTORE
 _g.CONFIG = CONFIG
@@ -854,13 +854,13 @@ _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
 _g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
 
-import forge_ops  # noqa: E402
-import aar_ops    # noqa: E402
-import roster_ops # noqa: E402
+from . import forge_ops  # noqa: E402
+from . import aar_ops    # noqa: E402
+from . import roster_ops # noqa: E402
 
-from forge_ops import *   # noqa: F401,F403
-from aar_ops import *     # noqa: F401,F403
-from roster_ops import *  # noqa: F401,F403
+from .forge_ops import *   # noqa: F401,F403
+from .aar_ops import *     # noqa: F401,F403
+from .roster_ops import *  # noqa: F401,F403
 
 # Lines 828-2593 extracted to roster_ops.py
 
