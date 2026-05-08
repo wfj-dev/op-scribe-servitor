@@ -16,6 +16,19 @@ BOT_FUNCTIONS = {
     "parse_aar",
     "validate_aar",
     "_get_rank_emoji",
+    "_load_armor_integrity",
+    "_save_armor_batch",
+    "_increment_aar_generation",
+    "_print_progress",
+    "_get_member_damage_tier",
+    "_get_armor_state",
+    "_process_armor_integrity_for_aar",
+    "_post_armor_alert",
+    "_roll_armor_penalty",
+    "ToggleFormatView",
+    "_load_induction_overrides",
+    "_save_induction_overrides",
+    "_parse_iso8601_to_utc",
 }
 
 # Modules that were extracted and should use _b() for bot.py functions
@@ -104,13 +117,13 @@ def test_imports():
             return False
         
         # Try importing extracted modules
-        from opscribe import aar_ops
+        from opscribe import aar_ops  # noqa: F401
         print("✅ opscribe.aar_ops imports successfully")
         
-        from opscribe import forge_ops
+        from opscribe import forge_ops  # noqa: F401
         print("✅ opscribe.forge_ops imports successfully")
         
-        from opscribe import roster_ops
+        from opscribe import roster_ops  # noqa: F401
         print("✅ opscribe.roster_ops imports successfully")
         
         return True
