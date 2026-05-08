@@ -9,7 +9,6 @@ import *`` so existing references and tests remain unchanged.
 
 import os
 from datetime import datetime, timezone
-from typing import Dict, List
 
 # ---------------------------------------------------------------------------
 # Role IDs
@@ -34,9 +33,7 @@ PROCESSED_IDS_PATH = os.path.join(DATA_DIR, "processed_ids.json")
 RITES_PATH = os.path.join(DATA_DIR, "rites.json")
 MACHINE_SPIRITS_PATH = os.path.join(DATA_DIR, "machine_spirits.json")
 ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
-ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(
-    DATA_DIR, "activity_status_last_check.json"
-)
+ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(DATA_DIR, "activity_status_last_check.json")
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
@@ -88,29 +85,29 @@ BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS = 4  # Minimum hours between bles
 
 # Intensive blessing charge costs (full heal to nominal, guaranteed - no roll)
 INTENSIVE_BLESSING_COSTS = {
-    None: 0,           # Nominal: cannot use intensive
-    "damaged": 2,      # Damaged -> Nominal: 2 charges (guaranteed)
+    None: 0,  # Nominal: cannot use intensive
+    "damaged": 2,  # Damaged -> Nominal: 2 charges (guaranteed)
     "compromised": 2,  # Compromised -> Nominal: 2 charges (guaranteed)
-    "critical": 3,     # Critical -> Nominal: 3 charges (guaranteed)
-    "fractured": 4,    # Fractured -> Nominal: 4 charges (guaranteed)
+    "critical": 3,  # Critical -> Nominal: 3 charges (guaranteed)
+    "fractured": 4,  # Fractured -> Nominal: 4 charges (guaranteed)
 }
 
 # Forge drain per charge used - scales with tier being healed
 FORGE_DRAIN_PER_CHARGE = {
-    None: 1,           # Nominal: 1 pt per charge
-    "damaged": 2,      # Damaged: 2 pts per charge
+    None: 1,  # Nominal: 1 pt per charge
+    "damaged": 2,  # Damaged: 2 pts per charge
     "compromised": 3,  # Compromised: 3 pts per charge
-    "critical": 4,     # Critical: 4 pts per charge
-    "fractured": 5,    # Fractured: 5 pts per charge
+    "critical": 4,  # Critical: 4 pts per charge
+    "fractured": 5,  # Fractured: 5 pts per charge
 }
 
 # Blessing roll configuration - asymmetric state-based probabilities
 BLESSING_ROLL_PROBABILITIES = {
-    None: (0.015, 0.015),        # Nominal: 1.5/97/1.5 - routine maintenance
-    "damaged": (0.045, 0.045),   # Damaged: 4.5/91/4.5 - minor repair
+    None: (0.015, 0.015),  # Nominal: 1.5/97/1.5 - routine maintenance
+    "damaged": (0.045, 0.045),  # Damaged: 4.5/91/4.5 - minor repair
     "compromised": (0.075, 0.075),  # Compromised: 7.5/85/7.5 - agitated spirit
-    "critical": (0.12, 0.09),    # Critical: 12/79/9 - volatile, asymmetric
-    "fractured": (0.15, 0.15),   # Fractured: 15/70/15 - desperate spirit
+    "critical": (0.12, 0.09),  # Critical: 12/79/9 - volatile, asymmetric
+    "fractured": (0.15, 0.15),  # Fractured: 15/70/15 - desperate spirit
 }
 # Legacy thresholds (used as fallback)
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
@@ -161,9 +158,7 @@ MILESTONES_INCREMENTS = {
 # Black Laurels / Campaign Medal configuration
 # ---------------------------------------------------------------------------
 # Black Laurels strict enforcement begins on Feb 20, 2026 at 00:00 UTC
-BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(
-    2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc
-)
+BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc)
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Leviathan Protocol role ID for parsing

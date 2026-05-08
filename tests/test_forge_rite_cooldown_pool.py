@@ -28,7 +28,6 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
-import opscribe.bot as bot
 from opscribe.bot import (
     _check_recipient_cooldown,
     _check_techmarine_can_bless,
@@ -36,13 +35,13 @@ from opscribe.bot import (
     BLESSING_POOL_MAX,
     BLESSING_POOL_REGEN_HOURS,
     BLESSING_RECIPIENT_COOLDOWN_HOURS,
-    BLESSING_RECIPIENT_MAX_PER_DAY,
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _hours_ago(hours: float) -> str:
     """Return an ISO-format timestamp that is `hours` hours in the past."""
@@ -117,6 +116,7 @@ def test_recipient_per_blessing_cooldown_boundary():
     """A recipient blessed exactly 4h ago can receive (boundary condition)."""
     # Import the constant to use exact value
     from bot import BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS
+
     exact_4h_ago = _hours_ago(BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS)
     with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [exact_4h_ago]}
@@ -253,10 +253,7 @@ def test_techmarine_pool_depletion_regen_timing():
     # Oldest blessing used 3h ago; regen window is ~4.8h → ~1.8h remaining
     regen_window_h = BLESSING_POOL_REGEN_HOURS
     oldest_h_ago = regen_window_h - 1.8
-    recent_timestamps = (
-        [_hours_ago(oldest_h_ago)]
-        + [_hours_ago(0.5) for _ in range(BLESSING_POOL_MAX - 1)]
-    )
+    recent_timestamps = [_hours_ago(oldest_h_ago)] + [_hours_ago(0.5) for _ in range(BLESSING_POOL_MAX - 1)]
     with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": recent_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(13))

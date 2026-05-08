@@ -898,9 +898,9 @@ MISSION_TO_PLANET = {
 # Penalty 0 = no penalty, 1-4 = AAR reduction
 ARMOR_PENALTY_PROBABILITIES = {
     None: {0: 1.0},  # Nominal: no penalty
-    "damaged": {0: 0.90, 1: 0.085, 2: 0.010, 3: 0.005},          # 10% penalty chance
-    "compromised": {0: 0.835, 1: 0.10, 2: 0.05, 3: 0.015},       # ~17% penalty chance
-    "critical": {0: 0.75, 1: 0.085, 2: 0.10, 3: 0.065},          # 25% penalty chance
+    "damaged": {0: 0.90, 1: 0.085, 2: 0.010, 3: 0.005},  # 10% penalty chance
+    "compromised": {0: 0.835, 1: 0.10, 2: 0.05, 3: 0.015},  # ~17% penalty chance
+    "critical": {0: 0.75, 1: 0.085, 2: 0.10, 3: 0.065},  # 25% penalty chance
     "fractured": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},  # 30% penalty chance
 }
 
@@ -908,30 +908,30 @@ ARMOR_PENALTY_PROBABILITIES = {
 # Roll checked each AAR; if successful, sends detection alert before penalty occurs
 # Only one detection alert per tier (tracked in armor state)
 ARMOR_DETECTION_CHANCES = {
-    "damaged": 0.20,      # 20% chance per AAR
+    "damaged": 0.20,  # 20% chance per AAR
     "compromised": 0.35,  # 35% chance per AAR
-    "critical": 0.50,     # 50% chance per AAR
-    "fractured": 1.0,     # 100% - always alert
+    "critical": 0.50,  # 50% chance per AAR
+    "fractured": 1.0,  # 100% - always alert
 }
 
 # Scan miss chances for armor_status command (brothers may not show)
 # Flat 20% undetected chance across all tiers except fractured
 ARMOR_SCAN_MISS_CHANCES = {
-    "nominal": 0.20,      # 20% chance to miss
-    "damaged": 0.20,      # 20% chance to miss
+    "nominal": 0.20,  # 20% chance to miss
+    "damaged": 0.20,  # 20% chance to miss
     "compromised": 0.20,  # 20% chance to miss
-    "critical": 0.20,     # 20% chance to miss
-    "fractured": 0.0,     # 0% - always visible
+    "critical": 0.20,  # 20% chance to miss
+    "fractured": 0.0,  # 0% - always visible
 }
 
 # Predictive detection chances for nominal brothers based on cycle count
 # Used to warn Techmarines of impending damage risk
 ARMOR_SCAN_PREDICTIVE_TIERS = [
-    {"min": 0, "max": 4, "chance": 0.0},      # No warning in safe zone
-    {"min": 5, "max": 9, "chance": 0.10},     # 10% chance to detect risk
-    {"min": 10, "max": 14, "chance": 0.25},   # 25% chance
-    {"min": 15, "max": 19, "chance": 0.40},   # 40% chance
-    {"min": 20, "max": None, "chance": 0.60}, # 60% chance
+    {"min": 0, "max": 4, "chance": 0.0},  # No warning in safe zone
+    {"min": 5, "max": 9, "chance": 0.10},  # 10% chance to detect risk
+    {"min": 10, "max": 14, "chance": 0.25},  # 25% chance
+    {"min": 15, "max": 19, "chance": 0.40},  # 40% chance
+    {"min": 20, "max": None, "chance": 0.60},  # 60% chance
 ]
 
 # Intensive scan cost (armory points via requisition_supplies)

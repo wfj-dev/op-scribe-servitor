@@ -29,9 +29,8 @@ Covers:
 
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
-import opscribe.bot as bot
 from opscribe.bot import (
     _get_intensive_charge_cost,
     _get_techmarine_available_charges,
@@ -45,6 +44,7 @@ from opscribe.bot import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _hours_ago(hours: float) -> str:
     """Return an ISO-format timestamp that is `hours` hours in the past."""
@@ -124,6 +124,7 @@ def test_intensive_cost_spirit_fractured_flag():
 
 def test_available_charges_empty_pool():
     """A Techmarine with no recorded timestamps has the full pool available."""
+
     async def fake_pool_state(uid):
         return {"blessing_timestamps": []}
 
@@ -340,18 +341,14 @@ def test_consume_multiple_zero_is_noop():
 
 def test_collaborative_attestor_has_enough_solo():
     """Attestor has sufficient charges → solo contribution, not collaborative."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=3, invoker_charges=2, charges_required=3
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=3, invoker_charges=2, charges_required=3)
     assert is_collab is False
     assert contributions == [("attestor", 3)]
 
 
 def test_collaborative_both_contribute():
     """Attestor short, invoker covers the rest → both contribute, is_collaborative=True."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=1, invoker_charges=3, charges_required=3
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=1, invoker_charges=3, charges_required=3)
     assert is_collab is True
     assert ("attestor", 1) in contributions
     assert ("invoker", 2) in contributions
@@ -360,9 +357,7 @@ def test_collaborative_both_contribute():
 
 def test_collaborative_invoker_only_attestor_zero():
     """Attestor has 0 charges, invoker covers everything → is_collaborative=False."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=0, invoker_charges=4, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=0, invoker_charges=4, charges_required=4)
     assert is_collab is False
     # Invoker supplies all, attestor contributes nothing
     invoker_total = sum(c for who, c in contributions if who == "invoker")
@@ -381,25 +376,19 @@ def test_collaborative_split_amounts_sum_to_required():
     ]:
         _, contributions = _simulate_collaborative_split(attestor_c, invoker_c, required)
         total = sum(c for _, c in contributions)
-        assert total == required, (
-            f"attestor={attestor_c}, invoker={invoker_c}, required={required} → total={total}"
-        )
+        assert total == required, f"attestor={attestor_c}, invoker={invoker_c}, required={required} → total={total}"
 
 
 def test_collaborative_combined_insufficient_yields_empty():
     """When combined charges < required, no contributions are produced."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=1, invoker_charges=1, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=1, invoker_charges=1, charges_required=4)
     assert contributions == []
     assert is_collab is False
 
 
 def test_collaborative_attestor_one_invoker_covers_rest_exact_split():
     """Exact split: attestor contributes 2 of 4, invoker covers 2."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=2, invoker_charges=2, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=2, invoker_charges=2, charges_required=4)
     assert is_collab is True
     assert ("attestor", 2) in contributions
     assert ("invoker", 2) in contributions

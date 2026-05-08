@@ -1,5 +1,6 @@
 """Roster operations: activity status, promotion milestones, deeds/stats,
 combat bonds, milestone announcements, roster audit."""
+
 import os
 import asyncio
 import json
@@ -10,14 +11,11 @@ from discord.ext import tasks
 import re
 import itertools
 from typing import Dict, List, Set, Tuple, Optional
-import hashlib
 import logging
-import time
 import random
 import sys as _sys
 import statistics
 
-from .datastore import DataStore
 from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
@@ -27,8 +25,9 @@ from . import _bot_globals as _g
 
 def _b(name):
     """Resolve name via bot module for test-mock compatibility."""
-    m = _sys.modules.get('bot')
+    m = _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
 
 def _load_activity_status() -> Dict[str, Dict]:
     """Load stored activity status mapping: user_id -> {'status': 'active'|'inactive', 'updated_at': ISO timestamp}.
@@ -241,7 +240,7 @@ def _get_member_company_name(member: discord.Member) -> Optional[str]:
                 return "Dreadnought Cadre"
     except Exception:
         pass
-    
+
     company_roles = {
         "Watch Company Primus",
         "Watch Company Secundus",
@@ -364,7 +363,7 @@ def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
         name = getattr(role, "name", None)
         if not name:
             continue
-        idx = _b('_role_index')(name)
+        idx = _b("_role_index")(name)
         if idx is not None:
             if best_idx is None or idx < best_idx:
                 best_idx = idx
@@ -374,7 +373,7 @@ def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
 
 async def _handle_dreadnought_inactivity(member: discord.Member):
     """Handle dreadnought interment when they become inactive (28 days no AAR).
-    
+
     Removes Venerable/Honored Dreadnought role and adds Interred Brother role.
     Sends a notification about the interment.
     """
@@ -382,52 +381,52 @@ async def _handle_dreadnought_inactivity(member: discord.Member):
         guild = member.guild
         if not guild:
             return
-        
+
         role_ids = {getattr(r, "id", 0) for r in getattr(member, "roles", [])}
-        
+
         # Check if member has a dreadnought role
         dreadnought_role_to_remove = None
         dreadnought_type = None
-        
+
         if VENERABLE_DREADNOUGHT_ROLE_ID in role_ids:
             dreadnought_role_to_remove = guild.get_role(VENERABLE_DREADNOUGHT_ROLE_ID)
             dreadnought_type = "Venerable Dreadnought"
         elif HONORED_DREADNOUGHT_ROLE_ID in role_ids:
             dreadnought_role_to_remove = guild.get_role(HONORED_DREADNOUGHT_ROLE_ID)
             dreadnought_type = "Honored Dreadnought"
-        
+
         # If member has a dreadnought role, inter them
         if dreadnought_role_to_remove and dreadnought_type:
             interred_role = guild.get_role(INTERRED_BROTHER_ROLE_ID)
-            
+
             if not interred_role:
                 _g.logger.warning(f"Interred Brother role {INTERRED_BROTHER_ROLE_ID} not found")
                 return
-            
+
             # Remove dreadnought role and add interred brother role
             await member.remove_roles(dreadnought_role_to_remove, reason="Dreadnought inactive for 28 days")
             await member.add_roles(interred_role, reason="Dreadnought interred due to inactivity")
-            
+
             # Send notification
             channel = guild.get_channel(DREADNOUGHT_INACTIVITY_CHANNEL_ID)
             if channel:
                 member_name = _get_member_display_name(member)
-                
+
                 # Get Watch Master and Forgemaster for notification
                 watch_master_role = discord.utils.get(guild.roles, name="Watch Master")
                 forgemaster_role = discord.utils.get(guild.roles, name="Forgemaster")
-                
+
                 role_mentions = []
                 if watch_master_role:
                     role_mentions.append(watch_master_role.mention)
                 if forgemaster_role:
                     role_mentions.append(forgemaster_role.mention)
-                
+
                 mention_str = " ".join(role_mentions) if role_mentions else ""
-                
+
                 # Get venerable emoji
                 venerable_emoji = _get_emoji_by_name(guild, "venerable") or "⚙️"
-                
+
                 lines = [
                     f"{venerable_emoji} **INTERMENT PROTOCOL INITIATED** {venerable_emoji}",
                     "",
@@ -438,15 +437,15 @@ async def _handle_dreadnought_inactivity(member: discord.Member):
                     "",
                     "*May the Omnissiah watch over this ancient warrior's slumber.*",
                 ]
-                
+
                 if mention_str:
                     content = f"{mention_str}\n" + "\n".join(lines)
                 else:
                     content = "\n".join(lines)
-                
+
                 await channel.send(content)
                 _g.logger.info(f"Interred {dreadnought_type} {member.id} due to inactivity")
-    
+
     except Exception as e:
         _g.logger.exception(f"Failed to handle dreadnought inactivity: {e}")
 
@@ -461,11 +460,9 @@ async def _send_activity_status_notification(
     try:
         # Skip notifications for members who aren't Watch Brothers (don't have any Watch rank role)
         member_role_names = {r.name for r in member.roles}
-        qualifying_roles = set(_b('RANK_ROLES_PRIORITY')) | {"Watch Sister"}
+        qualifying_roles = set(_b("RANK_ROLES_PRIORITY")) | {"Watch Sister"}
         if not any(r in member_role_names for r in qualifying_roles):
-            _g.logger.debug(
-                f"Skipping activity notification for {member.name}: not a Watch Brother"
-            )
+            _g.logger.debug(f"Skipping activity notification for {member.name}: not a Watch Brother")
             return
 
         channel = guild.get_channel(ACTIVITY_STATUS_CHANNEL_ID)
@@ -473,9 +470,7 @@ async def _send_activity_status_notification(
             try:
                 channel = await _g.bot.fetch_channel(ACTIVITY_STATUS_CHANNEL_ID)
             except Exception:
-                _g.logger.warning(
-                    f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found"
-                )
+                _g.logger.warning(f"Activity status channel {ACTIVITY_STATUS_CHANNEL_ID} not found")
                 return
         if not channel:
             return
@@ -490,14 +485,8 @@ async def _send_activity_status_notification(
 
             # Get company role
             company_name = _get_member_company_name(member)
-            company_role = (
-                discord.utils.get(guild.roles, name=company_name)
-                if company_name
-                else None
-            )
-            company_mention = (
-                company_role.mention if company_role else (company_name or "Unknown")
-            )
+            company_role = discord.utils.get(guild.roles, name=company_name) if company_name else None
+            company_mention = company_role.mention if company_role else (company_name or "Unknown")
 
             # Get Reserves role
             reserves_role = discord.utils.get(guild.roles, name="Reserves")
@@ -552,9 +541,7 @@ async def _send_activity_status_notification(
             content,
             allowed_mentions=discord.AllowedMentions(users=True, roles=True),
         )
-        _g.logger.info(
-            f"Activity status notification sent for {member_name}: {old_status} -> {new_status}"
-        )
+        _g.logger.info(f"Activity status notification sent for {member_name}: {old_status} -> {new_status}")
 
     except Exception as e:
         _g.logger.exception(f"Failed to send activity status notification: {e}")
@@ -568,7 +555,7 @@ async def _check_activity_status_changes():
     """
     async with _g.ACTIVITY_STATUS_LOCK:
         try:
-            guild = _b('_resolve_notification_guild')()
+            guild = _b("_resolve_notification_guild")()
             if not guild:
                 _g.logger.debug("Activity status check: no guild available")
                 return
@@ -579,9 +566,7 @@ async def _check_activity_status_changes():
 
             # Load previous status and member last post times
             prev_status = _load_activity_status()
-            member_last_posts = (
-                _load_member_last_post_times()
-            )  # Dict[user_id] -> ISO timestamp string
+            member_last_posts = _load_member_last_post_times()  # Dict[user_id] -> ISO timestamp string
             last_check_time = _load_activity_status_last_check()
             check_start_time = datetime.utcnow()
 
@@ -595,9 +580,7 @@ async def _check_activity_status_changes():
             # Step 1: Build/update member last post times
             if is_first_check:
                 # First run: scan ALL records to establish baseline
-                _g.logger.info(
-                    "Activity status check: first run, building baseline of member last posts"
-                )
+                _g.logger.info("Activity status check: first run, building baseline of member last posts")
                 for rec in _g.DATASTORE.iter_records():
                     ts = rec.get("timestamp")
                     if not ts:
@@ -609,10 +592,7 @@ async def _check_activity_status_changes():
                         for uid in rec.get("brother_ids") or []:
                             uid_str = str(uid)
                             # Keep the most recent timestamp for each member
-                            if (
-                                uid_str not in new_member_last_posts
-                                or ts > new_member_last_posts[uid_str]
-                            ):
+                            if uid_str not in new_member_last_posts or ts > new_member_last_posts[uid_str]:
                                 new_member_last_posts[uid_str] = ts
                     except Exception:
                         continue
@@ -622,9 +602,7 @@ async def _check_activity_status_changes():
                 _g.logger.debug(
                     f"Activity status check: scanning records since {last_check_time.isoformat() if last_check_time else 'beginning'}"
                 )
-                recent_cutoff = last_check_time or (
-                    check_start_time - timedelta(days=365)
-                )
+                recent_cutoff = last_check_time or (check_start_time - timedelta(days=365))
 
                 for rec in _g.DATASTORE.iter_records():
                     ts = rec.get("timestamp")
@@ -639,35 +617,24 @@ async def _check_activity_status_changes():
                             for uid in rec.get("brother_ids") or []:
                                 uid_str = str(uid)
                                 # Keep the most recent timestamp
-                                if (
-                                    uid_str not in member_last_posts
-                                    or ts > member_last_posts.get(uid_str, "")
-                                ):
+                                if uid_str not in member_last_posts or ts > member_last_posts.get(uid_str, ""):
                                     member_last_posts[uid_str] = ts
                     except Exception:
                         continue
 
             # Step 2: Determine which members to check and compute their status
             cutoff_datetime = check_start_time - timedelta(days=cutoff_days)
-            users_to_check: Set[str] = (
-                set(member_last_posts.keys()) if is_first_check else set()
-            )
+            users_to_check: Set[str] = set(member_last_posts.keys()) if is_first_check else set()
 
             # Add members who had recent activity
             for uid, last_post_str in member_last_posts.items():
                 try:
                     last_post_dt = datetime.fromisoformat(last_post_str)
                     if last_post_dt.tzinfo is not None:
-                        last_post_dt = last_post_dt.astimezone(timezone.utc).replace(
-                            tzinfo=None
-                        )
+                        last_post_dt = last_post_dt.astimezone(timezone.utc).replace(tzinfo=None)
                     # Check if record is recent (within 4 hours) or if member was previously active and is now at/past 28 days
-                    is_recent = (
-                        last_post_dt >= recent_cutoff if not is_first_check else False
-                    )
-                    is_at_threshold = (
-                        last_post_dt < cutoff_datetime
-                    )  # At or past 28-day threshold
+                    is_recent = last_post_dt >= recent_cutoff if not is_first_check else False
+                    is_at_threshold = last_post_dt < cutoff_datetime  # At or past 28-day threshold
 
                     if (
                         is_recent
@@ -681,9 +648,7 @@ async def _check_activity_status_changes():
                 except Exception:
                     users_to_check.add(uid)
 
-            _g.logger.debug(
-                f"Activity status check: checking {len(users_to_check)} members"
-            )
+            _g.logger.debug(f"Activity status check: checking {len(users_to_check)} members")
 
             # Step 3: Compute status for identified members
             for user_id in users_to_check:
@@ -692,13 +657,9 @@ async def _check_activity_status_changes():
                     if last_post_str:
                         last_post_dt = datetime.fromisoformat(last_post_str)
                         if last_post_dt.tzinfo is not None:
-                            last_post_dt = last_post_dt.astimezone(
-                                timezone.utc
-                            ).replace(tzinfo=None)
+                            last_post_dt = last_post_dt.astimezone(timezone.utc).replace(tzinfo=None)
                         # Status is active if last post is within 28 days, else inactive
-                        current_status = (
-                            "active" if last_post_dt >= cutoff_datetime else "inactive"
-                        )
+                        current_status = "active" if last_post_dt >= cutoff_datetime else "inactive"
                     else:
                         current_status = "inactive"
 
@@ -726,16 +687,10 @@ async def _check_activity_status_changes():
 
                     # Only notify for status changes if not first check and member is transitioning to a new state
                     should_notify = False
-                    if (
-                        not is_first_check
-                        and old_status
-                        and old_status != current_status
-                    ):
+                    if not is_first_check and old_status and old_status != current_status:
                         if current_status == "active" and old_status == "inactive":
                             # inactive->active: only notify if we previously sent a departure notification
-                            should_notify = isinstance(
-                                old_entry, dict
-                            ) and old_entry.get("notified_inactive", False)
+                            should_notify = isinstance(old_entry, dict) and old_entry.get("notified_inactive", False)
                         else:
                             # active->inactive: always notify (these are real departures)
                             should_notify = True
@@ -747,9 +702,7 @@ async def _check_activity_status_changes():
                             if not member:
                                 member = await guild.fetch_member(int(user_id))
                             if member and not member.bot:
-                                changes.append(
-                                    (member, old_status, current_status, user_id)
-                                )
+                                changes.append((member, old_status, current_status, user_id))
                         except Exception:
                             pass
                 except Exception:
@@ -769,9 +722,7 @@ async def _check_activity_status_changes():
                     try:
                         await _handle_dreadnought_inactivity(member)
                     except Exception as e:
-                        _g.logger.exception(
-                            f"Failed to handle dreadnought inactivity for {member.id}: {e}"
-                        )
+                        _g.logger.exception(f"Failed to handle dreadnought inactivity for {member.id}: {e}")
 
             # Send notifications for changes; mark notified_inactive only on confirmed delivery
             for member, old, new, uid in changes:
@@ -781,9 +732,7 @@ async def _check_activity_status_changes():
                         new_status_map[uid]["notified_inactive"] = True
                     await asyncio.sleep(0.5)
                 except Exception as e:
-                    _g.logger.exception(
-                        f"Failed to notify activity change for {member.id}: {e}"
-                    )
+                    _g.logger.exception(f"Failed to notify activity change for {member.id}: {e}")
 
             # Save updated activity status (after notifications so notified_inactive reflects actual sends)
             _save_activity_status(new_status_map)
@@ -793,9 +742,7 @@ async def _check_activity_status_changes():
                     f"Activity status check complete: {len(changes)} change(s), {len(users_to_check)} members checked"
                 )
             else:
-                _g.logger.debug(
-                    f"Activity status check complete: no changes ({len(users_to_check)} members checked)"
-                )
+                _g.logger.debug(f"Activity status check complete: no changes ({len(users_to_check)} members checked)")
 
         except Exception as e:
             _g.logger.exception(f"Activity status check failed: {e}")
@@ -809,7 +756,7 @@ async def _check_promotion_milestones():
     - Service Studs milestones: new studs earned (1 per 4 weeks AND 400 AAR points)
     """
     try:
-        guild = _b('_resolve_notification_guild')()
+        guild = _b("_resolve_notification_guild")()
         if not guild:
             _g.logger.debug("Promotion check: no guild available")
             return
@@ -824,9 +771,7 @@ async def _check_promotion_milestones():
             try:
                 veteran_channel = await _g.bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
             except Exception:
-                _g.logger.warning(
-                    f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found"
-                )
+                _g.logger.warning(f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found")
                 veteran_channel = None
 
         # Get service studs channel
@@ -835,22 +780,16 @@ async def _check_promotion_milestones():
             try:
                 studs_channel = await _g.bot.fetch_channel(SERVICE_STUDS_CHANNEL_ID)
             except Exception:
-                _g.logger.warning(
-                    f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found"
-                )
+                _g.logger.warning(f"Service studs channel {SERVICE_STUDS_CHANNEL_ID} not found")
                 studs_channel = None
 
         # Get Black Laurels notification channel
         black_laurels_channel = guild.get_channel(BLACK_LAURELS_CHANNEL_ID)
         if not black_laurels_channel:
             try:
-                black_laurels_channel = await _g.bot.fetch_channel(
-                    BLACK_LAURELS_CHANNEL_ID
-                )
+                black_laurels_channel = await _g.bot.fetch_channel(BLACK_LAURELS_CHANNEL_ID)
             except Exception:
-                _g.logger.warning(
-                    f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found"
-                )
+                _g.logger.warning(f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found")
                 black_laurels_channel = None
 
         # Get Oathsworn eligibility notification channel
@@ -862,12 +801,7 @@ async def _check_promotion_milestones():
                 _g.logger.warning(f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found")
                 oathsworn_channel = None
 
-        if (
-            not veteran_channel
-            and not studs_channel
-            and not black_laurels_channel
-            and not oathsworn_channel
-        ):
+        if not veteran_channel and not studs_channel and not black_laurels_channel and not oathsworn_channel:
             _g.logger.warning("No promotion channels available")
             return
 
@@ -878,83 +812,53 @@ async def _check_promotion_milestones():
         # Get Watch Captain/Lieutenant roles for mentions
         watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
         watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-        captain_mention = (
-            watch_captain_role.mention if watch_captain_role else "@Watch Captain"
-        )
+        captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
         lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
         watch_command_mention = f"{captain_mention} / {lt_mention}"
 
         # Get Watch Veteran role for mentions
         watch_veteran_role = discord.utils.get(guild.roles, name="Watch Veteran")
-        watch_veteran_mention = (
-            watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
-        )
+        watch_veteran_mention = watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
 
         # Get Watch Sergeant role for vet promotion mentions
         watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
-        watch_sergeant_mention = (
-            watch_sergeant_role.mention
-            if watch_sergeant_role
-            else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
-        )
+        watch_sergeant_mention = watch_sergeant_role.mention if watch_sergeant_role else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
 
         # Get Black Laurels role for mentions
         black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
-        black_laurels_mention = (
-            black_laurels_role.mention if black_laurels_role else "@Black Laurels"
-        )
+        black_laurels_mention = black_laurels_role.mention if black_laurels_role else "@Black Laurels"
 
         # Get Watch Command role for award mentions
         watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
         watch_command_role_mention = (
-            watch_command_role.mention
-            if watch_command_role
-            else f"<@&{WATCH_COMMAND_ROLE_ID}>"
+            watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
         )
 
         # Get specialist roles for award mentions
         techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
-        techmarine_mention = (
-            techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
-        )
+        techmarine_mention = techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
         apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
-        apothecary_mention = (
-            apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
-        )
+        apothecary_mention = apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
         librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
-        librarian_mention = (
-            librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
-        )
+        librarian_mention = librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
 
         # Get award roles (by ID to avoid name change issues)
         ardent_raider_role = guild.get_role(ARDENT_RAIDER_ROLE_ID)
-        ardent_raider_mention = (
-            ardent_raider_role.mention
-            if ardent_raider_role
-            else f"<@&{ARDENT_RAIDER_ROLE_ID}>"
-        )
+        ardent_raider_mention = ardent_raider_role.mention if ardent_raider_role else f"<@&{ARDENT_RAIDER_ROLE_ID}>"
         apothecarion_medal_role = guild.get_role(APOTHECARION_SERVICE_MEDAL_ROLE_ID)
         apothecarion_medal_mention = (
-            apothecarion_medal_role.mention
-            if apothecarion_medal_role
-            else f"<@&{APOTHECARION_SERVICE_MEDAL_ROLE_ID}>"
+            apothecarion_medal_role.mention if apothecarion_medal_role else f"<@&{APOTHECARION_SERVICE_MEDAL_ROLE_ID}>"
         )
-        crimson_laurels_role = discord.utils.get(
-            guild.roles, name=CRIMSON_LAURELS_ROLE_NAME
-        )
+        crimson_laurels_role = discord.utils.get(guild.roles, name=CRIMSON_LAURELS_ROLE_NAME)
         crimson_laurels_mention = (
-            crimson_laurels_role.mention
-            if crimson_laurels_role
-            else f"@{CRIMSON_LAURELS_ROLE_NAME}"
+            crimson_laurels_role.mention if crimson_laurels_role else f"@{CRIMSON_LAURELS_ROLE_NAME}"
         )
 
         # Build a map of user_id -> set of completed Black Laurels missions
         user_bl_missions: Dict[str, set] = {}
         for rec in _g.DATASTORE.iter_records():
             difficulty = (rec.get("difficulty") or "").lower()
-            black_laurels_in_difficulty = (
-                "black" in difficulty and "laurel" in difficulty
-            )
+            black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
             black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
 
             # Check grace period
@@ -969,9 +873,7 @@ async def _check_promotion_milestones():
                 pass
 
             if is_in_grace_period:
-                has_black_laurels = (
-                    black_laurels_in_difficulty or black_laurels_in_mission
-                )
+                has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
             else:
                 has_black_laurels = black_laurels_in_difficulty
 
@@ -1003,12 +905,8 @@ async def _check_promotion_milestones():
                 continue
 
             try:
-                role_names = {
-                    getattr(r, "name", "") for r in getattr(member, "roles", [])
-                }
-                is_watch_brother = (
-                    "Watch Brother" in role_names or "Watch Sister" in role_names
-                )
+                role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+                is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
                 is_veteran_or_higher = any(
                     r in role_names
                     for r in [
@@ -1061,7 +959,7 @@ async def _check_promotion_milestones():
                 member_chapter = "Unknown"
                 for role in getattr(member, "roles", []):
                     role_name = getattr(role, "name", "")
-                    if role_name in _b('HOME_CHAPTERS'):
+                    if role_name in _b("HOME_CHAPTERS"):
                         member_chapter = role_name
                         break
 
@@ -1078,9 +976,7 @@ async def _check_promotion_milestones():
                     # Similar to service studs: notify if is_eligible and last wasn't or is same
                     if is_eligible and is_eligible >= last_eligible:
                         # Get Watch Brother role for fallback mention
-                        watch_brother_role = discord.utils.get(
-                            guild.roles, name="Watch Brother"
-                        )
+                        watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
                         # Strip rank prefix from display name to avoid "Watch Brother Watch Brother X"
                         stripped_name = member.display_name
                         for prefix in ("Watch Brother", "Watch Sister"):
@@ -1089,9 +985,7 @@ async def _check_promotion_milestones():
                                 break
                         # Format: user mention, or if not mentionable use rank role + name
                         if watch_brother_role:
-                            member_line = (
-                                f"{watch_brother_role.mention} {stripped_name}"
-                            )
+                            member_line = f"{watch_brother_role.mention} {stripped_name}"
                         else:
                             member_line = f"{member.mention}"
                         # Send notification in the specified format
@@ -1104,9 +998,7 @@ async def _check_promotion_milestones():
                         )
                         await veteran_channel.send(
                             msg,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
+                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
@@ -1168,9 +1060,7 @@ async def _check_promotion_milestones():
                         await studs_channel.send(
                             content,
                             embed=embed,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
+                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                         )
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
@@ -1180,18 +1070,14 @@ async def _check_promotion_milestones():
                         user_tracking["last_earned_studs"] = earned_studs
 
                 # Check Black Laurels eligibility (all 8 required missions completed)
-                if black_laurels_channel and not user_tracking.get(
-                    "black_laurels_notified"
-                ):
+                if black_laurels_channel and not user_tracking.get("black_laurels_notified"):
                     completed_bl = user_bl_missions.get(user_id, set())
                     is_bl_eligible = (
                         len(completed_bl) >= len(BLACK_LAURELS_REQUIRED_MISSIONS)
                         and completed_bl >= BLACK_LAURELS_REQUIRED_MISSIONS
                     )
                     # Only notify if eligible and doesn't already have the role
-                    has_bl_role = (
-                        black_laurels_role and black_laurels_role in member.roles
-                    )
+                    has_bl_role = black_laurels_role and black_laurels_role in member.roles
                     if is_bl_eligible and not has_bl_role:
                         msg = (
                             f"᛭⋅ {member.mention}\n"
@@ -1201,9 +1087,7 @@ async def _check_promotion_milestones():
                         )
                         await black_laurels_channel.send(
                             msg,
-                            allowed_mentions=discord.AllowedMentions(
-                                users=True, roles=True
-                            ),
+                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                         )
                         user_tracking["black_laurels_notified"] = True
                         notifications_sent += 1
@@ -1212,12 +1096,8 @@ async def _check_promotion_milestones():
                 # Check Ardent Raider eligibility (200 armory points)
                 if black_laurels_channel:
                     armory_points = int(stats.get("armory_points", 0) or 0)
-                    is_ar_eligible = (
-                        armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
-                    )
-                    has_ar_role = (
-                        ardent_raider_role and ardent_raider_role in member.roles
-                    )
+                    is_ar_eligible = armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
+                    has_ar_role = ardent_raider_role and ardent_raider_role in member.roles
                     # If already has role, mark as notified without sending
                     if has_ar_role:
                         user_tracking["ardent_raider_notified"] = True
@@ -1230,7 +1110,14 @@ async def _check_promotion_milestones():
                                 if r.id in ALLOWED_KT_ROLE_IDS:
                                     team_mention = r.mention
                                     break
-                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                elif r.name in {
+                                    "Watch Company Primus",
+                                    "Watch Company Secundus",
+                                    "Watch Company Tertius",
+                                    "Watch Company Quartus",
+                                    "Watch Company Quintus",
+                                    "Dreadnought Cadre",
+                                }:
                                     team_mention = r.mention
                                     break
                             msg = (
@@ -1242,9 +1129,7 @@ async def _check_promotion_milestones():
                             )
                             await black_laurels_channel.send(
                                 msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
+                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                             )
                             user_tracking["ardent_raider_notified"] = True
                             notifications_sent += 1
@@ -1253,12 +1138,8 @@ async def _check_promotion_milestones():
                 # Check Apothecarion Service Medal eligibility (150 geneseed points)
                 if black_laurels_channel:
                     gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
-                    is_ftf_eligible = (
-                        gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
-                    )
-                    has_ftf_role = (
-                        apothecarion_medal_role and apothecarion_medal_role in member.roles
-                    )
+                    is_ftf_eligible = gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
+                    has_ftf_role = apothecarion_medal_role and apothecarion_medal_role in member.roles
                     # If already has role, mark as notified without sending
                     if has_ftf_role:
                         user_tracking["for_the_fallen_notified"] = True
@@ -1271,7 +1152,14 @@ async def _check_promotion_milestones():
                                 if r.id in ALLOWED_KT_ROLE_IDS:
                                     team_mention = r.mention
                                     break
-                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                elif r.name in {
+                                    "Watch Company Primus",
+                                    "Watch Company Secundus",
+                                    "Watch Company Tertius",
+                                    "Watch Company Quartus",
+                                    "Watch Company Quintus",
+                                    "Dreadnought Cadre",
+                                }:
                                     team_mention = r.mention
                                     break
                             msg = (
@@ -1283,9 +1171,7 @@ async def _check_promotion_milestones():
                             )
                             await black_laurels_channel.send(
                                 msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
+                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                             )
                             user_tracking["for_the_fallen_notified"] = True
                             notifications_sent += 1
@@ -1294,16 +1180,9 @@ async def _check_promotion_milestones():
                 # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
                 if black_laurels_channel:
                     # Check if user has Black Laurels role (required for Crimson)
-                    has_bl_role_for_cl = (
-                        black_laurels_role and black_laurels_role in member.roles
-                    )
-                    is_cl_eligible = (
-                        aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD
-                        and has_bl_role_for_cl
-                    )
-                    has_cl_role = (
-                        crimson_laurels_role and crimson_laurels_role in member.roles
-                    )
+                    has_bl_role_for_cl = black_laurels_role and black_laurels_role in member.roles
+                    is_cl_eligible = aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD and has_bl_role_for_cl
+                    has_cl_role = crimson_laurels_role and crimson_laurels_role in member.roles
                     # If already has role, mark as notified without sending
                     if has_cl_role:
                         user_tracking["crimson_laurels_notified"] = True
@@ -1316,7 +1195,14 @@ async def _check_promotion_milestones():
                                 if r.id in ALLOWED_KT_ROLE_IDS:
                                     team_mention = r.mention
                                     break
-                                elif r.name in {"Watch Company Primus", "Watch Company Secundus", "Watch Company Tertius", "Watch Company Quartus", "Watch Company Quintus", "Dreadnought Cadre"}:
+                                elif r.name in {
+                                    "Watch Company Primus",
+                                    "Watch Company Secundus",
+                                    "Watch Company Tertius",
+                                    "Watch Company Quartus",
+                                    "Watch Company Quintus",
+                                    "Dreadnought Cadre",
+                                }:
                                     team_mention = r.mention
                                     break
                             msg = (
@@ -1328,9 +1214,7 @@ async def _check_promotion_milestones():
                             )
                             await black_laurels_channel.send(
                                 msg,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
+                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                             )
                             user_tracking["crimson_laurels_notified"] = True
                             notifications_sent += 1
@@ -1374,12 +1258,8 @@ async def _check_promotion_milestones():
                         is_oathsworn_eligible = oathsworn_earned_studs >= 3
 
                         # Check they don't already have Oathsworn role
-                        oathsworn_role = discord.utils.get(
-                            guild.roles, name="Oathsworn"
-                        )
-                        has_oathsworn_role = (
-                            oathsworn_role and oathsworn_role in member.roles
-                        )
+                        oathsworn_role = discord.utils.get(guild.roles, name="Oathsworn")
+                        has_oathsworn_role = oathsworn_role and oathsworn_role in member.roles
 
                         if is_oathsworn_eligible and not has_oathsworn_role:
                             # Generate flavorful announcement with embed and poll
@@ -1395,9 +1275,7 @@ async def _check_promotion_milestones():
                                 content,
                                 embed=embed,
                                 poll=poll,
-                                allowed_mentions=discord.AllowedMentions(
-                                    users=True, roles=True
-                                ),
+                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                             )
                             user_tracking["oathsworn_notified"] = True
                             notifications_sent += 1
@@ -1420,9 +1298,7 @@ async def _check_promotion_milestones():
             _save_promotion_tracking(fresh_tracking)
 
         if notifications_sent > 0:
-            _g.logger.info(
-                f"Promotion check complete: {notifications_sent} notification(s) sent"
-            )
+            _g.logger.info(f"Promotion check complete: {notifications_sent} notification(s) sent")
         else:
             _g.logger.debug("Promotion check complete: no new milestones")
 
@@ -1445,14 +1321,14 @@ async def _activity_status_check_loop():
     except Exception:
         _g.logger.exception("Error running activity status check loop")
 
+
 @_g.bot.tree.command(
     name="litany_of_function",
     description="Describe the duties of Jericho Logi-Scribe Servitor V-1.",
 )
 async def litany_of_function(interaction: discord.Interaction):
     if not (
-        _b("check_command_permission")(interaction.user, "litany_of_function")
-        and _b("is_allowed_channel")(interaction)
+        _b("check_command_permission")(interaction.user, "litany_of_function") and _b("is_allowed_channel")(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -1503,7 +1379,7 @@ def _load_home_chapter_rotation() -> dict:
     except Exception:
         pass
     # default state: all chapters available and no selections cached
-    return {"remaining": _b('HOME_CHAPTERS').copy(), "selected": {}}
+    return {"remaining": _b("HOME_CHAPTERS").copy(), "selected": {}}
 
 
 def _save_home_chapter_rotation(state: dict):
@@ -1545,9 +1421,7 @@ def _get_saturdays_for_month(month_key: str) -> List[datetime]:
         return []
 
 
-async def _select_home_chapters_for_month(
-    offset: int = 0, guild: Optional[discord.Guild] = None
-) -> Tuple[str, str]:
+async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[discord.Guild] = None) -> Tuple[str, str]:
     """Select (and cache) two chapters for a month specified by offset from now.
 
     If a selection for that month already exists, return it. Otherwise pick two
@@ -1568,14 +1442,14 @@ async def _select_home_chapters_for_month(
             AAR activity entirely as requested.
             """
             try:
-                g = guild or _b('_resolve_notification_guild')()
+                g = guild or _b("_resolve_notification_guild")()
                 if g is None:
-                    return _b('HOME_CHAPTERS').copy()
+                    return _b("HOME_CHAPTERS").copy()
 
                 active_chapters = set()
                 members = getattr(g, "members", []) or []
 
-                for canon in _b('HOME_CHAPTERS'):
+                for canon in _b("HOME_CHAPTERS"):
                     canon_low = canon.lower()
                     total_with_role = 0
                     non_reserve_count = 0
@@ -1583,8 +1457,7 @@ async def _select_home_chapters_for_month(
                         try:
                             # Check if member has the exact chapter role name
                             has_chap = any(
-                                (getattr(r, "name", "") or "").strip().lower()
-                                == canon_low
+                                (getattr(r, "name", "") or "").strip().lower() == canon_low
                                 for r in getattr(mbr, "roles", []) or []
                             )
                             if not has_chap:
@@ -1592,8 +1465,7 @@ async def _select_home_chapters_for_month(
                             total_with_role += 1
                             # If member has any role with 'reserve' in its name, treat as reserve
                             has_reserve = any(
-                                (getattr(rr, "name", "") or "").lower().find("reserve")
-                                >= 0
+                                (getattr(rr, "name", "") or "").lower().find("reserve") >= 0
                                 for rr in getattr(mbr, "roles", []) or []
                             )
                             if not has_reserve:
@@ -1604,16 +1476,12 @@ async def _select_home_chapters_for_month(
                         active_chapters.add(canon)
 
                 active_list = sorted(active_chapters)
-                return active_list if active_list else _b('HOME_CHAPTERS').copy()
+                return active_list if active_list else _b("HOME_CHAPTERS").copy()
             except Exception:
-                return _b('HOME_CHAPTERS').copy()
+                return _b("HOME_CHAPTERS").copy()
 
         # If we have a cached pair for the target month, check if we should return it as-is.
-        if (
-            target in selected
-            and isinstance(selected[target], list)
-            and len(selected[target]) == 2
-        ):
+        if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
             pair = selected[target]
             # CURRENT MONTH (offset=0): validate chapters and only replace if their Saturday hasn't passed yet
             if offset == 0:
@@ -1642,7 +1510,7 @@ async def _select_home_chapters_for_month(
                         # Find a replacement from active chapters
                         candidates = [c for c in month_active if c not in new_pair]
                         if not candidates:
-                            candidates = [c for c in _b('HOME_CHAPTERS') if c not in new_pair]
+                            candidates = [c for c in _b("HOME_CHAPTERS") if c not in new_pair]
                         if candidates:
                             new_pair[chap_idx] = candidates[0]
 
@@ -1663,7 +1531,7 @@ async def _select_home_chapters_for_month(
             pool = set(month_active)
             # Ensure at least two options
             if len(pool) < 2:
-                pool = set(_b('HOME_CHAPTERS'))
+                pool = set(_b("HOME_CHAPTERS"))
 
             # Keep any still-active picks, replace inactive ones
             kept = [p for p in pair if p in pool]
@@ -1671,22 +1539,20 @@ async def _select_home_chapters_for_month(
             # Build candidate list excluding already-kept and excluding other months' selected entries
             candidates = [c for c in pool if c not in kept]
             if len(candidates) < needed:
-                candidates = [c for c in _b('HOME_CHAPTERS') if c not in kept]
+                candidates = [c for c in _b("HOME_CHAPTERS") if c not in kept]
 
             try:
                 new_picks = random.sample(candidates, needed) if needed > 0 else []
             except Exception:
                 # Fallback to any remaining
-                new_picks = (candidates + _b('HOME_CHAPTERS'))[:needed]
+                new_picks = (candidates + _b("HOME_CHAPTERS"))[:needed]
 
             new_pair = kept + new_picks
             # Ensure two items and deterministic order
             new_pair = new_pair[:2]
             selected[target] = new_pair
             # Also remove replacements from remaining pool if present
-            remaining = [
-                r for r in (state.get("remaining") or []) if r in _b('HOME_CHAPTERS')
-            ]
+            remaining = [r for r in (state.get("remaining") or []) if r in _b("HOME_CHAPTERS")]
             for p in new_pair:
                 try:
                     if p in remaining:
@@ -1701,31 +1567,29 @@ async def _select_home_chapters_for_month(
         # Build active pool: chapters with at least one AAR in the last 28 days.
         def _get_active_home_chapters(days: int = 28) -> List[str]:
             try:
-                g = guild or _b('_resolve_notification_guild')()
+                g = guild or _b("_resolve_notification_guild")()
                 if g is None:
-                    return _b('HOME_CHAPTERS').copy()
+                    return _b("HOME_CHAPTERS").copy()
 
                 # Determine chapters based solely on guild membership/reserves status
                 active_chapters = set()
                 members = getattr(g, "members", []) or []
 
-                for canon in _b('HOME_CHAPTERS'):
+                for canon in _b("HOME_CHAPTERS"):
                     canon_low = canon.lower()
                     total_with_role = 0
                     non_reserve_count = 0
                     for mbr in members:
                         try:
                             has_chap = any(
-                                (getattr(r, "name", "") or "").strip().lower()
-                                == canon_low
+                                (getattr(r, "name", "") or "").strip().lower() == canon_low
                                 for r in getattr(mbr, "roles", []) or []
                             )
                             if not has_chap:
                                 continue
                             total_with_role += 1
                             has_reserve = any(
-                                (getattr(rr, "name", "") or "").lower().find("reserve")
-                                >= 0
+                                (getattr(rr, "name", "") or "").lower().find("reserve") >= 0
                                 for rr in getattr(mbr, "roles", []) or []
                             )
                             if not has_reserve:
@@ -1736,9 +1600,9 @@ async def _select_home_chapters_for_month(
                         active_chapters.add(canon)
 
                 active_list = sorted(active_chapters)
-                return active_list if active_list else _b('HOME_CHAPTERS').copy()
+                return active_list if active_list else _b("HOME_CHAPTERS").copy()
             except Exception:
-                return _b('HOME_CHAPTERS').copy()
+                return _b("HOME_CHAPTERS").copy()
 
         pool = _get_active_home_chapters(28)
 
@@ -1766,7 +1630,7 @@ async def _select_home_chapters_for_month(
                 remaining = pool.copy()
         else:
             # Too few active chapters to choose from: fall back to full canonical list
-            pool = _b('HOME_CHAPTERS').copy()
+            pool = _b("HOME_CHAPTERS").copy()
             remaining = [r for r in (state.get("remaining") or []) if r in pool]
             if len(remaining) < 2:
                 remaining = pool.copy()
@@ -1794,16 +1658,13 @@ async def _select_home_chapters_for_month(
     description="Show selected home chapters for this month and next (plans ahead).",
 )
 async def pick_home_chapters(interaction: discord.Interaction):
-    if not (
-        check_command_permission(interaction.user, "pick_home_chapters")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "pick_home_chapters") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Compute current and next month keys and selections
     this_key = _month_key_for_offset(0)
     next_key = _month_key_for_offset(1)
-    g = interaction.guild or _b('_resolve_notification_guild')()
+    g = interaction.guild or _b("_resolve_notification_guild")()
     a1, b1 = await _select_home_chapters_for_month(0, guild=g)
     a2, b2 = await _select_home_chapters_for_month(1, guild=g)
     # Format human-friendly month names
@@ -1821,11 +1682,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
             selected_chapters = [a1, b1, a2, b2]
             # dedupe while preserving order
             seen = set()
-            selected_unique = [
-                c
-                for c in selected_chapters
-                if c and (c not in seen and not seen.add(c))
-            ]
+            selected_unique = [c for c in selected_chapters if c and (c not in seen and not seen.add(c))]
             print("Selected home chapters:")
             for chap in selected_unique:
                 print(f"Chapter: {chap}")
@@ -1870,9 +1727,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
                                 break
                     except Exception:
                         has_reserves = False
-                    print(
-                        f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}"
-                    )
+                    print(f"  {display} ({getattr(m, 'id', '')}) - Reserves: {has_reserves}")
         except Exception:
             print("Failed to enumerate chapter members for pick_home_chapters")
 
@@ -1898,10 +1753,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
 # functions below remain here because they reference them.
 
 
-
-async def _forum_post_autocomplete(
-    interaction: discord.Interaction, current: str
-) -> List[app_commands.Choice[str]]:
+async def _forum_post_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
     """Autocomplete for forum posts (threads within forum channels)."""
     choices = []
     seen_ids: set[int] = set()
@@ -1950,9 +1802,7 @@ async def _forum_post_autocomplete(
     return choices
 
 
-@_g.bot.tree.command(
-    name="tally_deeds", description="Display the Deeds Ledger for a Brother."
-)
+@_g.bot.tree.command(name="tally_deeds", description="Display the Deeds Ledger for a Brother.")
 @app_commands.describe(
     brother="The Watch Brother to query.",
     killteam="Role: tally every member of this kill team (mutually exclusive with brother)",
@@ -2007,9 +1857,7 @@ async def tally_deeds(
             return
 
         # Validate it's messageable
-        if not isinstance(
-            send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)
-        ):
+        if not isinstance(send_to_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel)):
             await interaction.response.send_message(
                 "send_to must be a thread or forum post — not a forum channel itself.",
                 ephemeral=True,
@@ -2017,18 +1865,13 @@ async def tally_deeds(
             return
 
     # Permission check: requires Watch Command role and allowed channel
-    if not (
-        check_command_permission(interaction.user, "tally_deeds")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "tally_deeds") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
     # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
     if brother and killteam:
-        await interaction.response.send_message(
-            "Provide either 'brother' or 'killteam', not both.", ephemeral=True
-        )
+        await interaction.response.send_message("Provide either 'brother' or 'killteam', not both.", ephemeral=True)
         return
 
     # First response: defer, so we can do slower work safely
@@ -2042,7 +1885,7 @@ async def tally_deeds(
         # _b('RANK_ROLES_PRIORITY').
         try:
             role_name = getattr(killteam, "name", "") or ""
-            role_idx = _b('_role_index')(role_name)
+            role_idx = _b("_role_index")(role_name)
         except Exception:
             role_idx = None
 
@@ -2051,21 +1894,13 @@ async def tally_deeds(
             for m in members:
                 try:
                     # Collect indices of all rank roles this member has
-                    member_rank_indices = [
-                        _b('_role_index')(getattr(r, "name", ""))
-                        for r in getattr(m, "roles", [])
-                    ]
+                    member_rank_indices = [_b("_role_index")(getattr(r, "name", "")) for r in getattr(m, "roles", [])]
                     # Must explicitly have the passed role
-                    has_target_role = any(
-                        getattr(r, "name", "") == role_name
-                        for r in getattr(m, "roles", [])
-                    )
+                    has_target_role = any(getattr(r, "name", "") == role_name for r in getattr(m, "roles", []))
                     if not has_target_role:
                         continue
                     # Exclude if member has any higher-ranked role (index < role_idx)
-                    higher = [
-                        i for i in member_rank_indices if i is not None and i < role_idx
-                    ]
+                    higher = [i for i in member_rank_indices if i is not None and i < role_idx]
                     if higher:
                         continue
                     filtered.append(m)
@@ -2096,12 +1931,8 @@ async def tally_deeds(
                 filtered: List[discord.Member] = []
                 for m in members:
                     try:
-                        names = {
-                            getattr(r, "name", "") for r in getattr(m, "roles", [])
-                        }
-                        if (getattr(killteam, "name", "") in names) or (
-                            leader in names
-                        ):
+                        names = {getattr(r, "name", "") for r in getattr(m, "roles", [])}
+                        if (getattr(killteam, "name", "") in names) or (leader in names):
                             filtered.append(m)
                     except Exception:
                         continue
@@ -2116,9 +1947,7 @@ async def tally_deeds(
     elif brother:
         members = [brother]
     else:
-        await interaction.followup.send(
-            "Specify a brother or a killteam role.", ephemeral=True
-        )
+        await interaction.followup.send("Specify a brother or a killteam role.", ephemeral=True)
         return
 
     # We'll build one aggregated reply containing a block for each member
@@ -2167,7 +1996,7 @@ async def tally_deeds(
             pass
 
         current_rank = "Unknown"
-        for rank in _b('RANK_ROLES_PRIORITY'):
+        for rank in _b("RANK_ROLES_PRIORITY"):
             for role in target.roles:
                 if role.name == rank:
                     current_rank = rank
@@ -2200,14 +2029,10 @@ async def tally_deeds(
         MAX_STUDS = 16
         try:
             studs_count = 0
-            idx_veteran = _b('_role_index')("Watch Veteran")
-            highest_idx = _b('get_highest_rank_index')(target)
+            idx_veteran = _b("_role_index")("Watch Veteran")
+            highest_idx = _b("get_highest_rank_index")(target)
             # Only compute if the user has a recognized rank at or above Watch Veteran
-            if (
-                (idx_veteran is not None)
-                and (highest_idx is not None)
-                and (highest_idx <= idx_veteran)
-            ):
+            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
                 # Time-based studs
                 if joined_at:
                     now = datetime.utcnow()
@@ -2306,9 +2131,7 @@ async def tally_deeds(
             studs_symbols = ""
 
         # Use in-memory records from _g.DATASTORE
-        trials_reported = _count_inductions_from_records(
-            str(target.id), _g.DATASTORE.iter_records()
-        )
+        trials_reported = _count_inductions_from_records(str(target.id), _g.DATASTORE.iter_records())
 
         # Home chapter from resolved map (fallback: REDACTED)
         home_chapter = chapters_map.get(str(target.id)) if chapters_map else "REDACTED"
@@ -2349,7 +2172,7 @@ async def tally_deeds(
         company = "Reserves" if status == "Inactive" else "Unknown"
         kt_name = "Unknown"
         try:
-            role_names = _b('_canonical_role_names')(target)
+            role_names = _b("_canonical_role_names")(target)
             roles = getattr(target, "roles", [])
 
             # High command ranks that should NOT show Company
@@ -2443,29 +2266,19 @@ async def tally_deeds(
         label_width = max(len(label) for label, _ in stat_rows) + 2
         lines = []
         lines.append("```ansi")
-        lines.append(
-            "\u001b[32m=============================================================================="
-        )
+        lines.append("\u001b[32m==============================================================================")
         lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
         lines.append("  OPERATION-SCRIBE SERVITOR — DEEDS LEDGER")
-        lines.append(
-            "=============================================================================="
-        )
+        lines.append("==============================================================================")
         lines.append(f"  Tally for: {display_name}")
-        lines.append(
-            "------------------------------------------------------------------------------"
-        )
+        lines.append("------------------------------------------------------------------------------")
         for label, value in stat_rows:
             lines.append(f"  {label:<{label_width}} {value}")
-        lines.append(
-            "=============================================================================="
-        )
+        lines.append("==============================================================================")
         lines.append("  Machine-Spirit Addendum:")
         lines.append("  These Deeds are logged for future deployment rites")
         lines.append("  and may be invoked by decree of Watch Command alone.")
-        lines.append(
-            "=============================================================================="
-        )
+        lines.append("==============================================================================")
         lines.append("\u001b[0m```")
         member_blocks.append("\n".join(lines))
 
@@ -2502,20 +2315,20 @@ async def tally_deeds(
                 "armory": armory_val,
                 "studs_symbols": studs_symbols,
                 "studs_count": studs_count,
-                "role_names": list(_b('_canonical_role_names')(target)),
+                "role_names": list(_b("_canonical_role_names")(target)),
                 "home_chapter": home_chapter,
                 # Rank bucket for roster sorting: Sergeant (0), Kill Team Champion (1), Veteran (2), Brother/Sister (3), Other (9)
                 "rank_bucket": (
                     0
-                    if ("Watch Sergeant" in _b('_canonical_role_names')(target))
+                    if ("Watch Sergeant" in _b("_canonical_role_names")(target))
                     else 1
-                    if ("Kill Team Champion" in _b('_canonical_role_names')(target))
+                    if ("Kill Team Champion" in _b("_canonical_role_names")(target))
                     else 2
-                    if ("Watch Veteran" in _b('_canonical_role_names')(target))
+                    if ("Watch Veteran" in _b("_canonical_role_names")(target))
                     else 3
                     if (
-                        ("Watch Brother" in _b('_canonical_role_names')(target))
-                        or ("Watch Sister" in _b('_canonical_role_names')(target))
+                        ("Watch Brother" in _b("_canonical_role_names")(target))
+                        or ("Watch Sister" in _b("_canonical_role_names")(target))
                     )
                     else 9
                 ),
@@ -2532,14 +2345,10 @@ async def tally_deeds(
             MAX_LEN = 1900
             r_lines: list[str] = []
             r_lines.append("```ansi")
-            r_lines.append(
-                "\u001b[32m=============================================================================="
-            )
+            r_lines.append("\u001b[32m==============================================================================")
             r_lines.append("  WATCH FORTRESS JERICHO // SERVICE-RECORD NODE")
             r_lines.append("  KILL TEAM DEEDS ROSTER")
-            r_lines.append(
-                "=============================================================================="
-            )
+            r_lines.append("==============================================================================")
 
             # Sort roster so Active members appear first, then by precise rank priority,
             # then by service studs (desc), then by AAR (desc), then name.
@@ -2589,9 +2398,7 @@ async def tally_deeds(
 
             def _sort_key(it):
                 try:
-                    status_flag = (
-                        0 if str(it.get("status", "")).lower() == "active" else 1
-                    )
+                    status_flag = 0 if str(it.get("status", "")).lower() == "active" else 1
                     rank_pri = _rank_priority(it.get("role_names", []))
                     studs = int(it.get("studs_count", 0) or 0)
                     aar = int(it.get("aar", 0) or 0)
@@ -2629,19 +2436,13 @@ async def tally_deeds(
             # Cap total name+studs width to keep table tidy
             TOTAL_NAME_CAP = 24
             name_w = max(1, min(max_name_raw, TOTAL_NAME_CAP - studs_reserved))
-            status_w = max(
-                (_len_str(it.get("status", "")) for it in sorted_items), default=1
-            )
+            status_w = max((_len_str(it.get("status", "")) for it in sorted_items), default=1)
             # Cap widths to keep table tidy and avoid overflow from long names
             name_w = min(name_w, 24)
             status_w = min(status_w, 12)
             aar_w = max((_len_str(it.get("aar", 0)) for it in sorted_items), default=1)
-            gene_w = max(
-                (_len_str(it.get("gene", 0)) for it in sorted_items), default=1
-            )
-            armory_w = max(
-                (_len_str(it.get("armory", 0)) for it in sorted_items), default=1
-            )
+            gene_w = max((_len_str(it.get("gene", 0)) for it in sorted_items), default=1)
+            armory_w = max((_len_str(it.get("armory", 0)) for it in sorted_items), default=1)
             # Build formatted rows with alignment
             formatted_rows: List[str] = []
             for it in sorted_items:
@@ -2707,9 +2508,7 @@ async def tally_deeds(
             roster_text = "\n".join(r_lines)
             # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
-                kt_display_name = _extract_killteam_name(
-                    getattr(killteam, "name", "Unknown")
-                )
+                kt_display_name = _extract_killteam_name(getattr(killteam, "name", "Unknown"))
                 roster_embed = discord.Embed(
                     title="᛭⋅ KILL TEAM ROSTER ⋅᛭",
                     description=f"*⌾ {kt_display_name} ⌾*",
@@ -2719,7 +2518,7 @@ async def tally_deeds(
                 # Build roster entries using combat bonds style formatting
                 roster_lines = []
                 for it in sorted_items:
-                    member_id = str(it.get("member_id", "") or "")
+                    _member_id = str(it.get("member_id", "") or "")  # Available but not displayed in this format
                     nm = str(it.get("name", "") or "")
                     studs = str(it.get("studs_symbols", "") or "")
                     st = str(it.get("status", ""))
@@ -2732,19 +2531,15 @@ async def tally_deeds(
                     # Get rank emoji
                     role_names = it.get("role_names", [])
                     member_rank = None
-                    for rp in _b('RANK_ROLES_PRIORITY'):
+                    for rp in _b("RANK_ROLES_PRIORITY"):
                         if rp in role_names:
                             member_rank = rp
                             break
-                    rank_emoji = (
-                        _get_rank_emoji(interaction.guild, member_rank)
-                        if member_rank
-                        else ""
-                    )
+                    rank_emoji = _get_rank_emoji(interaction.guild, member_rank) if member_rank else ""
 
                     # Strip rank prefix from name (case-insensitive)
                     stripped_name = nm
-                    for rp in _b('RANK_ROLES_PRIORITY'):
+                    for rp in _b("RANK_ROLES_PRIORITY"):
                         if stripped_name.lower().startswith(rp.lower()):
                             stripped_name = stripped_name[len(rp) :].lstrip()
                             break
@@ -2754,9 +2549,7 @@ async def tally_deeds(
                     # Get chapter emoji
                     chapter_emoji = ""
                     if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                        chapter_emoji = (
-                            _get_emoji_by_name(interaction.guild, home_ch) or ""
-                        )
+                        chapter_emoji = _get_emoji_by_name(interaction.guild, home_ch) or ""
 
                     # Build member label: rank_emoji name studs chapter_emoji
                     # (status icon on separate concept line below)
@@ -2771,8 +2564,7 @@ async def tally_deeds(
                     member_label = " ".join(parts)
 
                     roster_lines.append(
-                        f"{status_icon} {member_label}\n"
-                        f"AAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
+                        f"{status_icon} {member_label}\nAAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
                     )
 
                 # Chunk into fields (max ~5 members per field to avoid overflow)
@@ -2786,9 +2578,7 @@ async def tally_deeds(
                         inline=False,
                     )
 
-                roster_embed.set_footer(
-                    text="᛭⋅ Roster generated from recent service records ⋅᛭"
-                )
+                roster_embed.set_footer(text="᛭⋅ Roster generated from recent service records ⋅᛭")
 
                 # Send embed only (clean output)
                 if send_to_channel:
@@ -2802,9 +2592,7 @@ async def tally_deeds(
                     if send_to_channel:
                         await send_to_channel.send(embed=roster_embed)
                     else:
-                        await interaction.followup.send(
-                            embed=roster_embed, ephemeral=True
-                        )
+                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
                 except Exception:
                     if send_to_channel:
                         await send_to_channel.send(roster_text)
@@ -2822,7 +2610,7 @@ async def tally_deeds(
         # Check if the killteam role is actually a home chapter
         kt_name_raw = getattr(killteam, "name", "Unknown")
         kt_display = _extract_killteam_name(kt_name_raw)
-        is_chapter_role = kt_name_raw in _b('HOME_CHAPTERS')
+        is_chapter_role = kt_name_raw in _b("HOME_CHAPTERS")
 
         # Compute fortress-wide rankings for kill team honours display
         try:
@@ -2876,18 +2664,14 @@ async def tally_deeds(
         # Helper to format rank display
         def fmt_rank(metric_key: str, key: str) -> str:
             try:
-                val, rank, total = active_rankings.get(metric_key, {}).get(
-                    key, (0, 0, 0)
-                )
+                val, rank, total = active_rankings.get(metric_key, {}).get(key, (0, 0, 0))
                 return f"#{rank}/{total}"
             except Exception:
                 return "—"
 
         def fmt_val_rank(metric_key: str, key: str, val_fmt: str = "") -> str:
             try:
-                val, rank, total = active_rankings.get(metric_key, {}).get(
-                    key, (0, 0, 0)
-                )
+                val, rank, total = active_rankings.get(metric_key, {}).get(key, (0, 0, 0))
                 if val_fmt:
                     return f"{val_fmt.format(val)} (#{rank}/{total})"
                 return f"{val} (#{rank}/{total})"
@@ -2897,16 +2681,12 @@ async def tally_deeds(
         # Build the new honours-style output for kill team or chapter
         s_lines = []
         s_lines.append("```ansi")
-        s_lines.append(
-            "\u001b[32m=============================================================================="
-        )
+        s_lines.append("\u001b[32m==============================================================================")
         s_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
         s_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
         s_lines.append(f"  Date: {imperial_date}")
         s_lines.append(f"  {display_type}: {display_label}")
-        s_lines.append(
-            "=============================================================================="
-        )
+        s_lines.append("==============================================================================")
         s_lines.append("")
         s_lines.append(f"{display_type} DISTINCTIONS")
 
@@ -2916,34 +2696,18 @@ async def tally_deeds(
             avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
             pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
             armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
-            gene_data = active_rankings.get("gene_carried", {}).get(
-                queried_key, (0, 0, 0)
-            )
+            gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
             risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
-            omega_kia_data = active_rankings.get("omega_kia", {}).get(
-                queried_key, (0, 0, 0)
-            )
-            force_data = active_rankings.get("avg_aar_per_member", {}).get(
-                queried_key, (0.0, 0, 0)
-            )
-            cohesion_data = active_rankings.get("cohesion", {}).get(
-                queried_key, (0.0, 0, 0)
-            )
+            omega_kia_data = active_rankings.get("omega_kia", {}).get(queried_key, (0, 0, 0))
+            force_data = active_rankings.get("avg_aar_per_member", {}).get(queried_key, (0.0, 0, 0))
+            cohesion_data = active_rankings.get("cohesion", {}).get(queried_key, (0.0, 0, 0))
 
-            s_lines.append(
-                f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}"
-            )
-            s_lines.append(
-                f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}"
-            )
+            s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
+            s_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
             s_lines.append(
                 f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}"
             )
-            omega_suffix = (
-                f" | Omega KIA {int(omega_kia_data[0])}"
-                if omega_kia_data[0] > 0
-                else ""
-            )
+            omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
             s_lines.append(
                 f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
             )
@@ -2957,9 +2721,7 @@ async def tally_deeds(
             s_lines.append("  No ranking data available")
 
         s_lines.append("")
-        s_lines.append(
-            "=============================================================================="
-        )
+        s_lines.append("==============================================================================")
         s_lines.append("\u001b[0m```")
         summary_text = "\n".join(s_lines)
 
@@ -2975,24 +2737,12 @@ async def tally_deeds(
                 ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
                 avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
                 pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
-                armory_data = active_rankings.get("armory", {}).get(
-                    queried_key, (0, 0, 0)
-                )
-                gene_data = active_rankings.get("gene_carried", {}).get(
-                    queried_key, (0, 0, 0)
-                )
-                risk_data = active_rankings.get("high_risk", {}).get(
-                    queried_key, (0, 0, 0)
-                )
-                omega_kia_data = active_rankings.get("omega_kia", {}).get(
-                    queried_key, (0, 0, 0)
-                )
-                force_data = active_rankings.get("avg_aar_per_member", {}).get(
-                    queried_key, (0.0, 0, 0)
-                )
-                cohesion_data = active_rankings.get("cohesion", {}).get(
-                    queried_key, (0.0, 0, 0)
-                )
+                armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
+                gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
+                risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
+                omega_kia_data = active_rankings.get("omega_kia", {}).get(queried_key, (0, 0, 0))
+                force_data = active_rankings.get("avg_aar_per_member", {}).get(queried_key, (0.0, 0, 0))
+                cohesion_data = active_rankings.get("cohesion", {}).get(queried_key, (0.0, 0, 0))
 
                 # Compute overall rank as average of all metric rankings
                 kt_ranks = []
@@ -3011,9 +2761,7 @@ async def tally_deeds(
                 kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                 # ▸ Distinctions field with consolidated stats
-                omega_suffix = (
-                    f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                )
+                omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
                 distinctions = (
                     f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                     f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
@@ -3040,23 +2788,17 @@ async def tally_deeds(
             # Send embed only (clean output)
             if send_to_channel:
                 await send_to_channel.send(embed=embed)
-                await interaction.followup.send(
-                    f"Posted to <#{send_to_channel.id}>.", ephemeral=True
-                )
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
             # Fallback to simple embed
             try:
-                fallback_title = (
-                    "Chapter Summary" if is_chapter_role else "Kill Team Summary"
-                )
+                fallback_title = "Chapter Summary" if is_chapter_role else "Kill Team Summary"
                 embed = _embed_from_ansi(fallback_title, summary_text)
                 if send_to_channel:
                     await send_to_channel.send(embed=embed)
-                    await interaction.followup.send(
-                        f"Posted to <#{send_to_channel.id}>.", ephemeral=True
-                    )
+                    await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
                 else:
                     await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception:
@@ -3074,7 +2816,7 @@ async def tally_deeds(
                 # Get rank emoji for display
                 guild = interaction.guild
                 member_rank_name = "Watch Brother"
-                for rank in _b('RANK_ROLES_PRIORITY'):
+                for rank in _b("RANK_ROLES_PRIORITY"):
                     if rank in [getattr(r, "name", "") for r in target.roles]:
                         member_rank_name = rank
                         break
@@ -3107,9 +2849,7 @@ async def tally_deeds(
                     bearer_value += f"\n*{bearer_title}*"
                 if home_ch and home_ch not in ("Unknown", "REDACTED"):
                     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-                    lineage_display = (
-                        "REDACTED" if home_ch == "Black Shield" else home_ch
-                    )
+                    lineage_display = "REDACTED" if home_ch == "Black Shield" else home_ch
                     bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
                 bearer_studs = roster_items[0].get("studs_count", 0) if roster_items else 0
                 if bearer_studs > 0:
@@ -3121,9 +2861,7 @@ async def tally_deeds(
                 status_val = stat_dict.get("Status", "Unknown")
                 last_aar_val = stat_dict.get("Last AAR", "—")
                 status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-                embed.add_field(
-                    name="▸ Status", value="\n".join(status_lines), inline=True
-                )
+                embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
 
                 # ▸ Service Record field
                 induction_val = stat_dict.get("Induction", "—")
@@ -3155,7 +2893,7 @@ async def tally_deeds(
                     spirit_fractured = armor_state.get("spirit_fractured", False)
                     armor_tier = _get_member_damage_tier(target)
                     damage_probability = _get_damage_probability(points_since_blessing)
-                    prob_percent = damage_probability * 100
+                    _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
                     machine_spirit = await _get_machine_spirit(int(target.id))
 
                     # Roll scan detection (same as armor_status)
@@ -3195,7 +2933,7 @@ async def tally_deeds(
 
                         # Get MachineSpirit emoji
                         machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
-                        
+
                         if spirit_fractured:
                             spirit_display = f"{machine_spirit_emoji} SEVERED"
                         elif machine_spirit:
@@ -3220,9 +2958,7 @@ async def tally_deeds(
                     pass  # Skip armor field if data unavailable
 
                 # ▸ Challenges field
-                target_role_ids_ch = {
-                    getattr(r, "id", 0) for r in getattr(target, "roles", [])
-                }
+                target_role_ids_ch = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
                 completed_challenges = []
                 for role_id_ch, display_name_ch, emoji_hint in CHALLENGE_ROLES:
                     if role_id_ch in target_role_ids_ch:
@@ -3248,9 +2984,7 @@ async def tally_deeds(
 
                         if len(current_chunk) + len(line_with_sep) > 1024:
                             field_name = base_field_name if field_index == 0 else "\u200b"
-                            embed.add_field(
-                                name=field_name, value=current_chunk, inline=False
-                            )
+                            embed.add_field(name=field_name, value=current_chunk, inline=False)
                             field_index += 1
                             current_chunk = line
                         else:
@@ -3258,9 +2992,7 @@ async def tally_deeds(
 
                     if current_chunk:
                         field_name = base_field_name if field_index == 0 else "\u200b"
-                        embed.add_field(
-                            name=field_name, value=current_chunk, inline=False
-                        )
+                        embed.add_field(name=field_name, value=current_chunk, inline=False)
 
                 # Footer
                 embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
@@ -3306,51 +3038,27 @@ async def tally_deeds(
 
             target = members[0]
             target_id = str(target.id)
-            target_name = getattr(
-                target, "display_name", getattr(target, "name", "Unknown")
-            )
-            home_chapter = resolved_chapters_map.get(
-                target_id, chapters_map.get(target_id, "Unknown")
-            )
+            target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
+            home_chapter = resolved_chapters_map.get(target_id, chapters_map.get(target_id, "Unknown"))
 
             # Get individual ranking data
             ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
             avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
-            gene_data = individual_rankings.get("gene_carried", {}).get(
-                target_id, (0, 0, 0)
-            )
-            armory_data = individual_rankings.get("armory", {}).get(
-                target_id, (0, 0, 0)
-            )
-            risk_data = individual_rankings.get("high_risk", {}).get(
-                target_id, (0, 0, 0)
-            )
-            omega_kia_data = individual_rankings.get("omega_kia", {}).get(
-                target_id, (0, 0, 0)
-            )
-            black_laurels_data = individual_rankings.get("black_laurels", {}).get(
-                target_id, (0, 0, 0)
-            )
+            gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
+            armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
+            risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
+            omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
+            black_laurels_data = individual_rankings.get("black_laurels", {}).get(target_id, (0, 0, 0))
 
             # Get chapter ranking data (matching kill team metrics)
             ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
             ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
             ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
-            ch_armory_val = chapter_rankings.get("armory", {}).get(
-                home_chapter, (0, 0, 0)
-            )[0]
-            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(
-                home_chapter, (0, 0, 0)
-            )[0]
-            ch_risk_data = chapter_rankings.get("high_risk", {}).get(
-                home_chapter, (0, 0, 0)
-            )
-            ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(
-                home_chapter, (0, 0, 0)
-            )
-            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
-                home_chapter, (0.0, 0, 0)
-            )
+            ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
+            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
+            ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
+            ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(home_chapter, (0, 0, 0))
+            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
 
             # Get target's kill teams using _resolve_killteams_for_member
             target_killteams = []
@@ -3362,24 +3070,18 @@ async def tally_deeds(
             # Build honours ANSI block
             h_lines = []
             h_lines.append("```ansi")
-            h_lines.append(
-                "\u001b[32m=============================================================================="
-            )
+            h_lines.append("\u001b[32m==============================================================================")
             h_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
             h_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
             h_lines.append(f"  Date: {imperial_date}")
             h_lines.append(f"  Brother: {target_name}")
             h_lines.append(f"  Home Chapter: {home_chapter}")
-            h_lines.append(
-                "=============================================================================="
-            )
+            h_lines.append("==============================================================================")
             h_lines.append("")
             h_lines.append("INDIVIDUAL DISTINCTIONS")
 
             if ops_data[2] > 0:  # Has ranking data
-                h_lines.append(
-                    f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}"
-                )
+                h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
                 h_lines.append(
                     f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}"
                 )
@@ -3389,11 +3091,7 @@ async def tally_deeds(
                 h_lines.append(
                     f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}"
                 )
-                omega_suffix = (
-                    f" | Omega KIA {int(omega_kia_data[0])}"
-                    if omega_kia_data[0] > 0
-                    else ""
-                )
+                omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
                 h_lines.append(
                     f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
                 )
@@ -3416,11 +3114,7 @@ async def tally_deeds(
                 h_lines.append(
                     f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}"
                 )
-                ch_omega_suffix = (
-                    f" | Omega KIA {int(ch_omega_kia_data[0])}"
-                    if ch_omega_kia_data[0] > 0
-                    else ""
-                )
+                ch_omega_suffix = f" | Omega KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
                 h_lines.append(
                     f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}{ch_omega_suffix}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}"
                 )
@@ -3438,24 +3132,12 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_armory_val = team_rankings.get("armory", {}).get(
-                        kt_name, (0, 0, 0)
-                    )[0]
-                    kt_gene_val = team_rankings.get("gene_carried", {}).get(
-                        kt_name, (0, 0, 0)
-                    )[0]
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(
-                        kt_name, (0, 0, 0)
-                    )
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
-                        kt_name, (0.0, 0, 0)
-                    )
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
-                        kt_name, (0.0, 0, 0)
-                    )
-                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(
-                        kt_name, (0, 0, 0)
-                    )
+                    kt_armory_val = team_rankings.get("armory", {}).get(kt_name, (0, 0, 0))[0]
+                    kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_name, (0, 0, 0))[0]
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_name, (0, 0, 0))
                     if kt_ops_data[2] > 0:
                         h_lines.append(
                             f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
@@ -3467,9 +3149,7 @@ async def tally_deeds(
                             f"Armory + Gene-seed       (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}"
                         )
                         kt_omega_suffix = (
-                            f" | Omega KIA {int(kt_omega_kia_data[0])}"
-                            if kt_omega_kia_data[0] > 0
-                            else ""
+                            f" | Omega KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
                         )
                         h_lines.append(
                             f"High-Risk Ops            (Hard-Strat+Omega {int(kt_risk_data[0])}{kt_omega_suffix}) — Rank #{kt_risk_data[1]}/{kt_risk_data[2]}"
@@ -3484,9 +3164,7 @@ async def tally_deeds(
                         h_lines.append("  No ranking data available")
 
             h_lines.append("")
-            h_lines.append(
-                "=============================================================================="
-            )
+            h_lines.append("==============================================================================")
             h_lines.append("\u001b[0m```")
             honours_text = "\n".join(h_lines)
 
@@ -3496,9 +3174,7 @@ async def tally_deeds(
                 guild = interaction.guild
                 chapter_emoji = (
                     _get_emoji_by_name(guild, home_chapter)
-                    if guild
-                    and home_chapter
-                    and home_chapter not in ("Unknown", "REDACTED")
+                    if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
                     else None
                 )
                 chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
@@ -3524,9 +3200,9 @@ async def tally_deeds(
                 if black_laurels_data[2] > 0:
                     individual_ranks.append(black_laurels_data[1])
 
-                median_rank = None
+                _median_rank = None  # Calculated below as overall_rank
                 if individual_ranks:
-                    median_rank = statistics.median(individual_ranks)
+                    _median_rank = statistics.median(individual_ranks)
 
                 # Compute overall rank as average of individual rankings
                 overall_rank = None
@@ -3535,11 +3211,7 @@ async def tally_deeds(
 
                 # ▸ Individual Distinctions field
                 if ops_data[2] > 0:
-                    omega_suffix = (
-                        f" | KIA {int(omega_kia_data[0])}"
-                        if omega_kia_data[0] > 0
-                        else ""
-                    )
+                    omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
                     individual_value = (
                         f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
                         f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
@@ -3559,9 +3231,7 @@ async def tally_deeds(
                 )
 
                 # ▸ Chapter Distinctions field
-                lineage_display = (
-                    "REDACTED" if home_chapter == "Black Shield" else home_chapter
-                )
+                lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
                 # Compute chapter median rank
                 chapter_ranks = []
                 if ch_ops_data[2] > 0:
@@ -3575,9 +3245,9 @@ async def tally_deeds(
                 if ch_aar_data[2] > 0:
                     chapter_ranks.append(ch_aar_data[1])
 
-                ch_median_rank = None
+                _ch_median_rank = None  # Calculated below as ch_overall_rank
                 if chapter_ranks:
-                    ch_median_rank = statistics.median(chapter_ranks)
+                    _ch_median_rank = statistics.median(chapter_ranks)
 
                 # Compute overall rank as median of chapter rankings
                 ch_overall_rank = None
@@ -3585,11 +3255,7 @@ async def tally_deeds(
                     ch_overall_rank = statistics.median(chapter_ranks)
 
                 if ch_ops_data[2] > 0:
-                    ch_omega_suffix = (
-                        f" | KIA {int(ch_omega_kia_data[0])}"
-                        if ch_omega_kia_data[0] > 0
-                        else ""
-                    )
+                    ch_omega_suffix = f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
                     chapter_value = (
                         f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
                         f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
@@ -3612,18 +3278,10 @@ async def tally_deeds(
                     kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
                     kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
                     kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(
-                        kt_name, (0, 0, 0)
-                    )
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(
-                        kt_name, (0.0, 0, 0)
-                    )
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(
-                        kt_name, (0.0, 0, 0)
-                    )
-                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(
-                        kt_name, (0, 0, 0)
-                    )
+                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
+                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
+                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
+                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_name, (0, 0, 0))
 
                     # Compute overall rank for kill team
                     kt_ranks = []
@@ -3642,11 +3300,7 @@ async def tally_deeds(
                     kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
 
                     if kt_ops_data[2] > 0:
-                        kt_omega_suffix = (
-                            f" | KIA {int(kt_omega_kia_data[0])}"
-                            if kt_omega_kia_data[0] > 0
-                            else ""
-                        )
+                        kt_omega_suffix = f" | KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
                         kt_value = (
                             f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                             f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
@@ -3672,9 +3326,7 @@ async def tally_deeds(
             # Send embed only (clean output like forge_rite/stud announcement)
             if send_to_channel:
                 await send_to_channel.send(embed=honours_embed)
-                await interaction.followup.send(
-                    f"Posted to <#{send_to_channel.id}>.", ephemeral=True
-                )
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
             else:
                 await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
@@ -3693,19 +3345,14 @@ async def my_deeds(interaction: discord.Interaction):
     - Caller's KT role name matches the thread name
     """
     caller = interaction.user
-    caller_role_names = _b('_canonical_role_names')(caller)
+    caller_role_names = _b("_canonical_role_names")(caller)
 
     # Forgemaster bypass for testing
     is_forgemaster = "Forgemaster" in caller_role_names
 
     # Check caller has Watch Brother role (Forgemaster exempt)
-    if not is_forgemaster and (
-        "Watch Brother" not in caller_role_names
-        and "Watch Sister" not in caller_role_names
-    ):
-        await interaction.response.send_message(
-            "This command is for Watch Brothers only.", ephemeral=True
-        )
+    if not is_forgemaster and ("Watch Brother" not in caller_role_names and "Watch Sister" not in caller_role_names):
+        await interaction.response.send_message("This command is for Watch Brothers only.", ephemeral=True)
         return
 
     # Deny if caller has Watch Command role (they should use /tally_deeds) - Forgemaster exempt
@@ -3718,9 +3365,7 @@ async def my_deeds(interaction: discord.Interaction):
     # Check channel is a KT thread
     ch = getattr(interaction, "channel", None)
     if ch is None:
-        await interaction.response.send_message(
-            "Could not determine channel context.", ephemeral=True
-        )
+        await interaction.response.send_message("Could not determine channel context.", ephemeral=True)
         return
 
     is_thread = (
@@ -3731,9 +3376,7 @@ async def my_deeds(interaction: discord.Interaction):
     parent = getattr(ch, "parent", None)
     parent_id = getattr(parent, "id", None) if parent else None
 
-    if not is_forgemaster and not (
-        is_thread and parent_id and parent_id in ALLOWED_KT_FORUM_PARENT_IDS
-    ):
+    if not is_forgemaster and not (is_thread and parent_id and parent_id in ALLOWED_KT_FORUM_PARENT_IDS):
         await interaction.response.send_message(
             "This command can only be used in your Kill Team forum post.",
             ephemeral=True,
@@ -3745,18 +3388,14 @@ async def my_deeds(interaction: discord.Interaction):
     if caller_kt_name:
         caller_kt_name = caller_kt_name.lower()
     if not is_forgemaster and not caller_kt_name:
-        await interaction.response.send_message(
-            "You must belong to a Kill Team to use this command.", ephemeral=True
-        )
+        await interaction.response.send_message("You must belong to a Kill Team to use this command.", ephemeral=True)
         return
 
     # Extract KT name from thread name and verify match (Forgemaster exempt)
     thread_name = getattr(ch, "name", "") or ""
     thread_kt = _extract_killteam_name(thread_name).lower() if thread_name else ""
 
-    if not is_forgemaster and (
-        not thread_kt or not (thread_kt in caller_kt_name or caller_kt_name in thread_kt)
-    ):
+    if not is_forgemaster and (not thread_kt or not (thread_kt in caller_kt_name or caller_kt_name in thread_kt)):
         await interaction.response.send_message(
             "You can only view your deeds in your own Kill Team's forum post.",
             ephemeral=True,
@@ -3774,7 +3413,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Determine rank
     current_rank = "Watch Brother"
-    for rank in _b('RANK_ROLES_PRIORITY'):
+    for rank in _b("RANK_ROLES_PRIORITY"):
         for role in target.roles:
             if role.name == rank:
                 current_rank = rank
@@ -3792,9 +3431,7 @@ async def my_deeds(interaction: discord.Interaction):
                 joined_at = joined_at.replace(tzinfo=timezone.utc)
             ja_utc = joined_at.astimezone(timezone.utc)
             days_since_join = (datetime.now(timezone.utc) - ja_utc).days
-            joined_str = (
-                f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
-            )
+            joined_str = f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
         else:
             joined_str = "Unknown"
     except Exception:
@@ -3804,13 +3441,9 @@ async def my_deeds(interaction: discord.Interaction):
     MAX_STUDS = 16
     try:
         studs_count = 0
-        idx_veteran = _b('_role_index')("Watch Veteran")
-        highest_idx = _b('get_highest_rank_index')(target)
-        if (
-            idx_veteran is not None
-            and highest_idx is not None
-            and highest_idx <= idx_veteran
-        ):
+        idx_veteran = _b("_role_index")("Watch Veteran")
+        highest_idx = _b("get_highest_rank_index")(target)
+        if idx_veteran is not None and highest_idx is not None and highest_idx <= idx_veteran:
             if joined_at:
                 now = datetime.utcnow()
                 ja = joined_at
@@ -3845,9 +3478,7 @@ async def my_deeds(interaction: discord.Interaction):
         studs_display = str(studs_count)
 
     # Trials reported (inductions)
-    trials_reported = _count_inductions_from_records(
-        str(target.id), _g.DATASTORE.iter_records()
-    )
+    trials_reported = _count_inductions_from_records(str(target.id), _g.DATASTORE.iter_records())
 
     # Home chapter
     try:
@@ -3951,7 +3582,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Strip rank prefix from display name
     name_val = display_name
-    for rp in _b('RANK_ROLES_PRIORITY'):
+    for rp in _b("RANK_ROLES_PRIORITY"):
         if name_val.lower().startswith(rp.lower()):
             name_val = name_val[len(rp) :].lstrip()
             break
@@ -4026,7 +3657,7 @@ async def my_deeds(interaction: discord.Interaction):
         spirit_fractured = armor_state.get("spirit_fractured", False)
         armor_tier = _get_member_damage_tier(target)
         damage_probability = _get_damage_probability(points_since_blessing)
-        prob_percent = damage_probability * 100
+        _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
         machine_spirit = await _get_machine_spirit(int(target.id))
 
         # Roll scan detection (same as armor_status)
@@ -4066,7 +3697,7 @@ async def my_deeds(interaction: discord.Interaction):
 
             # Get MachineSpirit emoji
             machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
-            
+
             if spirit_fractured:
                 spirit_display = f"{machine_spirit_emoji} SEVERED"
             elif machine_spirit:
@@ -4137,9 +3768,7 @@ async def my_deeds(interaction: discord.Interaction):
     mtd_span_days = max(1, (now_mtd - first_of_month).days)
 
     try:
-        rankings = await _compute_fortress_rankings(
-            guild, mtd_span_days, start_dt=first_of_month, end_dt=now_mtd
-        )
+        rankings = await _compute_fortress_rankings(guild, mtd_span_days, start_dt=first_of_month, end_dt=now_mtd)
     except Exception:
         rankings = {
             "individuals": {},
@@ -4166,9 +3795,7 @@ async def my_deeds(interaction: discord.Interaction):
     gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
     armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
     risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
-    black_laurels_data = individual_rankings.get("black_laurels", {}).get(
-        target_id, (0, 0, 0)
-    )
+    black_laurels_data = individual_rankings.get("black_laurels", {}).get(target_id, (0, 0, 0))
     omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
 
     # Chapter ranking
@@ -4176,16 +3803,10 @@ async def my_deeds(interaction: discord.Interaction):
     ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
     ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
     ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
-    ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[
-        0
-    ]
+    ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
     ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
-    ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(
-        home_chapter, (0.0, 0, 0)
-    )
-    ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(
-        home_chapter, (0, 0, 0)
-    )
+    ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
+    ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(home_chapter, (0, 0, 0))
 
     # Kill team rankings
     target_killteams = []
@@ -4203,9 +3824,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Individual distinctions
     if ops_data[2] > 0:
-        omega_suffix = (
-            f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-        )
+        omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
         indiv_value = (
             f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
             f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
@@ -4243,11 +3862,9 @@ async def my_deeds(interaction: discord.Interaction):
     )
     chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
     lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
-    
+
     if ch_ops_data[2] > 0:
-        ch_omega_suffix = (
-            f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
-        )
+        ch_omega_suffix = f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
         ch_value = (
             f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
             f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
@@ -4272,9 +3889,7 @@ async def my_deeds(interaction: discord.Interaction):
             ch_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
     else:
         ch_value = "Below minimum threshold"
-    honours_embed.add_field(
-        name=f"▸ {chapter_prefix}{lineage_display} Chapter", value=ch_value, inline=False
-    )
+    honours_embed.add_field(name=f"▸ {chapter_prefix}{lineage_display} Chapter", value=ch_value, inline=False)
 
     # Kill Team distinctions
     for kt_n in target_killteams:
@@ -4289,11 +3904,7 @@ async def my_deeds(interaction: discord.Interaction):
         kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_n, (0, 0, 0))
 
         if kt_ops_data[2] > 0:
-            kt_omega_suffix = (
-                f" | KIA {int(kt_omega_kia_data[0])}"
-                if kt_omega_kia_data[0] > 0
-                else ""
-            )
+            kt_omega_suffix = f" | KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
             kt_value = (
                 f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
                 f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
@@ -4328,9 +3939,7 @@ async def my_deeds(interaction: discord.Interaction):
     await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
 
-@_g.bot.tree.command(
-    name="combat_bonds", description="Show top Combat Bonds (global or for a Brother)."
-)
+@_g.bot.tree.command(name="combat_bonds", description="Show top Combat Bonds (global or for a Brother).")
 @app_commands.describe(
     brother="Optional: limit to bonds including this Brother.",
     window="Optional: number of days to include (default 30).",
@@ -4340,10 +3949,7 @@ async def combat_bonds(
     brother: Optional[discord.Member] = None,
     window: Optional[int] = None,
 ):
-    if not (
-        check_command_permission(interaction.user, "combat_bonds")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "combat_bonds") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Defer the interaction to allow longer processing time on slower hosts
@@ -4404,9 +4010,7 @@ async def combat_bonds(
     # Active members in the window: those who appeared in at least one AAR
     active_count = len(all_bros)
     try:
-        spreads = await asyncio.to_thread(
-            _build_spread_counts, pair_counts, active_count=active_count
-        )
+        spreads = await asyncio.to_thread(_build_spread_counts, pair_counts, active_count=active_count)
     except Exception:
         spreads = _build_spread_counts(pair_counts, active_count=active_count)
 
@@ -4454,9 +4058,7 @@ async def combat_bonds(
         personal_pairs = _select_personal_pair_bonds(pair_counts, target_id, max_n=5)
         # Resolve chapters for partners
         partner_uids = [uid for uid, _score in personal_pairs]
-        chapters = await _resolve_home_chapters(
-            interaction.guild, sorted(set(partner_uids))
-        )
+        chapters = await _resolve_home_chapters(interaction.guild, sorted(set(partner_uids)))
         embed = _format_personal_bonds_jericho_embed(
             personal_pairs,
             target_member=brother,
@@ -4536,7 +4138,7 @@ def _count_inductions_from_records(user_id: str, records) -> int:
 def _induction_count_for_user(user_id: str) -> int:
     """Compute total inductions a brother participated in across all AARs."""
     try:
-        data = _b('load_aar_data')(AAR_RECORDS_PATH)
+        data = _b("load_aar_data")(AAR_RECORDS_PATH)
     except Exception:
         data = {}
     return _count_inductions_from_records(user_id, data.values())
@@ -4583,9 +4185,7 @@ def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
 
         status = (record.get("gene_seed_status") or "").lower()
         gene_carrier = record.get("gene_seed_carrier_id")
-        effective_carried = status == "carried" or (
-            gene_carrier is not None and status != "lost"
-        )
+        effective_carried = status == "carried" or (gene_carrier is not None and status != "lost")
 
         if effective_carried:
             if gene_carrier == user_id:
@@ -4631,7 +4231,7 @@ def _get_missions_last_days(days: int):
         span = max(1, int(days))
     except Exception:
         span = 7
-    data = _b('load_aar_data')(AAR_RECORDS_PATH)
+    data = _b("load_aar_data")(AAR_RECORDS_PATH)
     now_utc = datetime.now(timezone.utc)
     cutoff = now_utc - timedelta(days=span)
     stamped: List[Tuple[datetime, dict]] = []
@@ -4661,11 +4261,7 @@ def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) ->
     try:
         total_members = getattr(guild, "member_count", None)
         cached_members = len(getattr(guild, "members", []))
-        if (
-            isinstance(total_members, int)
-            and total_members > 0
-            and cached_members < total_members
-        ):
+        if isinstance(total_members, int) and total_members > 0 and cached_members < total_members:
             logging.getLogger(__name__).warning(
                 "Guild member cache appears incomplete for %s "
                 "(cached=%d, total=%d); _get_eligible_combat_bonds_ids "
@@ -4681,15 +4277,13 @@ def _get_eligible_combat_bonds_ids(guild: discord.Guild, user_ids: List[str]) ->
 
     eligible: set = set()
     # Build set of qualifying role names (all rank roles + Watch Sister alias)
-    qualifying_roles = set(_b('RANK_ROLES_PRIORITY')) | {"Watch Sister"}
+    qualifying_roles = set(_b("RANK_ROLES_PRIORITY")) | {"Watch Sister"}
     for uid in user_ids:
         try:
             member = guild.get_member(int(uid))
             if member is None:
                 continue
-            member_role_names = {
-                getattr(r, "name", "") for r in getattr(member, "roles", [])
-            }
+            member_role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
             if any(r in member_role_names for r in qualifying_roles):
                 eligible.add(str(uid))
         except Exception:
@@ -4701,11 +4295,7 @@ def _filter_pair_counts_by_eligible(
     pair_counts: Dict[Tuple[str, str], int], eligible_ids: set
 ) -> Dict[Tuple[str, str], int]:
     """Filter pair_counts to only include pairs where both members are eligible."""
-    return {
-        k: v
-        for k, v in pair_counts.items()
-        if k[0] in eligible_ids and k[1] in eligible_ids
-    }
+    return {k: v for k, v in pair_counts.items() if k[0] in eligible_ids and k[1] in eligible_ids}
 
 
 def _build_pair_counts(missions):
@@ -4810,11 +4400,7 @@ def _build_triple_bonds(pair_counts: Dict[Tuple[str, str], int], brothers: List[
         c = [float(pair_counts.get(p, 0) or 0.0) for p in pairs]
         c_ab, c_ac, c_bc = c
         # Eligibility: all pairs must meet minimum count
-        if (
-            (c_ab < float(min_pair))
-            or (c_ac < float(min_pair))
-            or (c_bc < float(min_pair))
-        ):
+        if (c_ab < float(min_pair)) or (c_ac < float(min_pair)) or (c_bc < float(min_pair)):
             continue
         # Optional balance gate: require min/max ratio
         try:
@@ -4905,18 +4491,14 @@ def _build_group_bonds(
             brother_connection_scores[b] = brother_connection_scores.get(b, 0) + 1
 
     # Only consider brothers who have at least 2 connections (required for triads)
-    connected_bros = {
-        b for b, conn_count in brother_connection_scores.items() if conn_count >= 2
-    }
+    connected_bros = {b for b, conn_count in brother_connection_scores.items() if conn_count >= 2}
     uniq_bros = sorted([b for b in uniq_bros if b in connected_bros])
 
     # Further limit to top 50 most-connected brothers if the set is still large
     # This prevents O(n^5) blowup while keeping the most relevant bonds
     max_brothers_for_combos = 50
     if len(uniq_bros) > max_brothers_for_combos:
-        sorted_by_connections = sorted(
-            uniq_bros, key=lambda b: brother_connection_scores.get(b, 0), reverse=True
-        )
+        sorted_by_connections = sorted(uniq_bros, key=lambda b: brother_connection_scores.get(b, 0), reverse=True)
         uniq_bros = sorted_by_connections[:max_brothers_for_combos]
 
     for n in sizes:
@@ -4929,9 +4511,7 @@ def _build_group_bonds(
                 # Coerce to str and sort to avoid mixed-type compare errors
                 pair_keys.append(tuple(sorted((str(a), str(b)))))
             # gather counts (weights)
-            c_vals: List[float] = [
-                float(pair_counts.get(k, 0) or 0.0) for k in pair_keys
-            ]
+            c_vals: List[float] = [float(pair_counts.get(k, 0) or 0.0) for k in pair_keys]
             if not c_vals:
                 continue
             # Eligibility: each internal pair must meet minimum
@@ -4975,9 +4555,7 @@ def _build_group_bonds(
     return groups
 
 
-def _build_spread_counts(
-    pair_counts: Dict[Tuple[str, str], int], active_count: Optional[int] = None
-):
+def _build_spread_counts(pair_counts: Dict[Tuple[str, str], int], active_count: Optional[int] = None):
     """Compute normalized spread per brother from pair counts.
     Breadth/evenness via inverse Simpson effective partners; depth is bounded to
     avoid inflating scores by grinding with a narrow partner set.
@@ -5054,11 +4632,7 @@ def _build_spread_counts(
 
     # Determine active count (number of active members in the window)
     try:
-        active = (
-            int(active_count)
-            if (active_count and int(active_count) > 0)
-            else max(1, len(freqs))
-        )
+        active = int(active_count) if (active_count and int(active_count) > 0) else max(1, len(freqs))
     except Exception:
         active = max(1, len(freqs))
 
@@ -5107,9 +4681,7 @@ def _build_spread_counts(
     return spreads_out
 
 
-def _select_top_global_bonds(
-    triples: List[Tuple[Tuple[str, str, str], int]], top_n: int = 3
-):
+def _select_top_global_bonds(triples: List[Tuple[Tuple[str, str, str], int]], top_n: int = 3):
     """Select top-N global bonds ensuring no brother repeats across groups."""
     selected: List[Tuple[Tuple[str, str, str], int]] = []
     used: set[str] = set()
@@ -5123,9 +4695,7 @@ def _select_top_global_bonds(
     return selected
 
 
-def _select_personal_bonds(
-    triples: List[Tuple[Tuple[str, str, str], int]], target_id: str, max_n: int = 3
-):
+def _select_personal_bonds(triples: List[Tuple[Tuple[str, str, str], int]], target_id: str, max_n: int = 3):
     """Return up to max_n bonds that include the target brother."""
     results = [t for t in triples if target_id in t[0]]
     return results[:max_n]
@@ -5194,9 +4764,7 @@ def _bond_tier_dynamic(score: int, cutoffs: Optional[Dict[str, int]]):
     return "INDOMITABLE"
 
 
-async def _resolve_home_chapters(
-    guild: Optional[discord.Guild], user_ids: List[str], limit: int = 500
-):
+async def _resolve_home_chapters(guild: Optional[discord.Guild], user_ids: List[str], limit: int = 500):
     """Resolve home chapters for given users by consulting their Guild roles.
 
     Logic: for each user id, attempt to get the corresponding Member from
@@ -5207,7 +4775,7 @@ async def _resolve_home_chapters(
 
     Returns a mapping of user_id -> chapter string.
     """
-    home_chapters = _b('HOME_CHAPTERS')
+    home_chapters = _b("HOME_CHAPTERS")
     chapters: Dict[str, str] = {}
     if not guild:
         return chapters
@@ -5233,16 +4801,10 @@ async def _resolve_home_chapters(
             try:
                 # Collect member role names and compare for exact (case-insensitive) equality
                 member_role_names = {
-                    (getattr(r, "name", "") or "").strip()
-                    for r in member.roles
-                    if getattr(r, "name", None)
+                    (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
                 }
                 match = next(
-                    (
-                        hc
-                        for hc in home_chapters
-                        if any(rn.lower() == hc.lower() for rn in member_role_names)
-                    ),
+                    (hc for hc in home_chapters if any(rn.lower() == hc.lower() for rn in member_role_names)),
                     None,
                 )
                 if match:
@@ -5268,22 +4830,16 @@ def _format_bonds_for_discord(
         return "No qualifying Combat Bonds found in the current window."
     lines: List[str] = []
     lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
+    lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // COMBAT BONDS COGITATOR")
     lines.append("  SUB-ROUTINE: BATTLE-LITANY INDEX")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     if window_days is not None:
         lines.append(f"  Auspex Window: Last {window_days} day(s)")
     else:
         lines.append(f"  Auspex Window: Last {window_span} sanctioned engagement(s)")
     # Veneration key (compact) — per-bond output will include only the tier label
-    lines.append(
-        "  Veneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE\n"
-    )
+    lines.append("  Veneration Key: FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE\n")
     scores_for_cutoffs = [score for _tri, score in bonds]
     cutoffs = _compute_bond_cutoffs(scores_for_cutoffs)
     ordinal_labels = {
@@ -5316,16 +4872,10 @@ def _format_bonds_for_discord(
             if member:
                 try:
                     member_role_names = {
-                        (getattr(r, "name", "") or "").strip()
-                        for r in member.roles
-                        if getattr(r, "name", None)
+                        (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
                     }
                     match = next(
-                        (
-                            hc
-                            for hc in _b('HOME_CHAPTERS')
-                            if any(rn.lower() == hc.lower() for rn in member_role_names)
-                        ),
+                        (hc for hc in _b("HOME_CHAPTERS") if any(rn.lower() == hc.lower() for rn in member_role_names)),
                         None,
                     )
                     if match:
@@ -5362,11 +4912,7 @@ def _format_bonds_for_discord(
 
     # Assemble full text, dropping QUINARY (5) then QUATERNARY (4) if over limit
     header = "\n".join(lines)
-    footer = (
-        "\n"
-        + "=============================================================================="
-        + "\n\u001b[0m```"
-    )
+    footer = "\n" + "==============================================================================" + "\n\u001b[0m```"
 
     def assemble(blocks: List[Tuple[int, str]]):
         return header + "\n" + "\n".join(b for _i, b in blocks) + footer
@@ -5381,9 +4927,7 @@ def _format_bonds_for_discord(
         filtered = [b for b in bond_blocks if b[0] not in (5, 4)]
         full_text = assemble(filtered)
     return full_text
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     lines.append("\u001b[0m```")
     return "\n".join(lines)
 
@@ -5412,11 +4956,7 @@ def _format_bonds_embed(
         return embed
 
     # Auspex window info
-    window_text = (
-        f"Last {window_days} day(s)"
-        if window_days is not None
-        else f"Last {window_span} engagements"
-    )
+    window_text = f"Last {window_days} day(s)" if window_days is not None else f"Last {window_span} engagements"
     embed.add_field(name="▸ Auspex Window", value=window_text, inline=True)
     embed.add_field(
         name="▸ Veneration Key",
@@ -5458,9 +4998,7 @@ def _format_bonds_embed(
             inline=False,
         )
 
-    embed.set_footer(
-        text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭"
-    )
+    embed.set_footer(text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭")
     return embed
 
 
@@ -5484,20 +5022,14 @@ def _format_personal_bonds_jericho_embed(
     target_chapter = None
     try:
         member_role_names = {
-            (getattr(r, "name", "") or "").strip()
-            for r in target_member.roles
-            if getattr(r, "name", None)
+            (getattr(r, "name", "") or "").strip() for r in target_member.roles if getattr(r, "name", None)
         }
-        for rp in _b('RANK_ROLES_PRIORITY'):
+        for rp in _b("RANK_ROLES_PRIORITY"):
             if rp in member_role_names:
                 target_rank = rp
                 break
         target_chapter = next(
-            (
-                hc
-                for hc in _b('HOME_CHAPTERS')
-                if any(rn.lower() == hc.lower() for rn in member_role_names)
-            ),
+            (hc for hc in _b("HOME_CHAPTERS") if any(rn.lower() == hc.lower() for rn in member_role_names)),
             None,
         )
     except Exception:
@@ -5505,16 +5037,14 @@ def _format_personal_bonds_jericho_embed(
 
     # Strip rank prefix from name
     if target_rank:
-        for rp in _b('RANK_ROLES_PRIORITY'):
+        for rp in _b("RANK_ROLES_PRIORITY"):
             if target_name.lower().startswith(rp.lower()):
                 target_name = target_name[len(rp) :].lstrip()
                 break
 
     # Get emojis
     rank_emoji = _get_rank_emoji(guild, target_rank) if guild and target_rank else ""
-    chapter_emoji = (
-        _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
-    )
+    chapter_emoji = _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
 
     embed = discord.Embed(
         title="᛭⋅ COMBAT BONDS ⋅᛭",
@@ -5568,20 +5098,18 @@ def _format_personal_bonds_jericho_embed(
             name = name.replace("●", "").replace("⚬", "").strip()
             # Get member roles
             member_role_names = {
-                (getattr(r, "name", "") or "").strip()
-                for r in member.roles
-                if getattr(r, "name", None)
+                (getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)
             }
             # Find member rank
             member_rank = None
-            for rp in _b('RANK_ROLES_PRIORITY'):
+            for rp in _b("RANK_ROLES_PRIORITY"):
                 if rp in member_role_names:
                     member_rank = rp
                     break
             if member_rank:
                 rank_emoji = _get_rank_emoji(guild, member_rank)
                 # Strip rank prefix from name (case-insensitive)
-                for rp in _b('RANK_ROLES_PRIORITY'):
+                for rp in _b("RANK_ROLES_PRIORITY"):
                     if name.lower().startswith(rp.lower()):
                         name = name[len(rp) :].lstrip()
                         break
@@ -5589,11 +5117,7 @@ def _format_personal_bonds_jericho_embed(
             chap = None
             try:
                 match = next(
-                    (
-                        hc
-                        for hc in _b('HOME_CHAPTERS')
-                        if any(rn.lower() == hc.lower() for rn in member_role_names)
-                    ),
+                    (hc for hc in _b("HOME_CHAPTERS") if any(rn.lower() == hc.lower() for rn in member_role_names)),
                     None,
                 )
                 if match:
@@ -5641,9 +5165,7 @@ def _format_personal_bonds_jericho_embed(
         inline=False,
     )
 
-    embed.set_footer(
-        text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭"
-    )
+    embed.set_footer(text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭")
     return embed
 
 
@@ -5676,39 +5198,25 @@ class ToggleFormatView(discord.ui.View):
                     too_long = len(self.text_content) > self._ansi_max_len
                     if self.ephemeral_context:
                         # Disable if currently showing ANSI or if ANSI unavailable
-                        child.disabled = (
-                            (self.current == "ansi")
-                            or (not self.text_content)
-                            or too_long
-                        )
+                        child.disabled = (self.current == "ansi") or (not self.text_content) or too_long
                     else:
                         # For public context, disable only if ANSI unavailable
                         child.disabled = (not self.text_content) or too_long
                 elif child.custom_id == "show_embed":
                     # Only relevant in ephemeral context
-                    child.disabled = (self.current == "embed") or (
-                        self.embed_obj is None
-                    )
+                    child.disabled = (self.current == "embed") or (self.embed_obj is None)
 
-    @discord.ui.button(
-        label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi"
-    )
-    async def show_ansi(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    @discord.ui.button(label="PC/Console", style=discord.ButtonStyle.secondary, custom_id="show_ansi")
+    async def show_ansi(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.text_content:
             try:
-                await interaction.response.send_message(
-                    "No PC/Console output available.", ephemeral=True
-                )
+                await interaction.response.send_message("No PC/Console output available.", ephemeral=True)
             except Exception:
                 pass
             return
         if len(self.text_content) > self._ansi_max_len:
             try:
-                await interaction.response.send_message(
-                    "PC/Console view exceeds message limit.", ephemeral=True
-                )
+                await interaction.response.send_message("PC/Console view exceeds message limit.", ephemeral=True)
             except Exception:
                 pass
             return
@@ -5718,49 +5226,33 @@ class ToggleFormatView(discord.ui.View):
             self.current = "ansi"
             self._update_buttons()
             try:
-                await interaction.response.edit_message(
-                    content=self.text_content, embed=None, view=self
-                )
+                await interaction.response.edit_message(content=self.text_content, embed=None, view=self)
             except Exception:
                 try:
-                    await interaction.followup.send(
-                        "Unable to switch to PC/Console view.", ephemeral=True
-                    )
+                    await interaction.followup.send("Unable to switch to PC/Console view.", ephemeral=True)
                 except Exception:
                     pass
         else:
             # Send ANSI view as ephemeral message (for public messages)
             try:
-                await interaction.response.send_message(
-                    content=self.text_content, ephemeral=True
-                )
+                await interaction.response.send_message(content=self.text_content, ephemeral=True)
             except Exception:
                 try:
-                    await interaction.followup.send(
-                        "Unable to show PC/Console view.", ephemeral=True
-                    )
+                    await interaction.followup.send("Unable to show PC/Console view.", ephemeral=True)
                 except Exception:
                     pass
 
-    @discord.ui.button(
-        label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed"
-    )
-    async def show_embed(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Mobile", style=discord.ButtonStyle.primary, custom_id="show_embed")
+    async def show_embed(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.embed_obj is None:
             await interaction.response.defer()
             return
         self.current = "embed"
         self._update_buttons()
-        await interaction.response.edit_message(
-            content=None, embed=self.embed_obj, view=self
-        )
+        await interaction.response.edit_message(content=None, embed=self.embed_obj, view=self)
 
 
-def _embed_from_ansi(
-    title: str, text_block: str, color: int = 0x2ECC71
-) -> discord.Embed:
+def _embed_from_ansi(title: str, text_block: str, color: int = 0x2ECC71) -> discord.Embed:
     """Generic helper: wrap an ANSI text block into an embed description safely.
     Truncates to fit Discord limits and preserves code fence for readability.
     """
@@ -5780,7 +5272,6 @@ def _embed_from_ansi(
         content = content[: max_len - 1] + "…"
     embed = discord.Embed(title=title, description=content, color=color)
     return embed
-
 
 
 BATTLE_LINE_ORDER = [
@@ -5879,9 +5370,9 @@ async def _compute_fortress_rankings(
     watch_brother_plus_ids: set = set()
     try:
         for member in guild.members:
-            names = _b('_canonical_role_names')(member)
+            names = _b("_canonical_role_names")(member)
             # Check if member has any rank in _b('RANK_ROLES_PRIORITY')
-            if any(r in names for r in _b('RANK_ROLES_PRIORITY')):
+            if any(r in names for r in _b("RANK_ROLES_PRIORITY")):
                 watch_brother_plus_ids.add(str(member.id))
     except Exception:
         pass
@@ -5890,9 +5381,7 @@ async def _compute_fortress_rankings(
     for ts, rec in recs_in_window:
         difficulty = rec.get("difficulty_class")
         is_high_risk = difficulty in ("hard_stratagem", "omega_ops")
-        omega_kia = (
-            int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
-        )
+        omega_kia = int(rec.get("killed_in_action", 0) or 0) if difficulty == "omega_ops" else 0
         brother_ids = [str(x) for x in (rec.get("brother_ids") or [])]
 
         # Check if this AAR is a Black Laurels mission
@@ -5929,18 +5418,14 @@ async def _compute_fortress_rankings(
                     str(rec.get("gene_seed_carrier_id")) == str(uid)
                     and (rec.get("gene_seed_status") or "") == "carried"
                 ):
-                    u["gene_carried"] += int(
-                        rec.get("gene_seed_base_points_for_carrier") or 0
-                    )
+                    u["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                 u["gene_participated"] += 1
             except Exception:
                 pass
 
         # Team aggregation: collect all teams participating in this AAR, then count once per team
         aar_teams: Dict[str, List[str]] = {}  # team -> list of member uids in this AAR
-        resolved_participants = (
-            0  # Count only resolved members for cohesion calculation
-        )
+        resolved_participants = 0  # Count only resolved members for cohesion calculation
         for uid in brother_ids:
             try:
                 member = guild.get_member(int(uid)) if guild else None
@@ -5996,9 +5481,7 @@ async def _compute_fortress_rankings(
             try:
                 # Gene-seed: count once per AAR if carried
                 if rec.get("gene_seed_status") == "carried":
-                    t["gene_carried"] += int(
-                        rec.get("gene_seed_base_points_for_carrier") or 0
-                    )
+                    t["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
                 t["gene_participated"] += 1
                 # Track unique members who participated
                 for uid in team_member_ids:
@@ -6007,9 +5490,7 @@ async def _compute_fortress_rankings(
                 pass
 
         # Chapter aggregation: collect all chapters participating in this AAR, then count once per chapter
-        aar_chapters: Dict[
-            str, List[str]
-        ] = {}  # chapter -> list of member uids in this AAR
+        aar_chapters: Dict[str, List[str]] = {}  # chapter -> list of member uids in this AAR
         for uid in brother_ids:
             ch = chapters_map.get(str(uid))
             if ch:
@@ -6038,9 +5519,7 @@ async def _compute_fortress_rankings(
                 c["omega_kia"] += omega_kia
             # Gene-seed: count once per AAR if carried
             if rec.get("gene_seed_status") == "carried":
-                c["gene_carried"] += int(
-                    rec.get("gene_seed_base_points_for_carrier") or 0
-                )
+                c["gene_carried"] += int(rec.get("gene_seed_base_points_for_carrier") or 0)
             c["gene_participated"] += 1
             # Track unique members for ops/member calculation
             for uid in chapter_member_ids:
@@ -6049,30 +5528,20 @@ async def _compute_fortress_rankings(
     # Compute derived metrics for users
     for uid, v in users.items():
         v["avg"] = (v["points"] / v["ops"]) if v["ops"] else 0.0
-        v["gene_rate"] = (
-            (v["gene_carried"] / v["gene_participated"])
-            if v["gene_participated"]
-            else 0.0
-        )
+        v["gene_rate"] = (v["gene_carried"] / v["gene_participated"]) if v["gene_participated"] else 0.0
 
     # Compute derived metrics for teams
     for tid, tv in teams.items():
         tv["avg"] = (tv["points"] / tv["ops"]) if tv["ops"] else 0.0
         tv["gene_rate"] = (
-            (tv.get("gene_carried", 0) / tv.get("gene_participated", 1))
-            if tv.get("gene_participated", 0)
-            else 0.0
+            (tv.get("gene_carried", 0) / tv.get("gene_participated", 1)) if tv.get("gene_participated", 0) else 0.0
         )
         members_count = len(tv.get("members") or set())
         tv["avg_aar_per_member"] = (tv["ops"] / members_count) if members_count else 0.0
         tv["pres"] = tv.get("armory", 0) + tv.get("gene_carried", 0)
         # Squad Cohesion: average cohesion % for ops where 2+ teammates ran together
         cohesion_count = tv.get("cohesion_count", 0)
-        tv["cohesion"] = (
-            (tv.get("cohesion_sum", 0.0) / cohesion_count)
-            if cohesion_count > 0
-            else 0.0
-        )
+        tv["cohesion"] = (tv.get("cohesion_sum", 0.0) / cohesion_count) if cohesion_count > 0 else 0.0
 
     # Compute derived metrics for chapters
     # Minimum ops threshold for chapter eligibility
@@ -6086,8 +5555,7 @@ async def _compute_fortress_rankings(
     eligible_chapters = [
         ch
         for ch, d in chapters.items()
-        if len(chapters_members.get(ch, set())) >= 1
-        and d.get("ops", 0) >= min_ops_required
+        if len(chapters_members.get(ch, set())) >= 1 and d.get("ops", 0) >= min_ops_required
     ]
 
     for ch, c in chapters.items():
@@ -6098,11 +5566,7 @@ async def _compute_fortress_rankings(
         members_count = len(chapters_members.get(ch, set()))
         c["ops_per_member"] = (c["ops"] / members_count) if members_count else 0.0
         c["avg_aar_per_member"] = c["ops_per_member"]  # Alias for consistency
-        c["gene_rate"] = (
-            (c["gene_carried"] / c["gene_participated"])
-            if c["gene_participated"]
-            else 0.0
-        )
+        c["gene_rate"] = (c["gene_carried"] / c["gene_participated"]) if c["gene_participated"] else 0.0
 
     # Compute median active member count for chapter dampening (same logic as honours)
     _active_counts = [len(chapters_members.get(ch, set())) for ch in eligible_chapters]
@@ -6141,11 +5605,7 @@ async def _compute_fortress_rankings(
         # Filter to users meeting minimum ops threshold if specified;
         # fall back to all users when none meet the threshold (matching
         # monthly honours fallback behaviour to avoid empty leaderboards).
-        eligible_users = (
-            {uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops}
-            if min_ops > 0
-            else users
-        )
+        eligible_users = {uid: v for uid, v in users.items() if v.get("ops", 0) >= min_ops} if min_ops > 0 else users
         if not eligible_users:
             eligible_users = users
         items = [(uid, v.get(metric_key, 0)) for uid, v in eligible_users.items()]
@@ -6159,11 +5619,7 @@ async def _compute_fortress_rankings(
         # Filter to teams meeting minimum ops threshold if specified;
         # fall back to all teams when none meet the threshold (matching
         # monthly honours fallback behaviour to avoid empty leaderboards).
-        eligible_teams = (
-            {tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops}
-            if min_ops > 0
-            else teams
-        )
+        eligible_teams = {tid: v for tid, v in teams.items() if v.get("ops", 0) >= min_ops} if min_ops > 0 else teams
         if not eligible_teams:
             eligible_teams = teams
         items = [(tid, v.get(metric_key, 0)) for tid, v in eligible_teams.items()]
@@ -6175,9 +5631,7 @@ async def _compute_fortress_rankings(
 
     def rank_chapters(metric_key: str, higher_is_better: bool = True):
         # Build raw values for eligible chapters
-        raw_vals = {
-            ch: chapters.get(ch, {}).get(metric_key, 0) for ch in eligible_chapters
-        }
+        raw_vals = {ch: chapters.get(ch, {}).get(metric_key, 0) for ch in eligible_chapters}
         # Apply member-count-distance dampening before ranking
         dampened_vals = _apply_chapter_dampening(raw_vals)
         # Sort by dampened values
@@ -6214,9 +5668,7 @@ async def _compute_fortress_rankings(
         "gene_carried": rank_teams("gene_carried", min_ops=user_min_ops_required),
         "high_risk": rank_teams("high_risk", min_ops=user_min_ops_required),
         "omega_kia": rank_teams("omega_kia", min_ops=user_min_ops_required),
-        "avg_aar_per_member": rank_teams(
-            "avg_aar_per_member", min_ops=user_min_ops_required
-        ),
+        "avg_aar_per_member": rank_teams("avg_aar_per_member", min_ops=user_min_ops_required),
         "cohesion": rank_teams("cohesion", min_ops=user_min_ops_required),
     }
 
@@ -6284,14 +5736,10 @@ def _format_member_styled(
         if name.startswith("[R] "):
             name = name[4:].strip()
         # Get member's roles
-        member_role_names = {
-            (getattr(r, "name", "") or "").strip()
-            for r in member.roles
-            if getattr(r, "name", None)
-        }
+        member_role_names = {(getattr(r, "name", "") or "").strip() for r in member.roles if getattr(r, "name", None)}
         # Find member's rank and strip rank prefix from name
         member_rank = None
-        for rp in _b('RANK_ROLES_PRIORITY'):
+        for rp in _b("RANK_ROLES_PRIORITY"):
             if rp in member_role_names:
                 member_rank = rp
                 break
@@ -6299,7 +5747,7 @@ def _format_member_styled(
             rank_emoji = _get_rank_emoji(guild, member_rank)
             # Strip the member's actual rank prefix from name (case-insensitive)
             if name.lower().startswith(member_rank.lower()):
-                name = name[len(member_rank):].lstrip()
+                name = name[len(member_rank) :].lstrip()
 
         # Resolve chapter if requested
         if include_chapter:
@@ -6307,11 +5755,7 @@ def _format_member_styled(
             # Try from member roles first
             try:
                 match = next(
-                    (
-                        hc
-                        for hc in _b('HOME_CHAPTERS')
-                        if any(rn.lower() == hc.lower() for rn in member_role_names)
-                    ),
+                    (hc for hc in _b("HOME_CHAPTERS") if any(rn.lower() == hc.lower() for rn in member_role_names)),
                     None,
                 )
                 if match:
@@ -6444,9 +5888,7 @@ def _calculate_current_milestones() -> dict:
     return totals
 
 
-def _check_milestone_thresholds(
-    current: dict, last_announced: dict
-) -> list[tuple[str, int, int]]:
+def _check_milestone_thresholds(current: dict, last_announced: dict) -> list[tuple[str, int, int]]:
     """Check which milestones have been crossed since last announcement.
 
     Returns list of (metric_name, new_milestone_value, current_value) tuples.
@@ -6517,9 +5959,7 @@ def _get_milestone_display_info(metric: str) -> tuple[str, str, str, int]:
             0x800080,  # Purple
         ),
     }
-    return info.get(
-        metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0)
-    )
+    return info.get(metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0))
 
 
 def _build_milestone_embed(
@@ -6610,15 +6050,13 @@ async def _scheduled_milestone_check():
         _g.logger.info("Milestone check starting...")
 
         # Resolve target guild and channel
-        guild = _b('_resolve_notification_guild')()
+        guild = _b("_resolve_notification_guild")()
         if not guild:
             _g.logger.warning("Milestone check: Could not resolve guild, skipping")
             return
 
         try:
-            channel = guild.get_channel(MILESTONES_CHANNEL_ID) or await _g.bot.fetch_channel(
-                MILESTONES_CHANNEL_ID
-            )
+            channel = guild.get_channel(MILESTONES_CHANNEL_ID) or await _g.bot.fetch_channel(MILESTONES_CHANNEL_ID)
         except Exception:
             _g.logger.exception("Milestone check: Could not resolve channel")
             return
@@ -6650,9 +6088,7 @@ async def _scheduled_milestone_check():
         announcements_sent = 0
         for metric, milestone_value, current_value in crossed:
             try:
-                embed = _build_milestone_embed(
-                    guild, metric, milestone_value, current_value
-                )
+                embed = _build_milestone_embed(guild, metric, milestone_value, current_value)
                 await channel.send(
                     content=wb_mention,
                     embed=embed,
@@ -6663,9 +6099,7 @@ async def _scheduled_milestone_check():
                 announcements_sent += 1
                 await asyncio.sleep(1)  # Brief delay between announcements
             except Exception as e:
-                _g.logger.exception(
-                    f"Failed to post milestone announcement for {metric}: {e}"
-                )
+                _g.logger.exception(f"Failed to post milestone announcement for {metric}: {e}")
 
         # Save updated tracking
         tracking["last_announced"] = last_announced
@@ -6673,9 +6107,7 @@ async def _scheduled_milestone_check():
         _save_milestone_tracking(tracking)
 
         _g.LAST_MILESTONE_CHECK_DATE = str(today)
-        _g.logger.info(
-            f"Milestone check complete: {announcements_sent} announcement(s) posted"
-        )
+        _g.logger.info(f"Milestone check complete: {announcements_sent} announcement(s) posted")
 
     except Exception as e:
         _g.logger.exception(f"Milestone check failed: {e}")
@@ -6811,13 +6243,7 @@ def _parse_roster_section(content: str) -> Dict[int, List[str]]:
         lines = content.split("\n")
         for line in lines:
             # Skip vacant, separators, headers, and empty lines
-            if (
-                not line.strip()
-                or "[Vacant]" in line
-                or "###" in line
-                or "⎯" in line
-                or "__" in line
-            ):
+            if not line.strip() or "[Vacant]" in line or "###" in line or "⎯" in line or "__" in line:
                 continue
 
             # Extract position label from emoji code
@@ -6887,15 +6313,11 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
             # Check if this is a rank marker (e.g., "**Sergeant:**" or "**Champion:**")
             if "**Sergeant:**" in line:
                 current_rank = "Sergeant"
-                _g.logger.debug(
-                    f"Line {line_num}: Switching to Sergeant rank (applies to next member only)"
-                )
+                _g.logger.debug(f"Line {line_num}: Switching to Sergeant rank (applies to next member only)")
                 continue
             elif "**Champion:**" in line:
                 current_rank = "Champion"
-                _g.logger.debug(
-                    f"Line {line_num}: Switching to Champion rank (applies to next member only)"
-                )
+                _g.logger.debug(f"Line {line_num}: Switching to Champion rank (applies to next member only)")
                 continue
 
             # Skip separators and headers
@@ -6923,17 +6345,13 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
                     current_rank = "Member"
                 elif line.strip().startswith("-"):
                     # Empty slot (just "- " with nothing) - reset rank to Member
-                    _g.logger.debug(
-                        f"Line {line_num}: Empty rank slot, resetting to Member"
-                    )
+                    _g.logger.debug(f"Line {line_num}: Empty rank slot, resetting to Member")
                     current_rank = "Member"
 
         # Save last team
         if current_kt_role_id is not None and current_kt_members:
             kill_teams[current_kt_role_id] = current_kt_members
-            _g.logger.info(
-                f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members"
-            )
+            _g.logger.info(f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members")
         _g.logger.debug(f"Finished parsing kill teams: {len(kill_teams)} teams found")
         if not kill_teams:
             _g.logger.debug("No kill teams found - checking if we ever entered a KT block")
@@ -7081,30 +6499,20 @@ async def _audit_company_roster(
     try:
         roster_channel_id = int(company_config.get("rosterChannelId"))
         company_role_id = int(company_config.get("companyRoleId", 0) or 0)
-        company_command_role_id = int(
-            company_config.get("companyCommandRoleId", 0) or 0
-        )
+        company_command_role_id = int(company_config.get("companyCommandRoleId", 0) or 0)
 
         # Find roster messages
-        high_cmd_msg, company_cmd_msg, kill_teams_msgs = await _find_roster_messages(
-            guild, roster_channel_id
-        )
+        high_cmd_msg, company_cmd_msg, kill_teams_msgs = await _find_roster_messages(guild, roster_channel_id)
 
         # Debug logging
         _g.logger.info(f"\n=== AUDITING {company_config.get('name', 'Unknown')} ===")
         _g.logger.info(f"Roster Channel ID: {roster_channel_id}")
-        _g.logger.info(
-            f"High Command Message: {high_cmd_msg.id if high_cmd_msg else 'NOT FOUND'}"
-        )
-        _g.logger.info(
-            f"Company Command Message: {company_cmd_msg.id if company_cmd_msg else 'NOT FOUND'}"
-        )
+        _g.logger.info(f"High Command Message: {high_cmd_msg.id if high_cmd_msg else 'NOT FOUND'}")
+        _g.logger.info(f"Company Command Message: {company_cmd_msg.id if company_cmd_msg else 'NOT FOUND'}")
         _g.logger.info(f"Kill Teams Messages: {len(kill_teams_msgs)} found")
 
         # Parse Company Command and Kill Teams (High Command is passed in as shared)
-        company_cmd_roster = (
-            _parse_roster_section(company_cmd_msg.content) if company_cmd_msg else {}
-        )
+        company_cmd_roster = _parse_roster_section(company_cmd_msg.content) if company_cmd_msg else {}
 
         # Parse all kill team messages and merge
         kill_teams_roster = {}
@@ -7152,9 +6560,7 @@ async def _audit_company_roster(
             if user_id in high_cmd_roster:
                 # High Command validation (always required if in High Command)
                 expected_roles = high_cmd_roster[user_id]
-                is_valid, missing, extra = _validate_high_command_roles(
-                    expected_roles, actual_roles
-                )
+                is_valid, missing, extra = _validate_high_command_roles(expected_roles, actual_roles)
                 if not is_valid or missing:
                     result["missing"].append(
                         {
@@ -7218,14 +6624,8 @@ async def _audit_company_roster(
 
         # Check for extra: users with company roles but not in roster
         try:
-            company_role_obj = (
-                guild.get_role(company_role_id) if company_role_id else None
-            )
-            company_cmd_role_obj = (
-                guild.get_role(company_command_role_id)
-                if company_command_role_id
-                else None
-            )
+            company_role_obj = guild.get_role(company_role_id) if company_role_id else None
+            company_cmd_role_obj = guild.get_role(company_command_role_id) if company_command_role_id else None
 
             # Build set of all kill team role IDs that exist
             kt_roles = set(kill_teams_roster.keys())
@@ -7236,10 +6636,7 @@ async def _audit_company_roster(
                     if member.id not in all_roster_users:
                         # Check if they have kill team or company command roles
                         member_role_ids = {r.id for r in member.roles}
-                        if (
-                            company_cmd_role_obj
-                            and company_cmd_role_obj.id in member_role_ids
-                        ):
+                        if company_cmd_role_obj and company_cmd_role_obj.id in member_role_ids:
                             result["extra"].append(
                                 {
                                     "user_id": member.id,
@@ -7250,9 +6647,7 @@ async def _audit_company_roster(
                             )
                         elif kt_roles & member_role_ids:
                             kt_in_member = [
-                                guild.get_role(rid).name
-                                if guild.get_role(rid)
-                                else f"KT-{rid}"
+                                guild.get_role(rid).name if guild.get_role(rid) else f"KT-{rid}"
                                 for rid in (kt_roles & member_role_ids)
                             ]
                             kt_names = ", ".join(kt_in_member)
@@ -7339,13 +6734,9 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as ANSI summary."""
     lines = []
     lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
+    lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — SUMMARY")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
@@ -7359,16 +6750,12 @@ def _format_audit_summary(audit_results: List[Dict[str, any]]) -> str:
         lines.append(f"    Extra (not in roster): {extra_count}")
         lines.append(f"    Mismatches: {mismatch_count}")
 
-    if not any(
-        r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
-    ):
+    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
         lines.append("")
         lines.append("  No discrepancies found.")
 
     lines.append("")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
     return "\n".join(lines)
@@ -7378,13 +6765,9 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
     """Format audit results as full ANSI detail."""
     lines = []
     lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
+    lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // ROSTER AUDIT — FULL REPORT")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
 
     for result in audit_results:
         company = result.get("company_name", "Unknown")
@@ -7428,16 +6811,12 @@ def _format_audit_full(audit_results: List[Dict[str, any]]) -> str:
                 lines.append(f"    {display_name}: {issue}")
                 lines.append(f"      Roles: {', '.join(actual)}")
 
-    if not any(
-        r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results
-    ):
+    if not any(r.get("missing") or r.get("extra") or r.get("mismatch") for r in audit_results):
         lines.append("")
         lines.append("  No discrepancies found.")
 
     lines.append("")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
     return "\n".join(lines)
@@ -7456,16 +6835,13 @@ async def promotion_queue(interaction: discord.Interaction):
     - AAR not met, time not met: need both
     """
     # Permission check: Watch Command only
-    if not (
-        check_command_permission(interaction.user, "promotion_queue")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "promotion_queue") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
 
-    guild = interaction.guild or _b('_resolve_notification_guild')()
+    guild = interaction.guild or _b("_resolve_notification_guild")()
     if not guild:
         await interaction.followup.send("Could not resolve guild.", ephemeral=True)
         return
@@ -7489,9 +6865,7 @@ async def promotion_queue(interaction: discord.Interaction):
     veteran_aar_met_time_not: List[
         Tuple[discord.Member, int, int, datetime]
     ] = []  # member, aar_pts, weeks, promotion_date
-    veteran_aar_not_time_met: List[
-        Tuple[discord.Member, int, int, int]
-    ] = []  # member, aar_pts, weeks, aar_needed
+    veteran_aar_not_time_met: List[Tuple[discord.Member, int, int, int]] = []  # member, aar_pts, weeks, aar_needed
     veteran_aar_not_time_not: List[
         Tuple[discord.Member, int, int, datetime, int]
     ] = []  # member, aar_pts, weeks, time_date, aar_needed
@@ -7558,34 +6932,20 @@ async def promotion_queue(interaction: discord.Interaction):
             elif aar_met and not time_met:
                 # AAR met, waiting on time
                 weeks_needed = 2 - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
                 promotion_date = now + timedelta(days=days_until)
-                veteran_aar_met_time_not.append(
-                    (member, aar_points, weeks_in_server, promotion_date)
-                )
+                veteran_aar_met_time_not.append((member, aar_points, weeks_in_server, promotion_date))
             elif not aar_met and time_met:
                 # Time met, waiting on AAR
                 aar_needed = 200 - aar_points
-                veteran_aar_not_time_met.append(
-                    (member, aar_points, weeks_in_server, aar_needed)
-                )
+                veteran_aar_not_time_met.append((member, aar_points, weeks_in_server, aar_needed))
             else:
                 # Neither met
                 weeks_needed = 2 - weeks_in_server
-                days_until = (
-                    weeks_needed * 7 - ((now - joined_at).days % 7)
-                    if joined_at
-                    else weeks_needed * 7
-                )
+                days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
                 time_date = now + timedelta(days=days_until)
                 aar_needed = 200 - aar_points
-                veteran_aar_not_time_not.append(
-                    (member, aar_points, weeks_in_server, time_date, aar_needed)
-                )
+                veteran_aar_not_time_not.append((member, aar_points, weeks_in_server, time_date, aar_needed))
 
         # --- Process Service Studs eligibility ---
         if is_veteran_or_higher:
@@ -7610,12 +6970,8 @@ async def promotion_queue(interaction: discord.Interaction):
                 # For plasteel tier (0-3 studs), track next individual stud
                 next_target = _studs_next_target(displayed_studs)
 
-                next_stud_threshold_time = (
-                    next_target * 4
-                )  # weeks needed for next milestone
-                next_stud_threshold_aar = (
-                    next_target * 400
-                )  # AAR needed for next milestone
+                next_stud_threshold_time = next_target * 4  # weeks needed for next milestone
+                next_stud_threshold_aar = next_target * 400  # AAR needed for next milestone
 
                 aar_met_for_next = aar_points >= next_stud_threshold_aar
                 time_met_for_next = weeks_in_server >= next_stud_threshold_time
@@ -7626,11 +6982,7 @@ async def promotion_queue(interaction: discord.Interaction):
                 elif aar_met_for_next and not time_met_for_next:
                     # AAR met, waiting on time for next stud
                     weeks_needed = next_stud_threshold_time - weeks_in_server
-                    days_until = (
-                        weeks_needed * 7 - ((now - joined_at).days % 7)
-                        if joined_at
-                        else weeks_needed * 7
-                    )
+                    days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
                     next_stud_date = now + timedelta(days=days_until)
                     studs_aar_met_time_not.append(
                         (
@@ -7660,11 +7012,7 @@ async def promotion_queue(interaction: discord.Interaction):
                 else:
                     # Neither met for next stud
                     weeks_needed = next_stud_threshold_time - weeks_in_server
-                    days_until = (
-                        weeks_needed * 7 - ((now - joined_at).days % 7)
-                        if joined_at
-                        else weeks_needed * 7
-                    )
+                    days_until = weeks_needed * 7 - ((now - joined_at).days % 7) if joined_at else weeks_needed * 7
                     next_time_date = now + timedelta(days=days_until)
                     aar_needed = next_stud_threshold_aar - aar_points
                     studs_aar_not_time_not.append(
@@ -7728,13 +7076,9 @@ async def promotion_queue(interaction: discord.Interaction):
 
     def _format_member_with_rank(member: discord.Member) -> str:
         """Format member with rank emoji + stripped name (combat bonds style, no @mention)."""
-        return _format_member_styled(
-            guild, str(member.id), chapters_map=None, include_chapter=False
-        )
+        return _format_member_styled(guild, str(member.id), chapters_map=None, include_chapter=False)
 
-    def _build_field_value(
-        lines: List[str], total_count: int, max_shown: int = 10
-    ) -> str:
+    def _build_field_value(lines: List[str], total_count: int, max_shown: int = 10) -> str:
         """Build a field value that stays under 1024 chars with smart truncation."""
         result_lines = []
         char_count = 0
@@ -7782,9 +7126,7 @@ async def promotion_queue(interaction: discord.Interaction):
             member_str = _format_member_with_rank(member)
             pos = veteran_positions.get(str(member.id), 0)
             arrow = _get_position_arrow(str(member.id), "veteran", pos)
-            lines.append(
-                f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | needs **{aar_needed}**"
-            )
+            lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | needs **{aar_needed}**")
         veteran_embed.add_field(
             name=f"▸ Needs AAR ({len(veteran_aar_not_time_met)})",
             value=_build_field_value(lines, len(veteran_aar_not_time_met)),
@@ -7799,27 +7141,17 @@ async def promotion_queue(interaction: discord.Interaction):
             member_str = _format_member_with_rank(member)
             pos = veteran_positions.get(str(member.id), 0)
             arrow = _get_position_arrow(str(member.id), "veteran", pos)
-            lines.append(
-                f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | {date_str}, +{aar_needed}"
-            )
+            lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | {date_str}, +{aar_needed}")
         veteran_embed.add_field(
             name=f"▸ Needs Both ({len(veteran_aar_not_time_not)})",
             value=_build_field_value(lines, len(veteran_aar_not_time_not)),
             inline=False,
         )
 
-    if not (
-        veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not
-    ):
-        veteran_embed.add_field(
-            name="▸ Status", value="No Watch Brothers pending.", inline=False
-        )
+    if not (veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not):
+        veteran_embed.add_field(name="▸ Status", value="No Watch Brothers pending.", inline=False)
 
-    total_veterans = (
-        len(veteran_aar_met_time_not)
-        + len(veteran_aar_not_time_met)
-        + len(veteran_aar_not_time_not)
-    )
+    total_veterans = len(veteran_aar_met_time_not) + len(veteran_aar_not_time_met) + len(veteran_aar_not_time_not)
     veteran_embed.set_footer(text=f"᛭⋅ {total_veterans} in queue ⋅᛭")
     embeds.append(veteran_embed)
 
@@ -7870,9 +7202,7 @@ async def promotion_queue(interaction: discord.Interaction):
             member_str = _format_member_with_rank(member)
             pos = studs_positions.get(str(member.id), 0)
             arrow = _get_position_arrow(str(member.id), "studs", pos)
-            lines.append(
-                f"᛭⋅ {member_str}{arrow} | →{target_str} | needs **{aar_needed}**"
-            )
+            lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | needs **{aar_needed}**")
         studs_embed.add_field(
             name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
             value=_build_field_value(lines, len(studs_aar_not_time_met)),
@@ -7897,9 +7227,7 @@ async def promotion_queue(interaction: discord.Interaction):
             member_str = _format_member_with_rank(member)
             pos = studs_positions.get(str(member.id), 0)
             arrow = _get_position_arrow(str(member.id), "studs", pos)
-            lines.append(
-                f"᛭⋅ {member_str}{arrow} | →{target_str} | {date_str}, +{aar_needed}"
-            )
+            lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | {date_str}, +{aar_needed}")
         studs_embed.add_field(
             name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
             value=_build_field_value(lines, len(studs_aar_not_time_not)),
@@ -7907,15 +7235,9 @@ async def promotion_queue(interaction: discord.Interaction):
         )
 
     if not (studs_aar_met_time_not or studs_aar_not_time_met or studs_aar_not_time_not):
-        studs_embed.add_field(
-            name="▸ Status", value="No veterans pending.", inline=False
-        )
+        studs_embed.add_field(name="▸ Status", value="No veterans pending.", inline=False)
 
-    total_studs = (
-        len(studs_aar_met_time_not)
-        + len(studs_aar_not_time_met)
-        + len(studs_aar_not_time_not)
-    )
+    total_studs = len(studs_aar_met_time_not) + len(studs_aar_not_time_met) + len(studs_aar_not_time_not)
     studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
     embeds.append(studs_embed)
 
@@ -7940,18 +7262,13 @@ async def promotion_queue(interaction: discord.Interaction):
 async def company_roster(interaction: discord.Interaction):
     """Show Kill Teams and their member counts for all Watch Companies."""
     # Permission check: Watch Command only, in the designated channel
-    if not (
-        check_command_permission(interaction.user, "company_roster")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "company_roster") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    guild = interaction.guild or _b('_resolve_notification_guild')()
+    guild = interaction.guild or _b("_resolve_notification_guild")()
     if not guild:
-        await interaction.response.send_message(
-            "Could not resolve guild.", ephemeral=True
-        )
+        await interaction.response.send_message("Could not resolve guild.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -7987,13 +7304,13 @@ async def company_roster(interaction: discord.Interaction):
 
         # Find all members with this company role (excluding those above Sergeant)
         # Watch Sergeant and below are indices 16+ in _b('RANK_ROLES_PRIORITY')
-        sergeant_idx = _b('_role_index')("Watch Sergeant")
+        sergeant_idx = _b("_role_index")("Watch Sergeant")
         company_members = []
         for m in guild.members:
             if company_role not in m.roles or m.bot:
                 continue
             # Get highest rank index
-            highest_idx = _b('get_highest_rank_index')(m)
+            highest_idx = _b("get_highest_rank_index")(m)
             # Include if no rank role, or if rank is Sergeant or below (higher index = lower rank)
             if highest_idx is None or (sergeant_idx is not None and highest_idx >= sergeant_idx):
                 company_members.append(m)
@@ -8017,9 +7334,7 @@ async def company_roster(interaction: discord.Interaction):
                 kt_counts.setdefault(member_kt, []).append(member)
             else:
                 # Check if member has a company command role - if so, they're fine
-                has_command_role = any(
-                    role.name in company_command_roles for role in member.roles
-                )
+                has_command_role = any(role.name in company_command_roles for role in member.roles)
                 if not has_command_role:
                     no_kt_members.append(member)
 
@@ -8066,9 +7381,7 @@ async def company_roster(interaction: discord.Interaction):
         fortress_unassigned += len(no_kt_members)
 
     if not embeds:
-        await interaction.followup.send(
-            "No companies found with members.", ephemeral=True
-        )
+        await interaction.followup.send("No companies found with members.", ephemeral=True)
         return
 
     # Add a summary embed at the end
@@ -8094,8 +7407,6 @@ async def company_roster(interaction: discord.Interaction):
     embeds.append(summary_embed)
 
     await interaction.followup.send(embeds=embeds, ephemeral=True)
-
-
 
 
 # ---------------------------------------------------------------------------

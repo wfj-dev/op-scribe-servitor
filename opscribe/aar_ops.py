@@ -1,23 +1,17 @@
 """AAR operations: parsing, validation, ingestion, reconciliation,
 audit, challenge tracking."""
+
 import os
 import asyncio
 import json
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
-from discord.ext import tasks
 import re
-import itertools
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 import hashlib
-import logging
-import time
-import random
 import sys as _sys
-import statistics
 
-from .datastore import DataStore
 from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
@@ -27,12 +21,13 @@ from . import _bot_globals as _g
 
 def _b(name):
     """Resolve name via bot module for test-mock compatibility."""
-    m = _sys.modules.get('bot')
+    m = _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
 
 def _load_challenge_progress() -> Dict[str, Dict]:
     """Load challenge progress tracking data: user_id -> {challenge_key -> [mission_entries]}.
-    
+
     Structure:
     {
         "user_id": {
@@ -77,10 +72,10 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
 
 async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
-    
+
     Returns list of (user_id, challenge_name, aar_urls) tuples for newly qualified members.
     Only returns each challenge once per member (won't notify again).
-    
+
     Challenge tracking:
     - sok_g_pipehitter: 10 SOK-G missions with @SOK-G: Pipehitter tag + existing Pipehitter on team
     - distinguished_sok_g_pipehitter: 2+ SOK-G missions with tag + team requirement
@@ -90,47 +85,44 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
     """
     notifications = []
-    
+
     # Extract AAR fields
     mission_name = (record.get("mission") or record.get("mission_name") or "").lower()
     brother_ids = record.get("brother_ids", [])
     aar_id = record.get("aar_id") or record.get("id", "")
     message_url = record.get("message_url", "")
     timestamp = record.get("timestamp", "")
-    
+
     # Tag detection
     pipehitter_mentioned = record.get("pipehitter_mentioned", False)
     leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
     black_laurels = record.get("black_laurels_in_mission", False)
-    
+
     # Skip if no mission name or no participants
     if not mission_name or not brother_ids:
         return notifications
-    
+
     # Load current progress
     async with _g.CHALLENGE_PROGRESS_LOCK:
         progress_data = _load_challenge_progress()
-        
+
         # Check each brother in the AAR
         for brother_id in brother_ids:
             user_id_str = str(brother_id)
-            
+
             # Initialize user progress if needed
             if user_id_str not in progress_data:
                 progress_data[user_id_str] = {"notified": []}
-            
+
             user_progress = progress_data[user_id_str]
             notified_challenges = user_progress.get("notified", [])
-            
+
             # Get member object for role checks
             member = guild.get_member(int(brother_id)) if guild else None
-            
+
             # === SOK-G: Pipehitter tracking ===
-            if (
-                pipehitter_mentioned
-                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
-            ):
+            if pipehitter_mentioned and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS:
                 # Check if team has existing Pipehitter or Distinguished Pipehitter
                 team_has_pipehitter = False
                 if member:
@@ -143,22 +135,24 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         ):
                             team_has_pipehitter = True
                             break
-                
+
                 if team_has_pipehitter:
                     # Track this mission for SOK-G: Pipehitter
                     if "sok_g_pipehitter" not in user_progress:
                         user_progress["sok_g_pipehitter"] = []
-                    
+
                     # Check if this mission already tracked
                     existing_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
                     if mission_name not in existing_missions:
-                        user_progress["sok_g_pipehitter"].append({
-                            "mission": mission_name,
-                            "aar_id": aar_id,
-                            "message_url": message_url,
-                            "timestamp": timestamp
-                        })
-                    
+                        user_progress["sok_g_pipehitter"].append(
+                            {
+                                "mission": mission_name,
+                                "aar_id": aar_id,
+                                "message_url": message_url,
+                                "timestamp": timestamp,
+                            }
+                        )
+
                     # Check if qualified for SOK-G: Pipehitter (10 missions)
                     unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
                     if (
@@ -169,7 +163,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
                         notifications.append((user_id_str, "SOK-G: Pipehitter", aar_urls))
                         notified_challenges.append("sok_g_pipehitter")
-                    
+
                     # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
                     if (
                         len(unique_missions) >= 2
@@ -179,22 +173,19 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
                         notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", aar_urls))
                         notified_challenges.append("distinguished_sok_g_pipehitter")
-            
+
             # === Kadaku Campaign Medal tracking ===
             if leviathan_protocol and mission_name in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
                 if "kadaku_campaign" not in user_progress:
                     user_progress["kadaku_campaign"] = []
-                
+
                 # Check if this mission already tracked
                 existing_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
                 if mission_name not in existing_missions:
-                    user_progress["kadaku_campaign"].append({
-                        "mission": mission_name,
-                        "aar_id": aar_id,
-                        "message_url": message_url,
-                        "timestamp": timestamp
-                    })
-                
+                    user_progress["kadaku_campaign"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
                 # Check if all 3 missions completed
                 unique_missions = {m["mission"] for m in user_progress["kadaku_campaign"]}
                 if (
@@ -207,22 +198,19 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
                     notifications.append((user_id_str, "Kadaku Campaign Medal", aar_urls))
                     notified_challenges.append("kadaku_campaign")
-            
+
             # === Black Reef Campaign Medal tracking ===
             if black_reef_persecution and mission_name in BLACK_REEF_REQUIRED_MISSIONS:
                 if "black_reef" not in user_progress:
                     user_progress["black_reef"] = []
-                
+
                 # Check if this mission already tracked
                 existing_missions = {m["mission"] for m in user_progress["black_reef"]}
                 if mission_name not in existing_missions:
-                    user_progress["black_reef"].append({
-                        "mission": mission_name,
-                        "aar_id": aar_id,
-                        "message_url": message_url,
-                        "timestamp": timestamp
-                    })
-                
+                    user_progress["black_reef"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
                 # Check if all 8 missions completed
                 unique_missions = {m["mission"] for m in user_progress["black_reef"]}
                 if (
@@ -235,26 +223,19 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Black Reef Campaign Medal", aar_urls))
                     notified_challenges.append("black_reef")
-            
+
             # === Distinguished Black Reef Campaign Medal tracking ===
-            if (
-                black_reef_persecution
-                and black_laurels
-                and mission_name in BLACK_REEF_REQUIRED_MISSIONS
-            ):
+            if black_reef_persecution and black_laurels and mission_name in BLACK_REEF_REQUIRED_MISSIONS:
                 if "distinguished_black_reef" not in user_progress:
                     user_progress["distinguished_black_reef"] = []
-                
+
                 # Check if this mission already tracked
                 existing_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
                 if mission_name not in existing_missions:
-                    user_progress["distinguished_black_reef"].append({
-                        "mission": mission_name,
-                        "aar_id": aar_id,
-                        "message_url": message_url,
-                        "timestamp": timestamp
-                    })
-                
+                    user_progress["distinguished_black_reef"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
                 # Check if all 8 missions completed with both tags
                 unique_missions = {m["mission"] for m in user_progress["distinguished_black_reef"]}
                 if (
@@ -267,23 +248,23 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", aar_urls))
                     notified_challenges.append("distinguished_black_reef")
-            
+
             # === Crux Terminatus tracking (auto-verification) ===
             # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes
             # Manual verification needed: Rank A or higher extermination requirement only
             if member:
                 # Check Watch Veteran rank
                 has_watch_veteran = any(r.name == "Watch Veteran" for r in member.roles)
-                
+
                 # Check SOK-G missions (2+ required)
                 sok_g_count = len(user_progress.get("sok_g_pipehitter", []))
-                
+
                 # Check Black Laurels role (implies all 8 missions completed)
                 has_black_laurels = discord.utils.get(member.roles, id=BLACK_LAURELS_ROLE_ID) is not None
-                
+
                 # Check Terminus Slayer class completions (2+ required)
                 terminus_slayer_count = sum(1 for r in member.roles if r.id in TERMINUS_SLAYER_ROLE_IDS)
-                
+
                 if (
                     has_watch_veteran
                     and sok_g_count >= 2
@@ -296,47 +277,46 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress.get("sok_g_pipehitter", []) if m["message_url"]]
                     notifications.append((user_id_str, "Crux Terminatus", aar_urls))
                     notified_challenges.append("crux_terminatus")
-            
+
             # Update notified list
             user_progress["notified"] = notified_challenges
-        
+
         # Save updated progress
         _save_challenge_progress(progress_data)
-    
+
     return notifications
 
 
 async def _send_challenge_eligibility_notifications(
-    notifications: List[Tuple[str, str, List[str]]],
-    guild: discord.Guild
+    notifications: List[Tuple[str, str, List[str]]], guild: discord.Guild
 ):
     """Send challenge eligibility notifications to Librarius Staff channel.
-    
+
     Args:
         notifications: List of (user_id, challenge_name, aar_urls) tuples
         guild: Discord guild object
     """
     if not notifications:
         return
-    
+
     # Get Librarius Staff channel
     librarius_channel = guild.get_channel(LIBRARIUS_STAFF_CHANNEL_ID)
     if not librarius_channel:
         _g.logger.warning(f"Librarius Staff channel {LIBRARIUS_STAFF_CHANNEL_ID} not found")
         return
-    
+
     # Get Watch Librarian and Watch Keeper roles for mention
     librarian_role = guild.get_role(WATCH_LIBRARIAN_ROLE_ID)
     librarian_mention = librarian_role.mention if librarian_role else f"<@&{WATCH_LIBRARIAN_ROLE_ID}>"
     keeper_role = guild.get_role(WATCH_KEEPER_ROLE_ID)
     keeper_mention = keeper_role.mention if keeper_role else f"<@&{WATCH_KEEPER_ROLE_ID}>"
-    
+
     # Send one notification per qualified member+challenge
     for user_id, challenge_name, aar_urls in notifications:
         try:
             member = guild.get_member(int(user_id))
             member_mention = member.mention if member else f"<@{user_id}>"
-            
+
             # Format notification message
             if "Crux Terminatus" in challenge_name:
                 # Special format for Crux Terminatus (auto-verification complete except Rank A)
@@ -370,35 +350,28 @@ async def _send_challenge_eligibility_notifications(
                     msg += f"• {url}\n"
                 if len(aar_urls) > 10:
                     msg += f"_(+{len(aar_urls) - 10} more)_\n"
-            
+
             await librarius_channel.send(msg)
             _g.logger.info(f"Sent challenge eligibility notification for {user_id} - {challenge_name}")
-            
+
             # Small delay to avoid rate limiting
             await asyncio.sleep(0.5)
-            
+
         except Exception as e:
             _g.logger.exception(f"Failed to send challenge notification for {user_id} - {challenge_name}: {e}")
 
 
-@_g.bot.tree.command(
-    name="reconcile_records", description="Reprocess AARs and update the archive."
-)
+@_g.bot.tree.command(name="reconcile_records", description="Reprocess AARs and update the archive.")
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
-async def reconcile_records(
-    interaction: discord.Interaction, span_days: int | None = None
-):
+async def reconcile_records(interaction: discord.Interaction, span_days: int | None = None):
     if not (
-        _b("check_command_permission")(interaction.user, "reconcile_records")
-        and _b("is_allowed_channel")(interaction)
+        _b("check_command_permission")(interaction.user, "reconcile_records") and _b("is_allowed_channel")(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Serialize concurrent invocations to avoid file races
     if _g.RECONCILE_LOCK.locked():
-        _g.logger.info(
-            f"reconcile_records blocked: lock held (user={interaction.user.id})"
-        )
+        _g.logger.info(f"reconcile_records blocked: lock held (user={interaction.user.id})")
         try:
             await interaction.response.send_message(
                 "Another reconciliation is in progress. Please try again shortly.",
@@ -426,7 +399,7 @@ async def reconcile_records(
 async def record_of_blood(interaction: discord.Interaction):
     # Restrict to Watch Master or Forgemaster only
     try:
-        names = _b('_canonical_role_names')(interaction.user)
+        names = _b("_canonical_role_names")(interaction.user)
     except Exception:
         names = set()
     if not ("Watch Master" in names or "Forgemaster" in names):
@@ -456,7 +429,7 @@ async def record_of_blood(interaction: discord.Interaction):
         try:
             for m in getattr(guild, "members", []) or []:
                 try:
-                    if "Watch Brother" in _b('_canonical_role_names')(m):
+                    if "Watch Brother" in _b("_canonical_role_names")(m):
                         watch_brothers.append(m)
                 except Exception:
                     continue
@@ -469,17 +442,9 @@ async def record_of_blood(interaction: discord.Interaction):
     for m in watch_brothers:
         chap = ""
         try:
-            member_role_names = {
-                (getattr(r, "name", "") or "").strip()
-                for r in m.roles
-                if getattr(r, "name", None)
-            }
+            member_role_names = {(getattr(r, "name", "") or "").strip() for r in m.roles if getattr(r, "name", None)}
             match = next(
-                (
-                    hc
-                    for hc in _b('HOME_CHAPTERS')
-                    if any(rn.lower() == hc.lower() for rn in member_role_names)
-                ),
+                (hc for hc in _b("HOME_CHAPTERS") if any(rn.lower() == hc.lower() for rn in member_role_names)),
                 None,
             )
             if match:
@@ -496,28 +461,24 @@ async def record_of_blood(interaction: discord.Interaction):
         except Exception:
             chap = ""
         member_home[str(getattr(m, "id", ""))] = chap or ""
-        if chap and chap not in _b('HOME_CHAPTERS'):
+        if chap and chap not in _b("HOME_CHAPTERS"):
             members_with_noncanonical_home.append((m.display_name or m.name, chap))
 
     # Channel to cross-reference (from the provided URL)
     # URL: https://discord.com/channels/1429264578440597517/1446926555732250674
     target_channel_id = 1446926555732250674
     resolved_bot = getattr(_g, "bot", None) or _b("bot")
-    target_channel = (
-        resolved_bot.get_channel(target_channel_id) if resolved_bot else None
-    ) or guild.get_channel(target_channel_id)
+    target_channel = (resolved_bot.get_channel(target_channel_id) if resolved_bot else None) or guild.get_channel(
+        target_channel_id
+    )
     if not target_channel:
-        await interaction.followup.send(
-            f"Unable to find target channel <#{target_channel_id}>.", ephemeral=True
-        )
+        await interaction.followup.send(f"Unable to find target channel <#{target_channel_id}>.", ephemeral=True)
         return
 
     # Scan messages for mentions of _b('HOME_CHAPTERS') (and any guild role names not in _b('HOME_CHAPTERS'))
     chapter_mentions_by_msg: list[dict] = []
     noncanonical_mentioned: set[str] = set()
-    _g.logger.info(
-        f"/record_of_blood: scanning channel {target_channel_id} for {len(watch_brothers)} watch brothers"
-    )
+    _g.logger.info(f"/record_of_blood: scanning channel {target_channel_id} for {len(watch_brothers)} watch brothers")
     try:
         async for msg in target_channel.history(limit=2000):
             content = msg.content or ""
@@ -535,7 +496,7 @@ async def record_of_blood(interaction: discord.Interaction):
                 first_chap = None
 
             # Find explicit canonical chapter mentions in the body
-            found = [hc for hc in _b('HOME_CHAPTERS') if hc.lower() in low]
+            found = [hc for hc in _b("HOME_CHAPTERS") if hc.lower() in low]
 
             # Only consider messages that tag members — ignore others entirely
             mentions = getattr(msg, "mentions", []) or []
@@ -546,14 +507,12 @@ async def record_of_blood(interaction: discord.Interaction):
             if first_chap:
                 if all(first_chap.lower() != hc.lower() for hc in found):
                     found.append(first_chap)
-                if all(first_chap.lower() != hc.lower() for hc in _b('HOME_CHAPTERS')):
+                if all(first_chap.lower() != hc.lower() for hc in _b("HOME_CHAPTERS")):
                     noncanonical_mentioned.add(first_chap)
 
             # Also detect guild role names mentioned that are not in _b('HOME_CHAPTERS')
             extra = [
-                r.name
-                for r in guild.roles
-                if r.name and r.name.lower() in low and r.name not in _b('HOME_CHAPTERS')
+                r.name for r in guild.roles if r.name and r.name.lower() in low and r.name not in _b("HOME_CHAPTERS")
             ]
             if extra:
                 for e in extra:
@@ -590,14 +549,12 @@ async def record_of_blood(interaction: discord.Interaction):
             try:
                 for ch in rec.get("chapters", []) or []:
                     # normalize against canonical list
-                    for hc in _b('HOME_CHAPTERS'):
+                    for hc in _b("HOME_CHAPTERS"):
                         if ch and ch.lower() == hc.lower():
                             mentioned_canonical.add(hc)
             except Exception:
                 continue
-        missing_home_chapters = [
-            hc for hc in _b('HOME_CHAPTERS') if hc not in mentioned_canonical
-        ]
+        missing_home_chapters = [hc for hc in _b("HOME_CHAPTERS") if hc not in mentioned_canonical]
     except Exception:
         mentioned_canonical = set()
         missing_home_chapters = []
@@ -605,13 +562,9 @@ async def record_of_blood(interaction: discord.Interaction):
     # Build report
     lines: list[str] = []
     lines.append("```ansi")
-    lines.append(
-        "\u001b[32m=============================================================================="
-    )
+    lines.append("\u001b[32m==============================================================================")
     lines.append("  WATCH FORTRESS JERICHO // RECORD-OF-BLOOD AUDIT")
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     lines.append(f"  Watch Brothers scanned: {len(watch_brothers)}")
     lines.append("")
 
@@ -635,14 +588,10 @@ async def record_of_blood(interaction: discord.Interaction):
         missing_with_members = [
             ch
             for ch in missing_home_chapters
-            if any(
-                member_home.get(mid, "").lower() == ch.lower() for mid in member_home
-            )
+            if any(member_home.get(mid, "").lower() == ch.lower() for mid in member_home)
         ]
         if missing_with_members:
-            lines.append(
-                "Home chapters not mentioned in target channel (but have members):"
-            )
+            lines.append("Home chapters not mentioned in target channel (but have members):")
             for ch in missing_with_members:
                 lines.append(f"  - {ch}")
             lines.append("")
@@ -659,8 +608,7 @@ async def record_of_blood(interaction: discord.Interaction):
                 chs = rec.get("chapters", [])
                 first_claim = rec.get("first_chap")
                 first_claim_noncanonical = bool(
-                    first_claim
-                    and all(first_claim.lower() != hc.lower() for hc in _b('HOME_CHAPTERS'))
+                    first_claim and all(first_claim.lower() != hc.lower() for hc in _b("HOME_CHAPTERS"))
                 )
 
                 # Build concise one-line issues for each mismatch
@@ -670,9 +618,7 @@ async def record_of_blood(interaction: discord.Interaction):
                     disp = mrec.get("display")
                     actual = member_home.get(mid, "")
                     claimed = first_claim or (chs[0] if chs else "")
-                    is_match = bool(
-                        claimed and claimed.lower() == (actual or "").lower()
-                    )
+                    is_match = bool(claimed and claimed.lower() == (actual or "").lower())
                     if not is_match:
                         issues.append(
                             f"Message {getattr(msg, 'id', 'unknown')} | {disp}: record_of_blood='{claimed or ', '.join(chs)}' role='{actual or 'UNKNOWN'}'"
@@ -692,16 +638,10 @@ async def record_of_blood(interaction: discord.Interaction):
                 continue
         lines.append("")
 
-    if (
-        not members_with_noncanonical_home
-        and not noncanonical_mentioned
-        and not chapter_mentions_by_msg
-    ):
+    if not members_with_noncanonical_home and not noncanonical_mentioned and not chapter_mentions_by_msg:
         lines.append("No discrepancies or chapter mentions found in target channel.")
 
-    lines.append(
-        "=============================================================================="
-    )
+    lines.append("==============================================================================")
     lines.append("\u001b[0m```")
 
     report = "\n".join(lines)
@@ -714,24 +654,16 @@ async def record_of_blood(interaction: discord.Interaction):
     )
 
     if members_with_noncanonical_home:
-        noncanon_text = "\n".join(
-            f"• {nm}: {ch}" for nm, ch in members_with_noncanonical_home[:10]
-        )
+        noncanon_text = "\n".join(f"• {nm}: {ch}" for nm, ch in members_with_noncanonical_home[:10])
         if len(members_with_noncanonical_home) > 10:
-            noncanon_text += (
-                f"\n... and {len(members_with_noncanonical_home) - 10} more"
-            )
-        embed.add_field(
-            name="Non-canonical Home Chapters", value=noncanon_text, inline=False
-        )
+            noncanon_text += f"\n... and {len(members_with_noncanonical_home) - 10} more"
+        embed.add_field(name="Non-canonical Home Chapters", value=noncanon_text, inline=False)
 
     if noncanonical_mentioned:
         noncm_text = ", ".join(sorted(noncanonical_mentioned)[:10])
         if len(noncanonical_mentioned) > 10:
             noncm_text += f" (+{len(noncanonical_mentioned) - 10} more)"
-        embed.add_field(
-            name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False
-        )
+        embed.add_field(name="Non-canonical Chapters Mentioned", value=noncm_text, inline=False)
 
     # Collect discrepancy details
     discrepancy_details: list[str] = []
@@ -742,19 +674,11 @@ async def record_of_blood(interaction: discord.Interaction):
             mid = mrec.get("id")
             disp = mrec.get("display", "Unknown")
             actual = member_home.get(mid, "")
-            claimed = first_claim or (
-                rec.get("chapters", [])[0] if rec.get("chapters") else ""
-            )
+            claimed = first_claim or (rec.get("chapters", [])[0] if rec.get("chapters") else "")
             if claimed and claimed.lower() != (actual or "").lower():
-                discrepancy_details.append(
-                    f"• {disp}: claimed **{claimed}**, role **{actual or 'NONE'}**"
-                )
-        if first_claim and all(
-            first_claim.lower() != hc.lower() for hc in _b('HOME_CHAPTERS')
-        ):
-            discrepancy_details.append(
-                f"• Non-canonical chapter declared: **{first_claim}**"
-            )
+                discrepancy_details.append(f"• {disp}: claimed **{claimed}**, role **{actual or 'NONE'}**")
+        if first_claim and all(first_claim.lower() != hc.lower() for hc in _b("HOME_CHAPTERS")):
+            discrepancy_details.append(f"• Non-canonical chapter declared: **{first_claim}**")
 
     if discrepancy_details:
         # Show up to 10 discrepancies in the embed, with a note if there are more
@@ -816,9 +740,7 @@ async def record_of_blood(interaction: discord.Interaction):
             else:
                 await interaction.response.send_message(report, ephemeral=True)
         except Exception as e2:
-            _g.logger.exception(
-                f"record_of_blood: response.send_message fallback failed: {e2}"
-            )
+            _g.logger.exception(f"record_of_blood: response.send_message fallback failed: {e2}")
 
 
 @_g.bot.tree.command(
@@ -826,19 +748,14 @@ async def record_of_blood(interaction: discord.Interaction):
     description="Recheck previously rejected AARs and restore any fixed entries.",
 )
 @app_commands.describe(span_days="Optional: only recheck errors from the last N days.")
-async def audit_archive_discrepancies(
-    interaction: discord.Interaction, span_days: int | None = None
-):
+async def audit_archive_discrepancies(interaction: discord.Interaction, span_days: int | None = None):
     if not (
-        check_command_permission(interaction.user, "audit_archive_discrepancies")
-        and is_allowed_channel(interaction)
+        check_command_permission(interaction.user, "audit_archive_discrepancies") and is_allowed_channel(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if _g.RECONCILE_LOCK.locked():
-        _g.logger.info(
-            f"audit_archive_discrepancies blocked: lock held (user={interaction.user.id})"
-        )
+        _g.logger.info(f"audit_archive_discrepancies blocked: lock held (user={interaction.user.id})")
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -856,9 +773,7 @@ async def audit_archive_discrepancies(
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"audit_archive_discrepancies: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel:
             await interaction.followup.send(
                 "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
@@ -889,10 +804,7 @@ async def audit_archive_discrepancies(
             report += "  Errors by Author (last 4 weeks):\n"
             for line in author_lines:
                 report += f"{line}\n"
-        report += (
-            "==============================================================================\n"
-            "\u001b[0m```"
-        )
+        report += "==============================================================================\n\u001b[0m```"
         # Try to send the report via followup if we successfully deferred.
         if interaction_deferred:
             try:
@@ -907,9 +819,7 @@ async def audit_archive_discrepancies(
                     else:
                         _g.logger.error("Unable to deliver report: no channel available.")
                 except Exception:
-                    _g.logger.error(
-                        "Unable to deliver report to channel; check bot permissions."
-                    )
+                    _g.logger.error("Unable to deliver report to channel; check bot permissions.")
         else:
             # Interaction was not defer-able; post the report to the invoking channel if possible
             try:
@@ -917,13 +827,9 @@ async def audit_archive_discrepancies(
                 if ch:
                     await ch.send(report)
                 else:
-                    _g.logger.error(
-                        "Unable to deliver report: no channel available and DM disabled."
-                    )
+                    _g.logger.error("Unable to deliver report: no channel available and DM disabled.")
             except Exception:
-                _g.logger.error(
-                    "Unable to deliver report to channel; interaction unknown and channel send failed."
-                )
+                _g.logger.error("Unable to deliver report to channel; interaction unknown and channel send failed.")
 
 
 @_g.bot.tree.command(
@@ -931,19 +837,12 @@ async def audit_archive_discrepancies(
     description="Ingest new sanctioned AARs (optionally scoped by span of days).",
 )
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
-async def sanctify_battle_records(
-    interaction: discord.Interaction, span_days: int | None = None
-):
-    if not (
-        check_command_permission(interaction.user, "sanctify_battle_records")
-        and is_allowed_channel(interaction)
-    ):
+async def sanctify_battle_records(interaction: discord.Interaction, span_days: int | None = None):
+    if not (check_command_permission(interaction.user, "sanctify_battle_records") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if _g.RECONCILE_LOCK.locked():
-        _g.logger.info(
-            f"sanctify_battle_records blocked: lock held (user={interaction.user.id})"
-        )
+        _g.logger.info(f"sanctify_battle_records blocked: lock held (user={interaction.user.id})")
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -960,9 +859,7 @@ async def sanctify_battle_records(
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"sanctify_battle_records: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel:
             if interaction_deferred:
                 try:
@@ -976,17 +873,11 @@ async def sanctify_battle_records(
                 try:
                     ch = interaction.channel
                     if ch:
-                        await ch.send(
-                            "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
-                        )
+                        await ch.send("++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++")
                     else:
-                        _g.logger.error(
-                            "Unable to deliver error report: no channel available and DM disabled."
-                        )
+                        _g.logger.error("Unable to deliver error report: no channel available and DM disabled.")
                 except Exception:
-                    _g.logger.error(
-                        "Unable to deliver error report to channel; check bot permissions."
-                    )
+                    _g.logger.error("Unable to deliver error report to channel; check bot permissions.")
             return
         ingested, rejected = await _run_ingest_new(aar_channel, span_days)
 
@@ -996,11 +887,7 @@ async def sanctify_battle_records(
             "  WATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n"
             "  OPERATION-SCRIBE SERVITOR — INGESTION RITE\n"
             "==============================================================================\n"
-            + (
-                f"  Scan Window: Last {span_days} day(s)\n"
-                if span_days
-                else "  Scan Window: Full history\n"
-            )
+            + (f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n")
             + f"  Sanctioned: {ingested}\n"
             + f"  Rejected: {rejected}\n"
             + "==============================================================================\n"
@@ -1018,31 +905,23 @@ async def sanctify_battle_records(
                     else:
                         _g.logger.error("Unable to deliver report: no channel available.")
                 except Exception:
-                    _g.logger.error(
-                        "Unable to deliver report to channel; check bot permissions."
-                    )
+                    _g.logger.error("Unable to deliver report to channel; check bot permissions.")
         else:
             try:
                 ch = interaction.channel
                 if ch:
                     await ch.send(report)
                 else:
-                    _g.logger.error(
-                        "Unable to deliver report: no channel available and DM disabled."
-                    )
+                    _g.logger.error("Unable to deliver report: no channel available and DM disabled.")
             except Exception:
-                _g.logger.error(
-                    "Unable to deliver report to channel; check bot permissions."
-                )
+                _g.logger.error("Unable to deliver report to channel; check bot permissions.")
 
 
 async def _reconciliation_core(interaction: discord.Interaction, span_days: int | None):
     guild = interaction.guild
     aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
     if not aar_channel:
-        await interaction.followup.send(
-            "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++"
-        )
+        await interaction.followup.send("++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++")
         return
     # First recheck errors, then ingest new
     fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
@@ -1062,11 +941,7 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
         "  OPERATION-SCRIBE SERVITOR — RECONCILIATION RITE\n"
         "==============================================================================\n"
         "  ++ LITANY OF RECONCILIATION COMPLETE ++\n"
-        + (
-            f"  Scan Window: Last {span_days} day(s)\n"
-            if span_days
-            else "  Scan Window: Full history\n"
-        )
+        + (f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n")
     )
 
     report = (
@@ -1093,9 +968,7 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
     await interaction.followup.send(report, ephemeral=True)
 
 
-async def _run_recheck_errors(
-    aar_channel: discord.TextChannel, span_days: Optional[int] = None
-):
+async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optional[int] = None):
     fixed = 0
     still_broken = 0
     cutoff_dt = None
@@ -1132,16 +1005,12 @@ async def _run_recheck_errors(
                                 # reply is in the same channel as original message
                                 dummy_msg = await aar_channel.fetch_message(aar_id)
                                 try:
-                                    reply_msg = await dummy_msg.channel.fetch_message(
-                                        int(reply_id)
-                                    )
+                                    reply_msg = await dummy_msg.channel.fetch_message(int(reply_id))
                                     try:
                                         await reply_msg.delete()
                                     except Exception:
                                         try:
-                                            _g.logger.debug(
-                                                f"Unable to delete reply {reply_id} for AAR {sid}"
-                                            )
+                                            _g.logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
                                         except Exception:
                                             pass
                                 except Exception:
@@ -1163,9 +1032,7 @@ async def _run_recheck_errors(
             except Exception:
                 msg = None
             if not msg:
-                log_aar_errors(
-                    aar_id, ["Original message not found; cannot reprocess."]
-                )
+                log_aar_errors(aar_id, ["Original message not found; cannot reprocess."])
                 # Count as broken only for full scans (no reliable timestamp)
                 if cutoff_dt is None:
                     still_broken += 1
@@ -1208,13 +1075,9 @@ async def _run_recheck_errors(
             else:
                 errors = validate_aar(record)
                 if errors:
-                    log_aar_error_with_meta(
-                        aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg
-                    )
+                    log_aar_error_with_meta(aar_id, [f"Jump URL: {msg.jump_url}"] + errors, msg)
                     try:
-                        await _reply_aar_rejection(
-                            msg, [f"Jump URL: {msg.jump_url}"] + errors
-                        )
+                        await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}"] + errors)
                     except Exception:
                         pass
                     await _set_aar_reaction(msg, "error")
@@ -1328,16 +1191,12 @@ async def _run_recheck_errors(
                             if reply_id:
                                 try:
                                     # reply is in the same channel as the original message
-                                    reply_msg = await msg.channel.fetch_message(
-                                        int(reply_id)
-                                    )
+                                    reply_msg = await msg.channel.fetch_message(int(reply_id))
                                     try:
                                         await reply_msg.delete()
                                     except Exception:
                                         try:
-                                            _g.logger.debug(
-                                                f"Unable to delete reply {reply_id} for AAR {sid}"
-                                            )
+                                            _g.logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
                                         except Exception:
                                             pass
                                 except Exception:
@@ -1405,9 +1264,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 msg,
             )
             try:
-                await _reply_aar_rejection(
-                    msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"]
-                )
+                await _reply_aar_rejection(msg, [f"Jump URL: {msg.jump_url}", "Parse failed: record is None"])
             except Exception:
                 pass
             to_react_err.append(msg)
@@ -1418,21 +1275,11 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         aar_id = record.get("aar_id", msg.id)
         if has_been_processed(aar_id):
             existing = _g.DATASTORE.get_record(aar_id)
-            existing_hash = (
-                (existing or {}).get("content_hash")
-                if isinstance(existing, dict)
-                else None
-            )
-            existing_edited = (
-                (existing or {}).get("edited_at")
-                if isinstance(existing, dict)
-                else None
-            )
+            existing_hash = (existing or {}).get("content_hash") if isinstance(existing, dict) else None
+            existing_edited = (existing or {}).get("edited_at") if isinstance(existing, dict) else None
             msg_hash = record.get("content_hash")
             msg_edited = record.get("edited_at")
-            needs_update = (msg_hash and msg_hash != existing_hash) or (
-                msg_edited and msg_edited != existing_edited
-            )
+            needs_update = (msg_hash and msg_hash != existing_hash) or (msg_edited and msg_edited != existing_edited)
             if not needs_update:
                 if scanned % 10 == 0:
                     _print_progress("Ingest New AARs", scanned, scanned)
@@ -1490,7 +1337,12 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             for bid in brother_ids:
                 try:
                     member = guild.get_member(int(bid))
-                    if member and callable(get_member_damage_tier) and callable(get_armor_state) and callable(roll_armor_penalty):
+                    if (
+                        member
+                        and callable(get_member_damage_tier)
+                        and callable(get_armor_state)
+                        and callable(roll_armor_penalty)
+                    ):
                         tier = get_member_damage_tier(member)
                         # Check for spirit fractured state
                         armor_state = await get_armor_state(int(bid))
@@ -1578,9 +1430,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                             await reply_msg.delete()
                         except Exception:
                             try:
-                                _g.logger.debug(
-                                    f"Unable to delete reply {reply_id} for AAR {sid}"
-                                )
+                                _g.logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
                             except Exception:
                                 pass
                     except Exception:
@@ -1618,14 +1468,9 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 
 
 # Admin-only command to print cache sizes, dirty flags, last flush time, and cache hit/miss counters
-@_g.bot.tree.command(
-    name="cache_stats", description="Show DataStore cache and flush stats (admin only)"
-)
+@_g.bot.tree.command(name="cache_stats", description="Show DataStore cache and flush stats (admin only)")
 async def cache_stats(interaction: discord.Interaction):
-    if not (
-        check_command_permission(interaction.user, "cache_stats")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "cache_stats") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     stats = _g.DATASTORE.get_cache_stats()
@@ -1637,9 +1482,7 @@ async def cache_stats(interaction: discord.Interaction):
             lf = datetime.fromtimestamp(last_flush, tz=timezone.utc)
             last_flush_str = lf.strftime("%Y-%m-%d %H:%M:%S %Z")
         except Exception:
-            last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            )
+            last_flush_str = datetime.datetime.utcfromtimestamp(last_flush).strftime("%Y-%m-%d %H:%M:%S UTC")
     else:
         last_flush_str = "Never"
     # Format the user stats cache built timestamp into a single string
@@ -1647,13 +1490,11 @@ async def cache_stats(interaction: discord.Interaction):
         ts = stats.get("user_stats_cache_built_ts")
         if ts:
             try:
-                user_stats_built_str = datetime.datetime.fromtimestamp(
-                    ts, tz=timezone.utc
-                ).strftime("%Y-%m-%d %H:%M:%S %Z")
-            except Exception:
-                user_stats_built_str = datetime.datetime.utcfromtimestamp(ts).strftime(
-                    "%Y-%m-%d %H:%M:%S UTC"
+                user_stats_built_str = datetime.datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S %Z"
                 )
+            except Exception:
+                user_stats_built_str = datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
         else:
             user_stats_built_str = "Never"
     except Exception:
@@ -1697,9 +1538,7 @@ async def set_induction(
     """
     # Require Forgemaster (via config permissions)
     if not check_command_permission(interaction.user, "set_induction"):
-        await interaction.response.send_message(
-            "Only the Forgemaster can set induction dates.", ephemeral=True
-        )
+        await interaction.response.send_message("Only the Forgemaster can set induction dates.", ephemeral=True)
         return
 
     user_id = str(member.id)
@@ -1748,9 +1587,7 @@ async def set_induction(
 
         # Validate date is not in the future
         if parsed_date.date() > datetime.now().date():
-            await interaction.response.send_message(
-                "Induction date cannot be in the future.", ephemeral=True
-            )
+            await interaction.response.send_message("Induction date cannot be in the future.", ephemeral=True)
             return
 
         # Save override
@@ -1772,10 +1609,7 @@ async def set_induction(
 async def audit_service_studs(interaction: discord.Interaction):
     await interaction.response.defer(thinking=False, ephemeral=True)
 
-    if not (
-        check_command_permission(interaction.user, "audit_service_studs")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "audit_service_studs") and is_allowed_channel(interaction)):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
 
@@ -1784,26 +1618,22 @@ async def audit_service_studs(interaction: discord.Interaction):
         await interaction.followup.send("Guild not available.", ephemeral=True)
         return
 
-    idx_veteran = _b('_role_index')("Watch Veteran")
+    idx_veteran = _b("_role_index")("Watch Veteran")
     now = datetime.utcnow()
     mismatches: list[tuple[discord.Member, int, int, str, str]] = []
 
     for member in getattr(guild, "members", []) or []:
         try:
             # Consider only users who have any canonical Watch rank/role
-            member_role_names = _b('_canonical_role_names')(member)
-            if not any(r in member_role_names for r in _b('RANK_ROLES_PRIORITY')):
+            member_role_names = _b("_canonical_role_names")(member)
+            if not any(r in member_role_names for r in _b("RANK_ROLES_PRIORITY")):
                 continue
 
             # Compute entitlement using same rules as roster/tally
             studs_count = 0
-            highest_idx = _b('get_highest_rank_index')(member)
-            if (
-                (idx_veteran is not None)
-                and (highest_idx is not None)
-                and (highest_idx <= idx_veteran)
-            ):
-                joined_at = _b('_get_effective_induction_date')(member)
+            highest_idx = _b("get_highest_rank_index")(member)
+            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
+                joined_at = _b("_get_effective_induction_date")(member)
                 if joined_at:
                     ja = joined_at
                     if ja.tzinfo is not None:
@@ -1816,7 +1646,7 @@ async def audit_service_studs(interaction: discord.Interaction):
                 else:
                     studs_time = 0
 
-                stats = _b('compute_stats_for_user')(str(getattr(member, "id", "")))
+                stats = _b("compute_stats_for_user")(str(getattr(member, "id", "")))
                 try:
                     aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
                 except Exception:
@@ -1842,16 +1672,12 @@ async def audit_service_studs(interaction: discord.Interaction):
             is_mismatch = existing_pips != expected_pips
 
             if is_mismatch:
-                mismatches.append(
-                    (member, studs_count, existing_total, expected_pips, existing_pips)
-                )
+                mismatches.append((member, studs_count, existing_total, expected_pips, existing_pips))
         except Exception:
             continue
 
     if not mismatches:
-        await interaction.followup.send(
-            "No service-stud discrepancies found.", ephemeral=True
-        )
+        await interaction.followup.send("No service-stud discrepancies found.", ephemeral=True)
         return
 
     # Build an ANSI-styled, column-aligned report (green text)
@@ -1865,11 +1691,7 @@ async def audit_service_studs(interaction: discord.Interaction):
     action_max = len("Action")
     for mem, comp, disp, exp_pips, cur_pips in mismatches:
         diff = comp - disp
-        action = (
-            f"AWARD {diff}"
-            if diff > 0
-            else ("REFORMAT" if diff == 0 else f"REMOVE {abs(diff)}")
-        )
+        action = f"AWARD {diff}" if diff > 0 else ("REFORMAT" if diff == 0 else f"REMOVE {abs(diff)}")
         name = getattr(mem, "display_name", str(getattr(mem, "id", "")))
         rows.append((name, exp_pips, cur_pips, action))
         name_max = max(name_max, len(name))
@@ -1929,35 +1751,23 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     # Add up to 10 mismatches to embed fields
     awards_needed = [
-        (name, exp_pips, cur_pips, action)
-        for name, exp_pips, cur_pips, action in rows
-        if "AWARD" in action
+        (name, exp_pips, cur_pips, action) for name, exp_pips, cur_pips, action in rows if "AWARD" in action
     ]
     removals_needed = [
-        (name, exp_pips, cur_pips, action)
-        for name, exp_pips, cur_pips, action in rows
-        if "REMOVE" in action
+        (name, exp_pips, cur_pips, action) for name, exp_pips, cur_pips, action in rows if "REMOVE" in action
     ]
     reformat_needed = [
-        (name, exp_pips, cur_pips, action)
-        for name, exp_pips, cur_pips, action in rows
-        if action == "REFORMAT"
+        (name, exp_pips, cur_pips, action) for name, exp_pips, cur_pips, action in rows if action == "REFORMAT"
     ]
 
     if awards_needed:
-        award_text = "\n".join(
-            f"• {name}: {action}" for name, _, _, action in awards_needed[:8]
-        )
+        award_text = "\n".join(f"• {name}: {action}" for name, _, _, action in awards_needed[:8])
         if len(awards_needed) > 8:
             award_text += f"\n... and {len(awards_needed) - 8} more"
-        embed.add_field(
-            name=f"Need Awards ({len(awards_needed)})", value=award_text, inline=False
-        )
+        embed.add_field(name=f"Need Awards ({len(awards_needed)})", value=award_text, inline=False)
 
     if removals_needed:
-        remove_text = "\n".join(
-            f"• {name}: {action}" for name, _, _, action in removals_needed[:8]
-        )
+        remove_text = "\n".join(f"• {name}: {action}" for name, _, _, action in removals_needed[:8])
         if len(removals_needed) > 8:
             remove_text += f"\n... and {len(removals_needed) - 8} more"
         embed.add_field(
@@ -1968,8 +1778,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     if reformat_needed:
         reformat_text = "\n".join(
-            f"• {name}: {cur_pips} → {exp_pips}"
-            for name, exp_pips, cur_pips, _ in reformat_needed[:8]
+            f"• {name}: {cur_pips} → {exp_pips}" for name, exp_pips, cur_pips, _ in reformat_needed[:8]
         )
         if len(reformat_needed) > 8:
             reformat_text += f"\n... and {len(reformat_needed) - 8} more"
@@ -2040,9 +1849,7 @@ async def _run_reparse_records(
         filled = int(round(bar_len * done / float(total))) if total else bar_len
         perc = (done / total * 100) if total else 100.0
         bar = "#" * filled + "-" * (bar_len - filled)
-        sys.stdout.write(
-            f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)"
-        )
+        sys.stdout.write(f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)")
         sys.stdout.flush()
 
     # Iterate snapshot of records
@@ -2112,16 +1919,11 @@ async def reparse_records(
     limit: int | None = None,
     days: int | None = None,
 ):
-    if not (
-        check_command_permission(interaction.user, "reparse_records")
-        and is_allowed_channel(interaction)
-    ):
+    if not (check_command_permission(interaction.user, "reparse_records") and is_allowed_channel(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if _g.RECONCILE_LOCK.locked():
-        _g.logger.info(
-            f"reparse_records blocked: lock held (user={interaction.user.id})"
-        )
+        _g.logger.info(f"reparse_records blocked: lock held (user={interaction.user.id})")
         await interaction.response.send_message(
             "Another reconciliation is in progress. Please try again shortly.",
             ephemeral=True,
@@ -2133,9 +1935,7 @@ async def reparse_records(
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"reparse_records: lock acquired (user={interaction.user.id})")
         try:
-            total, updated, failed, changes_by_field = await _run_reparse_records(
-                limit=limit, days=days
-            )
+            total, updated, failed, changes_by_field = await _run_reparse_records(limit=limit, days=days)
         except ValueError as e:
             await interaction.followup.send(str(e), ephemeral=True)
             return
@@ -2321,9 +2121,7 @@ def parse_aar(message: discord.Message):
             ):
                 leviathan_protocol_in_mission = True
             # Check if Black Reef Persecution is in mission line
-            if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or (
-                "black reef persecution" in mission.lower()
-            ):
+            if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or ("black reef persecution" in mission.lower()):
                 black_reef_persecution_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
@@ -2394,9 +2192,7 @@ def parse_aar(message: discord.Message):
                     # Remove the mention from rest to see what's left
                     rest_without_mentions = rest
                     for uid in ids_here:
-                        rest_without_mentions = rest_without_mentions.replace(
-                            f"<@{uid}>", ""
-                        ).replace(f"<@!{uid}>", "")
+                        rest_without_mentions = rest_without_mentions.replace(f"<@{uid}>", "").replace(f"<@!{uid}>", "")
                     rest_without_mentions = rest_without_mentions.strip().lower()
 
                     # Valid if: "carried by" OR nothing left (just the tag)
@@ -2413,9 +2209,7 @@ def parse_aar(message: discord.Message):
                                 try:
                                     gene_seed_carried_name = user.nick
                                 except AttributeError:
-                                    _g.logger.debug(
-                                        f"Failed to get nickname for user ID {gene_seed_carrier_id}"
-                                    )
+                                    _g.logger.debug(f"Failed to get nickname for user ID {gene_seed_carrier_id}")
                     # Otherwise leave as unknown (tag with other random text)
 
         # Check if any Initiation Trial or Neophyte role is mentioned ON THIS LINE
@@ -2473,9 +2267,7 @@ def parse_aar(message: discord.Message):
     points_for_op = compute_points_for_op(difficulty_class, waves)
     gene_seed_base_points_for_carrier = 0
     if gene_seed_status == "carried":
-        gene_seed_base_points_for_carrier = compute_gene_seed_base_points_for_carrier(
-            difficulty_class
-        )
+        gene_seed_base_points_for_carrier = compute_gene_seed_base_points_for_carrier(difficulty_class)
     # Omega ops: subtract KIA from the base 20 points (floor at 0)
     try:
         if difficulty_class == "omega_ops":
@@ -2544,11 +2336,7 @@ def parse_aar(message: discord.Message):
         message,
         name_contains=("black", "laurel"),
     )
-    if (
-        black_laurels_role_mentioned
-        and not black_laurels_in_difficulty
-        and not black_laurels_in_mission
-    ):
+    if black_laurels_role_mentioned and not black_laurels_in_difficulty and not black_laurels_in_mission:
         black_laurels_mentioned_elsewhere = True
 
     # Detect Pipehitter role mentions anywhere in the message.
@@ -2603,9 +2391,7 @@ def parse_aar(message: discord.Message):
                             try:
                                 brother_names.append(user.nick)
                             except AttributeError:
-                                _g.logger.debug(
-                                    f"Failed to get nickname for user/ID {user.name}/{uid}"
-                                )
+                                _g.logger.debug(f"Failed to get nickname for user/ID {user.name}/{uid}")
                 # Try to parse per-brother waves from the same line, expecting an integer
                 try:
                     # Find last integer token in the line
@@ -2625,9 +2411,7 @@ def parse_aar(message: discord.Message):
         "difficulty_class": difficulty_class,
         # deprecated: removed from persisted record
         "armory_data": armory_data,
-        "armory_challenge_points": compute_armory_bonus_points(
-            difficulty_class, armory_data
-        ),
+        "armory_challenge_points": compute_armory_bonus_points(difficulty_class, armory_data),
         "gene_seed_status": gene_seed_status,
         "gene_seed_carrier_id": gene_seed_carrier_id,
         "gene_seed_carried_name": gene_seed_carried_name,
@@ -2640,9 +2424,7 @@ def parse_aar(message: discord.Message):
         "kia_line_present": kia_line_present,
         "points_for_op": points_for_op,
         "timestamp": message.created_at.isoformat(),
-        "edited_at": message.edited_at.isoformat()
-        if getattr(message, "edited_at", None)
-        else None,
+        "edited_at": message.edited_at.isoformat() if getattr(message, "edited_at", None) else None,
         "content_hash": hashlib.sha256((content or "").encode("utf-8")).hexdigest(),
         "initiation_trial": initiation_trial,
         "initiate_ids": initiate_ids,
@@ -2702,9 +2484,7 @@ def validate_aar(record: dict):
         # if "<@&" in mstr or "<@" in mstr:
         #     errors.append("Mission must be plain text; no Discord mentions are allowed after 'Mission:'.")
         if "/" in mstr:
-            errors.append(
-                "Mission must not include trial-style progress tokens like 'n/m' or '-/m'."
-            )
+            errors.append("Mission must not include trial-style progress tokens like 'n/m' or '-/m'.")
         # Enforce canonical mission names for non-siege ops (case-insensitive).
         # Allowable missions:
         # Inferno, Decapitation, Vox Liberatis, Reliquary, Fall of Atreus,
@@ -2730,9 +2510,7 @@ def validate_aar(record: dict):
                 mclean = re.sub(r"<.*", "", mstr or "").strip()
                 mclean = mclean.replace("\ufeff", "").strip()
                 if mclean and mclean.lower() not in allowed_missions:
-                    errors.append(
-                        f"Mission '{mclean}' is not a recognized mission name."
-                    )
+                    errors.append(f"Mission '{mclean}' is not a recognized mission name.")
         except Exception:
             pass
 
@@ -2784,39 +2562,26 @@ def validate_aar(record: dict):
             # Black Laurels with Black Reef Persecution (Hard-Stratagem) requires exactly 2 brothers
             if has_omega:
                 if len(brothers) != 5:
-                    errors.append(
-                        "@Black_Laurels on @Omega requires exactly 5 Brothers (full squad)."
-                    )
+                    errors.append("@Black_Laurels on @Omega requires exactly 5 Brothers (full squad).")
                 kia = record.get("killed_in_action", 0)
                 if kia != 0:
-                    errors.append(
-                        "@Black_Laurels on @Omega requires 0 KIA (no deaths)."
-                    )
+                    errors.append("@Black_Laurels on @Omega requires 0 KIA (no deaths).")
             elif bl_hard_strat_unlocked:
                 if len(brothers) not in (2, 3):
-                    errors.append(
-                        "@Black_Laurels with @Black_Reef_Persecution requires 2 or 3 Brothers."
-                    )
+                    errors.append("@Black_Laurels with @Black_Reef_Persecution requires 2 or 3 Brothers.")
             else:
                 if len(brothers) != 3:
-                    errors.append(
-                        "@Black_Laurels requires exactly 3 Brothers (a full fireteam)."
-                    )
+                    errors.append("@Black_Laurels requires exactly 3 Brothers (a full fireteam).")
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute or @Omega when Black Laurels is present
                 if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
-                    errors.append(
-                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line."
-                    )
+                    errors.append("@Black_Laurels requires @Absolute or @Omega on the Difficulty line.")
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
                 if not has_omega and not bl_hard_strat_unlocked:
                     mission_lower = (mission or "").lower().strip()
                     mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                    if (
-                        mission_clean
-                        and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
-                    ):
+                    if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
                             "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
@@ -2826,9 +2591,7 @@ def validate_aar(record: dict):
                 # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute/@Omega on Difficulty
                 # Exception: @Hard-Stratagem is also allowed when @Black_Reef_Persecution is on the Mission line
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
-                    errors.append(
-                        "@Black_Laurels must be placed on the Mission line only."
-                    )
+                    errors.append("@Black_Laurels must be placed on the Mission line only.")
                 if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
@@ -2838,10 +2601,7 @@ def validate_aar(record: dict):
                 if not has_omega and not bl_hard_strat_unlocked:
                     mission_lower = (mission or "").lower().strip()
                     mission_clean = re.sub(r"<.*", "", mission_lower).strip()
-                    if (
-                        mission_clean
-                        and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS
-                    ):
+                    if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
                             "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
@@ -2849,17 +2609,13 @@ def validate_aar(record: dict):
                         )
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
-                    errors.append(
-                        "@Black_Laurels must be placed on the Mission line, not elsewhere in the AAR."
-                    )
+                    errors.append("@Black_Laurels must be placed on the Mission line, not elsewhere in the AAR.")
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
-        leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)
+        _leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)  # Reserved for future validation
         if leviathan_in_difficulty:
-            errors.append(
-                "@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line."
-            )
+            errors.append("@Leviathan_Protocol must be placed on the Mission line, not the Difficulty line.")
 
         # Pipehitter validation: only allowed on eligible missions
         if record.get("pipehitter_mentioned", False):
@@ -2883,9 +2639,7 @@ def validate_aar(record: dict):
                 errors.append("Waves value could not be parsed as an integer.")
         per_bro_ok = any(isinstance(v, int) for v in brother_waves.values())
         if not (global_ok or per_bro_ok):
-            errors.append(
-                "Siege requires waves data: provide 'Waves:' or per-brother counts after mentions."
-            )
+            errors.append("Siege requires waves data: provide 'Waves:' or per-brother counts after mentions.")
 
     # 4) Armory/Armoury Data required and numeric
     if armory_data is None:
@@ -2900,34 +2654,22 @@ def validate_aar(record: dict):
     # Special-case: Omega requires 2-5 brothers; all others require 2-3
     if "omega" in dlower:
         if not (2 <= len(brothers) <= 5):
-            errors.append(
-                "Omega difficulty requires between 2 and 5 Brothers listed under the 'Brothers:' section."
-            )
+            errors.append("Omega difficulty requires between 2 and 5 Brothers listed under the 'Brothers:' section.")
         # Omega ops must have an explicit KIA line
         if not record.get("kia_line_present", False):
-            errors.append(
-                "Omega difficulty requires an explicit 'KIA:' line (e.g. 'KIA: 0' or 'KIA: 1')."
-            )
+            errors.append("Omega difficulty requires an explicit 'KIA:' line (e.g. 'KIA: 0' or 'KIA: 1').")
     else:
         if len(brothers) < 2:
-            errors.append(
-                "At least two Brothers must be listed under the 'Brothers:' section."
-            )
+            errors.append("At least two Brothers must be listed under the 'Brothers:' section.")
         elif len(brothers) > 3:
-            errors.append(
-                "Non-Omega operations allow a maximum of 3 Brothers (a full kill team)."
-            )
+            errors.append("Non-Omega operations allow a maximum of 3 Brothers (a full kill team).")
 
     # 6) Initiation Trial placement rules (simplified)
     if record.get("initiation_trial"):
         # Check both initiate_ids (new) and initiate_id (legacy) for backward compat
-        has_initiates = bool(record.get("initiate_ids")) or bool(
-            record.get("initiate_id")
-        )
+        has_initiates = bool(record.get("initiate_ids")) or bool(record.get("initiate_id"))
         if not has_initiates:
-            errors.append(
-                "Initiation Trial present but no initiate mention found; include the person being initiated."
-            )
+            errors.append("Initiation Trial present but no initiate mention found; include the person being initiated.")
         # Watch Command role must be mentioned for Initiation Trials
         if not record.get("watch_command_mentioned"):
             errors.append("Initiation Trial requires @Watch Command to be mentioned.")
@@ -2935,10 +2677,7 @@ def validate_aar(record: dict):
     # 7) Gene-seed logic
     allowed_statuses = {"lost", "carried", "unknown"}
     if gene_status not in allowed_statuses:
-        errors.append(
-            "Gene-Seed status must be 'lost', 'carried', or omitted "
-            "(which becomes 'unknown')."
-        )
+        errors.append("Gene-Seed status must be 'lost', 'carried', or omitted (which becomes 'unknown').")
 
     if gene_status == "carried":
         if gene_carrier is None:
@@ -2986,9 +2725,7 @@ def _load_json_dict(path: str):
 # Only used for files other than AAR_RECORDS_PATH
 def _save_json_dict(path: str, data: dict):
     if path == AAR_RECORDS_PATH:
-        raise RuntimeError(
-            "Direct writes to AAR_RECORDS_PATH are not allowed; use DataStore.set_record."
-        )
+        raise RuntimeError("Direct writes to AAR_RECORDS_PATH are not allowed; use DataStore.set_record.")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w") as f:
@@ -3015,9 +2752,7 @@ def _load_json_list(path: str):
 # Only used for files other than PROCESSED_IDS_PATH
 def _save_json_list(path: str, data: list):
     if path == PROCESSED_IDS_PATH:
-        raise RuntimeError(
-            "Direct writes to PROCESSED_IDS_PATH are not allowed; use DataStore.add_processed_id."
-        )
+        raise RuntimeError("Direct writes to PROCESSED_IDS_PATH are not allowed; use DataStore.add_processed_id.")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w") as f:
@@ -3082,9 +2817,7 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
             filtered = errors[:1] if errors else ["Rejected by archive bot."]
         # Limit to a few lines for readability
         max_lines = 6
-        lines = [
-            "Your After-Action Report was rejected by the archive bot for the following reason(s):"
-        ]
+        lines = ["Your After-Action Report was rejected by the archive bot for the following reason(s):"]
         for e in filtered[:max_lines]:
             lines.append(f"- {e}")
         content = "\n".join(lines)
@@ -3125,20 +2858,12 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         # continues to include the author tag.
                         try:
                             entry = data.get(sid) if isinstance(data, dict) else None
-                            author_info = (
-                                entry.get("author") if isinstance(entry, dict) else None
-                            )
-                            author_id = (
-                                author_info.get("id")
-                                if isinstance(author_info, dict)
-                                else None
-                            )
+                            author_info = entry.get("author") if isinstance(entry, dict) else None
+                            author_id = author_info.get("id") if isinstance(author_info, dict) else None
                         except Exception:
                             author_id = None
                         try:
-                            if author_id and f"<@{author_id}>" not in (
-                                reply_msg.content or ""
-                            ):
+                            if author_id and f"<@{author_id}>" not in (reply_msg.content or ""):
                                 try:
                                     new_content = f"<@{author_id}>\n{content}"
                                     await reply_msg.edit(content=new_content)
@@ -3175,9 +2900,7 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         if not ref:
                             continue
                         if getattr(ref, "message_id", None) == getattr(msg, "id", None):
-                            if getattr(recent.author, "id", None) == getattr(
-                                bot.user, "id", None
-                            ):
+                            if getattr(recent.author, "id", None) == getattr(bot.user, "id", None):
                                 existing_reply = recent
                                 break
                     except Exception:
@@ -3205,20 +2928,12 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                     try:
                         sid = str(getattr(msg, "id", ""))
                         entry = data.get(sid) if isinstance(data, dict) else None
-                        author_info = (
-                            entry.get("author") if isinstance(entry, dict) else None
-                        )
-                        author_id = (
-                            author_info.get("id")
-                            if isinstance(author_info, dict)
-                            else None
-                        )
+                        author_info = entry.get("author") if isinstance(entry, dict) else None
+                        author_id = author_info.get("id") if isinstance(author_info, dict) else None
                     except Exception:
                         author_id = None
                     try:
-                        if author_id and f"<@{author_id}>" not in (
-                            existing_reply.content or ""
-                        ):
+                        if author_id and f"<@{author_id}>" not in (existing_reply.content or ""):
                             try:
                                 new_content = f"<@{author_id}>\n{content}"
                                 await existing_reply.edit(content=new_content)
@@ -3227,9 +2942,7 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                                 ent["errors"] = filtered[:max_lines]
                                 ent["author"] = _author_info_from_message(msg)
                                 try:
-                                    ent["reply_id"] = str(
-                                        getattr(existing_reply, "id", "")
-                                    )
+                                    ent["reply_id"] = str(getattr(existing_reply, "id", ""))
                                 except Exception:
                                     ent["reply_id"] = None
                                 data[sid] = ent
@@ -3265,9 +2978,7 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
             except Exception:
                 # Last-resort fallback: try replying without explicit allowed_mentions
                 try:
-                    sent = await msg.reply(
-                        f"<@{getattr(msg.author, 'id', '')}>\n{content}"
-                    )
+                    sent = await msg.reply(f"<@{getattr(msg.author, 'id', '')}>\n{content}")
                 except Exception:
                     sent = None
             if sent and isinstance(data, dict):
@@ -3350,9 +3061,7 @@ def summarize_error_authors(max_age_weeks: int = 4):
 
     # Sort by count desc, then nickname/username
     summaries = list(by_author.values())
-    summaries.sort(
-        key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower())
-    )
+    summaries.sort(key=lambda x: (-x["count"], (x["nickname"] or x["username"] or "").lower()))
     return summaries, stale_count
 
 

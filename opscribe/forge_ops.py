@@ -1,23 +1,18 @@
 """Forge operations: armor integrity, blessing pool, forge pool, rites,
 machine spirits, forge rite rendering, LFG, forge chronicle functions."""
+
 import os
-import asyncio
 import json
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
 import re
-import itertools
-from typing import Dict, List, Set, Tuple, Optional
+from typing import List, Tuple, Optional
 import hashlib
-import logging
-import time
 import random
 import sys as _sys
-import statistics
 
-from .datastore import DataStore
 from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
@@ -27,8 +22,9 @@ from . import _bot_globals as _g
 
 def _b(name):
     """Resolve name via bot module for test-mock compatibility."""
-    m = _sys.modules.get('bot')
+    m = _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
 
 def _load_rites() -> dict:
     try:
@@ -92,7 +88,7 @@ def _save_machine_spirits(data: dict):
 
 async def _get_machine_spirit(user_id: int) -> Optional[str]:
     """Get the stored machine spirit designation for a user's armor.
-    
+
     Handles both old format (string) and new format (dict with designation/bound_ts).
     Always returns just the designation string for backward compatibility.
     """
@@ -112,7 +108,7 @@ async def _get_machine_spirit(user_id: int) -> Optional[str]:
 
 async def _set_machine_spirit(user_id: int, spirit: str):
     """Store the machine spirit designation for a user's armor.
-    
+
     Saves in new format with designation and bound_ts for Forge Chronicle tracking.
     """
     try:
@@ -153,7 +149,6 @@ async def _delete_machine_spirit(user_id: int) -> Optional[str]:
 # ARMOR_DETECTION_CHANCES, ARMOR_SCAN_*, ARMOR_STATUS_*, INTENSIVE_SCAN_COST,
 # DEFAULT_ARMOR_*, SPIRIT_RESTORATION_PHRASES, SPIRIT_RECONSECRATION_PHRASES,
 # FORGE_AMBIENT_MESSAGES) live in flavor_text.py.
-
 
 
 def _load_armor_integrity() -> dict:
@@ -252,42 +247,39 @@ def _save_scan_state(data: dict):
 async def _increment_aar_generation():
     """Increment AAR generation counter and clear stale scan cache."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _b('_load_scan_state')()
+        data = _b("_load_scan_state")()
         data["aar_generation"] = data.get("aar_generation", 0) + 1
         # Clear scan cache on new AAR cycle (all results are now stale)
         data["scan_cache"] = {}
         # Intensive scans purchased in previous cycles are now expired
         # (will be checked when used, but we can prune here)
         current_gen = data["aar_generation"]
-        data["intensive_scans"] = {
-            k: v for k, v in data.get("intensive_scans", {}).items()
-            if v >= current_gen
-        }
-        _b('_save_scan_state')(data)
+        data["intensive_scans"] = {k: v for k, v in data.get("intensive_scans", {}).items() if v >= current_gen}
+        _b("_save_scan_state")(data)
         return data["aar_generation"]
 
 
 async def _get_aar_generation() -> int:
     """Get the current AAR generation counter."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _b('_load_scan_state')()
+        data = _b("_load_scan_state")()
         return data.get("aar_generation", 0)
 
 
 async def _purchase_intensive_scan(techmarine_id: int) -> bool:
     """Mark a Techmarine as having an active intensive scan for this AAR cycle."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _b('_load_scan_state')()
+        data = _b("_load_scan_state")()
         current_gen = data.get("aar_generation", 0)
         data.setdefault("intensive_scans", {})[str(techmarine_id)] = current_gen
-        _b('_save_scan_state')(data)
+        _b("_save_scan_state")(data)
         return True
 
 
 async def _has_intensive_scan(techmarine_id: int) -> bool:
     """Check if a Techmarine has an active intensive scan for this AAR cycle."""
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _b('_load_scan_state')()
+        data = _b("_load_scan_state")()
         current_gen = data.get("aar_generation", 0)
         tech_gen = data.get("intensive_scans", {}).get(str(techmarine_id))
         # Intensive scan is active if purchased in current generation
@@ -301,31 +293,31 @@ async def _get_or_roll_scan_result(
     spirit_fractured: bool,
 ) -> dict:
     """Get cached scan result or roll a new one for this AAR cycle.
-    
+
     Returns dict with:
         - detected: bool (True if brother shows up in scan)
         - predictive_warning: bool (True if risk warning triggered for nominal)
         - miss_reason: str or None (if not detected, why)
     """
     async with _g.ARMOR_SCAN_STATE_LOCK:
-        data = _b('_load_scan_state')()
+        data = _b("_load_scan_state")()
         current_gen = data.get("aar_generation", 0)
         cache = data.setdefault("scan_cache", {})
         brother_key = str(brother_id)
-        
+
         # Check if we have a cached result for this AAR cycle
         cached = cache.get(brother_key)
         if cached and cached.get("aar_gen") == current_gen:
             return cached
-        
+
         # Roll new scan result
         result = _roll_scan_result(current_tier, points_since_blessing, spirit_fractured)
         result["aar_gen"] = current_gen
-        
+
         # Cache the result
         cache[brother_key] = result
-        _b('_save_scan_state')(data)
-        
+        _b("_save_scan_state")(data)
+
         return result
 
 
@@ -335,15 +327,15 @@ def _roll_scan_result(
     spirit_fractured: bool,
 ) -> dict:
     """Roll fresh scan detection result based on tier/points.
-    
+
     Returns dict with detected, predictive_warning, miss_reason.
     """
     import random
-    
+
     # Fractured spirits are always detected
     if spirit_fractured:
         return {"detected": True, "predictive_warning": False, "miss_reason": None}
-    
+
     # Damaged tiers have miss chances
     if current_tier and current_tier in ARMOR_SCAN_MISS_CHANCES:
         miss_chance = ARMOR_SCAN_MISS_CHANCES[current_tier]
@@ -355,7 +347,7 @@ def _roll_scan_result(
             }
         # Detected
         return {"detected": True, "predictive_warning": False, "miss_reason": None}
-    
+
     # Nominal brother - first roll for miss chance
     nominal_miss_chance = ARMOR_SCAN_MISS_CHANCES.get("nominal", 0.20)
     if random.random() < nominal_miss_chance:
@@ -364,7 +356,7 @@ def _roll_scan_result(
             "predictive_warning": False,
             "miss_reason": "spirit_uncommunicative",
         }
-    
+
     # Nominal brother detected - check for predictive warning
     for tier_info in ARMOR_SCAN_PREDICTIVE_TIERS:
         min_pts = tier_info["min"]
@@ -379,7 +371,7 @@ def _roll_scan_result(
                     "miss_reason": None,
                 }
             break
-    
+
     # No warning triggered for nominal brother with low risk
     # They are "detected" but without any warning status
     return {"detected": True, "predictive_warning": False, "miss_reason": None}
@@ -494,16 +486,16 @@ def _roll_damage_tier(points_since_blessing: int) -> str:
 
 def _roll_detection_alert(current_tier: str) -> bool:
     """Roll whether to send an early detection alert for current damage tier.
-    
+
     Args:
         current_tier: Current damage tier (damaged, compromised, critical, fractured)
-        
+
     Returns:
         True if detection alert should be sent, False otherwise.
     """
     if not current_tier:
         return False
-    
+
     chance = ARMOR_DETECTION_CHANCES.get(current_tier, 0.0)
     return random.random() < chance
 
@@ -540,7 +532,7 @@ def _get_techmarine_role_id() -> Optional[int]:
 
 def _get_member_damage_tier(member: discord.Member) -> Optional[str]:
     """Check a member's roles and return their current damage tier, or None if undamaged."""
-    role_ids = _b('_get_armor_damage_role_ids')()
+    role_ids = _b("_get_armor_damage_role_ids")()
     if not role_ids:
         return None
 
@@ -630,9 +622,7 @@ def _check_armor_grace_period(member: discord.Member, total_aar_points: int) -> 
     - At least grace_period_min_days since joining
     """
     config = _get_armor_config()
-    min_points = config.get(
-        "grace_period_min_points", DEFAULT_ARMOR_GRACE_PERIOD_MIN_POINTS
-    )
+    min_points = config.get("grace_period_min_points", DEFAULT_ARMOR_GRACE_PERIOD_MIN_POINTS)
     min_days = config.get("grace_period_min_days", DEFAULT_ARMOR_GRACE_PERIOD_MIN_DAYS)
 
     # Check points threshold
@@ -666,7 +656,7 @@ async def _apply_damage_tier(
     rolled_tier: str,
 ) -> Optional[str]:
     """Apply a rolled damage tier if it's worse than current. Returns the new tier."""
-    role_ids = _b('_get_armor_damage_role_ids')()
+    role_ids = _b("_get_armor_damage_role_ids")()
     if not role_ids:
         return None
 
@@ -702,16 +692,12 @@ async def _apply_damage_tier(
             if current_role_id:
                 current_role = guild.get_role(int(current_role_id))
                 if current_role and current_role in member.roles:
-                    await member.remove_roles(
-                        current_role, reason="Armor integrity: applying damage tier"
-                    )
+                    await member.remove_roles(current_role, reason="Armor integrity: applying damage tier")
 
         # Add new damage role
         new_role = guild.get_role(int(new_role_id))
         if new_role:
-            await member.add_roles(
-                new_role, reason=f"Armor integrity: {new_tier} damage"
-            )
+            await member.add_roles(new_role, reason=f"Armor integrity: {new_tier} damage")
 
         return new_tier
     except Exception:
@@ -720,11 +706,11 @@ async def _apply_damage_tier(
 
 async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grace_points: int = 0):
     """Remove all damage roles from a member and reset their armor state.
-    
+
     Args:
         grace_points: Starting points (negative = grace period, e.g., -25 for crit success)
     """
-    role_ids = _b('_get_armor_damage_role_ids')()
+    role_ids = _b("_get_armor_damage_role_ids")()
 
     # Remove all damage roles
     for tier in ARMOR_DAMAGE_TIERS:
@@ -733,16 +719,14 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
             try:
                 role = guild.get_role(int(role_id))
                 if role and role in member.roles:
-                    await member.remove_roles(
-                        role, reason="Armor integrity: blessed by Techmarine"
-                    )
+                    await member.remove_roles(role, reason="Armor integrity: blessed by Techmarine")
             except Exception:
                 pass
 
     # Get current state to preserve/update blessing timestamps
-    current_state = await _b('_get_armor_state')(member.id)
+    current_state = await _b("_get_armor_state")(member.id)
     blessing_timestamps = current_state.get("blessing_timestamps", [])
-    
+
     # Filter old timestamps and add current
     now = datetime.utcnow()
     cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
@@ -757,7 +741,7 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
     active_timestamps.append(now.isoformat())
 
     # Reset armor state with updated timestamps
-    await _b('_set_armor_state')(
+    await _b("_set_armor_state")(
         member.id,
         {
             "points_since_blessing": grace_points,
@@ -773,21 +757,21 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
 
 async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild):
     """Apply crit fail blessing result: escalate damage tier.
-    
+
     A botched rite agitates the machine spirit, causing it to worsen:
     - Nominal → Damaged
     - Damaged → Compromised
     - Compromised → Critical
     - Critical → Fractured (spirit breaks!)
-    
+
     Returns the new damage tier after escalation.
     """
-    current_tier = _b('_get_member_damage_tier')(member)
-    
+    current_tier = _b("_get_member_damage_tier")(member)
+
     # Get current state to preserve/update blessing timestamps
-    current_state = await _b('_get_armor_state')(member.id)
+    current_state = await _b("_get_armor_state")(member.id)
     blessing_timestamps = current_state.get("blessing_timestamps", [])
-    
+
     # Filter old timestamps and add current
     now = datetime.utcnow()
     cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
@@ -800,18 +784,18 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
         except Exception:
             continue
     active_timestamps.append(now.isoformat())
-    
+
     # Escalate damage tier
     tier_order = [None, "damaged", "compromised", "critical", "fractured"]
     current_idx = tier_order.index(current_tier) if current_tier in tier_order else 0
     new_idx = min(current_idx + 1, len(tier_order) - 1)
     new_tier = tier_order[new_idx]
-    
+
     # Check if spirit fractured from this escalation
     spirit_fractured = new_tier == "fractured"
-    
+
     # Apply the damage role to the member
-    role_ids = _b('_get_armor_damage_role_ids')()
+    role_ids = _b("_get_armor_damage_role_ids")()
     if role_ids and new_tier and new_tier != "fractured":
         try:
             # Remove current damage role if any
@@ -820,21 +804,17 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
                 if current_role_id:
                     current_role = guild.get_role(int(current_role_id))
                     if current_role and current_role in member.roles:
-                        await member.remove_roles(
-                            current_role, reason="Armor integrity: crit fail escalation"
-                        )
-            
+                        await member.remove_roles(current_role, reason="Armor integrity: crit fail escalation")
+
             # Add new damage role
             new_role_id = role_ids.get(new_tier)
             if new_role_id:
                 new_role = guild.get_role(int(new_role_id))
                 if new_role:
-                    await member.add_roles(
-                        new_role, reason=f"Armor integrity: crit fail → {new_tier}"
-                    )
+                    await member.add_roles(new_role, reason=f"Armor integrity: crit fail → {new_tier}")
         except Exception:
             pass  # Role application failed but state update should still proceed
-    
+
     # If fractured, apply critical role (fractured is critical + flag)
     if spirit_fractured and role_ids:
         try:
@@ -844,21 +824,17 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
                 if current_role_id:
                     current_role = guild.get_role(int(current_role_id))
                     if current_role and current_role in member.roles:
-                        await member.remove_roles(
-                            current_role, reason="Armor integrity: spirit fractured"
-                        )
+                        await member.remove_roles(current_role, reason="Armor integrity: spirit fractured")
             # Add critical role for fractured state
             critical_role_id = role_ids.get("critical")
             if critical_role_id:
                 critical_role = guild.get_role(int(critical_role_id))
                 if critical_role:
-                    await member.add_roles(
-                        critical_role, reason="Armor integrity: spirit fractured"
-                    )
+                    await member.add_roles(critical_role, reason="Armor integrity: spirit fractured")
         except Exception:
             pass
-    
-    await _b('_set_armor_state')(
+
+    await _b("_set_armor_state")(
         member.id,
         {
             "points_since_blessing": 0,
@@ -869,29 +845,29 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
             "blessing_timestamps": active_timestamps,
         },
     )
-    
+
     return new_tier
 
 
 async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -> Optional[str]:
     """Apply normal blessing result: drop one damage tier.
-    
+
     Returns the new damage tier (or None if now nominal).
     """
-    current_tier = _b('_get_member_damage_tier')(member)
-    
+    current_tier = _b("_get_member_damage_tier")(member)
+
     if not current_tier:
         # Already nominal - just reset points and add timestamp
         await _clear_armor_damage(member, guild)
         return None
-    
+
     # Drop one tier
     new_tier = await _drop_armor_tier(member, guild)
-    
+
     # Get current state to preserve/update blessing timestamps
-    current_state = await _b('_get_armor_state')(member.id)
+    current_state = await _b("_get_armor_state")(member.id)
     blessing_timestamps = current_state.get("blessing_timestamps", [])
-    
+
     # Filter old timestamps and add current
     now = datetime.utcnow()
     cooldown_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
@@ -904,9 +880,9 @@ async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -
         except Exception:
             continue
     active_timestamps.append(now.isoformat())
-    
+
     # Update state with new tier
-    await _b('_set_armor_state')(
+    await _b("_set_armor_state")(
         member.id,
         {
             "points_since_blessing": 0,
@@ -917,17 +893,17 @@ async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -
             "blessing_timestamps": active_timestamps,
         },
     )
-    
+
     return new_tier
 
 
 async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Guild, charges_invested: int = 1):
     """Apply crit success blessing result: full heal + grace period.
-    
+
     Args:
         charges_invested: Number of charges used (1 for standard, 2-4 for intensive).
             Grace period scales with charges: -25 × charges_invested.
-    
+
     Returns None (always results in nominal status).
     """
     grace_points = BLESSING_CRIT_SUCCESS_GRACE_POINTS * charges_invested
@@ -937,7 +913,7 @@ async def _apply_blessing_crit_success(member: discord.Member, guild: discord.Gu
 
 async def _apply_blessing_intensive_normal(member: discord.Member, guild: discord.Guild):
     """Apply intensive blessing normal result: full heal to nominal, no crit-success grace.
-    
+
     Returns None (always results in nominal status).
     """
     await _clear_armor_damage(member, guild)
@@ -946,7 +922,7 @@ async def _apply_blessing_intensive_normal(member: discord.Member, guild: discor
 
 async def _check_spirit_fracture(user_id: int) -> bool:
     """Check if a user's machine spirit has fractured (should be replaced on blessing)."""
-    state = await _b('_get_armor_state')(user_id)
+    state = await _b("_get_armor_state")(user_id)
     return state.get("spirit_fractured", False)
 
 
@@ -1027,7 +1003,7 @@ def _filter_active_blessing_timestamps(timestamps: List[str]) -> List[str]:
 
 def _calculate_regenerated_blessings(blessing_timestamps: List[str]) -> int:
     """Calculate how many blessings have regenerated based on timestamps.
-    
+
     Each blessing regenerates after BLESSING_POOL_REGEN_HOURS (2.4h).
     Returns the number of blessings currently available.
     """
@@ -1037,20 +1013,20 @@ def _calculate_regenerated_blessings(blessing_timestamps: List[str]) -> int:
 
 async def _check_techmarine_can_bless(user_id: int) -> Tuple[bool, int, Optional[timedelta]]:
     """Check if a Techmarine can perform a blessing.
-    
+
     Returns (can_bless, remaining_pool, time_until_next_regen).
     """
-    state = await _b('_get_techmarine_pool_state')(user_id)
+    state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
-    
+
     active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
     available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
-    
+
     if available > 0:
         return True, available, None
-    
+
     # Calculate when next blessing will be available
     now = datetime.utcnow()
     regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
@@ -1062,32 +1038,32 @@ async def _check_techmarine_can_bless(user_id: int) -> Tuple[bool, int, Optional
                 oldest_ts = ts
         except Exception:
             pass
-    
+
     if oldest_ts:
         time_until_regen = timedelta(seconds=regen_seconds) - (now - oldest_ts)
         if time_until_regen.total_seconds() > 0:
             return False, 0, time_until_regen
-    
+
     return False, 0, timedelta(hours=BLESSING_POOL_REGEN_HOURS)
 
 
 async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timedelta]]:
     """Get blessing pool count and time until next regen (even if pool not empty).
-    
+
     Returns (remaining_blessings, time_until_next_regen_or_None_if_full).
     """
-    state = await _b('_get_techmarine_pool_state')(user_id)
+    state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
-    
+
     active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to the most recent BLESSING_POOL_MAX entries to keep state bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
     available = max(0, min(BLESSING_POOL_MAX - len(active_timestamps), BLESSING_POOL_MAX))
-    
+
     # If pool is full, no regen time needed
     if available >= BLESSING_POOL_MAX:
         return available, None
-    
+
     # Calculate when next blessing will regenerate (oldest timestamp)
     now = datetime.utcnow()
     regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
@@ -1103,28 +1079,31 @@ async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timede
         time_until_regen = timedelta(seconds=regen_seconds) - (now - oldest_ts)
         if time_until_regen.total_seconds() > 0:
             return available, time_until_regen
-    
+
     return available, None
 
 
 async def _consume_blessing(user_id: int):
     """Record that a Techmarine has used a blessing."""
-    state = await _b('_get_techmarine_pool_state')(user_id)
+    state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
-    
+
     now = datetime.utcnow()
     active_timestamps = _filter_active_blessing_timestamps(timestamps)
     # Trim to most recent (BLESSING_POOL_MAX - 1) entries before adding the new one,
     # to keep the list bounded and prevent the pool from going negative.
-    active_timestamps = active_timestamps[-(BLESSING_POOL_MAX - 1):]
-    
+    active_timestamps = active_timestamps[-(BLESSING_POOL_MAX - 1) :]
+
     # Add current blessing timestamp
     active_timestamps.append(now.isoformat())
-    
-    await _b('_set_techmarine_pool_state')(user_id, {
-        "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
-        "blessing_timestamps": active_timestamps,
-    })
+
+    await _b("_set_techmarine_pool_state")(
+        user_id,
+        {
+            "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
+            "blessing_timestamps": active_timestamps,
+        },
+    )
 
 
 def _get_intensive_charge_cost(damage_tier: Optional[str], spirit_fractured: bool) -> int:
@@ -1141,7 +1120,7 @@ def _get_intensive_charge_cost(damage_tier: Optional[str], spirit_fractured: boo
 
 async def _get_techmarine_available_charges(user_id: int) -> int:
     """Get the number of available blessing charges for a Techmarine."""
-    state = await _b('_get_techmarine_pool_state')(user_id)
+    state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
     active_count = len(_filter_active_blessing_timestamps(timestamps))
     return max(0, BLESSING_POOL_MAX - active_count)
@@ -1149,56 +1128,59 @@ async def _get_techmarine_available_charges(user_id: int) -> int:
 
 async def _consume_multiple_blessings(user_id: int, count: int):
     """Record that a Techmarine has used multiple blessings at once.
-    
+
     Used for intensive blessings which consume 2-4 charges.
     """
     if count <= 0:
         return
-    
-    state = await _b('_get_techmarine_pool_state')(user_id)
+
+    state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
-    
+
     now = datetime.utcnow()
     active_timestamps = _filter_active_blessing_timestamps(timestamps)
-    
+
     # Stagger timestamps by one regen interval each so charges recharge
     # one at a time rather than all simultaneously.
     regen_delta = timedelta(hours=BLESSING_POOL_REGEN_HOURS)
     for i in range(count):
         staggered_ts = now + regen_delta * i
         active_timestamps.append(staggered_ts.isoformat())
-    
+
     # Trim to BLESSING_POOL_MAX entries to keep bounded
     active_timestamps = active_timestamps[-BLESSING_POOL_MAX:]
-    
-    await _b('_set_techmarine_pool_state')(user_id, {
-        "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
-        "blessing_timestamps": active_timestamps,
-    })
+
+    await _b("_set_techmarine_pool_state")(
+        user_id,
+        {
+            "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
+            "blessing_timestamps": active_timestamps,
+        },
+    )
 
 
 async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timedelta], int, Optional[str]]:
     """Check if a recipient can receive a blessing (max 3 per 24h, 4h between each).
-    
+
     Returns (can_receive, time_until_next_slot, blessings_used, block_reason).
     block_reason is None if can_receive, 'per_blessing' for 4h cooldown, 'daily_cap' for 3/day limit.
     """
-    state = await _b('_get_armor_state')(user_id)
+    state = await _b("_get_armor_state")(user_id)
     blessing_timestamps = state.get("blessing_timestamps", [])
-    
+
     # Also check legacy field for backwards compatibility
     if not blessing_timestamps:
         last_blessing = state.get("last_blessing_timestamp")
         if last_blessing:
             blessing_timestamps = [last_blessing]
-    
+
     if not blessing_timestamps:
         return True, None, 0, None
-    
+
     now = datetime.utcnow()
     daily_window = timedelta(hours=BLESSING_RECIPIENT_COOLDOWN_HOURS)
     per_blessing_window = timedelta(hours=BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS)
-    
+
     # Filter to timestamps within the last 24h for daily cap
     active_timestamps = []
     for ts_str in blessing_timestamps:
@@ -1208,9 +1190,9 @@ async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timede
                 active_timestamps.append(ts)
         except Exception:
             continue
-    
+
     blessings_used = len(active_timestamps)
-    
+
     # Check per-blessing cooldown first (most recent blessing must be 4h+ ago)
     if active_timestamps:
         most_recent = max(active_timestamps)
@@ -1218,14 +1200,14 @@ async def _check_recipient_cooldown(user_id: int) -> Tuple[bool, Optional[timede
         if time_since_last < per_blessing_window:
             time_until_next = per_blessing_window - time_since_last
             return False, time_until_next, blessings_used, "per_blessing"
-    
+
     # Check daily cap
     if blessings_used >= BLESSING_RECIPIENT_MAX_PER_DAY:
         # At max - find when the oldest one expires
         oldest = min(active_timestamps)
         time_until_slot = (oldest + daily_window) - now
         return False, time_until_slot, blessings_used, "daily_cap"
-    
+
     return True, None, blessings_used, None
 
 
@@ -1234,31 +1216,31 @@ def _roll_blessing_outcome(
     spirit_fractured: bool = False,
 ) -> str:
     """Roll for blessing outcome based on armor state.
-    
+
     Probabilities vary by state (asymmetric spread):
     - Nominal: 1% fail / 98% normal / 1% crit
     - Damaged: 3% fail / 94% normal / 3% crit
     - Compromised: 5% fail / 90% normal / 5% crit
     - Critical: 8% fail / 86% normal / 6% crit (asymmetric - less punishing)
     - Fractured: 10% fail / 80% normal / 10% crit
-    
+
     Returns one of: 'crit_fail', 'normal', 'crit_success'
     """
     import random
-    
+
     # Determine which probability set to use
     if spirit_fractured:
         state_key = "fractured"
     else:
         state_key = damage_tier  # None, "damaged", "compromised", or "critical"
-    
+
     # Get probabilities for this state (fallback to nominal)
     crit_fail_chance, crit_success_chance = BLESSING_ROLL_PROBABILITIES.get(
         state_key, BLESSING_ROLL_PROBABILITIES[None]
     )
-    
+
     roll = random.random()
-    
+
     if roll < crit_fail_chance:
         return "crit_fail"
     elif roll >= (1.0 - crit_success_chance):
@@ -1269,16 +1251,16 @@ def _roll_blessing_outcome(
 
 async def _drop_armor_tier(member: discord.Member, guild: discord.Guild) -> Optional[str]:
     """Drop a member's armor damage by one tier.
-    
+
     Returns the new tier (or None if now undamaged).
     Tier progression: critical -> compromised -> damaged -> None (nominal)
     """
-    current_tier = _b('_get_member_damage_tier')(member)
-    role_ids = _b('_get_armor_damage_role_ids')()
-    
+    current_tier = _b("_get_member_damage_tier")(member)
+    role_ids = _b("_get_armor_damage_role_ids")()
+
     if not current_tier:
         return None  # Already undamaged
-    
+
     # Remove current tier role
     current_role_id = role_ids.get(current_tier)
     if current_role_id:
@@ -1288,7 +1270,7 @@ async def _drop_armor_tier(member: discord.Member, guild: discord.Guild) -> Opti
                 await member.remove_roles(role, reason="Armor integrity: blessing reduced damage tier")
         except Exception:
             pass
-    
+
     # Determine new tier (one level better)
     tier_order = ["damaged", "compromised", "critical"]
     try:
@@ -1317,7 +1299,7 @@ def _format_cooldown_time(td: timedelta) -> str:
     total_seconds = int(td.total_seconds())
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
-    
+
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
@@ -1399,31 +1381,31 @@ def _save_forge_chronicle(data: dict):
 async def _store_pending_alert(user_id: int, message_id: int, channel_id: int):
     """Store a pending armor alert for thread reply tracking."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         data.setdefault("pending_alerts", {})
         data["pending_alerts"][str(user_id)] = {
             "message_id": message_id,
             "channel_id": channel_id,
             "ts": datetime.utcnow().isoformat(),
         }
-        _b('_save_forge_chronicle')(data)
+        _b("_save_forge_chronicle")(data)
 
 
 async def _get_pending_alert(user_id: int) -> Optional[dict]:
     """Get pending alert info for a user (if any)."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         return data.get("pending_alerts", {}).get(str(user_id))
 
 
 async def _clear_pending_alert(user_id: int):
     """Clear a pending alert for a user (no-op if not stored)."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         key = str(user_id)
         if key in data.get("pending_alerts", {}):
             data["pending_alerts"].pop(key)
-            _b('_save_forge_chronicle')(data)
+            _b("_save_forge_chronicle")(data)
 
 
 async def _record_rite_in_chronicle(
@@ -1434,7 +1416,7 @@ async def _record_rite_in_chronicle(
     spirit_event: str,
 ):
     """Record a forge rite in the chronicle for dashboard stats.
-    
+
     Args:
         bearer_id: User ID of the brother blessed
         techmarine_id: User ID of the attesting Techmarine
@@ -1443,8 +1425,8 @@ async def _record_rite_in_chronicle(
         spirit_event: "first_binding", "rebirth", "restoration", "maintenance"
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
-        
+        data = _b("_load_forge_chronicle")()
+
         # Add to rite history (keep last 500 entries)
         entry = {
             "ts": datetime.utcnow().isoformat(),
@@ -1457,7 +1439,7 @@ async def _record_rite_in_chronicle(
         data["rite_history"].append(entry)
         if len(data["rite_history"]) > 500:
             data["rite_history"] = data["rite_history"][-500:]
-        
+
         # Update techmarine stats
         tech_key = str(techmarine_id)
         if tech_key not in data["techmarine_stats"]:
@@ -1476,23 +1458,27 @@ async def _record_rite_in_chronicle(
             data["techmarine_stats"][tech_key]["first_bindings"] += 1
         elif spirit_event == "rebirth":
             data["techmarine_stats"][tech_key]["rebirths"] += 1
-        
-        _b('_save_forge_chronicle')(data)
+
+        _b("_save_forge_chronicle")(data)
 
 
 async def _record_spirit_released(bearer_id: int, spirit_designation: str):
     """Record a spirit release (member went inactive) in the chronicle.
-    
+
     This creates a 'released' event in rite_history for the memorial.
     No techmarine is involved - this is an automatic system event.
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
-        
+        data = _b("_load_forge_chronicle")()
+
         # Guard: skip if this spirit already has a recent released/fractured entry (within 10 min)
         now_dt = datetime.utcnow()
         for r in reversed(data["rite_history"]):
-            if r.get("bearer_id") == str(bearer_id) and r.get("spirit") == spirit_designation and r.get("event") in ("released", "fractured"):
+            if (
+                r.get("bearer_id") == str(bearer_id)
+                and r.get("spirit") == spirit_designation
+                and r.get("event") in ("released", "fractured")
+            ):
                 try:
                     existing_ts = datetime.fromisoformat(r["ts"])
                     if (now_dt - existing_ts).total_seconds() < 600:
@@ -1500,7 +1486,7 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
                 except Exception:
                     pass
                 break
-        
+
         entry = {
             "ts": now_dt.isoformat(),
             "bearer_id": str(bearer_id),
@@ -1512,23 +1498,27 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
         data["rite_history"].append(entry)
         if len(data["rite_history"]) > 500:
             data["rite_history"] = data["rite_history"][-500:]
-        
-        _b('_save_forge_chronicle')(data)
+
+        _b("_save_forge_chronicle")(data)
 
 
 async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_days: int):
     """Record a spirit fracture in the chronicle.
-    
+
     This creates a 'fractured' event in rite_history for the memorial.
     The spirit is lost - will require a new binding.
     """
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
-        
+        data = _b("_load_forge_chronicle")()
+
         # Guard: skip if this spirit already has a recent fractured/released entry (within 10 min)
         now_dt = datetime.utcnow()
         for r in reversed(data["rite_history"]):
-            if r.get("bearer_id") == str(bearer_id) and r.get("spirit") == spirit_designation and r.get("event") in ("fractured", "released"):
+            if (
+                r.get("bearer_id") == str(bearer_id)
+                and r.get("spirit") == spirit_designation
+                and r.get("event") in ("fractured", "released")
+            ):
                 try:
                     existing_ts = datetime.fromisoformat(r["ts"])
                     if (now_dt - existing_ts).total_seconds() < 600:
@@ -1536,7 +1526,7 @@ async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_
                 except Exception:
                     pass
                 break
-        
+
         entry = {
             "ts": now_dt.isoformat(),
             "bearer_id": str(bearer_id),
@@ -1549,14 +1539,14 @@ async def _record_spirit_fractured(bearer_id: int, spirit_designation: str, age_
         data["rite_history"].append(entry)
         if len(data["rite_history"]) > 500:
             data["rite_history"] = data["rite_history"][-500:]
-        
-        _b('_save_forge_chronicle')(data)
+
+        _b("_save_forge_chronicle")(data)
 
 
 async def _get_dashboard_message_id() -> Optional[int]:
     """Get the stored dashboard message ID (if any)."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         msg_id = data.get("dashboard_message_id")
         return int(msg_id) if msg_id else None
 
@@ -1564,15 +1554,15 @@ async def _get_dashboard_message_id() -> Optional[int]:
 async def _set_dashboard_message_id(message_id: int):
     """Store the dashboard message ID."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         data["dashboard_message_id"] = message_id
-        _b('_save_forge_chronicle')(data)
+        _b("_save_forge_chronicle")(data)
 
 
 async def _get_last_ambient_ts() -> Optional[datetime]:
     """Get the timestamp of the last ambient message."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         ts_str = data.get("last_ambient_ts")
         if ts_str:
             try:
@@ -1585,9 +1575,9 @@ async def _get_last_ambient_ts() -> Optional[datetime]:
 async def _set_last_ambient_ts():
     """Update the timestamp of the last ambient message."""
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
+        data = _b("_load_forge_chronicle")()
         data["last_ambient_ts"] = datetime.utcnow().isoformat()
-        _b('_save_forge_chronicle')(data)
+        _b("_save_forge_chronicle")(data)
 
 
 async def _increment_forge_pool_balance(points: int):
@@ -1604,7 +1594,7 @@ async def _increment_forge_pool_balance(points: int):
 
 async def _deduct_forge_pool_balance(points: int, tier: Optional[str] = None):
     """Deduct points from forge pool balance and log the drain.
-    
+
     Args:
         points: Forge points to deduct
         tier: Damage tier being healed (for tracking)
@@ -1615,22 +1605,21 @@ async def _deduct_forge_pool_balance(points: int, tier: Optional[str] = None):
         pool_data = _load_forge_pool()
         current = pool_data.get("balance", 0)
         pool_data["balance"] = max(0, current - points)
-        
+
         # Log drain for weekly tracking
         drain_log = pool_data.get("weekly_drain_log", [])
-        drain_log.append({
-            "ts": datetime.utcnow().isoformat(),
-            "points": points,
-            "tier": tier,
-        })
+        drain_log.append(
+            {
+                "ts": datetime.utcnow().isoformat(),
+                "points": points,
+                "tier": tier,
+            }
+        )
         # Keep only last 30 days of drain history
         cutoff = datetime.utcnow() - timedelta(days=30)
-        drain_log = [
-            entry for entry in drain_log
-            if datetime.fromisoformat(entry.get("ts", "")) >= cutoff
-        ]
+        drain_log = [entry for entry in drain_log if datetime.fromisoformat(entry.get("ts", "")) >= cutoff]
         pool_data["weekly_drain_log"] = drain_log
-        
+
         _save_forge_pool(pool_data)
 
 
@@ -1646,10 +1635,10 @@ async def _get_techmarine_daily_requisitions(user_id: int) -> int:
     async with _g.FORGE_POOL_LOCK:
         pool_data = _load_forge_pool()
         daily_usage = pool_data.get("daily_usage", {})
-        
+
         today = datetime.utcnow().strftime("%Y-%m-%d")
         user_data = daily_usage.get(str(user_id), {})
-        
+
         # Check if the usage is from today
         if user_data.get("date") == today:
             return user_data.get("count", 0)
@@ -1658,7 +1647,7 @@ async def _get_techmarine_daily_requisitions(user_id: int) -> int:
 
 async def _consume_forge_requisition(user_id: int) -> Tuple[bool, str]:
     """Attempt to consume a forge requisition for a Techmarine.
-    
+
     Returns (success, message).
     """
     max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
@@ -1666,31 +1655,34 @@ async def _consume_forge_requisition(user_id: int) -> Tuple[bool, str]:
         # Check daily limit
         pool_data = _load_forge_pool()
         daily_usage = pool_data.get("daily_usage", {})
-        
+
         today = datetime.utcnow().strftime("%Y-%m-%d")
         user_data = daily_usage.get(str(user_id), {})
-        
+
         # Reset if different day
         if user_data.get("date") != today:
             user_data = {"date": today, "count": 0}
-        
+
         if user_data.get("count", 0) >= FORGE_POOL_DAILY_LIMIT:
             return False, f"Daily requisition limit reached ({FORGE_POOL_DAILY_LIMIT} per day)."
-        
+
         # Check pool availability (balance-based)
         balance = pool_data.get("balance", max_balance)
-        
+
         if balance < FORGE_POOL_COST_PER_CHARGE:
-            return False, f"Insufficient forge supplies ({balance}/{FORGE_POOL_COST_PER_CHARGE} armory points available)."
-        
+            return (
+                False,
+                f"Insufficient forge supplies ({balance}/{FORGE_POOL_COST_PER_CHARGE} armory points available).",
+            )
+
         # Consume from balance
         pool_data["balance"] = balance - FORGE_POOL_COST_PER_CHARGE
         user_data["count"] = user_data.get("count", 0) + 1
         daily_usage[str(user_id)] = user_data
         pool_data["daily_usage"] = daily_usage
-        
+
         _save_forge_pool(pool_data)
-        
+
         return True, f"Requisition approved. Forge pool: {pool_data['balance']} armory points remaining."
 
 
@@ -1701,7 +1693,7 @@ async def _get_forge_pool_status() -> dict:
         pool_data = _load_forge_pool()
         balance = pool_data.get("balance", max_balance)
         charges_available = balance // FORGE_POOL_COST_PER_CHARGE
-        
+
         return {
             "available": balance,
             "charges_available": charges_available,
@@ -1723,7 +1715,7 @@ async def _post_armor_alert(
     penalty_amount: int = 0,
 ):
     """Post an armor damage alert to the arming chamber channel.
-    
+
     Args:
         member: The brother whose armor was damaged
         tier: Damage tier (damaged, compromised, critical, fractured)
@@ -1749,9 +1741,7 @@ async def _post_armor_alert(
         return
 
     config = _get_armor_config()
-    fracture_threshold = config.get(
-        "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
-    )
+    fracture_threshold = config.get("fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD)
 
     # Get bearer info using the same pattern as forge_rite/stud announcements
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
@@ -1765,9 +1755,7 @@ async def _post_armor_alert(
 
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(member)
-    chapter_emoji = (
-        _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
-    )
+    chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
 
     # Get rank emoji
     bearer_rank_name = None
@@ -1784,9 +1772,7 @@ async def _post_armor_alert(
     # Build bearer display string (matching forge_rite style)
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
-        bearer_display = (
-            f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
-        )
+        bearer_display = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
     else:
         bearer_display = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
 
@@ -1811,10 +1797,10 @@ async def _post_armor_alert(
 
     # Determine embed color, title, and description based on tier and alert_type
     is_detection = alert_type == "detected"
-    
+
     # Build penalty string for sustained alerts
     penalty_str = f" (-{penalty_amount} AAR)" if penalty_amount > 0 else ""
-    
+
     if tier == "fractured":
         color = 0x8B0000  # Dark red
         title = "᛭⋅ MACHINE SPIRIT FRACTURED ⋅᛭"
@@ -1857,13 +1843,13 @@ async def _post_armor_alert(
     tier_display = tier.title() if tier else "Unknown"
     spirit_fractured = tier == "fractured"
     penalty_risk = _get_tier_risk_display(tier, spirit_fractured=spirit_fractured)
-    
+
     # Adjust status display for detection alerts
     if is_detection:
         status_label = f"{tier_display} (Early Warning)"
     else:
         status_label = tier_display
-    
+
     embed.add_field(
         name="▸ Affected Brother",
         value=f"{bearer_display}\n**Status:** {status_label}\n**Penalty Risk:** {penalty_risk}",
@@ -1881,20 +1867,20 @@ async def _post_armor_alert(
         clean_mission = None
         if op_mission:
             # Strip role/user mentions from mission name (e.g., "Vortex @Black Laurels" -> "Vortex")
-            clean_mission = re.sub(r'\s*<@[!&]?\d+>.*$', '', op_mission).strip()
+            clean_mission = re.sub(r"\s*<@[!&]?\d+>.*$", "", op_mission).strip()
             # Also strip any text after @ if @ is present (fallback for resolved mentions)
-            if '@' in clean_mission:
-                clean_mission = clean_mission.split('@')[0].strip()
+            if "@" in clean_mission:
+                clean_mission = clean_mission.split("@")[0].strip()
         if op_difficulty_class:
             planet = MISSION_TO_PLANET.get(op_difficulty_class.lower().strip())
         if not planet and clean_mission:
             planet = MISSION_TO_PLANET.get(clean_mission.lower().strip())
-        
+
         if planet:
             debrief_lines.append(f"Integrity degraded during deployment to **{planet}**")
         elif clean_mission:
             debrief_lines.append(f"Integrity degraded during **{clean_mission}** deployment")
-        
+
         # Build squad list (exclude the affected brother)
         if squad_member_ids and guild:
             squad_names = []
@@ -1911,10 +1897,10 @@ async def _post_armor_alert(
                     pass
             if squad_names:
                 debrief_lines.append(f"Kill Team: {', '.join(squad_names)}")
-        
+
         if op_url:
             debrief_lines.append(f"[View After Action Report]({op_url})")
-        
+
         if debrief_lines:
             embed.add_field(
                 name="▸ Debrief",
@@ -1996,8 +1982,7 @@ async def _post_armor_alert(
         # Verify embed was actually sent
         if not sent_msg.embeds:
             _g.logger.warning(
-                f"Armor alert sent but embed was dropped! "
-                f"embed_links={perms.embed_links}, content={content[:50]}"
+                f"Armor alert sent but embed was dropped! embed_links={perms.embed_links}, content={content[:50]}"
             )
         else:
             _g.logger.info(f"Posted armor alert for {member.display_name} (tier={tier}, type={alert_type})")
@@ -2052,44 +2037,38 @@ async def _process_armor_integrity_for_aar(
             return 0, None
 
         # Check current damage tier from roles
-        current_tier = _b('_get_member_damage_tier')(member)
-        penalty = _b('_get_damage_penalty')(current_tier)
+        current_tier = _b("_get_member_damage_tier")(member)
+        penalty = _b("_get_damage_penalty")(current_tier)
 
         # Get user stats for grace period check
-        stats = _b('compute_stats_for_user')(str(brother_id))
+        stats = _b("compute_stats_for_user")(str(brother_id))
         total_aar_points = int(stats.get("aar_points", 0) or 0)
 
         # Check grace period
-        if not _b('_check_armor_grace_period')(member, total_aar_points):
+        if not _b("_check_armor_grace_period")(member, total_aar_points):
             return penalty, None
 
         # Get current armor state (from batch if provided, else from file)
         if armor_batch is not None:
             state = _get_armor_state_from_batch(int(brother_id), armor_batch)
         else:
-            state = await _b('_get_armor_state')(int(brother_id))
+            state = await _b("_get_armor_state")(int(brother_id))
 
         # Check for spirit fracture
         spirit_fractured = state.get("spirit_fractured", False)
         effective_tier = "fractured" if spirit_fractured else current_tier
 
         # Accumulate points (use base unpenalized points for tracking)
-        state["points_since_blessing"] = (
-            state.get("points_since_blessing", 0) + base_points
-        )
+        state["points_since_blessing"] = state.get("points_since_blessing", 0) + base_points
 
         # Check if damage occurs (escalation)
-        damage_occurred = await _b('_run_armor_integrity_check')(
-            state["points_since_blessing"]
-        )
+        damage_occurred = await _b("_run_armor_integrity_check")(state["points_since_blessing"])
 
         new_tier = None
         if damage_occurred:
             # Roll which damage tier to apply based on current points
-            rolled_tier = _b('_roll_damage_tier')(state["points_since_blessing"])
-            new_tier = await _b('_apply_damage_tier')(
-                member, guild, current_tier, rolled_tier
-            )
+            rolled_tier = _b("_roll_damage_tier")(state["points_since_blessing"])
+            new_tier = await _b("_apply_damage_tier")(member, guild, current_tier, rolled_tier)
             if new_tier and new_tier != current_tier:
                 state["damage_tier"] = new_tier
                 if new_tier == "critical":
@@ -2114,15 +2093,15 @@ async def _process_armor_integrity_for_aar(
         # Detection alert: fires when damaged but no penalty this AAR (early warning)
         if alert_info is None and effective_tier and actual_penalty == 0:
             last_detection_tier = state.get("last_detection_alert_tier")
-            
+
             # Tier severity for comparison
             tier_severity = {"damaged": 1, "compromised": 2, "critical": 3, "fractured": 4}
             current_severity = tier_severity.get(effective_tier, 0)
             last_severity = tier_severity.get(last_detection_tier, 0)
-            
+
             # Only roll detection if we haven't already alerted for this tier level or higher
             if current_severity > last_severity:
-                if _b('_roll_detection_alert')(effective_tier):
+                if _b("_roll_detection_alert")(effective_tier):
                     alert_info = {
                         "member": member,
                         "tier": effective_tier,
@@ -2140,14 +2119,12 @@ async def _process_armor_integrity_for_aar(
         if current_tier == "critical":
             state["critical_aar_count"] = state.get("critical_aar_count", 0) + 1
             config = _get_armor_config()
-            fracture_threshold = config.get(
-                "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
-            )
+            fracture_threshold = config.get("fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD)
 
             if state["critical_aar_count"] >= fracture_threshold:
                 # Spirit fractures
                 state["spirit_fractured"] = True
-                
+
                 # Record fracture in chronicle with spirit age
                 spirits_data = _load_machine_spirits()
                 spirit_info = spirits_data.get(str(brother_id), {})
@@ -2161,7 +2138,7 @@ async def _process_armor_integrity_for_aar(
                         pass
                 if spirit_name:
                     await _record_spirit_fractured(int(brother_id), spirit_name, age_days)
-                
+
                 # Guaranteed alert for fracture
                 if alert_info is None or alert_info.get("tier") != "fractured":
                     alert_info = {
@@ -2179,7 +2156,7 @@ async def _process_armor_integrity_for_aar(
         if armor_batch is not None:
             _set_armor_state_in_batch(int(brother_id), state, armor_batch)
         else:
-            await _b('_set_armor_state')(int(brother_id), state)
+            await _b("_set_armor_state")(int(brother_id), state)
 
         return penalty, alert_info
 
@@ -2313,7 +2290,7 @@ def _save_lfg_queues(data: dict):
 
 def _get_player_platform(member: discord.Member) -> Optional[str]:
     """Determine if a member is PC or Console player based on roles.
-    
+
     Returns:
         "pc" if they have PC Player role (or both roles)
         "console" if they have only Console Player role
@@ -2324,7 +2301,7 @@ def _get_player_platform(member: discord.Member) -> Optional[str]:
     console_role_id = _get_lfg_console_role_id()
     has_pc = pc_role_id in role_ids
     has_console = console_role_id in role_ids
-    
+
     if has_pc:
         return "pc"  # PC takes priority if they have both
     elif has_console:
@@ -2335,20 +2312,20 @@ def _get_player_platform(member: discord.Member) -> Optional[str]:
 def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     """Build the embed for an LFG queue display."""
     queue_type = queue_data["queue_type"]
-    queue_types = _b('_get_lfg_queue_types')()
+    queue_types = _b("_get_lfg_queue_types")()
     type_config = queue_types.get(queue_type, {})
     creator_id = queue_data["creator_id"]
     players = queue_data["players"]  # List of {"user_id": int, "platform": str}
     expires_at = queue_data.get("expires_at")
     initiation_trial = queue_data.get("initiation_trial", False)
     custom_message = queue_data.get("message")
-    
+
     # Count players and console players
     player_count = len(players)
     max_players = type_config.get("max_players", 3)
     console_count = sum(1 for p in players if p["platform"] == "console")
     max_console = type_config.get("max_console")
-    
+
     # Determine embed color based on fill status
     if player_count >= max_players:
         color = 0x2ECC71  # Green - full
@@ -2356,7 +2333,7 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         color = 0xF1C40F  # Yellow - partially filled
     else:
         color = 0x3498DB  # Blue - empty
-    
+
     # Build title with queue-specific emoji
     queue_display = type_config.get("display", queue_data.get("type", "Unknown"))
     if queue_type == "omega":
@@ -2368,14 +2345,14 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         title += " (Initiation Trial)"
     if player_count >= max_players:
         title += " [FULL]"
-    
+
     embed = discord.Embed(title=title, color=color)
-    
+
     # Creator info
     creator = guild.get_member(creator_id)
     creator_name = creator.display_name if creator else f"User {creator_id}"
     embed.set_author(name=f"Created by {creator_name}")
-    
+
     # Build description with expires time and custom message
     desc_parts = []
     if expires_at:
@@ -2389,7 +2366,7 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         desc_parts.append(f"📝 *{custom_message}*")
     if desc_parts:
         embed.description = "\n".join(desc_parts)
-    
+
     # Player slots
     slot_lines = []
     for i in range(max_players):
@@ -2398,39 +2375,39 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
             member = guild.get_member(p["user_id"])
             name = member.display_name if member else f"User {p['user_id']}"
             platform_emoji = "🖥️" if p["platform"] == "pc" else "🎮"
-            slot_lines.append(f"{i+1}. {platform_emoji} {name}")
+            slot_lines.append(f"{i + 1}. {platform_emoji} {name}")
         else:
-            slot_lines.append(f"{i+1}. ─ *Empty* ─")
-    
+            slot_lines.append(f"{i + 1}. ─ *Empty* ─")
+
     embed.add_field(
         name=f"Players ({player_count}/{max_players})",
         value="\n".join(slot_lines),
         inline=False,
     )
-    
+
     # Console limit info for Omega
     if max_console is not None:
         console_status = f"🎮 Console: {console_count}/{max_console}"
         if console_count >= max_console:
             console_status += " (limit reached)"
         embed.add_field(name="Platform Limits", value=console_status, inline=False)
-    
+
     embed.set_footer(text="Click buttons to join/leave")
-    
+
     return embed
 
 
 class LFGQueueView(discord.ui.View):
     """View with Join/Leave buttons for LFG queue sign-ups.
-    
+
     Uses dynamic custom_ids with queue_id to ensure buttons work
     across bot restarts and don't conflict between different queues.
     """
-    
+
     def __init__(self, queue_id: int):
         super().__init__(timeout=None)  # Persistent view
         self.queue_id = queue_id
-        
+
         # Add buttons with dynamic custom_ids - NO callbacks here
         # Interactions are handled by on_interaction -> _handle_lfg_button
         join_button = discord.ui.Button(
@@ -2440,7 +2417,7 @@ class LFGQueueView(discord.ui.View):
             custom_id=f"lfg_join:{queue_id}",
         )
         self.add_item(join_button)
-        
+
         leave_button = discord.ui.Button(
             label="Leave Queue",
             style=discord.ButtonStyle.danger,
@@ -2448,7 +2425,7 @@ class LFGQueueView(discord.ui.View):
             custom_id=f"lfg_leave:{queue_id}",
         )
         self.add_item(leave_button)
-        
+
         close_button = discord.ui.Button(
             label="Close Queue",
             style=discord.ButtonStyle.secondary,
@@ -2456,55 +2433,53 @@ class LFGQueueView(discord.ui.View):
             custom_id=f"lfg_close:{queue_id}",
         )
         self.add_item(close_button)
-    
+
     async def _get_queue_data(self) -> Optional[dict]:
         """Get queue data from memory or disk."""
         async with _g.LFG_QUEUE_LOCK:
             if self.queue_id in _g.LFG_ACTIVE_QUEUES:
                 return _g.LFG_ACTIVE_QUEUES[self.queue_id]
             # Try loading from disk
-            all_queues = _b('_load_lfg_queues')()
+            all_queues = _b("_load_lfg_queues")()
             if str(self.queue_id) in all_queues:
                 queue_data = all_queues[str(self.queue_id)]
                 _g.LFG_ACTIVE_QUEUES[self.queue_id] = queue_data
                 return queue_data
         return None
-    
+
     async def _save_queue_data(self, queue_data: dict):
         """Save queue data to memory and disk."""
         async with _g.LFG_QUEUE_LOCK:
             _g.LFG_ACTIVE_QUEUES[self.queue_id] = queue_data
-            all_queues = _b('_load_lfg_queues')()
+            all_queues = _b("_load_lfg_queues")()
             all_queues[str(self.queue_id)] = queue_data
-            _b('_save_lfg_queues')(all_queues)
-    
+            _b("_save_lfg_queues")(all_queues)
+
     async def _update_embed(self, interaction: discord.Interaction):
         """Update the queue embed with current state."""
         queue_data = await self._get_queue_data()
         if not queue_data:
             return
-        
-        embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
+
+        embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
         try:
             # After defer(), we need to edit the original message directly
             # interaction.message is the message containing the button
             await interaction.message.edit(embed=embed, view=self)
         except Exception as e:
             _g.logger.warning(f"Failed to update LFG embed: {e}")
-    
+
     async def join_queue(self, interaction: discord.Interaction):
         member = interaction.user
         if not isinstance(member, discord.Member):
             member = interaction.guild.get_member(interaction.user.id)
-        
+
         if not member:
-            await interaction.response.send_message(
-                "Could not resolve your membership.", ephemeral=True
-            )
+            await interaction.response.send_message("Could not resolve your membership.", ephemeral=True)
             return
-        
+
         # Check platform role
-        platform = _b('_get_player_platform')(member)
+        platform = _b("_get_player_platform")(member)
         if not platform:
             pc_role = _get_lfg_pc_role_id()
             console_role = _get_lfg_console_role_id()
@@ -2515,32 +2490,26 @@ class LFGQueueView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        
+
         queue_data = await self._get_queue_data()
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
-        queue_types = _b('_get_lfg_queue_types')()
+
+        queue_types = _b("_get_lfg_queue_types")()
         type_config = queue_types.get(queue_data["queue_type"], {})
         players = queue_data["players"]
-        
+
         # Check if already in queue
         if any(p["user_id"] == member.id for p in players):
-            await interaction.response.send_message(
-                "You are already in this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("You are already in this queue.", ephemeral=True)
             return
-        
+
         # Check if queue is full
         if len(players) >= type_config.get("max_players", 3):
-            await interaction.response.send_message(
-                "This queue is already full.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue is already full.", ephemeral=True)
             return
-        
+
         # Check console limit for Omega
         max_console = type_config.get("max_console")
         if max_console is not None and platform == "console":
@@ -2552,16 +2521,16 @@ class LFGQueueView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
-        
+
         # Add player to queue
         players.append({"user_id": member.id, "platform": platform})
         queue_data["players"] = players
         await self._save_queue_data(queue_data)
-        
+
         # Update embed by editing the message directly
-        embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
+        embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
-        
+
         # Check if queue is now full and notify creator
         if len(players) >= type_config.get("max_players", 3):
             creator = interaction.guild.get_member(queue_data["creator_id"])
@@ -2579,60 +2548,52 @@ class LFGQueueView(discord.ui.View):
                     )
                 except Exception:
                     pass
-    
+
     async def leave_queue(self, interaction: discord.Interaction):
         member = interaction.user
-        
+
         queue_data = await self._get_queue_data()
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
+
         players = queue_data["players"]
-        
+
         # Check if in queue
         player_entry = next((p for p in players if p["user_id"] == member.id), None)
         if not player_entry:
-            await interaction.response.send_message(
-                "You are not in this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("You are not in this queue.", ephemeral=True)
             return
-        
+
         # Remove player
         players.remove(player_entry)
         queue_data["players"] = players
         await self._save_queue_data(queue_data)
-        
+
         # Update embed by editing the message directly
-        embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
+        embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
-    
+
     async def close_queue(self, interaction: discord.Interaction):
         queue_data = await self._get_queue_data()
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
+
         # Only creator can close
         if interaction.user.id != queue_data["creator_id"]:
-            await interaction.response.send_message(
-                "Only the queue creator can close this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("Only the queue creator can close this queue.", ephemeral=True)
             return
-        
+
         # Remove from storage
         async with _g.LFG_QUEUE_LOCK:
             if self.queue_id in _g.LFG_ACTIVE_QUEUES:
                 del _g.LFG_ACTIVE_QUEUES[self.queue_id]
-            all_queues = _b('_load_lfg_queues')()
+            all_queues = _b("_load_lfg_queues")()
             if str(self.queue_id) in all_queues:
                 del all_queues[str(self.queue_id)]
-                _b('_save_lfg_queues')(all_queues)
-        
+                _b("_save_lfg_queues")(all_queues)
+
         # Update message to show closed
         embed = discord.Embed(
             title="🔒 Queue Closed",
@@ -2645,7 +2606,7 @@ class LFGQueueView(discord.ui.View):
 async def _restore_lfg_queue_views():
     """Restore persistent views for existing LFG queues on bot startup."""
     try:
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         for queue_id_str, queue_data in all_queues.items():
             try:
                 queue_id = int(queue_id_str)
@@ -2663,19 +2624,19 @@ async def _restore_lfg_queue_views():
 async def _expire_old_lfg_queues():
     """Check for and expire old LFG queues."""
     try:
-        now = _b('datetime').now(timezone.utc)
+        now = _b("datetime").now(timezone.utc)
         expired = []
-        
+
         async with _g.LFG_QUEUE_LOCK:
-            all_queues = _b('_load_lfg_queues')()
-            
+            all_queues = _b("_load_lfg_queues")()
+
             for queue_id_str, queue_data in list(all_queues.items()):
                 expires_at_str = queue_data.get("expires_at")
                 if not expires_at_str:
                     continue
-                
+
                 try:
-                    expires_at = _b('datetime').fromisoformat(expires_at_str)
+                    expires_at = _b("datetime").fromisoformat(expires_at_str)
                     if now >= expires_at:
                         expired.append((int(queue_id_str), queue_data))
                         del all_queues[queue_id_str]
@@ -2683,14 +2644,14 @@ async def _expire_old_lfg_queues():
                             del _g.LFG_ACTIVE_QUEUES[int(queue_id_str)]
                 except Exception:
                     continue
-            
+
             if expired:
-                _b('_save_lfg_queues')(all_queues)
-        
+                _b("_save_lfg_queues")(all_queues)
+
         # Update expired queue messages
         for queue_id, queue_data in expired:
             try:
-                guild = _b('_resolve_notification_guild')()
+                guild = _b("_resolve_notification_guild")()
                 if not guild:
                     continue
                 # Get channel from stored channel_id in queue_data
@@ -2711,7 +2672,7 @@ async def _expire_old_lfg_queues():
                 pass
             except Exception as e:
                 _g.logger.debug(f"Failed to update expired queue message {queue_id}: {e}")
-        
+
         if expired:
             _g.logger.info(f"Expired {len(expired)} LFG queue(s)")
     except Exception as e:
@@ -2731,13 +2692,14 @@ async def _lfg_queue_expiration_loop():
 # Log to Forge View - Button for posting ephemeral blessings publicly
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class LogToForgeView(discord.ui.View):
     """View with a 'Log to Forge' button for blessing attestations.
-    
+
     When clicked, posts the blessing publicly to the arming chamber
     and triggers a chronicle repost at the bottom of the channel.
     """
-    
+
     def __init__(
         self,
         embed: discord.Embed,
@@ -2759,42 +2721,38 @@ class LogToForgeView(discord.ui.View):
         self.is_intensive = is_intensive
         self.is_significant = is_significant
         self.logged = False
-    
+
     @discord.ui.button(
         label="Log to Forge",
         style=discord.ButtonStyle.primary,
         emoji="📜",
         custom_id="log_to_forge",
     )
-    async def log_to_forge(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    async def log_to_forge(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.logged:
-            await interaction.response.send_message(
-                "Already logged to forge.", ephemeral=True
-            )
+            await interaction.response.send_message("Already logged to forge.", ephemeral=True)
             return
-        
+
         self.logged = True
         button.disabled = True
         button.label = "Logged"
         button.style = discord.ButtonStyle.secondary
-        
+
         # Update the ephemeral message to show button is disabled
         try:
             await interaction.response.edit_message(view=self)
         except Exception:
             pass
-        
+
         # Post blessing publicly to arming chamber
         channel_id = _get_arming_chamber_channel_id()
         if not channel_id or not interaction.guild:
             return
-        
+
         channel = interaction.guild.get_channel(channel_id)
         if not channel:
             return
-        
+
         # Post the blessing - always mention the blessed brother before embed
         try:
             await channel.send(
@@ -2805,7 +2763,7 @@ class LogToForgeView(discord.ui.View):
         except Exception as e:
             _g.logger.warning(f"Failed to log blessing to forge: {e}")
             return
-        
+
         # Trigger chronicle repost at bottom
         await _repost_chronicle_at_bottom(interaction.guild)
 
@@ -2815,11 +2773,11 @@ async def _repost_chronicle_at_bottom(guild: discord.Guild):
     channel_id = _get_arming_chamber_channel_id()
     if not channel_id:
         return
-    
+
     channel = guild.get_channel(channel_id)
     if not channel:
         return
-    
+
     # Delete old chronicle message if exists
     existing_msg_id = await _get_dashboard_message_id()
     if existing_msg_id:
@@ -2830,7 +2788,7 @@ async def _repost_chronicle_at_bottom(guild: discord.Guild):
             pass
         except Exception as e:
             _g.logger.debug(f"Failed to delete old chronicle: {e}")
-    
+
     # Build and post new chronicle
     try:
         embed = await _build_forge_chronicle_embed(guild)
@@ -2875,7 +2833,7 @@ def _resolve_killteam_for_member(
     try:
         roles = getattr(member, "roles", []) or []
         # map lower->canonical for fast lookup
-        canonical_map = {kt.lower(): kt for kt in _b('KILL_TEAMS')}
+        canonical_map = {kt.lower(): kt for kt in _b("KILL_TEAMS")}
 
         for r in roles:
             # 1) Check role ID against ALLOWED_KT_ROLE_IDS (most reliable)
@@ -2918,8 +2876,8 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
 
         # 2) command teams (check for actual roles matching _b('COMMAND_TEAMS'))
         try:
-            names = _b('_canonical_role_names')(member)
-            for cmd_team in _b('COMMAND_TEAMS'):
+            names = _b("_canonical_role_names")(member)
+            for cmd_team in _b("COMMAND_TEAMS"):
                 if cmd_team in names and cmd_team not in out:
                     out.append(cmd_team)
         except Exception:
@@ -2937,9 +2895,7 @@ def _resolve_killteams_for_member(member: discord.User | discord.Member) -> List
     return res
 
 
-def _get_techmarine_acknowledgment_blended(
-    member: "discord.Member", bearer_studs: int
-) -> str:
+def _get_techmarine_acknowledgment_blended(member: "discord.Member", bearer_studs: int) -> str:
     """Get a dynamically blended acknowledgment phrase for forge_rite.
 
     Blends rank-specific and stud-specific acknowledgments based on:
@@ -2956,7 +2912,7 @@ def _get_techmarine_acknowledgment_blended(
     # Determine bearer's rank name (highest priority first based on _b('RANK_ROLES_PRIORITY') order)
     bearer_rank_name = None
     try:
-        for rank_name in _b('RANK_ROLES_PRIORITY'):
+        for rank_name in _b("RANK_ROLES_PRIORITY"):
             for r in getattr(member, "roles", []) or []:
                 rn = (getattr(r, "name", "") or "").strip()
                 if rn == rank_name:
@@ -2987,9 +2943,7 @@ def _get_techmarine_acknowledgment_blended(
     else:
         # Use stud-tier acknowledgment via shared _studs_tier()
         studs_tier = _studs_tier(bearer_studs)
-        stud_options = TECHMARINE_STUDS_ACKNOWLEDGMENT.get(
-            studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
-        )
+        stud_options = TECHMARINE_STUDS_ACKNOWLEDGMENT.get(studs_tier, TECHMARINE_STUDS_ACKNOWLEDGMENT[1])
         return random.choice(stud_options)
 
 
@@ -2998,7 +2952,6 @@ def _get_techmarine_acknowledgment_blended(
 # FORGEMASTER_SELF_ATTESTATION_*, CHAPTER_STUDS_FLAVOR, ORDO_XENOS_HONORS_*,
 # RANK_STUDS_COMMENTARY, SERVICE_STUDS_*, DEATHWATCH_STUD_*, OATHSWORN_*) lives
 # in flavor_text.py.
-
 
 
 def _get_emoji_by_name(guild: discord.Guild, name: str) -> Optional[str]:
@@ -3031,10 +2984,10 @@ def _blend_forgemaster_self_attestation(member_chapter: str) -> str:
     # 80% role (generic Mechanicus), 20% chapter
     if random.random() < 0.8:
         return random.choice(FORGEMASTER_SELF_ATTESTATION_GENERIC)
-    
+
     if chapter_options:
         return random.choice(chapter_options)
-    
+
     # Fallback to generic if chapter not in dict
     return random.choice(FORGEMASTER_SELF_ATTESTATION_GENERIC)
 
@@ -3104,9 +3057,7 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     return "line"
 
 
-def _blend_stud_flavor_by_rank(
-    member_chapter: str, member_rank_name: str, pip_type: str
-) -> str:
+def _blend_stud_flavor_by_rank(member_chapter: str, member_rank_name: str, pip_type: str) -> str:
     """Blend chapter identity and role identity based on rank hierarchy.
 
     - Line (KB/Oathsworn/KT members): 80% chapter, 20% role
@@ -3178,9 +3129,7 @@ def _blend_stud_flavor_by_rank(
         return random.choice(veneration_pool)
 
 
-def _get_stud_marking_recipients(
-    member: discord.Member, guild: discord.Guild
-) -> Tuple[str, str]:
+def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -> Tuple[str, str]:
     """Determine who receives stud marking and who witnesses. Returns (primary, secondary).
 
     The Apothecarion always performs the actual stud implantation (surgical procedure).
@@ -3196,7 +3145,7 @@ def _get_stud_marking_recipients(
     def strip_studs(name: str) -> str:
         """Remove service studs (●⚬) from a name."""
         return name.replace("●", "").replace("⚬", "").strip()
-    
+
     def find_company_apothecary(company_name: str) -> Optional[discord.Member]:
         """Find the Watch Apothecary for a specific company."""
         try:
@@ -3211,7 +3160,7 @@ def _get_stud_marking_recipients(
         except Exception:
             pass
         return None
-    
+
     def find_chief_apothecary() -> Optional[discord.Member]:
         """Find the Chief Apothecary."""
         try:
@@ -3228,7 +3177,7 @@ def _get_stud_marking_recipients(
 
     # Determine highest rank
     member_rank_name = "Watch Brother"
-    for rank in _b('RANK_ROLES_PRIORITY'):
+    for rank in _b("RANK_ROLES_PRIORITY"):
         if rank in role_names:
             member_rank_name = rank
             break
@@ -3267,7 +3216,7 @@ def _get_stud_marking_recipients(
     # All company members (command, specialists, line, kill team):
     # Try Company Apothecary → Chief Apothecary → CO
     member_company = _find_company_or_chapter(member)
-    
+
     # Special case: if member IS the Watch Apothecary, go to Chief directly
     if member_rank_name == "Watch Apothecary":
         chief_apo = find_chief_apothecary()
@@ -3277,7 +3226,7 @@ def _get_stud_marking_recipients(
             clean_name = strip_studs(chief_apo.display_name)
             return f"The {emoji_prefix}**{clean_name}** attends.", ""
         return "Report to the Chief Apothecary.", ""
-    
+
     # Try to find Company Apothecary first
     if member_company:
         company_apo = find_company_apothecary(member_company)
@@ -3286,7 +3235,7 @@ def _get_stud_marking_recipients(
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(company_apo.display_name)
             return f"Report to {emoji_prefix}**{clean_name}**.", ""
-    
+
     # Fallback: Chief Apothecary
     chief_apo = find_chief_apothecary()
     if chief_apo:
@@ -3294,20 +3243,14 @@ def _get_stud_marking_recipients(
         emoji_prefix = f"{emoji} " if emoji else ""
         clean_name = strip_studs(chief_apo.display_name)
         return f"Report to {emoji_prefix}**{clean_name}**.", ""
-    
+
     # Fallback: Company CO (Captain/Lieutenant)
     if member_company:
         captains, lieutenants = _find_company_command_staff(guild, member_company)
-        co_member = (
-            lieutenants[0] if lieutenants else (captains[0] if captains else None)
-        )
+        co_member = lieutenants[0] if lieutenants else (captains[0] if captains else None)
         if co_member:
             co_roles = {getattr(r, "name", "") for r in co_member.roles}
-            co_rank = (
-                "Watch Lieutenant"
-                if "Watch Lieutenant" in co_roles
-                else "Watch Captain"
-            )
+            co_rank = "Watch Lieutenant" if "Watch Lieutenant" in co_roles else "Watch Captain"
             emoji = _get_rank_emoji(guild, co_rank)
             emoji_prefix = f"{emoji} " if emoji else ""
             clean_name = strip_studs(co_member.display_name)
@@ -3341,7 +3284,7 @@ def _get_service_studs_announcement(
 
     # Determine raw rank name for emoji lookup
     member_rank_name = "Watch Brother"
-    for rank in _b('RANK_ROLES_PRIORITY'):
+    for rank in _b("RANK_ROLES_PRIORITY"):
         if rank in role_names:
             member_rank_name = rank
             break
@@ -3352,7 +3295,7 @@ def _get_service_studs_announcement(
     # This is the true count based on time and AAR, not displayed count
     tier = _studs_tier(earned_studs)
     studs_pips = _studs_pips(earned_studs)
-    
+
     # Also track what they'll have after this announcement for pip change display
     new_total = displayed_studs + new_studs
 
@@ -3362,11 +3305,7 @@ def _get_service_studs_announcement(
 
     # Get emojis for rank and chapter
     rank_emoji = _get_rank_emoji(guild, member_rank_name)
-    chapter_emoji = (
-        _get_emoji_by_name(guild, member_chapter)
-        if member_chapter != "Unknown"
-        else None
-    )
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
 
     # Build embed
     embed = discord.Embed(
@@ -3412,9 +3351,7 @@ def _get_service_studs_announcement(
         bearer_value += f"\n*{member_title}*"
     if member_chapter and member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = (
-            "REDACTED" if member_chapter == "Black Shield" else member_chapter
-        )
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if earned_studs > 0:
         bearer_value += f"\nService Studs: [{studs_pips}] ({earned_studs})"
@@ -3472,9 +3409,7 @@ def _get_service_studs_announcement(
         ordo_honor = random.choice(ORDO_XENOS_HONORS_TIER3)
 
     # Format pronouns (always second person for awarding to others)
-    ordo_honor = ordo_honor.format(
-        possessive="your", possessive_cap="Your", object="you"
-    )
+    ordo_honor = ordo_honor.format(possessive="your", possessive_cap="Your", object="you")
 
     # Determine which pip type is being earned (priority: auramite > plasteel)
     if delta_auramite > 0:
@@ -3483,9 +3418,7 @@ def _get_service_studs_announcement(
         pip_type = "plasteel"
 
     # Blend chapter and role flavor based on rank hierarchy (italics + quotes for honor/reverential phrases)
-    blended_flavor = _blend_stud_flavor_by_rank(
-        member_chapter, member_rank_name, pip_type
-    )
+    blended_flavor = _blend_stud_flavor_by_rank(member_chapter, member_rank_name, pip_type)
 
     embed.add_field(
         name="▸ Honor of the Long Watch",
@@ -3533,11 +3466,7 @@ def _get_oathsworn_announcement(
 
     # Get emojis
     rank_emoji = _get_rank_emoji(guild, "Watch Veteran")
-    chapter_emoji = (
-        _get_emoji_by_name(guild, member_chapter)
-        if member_chapter != "Unknown"
-        else None
-    )
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
     oathsworn_emoji = _get_emoji_by_name(guild, "Oathsworn")
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
 
@@ -3572,18 +3501,14 @@ def _get_oathsworn_announcement(
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
-        candidate_value = (
-            f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
-        )
+        candidate_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {display_name}**"
     else:
         candidate_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
     if member_title:
         candidate_value += f"\n*{member_title}*"
     if member_chapter != "Unknown":
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = (
-            "REDACTED" if member_chapter == "Black Shield" else member_chapter
-        )
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         candidate_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     candidate_value += f"\nService Studs: **[{studs_pips}]** ({earned_studs})"
     embed.add_field(name="▸ Candidate", value=candidate_value, inline=True)
@@ -3621,9 +3546,7 @@ def _get_oathsworn_announcement(
     # Content with mentions (Watch Captain/Lieutenant for visibility)
     watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
     watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-    captain_mention = (
-        watch_captain_role.mention if watch_captain_role else "@Watch Captain"
-    )
+    captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
     lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
     content = f"{captain_mention} {lt_mention} {member.mention}"
 
@@ -3635,7 +3558,7 @@ def _get_member_rank_title(member: discord.Member) -> str:
     roles = getattr(member, "roles", []) or []
     role_names = [getattr(r, "name", "") for r in roles]
     # Check ranks in priority order (highest first)
-    for rank in _b('RANK_ROLES_PRIORITY'):
+    for rank in _b("RANK_ROLES_PRIORITY"):
         if rank in role_names:
             return RANK_HONORIFICS.get(rank, rank)
     return "Brother"
@@ -3648,8 +3571,8 @@ def _compute_member_service_studs(member: discord.Member) -> int:
     Only Watch Veteran rank and above are eligible.
     """
     try:
-        idx_veteran = _b('_role_index')("Watch Veteran")
-        highest_idx = _b('get_highest_rank_index')(member)
+        idx_veteran = _b("_role_index")("Watch Veteran")
+        highest_idx = _b("get_highest_rank_index")(member)
 
         # Must be Watch Veteran or higher
         if idx_veteran is None or highest_idx is None:
@@ -3675,7 +3598,7 @@ def _compute_member_service_studs(member: discord.Member) -> int:
         studs_time = weeks // 4
 
         # Get AAR points
-        stats = _b('compute_stats_for_user')(str(getattr(member, "id", "")))
+        stats = _b("compute_stats_for_user")(str(getattr(member, "id", "")))
         try:
             aar_points = int(round(float(stats.get("aar_points", 0) or 0)))
         except Exception:
@@ -3703,11 +3626,11 @@ def _get_bearer_rank_and_title(
     company = None
     command_team = None
     for rn in role_names:
-        if rn in _b('KILL_TEAMS') and not kill_team:
+        if rn in _b("KILL_TEAMS") and not kill_team:
             kill_team = rn
         if "Watch Company" in rn and not company:
             company = rn
-        if rn in _b('COMMAND_TEAMS') and not command_team:
+        if rn in _b("COMMAND_TEAMS") and not command_team:
             command_team = rn
 
     # Determine rank honorific and which rank was matched
@@ -3760,9 +3683,7 @@ def _get_bearer_rank_and_title(
                                     cap_name = cap_name[len(prefix) :].lstrip()
                                     break
                             # Strip stud pips from name
-                            cap_name = (
-                                cap_name.replace("●", "").replace("⚬", "").strip()
-                            )
+                            cap_name = cap_name.replace("●", "").replace("⚬", "").strip()
                             captain_name = cap_name
                     except Exception:
                         pass
@@ -3831,7 +3752,7 @@ def _get_bearer_rank_and_title(
     title_parts = []
     if kill_team:
         title_parts.append(kill_team)
-    
+
     # Check if member is in Dreadnought Cadre
     role_ids = {getattr(r, "id", 0) for r in roles}
     is_dreadnought = DREADNOUGHT_CADRE_ROLE_ID in role_ids
@@ -3839,7 +3760,7 @@ def _get_bearer_rank_and_title(
         title_parts.append("Dreadnought Cadre")
     elif company:
         title_parts.append(company)
-    
+
     if not title_parts and command_team:
         title_parts.append(command_team)
 
@@ -3852,7 +3773,7 @@ def _get_bearer_home_chapter(user: discord.User | discord.Member) -> Optional[st
     """Return the bearer's home chapter only (not company). Used for chapter blessings."""
     try:
         roles = getattr(user, "roles", []) or []
-        hc_lower = {hc.lower(): hc for hc in _b('HOME_CHAPTERS')}
+        hc_lower = {hc.lower(): hc for hc in _b("HOME_CHAPTERS")}
         for r in roles:
             rn = (getattr(r, "name", "") or "").strip()
             if rn and rn.lower() in hc_lower:
@@ -3881,7 +3802,7 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
 
         # 2) If user is in High Command, return Jericho High Command
         try:
-            names = _b('_canonical_role_names')(user)
+            names = _b("_canonical_role_names")(user)
             if any(r in names for r in HIGH_COMMAND_ROLES):
                 return "Jericho High Command"
         except Exception:
@@ -3894,13 +3815,11 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
     return None
 
 
-@_g.bot.tree.command(
-    name="set_rite", description="Set your personal consecration rite text."
-)
+@_g.bot.tree.command(name="set_rite", description="Set your personal consecration rite text.")
 @app_commands.describe(rite_text="Your consecration rite text (multiline allowed)")
 async def _set_rite(interaction: discord.Interaction, rite_text: str):
     # Restrict to Forgemaster or Techmarine
-    allowed, _role_key = _b('_is_techmarine_or_forgemaster')(interaction.user)
+    allowed, _role_key = _b("_is_techmarine_or_forgemaster")(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -3951,7 +3870,7 @@ async def _attest(
     import random
 
     # Permission check: caller must be techmarine or forgemaster to run command
-    allowed, _caller_role_key = _b('_is_techmarine_or_forgemaster')(interaction.user)
+    allowed, _caller_role_key = _b("_is_techmarine_or_forgemaster")(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -4002,17 +3921,15 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     # Check armor integrity state BEFORE clearing
     # ─────────────────────────────────────────────────────────────────────────
-    current_damage_tier = _b('_get_member_damage_tier')(member)
+    current_damage_tier = _b("_get_member_damage_tier")(member)
     was_damaged = current_damage_tier is not None
     spirit_fractured = await _check_spirit_fracture(int(member.id))
 
     # Get armor status for status lines
-    armor_status = _get_armor_status_for_blessing(
-        was_damaged, current_damage_tier, spirit_fractured
-    )
+    armor_status = _get_armor_status_for_blessing(was_damaged, current_damage_tier, spirit_fractured)
 
     # Find the responsible attestor based on BEARER's company/role (not caller)
-    attestor_member, role_key = _b('_find_responsible_attestor')(member, interaction.guild)
+    attestor_member, role_key = _b("_find_responsible_attestor")(member, interaction.guild)
     if attestor_member is None:
         # No forgemaster found in guild - fall back to caller with their actual role
         attestor_member = interaction.user
@@ -4023,7 +3940,7 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     charges_required = 1  # Standard blessing
     is_intensive = intensive
-    
+
     if intensive:
         charges_required = _get_intensive_charge_cost(current_damage_tier, spirit_fractured)
         if charges_required == 0:
@@ -4040,16 +3957,16 @@ async def _attest(
     # Track charge contributions: list of (user_id, charges_to_consume)
     blessing_pool_contributions = []
     is_collaborative = False
-    
+
     if not force:
         invoker_id = int(interaction.user.id)
         attestor_id = int(attestor_member.id)
-        invoker_is_attestor = (invoker_id == attestor_id)
-        
+        invoker_is_attestor = invoker_id == attestor_id
+
         # Get available charges for both parties
         attestor_charges = await _get_techmarine_available_charges(attestor_id)
         invoker_charges = await _get_techmarine_available_charges(invoker_id) if not invoker_is_attestor else 0
-        
+
         if invoker_is_attestor:
             # Solo mode: invoker IS the attestor
             if attestor_charges >= charges_required:
@@ -4063,7 +3980,9 @@ async def _attest(
                     )
                 else:
                     _, _, attestor_time_until_regen = await _check_techmarine_can_bless(attestor_id)
-                    regen_str = _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
+                    regen_str = (
+                        _format_cooldown_time(attestor_time_until_regen) if attestor_time_until_regen else "4h 48m"
+                    )
                     await interaction.response.send_message(
                         f"Your blessing pool is depleted. The sacred oils must be replenished.\n"
                         f"Next blessing available in: **{regen_str}**",
@@ -4073,7 +3992,7 @@ async def _attest(
         else:
             # Invoker is different from attestor - collaborative pooling possible
             combined_charges = attestor_charges + invoker_charges
-            
+
             if attestor_charges >= charges_required:
                 # Attestor alone can handle it
                 blessing_pool_contributions = [(attestor_id, charges_required)]
@@ -4111,7 +4030,7 @@ async def _attest(
                         ephemeral=True,
                     )
                 return
-    
+
     # ─────────────────────────────────────────────────────────────────────────
     # Forge balance check - every blessing drains forge reserves
     # ─────────────────────────────────────────────────────────────────────────
@@ -4120,7 +4039,7 @@ async def _attest(
         # Calculate forge drain based on tier being healed
         drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
         forge_drain_cost = drain_per_charge * charges_required
-        
+
         # Check if forge has sufficient balance
         forge_available = await _get_forge_pool_available()
         if forge_available < forge_drain_cost:
@@ -4152,12 +4071,12 @@ async def _attest(
             attestor_comp = "Jericho High Command"
         else:
             attestor_comp = _find_company_or_chapter(attestor_member) or "Unknown"
-        
+
         if _caller_role_key == "forgemaster":
             invoker_comp = "Jericho High Command"
         else:
             invoker_comp = _find_company_or_chapter(interaction.user) or "Unknown"
-        
+
         if attestor_comp != invoker_comp:
             authority = f"{attestor_comp} & {invoker_comp}"
         else:
@@ -4174,9 +4093,7 @@ async def _attest(
 
     # Get techmarine's rank emoji for attestation
     tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
-    tech_rank_emoji = (
-        _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
-    )
+    tech_rank_emoji = _get_rank_emoji(interaction.guild, tech_rank_name) if interaction.guild else ""
 
     # Optional personal rite from the RESPONSIBLE attestor
     try:
@@ -4224,7 +4141,6 @@ async def _attest(
     # ─────────────────────────────────────────────────────────────────────────
     # Machine-spirit designation with armor integrity awareness
     # ─────────────────────────────────────────────────────────────────────────
-    import hashlib
 
     existing_spirit = await _get_machine_spirit(int(member.id))
     spirit_is_returning = False
@@ -4234,32 +4150,86 @@ async def _attest(
 
     if spirit_fractured:
         # Spirit was lost due to neglect at critical - generate new spirit (re-consecration)
-        spirit_hash = (
-            hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
-            .hexdigest()[:6]
-            .upper()
-        )
+        spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
         spirit_prefixes = [
             # Aggression/Combat
-            "FURY", "WRATH", "MORTIS", "VENATOR", "GLADIUS", "BELLATOR",
-            "FEROX", "CARNIFEX", "VINDICTA", "MALLEUS",
-            # Protection/Vigilance  
-            "AEGIS", "VIGIL", "PURITY", "CUSTODIAN", "SENTINEL", "BULWARK",
-            "DEFENSOR", "CASTELLAN", "PRAESIDIUM", "SCUTUM",
+            "FURY",
+            "WRATH",
+            "MORTIS",
+            "VENATOR",
+            "GLADIUS",
+            "BELLATOR",
+            "FEROX",
+            "CARNIFEX",
+            "VINDICTA",
+            "MALLEUS",
+            # Protection/Vigilance
+            "AEGIS",
+            "VIGIL",
+            "PURITY",
+            "CUSTODIAN",
+            "SENTINEL",
+            "BULWARK",
+            "DEFENSOR",
+            "CASTELLAN",
+            "PRAESIDIUM",
+            "SCUTUM",
             # Strength/Endurance
-            "FERRUM", "ADAMANT", "TITANICUS", "INVICTUS", "FORTIS",
+            "FERRUM",
+            "ADAMANT",
+            "TITANICUS",
+            "INVICTUS",
+            "FORTIS",
             # Mechanicus/Sacred
-            "SACRIS", "SANCTUS", "FERVOR", "COGNIS", "ANIMUS",
+            "SACRIS",
+            "SANCTUS",
+            "FERVOR",
+            "COGNIS",
+            "ANIMUS",
             # Predatory
-            "TALON", "RAPTOR", "LUPUS", "AQUILA", "CORVUS",
+            "TALON",
+            "RAPTOR",
+            "LUPUS",
+            "AQUILA",
+            "CORVUS",
         ]
         spirit_suffixes = [
             # Greek letters (expanded)
-            "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ",
-            "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ", "Υ",
-            "Φ", "Χ", "Ψ", "Ω",
+            "Α",
+            "Β",
+            "Γ",
+            "Δ",
+            "Ε",
+            "Ζ",
+            "Η",
+            "Θ",
+            "Ι",
+            "Κ",
+            "Λ",
+            "Μ",
+            "Ν",
+            "Ξ",
+            "Ο",
+            "Π",
+            "Ρ",
+            "Σ",
+            "Τ",
+            "Υ",
+            "Φ",
+            "Χ",
+            "Ψ",
+            "Ω",
             # Roman numerals
-            "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+            "I",
+            "II",
+            "III",
+            "IV",
+            "V",
+            "VI",
+            "VII",
+            "VIII",
+            "IX",
+            "X",
         ]
         spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
         await _set_machine_spirit(int(member.id), spirit_designation)
@@ -4273,32 +4243,86 @@ async def _attest(
             spirit_is_returning = True
     else:
         # First blessing - generate and store new spirit
-        spirit_hash = (
-            hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode())
-            .hexdigest()[:6]
-            .upper()
-        )
+        spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
         spirit_prefixes = [
             # Aggression/Combat
-            "FURY", "WRATH", "MORTIS", "VENATOR", "GLADIUS", "BELLATOR",
-            "FEROX", "CARNIFEX", "VINDICTA", "MALLEUS",
-            # Protection/Vigilance  
-            "AEGIS", "VIGIL", "PURITY", "CUSTODIAN", "SENTINEL", "BULWARK",
-            "DEFENSOR", "CASTELLAN", "PRAESIDIUM", "SCUTUM",
+            "FURY",
+            "WRATH",
+            "MORTIS",
+            "VENATOR",
+            "GLADIUS",
+            "BELLATOR",
+            "FEROX",
+            "CARNIFEX",
+            "VINDICTA",
+            "MALLEUS",
+            # Protection/Vigilance
+            "AEGIS",
+            "VIGIL",
+            "PURITY",
+            "CUSTODIAN",
+            "SENTINEL",
+            "BULWARK",
+            "DEFENSOR",
+            "CASTELLAN",
+            "PRAESIDIUM",
+            "SCUTUM",
             # Strength/Endurance
-            "FERRUM", "ADAMANT", "TITANICUS", "INVICTUS", "FORTIS",
+            "FERRUM",
+            "ADAMANT",
+            "TITANICUS",
+            "INVICTUS",
+            "FORTIS",
             # Mechanicus/Sacred
-            "SACRIS", "SANCTUS", "FERVOR", "COGNIS", "ANIMUS",
+            "SACRIS",
+            "SANCTUS",
+            "FERVOR",
+            "COGNIS",
+            "ANIMUS",
             # Predatory
-            "TALON", "RAPTOR", "LUPUS", "AQUILA", "CORVUS",
+            "TALON",
+            "RAPTOR",
+            "LUPUS",
+            "AQUILA",
+            "CORVUS",
         ]
         spirit_suffixes = [
             # Greek letters (expanded)
-            "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ",
-            "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ", "Υ",
-            "Φ", "Χ", "Ψ", "Ω",
+            "Α",
+            "Β",
+            "Γ",
+            "Δ",
+            "Ε",
+            "Ζ",
+            "Η",
+            "Θ",
+            "Ι",
+            "Κ",
+            "Λ",
+            "Μ",
+            "Ν",
+            "Ξ",
+            "Ο",
+            "Π",
+            "Ρ",
+            "Σ",
+            "Τ",
+            "Υ",
+            "Φ",
+            "Χ",
+            "Ψ",
+            "Ω",
             # Roman numerals
-            "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+            "I",
+            "II",
+            "III",
+            "IV",
+            "V",
+            "VI",
+            "VII",
+            "VIII",
+            "IX",
+            "X",
         ]
         spirit_designation = f"{random.choice(spirit_prefixes)}-{spirit_hash}-{random.choice(spirit_suffixes)}"
         await _set_machine_spirit(int(member.id), spirit_designation)
@@ -4344,7 +4368,7 @@ async def _attest(
     # Intensive: guaranteed full heal to nominal (no roll, no crits)
     # ─────────────────────────────────────────────────────────────────────────
     blessing_result_tier = current_damage_tier  # Track resulting damage tier
-    
+
     if is_intensive:
         # Intensive mode: guaranteed full heal, no roll
         blessing_roll_outcome = "normal"  # For display purposes
@@ -4376,7 +4400,7 @@ async def _attest(
                 await _consume_blessing(contrib_user_id)
             elif contrib_charges > 1:
                 await _consume_multiple_blessings(contrib_user_id, contrib_charges)
-    
+
     # Deduct forge reserves (unless force override)
     if not force and forge_drain_cost > 0:
         await _deduct_forge_pool_balance(forge_drain_cost, current_damage_tier)
@@ -4397,9 +4421,7 @@ async def _attest(
         bearer_rank_name = "Watch Brother"
 
     rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
-    chapter_emoji = (
-        _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
-    )
+    chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
 
     embed = discord.Embed(
         title="⚙️ COGITATOR RITE — FORGE ATTESTATION",
@@ -4419,9 +4441,7 @@ async def _attest(
         bearer_value += f"\n*{bearer_title}*"
     if bearer_chapter:
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = (
-            "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
-        )
+        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
@@ -4435,25 +4455,13 @@ async def _attest(
     rite_status = armor_status.get("rite", "MAINTENANCE")
 
     # Use appropriate emoji based on status
-    plate_emoji = (
-        "🟢"
-        if plate_status == "NOMINAL"
-        else ("🔴" if "CRITICAL" in plate_status else "⚠️")
-    )
-    spirit_emoji = (
-        "🟢"
-        if spirit_status == "STABLE"
-        else ("🔴" if spirit_status == "FRACTURED" else "⚠️")
-    )
-    rite_emoji = (
-        "🟢"
-        if rite_status == "MAINTENANCE"
-        else ("⚠️" if rite_status == "RE-CONSECRATION" else "🟢")
-    )
+    plate_emoji = "🟢" if plate_status == "NOMINAL" else ("🔴" if "CRITICAL" in plate_status else "⚠️")
+    spirit_emoji = "🟢" if spirit_status == "STABLE" else ("🔴" if spirit_status == "FRACTURED" else "⚠️")
+    rite_emoji = "🟢" if rite_status == "MAINTENANCE" else ("⚠️" if rite_status == "RE-CONSECRATION" else "🟢")
 
     # Get MachineSpirit emoji for spirit field
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
-    
+
     status_value = (
         f"{machine_spirit_emoji} `{spirit_designation}`\n"
         f"*{spirit_status_text}*\n"
@@ -4467,7 +4475,7 @@ async def _attest(
     # Rite Outcome field (shows roll result)
     # ─────────────────────────────────────────────────────────────────────────
     charges_text = f" ({charges_required} charges)" if is_intensive and charges_required > 1 else ""
-    
+
     if blessing_roll_outcome == "crit_fail":
         outcome_emoji = "⚠️"
         outcome_title = "RITE RESISTED"
@@ -4509,20 +4517,20 @@ async def _attest(
                 outcome_text = f"Damage repaired: {current_damage_tier.upper()} → NOMINAL"
             else:
                 outcome_text = "Maintenance rites complete.\nThe machine spirit rests content."
-    
+
     outcome_value = f"{outcome_emoji} **{outcome_title}**\n{outcome_text}"
-    
+
     # Add forge cost info if applicable
     if not force and forge_drain_cost > 0:
         drain_per_charge = FORGE_DRAIN_PER_CHARGE.get(current_damage_tier, 1)
         forge_remaining = await _get_forge_pool_available()
-        
+
         if charges_required > 1:
             forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts ({drain_per_charge}×{charges_required}) → {forge_remaining} pts"
         else:
             forge_cost_text = f"\n\n⚙️ Forge: **-{forge_drain_cost}** pts → {forge_remaining} pts"
         outcome_value += forge_cost_text
-    
+
     embed.add_field(name="▸ Rite Outcome", value=outcome_value, inline=True)
 
     # Determine whether to show extended fields (Honor of Long Watch, Litany)
@@ -4541,13 +4549,9 @@ async def _attest(
 
         # Format pronouns based on self-blessing
         if is_self_blessing:
-            ordo_honor_embed = ordo_honor_embed.format(
-                possessive="my", possessive_cap="My", object="me"
-            )
+            ordo_honor_embed = ordo_honor_embed.format(possessive="my", possessive_cap="My", object="me")
         else:
-            ordo_honor_embed = ordo_honor_embed.format(
-                possessive="your", possessive_cap="Your", object="you"
-            )
+            ordo_honor_embed = ordo_honor_embed.format(possessive="your", possessive_cap="Your", object="you")
 
         if chapter_blessing:
             embed.add_field(
@@ -4565,13 +4569,11 @@ async def _attest(
     # Litany to the Machine-Spirit (only for unbound/fractured spirits with custom rite)
     if show_extended_fields and rite_text:
         rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
-        embed.add_field(
-            name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False
-        )
+        embed.add_field(name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False)
 
     # Attestation (self-blessing uses different field name, collaborative shows both Techmarines)
     rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
-    
+
     if is_collaborative:
         # Collaborative attestation: show both Techmarines with charge contributions
         # Get invoker's rank emoji
@@ -4579,7 +4581,7 @@ async def _attest(
         invoker_rank_emoji = _get_rank_emoji(interaction.guild, invoker_rank_name) if interaction.guild else ""
         invoker_prefix = f"{invoker_rank_emoji} " if invoker_rank_emoji else ""
         invoker_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
-        
+
         # Build contribution lines
         contrib_lines = []
         for contrib_user_id, contrib_charges in blessing_pool_contributions:
@@ -4587,7 +4589,7 @@ async def _attest(
                 contrib_lines.append(f"{rank_emoji_prefix}**{attester}** ({contrib_charges})")
             else:
                 contrib_lines.append(f"{invoker_prefix}**{invoker_name}** ({contrib_charges})")
-        
+
         tech_value = f'{chr(10).join(contrib_lines)}\n{authority} • {ts}\n*"{sacred_phrase}"*'
         attestation_field_name = "▸ Joint Attestation"
     else:
@@ -4595,7 +4597,7 @@ async def _attest(
         attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
         tech_value = f'{attester_with_rank}\n{authority} • {ts}\n*"{sacred_phrase}"*'
         attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
-    
+
     embed.add_field(name=attestation_field_name, value=tech_value, inline=True)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -4605,10 +4607,10 @@ async def _attest(
     is_significant_event, spirit_event = _classify_forge_rite_event(
         spirit_is_first, spirit_is_reconsecrated, spirit_is_restored
     )
-    
+
     # Always use the full embed format
     display_embed = embed
-    
+
     # Create the view with Log to Forge button
     log_view = LogToForgeView(
         embed=display_embed,
@@ -4620,7 +4622,7 @@ async def _attest(
         is_intensive=is_intensive,
         is_significant=is_significant_event,
     )
-    
+
     # Send ephemeral blessing with button and mention
     send_succeeded = False
     try:
@@ -4633,12 +4635,10 @@ async def _attest(
         send_succeeded = True
     except Exception:
         try:
-            await interaction.response.send_message(
-                "Failed to post attestation.", ephemeral=True
-            )
+            await interaction.response.send_message("Failed to post attestation.", ephemeral=True)
         except Exception:
             pass
-    
+
     # Record rite in chronicle (tracks all blessings, not just logged ones)
     # Skip chronicle entry when force override is used (Forgemaster testing/admin use)
     if send_succeeded and not force:
@@ -4649,7 +4649,8 @@ async def _attest(
             spirit_designation=spirit_designation,
             spirit_event=spirit_event,
         )
-    
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Armor Status Command
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4710,7 +4711,7 @@ async def _show_armor_leaderboard(
     techmarine_id: Optional[int] = None,
 ):
     """Show top 10 brothers at risk of armor damage.
-    
+
     If company_filter is provided, only show brothers in that company.
     pool_remaining/pool_next_regen show invoker's blessing pool status.
     techmarine_id is used to check intensive scan status.
@@ -4719,7 +4720,7 @@ async def _show_armor_leaderboard(
     has_intensive = False
     if techmarine_id:
         has_intensive = await _has_intensive_scan(techmarine_id)
-    
+
     # Load all armor states
     armor_data = _load_armor_integrity()
 
@@ -4756,22 +4757,18 @@ async def _show_armor_leaderboard(
                 continue
 
         # Get damage tier from roles (more accurate than stored state)
-        current_tier = _b('_get_member_damage_tier')(member)
+        current_tier = _b("_get_member_damage_tier")(member)
         points_since_blessing = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
 
         # Roll detection for this brother (cached per AAR cycle)
-        scan_result = await _get_or_roll_scan_result(
-            user_id, current_tier, points_since_blessing, spirit_fractured
-        )
-        
+        scan_result = await _get_or_roll_scan_result(user_id, current_tier, points_since_blessing, spirit_fractured)
+
         # Intensive scan bypasses miss chance
         if has_intensive and not scan_result["detected"]:
             scan_result = {"detected": True, "predictive_warning": False, "miss_reason": None}
 
-        risk_score = _calculate_armor_risk_score(
-            current_tier, points_since_blessing, spirit_fractured
-        )
+        risk_score = _calculate_armor_risk_score(current_tier, points_since_blessing, spirit_fractured)
 
         # Include if they have risk OR if there's a predictive warning OR if scan missed (damaged but undetected)
         if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
@@ -4786,13 +4783,13 @@ async def _show_armor_leaderboard(
         can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
         if can_receive:
             available_brothers.append((member, state, tier, risk_score, scan_result))
-    
+
     # Take top 10 from available brothers
     top_10 = available_brothers[:10]
-    
+
     # Randomize only nominal and undetected brothers (damaged tiers stay risk-ordered)
     import random
-    
+
     def _get_display_tier(entry):
         """Get display tier for grouping (detected status + damage tier)."""
         _, state, tier, _, scan_result = entry
@@ -4802,16 +4799,16 @@ async def _show_armor_leaderboard(
         if fractured:
             return "fractured"
         return tier or "nominal"
-    
+
     # Split into risk-ordered (damaged tiers) and randomized (nominal/undetected)
     damaged_entries = [e for e in top_10 if _get_display_tier(e) not in ("nominal", "undetected")]
     nominal_entries = [e for e in top_10 if _get_display_tier(e) == "nominal"]
     undetected_entries = [e for e in top_10 if _get_display_tier(e) == "undetected"]
-    
+
     # Damaged stay sorted by risk score (already sorted), randomize nominal/undetected
     random.shuffle(nominal_entries)
     random.shuffle(undetected_entries)
-    
+
     # Reassemble: damaged first (by risk), then nominal (random), then undetected (random)
     top_10 = damaged_entries + nominal_entries + undetected_entries
 
@@ -4825,11 +4822,11 @@ async def _show_armor_leaderboard(
         with_risk_desc = "*Top 10 brothers requiring attention*"
 
     # Get MachineSpirit emoji
-    machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
-    
+    _machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"  # Reserved for future use
+
     # Build intensive scan indicator for embed description
-    intensive_indicator = f"\n🔬 **Intensive Scan ACTIVE** — 100% detection" if has_intensive else ""
-    
+    intensive_indicator = "\n🔬 **Intensive Scan ACTIVE** — 100% detection" if has_intensive else ""
+
     if not top_10:
         embed = discord.Embed(
             title="᛭⋅ ARMOR INTEGRITY SCAN ⋅᛭",
@@ -4873,20 +4870,14 @@ async def _show_armor_leaderboard(
 
         # Get home chapter emoji
         bearer_chapter = _get_bearer_home_chapter(member)
-        chapter_emoji = (
-            _get_emoji_by_name(guild, bearer_chapter)
-            if bearer_chapter and guild
-            else None
-        )
+        chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
         chapter_str = f"{chapter_emoji}" if chapter_emoji else ""
 
         # Handle missed scans - show name but mask data
         if scan_missed:
             icon = "⚫"
             chapter_sep = f"{chapter_str} · " if chapter_str else "· "
-            lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}???"
-            )
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}???")
             continue
 
         # Status icon - predictive warnings get special indicator
@@ -4909,14 +4900,10 @@ async def _show_armor_leaderboard(
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         if icon == "🟢":
             # Nominal brothers don't need cycle count shown
-            lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}"
-            )
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}")
         else:
             # At-risk/damaged brothers show cycles for triage
-            lines.append(
-                f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c"
-            )
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c")
 
     embed.add_field(
         name="▸ Brothers at Risk",
@@ -4945,7 +4932,7 @@ async def _show_armor_leaderboard(
             regen_icon = "🟡"
         else:
             regen_icon = "🟢"
-        
+
         if pool_next_regen and pool_remaining < BLESSING_POOL_MAX:
             hours, remainder = divmod(int(pool_next_regen.total_seconds()), 3600)
             minutes = remainder // 60
@@ -4985,9 +4972,7 @@ async def _show_armor_leaderboard(
 async def _armor_status(interaction: discord.Interaction):
     """Display armor integrity leaderboard scoped by role."""
     # Permission check: caller must be techmarine or forgemaster
-    allowed, role_key = _b('_is_techmarine_or_forgemaster')(
-        interaction.user, command_name="armor_status"
-    )
+    allowed, role_key = _b("_is_techmarine_or_forgemaster")(interaction.user, command_name="armor_status")
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5054,9 +5039,7 @@ async def _requisition_supplies(
 ):
     """Techmarine command to requisition supplies from the forge pool."""
     # Permission check: caller must be techmarine or forgemaster
-    allowed, role_key = _b('_is_techmarine_or_forgemaster')(
-        interaction.user, command_name="requisition_supplies"
-    )
+    allowed, role_key = _b("_is_techmarine_or_forgemaster")(interaction.user, command_name="requisition_supplies")
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -5084,12 +5067,11 @@ async def _requisition_supplies(
     # Default: blessing charge requisition
     # Check current blessing pool status
     pool_remaining, pool_next_regen = await _get_blessing_pool_display(interaction.user.id)
-    
+
     # Don't allow requisition if pool is full
     if pool_remaining >= BLESSING_POOL_MAX:
         await interaction.response.send_message(
-            f"Your blessing pool is already full ({pool_remaining}/{BLESSING_POOL_MAX}). "
-            "No requisition needed.",
+            f"Your blessing pool is already full ({pool_remaining}/{BLESSING_POOL_MAX}). No requisition needed.",
             ephemeral=True,
         )
         return
@@ -5108,7 +5090,7 @@ async def _requisition_supplies(
     forge_status = await _get_forge_pool_status()
     available = forge_status["available"]
     cost = forge_status["cost_per_charge"]
-    
+
     if available < cost:
         await interaction.response.send_message(
             f"**Forge Requisition Denied**\n\n"
@@ -5121,7 +5103,7 @@ async def _requisition_supplies(
 
     # Attempt to consume the requisition
     success, message = await _consume_forge_requisition(interaction.user.id)
-    
+
     if not success:
         await interaction.response.send_message(
             f"**Forge Requisition Failed**\n\n{message}",
@@ -5132,44 +5114,44 @@ async def _requisition_supplies(
     # Grant an immediate blessing charge by resetting the oldest timestamp
     # This effectively gives them back one blessing slot immediately
     await _grant_blessing_charge(interaction.user.id)
-    
+
     # Get updated pool status
     new_pool, _ = await _get_blessing_pool_display(interaction.user.id)
     new_forge_status = await _get_forge_pool_status()
-    
-    # Get the Techmarine's name 
+
+    # Get the Techmarine's name
     tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
-    
+
     embed = discord.Embed(
         title="⚙️ FORGE REQUISITION APPROVED",
         description="*Sacred oils and blessed unguents have been allocated.*",
         color=0x2ECC71,
     )
-    
+
     embed.add_field(
         name="▸ Requisitioner",
         value=f"**{tech_name}**",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Blessing Pool",
         value=f"({new_pool}/{BLESSING_POOL_MAX})",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Forge Reserves",
         value=f"**{new_forge_status['available']}** armory points\n({new_forge_status['charges_available']} charges available)",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Daily Usage",
         value=f"{daily_used + 1}/{FORGE_POOL_DAILY_LIMIT} requisitions today",
         inline=True,
     )
-    
+
     embed.set_footer(text="The Omnissiah provides. Use these gifts wisely.")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -5179,21 +5161,24 @@ async def _grant_blessing_charge(user_id: int):
     """Grant one blessing charge to a Techmarine by removing the oldest timestamp."""
     async with _g.BLESSING_POOL_LOCK:
         data = _load_blessing_pool()
-        state = data.get(str(user_id), {
-            "remaining_blessings": BLESSING_POOL_MAX,
-            "blessing_timestamps": [],
-        })
-        
+        state = data.get(
+            str(user_id),
+            {
+                "remaining_blessings": BLESSING_POOL_MAX,
+                "blessing_timestamps": [],
+            },
+        )
+
         timestamps = state.get("blessing_timestamps", [])
-        
+
         if not timestamps:
             # Already at max, nothing to remove
             return
-        
+
         # Sort timestamps and remove the oldest one
         now = datetime.utcnow()
         regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
-        
+
         # Find active (non-regenerated) timestamps
         active_timestamps = []
         for ts_str in timestamps:
@@ -5204,17 +5189,17 @@ async def _grant_blessing_charge(user_id: int):
                     active_timestamps.append((ts, ts_str))
             except Exception:
                 pass
-        
+
         if active_timestamps:
             # Remove the oldest active timestamp (grants one blessing back)
             active_timestamps.sort(key=lambda x: x[0])
             remaining_ts = [ts_str for _, ts_str in active_timestamps[1:]]
         else:
             remaining_ts = []
-        
+
         state["blessing_timestamps"] = remaining_ts
         state["remaining_blessings"] = BLESSING_POOL_MAX - len(remaining_ts)
-        
+
         data[str(user_id)] = state
         _save_blessing_pool(data)
 
@@ -5225,7 +5210,7 @@ async def _handle_intensive_scan_requisition(
 ):
     """Handle intensive scan requisition (100% detection for this AAR cycle)."""
     tech_id = interaction.user.id
-    
+
     # Check if already has active intensive scan
     if await _has_intensive_scan(tech_id):
         await interaction.response.send_message(
@@ -5235,11 +5220,11 @@ async def _handle_intensive_scan_requisition(
             ephemeral=True,
         )
         return
-    
+
     # Get forge pool status
     forge_status = await _get_forge_pool_status()
     available = forge_status["available"]
-    
+
     if available < INTENSIVE_SCAN_COST:
         await interaction.response.send_message(
             f"**Intensive Scan Denied**\n\n"
@@ -5249,23 +5234,23 @@ async def _handle_intensive_scan_requisition(
             ephemeral=True,
         )
         return
-    
+
     # Consume the points directly from forge pool
     async with _g.FORGE_POOL_LOCK:
         pool_data = _load_forge_pool()
         max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
         pool_data["balance"] = pool_data.get("balance", max_balance) - INTENSIVE_SCAN_COST
         _save_forge_pool(pool_data)
-    
+
     # Activate intensive scan for this Techmarine
     await _purchase_intensive_scan(tech_id)
-    
+
     # Get updated forge status
     new_forge_status = await _get_forge_pool_status()
-    
+
     # Get the Techmarine's name
     tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
-    
+
     embed = discord.Embed(
         title="🔬 INTENSIVE SCAN ACTIVATED",
         description=(
@@ -5274,25 +5259,25 @@ async def _handle_intensive_scan_requisition(
         ),
         color=0x9B59B6,  # Purple for special scan
     )
-    
+
     embed.add_field(
         name="▸ Requisitioner",
         value=f"**{tech_name}**",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Cost",
         value=f"**{INTENSIVE_SCAN_COST}** armory points",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Forge Reserves",
         value=f"**{new_forge_status['available']}** pts remaining",
         inline=True,
     )
-    
+
     embed.add_field(
         name="▸ Effect",
         value=(
@@ -5302,7 +5287,7 @@ async def _handle_intensive_scan_requisition(
         ),
         inline=False,
     )
-    
+
     embed.set_footer(text="The Machine Spirit yields its secrets. Use /armor_status now.")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -5330,7 +5315,7 @@ def _format_time_ago(ts: datetime) -> str:
     now = datetime.utcnow()
     delta = now - ts
     total_seconds = int(delta.total_seconds())
-    
+
     if total_seconds < 60:
         return "just now"
     elif total_seconds < 3600:
@@ -5348,29 +5333,29 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     """Build the Forge Chronicle dashboard embed with atmospheric stats."""
     # Load chronicle data
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
-    
+        data = _b("_load_forge_chronicle")()
+
     rite_history = data.get("rite_history", [])
     techmarine_stats = data.get("techmarine_stats", {})
-    
+
     # Get forge pool status
     forge_status = await _get_forge_pool_status()
     available = forge_status["available"]
     max_balance = FORGE_POOL_MAX_CHARGES * FORGE_POOL_COST_PER_CHARGE
-    
+
     # Load machine spirits
     spirits_data = _load_machine_spirits()
-    total_spirits = len(spirits_data)
-    
+    _total_spirits = len(spirits_data)  # Reserved for future use
+
     # Load armor integrity data
     armor_data = _load_armor_integrity()
-    
+
     now = datetime.utcnow()
-    first_of_month = datetime(now.year, now.month, 1)
-    
+    _first_of_month = datetime(now.year, now.month, 1)  # Reserved for future use
+
     # Get MachineSpirit emoji
     machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
-    
+
     # ─────────────────────────────────────────────────────────────
     # Section 0: Fortress Status
     # ─────────────────────────────────────────────────────────────
@@ -5382,10 +5367,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     compromised_count = 0
     critical_count = 0
     fractured_count = 0
-    
+
     # Brothers needing attention: damaged+ OR nominal at 5+ cycles (entering risk zone)
     brothers_needing_attention = 0
-    
+
     for member in guild.members:
         if member.bot:
             continue
@@ -5398,22 +5383,20 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         role_names = {r.name.lower() for r in member.roles}
         if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
             continue
-        
+
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
-        damage_tier = _b('_get_member_damage_tier')(member)
-        
+        damage_tier = _b("_get_member_damage_tier")(member)
+
         # Check scan detection - skip unreadable brothers
-        scan_result = await _get_or_roll_scan_result(
-            member.id, damage_tier, points, spirit_fractured
-        )
+        scan_result = await _get_or_roll_scan_result(member.id, damage_tier, points, spirit_fractured)
         if not scan_result["detected"]:
             continue
-        
+
         total_brothers_with_armor += 1
-        
+
         # Count by damage tier and track brothers needing attention
         if spirit_fractured:
             fractured_count += 1
@@ -5432,15 +5415,15 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             # Nominal brothers at 5+ cycles are entering risk zone
             if points >= 5:
                 brothers_needing_attention += 1
-    
-    total_damaged = damaged_count + compromised_count + critical_count + fractured_count
+
+    _total_damaged = damaged_count + compromised_count + critical_count + fractured_count  # Reserved for future use
     nominal_pct = (nominal_count / total_brothers_with_armor * 100) if total_brothers_with_armor > 0 else 100
-    
+
     # ─────────────────────────────────────────────────────────────
     # Section 1: Machine Spirits of the Watch
     # ─────────────────────────────────────────────────────────────
     activity_status = _load_activity_status()
-    
+
     # Helper to check if a member is active (not in Reserves) AND has Watch rank
     def _is_member_eligible(member_id_str: str) -> bool:
         try:
@@ -5462,12 +5445,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         # Fallback to activity_status
         member_status = activity_status.get(member_id_str, {}).get("status")
         return member_status == "active"
-    
+
     eldest_spirit = None
     newest_spirit = None
     eldest_date = None
     newest_date = None
-    
+
     for member_id, spirit_info in spirits_data.items():
         if isinstance(spirit_info, str):
             continue
@@ -5485,7 +5468,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                         newest_spirit = (member_id, spirit_info)
             except Exception:
                 pass
-    
+
     # Find most attended spirit (lifetime maintenance rites, active members only)
     maintenance_counts = {}
     for r in rite_history:
@@ -5495,14 +5478,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             if spirit and bearer_id and _is_member_eligible(bearer_id):
                 key = (bearer_id, spirit)
                 maintenance_counts[key] = maintenance_counts.get(key, 0) + 1
-    
+
     most_attended = None
     most_attended_count = 0
     for (bearer_id, spirit), count in maintenance_counts.items():
         if count > most_attended_count:
             most_attended_count = count
             most_attended = (bearer_id, spirit)
-    
+
     spirit_lines = []
     now = datetime.utcnow()
     if eldest_spirit:
@@ -5511,14 +5494,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
         eldest_days = (now - eldest_date).days if eldest_date else 0
         spirit_lines.append(f"Eldest ({eldest_days}d): **{_abbreviate_spirit(designation)}** {member_label}")
-    
+
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
         member_label = _format_member_styled(guild, member_id, include_chapter=True)
         newest_hours = int((now - newest_date).total_seconds() // 3600) if newest_date else 0
         spirit_lines.append(f"Youngest ({newest_hours}h): **{_abbreviate_spirit(designation)}** {member_label}")
-    
+
     # Find most resilient spirit (lifetime restoration events, active members only)
     restoration_counts = {}
     for r in rite_history:
@@ -5528,27 +5511,26 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             if spirit and bearer_id and _is_member_eligible(bearer_id):
                 key = (bearer_id, spirit)
                 restoration_counts[key] = restoration_counts.get(key, 0) + 1
-    
+
     most_resilient = None
     most_resilient_count = 0
     for (bearer_id, spirit), count in restoration_counts.items():
         if count > most_resilient_count:
             most_resilient_count = count
             most_resilient = (bearer_id, spirit)
-    
+
     # Show most attended spirit
     if most_attended:
         bearer_id, spirit = most_attended
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
         spirit_lines.append(f"Devoted ({most_attended_count} rites): **{_abbreviate_spirit(spirit)}** {member_label}")
-    
+
     # Show most resilient spirit (if any restorations this month)
     if most_resilient:
         bearer_id, spirit = most_resilient
         member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
         spirit_lines.append(f"Unbowed ({most_resilient_count} wounds): **{_abbreviate_spirit(spirit)}** {member_label}")
 
-    
     # ─────────────────────────────────────────────────────────────
     # Section 3: Watchlist (5 random brothers with armor)
     # ─────────────────────────────────────────────────────────────
@@ -5559,42 +5541,43 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
         if not has_rank:
             continue
-        
+
         # Exclude Reserves members (same as Machine Spirits section)
         role_ids = {r.id for r in member.roles}
         role_names = {r.name.lower() for r in member.roles}
         if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
             continue
-        
+
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
         # Include any brother with armor record
         if not state:
             continue
-        
+
         # Get damage tier from roles (consistent with armor_status command)
-        damage_tier = _b('_get_member_damage_tier')(member)
+        damage_tier = _b("_get_member_damage_tier")(member)
         spirit_fractured = state.get("spirit_fractured", False)
         points = state.get("points_since_blessing", 0)
-        
+
         # Use same scan detection as armor_status (cached per AAR cycle)
-        scan_result = await _get_or_roll_scan_result(
-            member.id, damage_tier, points, spirit_fractured
-        )
+        scan_result = await _get_or_roll_scan_result(member.id, damage_tier, points, spirit_fractured)
         detected = scan_result["detected"]
         predictive_warning = scan_result.get("predictive_warning", False)
-        
+
         risk_score = _calculate_armor_risk_score(damage_tier, points, spirit_fractured)
-        
-        watchlist_entries.append((member, damage_tier, spirit_fractured, points, risk_score, detected, predictive_warning))
-    
+
+        watchlist_entries.append(
+            (member, damage_tier, spirit_fractured, points, risk_score, detected, predictive_warning)
+        )
+
     # Randomly select 5 from all brothers (cycles through different brothers each refresh)
     import random
+
     if len(watchlist_entries) > 5:
         watchlist_top5 = random.sample(watchlist_entries, 5)
     else:
         watchlist_top5 = list(watchlist_entries)
-    
+
     # Sort by risk, but randomize only nominal and undetected (damaged tiers stay risk-ordered)
     def _watchlist_tier(entry):
         """Get tier for sorting watchlist entries."""
@@ -5608,25 +5591,25 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         if predictive_warning:
             return "at_risk"
         return "nominal"
-    
+
     # Split: damaged tiers stay risk-ordered, nominal/undetected get randomized
     damaged_wl = [e for e in watchlist_top5 if _watchlist_tier(e) not in ("nominal", "undetected")]
     nominal_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "nominal"]
     undetected_wl = [e for e in watchlist_top5 if _watchlist_tier(e) == "undetected"]
-    
+
     # Sort damaged by risk score (desc), randomize nominal/undetected
     damaged_wl.sort(key=lambda x: x[4], reverse=True)
     random.shuffle(nominal_wl)
     random.shuffle(undetected_wl)
-    
+
     watchlist_top5 = damaged_wl + nominal_wl + undetected_wl
-    
+
     watchlist_lines = []
     for member, tier, fractured, pts, score, detected, predictive_warning in watchlist_top5:
         # Check cooldown status
         can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
         cooldown_indicator = " ⏳" if not can_receive else ""
-        
+
         if not detected:
             icon = "⚫"
         elif fractured:
@@ -5650,10 +5633,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             watchlist_lines.append(f"{icon} {name} · ???")
         else:
             watchlist_lines.append(f"{icon} {name} · {pts}c{cooldown_indicator}")
-    
+
     if not watchlist_lines:
         watchlist_lines.append("*No armor records found.*")
-    
+
     # ─────────────────────────────────────────────────────────────
     # Section 4: Forge Readiness (Enhanced)
     # ─────────────────────────────────────────────────────────────
@@ -5661,23 +5644,23 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     filled_blocks = int(reserve_pct / 10)
     empty_blocks = 10 - filled_blocks
     reserve_bar = "█" * filled_blocks + "░" * empty_blocks
-    
+
     # Load blessing pool data for artificers section AND forge pressure calculation
     blessing_pool_data = _load_blessing_pool()
-    
+
     def _get_charges_from_pool_state(state: dict) -> int:
         """Calculate available charges from pool state timestamps."""
         timestamps = state.get("blessing_timestamps", [])
         active = _filter_active_blessing_timestamps(timestamps)
         return max(0, min(BLESSING_POOL_MAX - len(active), BLESSING_POOL_MAX))
-    
+
     def _get_soonest_regen_from_pool_state(state: dict) -> Optional[timedelta]:
         """Get time until next charge regenerates for a pool state, or None if full."""
         timestamps = state.get("blessing_timestamps", [])
         active = _filter_active_blessing_timestamps(timestamps)
         if len(active) == 0:
             return None  # Pool is full
-        
+
         now = datetime.utcnow()
         regen_seconds = BLESSING_POOL_REGEN_HOURS * 3600
         oldest_ts = None
@@ -5688,19 +5671,19 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     oldest_ts = ts
             except Exception:
                 pass
-        
+
         if oldest_ts:
             time_until_regen = timedelta(seconds=regen_seconds) - (now - oldest_ts)
             if time_until_regen.total_seconds() > 0:
                 return time_until_regen
         return timedelta(seconds=0)  # About to regen
-    
+
     # Calculate total Techmarine charges and soonest regen across all Techmarines
     techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
     total_techmarine_charges = 0
     soonest_regen: Optional[timedelta] = None
     total_regenning = 0  # Count of charges currently regenerating
-    
+
     if techmarine_role:
         for member in techmarine_role.members:
             if member.bot:
@@ -5708,24 +5691,24 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             tech_pool = blessing_pool_data.get(str(member.id), {})
             charges = _get_charges_from_pool_state(tech_pool)
             total_techmarine_charges += charges
-            
+
             # Track regenning charges and soonest regen time
             timestamps = tech_pool.get("blessing_timestamps", [])
             active = _filter_active_blessing_timestamps(timestamps)
             total_regenning += len(active)
-            
+
             regen_time = _get_soonest_regen_from_pool_state(tech_pool)
             if regen_time is not None:
                 if soonest_regen is None or regen_time < soonest_regen:
                     soonest_regen = regen_time
-    
+
     # Calculate Forge Pressure = demand / available charges
     # If no charges available, pressure is infinite (shown as "∞")
     if total_techmarine_charges > 0:
         forge_pressure = brothers_needing_attention / total_techmarine_charges
     else:
-        forge_pressure = float('inf') if brothers_needing_attention > 0 else 0.0
-    
+        forge_pressure = float("inf") if brothers_needing_attention > 0 else 0.0
+
     # ─────────────────────────────────────────────────────────────
     # Section 5: Artificers of the Watch
     # ─────────────────────────────────────────────────────────────
@@ -5740,13 +5723,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             tech_pool = blessing_pool_data.get(str(tech_id), {})
             charges = _get_charges_from_pool_state(tech_pool)
             return (charges, success_rate, total)
-        
+
         sorted_techs = sorted(
             techmarine_stats.items(),
             key=artificer_sort_key,
             reverse=True,
         )[:3]
-        
+
         for tech_id, stats in sorted_techs:
             total = stats.get("total_rites", 0)
             if total > 0:
@@ -5757,12 +5740,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = _get_charges_from_pool_state(tech_pool)
                     artificer_lines.append(f"{name} ({charges})")
-    
+
     # ─────────────────────────────────────────────────────────────
     # Section 6: Spirit Memorial (Spirits lost in last 28 days)
     # ─────────────────────────────────────────────────────────────
     memorial_lines = []
-    
+
     # Show fractured/released events from the last 28 days
     cutoff = now - timedelta(days=28)
     lost_spirits = []
@@ -5774,10 +5757,10 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     lost_spirits.append(r)
             except Exception:
                 pass
-    
+
     # Sort by most recent first
     lost_spirits.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    
+
     # Deduplicate: keep only the most recent event per (bearer_id, spirit) pair
     seen_spirits: set = set()
     deduped_spirits = []
@@ -5787,7 +5770,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             seen_spirits.add(key)
             deduped_spirits.append(r)
     lost_spirits = deduped_spirits
-    
+
     for entry in lost_spirits[:3]:  # Max 3
         bearer_id = entry.get("bearer_id")
         spirit = entry.get("spirit")
@@ -5801,22 +5784,22 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                 memorial_lines.append(f"💀 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
             else:
                 memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {member_label}")
-    
+
     # ─────────────────────────────────────────────────────────────
     # Build the embed description
     # ─────────────────────────────────────────────────────────────
     # Build the embed with fields for inline layout
     # ─────────────────────────────────────────────────────────────
-    
+
     embed = discord.Embed(
         title=f"{machine_spirit_emoji} FORGE CHRONICLE {machine_spirit_emoji}",
         color=0x5D6D7E,
     )
-    
+
     # Armory Telemetry (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
     # Forge Pressure: green if < 1.0 (covered), yellow if < 2.0, red if >= 2.0
-    if forge_pressure == float('inf'):
+    if forge_pressure == float("inf"):
         pressure_icon = "🔴"
         pressure_str = "∞"
     elif forge_pressure < 1.0:
@@ -5828,7 +5811,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     else:
         pressure_icon = "🔴"
         pressure_str = f"{forge_pressure:.1f}x"
-    
+
     # Regen display: show "+N in Xh" or "Full" if all techmarines at max
     if total_regenning == 0:
         regen_icon = "🟢"
@@ -5844,7 +5827,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     else:
         regen_icon = "🟢"
         regen_str = "Full"
-    
+
     fortress_text = (
         f"**▸ Armory Telemetry**\n"
         f"{fortress_icon} **{nominal_pct:.0f}%** Nominal  "
@@ -5852,7 +5835,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         f"{regen_icon} **{regen_str}** Regen"
     )
     embed.description = fortress_text
-    
+
     # Watchlist (full width)
     if watchlist_top5:
         embed.add_field(
@@ -5860,7 +5843,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(watchlist_lines),
             inline=False,
         )
-    
+
     # Machine Spirits (full width)
     spirit_text = "\n".join(spirit_lines)
     embed.add_field(
@@ -5868,7 +5851,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         value=spirit_text,
         inline=False,
     )
-    
+
     # Spirit Memorial (full width, only if exists)
     if memorial_lines:
         embed.add_field(
@@ -5876,12 +5859,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(memorial_lines),
             inline=False,
         )
-    
+
     # ─────────────────────────────────────────────────────────────
     # Forge Reserves: Calculate weekly intake/drain/net
     # ─────────────────────────────────────────────────────────────
     cutoff_7d = now - timedelta(days=7)
-    
+
     # Calculate 7-day intake from AAR records
     weekly_intake = 0
     all_records = _g.DATASTORE.get_all_records()
@@ -5897,7 +5880,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                     weekly_intake += record.get("armory_challenge_points", 0) or 0
         except Exception:
             pass
-    
+
     # Calculate 7-day drain from forge pool log
     weekly_drain = 0
     forge_pool_data = _load_forge_pool()
@@ -5909,9 +5892,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
                 weekly_drain += entry.get("points", 0)
         except Exception:
             pass
-    
+
     weekly_net = weekly_intake - weekly_drain
-    
+
     # Format net with trend icon
     if weekly_net > 0:
         net_icon = "📈"
@@ -5922,35 +5905,35 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     else:
         net_icon = "➡️"
         net_text = "0"
-    
+
     forge_reserves_value = (
         f"{reserve_bar} {available:,} / {max_balance:,} pts\n"
         f"📊 7d: +{weekly_intake} in | -{weekly_drain} out | {net_icon} {net_text} net"
     )
-    
+
     # Forge Reserves + Artificers (inline pair)
     embed.add_field(
         name="▸ Forge Reserves",
         value=forge_reserves_value,
         inline=True,
     )
-    
+
     if artificer_lines:
         embed.add_field(
             name="▸ Artificers",
             value="\n".join(artificer_lines),
             inline=True,
         )
-    
+
     # Key (full width - bottom)
     embed.add_field(
         name="▸ Key",
         value="💀🔴🟠🟡⚡🟢⚫ Status | 💤 Dormant",
         inline=False,
     )
-    
+
     embed.set_footer(text="The machine spirits await the sacred oils.")
-    
+
     return embed
 
 
@@ -5962,12 +5945,12 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
     """Post or update the Forge Chronicle dashboard in the current channel."""
     # Defer immediately to avoid 3-second timeout
     await interaction.response.defer(ephemeral=True)
-    
+
     # Permission check: uses config command_permissions (Forgemaster only)
     if not _b("check_command_permission")(interaction.user, "forge_chronicle"):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
-    
+
     # Channel restriction: arming chamber or techmarine channel
     channel_id = getattr(interaction.channel, "id", None)
     arming_chamber_id = _get_arming_chamber_channel_id()
@@ -5978,21 +5961,21 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
             ephemeral=True,
         )
         return
-    
+
     guild = interaction.guild
     if not guild:
         await interaction.followup.send("Guild not found.", ephemeral=True)
         return
-    
+
     # Always post to arming chamber regardless of where command was invoked
     channel = guild.get_channel(arming_chamber_id)
     if not channel:
         await interaction.followup.send("Arming chamber not found.", ephemeral=True)
         return
-    
+
     # Build the new dashboard embed
     embed = await _build_forge_chronicle_embed(guild)
-    
+
     # Delete existing chronicle if present
     existing_msg_id = await _get_dashboard_message_id()
     if existing_msg_id:
@@ -6002,7 +5985,7 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
             _g.logger.debug(f"Deleted old chronicle message {existing_msg_id}")
         except Exception:
             pass
-    
+
     # Create new message at bottom
     try:
         sent_msg = await channel.send(embed=embed)
@@ -6026,11 +6009,11 @@ AMBIENT_MESSAGE_CHANCE = 0.25  # 25% chance to post when eligible
 async def _maybe_post_ambient_message():
     """Check if the forge has been quiet and maybe post an ambient message."""
     import random
-    
+
     channel_id = _get_arming_chamber_channel_id()
     if not channel_id:
         return
-    
+
     guild = None
     channel = None
     for g in _g.bot.guilds:
@@ -6038,25 +6021,25 @@ async def _maybe_post_ambient_message():
         if channel:
             guild = g
             break
-    
+
     if not guild or not channel:
         return
-    
+
     # Check last ambient timestamp
     last_ambient = await _get_last_ambient_ts()
     now = datetime.utcnow()
-    
+
     if last_ambient:
         hours_since_ambient = (now - last_ambient).total_seconds() / 3600
         if hours_since_ambient < AMBIENT_MESSAGE_MIN_INTERVAL_HOURS:
             return  # Too soon since last ambient
-    
+
     # Check recent rite activity
     async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b('_load_forge_chronicle')()
-    
+        data = _b("_load_forge_chronicle")()
+
     rite_history = data.get("rite_history", [])
-    
+
     # Find most recent rite timestamp
     most_recent_rite = None
     for entry in reversed(rite_history):
@@ -6065,16 +6048,16 @@ async def _maybe_post_ambient_message():
             break
         except Exception:
             pass
-    
+
     if most_recent_rite:
         hours_since_rite = (now - most_recent_rite).total_seconds() / 3600
         if hours_since_rite < AMBIENT_MESSAGE_MIN_QUIET_HOURS:
             return  # Forge has been active recently
-    
+
     # Random chance to post
     if random.random() > AMBIENT_MESSAGE_CHANCE:
         return
-    
+
     # Post ambient message
     try:
         message = random.choice(FORGE_AMBIENT_MESSAGES)
@@ -6093,7 +6076,7 @@ async def _forge_ambient_loop():
         if not getattr(_forge_ambient_loop, "_first_run_done", False):
             setattr(_forge_ambient_loop, "_first_run_done", True)
             return
-        
+
         await _maybe_post_ambient_message()
     except Exception as e:
         _g.logger.warning(f"Ambient message loop error: {e}")
@@ -6107,15 +6090,15 @@ async def _forge_dashboard_loop():
         if not getattr(_forge_dashboard_loop, "_first_run_done", False):
             setattr(_forge_dashboard_loop, "_first_run_done", True)
             return
-        
+
         dashboard_msg_id = await _get_dashboard_message_id()
         if not dashboard_msg_id:
             return  # No dashboard to update
-        
+
         channel_id = _get_arming_chamber_channel_id()
         if not channel_id:
             return
-        
+
         guild = None
         channel = None
         for g in _g.bot.guilds:
@@ -6124,10 +6107,10 @@ async def _forge_dashboard_loop():
                 guild = g
                 channel = ch
                 break
-        
+
         if not guild or not channel:
             return
-        
+
         try:
             msg = await channel.fetch_message(dashboard_msg_id)
             embed = await _build_forge_chronicle_embed(guild)
@@ -6136,9 +6119,9 @@ async def _forge_dashboard_loop():
         except discord.NotFound:
             # Dashboard message was deleted, clear the stored ID
             async with _g.FORGE_CHRONICLE_LOCK:
-                data = _b('_load_forge_chronicle')()
+                data = _b("_load_forge_chronicle")()
                 data["dashboard_message_id"] = None
-                _b('_save_forge_chronicle')(data)
+                _b("_save_forge_chronicle")(data)
         except Exception as e:
             _g.logger.warning(f"Failed to update dashboard: {e}")
     except Exception as e:
@@ -6169,16 +6152,14 @@ async def _preview_armor_alert(
 ):
     """Preview armor damage alert without modifying roles or state."""
     # Permission check: caller must be techmarine or forgemaster
-    allowed, _ = _b('_is_techmarine_or_forgemaster')(interaction.user)
+    allowed, _ = _b("_is_techmarine_or_forgemaster")(interaction.user)
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
     guild = interaction.guild
     config = _get_armor_config()
-    fracture_threshold = config.get(
-        "fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD
-    )
+    fracture_threshold = config.get("fracture_threshold", DEFAULT_ARMOR_FRACTURE_THRESHOLD)
 
     # Get bearer info using the same pattern as forge_rite/stud announcements
     bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(brother)
@@ -6192,9 +6173,7 @@ async def _preview_armor_alert(
 
     # Home chapter (lineage)
     bearer_chapter = _get_bearer_home_chapter(brother)
-    chapter_emoji = (
-        _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
-    )
+    chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
 
     # Get rank emoji
     bearer_rank_name = None
@@ -6211,9 +6190,7 @@ async def _preview_armor_alert(
     # Build bearer display string (matching forge_rite style)
     if ", " in bearer_honorific:
         title_part, rank_part = bearer_honorific.rsplit(", ", 1)
-        bearer_display = (
-            f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
-        )
+        bearer_display = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
     else:
         bearer_display = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
 
@@ -6255,7 +6232,7 @@ async def _preview_armor_alert(
     # Affected brother field with proper rank display
     tier_display = tier.title() if tier else "Unknown"
     penalty_risk = _get_tier_risk_display(tier, spirit_fractured=False)
-    penalty = _b('_get_damage_penalty')(tier)
+    penalty = _b("_get_damage_penalty")(tier)
     embed.add_field(
         name="▸ Affected Brother",
         value=(
@@ -6289,7 +6266,7 @@ async def _preview_armor_alert(
 
     # Build preview content
     tech_role_id = _get_techmarine_role_id()
-    content = f"**[PREVIEW]** "
+    content = "**[PREVIEW]** "
     if tech_role_id:
         content += f"<@&{tech_role_id}> {brother.mention}"
     else:
@@ -6375,9 +6352,7 @@ async def _preview_stud_announcement(
         user_id = str(interaction.user.id)
         admin_ids = [str(a) for a in _g.CONFIG.get("admin_user_ids", [])]
         if user_id not in admin_ids:
-            await interaction.response.send_message(
-                "This command is only available in debug mode.", ephemeral=True
-            )
+            await interaction.response.send_message("This command is only available in debug mode.", ephemeral=True)
             return
 
     # Defer to avoid interaction timeout during computation
@@ -6392,13 +6367,13 @@ async def _preview_stud_announcement(
     member_chapter = "Unknown"
     for role in getattr(member, "roles", []):
         role_name = getattr(role, "name", "")
-        if role_name in _b('HOME_CHAPTERS'):
+        if role_name in _b("HOME_CHAPTERS"):
             member_chapter = role_name
             break
 
     # Calculate actual studs using same logic as activity check
     user_id = str(member.id)
-    stats = _b('compute_stats_for_user')(user_id)
+    stats = _b("compute_stats_for_user")(user_id)
     aar_points = int(stats.get("aar_points", 0) or 0)
 
     # Get weeks since induction (supports override)
@@ -6481,7 +6456,7 @@ async def _preview_stud_announcement(
     queue_type="The type of queue to create",
     initiation_trial="Is this an Initiation Trial? (pings additional role)",
     expire_minutes="Minutes until queue expires (default: 30, max: 120)",
-    message="Optional message (e.g. 'need slays', 'teaching run')"
+    message="Optional message (e.g. 'need slays', 'teaching run')",
 )
 async def lfg_queue(
     interaction: discord.Interaction,
@@ -6491,25 +6466,23 @@ async def lfg_queue(
     message: Optional[str] = None,
 ):
     # Use channel_policies to check if command is allowed here
-    if not _b('is_allowed_channel')(interaction):
+    if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             "This command cannot be used in this channel.",
             ephemeral=True,
         )
         return
-    
+
     member = interaction.user
     if not isinstance(member, discord.Member):
         member = interaction.guild.get_member(interaction.user.id)
-    
+
     if not member:
-        await interaction.response.send_message(
-            "Could not resolve your membership.", ephemeral=True
-        )
+        await interaction.response.send_message("Could not resolve your membership.", ephemeral=True)
         return
-    
+
     # Check platform role
-    platform = _b('_get_player_platform')(member)
+    platform = _b("_get_player_platform")(member)
     if not platform:
         pc_role = _get_lfg_pc_role_id()
         console_role = _get_lfg_console_role_id()
@@ -6520,15 +6493,15 @@ async def lfg_queue(
             ephemeral=True,
         )
         return
-    
+
     # Get queue type config
-    queue_types = _b('_get_lfg_queue_types')()
+    queue_types = _b("_get_lfg_queue_types")()
     type_config = queue_types.get(queue_type.value, {})
-    
+
     # Validate and set expiry time
-    default_expiry = _b('_get_lfg_default_expiry_minutes')()
-    max_expiry = _b('_get_lfg_max_expiry_minutes')()
-    
+    default_expiry = _b("_get_lfg_default_expiry_minutes")()
+    max_expiry = _b("_get_lfg_max_expiry_minutes")()
+
     if expire_minutes is not None:
         if expire_minutes < 1:
             await interaction.response.send_message(
@@ -6545,11 +6518,11 @@ async def lfg_queue(
         expiry_minutes = expire_minutes
     else:
         expiry_minutes = default_expiry
-    
+
     # Calculate expiration time
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(minutes=expiry_minutes)
-    
+
     # Build initial queue data (creator auto-joins)
     queue_data = {
         "queue_type": queue_type.value,
@@ -6561,10 +6534,10 @@ async def lfg_queue(
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat(),
     }
-    
+
     # Build embed
-    embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
-    
+    embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
+
     # Build ping content from queue type config (add initiation trial role if applicable)
     ping_role_id = type_config.get("ping_role_id")
     pings = []
@@ -6575,7 +6548,7 @@ async def lfg_queue(
         if trial_role_id:
             pings.append(f"<@&{trial_role_id}>")
     content = " ".join(pings) if pings else None
-    
+
     # Send message with view
     await interaction.response.send_message(
         content=content,
@@ -6583,20 +6556,20 @@ async def lfg_queue(
         allowed_mentions=discord.AllowedMentions(roles=True) if content else discord.AllowedMentions.none(),
     )
     msg = await interaction.original_response()
-    
+
     # Store queue data keyed by message ID
     queue_data["message_id"] = msg.id
-    
+
     async with _g.LFG_QUEUE_LOCK:
         _g.LFG_ACTIVE_QUEUES[msg.id] = queue_data
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         all_queues[str(msg.id)] = queue_data
-        _b('_save_lfg_queues')(all_queues)
-    
+        _b("_save_lfg_queues")(all_queues)
+
     # Add view to message
     view = LFGQueueView(msg.id)
     await msg.edit(view=view)
-    
+
     trial_str = " [Initiation Trial]" if initiation_trial else ""
     _g.logger.info(
         f"LFG queue created: {queue_type.value}{trial_str} by {member.display_name} "
@@ -6611,34 +6584,34 @@ async def _lfg_queue_autocomplete(
     """Autocomplete for LFG queue selection."""
     choices = []
     try:
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         guild = interaction.guild
-        queue_types = _b('_get_lfg_queue_types')()
-        
+        queue_types = _b("_get_lfg_queue_types")()
+
         for queue_id_str, queue_data in all_queues.items():
             queue_type = queue_data.get("queue_type", "unknown")
             type_config = queue_types.get(queue_type, {})
             display_type = type_config.get("display", queue_type)
-            
+
             creator_id = queue_data.get("creator_id")
             creator = guild.get_member(creator_id) if guild and creator_id else None
             creator_name = creator.display_name if creator else f"User {creator_id}"
-            
+
             players = queue_data.get("players", [])
             player_count = len(players)
             max_players = type_config.get("max_players", "?")
-            
+
             label = f"{display_type} by {creator_name} ({player_count}/{max_players})"
-            
+
             # Filter by current input
             if current.lower() in label.lower() or current in queue_id_str:
                 choices.append(app_commands.Choice(name=label[:100], value=queue_id_str))
-            
+
             if len(choices) >= 25:
                 break
     except Exception:
         pass
-    
+
     return choices
 
 
@@ -6655,48 +6628,42 @@ async def lfg_close(
     queue: str,
 ):
     # Use channel_policies to check if command is allowed here
-    if not _b('is_allowed_channel')(interaction):
+    if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             "This command cannot be used in this channel.",
             ephemeral=True,
         )
         return
-    
+
     try:
         queue_id = int(queue)
     except ValueError:
-        await interaction.response.send_message(
-            "Invalid queue selection.", ephemeral=True
-        )
+        await interaction.response.send_message("Invalid queue selection.", ephemeral=True)
         return
-    
+
     # Get queue data
     async with _g.LFG_QUEUE_LOCK:
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         queue_data = all_queues.get(str(queue_id))
-        
+
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
+
         # Only creator can close
         if interaction.user.id != queue_data.get("creator_id"):
-            await interaction.response.send_message(
-                "Only the queue creator can close this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("Only the queue creator can close this queue.", ephemeral=True)
             return
-        
+
         # Save channel_id before removing from storage
         channel_id = queue_data.get("channel_id")
-        
+
         # Remove from storage
         if queue_id in _g.LFG_ACTIVE_QUEUES:
             del _g.LFG_ACTIVE_QUEUES[queue_id]
         del all_queues[str(queue_id)]
-        _b('_save_lfg_queues')(all_queues)
-    
+        _b("_save_lfg_queues")(all_queues)
+
     # Update the queue message
     try:
         if channel_id:
@@ -6715,10 +6682,8 @@ async def lfg_close(
         pass
     except Exception as e:
         _g.logger.debug(f"Failed to update closed queue message: {e}")
-    
-    await interaction.response.send_message(
-        "✅ Queue closed successfully.", ephemeral=True
-    )
+
+    await interaction.response.send_message("✅ Queue closed successfully.", ephemeral=True)
     _g.logger.info(f"LFG queue {queue_id} closed by {interaction.user.display_name}")
 
 
@@ -6735,25 +6700,23 @@ async def lfg_join(
     queue: str,
 ):
     # Use channel_policies to check if command is allowed here
-    if not _b('is_allowed_channel')(interaction):
+    if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             "This command cannot be used in this channel.",
             ephemeral=True,
         )
         return
-    
+
     member = interaction.user
     if not isinstance(member, discord.Member):
         member = interaction.guild.get_member(interaction.user.id)
-    
+
     if not member:
-        await interaction.response.send_message(
-            "Could not resolve your membership.", ephemeral=True
-        )
+        await interaction.response.send_message("Could not resolve your membership.", ephemeral=True)
         return
-    
+
     # Check platform role
-    platform = _b('_get_player_platform')(member)
+    platform = _b("_get_player_platform")(member)
     if not platform:
         pc_role = _get_lfg_pc_role_id()
         console_role = _get_lfg_console_role_id()
@@ -6764,43 +6727,35 @@ async def lfg_join(
             ephemeral=True,
         )
         return
-    
+
     try:
         queue_id = int(queue)
     except ValueError:
-        await interaction.response.send_message(
-            "Invalid queue selection.", ephemeral=True
-        )
+        await interaction.response.send_message("Invalid queue selection.", ephemeral=True)
         return
-    
+
     async with _g.LFG_QUEUE_LOCK:
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         queue_data = all_queues.get(str(queue_id))
-        
+
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
-        queue_types = _b('_get_lfg_queue_types')()
+
+        queue_types = _b("_get_lfg_queue_types")()
         type_config = queue_types.get(queue_data["queue_type"], {})
         players = queue_data["players"]
-        
+
         # Check if already in queue
         if any(p["user_id"] == member.id for p in players):
-            await interaction.response.send_message(
-                "You are already in this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("You are already in this queue.", ephemeral=True)
             return
-        
+
         # Check if queue is full
         if len(players) >= type_config.get("max_players", 3):
-            await interaction.response.send_message(
-                "This queue is already full.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue is already full.", ephemeral=True)
             return
-        
+
         # Check console limit for Omega
         max_console = type_config.get("max_console")
         if max_console is not None and platform == "console":
@@ -6812,14 +6767,14 @@ async def lfg_join(
                     ephemeral=True,
                 )
                 return
-        
+
         # Add player to queue
         players.append({"user_id": member.id, "platform": platform})
         queue_data["players"] = players
         _g.LFG_ACTIVE_QUEUES[queue_id] = queue_data
         all_queues[str(queue_id)] = queue_data
-        _b('_save_lfg_queues')(all_queues)
-    
+        _b("_save_lfg_queues")(all_queues)
+
     # Update the queue message embed
     try:
         channel_id = queue_data.get("channel_id")
@@ -6829,16 +6784,14 @@ async def lfg_join(
             channel = interaction.channel
         if channel:
             msg = await channel.fetch_message(queue_id)
-            embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
+            embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
             view = LFGQueueView(queue_id)
             await msg.edit(embed=embed, view=view)
     except Exception as e:
         _g.logger.debug(f"Failed to update queue embed: {e}")
-    
-    await interaction.response.send_message(
-        "✅ You joined the queue!", ephemeral=True
-    )
-    
+
+    await interaction.response.send_message("✅ You joined the queue!", ephemeral=True)
+
     # Check if queue is now full and notify
     if len(players) >= type_config.get("max_players", 3):
         creator = interaction.guild.get_member(queue_data["creator_id"])
@@ -6871,50 +6824,44 @@ async def lfg_leave(
     queue: str,
 ):
     # Use channel_policies to check if command is allowed here
-    if not _b('is_allowed_channel')(interaction):
+    if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             "This command cannot be used in this channel.",
             ephemeral=True,
         )
         return
-    
+
     member = interaction.user
-    
+
     try:
         queue_id = int(queue)
     except ValueError:
-        await interaction.response.send_message(
-            "Invalid queue selection.", ephemeral=True
-        )
+        await interaction.response.send_message("Invalid queue selection.", ephemeral=True)
         return
-    
+
     async with _g.LFG_QUEUE_LOCK:
-        all_queues = _b('_load_lfg_queues')()
+        all_queues = _b("_load_lfg_queues")()
         queue_data = all_queues.get(str(queue_id))
-        
+
         if not queue_data:
-            await interaction.response.send_message(
-                "This queue no longer exists.", ephemeral=True
-            )
+            await interaction.response.send_message("This queue no longer exists.", ephemeral=True)
             return
-        
+
         players = queue_data["players"]
-        
+
         # Check if in queue
         player_entry = next((p for p in players if p["user_id"] == member.id), None)
         if not player_entry:
-            await interaction.response.send_message(
-                "You are not in this queue.", ephemeral=True
-            )
+            await interaction.response.send_message("You are not in this queue.", ephemeral=True)
             return
-        
+
         # Remove player
         players.remove(player_entry)
         queue_data["players"] = players
         _g.LFG_ACTIVE_QUEUES[queue_id] = queue_data
         all_queues[str(queue_id)] = queue_data
-        _b('_save_lfg_queues')(all_queues)
-    
+        _b("_save_lfg_queues")(all_queues)
+
     # Update the queue message embed
     try:
         channel_id = queue_data.get("channel_id")
@@ -6924,15 +6871,13 @@ async def lfg_leave(
             channel = interaction.channel
         if channel:
             msg = await channel.fetch_message(queue_id)
-            embed = _b('_build_lfg_embed')(queue_data, interaction.guild)
+            embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
             view = LFGQueueView(queue_id)
             await msg.edit(embed=embed, view=view)
     except Exception as e:
         _g.logger.debug(f"Failed to update queue embed: {e}")
-    
-    await interaction.response.send_message(
-        "✅ You left the queue.", ephemeral=True
-    )
+
+    await interaction.response.send_message("✅ You left the queue.", ephemeral=True)
 
 
 if __name__ == "__main__":
@@ -6942,6 +6887,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # Pure helper functions for forge_rite output
 # ---------------------------------------------------------------------------
+
 
 def _should_show_extended_blessing_fields(
     spirit_is_first: bool,

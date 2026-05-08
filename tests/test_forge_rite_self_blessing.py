@@ -13,8 +13,6 @@ Covers:
     * All tiers have proper placeholder support
 """
 
-import re
-
 from opscribe.bot import (
     _blend_forgemaster_self_attestation,
     FORGEMASTER_SELF_ATTESTATION_GENERIC,
@@ -45,7 +43,7 @@ def test_self_attestation_generic_reachable():
         phrase = _blend_forgemaster_self_attestation("Hawk Lords")
         if phrase in FORGEMASTER_SELF_ATTESTATION_GENERIC:
             found_generic.add(phrase)
-    
+
     # Should find at least some generic phrases
     assert len(found_generic) > 0, "No generic phrases were selected"
     # With 500 iterations at 80% chance, we should hit most of them
@@ -56,12 +54,12 @@ def test_self_attestation_chapter_reachable():
     """Chapter-specific phrases are reachable (should happen ~20% of time)."""
     hawk_lords_phrases = FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER["Hawk Lords"]
     found_chapter = set()
-    
+
     for _ in range(500):
         phrase = _blend_forgemaster_self_attestation("Hawk Lords")
         if phrase in hawk_lords_phrases:
             found_chapter.add(phrase)
-    
+
     # Should find at least some chapter phrases
     assert len(found_chapter) > 0, "No chapter phrases were selected"
 
@@ -72,14 +70,14 @@ def test_self_attestation_blend_ratio():
     generic_count = 0
     chapter_count = 0
     iterations = 1000
-    
+
     for _ in range(iterations):
         phrase = _blend_forgemaster_self_attestation("Hawk Lords")
         if phrase in FORGEMASTER_SELF_ATTESTATION_GENERIC:
             generic_count += 1
         elif phrase in hawk_lords_phrases:
             chapter_count += 1
-    
+
     # Allow reasonable variance (70-90% generic)
     generic_ratio = generic_count / iterations
     assert 0.70 <= generic_ratio <= 0.90, f"Generic ratio {generic_ratio:.2%} outside expected range"
@@ -109,7 +107,7 @@ def test_self_attestation_chapter_phrases_all_reachable():
             phrase = _blend_forgemaster_self_attestation(chapter)
             if phrase in chapter_phrases:
                 found.add(phrase)
-        
+
         # Should find at least one chapter phrase
         assert len(found) > 0, f"No phrases found for {chapter}"
 
@@ -122,14 +120,12 @@ def test_self_attestation_chapter_phrases_all_reachable():
 def test_ordo_honors_have_placeholders():
     """All ORDO_XENOS_HONORS phrases with pronouns have proper placeholders."""
     all_tiers = ORDO_XENOS_HONORS_TIER1 + ORDO_XENOS_HONORS_TIER2 + ORDO_XENOS_HONORS_TIER3
-    
+
     for phrase in all_tiers:
         # Check that format placeholders are valid
         # Should not raise KeyError when formatted
         try:
-            formatted = phrase.format(
-                possessive="your", possessive_cap="Your", object="you"
-            )
+            formatted = phrase.format(possessive="your", possessive_cap="Your", object="you")
             assert isinstance(formatted, str)
         except KeyError as e:
             raise AssertionError(f"Invalid placeholder in phrase '{phrase}': {e}")
@@ -138,11 +134,9 @@ def test_ordo_honors_have_placeholders():
 def test_ordo_honors_self_blessing_pronouns():
     """Self-blessing formats with first-person pronouns."""
     all_tiers = ORDO_XENOS_HONORS_TIER1 + ORDO_XENOS_HONORS_TIER2 + ORDO_XENOS_HONORS_TIER3
-    
+
     for phrase in all_tiers:
-        formatted = phrase.format(
-            possessive="my", possessive_cap="My", object="me"
-        )
+        formatted = phrase.format(possessive="my", possessive_cap="My", object="me")
         # Should not contain "your" or "you" after formatting
         assert "your" not in formatted.lower() or "my" in formatted.lower()
         # If original had placeholders, formatted should have "my" or "me"
@@ -155,11 +149,9 @@ def test_ordo_honors_self_blessing_pronouns():
 def test_ordo_honors_other_blessing_pronouns():
     """Blessing others formats with second-person pronouns."""
     all_tiers = ORDO_XENOS_HONORS_TIER1 + ORDO_XENOS_HONORS_TIER2 + ORDO_XENOS_HONORS_TIER3
-    
+
     for phrase in all_tiers:
-        formatted = phrase.format(
-            possessive="your", possessive_cap="Your", object="you"
-        )
+        formatted = phrase.format(possessive="your", possessive_cap="Your", object="you")
         # If original had placeholders, formatted should have "your" or "you"
         if "{possessive}" in phrase or "{possessive_cap}" in phrase:
             assert "your" in formatted.lower(), f"Missing 'your' in: {formatted}"
@@ -170,11 +162,9 @@ def test_ordo_honors_other_blessing_pronouns():
 def test_ordo_honors_no_unformatted_placeholders():
     """After formatting, no raw placeholders remain."""
     all_tiers = ORDO_XENOS_HONORS_TIER1 + ORDO_XENOS_HONORS_TIER2 + ORDO_XENOS_HONORS_TIER3
-    
+
     for phrase in all_tiers:
-        formatted = phrase.format(
-            possessive="my", possessive_cap="My", object="me"
-        )
+        formatted = phrase.format(possessive="my", possessive_cap="My", object="me")
         assert "{" not in formatted, f"Unformatted placeholder in: {formatted}"
         assert "}" not in formatted, f"Unformatted placeholder in: {formatted}"
 

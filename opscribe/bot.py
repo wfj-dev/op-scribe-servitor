@@ -14,18 +14,12 @@ import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
-import re
-import itertools
-from typing import Dict, List, Set, Tuple, Optional
-import hashlib
+from typing import Dict, List, Tuple, Optional
 import logging
 import time
-import random
 from logging.handlers import RotatingFileHandler
 import signal
 import argparse
-import statistics
-import sys
 
 # Import DataStore
 from .datastore import DataStore
@@ -190,7 +184,7 @@ async def _send_watch_command_notice(kind: str):
     kind: 'ONLINE' or 'OFFLINE' (case-insensitive).
     Behavior: edit the existing pinned bulletin if found, otherwise create and pin."""
     global _STATUS_BULLETIN_MSG_ID
-    
+
     # Respect broadcast toggle (e.g., when debug mode disables broadcasts)
     try:
         if not BROADCAST_STATUS:
@@ -217,18 +211,14 @@ async def _send_watch_command_notice(kind: str):
         logger.warning(f"Status channel ID {STATUS_CHANNEL_ID} not accessible.")
         return
     status = "ONLINE" if (kind or "").upper().startswith("ON") else "OFFLINE"
-    
+
     emoji = "✅" if status == "ONLINE" else "⛔"
-    flavor = (
-        "Machine-spirit standing by."
-        if status == "ONLINE"
-        else "Machine-spirit at rest."
-    )
+    flavor = "Machine-spirit standing by." if status == "ONLINE" else "Machine-spirit at rest."
     content = f"V-1 STATUS: {status} {emoji}\n{flavor}"
-    
+
     # Try to find and edit existing bulletin (from memory or by scanning pinned)
     existing_msg = None
-    
+
     # First check cached ID
     if _STATUS_BULLETIN_MSG_ID:
         try:
@@ -237,7 +227,7 @@ async def _send_watch_command_notice(kind: str):
             _STATUS_BULLETIN_MSG_ID = None
         except Exception:
             pass
-    
+
     # If not cached, scan pinned messages for our bulletin
     if not existing_msg:
         try:
@@ -252,7 +242,7 @@ async def _send_watch_command_notice(kind: str):
                     break
         except Exception as e:
             logger.debug(f"Failed to scan pinned messages: {e}")
-    
+
     # Edit existing or create new
     try:
         if existing_msg:
@@ -284,9 +274,7 @@ async def _announce_shutdown_and_close():
     try:
         if globals().get("DEBUG_MODE"):
             try:
-                logger.info(
-                    "Debug mode shutdown: skipping broadcast and datastore flush"
-                )
+                logger.info("Debug mode shutdown: skipping broadcast and datastore flush")
             except Exception:
                 pass
             try:
@@ -367,9 +355,7 @@ async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = F
         if not guild:
             logger.debug("Scheduled audit: no guild available; skipping.")
             return
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel:
             logger.debug("Scheduled audit: AAR channel not found; skipping.")
             return
@@ -379,9 +365,7 @@ async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = F
                 MONTHLY_AUDIT_PENDING = True
             try:
                 fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)
-                logger.info(
-                    f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}"
-                )
+                logger.info(f"Scheduled audit complete: restored={fixed}, broken_remaining={still_broken}")
             finally:
                 # Clear monthly flag before releasing lock so other scheduled runs
                 # may not start until this completes.
@@ -466,10 +450,7 @@ async def _scheduled_weekly_maintenance_loop():
         today = now_utc.date()
 
         # Check if it's the right day and hour
-        if (
-            now_utc.weekday() != SCHEDULE_WEEKLY_MAINTENANCE_DAY
-            or now_utc.hour != SCHEDULE_WEEKLY_MAINTENANCE_HOUR
-        ):
+        if now_utc.weekday() != SCHEDULE_WEEKLY_MAINTENANCE_DAY or now_utc.hour != SCHEDULE_WEEKLY_MAINTENANCE_HOUR:
             return
 
         # Prevent duplicate runs on same date
@@ -485,9 +466,7 @@ async def _scheduled_weekly_maintenance_loop():
             logger.warning("Weekly maintenance: no guild available; skipping.")
             return
 
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel:
             logger.warning("Weekly maintenance: AAR channel not found; skipping.")
             return
@@ -502,17 +481,13 @@ async def _scheduled_weekly_maintenance_loop():
             logger.info(
                 f"Weekly maintenance: Running ingest for last {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS} days"
             )
-            ingested, rejected = await _run_ingest_new(
-                aar_channel, SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS
-            )
+            ingested, rejected = await _run_ingest_new(aar_channel, SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS)
             logger.info(f"Weekly maintenance: Ingested {ingested}, rejected {rejected}")
 
             # 2) Run full audit (no span limit) to catch all fixed errors
             logger.info("Weekly maintenance: Running full audit (no span limit)")
             fixed, still_broken = await _run_recheck_errors(aar_channel, None)
-            logger.info(
-                f"Weekly maintenance: Fixed {fixed}, still broken {still_broken}"
-            )
+            logger.info(f"Weekly maintenance: Fixed {fixed}, still broken {still_broken}")
 
             LAST_WEEKLY_MAINTENANCE_DATE = str(today)
             logger.info("Weekly maintenance completed successfully.")
@@ -541,19 +516,14 @@ async def _scheduled_weekly_reparse_loop():
         today = now_utc.date()
 
         # Check if it's the right day and hour
-        if (
-            now_utc.weekday() != SCHEDULE_WEEKLY_REPARSE_DAY
-            or now_utc.hour != SCHEDULE_WEEKLY_REPARSE_HOUR
-        ):
+        if now_utc.weekday() != SCHEDULE_WEEKLY_REPARSE_DAY or now_utc.hour != SCHEDULE_WEEKLY_REPARSE_HOUR:
             return
 
         # Prevent duplicate runs on same date
         if LAST_WEEKLY_REPARSE_DATE == str(today):
             return
 
-        logger.info(
-            f"Weekly reparse starting: last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
-        )
+        logger.info(f"Weekly reparse starting: last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days")
 
         guild = _resolve_notification_guild()
         if not guild:
@@ -567,44 +537,32 @@ async def _scheduled_weekly_reparse_loop():
             if staff_channel is None:
                 staff_channel = await bot.fetch_channel(TECHMARINE_STAFF_CHANNEL_ID)
         except Exception:
-            logger.warning(
-                f"Weekly reparse: Techmarine Staff channel {TECHMARINE_STAFF_CHANNEL_ID} not accessible."
-            )
+            logger.warning(f"Weekly reparse: Techmarine Staff channel {TECHMARINE_STAFF_CHANNEL_ID} not accessible.")
 
         # Acquire lock to prevent concurrent reconciliations
         if RECONCILE_LOCK.locked():
             logger.info("Weekly reparse: reconcile lock held; skipping.")
             if staff_channel:
                 try:
-                    await staff_channel.send(
-                        "⚠️ **Weekly Reparse Skipped**: Another reconciliation is in progress."
-                    )
+                    await staff_channel.send("⚠️ **Weekly Reparse Skipped**: Another reconciliation is in progress.")
                 except Exception:
                     pass
             return
 
         async with RECONCILE_LOCK:
-            logger.info(
-                f"Weekly reparse: Running reparse for last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days"
-            )
+            logger.info(f"Weekly reparse: Running reparse for last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days")
             total, updated, failed, changes_by_field = await _run_reparse_records(
                 days=SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS
             )
-            logger.info(
-                f"Weekly reparse: processed={total}, updated={updated}, failed={failed}"
-            )
+            logger.info(f"Weekly reparse: processed={total}, updated={updated}, failed={failed}")
 
             # Post results to Techmarine Staff channel
             if staff_channel:
                 try:
                     changes_line = ""
                     if changes_by_field:
-                        sorted_changes = sorted(
-                            changes_by_field.items(), key=lambda x: -x[1]
-                        )
-                        changes_summary = ", ".join(
-                            f"{k}={v}" for k, v in sorted_changes
-                        )
+                        sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
+                        changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
                         changes_line = f"\nFields updated: {changes_summary}"
                     await staff_channel.send(
                         f"✅ **Weekly Reparse Complete** (last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days)\n"
@@ -621,9 +579,7 @@ async def _scheduled_weekly_reparse_loop():
         try:
             staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
             if staff_channel:
-                await staff_channel.send(
-                    "❌ **Weekly Reparse Failed**: Check logs for details."
-                )
+                await staff_channel.send("❌ **Weekly Reparse Failed**: Check logs for details.")
         except Exception:
             pass
 
@@ -669,9 +625,7 @@ async def _monthly_archive_audit_loop():
             logger.warning("Monthly archive audit: no guild available; skipping.")
             return
 
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel:
             logger.warning("Monthly archive audit: AAR channel not found; skipping.")
             return
@@ -681,12 +635,8 @@ async def _monthly_archive_audit_loop():
             f"{SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS} days."
         )
         async with RECONCILE_LOCK:
-            fixed, still_broken = await _run_recheck_errors(
-                aar_channel, SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS
-            )
-            logger.info(
-                f"Monthly archive audit complete: restored={fixed}, broken_remaining={still_broken}"
-            )
+            fixed, still_broken = await _run_recheck_errors(aar_channel, SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS)
+            logger.info(f"Monthly archive audit complete: restored={fixed}, broken_remaining={still_broken}")
 
         LAST_MONTHLY_ARCHIVE_AUDIT_DATE = str(today)
     except Exception:
@@ -721,39 +671,23 @@ try:
     schedules_cfg = CONFIG.get("schedules") or {}
     if _is_truthy(schedules_cfg.get("daily_audit_enabled")):
         SCHEDULE_DAILY_AUDIT_ENABLED = True
-    SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(
-        schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS
-    )
+    SCHEDULE_DAILY_AUDIT_SPAN_DAYS = int(schedules_cfg.get("daily_audit_span_days") or SCHEDULE_DAILY_AUDIT_SPAN_DAYS)
     # Weekly maintenance settings
     if "weekly_maintenance_enabled" in schedules_cfg:
-        SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = _is_truthy(
-            schedules_cfg.get("weekly_maintenance_enabled")
-        )
+        SCHEDULE_WEEKLY_MAINTENANCE_ENABLED = _is_truthy(schedules_cfg.get("weekly_maintenance_enabled"))
     if schedules_cfg.get("weekly_maintenance_ingest_span_days"):
-        SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = int(
-            schedules_cfg.get("weekly_maintenance_ingest_span_days")
-        )
+        SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = int(schedules_cfg.get("weekly_maintenance_ingest_span_days"))
     if schedules_cfg.get("weekly_maintenance_day") is not None:
-        SCHEDULE_WEEKLY_MAINTENANCE_DAY = int(
-            schedules_cfg.get("weekly_maintenance_day")
-        )
+        SCHEDULE_WEEKLY_MAINTENANCE_DAY = int(schedules_cfg.get("weekly_maintenance_day"))
     if schedules_cfg.get("weekly_maintenance_hour") is not None:
-        SCHEDULE_WEEKLY_MAINTENANCE_HOUR = int(
-            schedules_cfg.get("weekly_maintenance_hour")
-        )
+        SCHEDULE_WEEKLY_MAINTENANCE_HOUR = int(schedules_cfg.get("weekly_maintenance_hour"))
     # Monthly archive audit settings
     if "monthly_archive_audit_enabled" in schedules_cfg:
-        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = _is_truthy(
-            schedules_cfg.get("monthly_archive_audit_enabled")
-        )
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = _is_truthy(schedules_cfg.get("monthly_archive_audit_enabled"))
     if schedules_cfg.get("monthly_archive_audit_span_days") is not None:
-        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = int(
-            schedules_cfg.get("monthly_archive_audit_span_days")
-        )
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = int(schedules_cfg.get("monthly_archive_audit_span_days"))
     if schedules_cfg.get("monthly_archive_audit_hour") is not None:
-        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = int(
-            schedules_cfg.get("monthly_archive_audit_hour")
-        )
+        SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = int(schedules_cfg.get("monthly_archive_audit_hour"))
 except Exception:
     pass
 
@@ -795,9 +729,7 @@ try:
                 os.makedirs(d, exist_ok=True)
         except Exception:
             pass
-        fh = RotatingFileHandler(
-            path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
-        )
+        fh = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
         fh.setLevel(log_level)
         formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         formatter.converter = time.gmtime  # Force UTC timestamps for file handler
@@ -825,12 +757,12 @@ except Exception:
 # ---------------------------------------------------------------------------
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Populate shared globals, then import extracted domain modules.
 # Must come after all locks, CONFIG, and logger are defined above.
 # ─────────────────────────────────────────────────────────────────────────────
-from . import _bot_globals as _g
+from . import _bot_globals as _g  # noqa: E402
+
 _g.bot = bot
 _g.DATASTORE = DATASTORE
 _g.CONFIG = CONFIG
@@ -854,13 +786,10 @@ _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
 _g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
 
-from . import forge_ops  # noqa: E402
-from . import aar_ops    # noqa: E402
-from . import roster_ops # noqa: E402
 
-from .forge_ops import *   # noqa: F401,F403
-from .aar_ops import *     # noqa: F401,F403
-from .roster_ops import *  # noqa: F401,F403
+from .forge_ops import *  # noqa: E402,F401,F403
+from .aar_ops import *  # noqa: E402,F401,F403
+from .roster_ops import *  # noqa: E402,F401,F403
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -965,9 +894,7 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
-ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set(
-    [1433351293103112202, 1458255656682258504, 1486238369175437342]
-)
+ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set([1433351293103112202, 1458255656682258504, 1486238369175437342])
 
 # Hard-coded allowlist of Kill Team role IDs that may be used with
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
@@ -1060,9 +987,7 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
             return ch_id in {str(x) for x in allowed_ids}
 
         # Final fallback: default allowed channel names
-        default_channels = set(
-            CONFIG.get("default_allowed_channels") or DEFAULT_ALLOWED_CHANNELS
-        )
+        default_channels = set(CONFIG.get("default_allowed_channels") or DEFAULT_ALLOWED_CHANNELS)
         return bool(ch_name) and ch_name in default_channels
     except Exception:
         return False
@@ -1204,9 +1129,7 @@ def _is_techmarine_or_forgemaster(
     return False, ""
 
 
-def _find_responsible_attestor(
-    bearer: discord.Member, guild: discord.Guild
-) -> Tuple[Optional[discord.Member], str]:
+def _find_responsible_attestor(bearer: discord.Member, guild: discord.Guild) -> Tuple[Optional[discord.Member], str]:
     """Find the responsible techmarine/forgemaster for blessing a bearer's armor.
 
     Returns (attestor_member, role_key) where role_key is 'forgemaster' or 'techmarine'.
@@ -1221,9 +1144,7 @@ def _find_responsible_attestor(
     """
     import random as _rand
 
-    logger.debug(
-        f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})"
-    )
+    logger.debug(f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})")
     logger.debug(f"[attestor] Guild members count: {len(guild.members)}")
 
     # Check if bearer is High Command → Forgemaster responsibility
@@ -1275,9 +1196,7 @@ def _find_responsible_attestor(
                 m_company = _get_member_company_name(m)
                 is_tech = "watch techmarine" in m_roles
                 if is_tech:
-                    all_techmarines_found.append(
-                        (m.display_name, m_company, list(m_roles))
-                    )
+                    all_techmarines_found.append((m.display_name, m_company, list(m_roles)))
                 if is_tech and m_company == bearer_company:
                     company_techmarines.append(m)
             except Exception:
@@ -1313,10 +1232,7 @@ def _find_responsible_attestor(
 def is_sergeant_or_higher(user: discord.User | discord.Member):
     # Allow nickname override for owner/operator
     admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    if (
-        str(getattr(user, "id", None)) in admin_ids
-        or str(getattr(user, "nick", None)) == "Watch Techmarine Jules"
-    ):
+    if str(getattr(user, "id", None)) in admin_ids or str(getattr(user, "nick", None)) == "Watch Techmarine Jules":
         return True
     idx_sergeant = _role_index("Watch Sergeant")
     if idx_sergeant is None:
@@ -1365,9 +1281,7 @@ def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
     return False
 
 
-def check_command_permission(
-    user: discord.User | discord.Member, command_name: str
-) -> bool:
+def check_command_permission(user: discord.User | discord.Member, command_name: str) -> bool:
     """Unified permission check for all commands.
 
     Reads from CONFIG["permissions"][command_name] which can have:
@@ -1455,6 +1369,7 @@ def is_high_command(user: discord.User | discord.Member) -> bool:
     except Exception:
         return False
 
+
 def can_reconcile_records(user: "discord.User | discord.Member") -> bool:
     """Return True if the user may run reconcile_records commands.
 
@@ -1462,7 +1377,6 @@ def can_reconcile_records(user: "discord.User | discord.Member") -> bool:
     """
     user_roles = _canonical_role_names(user)
     return bool(user_roles & {"Watch Techmarine", "Forgemaster", "Watch Master"})
-
 
 
 @bot.event
@@ -1527,6 +1441,7 @@ async def on_ready():
             try:
                 # Create shutdown task
                 task = loop.create_task(_announce_shutdown_and_close())
+
                 # Add a callback to force-stop if the task completes but loop continues
                 def _on_shutdown_done(fut):
                     try:
@@ -1535,6 +1450,7 @@ async def on_ready():
                         pass
                     # Give a moment for cleanup, then stop the loop as fallback
                     loop.call_later(2.0, loop.stop)
+
                 task.add_done_callback(_on_shutdown_done)
             except Exception as e:
                 logger.error(f"Signal handler failed to create shutdown task: {e}")
@@ -1568,9 +1484,7 @@ async def on_ready():
             try:
                 if not _monthly_audit_loop.is_running():
                     _monthly_audit_loop.start()
-                    logger.info(
-                        "Monthly audit loop started (daily check for month-end)."
-                    )
+                    logger.info("Monthly audit loop started (daily check for month-end).")
             except Exception:
                 logger.exception("Failed to start monthly audit loop")
     except Exception:
@@ -1645,9 +1559,7 @@ async def on_ready():
         if MILESTONES_ENABLED:
             if not _scheduled_milestone_check.is_running():
                 _scheduled_milestone_check.start()
-                logger.info(
-                    f"Milestone check loop started (every {MILESTONES_CHECK_INTERVAL_DAYS} days)."
-                )
+                logger.info(f"Milestone check loop started (every {MILESTONES_CHECK_INTERVAL_DAYS} days).")
     except Exception:
         logger.exception("Failed to start milestone check loop")
 
@@ -1658,7 +1570,7 @@ async def on_ready():
             logger.info("Forge Chronicle dashboard loop started (every 30 min).")
     except Exception:
         logger.exception("Failed to start forge dashboard loop")
-    
+
     try:
         if not _forge_ambient_loop.is_running():
             _forge_ambient_loop.start()
@@ -1673,7 +1585,9 @@ async def on_ready():
             _lfg_queue_expiration_loop.start()
             default_expiry_mins = _get_lfg_default_expiry_minutes()
             max_expiry_mins = _get_lfg_max_expiry_minutes()
-            logger.info(f"LFG queue expiration loop started (default: {default_expiry_mins} min, max: {max_expiry_mins} min).")
+            logger.info(
+                f"LFG queue expiration loop started (default: {default_expiry_mins} min, max: {max_expiry_mins} min)."
+            )
     except Exception:
         logger.exception("Failed to start LFG queue system")
 
@@ -1720,16 +1634,15 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         # Check if Reserves role was added
         before_role_ids = {r.id for r in before.roles}
         after_role_ids = {r.id for r in after.roles}
-        
+
         # Also check by name in case ID doesn't match
         before_role_names = {r.name.lower() for r in before.roles}
         after_role_names = {r.name.lower() for r in after.roles}
-        
-        reserves_added = (
-            (RESERVES_ROLE_ID in after_role_ids and RESERVES_ROLE_ID not in before_role_ids)
-            or ("reserves" in after_role_names and "reserves" not in before_role_names)
+
+        reserves_added = (RESERVES_ROLE_ID in after_role_ids and RESERVES_ROLE_ID not in before_role_ids) or (
+            "reserves" in after_role_names and "reserves" not in before_role_names
         )
-        
+
         if reserves_added:
             # Member went inactive - release their machine spirit
             spirit = await _delete_machine_spirit(after.id)
@@ -1748,29 +1661,27 @@ async def _handle_lfg_button(interaction: discord.Interaction, custom_id: str):
         if len(parts) != 2:
             logger.warning(f"Invalid LFG custom_id format: {custom_id}")
             return
-        
+
         action, queue_id_str = parts
         queue_id = int(queue_id_str)
         logger.info(f"LFG button: action={action} queue_id={queue_id} user={interaction.user.id}")
-        
+
         # Create a view instance to use its methods
         view = LFGQueueView(queue_id)
-        
+
         if action == "lfg_join":
             await view.join_queue(interaction)
         elif action == "lfg_leave":
             await view.leave_queue(interaction)
         elif action == "lfg_close":
             await view.close_queue(interaction)
-        
+
         logger.info(f"LFG button handler completed: {action} queue_id={queue_id}")
     except Exception as e:
         logger.warning(f"Error in _handle_lfg_button: {e}", exc_info=True)
         try:
             if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred processing this button.", ephemeral=True
-                )
+                await interaction.response.send_message("An error occurred processing this button.", ephemeral=True)
         except Exception:
             pass
 
@@ -1779,11 +1690,7 @@ async def _handle_lfg_button(interaction: discord.Interaction, custom_id: str):
 async def on_interaction(interaction: discord.Interaction):
     # Handle LFG button interactions
     try:
-        if (
-            interaction
-            and interaction.type == discord.InteractionType.component
-            and interaction.data
-        ):
+        if interaction and interaction.type == discord.InteractionType.component and interaction.data:
             custom_id = interaction.data.get("custom_id", "")
             logger.info(f"Button interaction received: custom_id={custom_id}")
             if custom_id.startswith("lfg_"):
@@ -1792,13 +1699,10 @@ async def on_interaction(interaction: discord.Interaction):
                 return
     except Exception as e:
         logger.warning(f"Error handling LFG button: {e}")
-    
+
     # Pre-invocation logging for slash commands
     try:
-        if (
-            interaction
-            and interaction.type == discord.InteractionType.application_command
-        ):
+        if interaction and interaction.type == discord.InteractionType.application_command:
             cmd_name = None
             try:
                 cmd_name = getattr(getattr(interaction, "command", None), "name", None)
@@ -1828,9 +1732,7 @@ async def on_interaction(interaction: discord.Interaction):
 
 
 @bot.event
-async def on_app_command_completion(
-    interaction: discord.Interaction, command: app_commands.Command
-):
+async def on_app_command_completion(interaction: discord.Interaction, command: app_commands.Command):
     try:
         guild_id = getattr(getattr(interaction, "guild", None), "id", None)
         channel_id = getattr(getattr(interaction, "channel", None), "id", None)
@@ -1891,7 +1793,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
     """Detect when a processed or errored AAR message is deleted and notify staff."""
     try:
         message_id = str(payload.message_id)
-        
+
         # Check if this was a processed AAR or an errored AAR
         is_processed = DATASTORE.is_processed(message_id)
         error_entry = None
@@ -1901,10 +1803,10 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             error_entry = error_data.get(message_id)
             if not error_entry:
                 return  # Not a tracked AAR at all
-        
+
         # Get the stored record for details (may be None for errored AARs)
         record = DATASTORE.get_record(message_id) or {}
-        
+
         # Resolve guild and notification channel
         guild = None
         try:
@@ -1915,23 +1817,19 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             logger.warning(f"AAR {message_id} deleted but guild not found.")
             return
         # Verify this was from the AAR channel
-        aar_channel = discord.utils.get(
-            guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭"
-        )
+        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
         if not aar_channel or payload.channel_id != aar_channel.id:
             return
         # Get notification channel
         notify_channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")
         if not notify_channel:
-            logger.warning(
-                f"AAR {message_id} deleted but notification channel not found."
-            )
+            logger.warning(f"AAR {message_id} deleted but notification channel not found.")
             return
-        
+
         # Get Watch Command role for ping
         watch_role = discord.utils.get(guild.roles, name="Watch Command")
         mention = f"<@&{watch_role.id}>" if watch_role else "@Watch Command"
-        
+
         if error_entry:
             # Errored AAR deletion notification - PUBLIC SHAMING EDITION
             author_info = error_entry.get("author", {})
@@ -1942,16 +1840,12 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             error_preview = "\n".join(errors[:5])  # Show first 5 errors
             if len(errors) > 5:
                 error_preview += f"\n... and {len(errors) - 5} more"
-            
+
             # Get preserved content if available
             preserved_content = error_entry.get("content", "")
-            content_preview = (
-                preserved_content[:300] + "..."
-                if len(preserved_content) > 300
-                else preserved_content
-            )
+            content_preview = preserved_content[:300] + "..." if len(preserved_content) > 300 else preserved_content
             error_timestamp = error_entry.get("timestamp", "Unknown")
-            
+
             alert_lines = [
                 "# ☠️ UNAUTHORIZED AAR DELETION ☠️",
                 "",
@@ -1966,23 +1860,27 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
                 "**The errors that needed correction:**",
                 f"```\n{error_preview}\n```",
             ]
-            
+
             if content_preview:
-                alert_lines.extend([
+                alert_lines.extend(
+                    [
+                        "",
+                        "**Deleted Content:**",
+                        f"```\n{content_preview}\n```",
+                    ]
+                )
+
+            alert_lines.extend(
+                [
                     "",
-                    "**Deleted Content:**",
-                    f"```\n{content_preview}\n```",
-                ])
-            
-            alert_lines.extend([
-                "",
-                "⚠️ **AARs with errors must be EDITED and CORRECTED, not deleted.**",
-                "",
-                "If you made a mistake, repost the AAR with the correct format.",
-                f"Watch Command has been notified. {mention}",
-            ])
+                    "⚠️ **AARs with errors must be EDITED and CORRECTED, not deleted.**",
+                    "",
+                    "If you made a mistake, repost the AAR with the correct format.",
+                    f"Watch Command has been notified. {mention}",
+                ]
+            )
             alert_content = "\n".join(alert_lines)
-            
+
             # Truncate if too long
             if len(alert_content) > 1900 and content_preview:
                 # Shrink content preview
@@ -2002,7 +1900,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
                     alert_lines.extend(["**Content:**", f"```\n{content_preview}\n```"])
                 alert_lines.extend(["", f"⚠️ AARs must be EDITED, not deleted. {mention}"])
                 alert_content = "\n".join(alert_lines)
-            
+
             # Remove from error tracking since the message is gone
             try:
                 error_data = _load_json_dict(AAR_ERRORS_PATH)
@@ -2019,12 +1917,8 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             timestamp = record.get("timestamp", "Unknown")
             author_mention = f"<@{brother_ids[0]}>" if brother_ids else "Unknown"
             preserved_content = record.get("content", "")
-            content_preview = (
-                preserved_content[:300] + "..."
-                if len(preserved_content) > 300
-                else preserved_content
-            )
-            
+            content_preview = preserved_content[:300] + "..." if len(preserved_content) > 300 else preserved_content
+
             # Build alert content, shrinking the preview as needed to stay within limits
             while True:
                 alert_lines = [
@@ -2063,7 +1957,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
                         content_preview = preserved_content[:body_len] + "..."
                     else:
                         content_preview = preserved_content[:target_len]
-        
+
         try:
             await notify_channel.send(
                 alert_content,
@@ -2108,5 +2002,6 @@ def _main():
             "Please set it before running the bot: export DISCORD_TOKEN='your_token'"
         )
     bot.run(token)
+
 
 # Lines 17605-20389 extracted to roster_ops.py

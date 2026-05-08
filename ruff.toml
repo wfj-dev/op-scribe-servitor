@@ -1,0 +1,31 @@
+# Ruff configuration for OP-Scribe Servitor
+
+# Line length (default is 88)
+line-length = 120
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "*.egg-info",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+[lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default
+select = ["E", "F"]
+
+# Ignore F405 (variable may be undefined due to star imports) globally
+# The codebase uses `from X import *` intentionally for re-exporting modules
+# and this pattern is documented with noqa comments where used
+ignore = ["F405"]
+
+# Allow star imports in specific patterns where they're intentional
+[lint.per-file-ignores]
+"opscribe/bot.py" = ["F403"]  # Allow star imports for re-exporting
+"opscribe/aar_ops.py" = ["F403"]  # Allow star imports from shared modules
+"opscribe/forge_ops.py" = ["F403"]  # Allow star imports from shared modules
+"opscribe/roster_ops.py" = ["F403"]  # Allow star imports from shared modules
+"opscribe/_refactor.py" = ["F403"]  # Allow star imports from shared modules
