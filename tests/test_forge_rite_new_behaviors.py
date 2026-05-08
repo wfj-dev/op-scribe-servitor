@@ -286,8 +286,8 @@ def test_record_rite_appends_to_history():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(
             _record_rite_in_chronicle(
@@ -314,8 +314,8 @@ def test_record_rite_increments_total_rites():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "standard", "SPIRIT", "maintenance"))
 
@@ -328,8 +328,8 @@ def test_record_rite_first_binding_increments_first_bindings():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "standard", "SPIRIT", "first_binding"))
 
@@ -343,8 +343,8 @@ def test_record_rite_rebirth_increments_rebirths():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "intensive", "SPIRIT", "rebirth"))
 
@@ -358,8 +358,8 @@ def test_record_rite_maintenance_does_not_increment_bindings_or_rebirths():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "standard", "SPIRIT", "maintenance"))
 
@@ -375,8 +375,8 @@ def test_record_rite_restoration_does_not_increment_bindings_or_rebirths():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "intensive", "SPIRIT", "restoration"))
 
@@ -394,8 +394,8 @@ def test_record_rite_history_capped_at_500():
     data["rite_history"] = [{"dummy": i} for i in range(500)]
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "standard", "SPIRIT", "maintenance"))
 
@@ -410,16 +410,16 @@ def test_record_rite_accumulates_multiple_calls():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_record_rite_in_chronicle(100, 200, "standard", "S1", "first_binding"))
         # Re-use data returned by save for the second call
         data = mock_save.call_args[0][0]
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save2,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save2,
     ):
         _run(_record_rite_in_chronicle(101, 200, "standard", "S2", "rebirth"))
 
@@ -441,8 +441,8 @@ def test_store_pending_alert_saves_fields():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_store_pending_alert(user_id=999, message_id=111, channel_id=222))
 
@@ -458,7 +458,7 @@ def test_get_pending_alert_returns_stored_alert():
     data = _default_chronicle()
     data["pending_alerts"]["42"] = {"message_id": 10, "channel_id": 20, "ts": "x"}
 
-    with patch("bot._load_forge_chronicle", return_value=data):
+    with patch("opscribe.forge_ops._load_forge_chronicle", return_value=data):
         result = _run(_get_pending_alert(42))
 
     assert result == {"message_id": 10, "channel_id": 20, "ts": "x"}
@@ -468,7 +468,7 @@ def test_get_pending_alert_returns_none_for_unknown_user():
     """_get_pending_alert returns None when no alert is stored for the user."""
     data = _default_chronicle()
 
-    with patch("bot._load_forge_chronicle", return_value=data):
+    with patch("opscribe.forge_ops._load_forge_chronicle", return_value=data):
         result = _run(_get_pending_alert(9999))
 
     assert result is None
@@ -480,8 +480,8 @@ def test_clear_pending_alert_removes_entry():
     data["pending_alerts"]["77"] = {"message_id": 1, "channel_id": 2, "ts": "x"}
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_clear_pending_alert(77))
 
@@ -494,8 +494,8 @@ def test_clear_pending_alert_noop_for_unknown_user():
     data = _default_chronicle()
 
     with (
-        patch("bot._load_forge_chronicle", return_value=data),
-        patch("bot._save_forge_chronicle") as mock_save,
+        patch("opscribe.forge_ops._load_forge_chronicle", return_value=data),
+        patch("opscribe.forge_ops._save_forge_chronicle") as mock_save,
     ):
         _run(_clear_pending_alert(9999))
 
@@ -515,8 +515,8 @@ def test_store_and_get_round_trip():
         saved_state["data"] = d
 
     with (
-        patch("bot._load_forge_chronicle", side_effect=fake_load),
-        patch("bot._save_forge_chronicle", side_effect=fake_save),
+        patch("opscribe.forge_ops._load_forge_chronicle", side_effect=fake_load),
+        patch("opscribe.forge_ops._save_forge_chronicle", side_effect=fake_save),
     ):
         _run(_store_pending_alert(user_id=55, message_id=300, channel_id=400))
         result = _run(_get_pending_alert(55))
@@ -538,8 +538,8 @@ def test_clear_after_store_removes_alert():
         saved_state["data"] = d
 
     with (
-        patch("bot._load_forge_chronicle", side_effect=fake_load),
-        patch("bot._save_forge_chronicle", side_effect=fake_save),
+        patch("opscribe.forge_ops._load_forge_chronicle", side_effect=fake_load),
+        patch("opscribe.forge_ops._save_forge_chronicle", side_effect=fake_save),
     ):
         _run(_store_pending_alert(user_id=66, message_id=500, channel_id=600))
         _run(_clear_pending_alert(66))

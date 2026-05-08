@@ -93,7 +93,7 @@ def test_roll_detection_damaged_probability():
     # Use a fixed seed for deterministic test
     _successes = 0  # Reserved for statistical analysis
     _trials = 1000  # Reserved for statistical analysis
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         # Test boundary: < 0.20 should succeed
         mock_random.return_value = 0.19
         assert _roll_detection_alert("damaged") is True
@@ -107,7 +107,7 @@ def test_roll_detection_damaged_probability():
 
 def test_roll_detection_compromised_probability():
     """Compromised tier should trigger ~35% of the time."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         mock_random.return_value = 0.34
         assert _roll_detection_alert("compromised") is True
 
@@ -120,7 +120,7 @@ def test_roll_detection_compromised_probability():
 
 def test_roll_detection_critical_probability():
     """Critical tier should trigger ~50% of the time."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         mock_random.return_value = 0.49
         assert _roll_detection_alert("critical") is True
 
@@ -159,16 +159,16 @@ def test_detection_alert_tracked_in_state():
 
     # Force detection roll to succeed
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", side_effect=mock_set_armor_state),
-        patch("bot._get_member_damage_tier", return_value="damaged"),
-        patch("bot._get_damage_penalty", return_value=1),
-        patch("bot.compute_stats_for_user", return_value={"aar_points": 200}),
-        patch("bot._check_armor_grace_period", return_value=True),
-        patch("bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
-        patch("bot._roll_detection_alert", return_value=True),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
+        patch("opscribe.bot._get_member_damage_tier", return_value="damaged"),
+        patch("opscribe.bot._get_damage_penalty", return_value=1),
+        patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
+        patch("opscribe.bot._check_armor_grace_period", return_value=True),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
+        patch("opscribe.bot._roll_detection_alert", return_value=True),
     ):
-        from bot import _process_armor_integrity_for_aar
+        from opscribe.bot import _process_armor_integrity_for_aar
 
         penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
 
@@ -194,16 +194,16 @@ def test_detection_alert_not_repeated_for_same_tier():
         }
 
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", new_callable=AsyncMock),
-        patch("bot._get_member_damage_tier", return_value="damaged"),
-        patch("bot._get_damage_penalty", return_value=1),
-        patch("bot.compute_stats_for_user", return_value={"aar_points": 200}),
-        patch("bot._check_armor_grace_period", return_value=True),
-        patch("bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
-        patch("bot._roll_detection_alert", return_value=True),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
+        patch("opscribe.bot._get_member_damage_tier", return_value="damaged"),
+        patch("opscribe.bot._get_damage_penalty", return_value=1),
+        patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
+        patch("opscribe.bot._check_armor_grace_period", return_value=True),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
+        patch("opscribe.bot._roll_detection_alert", return_value=True),
     ):  # Would succeed, but shouldn't be called
-        from bot import _process_armor_integrity_for_aar
+        from opscribe.bot import _process_armor_integrity_for_aar
 
         penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
 
@@ -228,16 +228,16 @@ def test_detection_alert_allowed_for_escalated_tier():
         }
 
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", new_callable=AsyncMock),
-        patch("bot._get_member_damage_tier", return_value="compromised"),
-        patch("bot._get_damage_penalty", return_value=2),
-        patch("bot.compute_stats_for_user", return_value={"aar_points": 200}),
-        patch("bot._check_armor_grace_period", return_value=True),
-        patch("bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
-        patch("bot._roll_detection_alert", return_value=True),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
+        patch("opscribe.bot._get_member_damage_tier", return_value="compromised"),
+        patch("opscribe.bot._get_damage_penalty", return_value=2),
+        patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
+        patch("opscribe.bot._check_armor_grace_period", return_value=True),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
+        patch("opscribe.bot._roll_detection_alert", return_value=True),
     ):
-        from bot import _process_armor_integrity_for_aar
+        from opscribe.bot import _process_armor_integrity_for_aar
 
         penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
 
@@ -267,17 +267,17 @@ def test_sustained_alert_takes_priority_over_detection():
         return "damaged"  # Damage occurs
 
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", new_callable=AsyncMock),
-        patch("bot._get_member_damage_tier", return_value=None),
-        patch("bot._get_damage_penalty", return_value=0),
-        patch("bot.compute_stats_for_user", return_value={"aar_points": 200}),
-        patch("bot._check_armor_grace_period", return_value=True),
-        patch("bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
-        patch("bot._roll_damage_tier", return_value="damaged"),
-        patch("bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
+        patch("opscribe.bot._get_member_damage_tier", return_value=None),
+        patch("opscribe.bot._get_damage_penalty", return_value=0),
+        patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
+        patch("opscribe.bot._check_armor_grace_period", return_value=True),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
+        patch("opscribe.bot._roll_damage_tier", return_value="damaged"),
+        patch("opscribe.bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
     ):
-        from bot import _process_armor_integrity_for_aar
+        from opscribe.bot import _process_armor_integrity_for_aar
 
         penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
 
@@ -312,17 +312,17 @@ def test_sustained_alert_updates_detection_tracking():
         return "compromised"
 
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", side_effect=mock_set_armor_state),
-        patch("bot._get_member_damage_tier", return_value=None),
-        patch("bot._get_damage_penalty", return_value=0),
-        patch("bot.compute_stats_for_user", return_value={"aar_points": 200}),
-        patch("bot._check_armor_grace_period", return_value=True),
-        patch("bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
-        patch("bot._roll_damage_tier", return_value="compromised"),
-        patch("bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
+        patch("opscribe.bot._get_member_damage_tier", return_value=None),
+        patch("opscribe.bot._get_damage_penalty", return_value=0),
+        patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
+        patch("opscribe.bot._check_armor_grace_period", return_value=True),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
+        patch("opscribe.bot._roll_damage_tier", return_value="compromised"),
+        patch("opscribe.bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
     ):
-        from bot import _process_armor_integrity_for_aar
+        from opscribe.bot import _process_armor_integrity_for_aar
 
         penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
 
@@ -336,7 +336,7 @@ def test_sustained_alert_updates_detection_tracking():
 
 def test_blessing_resets_detection_tracking():
     """Blessing should reset last_detection_alert_tier to None."""
-    from bot import _clear_armor_damage
+    from opscribe.bot import _clear_armor_damage
 
     mock_member = MagicMock()
     mock_member.id = 99999
@@ -357,9 +357,9 @@ def test_blessing_resets_detection_tracking():
         captured_state.update(state)
 
     with (
-        patch("bot._get_armor_state", side_effect=mock_get_armor_state),
-        patch("bot._set_armor_state", side_effect=mock_set_armor_state),
-        patch("bot._get_armor_damage_role_ids", return_value={}),
+        patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
+        patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
+        patch("opscribe.bot._get_armor_damage_role_ids", return_value={}),
     ):
         _run(_clear_armor_damage(mock_member, mock_guild))
 

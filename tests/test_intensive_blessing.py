@@ -128,7 +128,7 @@ def test_available_charges_empty_pool():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": []}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(10))
 
     assert available == BLESSING_POOL_MAX
@@ -141,7 +141,7 @@ def test_available_charges_all_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": recent_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(11))
 
     assert available == 0
@@ -154,7 +154,7 @@ def test_available_charges_partial_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": partial_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(12))
 
     assert available == BLESSING_POOL_MAX - 2
@@ -167,7 +167,7 @@ def test_available_charges_expired_timestamps_count_as_free():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": expired_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(13))
 
     assert available == BLESSING_POOL_MAX
@@ -180,7 +180,7 @@ def test_available_charges_oversized_list_never_negative():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": excess_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(14))
 
     assert available >= 0
@@ -194,7 +194,7 @@ def test_available_charges_mixed_expired_and_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": active_ts + expired_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(15))
 
     assert available == BLESSING_POOL_MAX - 2
@@ -216,8 +216,8 @@ def test_consume_multiple_appends_n_timestamps():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(20, 2))
 
@@ -236,8 +236,8 @@ def test_consume_multiple_three_charges():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(21, 3))
 
@@ -258,8 +258,8 @@ def test_consume_multiple_timestamps_not_in_future():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(22, 2))
 
@@ -282,8 +282,8 @@ def test_consume_multiple_timestamps_all_same():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(23, 3))
 
@@ -304,8 +304,8 @@ def test_consume_multiple_bounded_to_pool_max():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(24, 4))  # Request 4 but only 1 slot remains
 
@@ -326,8 +326,8 @@ def test_consume_multiple_zero_is_noop():
         call_count["n"] += 1
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(25, 0))
 

@@ -411,7 +411,7 @@ async def record_of_blood(interaction: discord.Interaction):
     except Exception:
         pass
 
-    guild = interaction.guild or _resolve_notification_guild()
+    guild = interaction.guild or _b("_resolve_notification_guild")()
     if not guild:
         await interaction.followup.send("Unable to resolve guild.", ephemeral=True)
         return
@@ -1613,7 +1613,7 @@ async def audit_service_studs(interaction: discord.Interaction):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
 
-    guild = interaction.guild or _resolve_notification_guild()
+    guild = interaction.guild or _b("_resolve_notification_guild")()
     if not guild:
         await interaction.followup.send("Guild not available.", ephemeral=True)
         return

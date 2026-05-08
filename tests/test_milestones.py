@@ -110,10 +110,10 @@ class TestScheduledMilestoneCheckGating:
         # Patch module-level constants / globals used by the function
         self.patches = []
 
-        p1 = patch("bot.MILESTONES_ENABLED", True)
-        p2 = patch("bot.DATASTORE", MagicMock())
-        p3 = patch("bot.MILESTONE_TRACKING_PATH", self.tracking_path)
-        p4 = patch("bot.MILESTONES_CHECK_INTERVAL_DAYS", 7)
+        p1 = patch("opscribe.bot.MILESTONES_ENABLED", True)
+        p2 = patch("opscribe.bot.DATASTORE", MagicMock())
+        p3 = patch("opscribe.bot.MILESTONE_TRACKING_PATH", self.tracking_path)
+        p4 = patch("opscribe.bot.MILESTONES_CHECK_INTERVAL_DAYS", 7)
 
         self.patches.extend([p1, p2, p3, p4])
         for p in self.patches:
@@ -150,7 +150,7 @@ class TestScheduledMilestoneCheckGating:
 
         # In-memory value is None (simulates fresh restart)
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
 
             await _scheduled_milestone_check()
 
@@ -179,10 +179,10 @@ class TestScheduledMilestoneCheckGating:
 
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
-            patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
+            patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
+            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
 
             await _scheduled_milestone_check()
 
@@ -205,7 +205,7 @@ class TestScheduledMilestoneCheckGating:
         )
 
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", recent):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
 
             await _scheduled_milestone_check()
 
@@ -235,10 +235,10 @@ class TestScheduledMilestoneCheckGating:
 
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
-            patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
+            patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
+            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
 
             await _scheduled_milestone_check()
 

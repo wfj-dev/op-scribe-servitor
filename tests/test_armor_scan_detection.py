@@ -148,7 +148,7 @@ def test_roll_scan_fractured_always_detected():
 
 def test_roll_scan_damaged_can_be_missed():
     """Damaged tiers can be missed based on miss chance."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         # Below miss threshold (0.30) - should be missed
         mock_random.return_value = 0.29
         result = _roll_scan_result("damaged", 50, spirit_fractured=False)
@@ -163,7 +163,7 @@ def test_roll_scan_damaged_can_be_missed():
 
 def test_roll_scan_critical_rarely_missed():
     """Critical tier has only 5% miss chance."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         # Below 0.05 - should be missed
         mock_random.return_value = 0.04
         result = _roll_scan_result("critical", 100, spirit_fractured=False)
@@ -177,7 +177,7 @@ def test_roll_scan_critical_rarely_missed():
 
 def test_roll_scan_nominal_predictive_warning():
     """Nominal brothers can trigger predictive warnings based on points."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         # 81-110 pts range: 25% warning chance
         # Below threshold - warning triggered
         mock_random.return_value = 0.24
@@ -202,7 +202,7 @@ def test_roll_scan_nominal_safe_zone_no_warning():
 
 def test_roll_scan_high_points_predictive_warning():
     """High point count (131+) has 60% warning chance."""
-    with patch("bot.random.random") as mock_random:
+    with patch("opscribe.forge_ops.random.random") as mock_random:
         # Below 0.60 - warning triggered
         mock_random.return_value = 0.59
         result = _roll_scan_result(None, 150, spirit_fractured=False)
@@ -334,14 +334,14 @@ class TestScanStatePersistence:
         _save_scan_state(state)
 
         # First call should roll and cache
-        with patch("bot.random.random", return_value=0.5):  # Above miss threshold
+        with patch("opscribe.forge_ops.random.random", return_value=0.5):  # Above miss threshold
             result1 = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
 
         assert result1["detected"] is True
         assert result1["aar_gen"] == 5
 
         # Second call should return cached result (random not called)
-        with patch("bot.random.random", return_value=0.0):  # Would miss if called
+        with patch("opscribe.forge_ops.random.random", return_value=0.0):  # Would miss if called
             result2 = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
 
         assert result2["detected"] is True  # Same as cached
@@ -358,7 +358,7 @@ class TestScanStatePersistence:
 
         # Cached result is from gen 4, but current is gen 5
         # Should roll a new result
-        with patch("bot.random.random", return_value=0.0):  # Would miss
+        with patch("opscribe.forge_ops.random.random", return_value=0.0):  # Would miss
             result = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
 
         assert result["detected"] is False  # New roll (missed)
@@ -410,7 +410,7 @@ class TestScanDetectionIntegration:
         results = []
         for _ in range(5):
             # Each call should return the cached result after the first
-            with patch("bot.random.random", return_value=0.1):  # Would miss damaged
+            with patch("opscribe.forge_ops.random.random", return_value=0.1):  # Would miss damaged
                 result = _run(_get_or_roll_scan_result(555, "damaged", 80, False))
                 results.append(result["detected"])
 
