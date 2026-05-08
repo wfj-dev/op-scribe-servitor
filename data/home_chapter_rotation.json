@@ -4,25 +4,24 @@
     "Cowled Wardens",
     "Crimson Fists",
     "Dark Angels",
-    "Dark Krakens",
     "Exorcists",
     "Flesh Tearers",
     "Imperial Fists",
     "Mentors",
     "Raptors",
     "Raven Guard",
-    "Red Scorpions",
     "Space Wolves",
     "Tempestuous Angels",
-    "White Scars",
     "Black Shield",
     "Angels of Vengeance",
     "Blood Angels",
     "Salamanders",
-    "Ultramarines",
     "Bleeding Hearts",
     "Blood Ravens",
-    "Minotaurs"
+    "Death Spectres",
+    "Dragonspears",
+    "Iron Hands",
+    "Necropolis Hawks"
   ],
   "selected": {
     "2026-02": [
@@ -40,6 +39,10 @@
     "2026-05": [
       "Marines Errant",
       "Carcharodons"
+    ],
+    "2026-06": [
+      "Ultramarines",
+      "White Scars"
     ]
   }
 }
