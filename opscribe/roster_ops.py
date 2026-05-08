@@ -25,7 +25,7 @@ from . import _bot_globals as _g
 
 def _b(name):
     """Resolve name via bot module for test-mock compatibility."""
-    m = _sys.modules.get("bot")
+    m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
 
 
