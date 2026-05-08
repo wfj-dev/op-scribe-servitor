@@ -2535,7 +2535,7 @@ async def tally_deeds(
                         if rp in role_names:
                             member_rank = rp
                             break
-                    rank_emoji = _get_rank_emoji(interaction.guild, member_rank) if member_rank else ""
+                    rank_emoji = _b("_get_rank_emoji")(interaction.guild, member_rank) if member_rank else ""
 
                     # Strip rank prefix from name (case-insensitive)
                     stripped_name = nm
@@ -2820,7 +2820,7 @@ async def tally_deeds(
                     if rank in [getattr(r, "name", "") for r in target.roles]:
                         member_rank_name = rank
                         break
-                rank_emoji = _get_rank_emoji(guild, member_rank_name) if guild else ""
+                rank_emoji = _b("_get_rank_emoji")(guild, member_rank_name) if guild else ""
 
                 # Get home chapter emoji
                 home_ch = stat_dict.get("Home Chapter", "Unknown")
@@ -3589,7 +3589,7 @@ async def my_deeds(interaction: discord.Interaction):
     name_val = re.sub(r"[●⚬]+", "", name_val).strip() or display_name
 
     # Get rank emoji
-    rank_emoji = _get_rank_emoji(guild, current_rank) if guild else ""
+    rank_emoji = _b("_get_rank_emoji")(guild, current_rank) if guild else ""
 
     # Get chapter emoji
     chapter_emoji = (
@@ -5043,7 +5043,7 @@ def _format_personal_bonds_jericho_embed(
                 break
 
     # Get emojis
-    rank_emoji = _get_rank_emoji(guild, target_rank) if guild and target_rank else ""
+    rank_emoji = _b("_get_rank_emoji")(guild, target_rank) if guild and target_rank else ""
     chapter_emoji = _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
 
     embed = discord.Embed(
@@ -5107,7 +5107,7 @@ def _format_personal_bonds_jericho_embed(
                     member_rank = rp
                     break
             if member_rank:
-                rank_emoji = _get_rank_emoji(guild, member_rank)
+                rank_emoji = _b("_get_rank_emoji")(guild, member_rank)
                 # Strip rank prefix from name (case-insensitive)
                 for rp in _b("RANK_ROLES_PRIORITY"):
                     if name.lower().startswith(rp.lower()):
@@ -5744,7 +5744,7 @@ def _format_member_styled(
                 member_rank = rp
                 break
         if member_rank:
-            rank_emoji = _get_rank_emoji(guild, member_rank)
+            rank_emoji = _b("_get_rank_emoji")(guild, member_rank)
             # Strip the member's actual rank prefix from name (case-insensitive)
             if name.lower().startswith(member_rank.lower()):
                 name = name[len(member_rank) :].lstrip()

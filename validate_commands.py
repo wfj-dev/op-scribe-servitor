@@ -15,6 +15,7 @@ BOT_FUNCTIONS = {
     "save_aar_data",
     "parse_aar",
     "validate_aar",
+    "_get_rank_emoji",
 }
 
 # Modules that were extracted and should use _b() for bot.py functions
