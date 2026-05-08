@@ -25,11 +25,9 @@ Covers:
 """
 
 import asyncio
-import json
 import os
 import tempfile
-from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import opscribe.bot as bot
 from opscribe.bot import (
@@ -51,6 +49,7 @@ from opscribe.bot import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _run(coro):
     """Run a coroutine synchronously."""
     return asyncio.get_event_loop().run_until_complete(coro)
@@ -59,6 +58,7 @@ def _run(coro):
 # ---------------------------------------------------------------------------
 # ARMOR_SCAN_MISS_CHANCES constant validation
 # ---------------------------------------------------------------------------
+
 
 def test_miss_chances_has_expected_tiers():
     """Miss chances should exist for damaged, compromised, critical, fractured."""
@@ -86,11 +86,12 @@ def test_miss_chances_are_valid_probabilities():
 # ARMOR_SCAN_PREDICTIVE_TIERS constant validation
 # ---------------------------------------------------------------------------
 
+
 def test_predictive_tiers_has_expected_ranges():
     """Predictive tiers should cover expected point ranges."""
     tiers = ARMOR_SCAN_PREDICTIVE_TIERS
     assert len(tiers) == 5
-    
+
     # Check ranges
     assert tiers[0]["min"] == 0 and tiers[0]["max"] == 40  # Safe zone
     assert tiers[1]["min"] == 41 and tiers[1]["max"] == 80
@@ -108,7 +109,7 @@ def test_predictive_tiers_safe_zone_no_warning():
 def test_predictive_tiers_increasing_chances():
     """Warning chances should increase with point count."""
     tiers = ARMOR_SCAN_PREDICTIVE_TIERS
-    assert tiers[0]["chance"] == 0.0   # 0-40 pts
+    assert tiers[0]["chance"] == 0.0  # 0-40 pts
     assert tiers[1]["chance"] == 0.10  # 41-80 pts
     assert tiers[2]["chance"] == 0.25  # 81-110 pts
     assert tiers[3]["chance"] == 0.40  # 111-130 pts
@@ -125,6 +126,7 @@ def test_predictive_tiers_are_valid_probabilities():
 # INTENSIVE_SCAN_COST constant validation
 # ---------------------------------------------------------------------------
 
+
 def test_intensive_scan_cost():
     """Intensive scan should cost 500 armory points."""
     assert INTENSIVE_SCAN_COST == 500
@@ -133,6 +135,7 @@ def test_intensive_scan_cost():
 # ---------------------------------------------------------------------------
 # _roll_scan_result
 # ---------------------------------------------------------------------------
+
 
 def test_roll_scan_fractured_always_detected():
     """Fractured spirits should always be detected."""
@@ -151,7 +154,7 @@ def test_roll_scan_damaged_can_be_missed():
         result = _roll_scan_result("damaged", 50, spirit_fractured=False)
         assert result["detected"] is False
         assert result["miss_reason"] == "spirit_uncommunicative"
-        
+
         # At/above miss threshold - should be detected
         mock_random.return_value = 0.30
         result = _roll_scan_result("damaged", 50, spirit_fractured=False)
@@ -165,7 +168,7 @@ def test_roll_scan_critical_rarely_missed():
         mock_random.return_value = 0.04
         result = _roll_scan_result("critical", 100, spirit_fractured=False)
         assert result["detected"] is False
-        
+
         # At 0.05 - should be detected
         mock_random.return_value = 0.05
         result = _roll_scan_result("critical", 100, spirit_fractured=False)
@@ -181,7 +184,7 @@ def test_roll_scan_nominal_predictive_warning():
         result = _roll_scan_result(None, 100, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is True
-        
+
         # At threshold - no warning
         mock_random.return_value = 0.25
         result = _roll_scan_result(None, 100, spirit_fractured=False)
@@ -205,7 +208,7 @@ def test_roll_scan_high_points_predictive_warning():
         result = _roll_scan_result(None, 150, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is True
-        
+
         # At 0.60 - no warning
         mock_random.return_value = 0.60
         result = _roll_scan_result(None, 150, spirit_fractured=False)
@@ -217,31 +220,33 @@ def test_roll_scan_high_points_predictive_warning():
 # Scan state persistence (with temp file)
 # ---------------------------------------------------------------------------
 
+
 class TestScanStatePersistence:
     """Tests for scan state load/save functions."""
-    
+
     def setup_method(self):
         """Create temp directory and patch paths."""
         self.temp_dir = tempfile.mkdtemp()
         self.scan_state_path = os.path.join(self.temp_dir, "armor_scan_state.json")
-        
+
         # Patch the path constant
         self._original_path = bot.ARMOR_SCAN_STATE_PATH
         bot.ARMOR_SCAN_STATE_PATH = self.scan_state_path
-    
+
     def teardown_method(self):
         """Restore original path and clean up."""
         bot.ARMOR_SCAN_STATE_PATH = self._original_path
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
+
     def test_load_scan_state_empty_file(self):
         """Loading non-existent state returns defaults."""
         state = _load_scan_state()
         assert state["aar_generation"] == 0
         assert state["intensive_scans"] == {}
         assert state["scan_cache"] == {}
-    
+
     def test_save_and_load_scan_state(self):
         """State can be saved and loaded."""
         state = {
@@ -250,12 +255,12 @@ class TestScanStatePersistence:
             "scan_cache": {"456": {"aar_gen": 5, "detected": True}},
         }
         _save_scan_state(state)
-        
+
         loaded = _load_scan_state()
         assert loaded["aar_generation"] == 5
         assert loaded["intensive_scans"]["123"] == 5
         assert loaded["scan_cache"]["456"]["detected"] is True
-    
+
     def test_increment_aar_generation(self):
         """Incrementing generation clears cache and prunes old intensive scans."""
         # Setup initial state
@@ -265,12 +270,12 @@ class TestScanStatePersistence:
             "scan_cache": {"789": {"aar_gen": 5, "detected": True}},
         }
         _save_scan_state(state)
-        
+
         # Increment
         new_gen = _run(_increment_aar_generation())
-        
+
         assert new_gen == 6
-        
+
         loaded = _load_scan_state()
         assert loaded["aar_generation"] == 6
         assert loaded["scan_cache"] == {}  # Cache cleared
@@ -279,26 +284,26 @@ class TestScanStatePersistence:
         # 123 was gen 5, which is < 6, so also pruned
         # Actually, 123 at gen 5 is < new gen 6, so it's pruned too
         assert "123" not in loaded["intensive_scans"]
-    
+
     def test_get_aar_generation(self):
         """Can retrieve current AAR generation."""
         state = {"aar_generation": 10, "intensive_scans": {}, "scan_cache": {}}
         _save_scan_state(state)
-        
+
         gen = _run(_get_aar_generation())
         assert gen == 10
-    
+
     def test_purchase_intensive_scan(self):
         """Purchasing intensive scan records current generation."""
         state = {"aar_generation": 7, "intensive_scans": {}, "scan_cache": {}}
         _save_scan_state(state)
-        
+
         result = _run(_purchase_intensive_scan(12345))
         assert result is True
-        
+
         loaded = _load_scan_state()
         assert loaded["intensive_scans"]["12345"] == 7
-    
+
     def test_has_intensive_scan_active(self):
         """Intensive scan is active if purchased in current generation."""
         state = {
@@ -307,10 +312,10 @@ class TestScanStatePersistence:
             "scan_cache": {},
         }
         _save_scan_state(state)
-        
+
         assert _run(_has_intensive_scan(12345)) is True
         assert _run(_has_intensive_scan(99999)) is False  # Not purchased
-    
+
     def test_has_intensive_scan_expired(self):
         """Intensive scan is expired if gen < current."""
         state = {
@@ -319,45 +324,43 @@ class TestScanStatePersistence:
             "scan_cache": {},
         }
         _save_scan_state(state)
-        
+
         # Gen 7 < current gen 8, so expired
         assert _run(_has_intensive_scan(12345)) is False
-    
+
     def test_get_or_roll_scan_result_caches(self):
         """Scan results are cached per AAR cycle."""
         state = {"aar_generation": 5, "intensive_scans": {}, "scan_cache": {}}
         _save_scan_state(state)
-        
+
         # First call should roll and cache
         with patch("bot.random.random", return_value=0.5):  # Above miss threshold
             result1 = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
-        
+
         assert result1["detected"] is True
         assert result1["aar_gen"] == 5
-        
+
         # Second call should return cached result (random not called)
         with patch("bot.random.random", return_value=0.0):  # Would miss if called
             result2 = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
-        
+
         assert result2["detected"] is True  # Same as cached
         assert result2["aar_gen"] == 5
-    
+
     def test_get_or_roll_scan_result_new_cycle_invalidates_cache(self):
         """New AAR cycle invalidates cached scan results."""
         state = {
             "aar_generation": 5,
             "intensive_scans": {},
-            "scan_cache": {
-                "123": {"aar_gen": 4, "detected": True, "predictive_warning": False}
-            },
+            "scan_cache": {"123": {"aar_gen": 4, "detected": True, "predictive_warning": False}},
         }
         _save_scan_state(state)
-        
+
         # Cached result is from gen 4, but current is gen 5
         # Should roll a new result
         with patch("bot.random.random", return_value=0.0):  # Would miss
             result = _run(_get_or_roll_scan_result(123, "damaged", 50, False))
-        
+
         assert result["detected"] is False  # New roll (missed)
         assert result["aar_gen"] == 5
 
@@ -366,53 +369,56 @@ class TestScanStatePersistence:
 # Integration scenarios
 # ---------------------------------------------------------------------------
 
+
 class TestScanDetectionIntegration:
     """Integration tests for scan detection scenarios."""
-    
+
     def setup_method(self):
         """Create temp directory and patch paths."""
         self.temp_dir = tempfile.mkdtemp()
         self.scan_state_path = os.path.join(self.temp_dir, "armor_scan_state.json")
-        
+
         self._original_path = bot.ARMOR_SCAN_STATE_PATH
         bot.ARMOR_SCAN_STATE_PATH = self.scan_state_path
-    
+
     def teardown_method(self):
         """Restore original path and clean up."""
         bot.ARMOR_SCAN_STATE_PATH = self._original_path
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
+
     def test_intensive_scan_expires_on_new_aar(self):
         """Intensive scan expires when new AAR is ingested (gen increments)."""
         # Purchase intensive scan at gen 3
         state = {"aar_generation": 3, "intensive_scans": {}, "scan_cache": {}}
         _save_scan_state(state)
         _run(_purchase_intensive_scan(999))
-        
+
         assert _run(_has_intensive_scan(999)) is True
-        
+
         # Ingest new AAR (increment generation)
         _run(_increment_aar_generation())
-        
+
         assert _run(_has_intensive_scan(999)) is False  # Expired
-    
+
     def test_scan_results_same_within_cycle(self):
         """Same brother returns same scan result within one AAR cycle."""
         state = {"aar_generation": 1, "intensive_scans": {}, "scan_cache": {}}
         _save_scan_state(state)
-        
+
         results = []
         for _ in range(5):
             # Each call should return the cached result after the first
             with patch("bot.random.random", return_value=0.1):  # Would miss damaged
                 result = _run(_get_or_roll_scan_result(555, "damaged", 80, False))
                 results.append(result["detected"])
-        
+
         # All results should be identical (first one cached)
         assert len(set(results)) == 1
 
 
 if __name__ == "__main__":
     import pytest
+
     pytest.main([__file__, "-v"])

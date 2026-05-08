@@ -34,14 +34,8 @@ def build_alert_message(message_id: str, record: dict) -> str:
 
     preserved_content = record.get("content", "")
     if not preserved_content:
-        preserved_content = (
-            "(No content stored - this AAR predates content preservation)"
-        )
-    content_preview = (
-        preserved_content[:500] + "..."
-        if len(preserved_content) > 500
-        else preserved_content
-    )
+        preserved_content = "(No content stored - this AAR predates content preservation)"
+    content_preview = preserved_content[:500] + "..." if len(preserved_content) > 500 else preserved_content
 
     alert_lines = [
         "@Watch Command ⚠️ **AAR DELETION DETECTED** (TEST)",
@@ -130,9 +124,7 @@ async def send_test_alert(aar_id: str, record: dict):
         try:
             await notify_channel.send(
                 alert,
-                allowed_mentions=discord.AllowedMentions(
-                    roles=False, users=False
-                ),  # No pings for test
+                allowed_mentions=discord.AllowedMentions(roles=False, users=False),  # No pings for test
             )
             print(f"✅ Test alert sent to #{notify_channel.name}")
         except Exception as e:

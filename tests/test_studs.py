@@ -7,8 +7,6 @@ Covers:
 - _studs_next_target: next milestone selection for the promotion queue
 """
 
-import pytest
-
 from opscribe.bot import _studs_tier, _studs_pips, _studs_next_target
 
 

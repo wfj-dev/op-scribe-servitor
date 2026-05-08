@@ -14,7 +14,6 @@ Covers:
     * Restored spirit includes only: Bearer, Machine-Spirit, Attestation
 """
 
-
 from opscribe.bot import _should_show_extended_blessing_fields
 
 

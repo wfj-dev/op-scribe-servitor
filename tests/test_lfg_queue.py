@@ -38,9 +38,7 @@ def test_lfg_queue_creation_uses_default_expiry_when_not_provided():
     msg = SimpleNamespace(id=999, edit=AsyncMock())
     interaction.original_response = AsyncMock(return_value=msg)
 
-    queue_types = {
-        "operation": {"max_players": 3, "max_console": None, "display": "Operation", "ping_role_id": None}
-    }
+    queue_types = {"operation": {"max_players": 3, "max_console": None, "display": "Operation", "ping_role_id": None}}
 
     bot.LFG_ACTIVE_QUEUES.clear()
 
@@ -89,9 +87,7 @@ def test_join_queue_prevents_duplicate_join():
     ):
         _run(view.join_queue(interaction))
 
-    interaction.response.send_message.assert_awaited_once_with(
-        "You are already in this queue.", ephemeral=True
-    )
+    interaction.response.send_message.assert_awaited_once_with("You are already in this queue.", ephemeral=True)
 
 
 def test_join_queue_enforces_console_limit():

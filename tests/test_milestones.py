@@ -11,7 +11,7 @@ Covers:
 
 import json
 import os
-from datetime import datetime, date, timedelta, timezone
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -141,14 +141,17 @@ class TestScheduledMilestoneCheckGating:
         import bot
 
         recent = str((date.today() - timedelta(days=3)))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": recent,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": recent,
+            }
+        )
 
         # In-memory value is None (simulates fresh restart)
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None):
             from bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Should not have advanced the check date — function returned early
@@ -161,10 +164,12 @@ class TestScheduledMilestoneCheckGating:
         import bot
 
         old_date = str(date.today() - timedelta(days=8))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": old_date,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": old_date,
+            }
+        )
 
         mock_guild = MagicMock()
         mock_channel = MagicMock()
@@ -175,11 +180,10 @@ class TestScheduledMilestoneCheckGating:
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
             patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={
-                k: 0 for k in MILESTONES_INCREMENTS
-            }),
+            patch("bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
             from bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Check ran — last_check_date should be updated to today
@@ -193,13 +197,16 @@ class TestScheduledMilestoneCheckGating:
 
         recent = str(date.today() - timedelta(days=2))
         # No persisted date
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": None,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": None,
+            }
+        )
 
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", recent):
             from bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Should have skipped — in-memory date is recent
@@ -213,10 +220,12 @@ class TestScheduledMilestoneCheckGating:
         import bot
 
         old_date = str(date.today() - timedelta(days=10))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": old_date,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": old_date,
+            }
+        )
 
         mock_guild = MagicMock()
         mock_channel = MagicMock()
@@ -227,11 +236,10 @@ class TestScheduledMilestoneCheckGating:
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
             patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={
-                k: 0 for k in MILESTONES_INCREMENTS
-            }),
+            patch("bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
             from bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         data = self._read_tracking()

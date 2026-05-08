@@ -289,13 +289,15 @@ def test_record_rite_appends_to_history():
         patch("bot._load_forge_chronicle", return_value=data),
         patch("bot._save_forge_chronicle") as mock_save,
     ):
-        _run(_record_rite_in_chronicle(
-            bearer_id=100,
-            techmarine_id=200,
-            rite_type="standard",
-            spirit_designation="FURY-001-Α",
-            spirit_event="maintenance",
-        ))
+        _run(
+            _record_rite_in_chronicle(
+                bearer_id=100,
+                techmarine_id=200,
+                rite_type="standard",
+                spirit_designation="FURY-001-Α",
+                spirit_event="maintenance",
+            )
+        )
 
     saved = mock_save.call_args[0][0]
     assert len(saved["rite_history"]) == 1

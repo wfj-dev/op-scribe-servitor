@@ -18,14 +18,12 @@ Covers:
     * Tier thresholds: <=3 → tier 1, 4-11 → tier 2, >=12 → tier 3
 """
 
-import types
 import unittest.mock
 
 from opscribe.bot import (
     _find_responsible_attestor,
     _get_techmarine_acknowledgment_blended,
     HIGH_COMMAND_ROLES,
-    RANK_PRESTIGE_WEIGHTS,
     TECHMARINE_RANK_ACKNOWLEDGMENTS,
     TECHMARINE_STUDS_ACKNOWLEDGMENT,
 )
@@ -84,9 +82,7 @@ def test_high_command_bearer_no_forgemaster_returns_none():
 
 def test_watch_captain_bearer_selects_forgemaster():
     """Watch Captain is High Command and should be blessed by the Forgemaster."""
-    assert "Watch Captain" in HIGH_COMMAND_ROLES, (
-        "Watch Captain must be in HIGH_COMMAND_ROLES"
-    )
+    assert "Watch Captain" in HIGH_COMMAND_ROLES, "Watch Captain must be in HIGH_COMMAND_ROLES"
     bearer = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
     company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
     forgemaster = FakeMember(3, ["Forgemaster"])

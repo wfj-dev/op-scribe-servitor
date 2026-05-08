@@ -65,9 +65,7 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
             armory_points += record.get("armory_challenge_points", 0)
         status = (record.get("gene_seed_status") or "").lower()
         gene_carrier = record.get("gene_seed_carrier_id")
-        effective_carried = status == "carried" or (
-            gene_carrier is not None and status != "lost"
-        )
+        effective_carried = status == "carried" or (gene_carrier is not None and status != "lost")
         if effective_carried:
             if gene_carrier == user_id:
                 gene_carries += 1
@@ -106,9 +104,7 @@ class DataStore:
         return int(time.time())
 
     def _init_home_chapter_cache(self):
-        self._home_chapter_cache: dict[
-            str, tuple[str, int]
-        ] = {}  # user_id -> (chapter, expires_at)
+        self._home_chapter_cache: dict[str, tuple[str, int]] = {}  # user_id -> (chapter, expires_at)
         self._init_cache_stats()
 
     def _home_chapter_cache_get(self, user_id: str) -> Optional[str]:
@@ -129,9 +125,7 @@ class DataStore:
             self._now() + self.HOME_CHAPTER_TTL,
         )
 
-    def get_home_chapter(
-        self, user_id: str, force_refresh: bool = False
-    ) -> Optional[str]:
+    def get_home_chapter(self, user_id: str, force_refresh: bool = False) -> Optional[str]:
         """
         Return the cached home chapter for user_id if present and not expired.
         If not cached or force_refresh is True, scan history, cache, and return.
@@ -167,9 +161,7 @@ class DataStore:
         if t1 - t0 > 0.05:
             import logging
 
-            logging.getLogger("op-scribe-servitor").info(
-                f"Home chapter scan for {user_id} took {t1 - t0:.3f}s"
-            )
+            logging.getLogger("op-scribe-servitor").info(f"Home chapter scan for {user_id} took {t1 - t0:.3f}s")
         if chapter:
             self._home_chapter_cache_set(user_id, chapter)
         return chapter
@@ -231,8 +223,7 @@ class DataStore:
             for uid in rec.get("brother_ids", []):
                 user_to_records.setdefault(uid, []).append(rec)
         self.user_stats_cache = {
-            uid: _compute_stats_for_user_from_records(uid, recs)
-            for uid, recs in user_to_records.items()
+            uid: _compute_stats_for_user_from_records(uid, recs) for uid, recs in user_to_records.items()
         }
         try:
             self._user_stats_cache_built_ts = self._now()
@@ -288,12 +279,8 @@ class DataStore:
                 affected_users.update(prev.get("brother_ids", []))
             # For each affected user, gather all records for that user
             for uid in affected_users:
-                user_recs = [
-                    r for r in self._records.values() if uid in r.get("brother_ids", [])
-                ]
-                self.user_stats_cache[uid] = _compute_stats_for_user_from_records(
-                    uid, user_recs
-                )
+                user_recs = [r for r in self._records.values() if uid in r.get("brother_ids", [])]
+                self.user_stats_cache[uid] = _compute_stats_for_user_from_records(uid, user_recs)
             # Invalidate any cached combat computations when records change
             try:
                 self._combat_cache = {}
@@ -338,9 +325,7 @@ class DataStore:
             self._dirty_records = False
         # Write processed IDs if dirty
         if self._dirty_ids:
-            sorted_ids = sorted(
-                self._processed_ids, key=lambda x: int(x) if x.isdigit() else x
-            )
+            sorted_ids = sorted(self._processed_ids, key=lambda x: int(x) if x.isdigit() else x)
             self._atomic_write_with_backup(self._processed_ids_path, sorted_ids)
             self._dirty_ids = False
         t1 = time.perf_counter()
@@ -353,14 +338,8 @@ class DataStore:
     def get_cache_stats(self) -> dict:
         """Return cache and flush stats for admin diagnostics."""
         try:
-            combat_size = (
-                len(self._combat_cache) if hasattr(self, "_combat_cache") else 0
-            )
-            combat_spans = (
-                sorted(list(self._combat_cache.keys()))
-                if hasattr(self, "_combat_cache")
-                else []
-            )
+            combat_size = len(self._combat_cache) if hasattr(self, "_combat_cache") else 0
+            combat_spans = sorted(list(self._combat_cache.keys())) if hasattr(self, "_combat_cache") else []
         except Exception:
             combat_size = 0
             combat_spans = []
