@@ -29,6 +29,20 @@ BOT_FUNCTIONS = {
     "_load_induction_overrides",
     "_save_induction_overrides",
     "_parse_iso8601_to_utc",
+    "_get_emoji_by_name",
+    "_get_service_studs_announcement",
+    "_get_oathsworn_announcement",
+    "_extract_killteam_name",
+    "_resolve_killteams_for_member",
+    "_resolve_killteam_for_member",
+    "_get_bearer_rank_and_title",
+    "_get_damage_probability",
+    "_get_machine_spirit",
+    "_get_or_roll_scan_result",
+    "_get_tier_risk_display",
+    "ALLOWED_KT_ROLE_IDS",
+    "ALLOWED_KT_FORUM_PARENT_IDS",
+    "DEBUG_MODE",
 }
 
 # Modules that were extracted and should use _b() for bot.py functions
