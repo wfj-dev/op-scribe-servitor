@@ -2888,10 +2888,10 @@ async def tally_deeds(
 
                 # ▸ Armor Integrity field
                 try:
-                    armor_state = await _get_armor_state(int(target.id))
+                    armor_state = await _b("_get_armor_state")(int(target.id))
                     points_since_blessing = armor_state.get("points_since_blessing", 0)
                     spirit_fractured = armor_state.get("spirit_fractured", False)
-                    armor_tier = _get_member_damage_tier(target)
+                    armor_tier = _b("_get_member_damage_tier")(target)
                     damage_probability = _get_damage_probability(points_since_blessing)
                     _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
                     machine_spirit = await _get_machine_spirit(int(target.id))
@@ -3652,10 +3652,10 @@ async def my_deeds(interaction: discord.Interaction):
 
     # ▸ Armor Integrity field
     try:
-        armor_state = await _get_armor_state(int(target.id))
+        armor_state = await _b("_get_armor_state")(int(target.id))
         points_since_blessing = armor_state.get("points_since_blessing", 0)
         spirit_fractured = armor_state.get("spirit_fractured", False)
-        armor_tier = _get_member_damage_tier(target)
+        armor_tier = _b("_get_member_damage_tier")(target)
         damage_probability = _get_damage_probability(points_since_blessing)
         _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
         machine_spirit = await _get_machine_spirit(int(target.id))

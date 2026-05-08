@@ -716,7 +716,7 @@ async def record_of_blood(interaction: discord.Interaction):
                 except Exception:
                     pass
         else:
-            view = ToggleFormatView(text_content=report, embed=embed, default="embed")
+            view = _b("ToggleFormatView")(text_content=report, embed=embed, default="embed")
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     except Exception as e:
         _g.logger.exception(f"record_of_blood: followup.send failed: {e}")
@@ -1025,7 +1025,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                 done_errs += 1
                 if cutoff_dt is None:
                     if (done_errs % 5 == 0) or (done_errs == total_errs):
-                        _print_progress("Recheck Errors", done_errs, total_errs)
+                        _b("_print_progress")("Recheck Errors", done_errs, total_errs)
                 continue
             try:
                 msg = await aar_channel.fetch_message(aar_id)
@@ -1039,7 +1039,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                 done_errs += 1
                 if cutoff_dt is None:
                     if (done_errs % 5 == 0) or (done_errs == total_errs):
-                        _print_progress("Recheck Errors", done_errs, total_errs)
+                        _b("_print_progress")("Recheck Errors", done_errs, total_errs)
                 continue
             # Window filter: skip messages older than cutoff
             if cutoff_dt is not None:
@@ -1129,10 +1129,10 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                 try:
                                     member = guild.get_member(int(bid))
                                     if member:
-                                        tier = _get_member_damage_tier(member)
-                                        armor_state = await _get_armor_state(int(bid))
+                                        tier = _b("_get_member_damage_tier")(member)
+                                        armor_state = await _b("_get_armor_state")(int(bid))
                                         spirit_fractured = armor_state.get("spirit_fractured", False)
-                                        rolled_penalty = _roll_armor_penalty(tier, spirit_fractured)
+                                        rolled_penalty = _b("_roll_armor_penalty")(tier, spirit_fractured)
                                         if rolled_penalty > 0:
                                             armor_penalties[bid] = rolled_penalty
                                 except Exception:
@@ -1146,7 +1146,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                 try:
                                     bid_base_points = base_points.get(bid, 0)
                                     bid_actual_penalty = armor_penalties.get(bid, 0)
-                                    penalty, alert_info = await _process_armor_integrity_for_aar(
+                                    penalty, alert_info = await _b("_process_armor_integrity_for_aar")(
                                         bid,
                                         bid_base_points,
                                         guild,
@@ -1164,7 +1164,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                             # Post any armor alerts
                             for alert in alerts_to_post:
                                 try:
-                                    await _post_armor_alert(
+                                    await _b("_post_armor_alert")(
                                         alert["member"],
                                         alert["tier"],
                                         alert.get("critical_count", 0),
@@ -1210,7 +1210,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
             done_errs += 1
             if cutoff_dt is None:
                 if (done_errs % 5 == 0) or (done_errs == total_errs):
-                    _print_progress("Recheck Errors", done_errs, total_errs)
+                    _b("_print_progress")("Recheck Errors", done_errs, total_errs)
 
     if cutoff_dt is None:
         remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
@@ -1246,7 +1246,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             pass
 
     # Load armor integrity data once for batch processing (avoids repeated file I/O)
-    armor_batch = _load_armor_integrity()
+    armor_batch = _b("_load_armor_integrity")()
     armor_batch_modified = False
 
     async for msg in aar_channel.history(**history_kwargs):
@@ -1254,7 +1254,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             continue
         scanned += 1
         if cutoff_dt is None and latest_processed_id and msg.id <= latest_processed_id:
-            _print_progress("Ingest New AARs", scanned, scanned)
+            _b("_print_progress")("Ingest New AARs", scanned, scanned)
             break
         record = parse_aar(msg)
         if record is None:
@@ -1270,7 +1270,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             to_react_err.append(msg)
             rejected += 1
             if scanned % 10 == 0:
-                _print_progress("Ingest New AARs", scanned, scanned)
+                _b("_print_progress")("Ingest New AARs", scanned, scanned)
             continue
         aar_id = record.get("aar_id", msg.id)
         if has_been_processed(aar_id):
@@ -1282,7 +1282,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             needs_update = (msg_hash and msg_hash != existing_hash) or (msg_edited and msg_edited != existing_edited)
             if not needs_update:
                 if scanned % 10 == 0:
-                    _print_progress("Ingest New AARs", scanned, scanned)
+                    _b("_print_progress")("Ingest New AARs", scanned, scanned)
                 continue
         errors = validate_aar(record)
         if errors:
@@ -1294,7 +1294,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             to_react_err.append(msg)
             rejected += 1
             if scanned % 10 == 0:
-                _print_progress("Ingest New AARs", scanned, scanned)
+                _b("_print_progress")("Ingest New AARs", scanned, scanned)
             continue
 
         # --- Armor Integrity: Check penalties BEFORE saving ---
@@ -1370,7 +1370,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 try:
                     bid_base_points = base_points.get(bid, 0)
                     bid_actual_penalty = armor_penalties.get(bid, 0)
-                    penalty, alert_info = await _process_armor_integrity_for_aar(
+                    penalty, alert_info = await _b("_process_armor_integrity_for_aar")(
                         bid,
                         bid_base_points,
                         guild,
@@ -1393,7 +1393,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         # Post any armor alerts (outside the loop to avoid rate limits)
         for alert in alerts_to_post:
             try:
-                await _post_armor_alert(
+                await _b("_post_armor_alert")(
                     alert["member"],
                     alert["tier"],
                     alert.get("critical_count", 0),
@@ -1442,7 +1442,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         to_react_ok.append(msg)
         ingested += 1
         if scanned % 10 == 0:
-            _print_progress("Ingest New AARs", scanned, scanned)
+            _b("_print_progress")("Ingest New AARs", scanned, scanned)
 
         if len(to_react_ok) + len(to_react_err) >= 25:
             for m in to_react_ok:
@@ -1460,9 +1460,9 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 
     # Save armor batch data once at end (avoid repeated file I/O during loop)
     if armor_batch_modified:
-        await _save_armor_batch(armor_batch)
+        await _b("_save_armor_batch")(armor_batch)
         # Increment AAR generation to invalidate scan caches
-        await _increment_aar_generation()
+        await _b("_increment_aar_generation")()
 
     return ingested, rejected
 
@@ -1544,13 +1544,13 @@ async def set_induction(
     user_id = str(member.id)
 
     async with _g.INDUCTION_OVERRIDES_LOCK:
-        overrides = _load_induction_overrides()
+        overrides = _b("_load_induction_overrides")()
 
         if date is None or date.strip() == "":
             # Clear override
             if user_id in overrides:
                 del overrides[user_id]
-                _save_induction_overrides(overrides)
+                _b("_save_induction_overrides")(overrides)
                 # Get Discord join date to show what it reverts to
                 discord_join = getattr(member, "joined_at", None)
                 if discord_join:
@@ -1592,7 +1592,7 @@ async def set_induction(
 
         # Save override
         overrides[user_id] = date_str
-        _save_induction_overrides(overrides)
+        _b("_save_induction_overrides")(overrides)
 
         # Calculate days since induction for display
         days_ago = (datetime.now().date() - parsed_date.date()).days
@@ -1792,7 +1792,7 @@ async def audit_service_studs(interaction: discord.Interaction):
 
     # Send with toggle view
     if len(report) <= 1900:
-        view = ToggleFormatView(text_content=report, embed=embed, default="embed")
+        view = _b("ToggleFormatView")(text_content=report, embed=embed, default="embed")
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     else:
         # Report too long for toggle, send embed only
@@ -1832,7 +1832,7 @@ async def _run_reparse_records(
         if not ts_str:
             return False
         try:
-            ts = _parse_iso8601_to_utc(ts_str)
+            ts = _b("_parse_iso8601_to_utc")(ts_str)
             return ts is not None and ts >= cutoff
         except Exception:
             return False
@@ -1843,14 +1843,14 @@ async def _run_reparse_records(
     total_records = len(records_list)
 
     def _print_progress(done: int, total: int) -> None:
-        if not sys.stdout.isatty():
+        if not _sys.stdout.isatty():
             return
         bar_len = 40
         filled = int(round(bar_len * done / float(total))) if total else bar_len
         perc = (done / total * 100) if total else 100.0
         bar = "#" * filled + "-" * (bar_len - filled)
-        sys.stdout.write(f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)")
-        sys.stdout.flush()
+        _sys.stdout.write(f"\rReparsing records: [{bar}] {done}/{total} ({perc:5.1f}%)")
+        _sys.stdout.flush()
 
     # Iterate snapshot of records
     for idx, (key, rec) in enumerate(records_list, start=1):
@@ -1899,10 +1899,9 @@ async def _run_reparse_records(
 
     # Finalize progress output in terminal
     _print_progress(total_records, total_records)
-    if sys.stdout.isatty():
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-
+    if _sys.stdout.isatty():
+        _sys.stdout.write("\n")
+        _sys.stdout.flush()
     return total, updated, failed, changes_by_field
 
 
@@ -2900,7 +2899,7 @@ async def _reply_aar_rejection(msg: discord.Message, errors: list[str]):
                         if not ref:
                             continue
                         if getattr(ref, "message_id", None) == getattr(msg, "id", None):
-                            if getattr(recent.author, "id", None) == getattr(bot.user, "id", None):
+                            if getattr(recent.author, "id", None) == getattr(_g.bot.user, "id", None):
                                 existing_reply = recent
                                 break
                     except Exception:

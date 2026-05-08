@@ -17,10 +17,10 @@ exclude = [
 # Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default
 select = ["E", "F"]
 
-# Ignore F405 (variable may be undefined due to star imports) globally
-# The codebase uses `from X import *` intentionally for re-exporting modules
-# and this pattern is documented with noqa comments where used
-ignore = ["F405"]
+# Ignore specific rules:
+# - F405: variable may be undefined due to star imports (intentional re-exports)
+# - E501: line too long (many lines slightly exceed 120 chars, not auto-fixable)
+ignore = ["F405", "E501"]
 
 # Allow star imports in specific patterns where they're intentional
 [lint.per-file-ignores]
