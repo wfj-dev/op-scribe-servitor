@@ -1407,6 +1407,7 @@ async def on_ready():
     if DATASTORE is None:
         try:
             DATASTORE = DataStore(AAR_RECORDS_PATH, PROCESSED_IDS_PATH)
+            _g.DATASTORE = DATASTORE  # Update the shared global reference
             logger.info("DataStore initialized on ready; background flush started.")
         except Exception as e:
             logger.exception(f"Failed to initialize DataStore on ready: {e}")
