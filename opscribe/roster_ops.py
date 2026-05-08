@@ -1658,7 +1658,7 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
     description="Show selected home chapters for this month and next (plans ahead).",
 )
 async def pick_home_chapters(interaction: discord.Interaction):
-    if not (check_command_permission(interaction.user, "pick_home_chapters") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "pick_home_chapters") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Compute current and next month keys and selections
@@ -1865,7 +1865,7 @@ async def tally_deeds(
             return
 
     # Permission check: requires Watch Command role and allowed channel
-    if not (check_command_permission(interaction.user, "tally_deeds") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "tally_deeds") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -3949,7 +3949,7 @@ async def combat_bonds(
     brother: Optional[discord.Member] = None,
     window: Optional[int] = None,
 ):
-    if not (check_command_permission(interaction.user, "combat_bonds") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "combat_bonds") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     # Defer the interaction to allow longer processing time on slower hosts
@@ -6835,7 +6835,7 @@ async def promotion_queue(interaction: discord.Interaction):
     - AAR not met, time not met: need both
     """
     # Permission check: Watch Command only
-    if not (check_command_permission(interaction.user, "promotion_queue") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "promotion_queue") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
@@ -7262,7 +7262,7 @@ async def promotion_queue(interaction: discord.Interaction):
 async def company_roster(interaction: discord.Interaction):
     """Show Kill Teams and their member counts for all Watch Companies."""
     # Permission check: Watch Command only, in the designated channel
-    if not (check_command_permission(interaction.user, "company_roster") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "company_roster") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 

@@ -750,7 +750,7 @@ async def record_of_blood(interaction: discord.Interaction):
 @app_commands.describe(span_days="Optional: only recheck errors from the last N days.")
 async def audit_archive_discrepancies(interaction: discord.Interaction, span_days: int | None = None):
     if not (
-        check_command_permission(interaction.user, "audit_archive_discrepancies") and is_allowed_channel(interaction)
+        _b("check_command_permission")(interaction.user, "audit_archive_discrepancies") and _b("is_allowed_channel")(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -838,7 +838,7 @@ async def audit_archive_discrepancies(interaction: discord.Interaction, span_day
 )
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
 async def sanctify_battle_records(interaction: discord.Interaction, span_days: int | None = None):
-    if not (check_command_permission(interaction.user, "sanctify_battle_records") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "sanctify_battle_records") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if _g.RECONCILE_LOCK.locked():
@@ -1470,7 +1470,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 # Admin-only command to print cache sizes, dirty flags, last flush time, and cache hit/miss counters
 @_g.bot.tree.command(name="cache_stats", description="Show DataStore cache and flush stats (admin only)")
 async def cache_stats(interaction: discord.Interaction):
-    if not (check_command_permission(interaction.user, "cache_stats") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "cache_stats") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     stats = _g.DATASTORE.get_cache_stats()
@@ -1537,7 +1537,7 @@ async def set_induction(
     any existing override is cleared and the Discord join date will be used.
     """
     # Require Forgemaster (via config permissions)
-    if not check_command_permission(interaction.user, "set_induction"):
+    if not _b("check_command_permission")(interaction.user, "set_induction"):
         await interaction.response.send_message("Only the Forgemaster can set induction dates.", ephemeral=True)
         return
 
@@ -1609,7 +1609,7 @@ async def set_induction(
 async def audit_service_studs(interaction: discord.Interaction):
     await interaction.response.defer(thinking=False, ephemeral=True)
 
-    if not (check_command_permission(interaction.user, "audit_service_studs") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "audit_service_studs") and _b("is_allowed_channel")(interaction)):
         await interaction.followup.send("Access denied.", ephemeral=True)
         return
 
@@ -1919,7 +1919,7 @@ async def reparse_records(
     limit: int | None = None,
     days: int | None = None,
 ):
-    if not (check_command_permission(interaction.user, "reparse_records") and is_allowed_channel(interaction)):
+    if not (_b("check_command_permission")(interaction.user, "reparse_records") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
     if _g.RECONCILE_LOCK.locked():
