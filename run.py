@@ -3,4 +3,5 @@
 
 if __name__ == "__main__":
     # Import and run the bot
-    import opscribe.bot
+    from opscribe.bot import _main
+    _main()
