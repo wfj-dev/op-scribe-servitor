@@ -425,7 +425,7 @@ async def _handle_dreadnought_inactivity(member: discord.Member):
                 mention_str = " ".join(role_mentions) if role_mentions else ""
 
                 # Get venerable emoji
-                venerable_emoji = _get_emoji_by_name(guild, "venerable") or "⚙️"
+                venerable_emoji = _b("_get_emoji_by_name")(guild, "venerable") or "⚙️"
 
                 lines = [
                     f"{venerable_emoji} **INTERMENT PROTOCOL INITIATED** {venerable_emoji}",
@@ -1046,7 +1046,7 @@ async def _check_promotion_milestones():
                         owed_studs = earned_studs - displayed_studs
 
                         # Generate the flavorful announcement
-                        content, embed = _get_service_studs_announcement(
+                        content, embed = _b("_get_service_studs_announcement")(
                             member=member,
                             member_chapter=member_chapter,
                             displayed_studs=displayed_studs,
@@ -1107,7 +1107,7 @@ async def _check_promotion_milestones():
                             # Get kill team or company role for mention
                             team_mention = "Unknown"
                             for r in member.roles:
-                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
                                     team_mention = r.mention
                                     break
                                 elif r.name in {
@@ -1149,7 +1149,7 @@ async def _check_promotion_milestones():
                             # Get kill team or company role for mention
                             team_mention = "Unknown"
                             for r in member.roles:
-                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
                                     team_mention = r.mention
                                     break
                                 elif r.name in {
@@ -1192,7 +1192,7 @@ async def _check_promotion_milestones():
                             # Get kill team or company role for mention
                             team_mention = "Unknown"
                             for r in member.roles:
-                                if r.id in ALLOWED_KT_ROLE_IDS:
+                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
                                     team_mention = r.mention
                                     break
                                 elif r.name in {
@@ -1263,7 +1263,7 @@ async def _check_promotion_milestones():
 
                         if is_oathsworn_eligible and not has_oathsworn_role:
                             # Generate flavorful announcement with embed and poll
-                            content, embed, poll = _get_oathsworn_announcement(
+                            content, embed, poll = _b("_get_oathsworn_announcement")(
                                 member=member,
                                 member_chapter=member_chapter,
                                 earned_studs=oathsworn_earned_studs,
@@ -1677,7 +1677,7 @@ async def pick_home_chapters(interaction: discord.Interaction):
 
     text = f"{fmt_month(this_key)}: {a1} ; {b1}\n{fmt_month(next_key)}: {a2} ; {b2}"
     # Print membership and reserves status for selected chapters to terminal (only in debug mode)
-    if DEBUG_MODE:
+    if _b("DEBUG_MODE"):
         try:
             selected_chapters = [a1, b1, a2, b2]
             # dedupe while preserving order
@@ -2210,7 +2210,7 @@ async def tally_deeds(
                     rn = getattr(role, "name", "") or ""
                     rn_l = rn.lower()
                     if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
-                        kt_name = _extract_killteam_name(rn)
+                        kt_name = _b("_extract_killteam_name")(rn)
                         break
             except Exception:
                 pass
@@ -2508,7 +2508,7 @@ async def tally_deeds(
             roster_text = "\n".join(r_lines)
             # Build a clean, mobile-friendly embed (Jericho embed style)
             try:
-                kt_display_name = _extract_killteam_name(getattr(killteam, "name", "Unknown"))
+                kt_display_name = _b("_extract_killteam_name")(getattr(killteam, "name", "Unknown"))
                 roster_embed = discord.Embed(
                     title="᛭⋅ KILL TEAM ROSTER ⋅᛭",
                     description=f"*⌾ {kt_display_name} ⌾*",
@@ -2549,7 +2549,7 @@ async def tally_deeds(
                     # Get chapter emoji
                     chapter_emoji = ""
                     if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                        chapter_emoji = _get_emoji_by_name(interaction.guild, home_ch) or ""
+                        chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
 
                     # Build member label: rank_emoji name studs chapter_emoji
                     # (status icon on separate concept line below)
@@ -2609,7 +2609,7 @@ async def tally_deeds(
 
         # Check if the killteam role is actually a home chapter
         kt_name_raw = getattr(killteam, "name", "Unknown")
-        kt_display = _extract_killteam_name(kt_name_raw)
+        kt_display = _b("_extract_killteam_name")(kt_name_raw)
         is_chapter_role = kt_name_raw in _b("HOME_CHAPTERS")
 
         # Compute fortress-wide rankings for kill team honours display
@@ -2825,7 +2825,7 @@ async def tally_deeds(
                 # Get home chapter emoji
                 home_ch = stat_dict.get("Home Chapter", "Unknown")
                 chapter_emoji = (
-                    _get_emoji_by_name(guild, home_ch)
+                    _b("_get_emoji_by_name")(guild, home_ch)
                     if guild and home_ch and home_ch not in ("Unknown", "REDACTED")
                     else None
                 )
@@ -2837,7 +2837,7 @@ async def tally_deeds(
                 )
 
                 # ▸ Bearer field (exactly matching forge_rite format)
-                bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
+                bearer_honorific, bearer_name, bearer_title = _b("_get_bearer_rank_and_title")(target)
                 bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
                 rank_prefix = f"{rank_emoji} " if rank_emoji else ""
                 if ", " in bearer_honorific:
@@ -2892,12 +2892,12 @@ async def tally_deeds(
                     points_since_blessing = armor_state.get("points_since_blessing", 0)
                     spirit_fractured = armor_state.get("spirit_fractured", False)
                     armor_tier = _b("_get_member_damage_tier")(target)
-                    damage_probability = _get_damage_probability(points_since_blessing)
+                    damage_probability = _b("_get_damage_probability")(points_since_blessing)
                     _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
-                    machine_spirit = await _get_machine_spirit(int(target.id))
+                    machine_spirit = await _b("_get_machine_spirit")(int(target.id))
 
                     # Roll scan detection (same as armor_status)
-                    scan_result = await _get_or_roll_scan_result(
+                    scan_result = await _b("_get_or_roll_scan_result")(
                         int(target.id), armor_tier, points_since_blessing, spirit_fractured
                     )
                     scan_missed = not scan_result["detected"]
@@ -2932,7 +2932,7 @@ async def tally_deeds(
                             spirit_status = "STABLE"
 
                         # Get MachineSpirit emoji
-                        machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
+                        machine_spirit_emoji = _b("_get_emoji_by_name")(guild, "MachineSpirit") or "⚙️"
 
                         if spirit_fractured:
                             spirit_display = f"{machine_spirit_emoji} SEVERED"
@@ -2943,7 +2943,7 @@ async def tally_deeds(
 
                         armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
                         # Show penalty risk and cycles (hide cycles for nominal brothers)
-                        penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
+                        penalty_risk = _b("_get_tier_risk_display")(armor_tier, spirit_fractured)
                         if armor_status == "NOMINAL":
                             armor_lines.append(f"Penalty Risk: {penalty_risk}")
                         else:
@@ -2967,7 +2967,7 @@ async def tally_deeds(
                             if emoji_hint.startswith("unicode:"):
                                 emoji_str = f"{emoji_hint[8:]} "
                             else:
-                                emoji = _get_emoji_by_name(guild, emoji_hint)
+                                emoji = _b("_get_emoji_by_name")(guild, emoji_hint)
                                 if emoji:
                                     emoji_str = f"{emoji} "
                         completed_challenges.append(f"{emoji_str}{display_name_ch}")
@@ -3063,7 +3063,7 @@ async def tally_deeds(
             # Get target's kill teams using _resolve_killteams_for_member
             target_killteams = []
             try:
-                target_killteams = _resolve_killteams_for_member(target)
+                target_killteams = _b("_resolve_killteams_for_member")(target)
             except Exception:
                 pass
 
@@ -3173,7 +3173,7 @@ async def tally_deeds(
                 # Get chapter emoji for display
                 guild = interaction.guild
                 chapter_emoji = (
-                    _get_emoji_by_name(guild, home_chapter)
+                    _b("_get_emoji_by_name")(guild, home_chapter)
                     if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
                     else None
                 )
@@ -3376,7 +3376,7 @@ async def my_deeds(interaction: discord.Interaction):
     parent = getattr(ch, "parent", None)
     parent_id = getattr(parent, "id", None) if parent else None
 
-    if not is_forgemaster and not (is_thread and parent_id and parent_id in ALLOWED_KT_FORUM_PARENT_IDS):
+    if not is_forgemaster and not (is_thread and parent_id and parent_id in _b("ALLOWED_KT_FORUM_PARENT_IDS")):
         await interaction.response.send_message(
             "This command can only be used in your Kill Team forum post.",
             ephemeral=True,
@@ -3384,7 +3384,7 @@ async def my_deeds(interaction: discord.Interaction):
         return
 
     # Get caller's Kill Team name using shared resolution logic
-    caller_kt_name = _resolve_killteam_for_member(caller)
+    caller_kt_name = _b("_resolve_killteam_for_member")(caller)
     if caller_kt_name:
         caller_kt_name = caller_kt_name.lower()
     if not is_forgemaster and not caller_kt_name:
@@ -3393,7 +3393,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Extract KT name from thread name and verify match (Forgemaster exempt)
     thread_name = getattr(ch, "name", "") or ""
-    thread_kt = _extract_killteam_name(thread_name).lower() if thread_name else ""
+    thread_kt = _b("_extract_killteam_name")(thread_name).lower() if thread_name else ""
 
     if not is_forgemaster and (not thread_kt or not (thread_kt in caller_kt_name or caller_kt_name in thread_kt)):
         await interaction.response.send_message(
@@ -3543,7 +3543,7 @@ async def my_deeds(interaction: discord.Interaction):
             rn = getattr(role, "name", "") or ""
             rn_l = rn.lower()
             if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
-                kt_name = _extract_killteam_name(rn)
+                kt_name = _b("_extract_killteam_name")(rn)
                 break
     except Exception:
         pass
@@ -3593,7 +3593,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Get chapter emoji
     chapter_emoji = (
-        _get_emoji_by_name(guild, home_chapter)
+        _b("_get_emoji_by_name")(guild, home_chapter)
         if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
         else None
     )
@@ -3606,7 +3606,7 @@ async def my_deeds(interaction: discord.Interaction):
     )
 
     # ▸ Bearer field (exactly matching forge_rite format)
-    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(target)
+    bearer_honorific, bearer_name, bearer_title = _b("_get_bearer_rank_and_title")(target)
     bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
     if ", " in bearer_honorific:
@@ -3656,12 +3656,12 @@ async def my_deeds(interaction: discord.Interaction):
         points_since_blessing = armor_state.get("points_since_blessing", 0)
         spirit_fractured = armor_state.get("spirit_fractured", False)
         armor_tier = _b("_get_member_damage_tier")(target)
-        damage_probability = _get_damage_probability(points_since_blessing)
+        damage_probability = _b("_get_damage_probability")(points_since_blessing)
         _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
-        machine_spirit = await _get_machine_spirit(int(target.id))
+        machine_spirit = await _b("_get_machine_spirit")(int(target.id))
 
         # Roll scan detection (same as armor_status)
-        scan_result = await _get_or_roll_scan_result(
+        scan_result = await _b("_get_or_roll_scan_result")(
             int(target.id), armor_tier, points_since_blessing, spirit_fractured
         )
         scan_missed = not scan_result["detected"]
@@ -3696,7 +3696,7 @@ async def my_deeds(interaction: discord.Interaction):
                 spirit_status = "STABLE"
 
             # Get MachineSpirit emoji
-            machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
+            machine_spirit_emoji = _b("_get_emoji_by_name")(guild, "MachineSpirit") or "⚙️"
 
             if spirit_fractured:
                 spirit_display = f"{machine_spirit_emoji} SEVERED"
@@ -3707,7 +3707,7 @@ async def my_deeds(interaction: discord.Interaction):
 
             armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
             # Show penalty risk and cycles (hide cycles for nominal brothers)
-            penalty_risk = _get_tier_risk_display(armor_tier, spirit_fractured)
+            penalty_risk = _b("_get_tier_risk_display")(armor_tier, spirit_fractured)
             if armor_status == "NOMINAL":
                 armor_lines.append(f"Penalty Risk: {penalty_risk}")
             else:
@@ -3731,7 +3731,7 @@ async def my_deeds(interaction: discord.Interaction):
                 if emoji_hint.startswith("unicode:"):
                     emoji_str = f"{emoji_hint[8:]} "
                 else:
-                    emoji = _get_emoji_by_name(guild, emoji_hint)
+                    emoji = _b("_get_emoji_by_name")(guild, emoji_hint)
                     if emoji:
                         emoji_str = f"{emoji} "
             completed_challenges.append(f"{emoji_str}{display_name_ch}")
@@ -3811,7 +3811,7 @@ async def my_deeds(interaction: discord.Interaction):
     # Kill team rankings
     target_killteams = []
     try:
-        target_killteams = _resolve_killteams_for_member(target)
+        target_killteams = _b("_resolve_killteams_for_member")(target)
     except Exception:
         pass
 
@@ -3856,7 +3856,7 @@ async def my_deeds(interaction: discord.Interaction):
 
     # Chapter distinctions
     chapter_emoji = (
-        _get_emoji_by_name(guild, home_chapter)
+        _b("_get_emoji_by_name")(guild, home_chapter)
         if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
         else None
     )
@@ -5044,7 +5044,7 @@ def _format_personal_bonds_jericho_embed(
 
     # Get emojis
     rank_emoji = _b("_get_rank_emoji")(guild, target_rank) if guild and target_rank else ""
-    chapter_emoji = _get_emoji_by_name(guild, target_chapter) if guild and target_chapter else ""
+    chapter_emoji = _b("_get_emoji_by_name")(guild, target_chapter) if guild and target_chapter else ""
 
     embed = discord.Embed(
         title="᛭⋅ COMBAT BONDS ⋅᛭",
@@ -5130,7 +5130,7 @@ def _format_personal_bonds_jericho_embed(
         if not chap:
             chap = (chapters or {}).get(uid)
         # Use chapter emoji if available
-        chap_emoji = _get_emoji_by_name(guild, chap) if guild and chap else None
+        chap_emoji = _b("_get_emoji_by_name")(guild, chap) if guild and chap else None
         chap_display = chap_emoji if chap_emoji else ""
         # Build label: rank_emoji stripped_name chapter_emoji
         parts = []
@@ -5441,7 +5441,7 @@ async def _compute_fortress_rankings(
 
             resolved_participants += 1
             try:
-                member_teams = _resolve_killteams_for_member(member)
+                member_teams = _b("_resolve_killteams_for_member")(member)
                 for mt in member_teams:
                     aar_teams.setdefault(mt, []).append(str(uid))
             except Exception:
@@ -5766,7 +5766,7 @@ def _format_member_styled(
             if not chap and chapters_map:
                 chap = chapters_map.get(str(user_id))
             if chap:
-                chapter_emoji = _get_emoji_by_name(guild, chap) or ""
+                chapter_emoji = _b("_get_emoji_by_name")(guild, chap) or ""
 
     # Build label: rank_emoji stripped_name chapter_emoji
     parts = []
@@ -5972,7 +5972,7 @@ def _build_milestone_embed(
     title, description, emoji_name, color = _get_milestone_display_info(metric)
 
     # Get emoji if available
-    emoji = _get_emoji_by_name(guild, emoji_name)
+    emoji = _b("_get_emoji_by_name")(guild, emoji_name)
     emoji_str = f"{emoji} " if emoji else ""
 
     embed = discord.Embed(
@@ -7323,10 +7323,10 @@ async def company_roster(interaction: discord.Interaction):
         no_kt_members: List[discord.Member] = []
 
         for member in company_members:
-            # Find member's kill team role from ALLOWED_KT_ROLE_IDS
+            # Find member's kill team role from _b("ALLOWED_KT_ROLE_IDS")
             member_kt = None
             for role in member.roles:
-                if role.id in ALLOWED_KT_ROLE_IDS:
+                if role.id in _b("ALLOWED_KT_ROLE_IDS"):
                     member_kt = role.name
                     break
 

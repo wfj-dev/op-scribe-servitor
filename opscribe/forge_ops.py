@@ -7078,6 +7078,9 @@ __all__ = [
     "_get_bearer_home_chapter",
     "_find_company_or_chapter",
     "_format_cooldown_time",
+    "_extract_killteam_name",
+    "_resolve_killteam_for_member",
+    "_resolve_killteams_for_member",
     # ── LFG ─────────────────────────────────────────────────────────────────
     "_get_lfg_config",
     "_get_lfg_pc_role_id",
