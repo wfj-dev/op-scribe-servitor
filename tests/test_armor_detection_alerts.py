@@ -21,8 +21,8 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock, MagicMock
 
-import bot
-from bot import (
+import opscribe.bot as bot
+from opscribe.bot import (
     _roll_detection_alert,
     ARMOR_DETECTION_CHANCES,
 )

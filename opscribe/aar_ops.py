@@ -17,12 +17,12 @@ import random
 import sys as _sys
 import statistics
 
-from datastore import DataStore
-from constants import *  # noqa: F401,F403
-from flavor_text import *  # noqa: F401,F403
-from permissions import *  # noqa: F401,F403
-from studs import *  # noqa: F401,F403
-import _bot_globals as _g
+from .datastore import DataStore
+from .constants import *  # noqa: F401,F403
+from .flavor_text import *  # noqa: F401,F403
+from .permissions import *  # noqa: F401,F403
+from .studs import *  # noqa: F401,F403
+from . import _bot_globals as _g
 
 
 def _b(name):

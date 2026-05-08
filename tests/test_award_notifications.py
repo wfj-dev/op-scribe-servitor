@@ -9,7 +9,7 @@ Covers the helper that gates award notification dispatch:
 - Already notified → should not notify regardless of eligibility
 """
 
-from bot import _should_send_award_notification
+from opscribe.bot import _should_send_award_notification
 
 
 # ---------------------------------------------------------------------------

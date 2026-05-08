@@ -11,7 +11,7 @@ working unchanged.
 import random
 from typing import Optional
 
-from flavor_text import (
+from .flavor_text import (
     SERVICE_STUDS_VENERATIONS_AURAMITE,
     SERVICE_STUDS_VENERATIONS_PLASTEEL,
 )

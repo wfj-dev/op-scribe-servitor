@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-import bot
+import opscribe.bot as bot
 
 
 def _run(coro):

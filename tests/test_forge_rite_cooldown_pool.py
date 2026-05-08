@@ -28,8 +28,8 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
-import bot
-from bot import (
+import opscribe.bot as bot
+from opscribe.bot import (
     _check_recipient_cooldown,
     _check_techmarine_can_bless,
     _consume_blessing,

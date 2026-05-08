@@ -31,8 +31,8 @@ import tempfile
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-import bot
-from bot import (
+import opscribe.bot as bot
+from opscribe.bot import (
     ARMOR_SCAN_MISS_CHANCES,
     ARMOR_SCAN_PREDICTIVE_TIERS,
     INTENSIVE_SCAN_COST,

@@ -21,7 +21,7 @@ Covers:
 import types
 import unittest.mock
 
-from bot import (
+from opscribe.bot import (
     _find_responsible_attestor,
     _get_techmarine_acknowledgment_blended,
     HIGH_COMMAND_ROLES,
