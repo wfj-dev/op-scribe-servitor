@@ -5854,9 +5854,28 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
 
     # Watchlist (full width)
     if watchlist_top5:
+        watchlist_value = "\n".join(watchlist_lines)
+        # Truncate if exceeds Discord's 1024 character limit
+        if len(watchlist_value) > 1024:
+            truncated_lines = []
+            current_length = 0
+            for line in watchlist_lines:
+                line_with_newline = line + "\n"
+                footer = f"\n*...and {len(watchlist_lines) - len(truncated_lines)} more*"
+                if current_length + len(line_with_newline) + len(footer) > 1024:
+                    break
+                truncated_lines.append(line)
+                current_length += len(line_with_newline)
+            
+            hidden_count = len(watchlist_lines) - len(truncated_lines)
+            if hidden_count > 0:
+                watchlist_value = "\n".join(truncated_lines) + f"\n*...and {hidden_count} more*"
+            else:
+                watchlist_value = "\n".join(truncated_lines)
+        
         embed.add_field(
             name="▸ Watchlist",
-            value="\n".join(watchlist_lines),
+            value=watchlist_value,
             inline=False,
         )
 
@@ -5914,14 +5933,55 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if not recent_rites_lines:
         recent_rites_lines.append("*No recent rites recorded.*")
     
+    # Truncate to fit Discord's 1024 character limit for field values
+    recent_rites_value = "\n".join(recent_rites_lines)
+    if len(recent_rites_value) > 1024:
+        # Build truncated version by including lines until we hit the limit
+        truncated_lines = []
+        current_length = 0
+        hidden_count = 0
+        
+        for line in recent_rites_lines:
+            line_with_newline = line + "\n"
+            # Reserve space for "...and X more" message
+            footer = f"\n*...and {len(recent_rites_lines) - len(truncated_lines)} more*"
+            if current_length + len(line_with_newline) + len(footer) > 1024:
+                hidden_count = len(recent_rites_lines) - len(truncated_lines)
+                break
+            truncated_lines.append(line)
+            current_length += len(line_with_newline)
+        
+        if hidden_count > 0:
+            recent_rites_value = "\n".join(truncated_lines) + f"\n*...and {hidden_count} more*"
+        else:
+            recent_rites_value = "\n".join(truncated_lines)
+    
     embed.add_field(
         name="▸ Recent Rites",
-        value="\n".join(recent_rites_lines),
+        value=recent_rites_value,
         inline=False,
     )
 
     # Machine Spirits (full width)
     spirit_text = "\n".join(spirit_lines)
+    # Truncate if exceeds Discord's 1024 character limit
+    if len(spirit_text) > 1024:
+        truncated_lines = []
+        current_length = 0
+        for line in spirit_lines:
+            line_with_newline = line + "\n"
+            footer = f"\n*...and {len(spirit_lines) - len(truncated_lines)} more*"
+            if current_length + len(line_with_newline) + len(footer) > 1024:
+                break
+            truncated_lines.append(line)
+            current_length += len(line_with_newline)
+        
+        hidden_count = len(spirit_lines) - len(truncated_lines)
+        if hidden_count > 0:
+            spirit_text = "\n".join(truncated_lines) + f"\n*...and {hidden_count} more*"
+        else:
+            spirit_text = "\n".join(truncated_lines)
+    
     embed.add_field(
         name=f"▸ {machine_spirit_emoji} Machine Spirits",
         value=spirit_text,
