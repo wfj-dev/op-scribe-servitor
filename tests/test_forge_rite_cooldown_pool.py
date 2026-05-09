@@ -28,21 +28,20 @@ import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
-import bot
-from bot import (
+from opscribe.bot import (
     _check_recipient_cooldown,
     _check_techmarine_can_bless,
     _consume_blessing,
     BLESSING_POOL_MAX,
     BLESSING_POOL_REGEN_HOURS,
     BLESSING_RECIPIENT_COOLDOWN_HOURS,
-    BLESSING_RECIPIENT_MAX_PER_DAY,
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _hours_ago(hours: float) -> str:
     """Return an ISO-format timestamp that is `hours` hours in the past."""
@@ -61,7 +60,7 @@ def _run(coro):
 
 def test_recipient_cooldown_no_prior_blessing():
     """A recipient with no recorded blessing can always receive."""
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(999))
     assert can_receive is True
@@ -73,7 +72,7 @@ def test_recipient_cooldown_no_prior_blessing():
 def test_recipient_cooldown_legacy_format_backward_compat():
     """Legacy last_blessing_timestamp format is handled for backward compatibility."""
     recent_ts = _hours_ago(12)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         # Old format with last_blessing_timestamp instead of blessing_timestamps list
         mock_state.return_value = {"last_blessing_timestamp": recent_ts}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(998))
@@ -91,7 +90,7 @@ def test_recipient_cooldown_legacy_format_backward_compat():
 def test_recipient_blocked_by_per_blessing_cooldown():
     """A recipient blessed 2h ago is blocked by the 4h per-blessing cooldown."""
     recent_ts = _hours_ago(2)  # 2 hours ago, within the 4h cooldown
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [recent_ts]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(700))
     assert can_receive is False
@@ -104,7 +103,7 @@ def test_recipient_blocked_by_per_blessing_cooldown():
 def test_recipient_allowed_after_per_blessing_cooldown():
     """A recipient blessed 5h ago (past the 4h cooldown) can receive again."""
     old_ts = _hours_ago(5)  # 5 hours ago, past the 4h cooldown
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [old_ts]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(701))
     assert can_receive is True
@@ -116,9 +115,10 @@ def test_recipient_allowed_after_per_blessing_cooldown():
 def test_recipient_per_blessing_cooldown_boundary():
     """A recipient blessed exactly 4h ago can receive (boundary condition)."""
     # Import the constant to use exact value
-    from bot import BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS
+    from opscribe.bot import BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS
+
     exact_4h_ago = _hours_ago(BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [exact_4h_ago]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(702))
     # elapsed >= per_blessing_cooldown → allowed
@@ -136,7 +136,7 @@ def test_recipient_per_blessing_cooldown_boundary():
 def test_recipient_cooldown_allows_second_blessing_within_24h():
     """A recipient blessed once within 24h can still receive a second blessing."""
     recent_ts = _hours_ago(12)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [recent_ts]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(1))
     assert can_receive is True  # Can still receive second blessing
@@ -150,7 +150,7 @@ def test_recipient_cooldown_blocked_at_max_blessings():
     ts1 = _hours_ago(18)
     ts2 = _hours_ago(12)
     ts3 = _hours_ago(6)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(2))
     assert can_receive is False
@@ -169,7 +169,7 @@ def test_recipient_cooldown_blocked_at_max_blessings():
 def test_recipient_cooldown_cleared_after_24h():
     """A recipient blessed 25h ago has their cooldown cleared."""
     old_ts = _hours_ago(25)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [old_ts]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(3))
     assert can_receive is True
@@ -181,7 +181,7 @@ def test_recipient_cooldown_cleared_after_24h():
 def test_recipient_cooldown_cleared_exactly_at_24h():
     """A recipient blessed exactly 24h ago is cleared (boundary condition)."""
     exact_24h_ago = _hours_ago(BLESSING_RECIPIENT_COOLDOWN_HOURS)
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [exact_24h_ago]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(4))
     # elapsed >= cooldown → cleared
@@ -198,7 +198,7 @@ def test_recipient_cooldown_cleared_exactly_at_24h():
 
 def test_recipient_cooldown_corrupted_timestamp_allows():
     """A corrupted blessing_timestamp defaults to allowing the blessing."""
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": ["not-a-timestamp"]}
         can_receive, remaining, blessings_used, block_reason = _run(_check_recipient_cooldown(5))
     assert can_receive is True
@@ -213,7 +213,7 @@ def test_recipient_cooldown_corrupted_timestamp_allows():
 
 def test_techmarine_can_bless_empty_pool_state():
     """A Techmarine with no recorded blessings has the full pool available."""
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": []}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(10))
     assert can_bless is True
@@ -224,7 +224,7 @@ def test_techmarine_can_bless_empty_pool_state():
 def test_techmarine_can_bless_all_timestamps_expired():
     """Expired timestamps (older than regen window) are treated as full pool."""
     old_timestamps = [_hours_ago(BLESSING_POOL_REGEN_HOURS + 1) for _ in range(BLESSING_POOL_MAX)]
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": old_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(11))
     assert can_bless is True
@@ -239,7 +239,7 @@ def test_techmarine_can_bless_all_timestamps_expired():
 def test_techmarine_cannot_bless_when_all_slots_active():
     """Pool is depleted when all BLESSING_POOL_MAX slots have recent timestamps."""
     recent_timestamps = [_hours_ago(1) for _ in range(BLESSING_POOL_MAX)]
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": recent_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(12))
     assert can_bless is False
@@ -253,11 +253,8 @@ def test_techmarine_pool_depletion_regen_timing():
     # Oldest blessing used 3h ago; regen window is ~4.8h → ~1.8h remaining
     regen_window_h = BLESSING_POOL_REGEN_HOURS
     oldest_h_ago = regen_window_h - 1.8
-    recent_timestamps = (
-        [_hours_ago(oldest_h_ago)]
-        + [_hours_ago(0.5) for _ in range(BLESSING_POOL_MAX - 1)]
-    )
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    recent_timestamps = [_hours_ago(oldest_h_ago)] + [_hours_ago(0.5) for _ in range(BLESSING_POOL_MAX - 1)]
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": recent_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(13))
     assert can_bless is False
@@ -275,7 +272,7 @@ def test_techmarine_partial_pool_available():
     """Some slots used → partial pool is available (can still bless)."""
     # Use 2 out of BLESSING_POOL_MAX slots
     used_timestamps = [_hours_ago(1), _hours_ago(2)]
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": used_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(14))
     assert can_bless is True
@@ -291,7 +288,7 @@ def test_techmarine_oversized_timestamps_clamped():
     """An oversized timestamp list (e.g. due to file corruption) never returns negative availability."""
     # Provide MORE than BLESSING_POOL_MAX recent timestamps
     excess_timestamps = [_hours_ago(0.5) for _ in range(BLESSING_POOL_MAX + 3)]
-    with patch("bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_techmarine_pool_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": excess_timestamps}
         can_bless, remaining, regen_time = _run(_check_techmarine_can_bless(15))
     assert can_bless is False
@@ -314,8 +311,8 @@ def test_consume_blessing_appends_timestamp():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_blessing(20))
 
@@ -338,8 +335,8 @@ def test_consume_blessing_does_not_exceed_pool_max():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_blessing(21))
 
@@ -360,8 +357,8 @@ def test_consume_blessing_with_oversized_list_stays_bounded():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_blessing(22))
 
@@ -390,7 +387,7 @@ def test_force_override_skips_cooldown_check():
     ts2 = _hours_ago(12)
     ts3 = _hours_ago(6)
 
-    with patch("bot._get_armor_state", new_callable=AsyncMock) as mock_state:
+    with patch("opscribe.bot._get_armor_state", new_callable=AsyncMock) as mock_state:
         mock_state.return_value = {"blessing_timestamps": [ts1, ts2, ts3]}
         # Without force: cooldown is active (at max blessings)
         can_receive, _, blessings_used, block_reason = _run(_check_recipient_cooldown(30))
@@ -432,7 +429,7 @@ def test_pool_fallback_uses_invoker_when_attestor_depleted():
     async def async_fake_pool_state(uid):
         return fake_pool_state(uid)
 
-    with patch("bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
         attestor_can_bless, _, _ = _run(_check_techmarine_can_bless(ATTESTOR_ID))
         invoker_can_bless, _, _ = _run(_check_techmarine_can_bless(INVOKER_ID))
 
@@ -459,7 +456,7 @@ def test_both_pools_depleted_no_fallback():
     async def async_fake_pool_state(uid):
         return {"blessing_timestamps": list(depleted)}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
         attestor_can_bless, _, _ = _run(_check_techmarine_can_bless(ATTESTOR_ID))
         invoker_can_bless, _, _ = _run(_check_techmarine_can_bless(INVOKER_ID))
 
@@ -484,7 +481,7 @@ def test_invoker_is_attestor_single_pool_checked():
     async def async_fake_pool_state(uid):
         return {"blessing_timestamps": list(depleted)}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=async_fake_pool_state):
         can_bless, _, _ = _run(_check_techmarine_can_bless(SAME_ID))
 
     assert can_bless is False

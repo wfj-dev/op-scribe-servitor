@@ -11,12 +11,12 @@ Covers:
 
 import json
 import os
-from datetime import datetime, date, timedelta, timezone
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot import _check_milestone_thresholds, MILESTONES_INCREMENTS
+from opscribe.bot import _check_milestone_thresholds, MILESTONES_INCREMENTS
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +110,10 @@ class TestScheduledMilestoneCheckGating:
         # Patch module-level constants / globals used by the function
         self.patches = []
 
-        p1 = patch("bot.MILESTONES_ENABLED", True)
-        p2 = patch("bot.DATASTORE", MagicMock())
-        p3 = patch("bot.MILESTONE_TRACKING_PATH", self.tracking_path)
-        p4 = patch("bot.MILESTONES_CHECK_INTERVAL_DAYS", 7)
+        p1 = patch("opscribe.bot.MILESTONES_ENABLED", True)
+        p2 = patch("opscribe.bot.DATASTORE", MagicMock())
+        p3 = patch("opscribe.bot.MILESTONE_TRACKING_PATH", self.tracking_path)
+        p4 = patch("opscribe.bot.MILESTONES_CHECK_INTERVAL_DAYS", 7)
 
         self.patches.extend([p1, p2, p3, p4])
         for p in self.patches:
@@ -138,17 +138,20 @@ class TestScheduledMilestoneCheckGating:
     @pytest.mark.asyncio
     async def test_skips_when_persisted_date_is_recent(self):
         """If the persisted last_check_date is recent (< 7 days), skip."""
-        import bot
+        import opscribe.bot as bot
 
         recent = str((date.today() - timedelta(days=3)))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": recent,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": recent,
+            }
+        )
 
         # In-memory value is None (simulates fresh restart)
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Should not have advanced the check date — function returned early
@@ -158,13 +161,15 @@ class TestScheduledMilestoneCheckGating:
     @pytest.mark.asyncio
     async def test_runs_when_persisted_date_is_old_enough(self):
         """If persisted last_check_date is ≥ 7 days old the check proceeds."""
-        import bot
+        import opscribe.bot as bot
 
         old_date = str(date.today() - timedelta(days=8))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": old_date,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": old_date,
+            }
+        )
 
         mock_guild = MagicMock()
         mock_channel = MagicMock()
@@ -174,12 +179,11 @@ class TestScheduledMilestoneCheckGating:
 
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
-            patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={
-                k: 0 for k in MILESTONES_INCREMENTS
-            }),
+            patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
+            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Check ran — last_check_date should be updated to today
@@ -189,17 +193,20 @@ class TestScheduledMilestoneCheckGating:
     @pytest.mark.asyncio
     async def test_fallback_to_in_memory_when_no_persisted_date(self):
         """If persisted last_check_date is None, use in-memory value."""
-        import bot
+        import opscribe.bot as bot
 
         recent = str(date.today() - timedelta(days=2))
         # No persisted date
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": None,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": None,
+            }
+        )
 
         with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", recent):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         # Should have skipped — in-memory date is recent
@@ -210,13 +217,15 @@ class TestScheduledMilestoneCheckGating:
     async def test_persists_date_even_when_no_milestones_crossed(self):
         """On a no-op week (no milestones crossed), last_check_date is still
         persisted so the gate works correctly next time."""
-        import bot
+        import opscribe.bot as bot
 
         old_date = str(date.today() - timedelta(days=10))
-        self._write_tracking({
-            "last_announced": {},
-            "last_check_date": old_date,
-        })
+        self._write_tracking(
+            {
+                "last_announced": {},
+                "last_check_date": old_date,
+            }
+        )
 
         mock_guild = MagicMock()
         mock_channel = MagicMock()
@@ -226,12 +235,11 @@ class TestScheduledMilestoneCheckGating:
 
         with (
             patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
-            patch("bot._resolve_notification_guild", return_value=mock_guild),
-            patch("bot._calculate_current_milestones", return_value={
-                k: 0 for k in MILESTONES_INCREMENTS
-            }),
+            patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
+            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
-            from bot import _scheduled_milestone_check
+            from opscribe.bot import _scheduled_milestone_check
+
             await _scheduled_milestone_check()
 
         data = self._read_tracking()

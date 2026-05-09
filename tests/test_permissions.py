@@ -1,7 +1,4 @@
-import types
-
-from bot import (
-    RANK_ROLES_PRIORITY,
+from opscribe.bot import (
     _role_index,
     is_sergeant_or_higher,
     can_reconcile_records,

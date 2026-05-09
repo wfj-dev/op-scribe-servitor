@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from bot import parse_aar, validate_aar
+from opscribe.bot import parse_aar, validate_aar
 
 
 class FakeUser:
@@ -68,9 +68,7 @@ def _make_initiation_trial_message(include_watch_command: bool):
         watch_command_role = FakeRole(WATCH_COMMAND_ROLE_ID, "Watch Command")
         role_mentions.append(watch_command_role)
 
-    watch_command_line = (
-        f"<@&{WATCH_COMMAND_ROLE_ID}>\n" if include_watch_command else ""
-    )
+    watch_command_line = f"<@&{WATCH_COMMAND_ROLE_ID}>\n" if include_watch_command else ""
 
     content = (
         "++ MISSION REPORT ++\n"
@@ -103,8 +101,7 @@ def test_initiation_trial_with_watch_command_validates():
     errs = validate_aar(rec)
     watch_command_errors = [e for e in errs if "Watch Command" in e]
     assert watch_command_errors == [], (
-        "Expected no Watch Command error when @Watch Command is mentioned, "
-        f"but got: {watch_command_errors}"
+        f"Expected no Watch Command error when @Watch Command is mentioned, but got: {watch_command_errors}"
     )
 
 
@@ -155,9 +152,7 @@ def test_omega_with_kia_line_validates():
     assert rec.get("kia_line_present") is True
     errs = validate_aar(rec)
     kia_errors = [e for e in errs if "KIA" in e]
-    assert not kia_errors, (
-        f"Expected no KIA error when KIA line is present, but got: {kia_errors}"
-    )
+    assert not kia_errors, f"Expected no KIA error when KIA line is present, but got: {kia_errors}"
 
 
 def test_omega_without_kia_line_returns_error():

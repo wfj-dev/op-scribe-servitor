@@ -18,14 +18,12 @@ Covers:
     * Tier thresholds: <=3 → tier 1, 4-11 → tier 2, >=12 → tier 3
 """
 
-import types
 import unittest.mock
 
-from bot import (
+from opscribe.bot import (
     _find_responsible_attestor,
     _get_techmarine_acknowledgment_blended,
     HIGH_COMMAND_ROLES,
-    RANK_PRESTIGE_WEIGHTS,
     TECHMARINE_RANK_ACKNOWLEDGMENTS,
     TECHMARINE_STUDS_ACKNOWLEDGMENT,
 )
@@ -84,9 +82,7 @@ def test_high_command_bearer_no_forgemaster_returns_none():
 
 def test_watch_captain_bearer_selects_forgemaster():
     """Watch Captain is High Command and should be blessed by the Forgemaster."""
-    assert "Watch Captain" in HIGH_COMMAND_ROLES, (
-        "Watch Captain must be in HIGH_COMMAND_ROLES"
-    )
+    assert "Watch Captain" in HIGH_COMMAND_ROLES, "Watch Captain must be in HIGH_COMMAND_ROLES"
     bearer = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
     company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
     forgemaster = FakeMember(3, ["Forgemaster"])
@@ -224,7 +220,7 @@ def test_company_bearer_no_company_tech_falls_back_to_forgemaster():
 def test_blended_ack_detects_watch_captain_rank():
     """Rank detection should identify 'Watch Captain' among a member's roles."""
     member = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
-    with unittest.mock.patch("bot.random.random", return_value=0.0):  # force rank path
+    with unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0):  # force rank path
         result = _get_techmarine_acknowledgment_blended(member, 0)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Captain"]
 
@@ -232,7 +228,7 @@ def test_blended_ack_detects_watch_captain_rank():
 def test_blended_ack_detects_watch_master_rank():
     """Highest-priority rank 'Watch Master' is detected and acknowledged."""
     member = FakeMember(1, ["Watch Master", "Watch Brother"])
-    with unittest.mock.patch("bot.random.random", return_value=0.0):
+    with unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0):
         result = _get_techmarine_acknowledgment_blended(member, 1)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Master"]
 
@@ -240,7 +236,7 @@ def test_blended_ack_detects_watch_master_rank():
 def test_blended_ack_defaults_to_watch_brother_when_no_rank():
     """A member with no recognized rank falls back to Watch Brother acknowledgments."""
     member = FakeMember(1, ["Unknown Role"])
-    with unittest.mock.patch("bot.random.random", return_value=0.0):
+    with unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0):
         result = _get_techmarine_acknowledgment_blended(member, 1)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
 
@@ -248,7 +244,7 @@ def test_blended_ack_defaults_to_watch_brother_when_no_rank():
 def test_blended_ack_no_roles_falls_back_to_watch_brother():
     """A member with no roles at all falls back to Watch Brother acknowledgments."""
     member = FakeMember(1, [])
-    with unittest.mock.patch("bot.random.random", return_value=0.0):
+    with unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0):
         result = _get_techmarine_acknowledgment_blended(member, 0)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Brother"]
 
@@ -263,8 +259,8 @@ def test_blended_ack_uses_rank_path_when_random_below_prob_rank():
     member = FakeMember(1, ["Watch Sergeant"])
     # With 0 studs, stud_weight is minimal, so prob_rank is high; force rank path.
     with (
-        unittest.mock.patch("bot.random.random", return_value=0.0),
-        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
     ):
         result = _get_techmarine_acknowledgment_blended(member, 0)
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Sergeant"]
@@ -277,8 +273,8 @@ def test_blended_ack_uses_stud_path_when_random_above_prob_rank():
     # prob_rank = 0.1 / (0.1 + 1.0) ≈ 0.091
     # random.random = 0.99 → stud path chosen
     with (
-        unittest.mock.patch("bot.random.random", return_value=0.99),
-        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.99),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
     ):
         result = _get_techmarine_acknowledgment_blended(member, 16)
     # 16 studs → tier 3
@@ -294,8 +290,8 @@ def test_blended_ack_tier1_for_low_studs():
     """1-3 studs maps to tier 1 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
     with (
-        unittest.mock.patch("bot.random.random", return_value=0.99),
-        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.99),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
     ):
         result = _get_techmarine_acknowledgment_blended(member, 3)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[1]
@@ -305,8 +301,8 @@ def test_blended_ack_tier2_for_mid_studs():
     """4-11 studs maps to tier 2 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
     with (
-        unittest.mock.patch("bot.random.random", return_value=0.99),
-        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.99),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
     ):
         result = _get_techmarine_acknowledgment_blended(member, 8)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[2]
@@ -316,8 +312,8 @@ def test_blended_ack_tier3_for_high_studs():
     """12+ studs maps to tier 3 stud acknowledgment."""
     member = FakeMember(1, ["Watch Brother"])
     with (
-        unittest.mock.patch("bot.random.random", return_value=0.99),
-        unittest.mock.patch("bot.random.choice", side_effect=lambda seq: seq[0]),
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.99),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
     ):
         result = _get_techmarine_acknowledgment_blended(member, 12)
     assert result in TECHMARINE_STUDS_ACKNOWLEDGMENT[3]
