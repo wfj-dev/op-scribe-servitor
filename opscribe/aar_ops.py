@@ -1181,6 +1181,15 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                     except Exception:
                         pass
 
+                    # --- Challenge Tracking: Process AAR for challenge eligibility ---
+                    if guild:
+                        try:
+                            challenge_notifications = await _process_challenge_tracking(record, guild)
+                            if challenge_notifications:
+                                await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+                        except Exception as e:
+                            _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
+
                     # If an error entry exists for this AAR, attempt to remove
                     # the bot's previous reply and clear the error record.
                     try:
@@ -1887,6 +1896,17 @@ async def _run_reparse_records(
             merged.update(new_rec)
             # Ensure aar_id remains the same key
             merged["aar_id"] = rec.get("aar_id")
+
+            # --- Challenge Tracking: Process AAR for challenge eligibility (always, even if unchanged) ---
+            try:
+                guild_obj = channel.guild if hasattr(channel, 'guild') else None
+                if guild_obj:
+                    challenge_notifications = await _process_challenge_tracking(merged, guild_obj)
+                    if challenge_notifications:
+                        await _send_challenge_eligibility_notifications(challenge_notifications, guild_obj)
+            except Exception as e:
+                _g.logger.error(f"Error processing challenge tracking during reparse for AAR {merged.get('aar_id')}: {e}")
+
             if merged != rec:
                 # Track which fields changed
                 for field in set(rec.keys()) | set(merged.keys()):
