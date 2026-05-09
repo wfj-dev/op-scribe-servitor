@@ -20,6 +20,7 @@ from .constants import *  # noqa: F401,F403
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
+from .librarius_ops import _get_warp_exposure_state, _get_warp_sanction_status
 from . import _bot_globals as _g
 
 
@@ -2953,6 +2954,29 @@ async def tally_deeds(
                 except Exception:
                     pass  # Skip armor field if data unavailable
 
+                # ▸ Warp Sanction field (status only; raw exposure hidden from brothers)
+                try:
+                    warp_state = await _get_warp_exposure_state(int(target.id))
+                    warp_points = int(warp_state.get("points_since_warding", 0) or 0)
+                    sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
+                    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
+                        sanction_key,
+                        ("Sanctioned", "Clear or minimal contamination detected."),
+                    )
+                    if warp_state.get("warp_corrupted"):
+                        sanction_label = f"{sanction_label} — CORRUPTED"
+                        sanction_desc = (
+                            "Warp corruption confirmed by repeated restricted-tier exposure. "
+                            "Void Warden intervention required."
+                        )
+                    embed.add_field(
+                        name="▸ Warp Sanction",
+                        value=f"🧿 **{sanction_label.upper()}**\n{sanction_desc}",
+                        inline=False,
+                    )
+                except Exception:
+                    pass
+
                 # ▸ Challenges field
                 target_role_ids_ch = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
                 completed_challenges = []
@@ -3716,6 +3740,29 @@ async def my_deeds(interaction: discord.Interaction):
             )
     except Exception:
         pass  # Skip armor field if data unavailable
+
+    # ▸ Warp Sanction field (status only; raw exposure hidden from brothers)
+    try:
+        warp_state = await _get_warp_exposure_state(int(target.id))
+        warp_points = int(warp_state.get("points_since_warding", 0) or 0)
+        sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
+        sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
+            sanction_key,
+            ("Sanctioned", "Clear or minimal contamination detected."),
+        )
+        if warp_state.get("warp_corrupted"):
+            sanction_label = f"{sanction_label} — CORRUPTED"
+            sanction_desc = (
+                "Warp corruption confirmed by repeated restricted-tier exposure. "
+                "Void Warden intervention required."
+            )
+        embed.add_field(
+            name="▸ Warp Sanction",
+            value=f"🧿 **{sanction_label.upper()}**\n{sanction_desc}",
+            inline=False,
+        )
+    except Exception:
+        pass
 
     # ▸ Challenges field
     target_role_ids = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}

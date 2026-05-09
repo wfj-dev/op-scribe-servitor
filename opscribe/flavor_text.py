@@ -1052,3 +1052,171 @@ FORGE_AMBIENT_MESSAGES = [
     "*The Watch Techmarines' vigil continues, eternal and unwavering.*",
     "*In the deep places of the Forge, wisdom accumulates.*",
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Librarian / Warp Corruption subsystem data
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Brother exposure tiers (numeric mirror of Techmarine armor tiers)
+WARP_EXPOSURE_TIERS = ["tainted", "exposed", "volatile", "breached", "catastrophic"]
+
+# Per-tier point bands for brothers. Mirrors Techmarine numeric model exactly.
+# (min_inclusive, max_inclusive) — None upper bound = unbounded.
+WARP_BROTHER_TIER_BANDS = {
+    "tainted": (1, 4),
+    "exposed": (5, 9),
+    "volatile": (10, 14),
+    "breached": (15, 19),
+    "catastrophic": (20, None),
+}
+
+# Librarian personal exposure tiers (2x brother bands; reflects psychic tolerance)
+WARP_LIBRARIAN_TIERS = ["stable", "resonant", "surging", "overloaded", "abyssal"]
+WARP_LIBRARIAN_TIER_BANDS = {
+    "stable": (1, 8),
+    "resonant": (9, 18),
+    "surging": (19, 28),
+    "overloaded": (29, 38),
+    "abyssal": (39, None),
+}
+
+# Brother-facing Warp Sanction status (label, description). Brothers see this only.
+# Mirrors Techmarine armor outcome layer: 1 clean state (sanctioned ≈ nominal) +
+# 3 roled states (screening_due/under_review/restricted ≈ damaged/compromised/critical).
+# A separate boolean flag (warp_corrupted ≈ spirit_fractured) is tracked on top.
+WARP_SANCTION_STATUS = {
+    "sanctioned": ("Sanctioned", "No corruption detected. Spirit clear."),
+    "screening_due": ("Screening Due", "Trace contamination detected. Report for psychic screening."),
+    "under_review": ("Under Review", "Significant exposure noted. Librarium oversight engaged."),
+    "restricted": ("Restricted", "Severe exposure. Operational restrictions in effect pending Void Warden review."),
+}
+
+# Map exposure point totals to sanction key (brothers).
+def _warp_sanction_key_for_points(points: int) -> str:
+    """Map a brother's exposure points to a Warp Sanction key.
+
+    3 escalating non-clean tiers (parity with armor's damaged/compromised/critical).
+    Catastrophic exposure (20+) maps to restricted; the warp_corrupted flag is
+    raised separately by AAR-count threshold (mirrors spirit_fractured).
+    """
+    if points <= 0:
+        return "sanctioned"
+    if points <= 9:
+        return "screening_due"
+    if points <= 19:
+        return "under_review"
+    return "restricted"  # 20+
+
+
+# Warp corruption threshold (AAR submissions at restricted before brother is corrupted).
+# Mirrors DEFAULT_ARMOR_FRACTURE_THRESHOLD.
+DEFAULT_WARP_CORRUPTION_THRESHOLD = 3
+
+
+# Penalty tables — exact mirror of ARMOR_PENALTY_PROBABILITIES, keyed by exposure tier.
+# Catastrophic uses the same shape as breached/fractured.
+WARP_PENALTY_PROBABILITIES = {
+    None: {0: 1.0},
+    "tainted": {0: 0.90, 1: 0.085, 2: 0.010, 3: 0.005},
+    "exposed": {0: 0.835, 1: 0.10, 2: 0.05, 3: 0.015},
+    "volatile": {0: 0.75, 1: 0.085, 2: 0.10, 3: 0.065},
+    "breached": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},
+    "catastrophic": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},
+}
+
+# Detection alert chances per AAR while exposed (mirrors ARMOR_DETECTION_CHANCES).
+WARP_DETECTION_CHANCES = {
+    "tainted": 0.20,
+    "exposed": 0.35,
+    "volatile": 0.50,
+    "breached": 1.00,
+    "catastrophic": 1.00,
+}
+
+# Spread chance from an infected source by the source's tier.
+# Mirrors detection ladder for narrative consistency.
+WARP_SPREAD_CHANCES = {
+    "tainted": 0.20,
+    "exposed": 0.35,
+    "volatile": 0.50,
+    "breached": 1.00,
+    "catastrophic": 1.00,
+}
+
+# Cleanse outcome matrix keyed by the cleansing Librarian's current tier.
+# Each entry is a list of (probability, outcome_key, fraction_removed, librarian_extra).
+# - outcome_key: "full", "partial", "backlash"
+# - fraction_removed: 0.0 - 1.0 of recipient's current exposure (full = 1.0)
+# - librarian_extra: extra exposure added to the Librarian on top of the standard transfer
+WARP_CLEANSE_OUTCOMES = {
+    None: [  # Clear Librarian — most reliable
+        (0.90, "full", 1.00, 0),
+        (0.10, "partial", 0.75, 0),
+    ],
+    "stable": [
+        (0.80, "full", 1.00, 0),
+        (0.15, "partial", 0.75, 0),
+        (0.05, "backlash", 0.50, 1),
+    ],
+    "resonant": [
+        (0.65, "full", 1.00, 0),
+        (0.25, "partial", 0.60, 0),
+        (0.10, "backlash", 0.40, 2),
+    ],
+    "surging": [
+        (0.45, "full", 1.00, 0),
+        (0.35, "partial", 0.50, 0),
+        (0.20, "backlash", 0.30, 3),
+    ],
+    # overloaded/abyssal: cannot cleanse others (handled in command guard)
+}
+
+# Sanitized public flavor for cleanse outcomes
+WARP_CLEANSE_OUTCOME_FLAVOR = {
+    "full": [
+        "The Librarian seals the rift cleanly. Corruption recedes; the spirit clears.",
+        "Wards complete. The taint is purged in full.",
+        "Litanies hold. The brother stands cleansed.",
+    ],
+    "partial": [
+        "The cleanse holds, but residue clings to the spirit.",
+        "Most of the taint is purged. A faint shadow remains.",
+        "The wards cut deep but do not finish the work.",
+    ],
+    "backlash": [
+        "The cleanse falters. Corruption lashes back into the Librarian.",
+        "Wards crack. The Librarian absorbs the backlash to spare the brother.",
+        "The rite holds—barely. Burden flows to the cleanser.",
+    ],
+}
+
+# Brief Librarian tier descriptions for psychic_status displays
+WARP_LIBRARIAN_TIER_DESCRIPTIONS = {
+    None: ("CLEAR", "Mind shielded; full reliability."),
+    "stable": ("STABLE", "Minor strain. Cleansing reliable."),
+    "resonant": ("RESONANT", "Marked resonance. Cleansing less predictable."),
+    "surging": ("SURGING", "Severe instability. Backlash likely."),
+    "overloaded": ("OVERLOADED", "Cannot cleanse others. Self-cleanse only."),
+    "abyssal": ("ABYSSAL", "Void Warden intervention required."),
+}
+
+WARP_BROTHER_TIER_DESCRIPTIONS = {
+    None: ("CLEAR", "No exposure detected."),
+    "tainted": ("TAINTED", "Minor warp residue."),
+    "exposed": ("EXPOSED", "Notable contamination."),
+    "volatile": ("VOLATILE", "Severe contamination; psychic instability."),
+    "breached": ("BREACHED", "Critical breach; immediate cleansing required."),
+    "catastrophic": ("CATASTROPHIC", "Lockdown protocols engaged."),
+}
+
+# Ambient lines for Librarium chronicle posts
+LIBRARIUM_AMBIENT_MESSAGES = [
+    "*Wards hum quietly in the sanctum.*",
+    "*The Librarium's silence is a held breath.*",
+    "*Psychic hoods rest on their stands, awaiting need.*",
+    "*Warp-glass lenses catch a light no one cast.*",
+    "*Somewhere, a litany ends. Another begins.*",
+    "*The Librarians' vigil continues, unspoken and unbroken.*",
+]
+
