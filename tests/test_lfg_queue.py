@@ -110,7 +110,7 @@ def test_join_queue_enforces_console_limit():
         patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
         patch("opscribe.bot._get_player_platform", return_value="console"),
         patch(
-            "bot._get_lfg_queue_types",
+            "opscribe.bot._get_lfg_queue_types",
             return_value={"omega": {"max_players": 5, "max_console": 2, "display": "Omega"}},
         ),
     ):
