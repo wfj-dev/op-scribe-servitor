@@ -5873,8 +5873,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         
         if bearer_id and tech_id and spirit:
             # Format member names
-            tech_name = _b("_format_member_styled")(guild, str(tech_id), include_chapter=False)
-            bearer_name = _b("_format_member_styled")(guild, str(bearer_id), include_chapter=False)
+            tech_name = _b("_format_member_styled")(guild, str(tech_id), include_chapter=True)
+            bearer_name = _b("_format_member_styled")(guild, str(bearer_id), include_chapter=True)
             
             # Format rite type display
             if event_type == "first_binding":
@@ -5889,7 +5889,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             # Calculate time ago
             try:
                 ts = datetime.fromisoformat(ts_str)
-                time_ago = _format_time_ago(ts, now)
+                time_ago = _b("_format_time_ago")(ts, now)
             except Exception:
                 time_ago = "???"
             
