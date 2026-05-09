@@ -11,8 +11,8 @@ Covers:
 import types
 import unittest.mock
 
-import bot
-from bot import is_allowed_channel, DEFAULT_ALLOWED_CHANNELS
+import opscribe.bot as bot
+from opscribe.bot import is_allowed_channel, DEFAULT_ALLOWED_CHANNELS
 
 
 # ---------------------------------------------------------------------------

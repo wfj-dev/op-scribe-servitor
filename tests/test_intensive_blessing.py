@@ -29,10 +29,9 @@ Covers:
 
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
-import bot
-from bot import (
+from opscribe.bot import (
     _get_intensive_charge_cost,
     _get_techmarine_available_charges,
     _consume_multiple_blessings,
@@ -45,6 +44,7 @@ from bot import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _hours_ago(hours: float) -> str:
     """Return an ISO-format timestamp that is `hours` hours in the past."""
@@ -124,10 +124,11 @@ def test_intensive_cost_spirit_fractured_flag():
 
 def test_available_charges_empty_pool():
     """A Techmarine with no recorded timestamps has the full pool available."""
+
     async def fake_pool_state(uid):
         return {"blessing_timestamps": []}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(10))
 
     assert available == BLESSING_POOL_MAX
@@ -140,7 +141,7 @@ def test_available_charges_all_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": recent_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(11))
 
     assert available == 0
@@ -153,7 +154,7 @@ def test_available_charges_partial_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": partial_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(12))
 
     assert available == BLESSING_POOL_MAX - 2
@@ -166,7 +167,7 @@ def test_available_charges_expired_timestamps_count_as_free():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": expired_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(13))
 
     assert available == BLESSING_POOL_MAX
@@ -179,7 +180,7 @@ def test_available_charges_oversized_list_never_negative():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": excess_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(14))
 
     assert available >= 0
@@ -193,7 +194,7 @@ def test_available_charges_mixed_expired_and_active():
     async def fake_pool_state(uid):
         return {"blessing_timestamps": active_ts + expired_ts}
 
-    with patch("bot._get_techmarine_pool_state", side_effect=fake_pool_state):
+    with patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_pool_state):
         available = _run(_get_techmarine_available_charges(15))
 
     assert available == BLESSING_POOL_MAX - 2
@@ -215,8 +216,8 @@ def test_consume_multiple_appends_n_timestamps():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(20, 2))
 
@@ -235,8 +236,8 @@ def test_consume_multiple_three_charges():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(21, 3))
 
@@ -257,8 +258,8 @@ def test_consume_multiple_timestamps_not_in_future():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(22, 2))
 
@@ -281,8 +282,8 @@ def test_consume_multiple_timestamps_all_same():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(23, 3))
 
@@ -303,8 +304,8 @@ def test_consume_multiple_bounded_to_pool_max():
         captured["state"] = state
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(24, 4))  # Request 4 but only 1 slot remains
 
@@ -325,8 +326,8 @@ def test_consume_multiple_zero_is_noop():
         call_count["n"] += 1
 
     with (
-        patch("bot._get_techmarine_pool_state", side_effect=fake_get_state),
-        patch("bot._set_techmarine_pool_state", side_effect=fake_set_state),
+        patch("opscribe.bot._get_techmarine_pool_state", side_effect=fake_get_state),
+        patch("opscribe.bot._set_techmarine_pool_state", side_effect=fake_set_state),
     ):
         _run(_consume_multiple_blessings(25, 0))
 
@@ -340,18 +341,14 @@ def test_consume_multiple_zero_is_noop():
 
 def test_collaborative_attestor_has_enough_solo():
     """Attestor has sufficient charges → solo contribution, not collaborative."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=3, invoker_charges=2, charges_required=3
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=3, invoker_charges=2, charges_required=3)
     assert is_collab is False
     assert contributions == [("attestor", 3)]
 
 
 def test_collaborative_both_contribute():
     """Attestor short, invoker covers the rest → both contribute, is_collaborative=True."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=1, invoker_charges=3, charges_required=3
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=1, invoker_charges=3, charges_required=3)
     assert is_collab is True
     assert ("attestor", 1) in contributions
     assert ("invoker", 2) in contributions
@@ -360,9 +357,7 @@ def test_collaborative_both_contribute():
 
 def test_collaborative_invoker_only_attestor_zero():
     """Attestor has 0 charges, invoker covers everything → is_collaborative=False."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=0, invoker_charges=4, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=0, invoker_charges=4, charges_required=4)
     assert is_collab is False
     # Invoker supplies all, attestor contributes nothing
     invoker_total = sum(c for who, c in contributions if who == "invoker")
@@ -381,25 +376,19 @@ def test_collaborative_split_amounts_sum_to_required():
     ]:
         _, contributions = _simulate_collaborative_split(attestor_c, invoker_c, required)
         total = sum(c for _, c in contributions)
-        assert total == required, (
-            f"attestor={attestor_c}, invoker={invoker_c}, required={required} → total={total}"
-        )
+        assert total == required, f"attestor={attestor_c}, invoker={invoker_c}, required={required} → total={total}"
 
 
 def test_collaborative_combined_insufficient_yields_empty():
     """When combined charges < required, no contributions are produced."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=1, invoker_charges=1, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=1, invoker_charges=1, charges_required=4)
     assert contributions == []
     assert is_collab is False
 
 
 def test_collaborative_attestor_one_invoker_covers_rest_exact_split():
     """Exact split: attestor contributes 2 of 4, invoker covers 2."""
-    is_collab, contributions = _simulate_collaborative_split(
-        attestor_charges=2, invoker_charges=2, charges_required=4
-    )
+    is_collab, contributions = _simulate_collaborative_split(attestor_charges=2, invoker_charges=2, charges_required=4)
     assert is_collab is True
     assert ("attestor", 2) in contributions
     assert ("invoker", 2) in contributions

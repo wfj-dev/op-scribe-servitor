@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-import bot
+import opscribe.bot as bot
 
 
 def _run(coro):
@@ -38,21 +38,19 @@ def test_lfg_queue_creation_uses_default_expiry_when_not_provided():
     msg = SimpleNamespace(id=999, edit=AsyncMock())
     interaction.original_response = AsyncMock(return_value=msg)
 
-    queue_types = {
-        "operation": {"max_players": 3, "max_console": None, "display": "Operation", "ping_role_id": None}
-    }
+    queue_types = {"operation": {"max_players": 3, "max_console": None, "display": "Operation", "ping_role_id": None}}
 
     bot.LFG_ACTIVE_QUEUES.clear()
 
     with (
-        patch("bot.is_allowed_channel", return_value=True),
-        patch("bot._get_player_platform", return_value="pc"),
-        patch("bot._get_lfg_queue_types", return_value=queue_types),
-        patch("bot._get_lfg_default_expiry_minutes", return_value=30),
-        patch("bot._get_lfg_max_expiry_minutes", return_value=120),
-        patch("bot._build_lfg_embed", return_value=discord.Embed(title="x")),
-        patch("bot._load_lfg_queues", return_value={}),
-        patch("bot._save_lfg_queues"),
+        patch("opscribe.bot.is_allowed_channel", return_value=True),
+        patch("opscribe.bot._get_player_platform", return_value="pc"),
+        patch("opscribe.bot._get_lfg_queue_types", return_value=queue_types),
+        patch("opscribe.bot._get_lfg_default_expiry_minutes", return_value=30),
+        patch("opscribe.bot._get_lfg_max_expiry_minutes", return_value=120),
+        patch("opscribe.bot._build_lfg_embed", return_value=discord.Embed(title="x")),
+        patch("opscribe.bot._load_lfg_queues", return_value={}),
+        patch("opscribe.bot._save_lfg_queues"),
     ):
         _run(
             bot.lfg_queue.callback(
@@ -84,14 +82,12 @@ def test_join_queue_prevents_duplicate_join():
 
     with (
         patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
-        patch("bot._get_player_platform", return_value="pc"),
-        patch("bot._get_lfg_queue_types", return_value={"operation": {"max_players": 3}}),
+        patch("opscribe.bot._get_player_platform", return_value="pc"),
+        patch("opscribe.bot._get_lfg_queue_types", return_value={"operation": {"max_players": 3}}),
     ):
         _run(view.join_queue(interaction))
 
-    interaction.response.send_message.assert_awaited_once_with(
-        "You are already in this queue.", ephemeral=True
-    )
+    interaction.response.send_message.assert_awaited_once_with("You are already in this queue.", ephemeral=True)
 
 
 def test_join_queue_enforces_console_limit():
@@ -112,9 +108,9 @@ def test_join_queue_enforces_console_limit():
 
     with (
         patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
-        patch("bot._get_player_platform", return_value="console"),
+        patch("opscribe.bot._get_player_platform", return_value="console"),
         patch(
-            "bot._get_lfg_queue_types",
+            "opscribe.bot._get_lfg_queue_types",
             return_value={"omega": {"max_players": 5, "max_console": 2, "display": "Omega"}},
         ),
     ):
@@ -145,10 +141,10 @@ def test_expire_old_lfg_queues_removes_expired_and_updates_message():
     guild.get_channel.return_value = channel
 
     with (
-        patch("bot._load_lfg_queues", return_value=dict(all_queues)),
-        patch("bot._save_lfg_queues") as mock_save,
-        patch("bot._resolve_notification_guild", return_value=guild),
-        patch("bot.datetime") as mock_datetime,
+        patch("opscribe.bot._load_lfg_queues", return_value=dict(all_queues)),
+        patch("opscribe.bot._save_lfg_queues") as mock_save,
+        patch("opscribe.bot._resolve_notification_guild", return_value=guild),
+        patch("opscribe.bot.datetime") as mock_datetime,
     ):
         mock_datetime.now.return_value = now
         mock_datetime.fromisoformat.side_effect = datetime.fromisoformat

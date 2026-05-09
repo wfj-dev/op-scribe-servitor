@@ -120,10 +120,7 @@ def main():
                             updates += 1
                             changed = True
                         # update name if replacement available
-                        if (
-                            isinstance(replacement_name, str)
-                            and replacement_name.strip()
-                        ):
+                        if isinstance(replacement_name, str) and replacement_name.strip():
                             if str(names[i]) != replacement_name:
                                 names[i] = replacement_name
                                 name_updates += 1

@@ -44,9 +44,7 @@ def _atomic_write_json(path: str, data: dict):
     os.replace(tmp_path, path)
 
 
-def sort_records(
-    input_path: str, output_path: str | None, order: str, dry_run: bool, backup: bool
-):
+def sort_records(input_path: str, output_path: str | None, order: str, dry_run: bool, backup: bool):
     data = _read_json_dict(input_path)
     if not data:
         print(f"No records found in {input_path} or file is invalid.")
@@ -75,16 +73,12 @@ def sort_records(
     target_path = output_path or input_path
     # Optional backup
     if backup and target_path == input_path:
-        backup_path = os.path.join(
-            os.path.dirname(input_path), "aar_records.backup.json"
-        )
+        backup_path = os.path.join(os.path.dirname(input_path), "aar_records.backup.json")
         _atomic_write_json(backup_path, data)
         print(f"Backup written to {backup_path}")
 
     _atomic_write_json(target_path, ordered)
-    print(
-        f"Sorted records written to {target_path} ({len(items)} entries, order={order})."
-    )
+    print(f"Sorted records written to {target_path} ({len(items)} entries, order={order}).")
     return len(items)
 
 

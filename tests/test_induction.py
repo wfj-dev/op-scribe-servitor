@@ -45,10 +45,10 @@ def make_aar_record(
 # ---------------------------------------------------------------------------
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_omega_single_inductee_counts_as_one_induction(mock_load):
     """Omega operation with 1 inductee = 1 complete induction."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -61,10 +61,10 @@ def test_omega_single_inductee_counts_as_one_induction(mock_load):
     assert _induction_count_for_user("100") == 1
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_omega_two_inductees_counts_as_two_inductions(mock_load):
     """Omega operation with 2 inductees = 2 complete inductions."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -77,10 +77,10 @@ def test_omega_two_inductees_counts_as_two_inductions(mock_load):
     assert _induction_count_for_user("100") == 2
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_omega_case_insensitive(mock_load):
     """Omega detection should be case-insensitive."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -97,10 +97,10 @@ def test_omega_case_insensitive(mock_load):
 # ---------------------------------------------------------------------------
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_regular_op_three_trials_equals_one_induction(mock_load):
     """3 regular operation trials = 1 induction."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -122,10 +122,10 @@ def test_regular_op_three_trials_equals_one_induction(mock_load):
     assert _induction_count_for_user("100") == 1
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_regular_op_two_trials_equals_zero_inductions(mock_load):
     """2 regular operation trials (incomplete) = 0 inductions."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -147,10 +147,10 @@ def test_regular_op_two_trials_equals_zero_inductions(mock_load):
 # ---------------------------------------------------------------------------
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_siege_15_waves_equals_one_induction(mock_load):
     """15 siege waves with 1 inductee = 1 induction."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -163,10 +163,10 @@ def test_siege_15_waves_equals_one_induction(mock_load):
     assert _induction_count_for_user("100") == 1
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_siege_14_waves_equals_zero_inductions(mock_load):
     """14 siege waves (incomplete) = 0 inductions."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -179,10 +179,10 @@ def test_siege_14_waves_equals_zero_inductions(mock_load):
     assert _induction_count_for_user("100") == 0
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_siege_accumulated_waves_across_aars(mock_load):
     """Siege waves accumulate across multiple AARs (10 + 5 = 15 = 1)."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -206,10 +206,10 @@ def test_siege_accumulated_waves_across_aars(mock_load):
 # ---------------------------------------------------------------------------
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_mixed_omega_and_regular_ops(mock_load):
     """Omega + 3 regular ops = 2 inductions."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -242,10 +242,10 @@ def test_mixed_omega_and_regular_ops(mock_load):
 # ---------------------------------------------------------------------------
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_self_excluded_from_inductee_count(mock_load):
     """User's own induction is excluded from their count."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -258,10 +258,10 @@ def test_self_excluded_from_inductee_count(mock_load):
     assert _induction_count_for_user("100") == 0
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_non_initiation_aar_ignored(mock_load):
     """Non-initiation AARs don't count toward induction."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -274,10 +274,10 @@ def test_non_initiation_aar_ignored(mock_load):
     assert _induction_count_for_user("100") == 0
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_legacy_initiate_id_field(mock_load):
     """Legacy initiate_id field is still honored."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(
@@ -290,10 +290,10 @@ def test_legacy_initiate_id_field(mock_load):
     assert _induction_count_for_user("100") == 1
 
 
-@patch("bot.load_aar_data")
+@patch("opscribe.bot.load_aar_data")
 def test_user_not_in_brothers_ignored(mock_load):
     """AARs where user wasn't a brother are ignored."""
-    from bot import _induction_count_for_user
+    from opscribe.bot import _induction_count_for_user
 
     mock_load.return_value = {
         "aar1": make_aar_record(

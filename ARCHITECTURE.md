@@ -88,10 +88,27 @@ flowchart TB
 
 | Component | File | Responsibility |
 |-----------|------|----------------|
-| Core Engine | `bot.py` | Discord client, slash commands, event handlers, scheduled tasks |
-| Data Layer | `datastore.py` | Write-behind cache, background flush, user stats |
+| Core Engine | `opscribe/bot.py` | Discord client, slash commands, event handlers, scheduled tasks |
+| Data Layer | `opscribe/datastore.py` | Write-behind cache, background flush, user stats |
+| Constants | `opscribe/constants.py` | Role IDs, channel IDs, file paths, thresholds, mission sets, scheduler defaults |
+| Flavor Text | `opscribe/flavor_text.py` | Large RP data tables (chapter blessings, rank acknowledgments, stud milestones, armor/forge phrases, etc.) |
+| Permissions | `opscribe/permissions.py` | Battle line / champion / specialist track membership and High Command / Watch Command groups |
+| Studs | `opscribe/studs.py` | Pure stud calculation helpers (`_studs_tier`, `_studs_pips`, `_studs_next_target`, `_format_stud_target`, `_get_stud_weight`, `_get_studs_veneration`) |
+| AAR Operations | `opscribe/aar_ops.py` | AAR parsing, validation, and reconciliation logic |
+| Forge Operations | `opscribe/forge_ops.py` | Forge rite, armor integrity, and blessing system logic |
+| Roster Operations | `opscribe/roster_ops.py` | Member tracking, promotions, and activity status logic |
+| Entry Point | `run.py` | Simple entry point script that imports and runs the bot |
 | Configuration | `config/config.json` | Guild settings, permissions, channel policies |
 | Persistence | `data/*.json` | AAR records, activity tracking, milestones, rites |
+
+> **Package structure note:** All bot modules are now organized under the `opscribe/` package.
+> The package uses relative imports internally, and external code (tests, scripts) imports
+> via `from opscribe.bot import ...`. The `bot.py` module re-exports each extracted module via
+> `from <module> import *` so existing references — including the test
+> suite's `from bot import X` imports — keep working unchanged. The
+> extracted modules contain only pure data and pure functions; runtime
+> state (locks, the Discord client, the `DATASTORE` global, mutable
+> trackers) remains in `bot.py`.
 
 ## Scheduled Tasks
 
