@@ -5865,8 +5865,8 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     recent_rites_lines = []
     
-    # Get forge blessing emoji (try both variants, fallback to gear)
-    forge_blessing_emoji = _get_emoji_by_name(guild, "forgeblessing") or _get_emoji_by_name(guild, "forge_blessing") or "⚙️"
+    # Get Omnissiah Seal emoji for rites
+    forge_blessing_emoji = _get_emoji_by_name(guild, "OmnissiahSeal") or "⚙️"
     
     # Filter for blessing events only
     blessing_events = []
