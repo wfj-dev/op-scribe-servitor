@@ -17,6 +17,16 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
+from .forge_ops import (
+    _load_armor_integrity,
+    _save_armor_batch,
+    _process_armor_integrity_for_aar,
+    _post_armor_alert,
+    _get_member_damage_tier,
+    _get_armor_state,
+    _roll_armor_penalty,
+    _increment_aar_generation,
+)
 
 
 def _b(name):
@@ -1172,10 +1182,10 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                 try:
                                     member = guild.get_member(int(bid))
                                     if member:
-                                        tier = _b("_get_member_damage_tier")(member)
-                                        armor_state = await _b("_get_armor_state")(int(bid))
+                                        tier = _get_member_damage_tier(member)
+                                        armor_state = await _get_armor_state(int(bid))
                                         spirit_fractured = armor_state.get("spirit_fractured", False)
-                                        rolled_penalty = _b("_roll_armor_penalty")(tier, spirit_fractured)
+                                        rolled_penalty = _roll_armor_penalty(tier, spirit_fractured)
                                         if rolled_penalty > 0:
                                             armor_penalties[bid] = rolled_penalty
                                 except Exception:
@@ -1189,7 +1199,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                 try:
                                     bid_base_points = base_points.get(bid, 0)
                                     bid_actual_penalty = armor_penalties.get(bid, 0)
-                                    penalty, alert_info = await _b("_process_armor_integrity_for_aar")(
+                                    penalty, alert_info = await _process_armor_integrity_for_aar(
                                         bid,
                                         bid_base_points,
                                         guild,
@@ -1207,7 +1217,7 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                             # Post any armor alerts
                             for alert in alerts_to_post:
                                 try:
-                                    await _b("_post_armor_alert")(
+                                    await _post_armor_alert(
                                         alert["member"],
                                         alert["tier"],
                                         alert.get("critical_count", 0),
@@ -1298,7 +1308,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             pass
 
     # Load armor integrity data once for batch processing (avoids repeated file I/O)
-    armor_batch = _b("_load_armor_integrity")()
+    armor_batch = _load_armor_integrity()
     armor_batch_modified = False
 
     async for msg in aar_channel.history(**history_kwargs):
@@ -1383,24 +1393,16 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         armor_penalties = {}
 
         if guild and brother_ids:
-            get_member_damage_tier = _b("_get_member_damage_tier")
-            get_armor_state = _b("_get_armor_state")
-            roll_armor_penalty = _b("_roll_armor_penalty")
             for bid in brother_ids:
                 try:
                     member = guild.get_member(int(bid))
-                    if (
-                        member
-                        and callable(get_member_damage_tier)
-                        and callable(get_armor_state)
-                        and callable(roll_armor_penalty)
-                    ):
-                        tier = get_member_damage_tier(member)
+                    if member:
+                        tier = _get_member_damage_tier(member)
                         # Check for spirit fractured state
-                        armor_state = await get_armor_state(int(bid))
+                        armor_state = await _get_armor_state(int(bid))
                         spirit_fractured = armor_state.get("spirit_fractured", False)
                         # Roll probabilistic penalty instead of fixed
-                        penalty = roll_armor_penalty(tier, spirit_fractured)
+                        penalty = _roll_armor_penalty(tier, spirit_fractured)
                         if penalty > 0:
                             armor_penalties[bid] = penalty
                 except Exception:
@@ -1422,7 +1424,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 try:
                     bid_base_points = base_points.get(bid, 0)
                     bid_actual_penalty = armor_penalties.get(bid, 0)
-                    penalty, alert_info = await _b("_process_armor_integrity_for_aar")(
+                    penalty, alert_info = await _process_armor_integrity_for_aar(
                         bid,
                         bid_base_points,
                         guild,
@@ -1445,7 +1447,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         # Post any armor alerts (outside the loop to avoid rate limits)
         for alert in alerts_to_post:
             try:
-                await _b("_post_armor_alert")(
+                await _post_armor_alert(
                     alert["member"],
                     alert["tier"],
                     alert.get("critical_count", 0),
@@ -1512,9 +1514,9 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
 
     # Save armor batch data once at end (avoid repeated file I/O during loop)
     if armor_batch_modified:
-        await _b("_save_armor_batch")(armor_batch)
+        await _save_armor_batch(armor_batch)
         # Increment AAR generation to invalidate scan caches
-        await _b("_increment_aar_generation")()
+        await _increment_aar_generation()
 
     return ingested, rejected
 
