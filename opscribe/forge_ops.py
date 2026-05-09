@@ -5889,7 +5889,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             # Calculate time ago
             try:
                 ts = datetime.fromisoformat(ts_str)
-                time_ago = _b("_format_time_ago")(ts, now)
+                time_ago = _b("_format_time_ago")(ts)
             except Exception:
                 time_ago = "???"
             
