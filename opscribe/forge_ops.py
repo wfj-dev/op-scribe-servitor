@@ -744,6 +744,7 @@ async def _clear_armor_damage(member: discord.Member, guild: discord.Guild, grac
     await _b("_set_armor_state")(
         member.id,
         {
+            "display_name": member.display_name,
             "points_since_blessing": grace_points,
             "damage_tier": None,
             "critical_aar_count": 0,
@@ -837,6 +838,7 @@ async def _apply_blessing_crit_fail(member: discord.Member, guild: discord.Guild
     await _b("_set_armor_state")(
         member.id,
         {
+            "display_name": member.display_name,
             "points_since_blessing": 0,
             "damage_tier": new_tier if not spirit_fractured else "critical",  # Store as critical, flag as fractured
             "critical_aar_count": current_state.get("critical_aar_count", 0),
@@ -885,6 +887,7 @@ async def _apply_blessing_normal(member: discord.Member, guild: discord.Guild) -
     await _b("_set_armor_state")(
         member.id,
         {
+            "display_name": member.display_name,
             "points_since_blessing": 0,
             "damage_tier": new_tier,
             "critical_aar_count": 0 if not new_tier else current_state.get("critical_aar_count", 0),
@@ -972,11 +975,13 @@ async def _get_techmarine_pool_state(user_id: int) -> dict:
         }
 
 
-async def _set_techmarine_pool_state(user_id: int, state: dict):
+async def _set_techmarine_pool_state(user_id: int, state: dict, display_name: str = None):
     """Update blessing pool state for a Techmarine."""
     try:
         async with _g.BLESSING_POOL_LOCK:
             data = _load_blessing_pool()
+            if display_name:
+                state["display_name"] = display_name
             data[str(user_id)] = state
             _save_blessing_pool(data)
     except Exception:
@@ -1083,7 +1088,7 @@ async def _get_blessing_pool_display(user_id: int) -> Tuple[int, Optional[timede
     return available, None
 
 
-async def _consume_blessing(user_id: int):
+async def _consume_blessing(user_id: int, display_name: str = None):
     """Record that a Techmarine has used a blessing."""
     state = await _b("_get_techmarine_pool_state")(user_id)
     timestamps = state.get("blessing_timestamps", [])
@@ -1103,6 +1108,7 @@ async def _consume_blessing(user_id: int):
             "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
             "blessing_timestamps": active_timestamps,
         },
+        display_name=display_name,
     )
 
 
@@ -1126,7 +1132,7 @@ async def _get_techmarine_available_charges(user_id: int) -> int:
     return max(0, BLESSING_POOL_MAX - active_count)
 
 
-async def _consume_multiple_blessings(user_id: int, count: int):
+async def _consume_multiple_blessings(user_id: int, count: int, display_name: str = None):
     """Record that a Techmarine has used multiple blessings at once.
 
     Used for intensive blessings which consume 2-4 charges.
@@ -1156,6 +1162,7 @@ async def _consume_multiple_blessings(user_id: int, count: int):
             "remaining_blessings": max(0, BLESSING_POOL_MAX - len(active_timestamps)),
             "blessing_timestamps": active_timestamps,
         },
+        display_name=display_name,
     )
 
 
@@ -2054,6 +2061,9 @@ async def _process_armor_integrity_for_aar(
             state = _get_armor_state_from_batch(int(brother_id), armor_batch)
         else:
             state = await _b("_get_armor_state")(int(brother_id))
+
+        # Update display name for data file readability
+        state["display_name"] = member.display_name
 
         # Check for spirit fracture
         spirit_fractured = state.get("spirit_fractured", False)
@@ -4397,10 +4407,14 @@ async def _attest(
     # Consume blessings from the contributing Techmarine(s) pools (unless force override)
     if not force and blessing_pool_contributions:
         for contrib_user_id, contrib_charges in blessing_pool_contributions:
+            # Get display name for the contributing techmarine
+            contrib_member = interaction.guild.get_member(contrib_user_id) if interaction.guild else None
+            contrib_display_name = contrib_member.display_name if contrib_member else None
+            
             if contrib_charges == 1:
-                await _consume_blessing(contrib_user_id)
+                await _consume_blessing(contrib_user_id, display_name=contrib_display_name)
             elif contrib_charges > 1:
-                await _consume_multiple_blessings(contrib_user_id, contrib_charges)
+                await _consume_multiple_blessings(contrib_user_id, contrib_charges, display_name=contrib_display_name)
 
     # Deduct forge reserves (unless force override)
     if not force and forge_drain_cost > 0:
