@@ -223,7 +223,7 @@ async def backfill_challenge_progress(guild: discord.Guild):
                     })
             
             # === The Order Omega tracking ===
-            if black_laurels and difficulty_class == 'omega_op' and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
+            if black_laurels and difficulty_class == 'omega_ops' and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
                 # Skip if already has the role
                 if discord.utils.get(member.roles, id=THE_ORDER_OMEGA_ROLE_ID):
                     continue
@@ -318,14 +318,18 @@ async def main():
             import traceback
             traceback.print_exc()
         finally:
+            # Close the bot
             await bot.close()
     
-    # Run bot
+    # Run bot with proper cleanup
     try:
         await bot.start(DISCORD_TOKEN)
     except KeyboardInterrupt:
         print("\nInterrupted by user")
-        return 1
+    finally:
+        # Ensure bot is closed
+        if not bot.is_closed():
+            await bot.close()
     
     return 0
 

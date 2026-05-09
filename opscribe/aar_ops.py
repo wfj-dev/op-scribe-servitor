@@ -300,7 +300,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             # === The Order Omega tracking ===
             # Track omega difficulty missions with Black Laurels tag (all 12 missions required)
             difficulty_class = record.get("difficulty_class") or ""
-            if black_laurels and difficulty_class == "omega_op" and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
+            if black_laurels and difficulty_class == "omega_ops" and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
                 if "order_omega" not in user_progress:
                     user_progress["order_omega"] = []
 
