@@ -44,6 +44,11 @@ BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
 FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
 FORGE_CHRONICLE_PATH = os.path.join(DATA_DIR, "forge_chronicle.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
+# Librarian / Warp Corruption subsystem
+WARP_EXPOSURE_PATH = os.path.join(DATA_DIR, "warp_exposure.json")
+WARDING_POOL_PATH = os.path.join(DATA_DIR, "warding_pool.json")
+LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
+LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 
 # ---------------------------------------------------------------------------
 # Channel IDs
@@ -56,6 +61,8 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 OATHSWORN_CHANNEL_ID = 1489282103119052903
 TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
 LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
+# Librarian operations / monitoring channel (set after creation; falls back to LIBRARIUS_STAFF_CHANNEL_ID)
+LIBRARIUM_WATCH_CHANNEL_ID: int = 0  # populate when channel is created
 # Dreadnought inactivity notification channel (High Command)
 DREADNOUGHT_INACTIVITY_CHANNEL_ID = 1443813516979994634
 
@@ -114,6 +121,40 @@ BLESSING_ROLL_PROBABILITIES = {
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
 BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
 BLESSING_CRIT_SUCCESS_GRACE_POINTS = -10  # Grace points on crit success
+
+# ---------------------------------------------------------------------------
+# Librarian / Warp Corruption pool configuration
+# ---------------------------------------------------------------------------
+WARDING_POOL_MAX = 10  # Max wards per Librarian
+WARDING_POOL_REGEN_HOURS = 24 / 10  # 2.4 hours per ward regeneration
+WARDING_RECIPIENT_COOLDOWN_HOURS = 24  # 24h window for recipient ward count
+WARDING_RECIPIENT_MAX_PER_DAY = 3  # Max wards per recipient per 24h
+WARDING_RECIPIENT_PER_WARDING_COOLDOWN_HOURS = 4  # Min hours between cleanses on same recipient
+
+# Direct exposure gain from Black Laurels missions (by difficulty class)
+# 1=absolute BL, 2=hard-strat BL (Black Reef Persecution), 3=omega BL
+WARP_BL_EXPOSURE_GAIN = {
+    "absolute": 1,
+    "hard_stratagem": 2,
+    "omega_ops": 3,
+}
+
+# Daily cap on unique infectious squadmates that can spread to a brother (24h rolling)
+WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP = 2
+# Spread amount per successful spread roll
+WARP_SPREAD_AMOUNT = 1
+
+# Post-cleanse immunity to spread (random within range, hours)
+WARP_POST_CLEANSE_IMMUNITY_MIN_HOURS = 24
+WARP_POST_CLEANSE_IMMUNITY_MAX_HOURS = 48
+
+# Librarian decay: -1 exposure point every N hours (mirrors regen cadence)
+WARP_LIBRARIAN_DECAY_HOURS = 24 / 10  # one point every 2.4h
+
+# Librarian transfer ratio: fraction of removed exposure absorbed by cleansing Librarian
+WARP_LIBRARIAN_TRANSFER_RATIO = 0.10
+# Minimum transfer amount when any exposure was removed
+WARP_LIBRARIAN_TRANSFER_MIN = 1
 
 # ---------------------------------------------------------------------------
 # Scheduler settings (defaults; can be overridden in config.json under
@@ -259,6 +300,8 @@ CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
 TECHMARINE_ROLE_NAME = "Watch Techmarine"
 APOTHECARY_ROLE_NAME = "Watch Apothecary"
 LIBRARIAN_ROLE_NAME = "Watch Librarian"
+VOID_WARDEN_ROLE_NAME = "Void Warden"
+FORGEMASTER_ROLE_NAME = "Forgemaster"
 
 # Award eligibility thresholds
 ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
