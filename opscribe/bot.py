@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 
-# TODO: is it better design-wise in aars to force errors on difficulty if the mention is not used and its just plaintext?
-# TODO: should we add company distinctions in monthly honors?
-# TODO: do we need to schedule a reparse command like we do ingestion and audits?
-# TODO: are commands queued? i know we use locks but do commands enter a queue?
-# TODO: should we split this file up? its getting pretty long. maybe aars.py for AAR-related commands and processing, awards.py for awards and milestones, etc? or is it better to keep it all together since there is some interdependence and shared state (e.g. datastore access, config, locks)? maybe we can split out some of the more self-contained features like rites and machine spirits into separate modules to reduce clutter in the main bot file while keeping core command handling together? would also make it easier to manage imports and dependencies if we have more focused modules. on the other hand, having everything in one file can make it easier to see the overall flow and shared context without jumping between files. maybe we can start by splitting out just the AAR processing into aars.py since that is a large chunk of functionality, and keep the rest in bot.py for now? then if we find that awards/milestones or rites/machine spirits are also getting large we can consider splitting those out as well. would need to be careful about circular imports though if we split into multiple files since they all interact with the datastore and config. could potentially have a common module for shared utilities and data access to avoid circular dependencies. overall i think splitting out AAR processing into aars.py makes sense as a first step since it is a distinct area of functionality with its own commands and processing logic, and then we can evaluate if further splits are needed after that.
-# TODO: for armor integrity system - lets track stats for how many blessings each techmarine is doing, which brothers are getting blessed and how much, what their damage values are when they get blessed, and anything else i might be missing.
-
 import os
 import asyncio
 import json
