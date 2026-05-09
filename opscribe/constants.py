@@ -223,11 +223,28 @@ BLACK_REEF_REQUIRED_MISSIONS = {
     "reclamation",
 }
 
+# The Order Omega required missions (all 12 available missions at Omega difficulty with Black Laurels tag)
+ORDER_OMEGA_REQUIRED_MISSIONS = {
+    "inferno",
+    "decapitation",
+    "vox liberatis",
+    "reliquary",
+    "fall of atreus",
+    "ballistic engine",
+    "termination",
+    "obelisk",
+    "vortex",
+    "reclamation",
+    "disruption",
+    "exfiltration",
+}
+
 # Challenge award role IDs for eligibility checking
 KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1486067010747236472
 BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
 DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
 CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
+THE_ORDER_OMEGA_ROLE_ID = 1502135764312526858
 
 # ---------------------------------------------------------------------------
 # Specialist award thresholds and role mappings

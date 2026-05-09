@@ -630,7 +630,7 @@ def _check_armor_grace_period(member: discord.Member, total_aar_points: int) -> 
         return False
 
     # Check time threshold (supports induction override)
-    joined_at = _get_effective_induction_date(member)
+    joined_at = _b("_get_effective_induction_date")(member)
     if not joined_at:
         return False
 
@@ -1462,7 +1462,7 @@ async def _record_rite_in_chronicle(
         _b("_save_forge_chronicle")(data)
 
 
-async def _record_spirit_released(bearer_id: int, spirit_designation: str):
+async def _record_spirit_released(bearer_id: int, spirit_designation: str, age_days: int = 0):
     """Record a spirit release (member went inactive) in the chronicle.
 
     This creates a 'released' event in rite_history for the memorial.
@@ -1494,6 +1494,7 @@ async def _record_spirit_released(bearer_id: int, spirit_designation: str):
             "rite_type": None,
             "spirit": spirit_designation,
             "event": "released",
+            "age_days": age_days,
         }
         data["rite_history"].append(entry)
         if len(data["rite_history"]) > 500:
@@ -2838,7 +2839,7 @@ def _resolve_killteam_for_member(
         for r in roles:
             # 1) Check role ID against ALLOWED_KT_ROLE_IDS (most reliable)
             rid = getattr(r, "id", None)
-            if rid and ALLOWED_KT_ROLE_IDS and rid in ALLOWED_KT_ROLE_IDS:
+            if rid and _b("ALLOWED_KT_ROLE_IDS") and rid in _b("ALLOWED_KT_ROLE_IDS"):
                 rn = (getattr(r, "name", "") or "").strip()
                 # Return the role name if it's in _b('KILL_TEAMS'), otherwise return as-is
                 if rn.lower() in canonical_map:
@@ -3246,7 +3247,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
 
     # Fallback: Company CO (Captain/Lieutenant)
     if member_company:
-        captains, lieutenants = _find_company_command_staff(guild, member_company)
+        captains, lieutenants = _b("_find_company_command_staff")(guild, member_company)
         co_member = lieutenants[0] if lieutenants else (captains[0] if captains else None)
         if co_member:
             co_roles = {getattr(r, "name", "") for r in co_member.roles}
@@ -3581,7 +3582,7 @@ def _compute_member_service_studs(member: discord.Member) -> int:
             return 0
 
         now = datetime.utcnow()
-        joined_at = _get_effective_induction_date(member)
+        joined_at = _b("_get_effective_induction_date")(member)
 
         if not joined_at:
             return 0
@@ -3645,7 +3646,7 @@ def _get_bearer_rank_and_title(
                 watchmaster_name = None
                 if guild:
                     try:
-                        wm = _find_watch_master(guild)
+                        wm = _b("_find_watch_master")(guild)
                         if wm:
                             wm_name = wm.display_name
                             # Strip "Watch Master" prefix
@@ -3672,7 +3673,7 @@ def _get_bearer_rank_and_title(
                 captain_name = None
                 if guild:
                     try:
-                        captains, _ = _find_company_command_staff(guild, company)
+                        captains, _ = _b("_find_company_command_staff")(guild, company)
                         if captains:
                             # Use first captain's display name, stripped of rank prefix
                             cap = captains[0]
@@ -3691,7 +3692,7 @@ def _get_bearer_rank_and_title(
                     honorific = f"Blade of {captain_name}, Champion"
                 else:
                     # Fallback to company short name
-                    company_short = _extract_company_short_name(company)
+                    company_short = _b("_extract_company_short_name")(company)
                     honorific = f"Blade of {company_short}, Champion"
             else:
                 honorific = hon
@@ -3803,7 +3804,7 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
         # 2) If user is in High Command, return Jericho High Command
         try:
             names = _b("_canonical_role_names")(user)
-            if any(r in names for r in HIGH_COMMAND_ROLES):
+            if any(r in names for r in _b("HIGH_COMMAND_ROLES")):
                 return "Jericho High Command"
         except Exception:
             pass
@@ -4057,7 +4058,7 @@ async def _attest(
 
     # Build attestation using standardized Imperial date format
     try:
-        ts = _format_imperial_date(datetime.utcnow())
+        ts = _b("_format_imperial_date")(datetime.utcnow())
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -4752,7 +4753,7 @@ async def _show_armor_leaderboard(
 
         # Apply company filter if specified
         if company_filter:
-            member_company = _get_member_company_name(member)
+            member_company = _b("_get_member_company_name")(member)
             if member_company != company_filter:
                 continue
 
@@ -4814,7 +4815,7 @@ async def _show_armor_leaderboard(
 
     # Build description based on company filter
     if company_filter:
-        company_short = _extract_company_short_name(company_filter)
+        company_short = _b("_extract_company_short_name")(company_filter)
         no_risk_desc = f"*All brothers in {company_short} nominal. No maintenance required.*"
         with_risk_desc = f"*Top 10 brothers in {company_short} requiring attention*"
     else:
@@ -4999,7 +5000,7 @@ async def _armor_status(interaction: discord.Interaction):
         company_filter = None
     else:
         # Techmarine sees only their company
-        company_filter = _get_member_company_name(interaction.user)
+        company_filter = _b("_get_member_company_name")(interaction.user)
         if not company_filter:
             await interaction.response.send_message(
                 "You must be assigned to a Watch Company to view armor status.",
@@ -5422,7 +5423,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # ─────────────────────────────────────────────────────────────
     # Section 1: Machine Spirits of the Watch
     # ─────────────────────────────────────────────────────────────
-    activity_status = _load_activity_status()
+    activity_status = _b("_load_activity_status")()
 
     # Helper to check if a member is active (not in Reserves) AND has Watch rank
     def _is_member_eligible(member_id_str: str) -> bool:
@@ -5491,14 +5492,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     if eldest_spirit:
         member_id, info = eldest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
-        member_label = _format_member_styled(guild, member_id, include_chapter=True)
+        member_label = _b("_format_member_styled")(guild, member_id, include_chapter=True)
         eldest_days = (now - eldest_date).days if eldest_date else 0
         spirit_lines.append(f"Eldest ({eldest_days}d): **{_abbreviate_spirit(designation)}** {member_label}")
 
     if newest_spirit and newest_spirit != eldest_spirit:
         member_id, info = newest_spirit
         designation = info.get("designation", "UNKNOWN") if isinstance(info, dict) else info
-        member_label = _format_member_styled(guild, member_id, include_chapter=True)
+        member_label = _b("_format_member_styled")(guild, member_id, include_chapter=True)
         newest_hours = int((now - newest_date).total_seconds() // 3600) if newest_date else 0
         spirit_lines.append(f"Youngest ({newest_hours}h): **{_abbreviate_spirit(designation)}** {member_label}")
 
@@ -5522,13 +5523,13 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Show most attended spirit
     if most_attended:
         bearer_id, spirit = most_attended
-        member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
+        member_label = _b("_format_member_styled")(guild, bearer_id, include_chapter=True)
         spirit_lines.append(f"Devoted ({most_attended_count} rites): **{_abbreviate_spirit(spirit)}** {member_label}")
 
     # Show most resilient spirit (if any restorations this month)
     if most_resilient:
         bearer_id, spirit = most_resilient
-        member_label = _format_member_styled(guild, bearer_id, include_chapter=True)
+        member_label = _b("_format_member_styled")(guild, bearer_id, include_chapter=True)
         spirit_lines.append(f"Unbowed ({most_resilient_count} wounds): **{_abbreviate_spirit(spirit)}** {member_label}")
 
     # ─────────────────────────────────────────────────────────────
@@ -5624,7 +5625,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             icon = "⚡"  # At risk (predictive warning from scan)
         else:
             icon = "🟢"  # Nominal
-        name = _format_member_styled(guild, str(member.id), include_chapter=True)
+        name = _b("_format_member_styled")(guild, str(member.id), include_chapter=True)
         # Only show cycles for at-risk/damaged brothers, not nominal or unreadable
         if icon == "🟢":
             watchlist_lines.append(f"{icon} {name}{cooldown_indicator}")
@@ -5735,7 +5736,7 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             if total > 0:
                 member = guild.get_member(int(tech_id))
                 if member:
-                    name = _format_member_styled(guild, str(tech_id), include_chapter=True)
+                    name = _b("_format_member_styled")(guild, str(tech_id), include_chapter=True)
                     # Get current charges for this techmarine
                     tech_pool = blessing_pool_data.get(str(tech_id), {})
                     charges = _get_charges_from_pool_state(tech_pool)
@@ -5777,13 +5778,14 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
         event_type = entry.get("event")
         age_days = entry.get("age_days")
         if bearer_id and spirit:
-            member_label = _format_member_styled(guild, str(bearer_id), include_chapter=True)
-            # 💀 for fractured with age, 💤 for released (dormant)
+            member_label = _b("_format_member_styled")(guild, str(bearer_id), include_chapter=True)
+            age_str = f"({age_days}d) " if age_days is not None else ""
+            # 💀 for fractured, 💤 for released (dormant)
             if event_type == "fractured":
-                age_str = f"({age_days}d) " if age_days is not None else ""
                 memorial_lines.append(f"💀 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
             else:
-                memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {member_label}")
+                memorial_lines.append(f"💤 **{_abbreviate_spirit(spirit)}** {age_str}{member_label}")
+
 
     # ─────────────────────────────────────────────────────────────
     # Build the embed description
@@ -5843,6 +5845,66 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             value="\n".join(watchlist_lines),
             inline=False,
         )
+
+    # ─────────────────────────────────────────────────────────────
+    # Recent Rites (Last 5 blessing rites)
+    # ─────────────────────────────────────────────────────────────
+    recent_rites_lines = []
+    
+    # Get forge blessing emoji (try both variants, fallback to gear)
+    forge_blessing_emoji = _get_emoji_by_name(guild, "forgeblessing") or _get_emoji_by_name(guild, "forge_blessing") or "⚙️"
+    
+    # Filter for blessing events only
+    blessing_events = []
+    for r in rite_history:
+        if r.get("event") in ("first_binding", "rebirth", "restoration", "maintenance"):
+            blessing_events.append(r)
+    
+    # Sort by timestamp descending (most recent first)
+    blessing_events.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    
+    # Take last 5
+    for entry in blessing_events[:5]:
+        bearer_id = entry.get("bearer_id")
+        tech_id = entry.get("techmarine_id")
+        spirit = entry.get("spirit")
+        event_type = entry.get("event")
+        ts_str = entry.get("ts")
+        
+        if bearer_id and tech_id and spirit:
+            # Format member names
+            tech_name = _b("_format_member_styled")(guild, str(tech_id), include_chapter=False)
+            bearer_name = _b("_format_member_styled")(guild, str(bearer_id), include_chapter=False)
+            
+            # Format rite type display
+            if event_type == "first_binding":
+                rite_display = "First Binding"
+            elif event_type == "rebirth":
+                rite_display = "Rebirth"
+            elif event_type == "restoration":
+                rite_display = "Restoration"
+            else:  # maintenance
+                rite_display = "Maintenance"
+            
+            # Calculate time ago
+            try:
+                ts = datetime.fromisoformat(ts_str)
+                time_ago = _format_time_ago(ts, now)
+            except Exception:
+                time_ago = "???"
+            
+            recent_rites_lines.append(
+                f"{forge_blessing_emoji} {tech_name} → {bearer_name} ({rite_display}) • {time_ago}"
+            )
+    
+    if not recent_rites_lines:
+        recent_rites_lines.append("*No recent rites recorded.*")
+    
+    embed.add_field(
+        name="▸ Recent Rites",
+        value="\n".join(recent_rites_lines),
+        inline=False,
+    )
 
     # Machine Spirits (full width)
     spirit_text = "\n".join(spirit_lines)
@@ -6348,7 +6410,7 @@ async def _preview_stud_announcement(
 ):
     """Debug command to preview service stud announcement output."""
     # Only allow in DEBUG_MODE or for admins
-    if not DEBUG_MODE:
+    if not _b("DEBUG_MODE"):
         user_id = str(interaction.user.id)
         admin_ids = [str(a) for a in _g.CONFIG.get("admin_user_ids", [])]
         if user_id not in admin_ids:
@@ -6377,7 +6439,7 @@ async def _preview_stud_announcement(
     aar_points = int(stats.get("aar_points", 0) or 0)
 
     # Get weeks since induction (supports override)
-    joined_at = _get_effective_induction_date(member)
+    joined_at = _b("_get_effective_induction_date")(member)
     if joined_at:
         if joined_at.tzinfo is not None:
             joined_at = joined_at.replace(tzinfo=None)
@@ -6881,7 +6943,7 @@ async def lfg_leave(
 
 
 if __name__ == "__main__":
-    _main()
+    _b("_main")()
 
 
 # ---------------------------------------------------------------------------

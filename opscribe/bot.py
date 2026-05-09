@@ -1646,11 +1646,22 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
         if reserves_added:
             # Member went inactive - release their machine spirit
+            # Get spirit info before deleting to calculate age
+            spirits_data = _load_machine_spirits()
+            spirit_info = spirits_data.get(str(after.id), {})
+            age_days = 0
+            if isinstance(spirit_info, dict) and spirit_info.get("bound_ts"):
+                try:
+                    bound_dt = datetime.fromisoformat(spirit_info["bound_ts"])
+                    age_days = (datetime.utcnow() - bound_dt).days
+                except Exception:
+                    pass
+            
             spirit = await _delete_machine_spirit(after.id)
             if spirit:
-                # Record the release in the chronicle
-                await _record_spirit_released(after.id, spirit)
-                logger.info(f"Released machine spirit {spirit} for {after.display_name} (went inactive)")
+                # Record the release in the chronicle with age
+                await _record_spirit_released(after.id, spirit, age_days)
+                logger.info(f"Released machine spirit {spirit} for {after.display_name} (went inactive, age: {age_days}d)")
     except Exception as e:
         logger.debug(f"Error in on_member_update: {e}")
 
