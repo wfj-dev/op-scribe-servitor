@@ -688,12 +688,8 @@ async def _check_activity_status_changes():
                     # Only notify for status changes if not first check and member is transitioning to a new state
                     should_notify = False
                     if not is_first_check and old_status and old_status != current_status:
-                        if current_status == "active" and old_status == "inactive":
-                            # inactive->active: only notify if we previously sent a departure notification
-                            should_notify = isinstance(old_entry, dict) and old_entry.get("notified_inactive", False)
-                        else:
-                            # active->inactive: always notify (these are real departures)
-                            should_notify = True
+                        # Always notify on status changes (both departures and returns)
+                        should_notify = True
 
                     if should_notify:
                         # Status changed; find member in guild
