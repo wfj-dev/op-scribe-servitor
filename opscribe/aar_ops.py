@@ -83,6 +83,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     - black_reef: All 8 Black Reef missions with @Black Reef Persecution tag
     - distinguished_black_reef: All 8 missions with BOTH @Black Reef Persecution and @Black Laurels
     - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
+    - order_omega: All 8 missions at Omega difficulty with @Black Laurels tag
     """
     notifications = []
 
@@ -278,6 +279,33 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     notifications.append((user_id_str, "Crux Terminatus", aar_urls))
                     notified_challenges.append("crux_terminatus")
 
+            # === The Order Omega tracking ===
+            # Track omega difficulty missions with Black Laurels tag (all 12 missions required)
+            difficulty_class = record.get("difficulty_class") or ""
+            if black_laurels and difficulty_class == "omega_op" and mission_name in ORDER_OMEGA_REQUIRED_MISSIONS:
+                if "order_omega" not in user_progress:
+                    user_progress["order_omega"] = []
+
+                # Check if this mission already tracked
+                existing_missions = {m["mission"] for m in user_progress["order_omega"]}
+                if mission_name not in existing_missions:
+                    user_progress["order_omega"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
+                # Check if all 12 missions completed at Omega with Black Laurels
+                unique_missions = {m["mission"] for m in user_progress["order_omega"]}
+                if (
+                    len(unique_missions) >= 12
+                    and unique_missions == ORDER_OMEGA_REQUIRED_MISSIONS
+                    and "order_omega" not in notified_challenges
+                    and member
+                    and not discord.utils.get(member.roles, id=THE_ORDER_OMEGA_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["order_omega"] if m["message_url"]]
+                    notifications.append((user_id_str, "The Order Omega", aar_urls))
+                    notified_challenges.append("order_omega")
+
             # Update notified list
             user_progress["notified"] = notified_challenges
 
@@ -338,6 +366,20 @@ async def _send_challenge_eligibility_notifications(
                 if len(aar_urls) > 10:
                     msg += f"_(+{len(aar_urls) - 10} more)_\n"
                 msg += "\nPlease audit the qualifying AARs and verify Rank A extermination requirement."
+            elif "The Order Omega" in challenge_name:
+                # Special format for The Order Omega
+                msg = (
+                    f"{librarian_mention}\n\n"
+                    f"**Challenge Qualification Alert: The Order Omega** :TheOrderOmega:\n\n"
+                    f"{member_mention} has completed all 12 required missions at Omega difficulty with Black Laurels tag.\n\n"
+                    f"**Qualifying AAR Links:**\n"
+                )
+                # Add AAR links (limit to first 10 to avoid message length issues)
+                for url in aar_urls[:10]:
+                    msg += f"• {url}\n"
+                if len(aar_urls) > 10:
+                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+                msg += "\nPlease audit the qualifying AARs for verification."
             else:
                 # Standard format for other challenges
                 msg = (
