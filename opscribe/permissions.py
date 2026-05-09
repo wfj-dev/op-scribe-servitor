@@ -91,14 +91,14 @@ HIGH_COMMAND_RANKS = {
     "Venerable Dreadnought",
 }
 
-# Watch Command = Sergeant+ from Battle Line, all Champions, all Specialists, High Command
+# Watch Command = Sergeant+ from Battle Line, Company Champion+ from champion track, all Specialists, High Command
 # This is a convenience group for "everyone who isn't a line brother"
 WATCH_COMMAND_ROLES = {
     # Battle Line (Sergeant+)
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
-    # Champion track (all)
+    # Champion track (Company Champion+)
     "Company Champion",
     "Lord Executioner",
     # Specialist track (all)
