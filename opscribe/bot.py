@@ -348,7 +348,7 @@ async def _do_scheduled_audit(span_days: int | None = None, *, monthly: bool = F
         if not guild:
             logger.debug("Scheduled audit: no guild available; skipping.")
             return
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = guild.get_channel(AAR_CHANNEL_ID)
         if not aar_channel:
             logger.debug("Scheduled audit: AAR channel not found; skipping.")
             return
@@ -459,7 +459,7 @@ async def _scheduled_weekly_maintenance_loop():
             logger.warning("Weekly maintenance: no guild available; skipping.")
             return
 
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = guild.get_channel(AAR_CHANNEL_ID)
         if not aar_channel:
             logger.warning("Weekly maintenance: AAR channel not found; skipping.")
             return
@@ -618,7 +618,7 @@ async def _monthly_archive_audit_loop():
             logger.warning("Monthly archive audit: no guild available; skipping.")
             return
 
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = guild.get_channel(AAR_CHANNEL_ID)
         if not aar_channel:
             logger.warning("Monthly archive audit: AAR channel not found; skipping.")
             return
@@ -1822,8 +1822,7 @@ async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
             logger.warning(f"AAR {message_id} deleted but guild not found.")
             return
         # Verify this was from the AAR channel
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
-        if not aar_channel or payload.channel_id != aar_channel.id:
+        if payload.channel_id != AAR_CHANNEL_ID:
             return
         # Get notification channel
         notify_channel = discord.utils.get(guild.channels, name="❖⋅data-vault⋅❖")

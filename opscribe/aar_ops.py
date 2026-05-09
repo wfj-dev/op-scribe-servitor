@@ -815,10 +815,10 @@ async def audit_archive_discrepancies(interaction: discord.Interaction, span_day
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"audit_archive_discrepancies: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = guild.get_channel(AAR_CHANNEL_ID)
         if not aar_channel:
             await interaction.followup.send(
-                "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
+                f"++ ERROR: AAR CHANNEL (ID: {AAR_CHANNEL_ID}) NOT FOUND. ++",
                 ephemeral=True,
             )
             return
@@ -901,12 +901,13 @@ async def sanctify_battle_records(interaction: discord.Interaction, span_days: i
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"sanctify_battle_records: lock acquired (user={interaction.user.id})")
         guild = interaction.guild
-        aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+        aar_channel = guild.get_channel(AAR_CHANNEL_ID)
         if not aar_channel:
+            error_msg = f"++ ERROR: AAR CHANNEL (ID: {AAR_CHANNEL_ID}) NOT FOUND. ++"
             if interaction_deferred:
                 try:
                     await interaction.followup.send(
-                        "++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++",
+                        error_msg,
                         ephemeral=True,
                     )
                 except Exception as e:
@@ -915,7 +916,7 @@ async def sanctify_battle_records(interaction: discord.Interaction, span_days: i
                 try:
                     ch = interaction.channel
                     if ch:
-                        await ch.send("++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++")
+                        await ch.send(error_msg)
                     else:
                         _g.logger.error("Unable to deliver error report: no channel available and DM disabled.")
                 except Exception:
@@ -961,9 +962,9 @@ async def sanctify_battle_records(interaction: discord.Interaction, span_days: i
 
 async def _reconciliation_core(interaction: discord.Interaction, span_days: int | None):
     guild = interaction.guild
-    aar_channel = discord.utils.get(guild.channels, name="᛭⋅⋅after-action-reports⋅⋅᛭")
+    aar_channel = guild.get_channel(AAR_CHANNEL_ID)
     if not aar_channel:
-        await interaction.followup.send("++ ERROR: '᛭⋅⋅after-action-reports⋅⋅᛭' CHANNEL NOT FOUND. ++")
+        await interaction.followup.send(f"++ ERROR: AAR CHANNEL (ID: {AAR_CHANNEL_ID}) NOT FOUND. ++")
         return
     # First recheck errors, then ingest new
     fixed, still_broken = await _run_recheck_errors(aar_channel, span_days)

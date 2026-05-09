@@ -48,6 +48,7 @@ LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
 # ---------------------------------------------------------------------------
 # Channel IDs
 # ---------------------------------------------------------------------------
+AAR_CHANNEL_ID = 1429318686447108300  # ᛭⋅⋅after-action-reports⋅⋅᛭
 ACTIVITY_STATUS_CHANNEL_ID = 1459043645499117630
 VETERAN_PROMOTION_CHANNEL_ID = 1443813516979994634
 SERVICE_STUDS_CHANNEL_ID = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
