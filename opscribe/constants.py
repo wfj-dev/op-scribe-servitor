@@ -318,7 +318,8 @@ CHALLENGE_ROLES = [
     (1465021610812637214, "Red Hand of Doom", "DistinguishedClandestineoperati"),
     (1486067010747236472, "Kadaku Campaign Medal", "KadakuCampaignMedal"),
     (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
-    (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaignMe"),
+    (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
+    (1502135764312526858, "The Order Omega", "TheOrderOmega"),
 ]
 
 # ---------------------------------------------------------------------------

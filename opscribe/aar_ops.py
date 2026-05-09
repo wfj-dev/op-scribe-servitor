@@ -122,11 +122,19 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
         for brother_id in brother_ids:
             user_id_str = str(brother_id)
 
+            # Get member object for display name and role checks
+            member = guild.get_member(int(brother_id)) if guild else None
+
             # Initialize user progress if needed
             if user_id_str not in progress_data:
                 progress_data[user_id_str] = {"notified": []}
 
             user_progress = progress_data[user_id_str]
+            
+            # Update display name if we have the member
+            if member:
+                user_progress["display_name"] = member.display_name
+            
             notified_challenges = user_progress.get("notified", [])
 
             # Get member object for role checks
