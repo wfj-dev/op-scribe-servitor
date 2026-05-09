@@ -323,13 +323,12 @@ async def main():
     
     # Run bot with proper cleanup
     try:
-        await bot.start(DISCORD_TOKEN)
+        async with bot:
+            await bot.start(DISCORD_TOKEN)
     except KeyboardInterrupt:
         print("\nInterrupted by user")
-    finally:
-        # Ensure bot is closed
-        if not bot.is_closed():
-            await bot.close()
+    except Exception:
+        pass  # Bot already closed in on_ready
     
     return 0
 
