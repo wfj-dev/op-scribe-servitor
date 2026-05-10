@@ -1746,7 +1746,8 @@ async def warp_cleanse(
     _ = attestor_role  # documented for future audit logging; intentionally unused
 
     invoker_id = int(interaction.user.id)
-    invoker_is_attestor = (attestor.id == invoker_id)
+    attestor_id = int(attestor.id)
+    invoker_is_attestor = (attestor_id == invoker_id)
 
     cleanser = interaction.user if invoker_is_attestor else attestor
     cleanser_state = await _get_warp_exposure_state(int(cleanser.id))
@@ -1786,7 +1787,7 @@ async def warp_cleanse(
         charges_required = 1
     contributors: List[Tuple[int, int]] = []
     if not force:
-        attestor_charges = await _get_librarian_available_charges(int(attestor.id))
+        attestor_charges = await _get_librarian_available_charges(attestor_id)
         invoker_charges = (
             attestor_charges if invoker_is_attestor else await _get_librarian_available_charges(invoker_id)
         )
@@ -1799,17 +1800,18 @@ async def warp_cleanse(
                     ephemeral=True,
                 )
                 return
-            contributors = [(int(attestor.id), charges_required)]
+            contributors = [(attestor_id, charges_required)]
         else:
             if attestor_charges >= charges_required:
-                contributors = [(int(attestor.id), charges_required)]
+                contributors = [(attestor_id, charges_required)]
             elif attestor_charges == 0 and invoker_charges >= charges_required:
                 attestor = interaction.user
+                attestor_id = invoker_id
                 contributors = [(invoker_id, charges_required)]
             elif attestor_charges + invoker_charges >= charges_required:
                 attestor_contribution = attestor_charges
                 invoker_contribution = charges_required - attestor_charges
-                contributors = [(int(attestor.id), attestor_contribution)]
+                contributors = [(attestor_id, attestor_contribution)]
                 contributors.append((invoker_id, invoker_contribution))
             else:
                 await interaction.response.send_message(
