@@ -2716,11 +2716,6 @@ async def librarium_chronicle(interaction: discord.Interaction):
     if not allowed:
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
-    if role not in ("void_warden", "forgemaster_debug"):
-        await interaction.response.send_message(
-            "Only the Void Warden may post the Librarium Chronicle.", ephemeral=True
-        )
-        return
 
     if interaction.guild is None:
         await interaction.response.send_message("Guild context required.", ephemeral=True)
