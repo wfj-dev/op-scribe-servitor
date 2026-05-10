@@ -1191,7 +1191,7 @@ WARP_CLEANSE_OUTCOME_FLAVOR = {
     ],
 }
 
-# Brief Librarian tier descriptions for psychic_status displays
+# Brief Librarian tier descriptions for warp_status displays
 WARP_LIBRARIAN_TIER_DESCRIPTIONS = {
     None: ("CLEAR", "Mind shielded; full reliability."),
     "stable": ("STABLE", "Minor strain. Cleansing reliable."),
@@ -1209,6 +1209,42 @@ WARP_BROTHER_TIER_DESCRIPTIONS = {
     "breached": ("BREACHED", "Critical breach; immediate cleansing required."),
     "catastrophic": ("CATASTROPHIC", "Lockdown protocols engaged."),
 }
+
+# ---------------------------------------------------------------------------
+# Compact icon ladders (parity with armor: 🟡 → 🟠 → 🔴 → 💀 → ⚫)
+# Used by /warp_status and Librarium Chronicle to keep lines short.
+# ---------------------------------------------------------------------------
+WARP_BROTHER_TIER_ICON = {
+    None: "🟢",
+    "tainted": "🟡",
+    "exposed": "🟠",
+    "volatile": "🔴",
+    "breached": "💀",
+    "catastrophic": "⚫",
+}
+
+WARP_LIBRARIAN_TIER_ICON = {
+    None: "🟢",
+    "stable": "🟡",
+    "resonant": "🟠",
+    "surging": "🔴",
+    "overloaded": "💀",
+    "abyssal": "⚫",
+}
+
+# Sanction status uses a 4-key ladder (sanctioned/screening_due/under_review/restricted),
+# distinct from the 5-tier brother exposure ladder above.
+WARP_SANCTION_STATUS_ICON = {
+    "sanctioned": "🟢",
+    "screening_due": "🟡",
+    "under_review": "🟠",
+    "restricted": "🔴",
+}
+
+# Boolean flag icons (orthogonal to tier ladders)
+WARP_CORRUPTED_ICON = "⚠️"
+WARP_SPREADER_ICON = "🌀"
+WARP_LIBRARIAN_MARKER_ICON = "🧿"
 
 # Ambient lines for Librarium chronicle posts
 LIBRARIUM_AMBIENT_MESSAGES = [

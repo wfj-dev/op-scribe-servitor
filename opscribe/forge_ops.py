@@ -1899,7 +1899,7 @@ async def _post_armor_alert(
                     squad_member = guild.get_member(int(sid))
                     if squad_member:
                         # Get display name stripped of pips
-                        name = squad_member.display_name.replace("●", "").replace("⚬", "").strip()
+                        name = _strip_display_name(squad_member.display_name)
                         squad_names.append(name)
                 except Exception:
                     pass
@@ -3756,7 +3756,7 @@ def _get_bearer_rank_and_title(
             break
 
     # Strip stud pips from display name (we report studs separately)
-    display_name = display_name.replace("●", "").replace("⚬", "").strip()
+    display_name = _strip_display_name(display_name)
 
     # Build combined title: prefer "Kill Team X, Company Y" format
     # Dreadnoughts show "Dreadnought Cadre" instead of their company
@@ -3913,7 +3913,7 @@ async def _attest(
     if not force:
         can_receive, cooldown_remaining, blessings_used, block_reason = await _check_recipient_cooldown(int(member.id))
         if not can_receive and cooldown_remaining:
-            bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
+            bearer_name = _strip_display_name(member.display_name)
             cooldown_str = _format_cooldown_time(cooldown_remaining)
             if block_reason == "per_blessing":
                 await interaction.response.send_message(
@@ -4054,7 +4054,7 @@ async def _attest(
         # Check if forge has sufficient balance
         forge_available = await _get_forge_pool_available()
         if forge_available < forge_drain_cost:
-            bearer_name = member.display_name.replace("●", "").replace("⚬", "").strip()
+            bearer_name = _strip_display_name(member.display_name)
             tier_name = current_damage_tier.upper() if current_damage_tier else "NOMINAL"
             await interaction.response.send_message(
                 f"**FORGE RESERVES DEPLETED**\n\n"
@@ -4595,7 +4595,7 @@ async def _attest(
         invoker_rank_name = "Forgemaster" if _caller_role_key == "forgemaster" else "Watch Techmarine"
         invoker_rank_emoji = _get_rank_emoji(interaction.guild, invoker_rank_name) if interaction.guild else ""
         invoker_prefix = f"{invoker_rank_emoji} " if invoker_rank_emoji else ""
-        invoker_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+        invoker_name = _strip_display_name(interaction.user.display_name)
 
         # Build contribution lines
         contrib_lines = []
@@ -4727,7 +4727,12 @@ async def _show_armor_leaderboard(
 ):
     """Show top 10 brothers at risk of armor damage.
 
-    If company_filter is provided, only show brothers in that company.
+    Scope is gap-filling: ``company_filter`` is the caller's own company.
+      • Ring 0 = own company (primary responsibility)
+      • Ring 1 = orphan companies (no Watch Techmarine assigned)
+      • Ring 2 = peer-covered companies
+    Top 10 fills from ring 0 first, then 1, then 2. If ``company_filter`` is
+    ``None`` (Forgemaster), the leaderboard is fortress-wide with no rings.
     pool_remaining/pool_next_regen show invoker's blessing pool status.
     techmarine_id is used to check intensive scan status.
     """
@@ -4748,7 +4753,14 @@ async def _show_armor_leaderboard(
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    # Build list of (member, state, risk_score, scan_result)
+    # Compute orphan-company set once for ring assignment.
+    orphan_companies: set = (
+        _b("_orphan_companies_for_role")(guild, "Watch Techmarine")
+        if company_filter
+        else set()
+    )
+
+    # Build list of (member, state, current_tier, risk_score, scan_result, ring, member_company)
     risk_list = []
     for user_id_str, state in armor_data.items():
         try:
@@ -4765,11 +4777,13 @@ async def _show_armor_leaderboard(
         if not has_rank:
             continue
 
-        # Apply company filter if specified
-        if company_filter:
-            member_company = _b("_get_member_company_name")(member)
-            if member_company != company_filter:
-                continue
+        member_company = _b("_get_member_company_name")(member)
+        # Determine ring: caller_company=None means fortress-wide (everyone in ring 0)
+        ring = (
+            _b("_company_scope_ring")(member_company, company_filter, orphan_companies)
+            if company_filter
+            else 0
+        )
 
         # Get damage tier from roles (more accurate than stored state)
         current_tier = _b("_get_member_damage_tier")(member)
@@ -4787,17 +4801,18 @@ async def _show_armor_leaderboard(
 
         # Include if they have risk OR if there's a predictive warning OR if scan missed (damaged but undetected)
         if risk_score > 0 or scan_result.get("predictive_warning") or not scan_result["detected"]:
-            risk_list.append((member, state, current_tier, risk_score, scan_result))
+            risk_list.append((member, state, current_tier, risk_score, scan_result, ring, member_company))
 
-    # Sort by risk score descending to get the highest-risk brothers
-    risk_list.sort(key=lambda x: x[3], reverse=True)
+    # Sort by (ring asc, risk_score desc) — own-company first, then orphans, then peers.
+    risk_list.sort(key=lambda x: (x[5], -x[3]))
 
     # Filter out brothers on cooldown before taking top 10
     available_brothers = []
-    for member, state, tier, risk_score, scan_result in risk_list:
+    for entry in risk_list:
+        member = entry[0]
         can_receive, _, _, _ = await _check_recipient_cooldown(member.id)
         if can_receive:
-            available_brothers.append((member, state, tier, risk_score, scan_result))
+            available_brothers.append(entry)
 
     # Take top 10 from available brothers
     top_10 = available_brothers[:10]
@@ -4807,7 +4822,7 @@ async def _show_armor_leaderboard(
 
     def _get_display_tier(entry):
         """Get display tier for grouping (detected status + damage tier)."""
-        _, state, tier, _, scan_result = entry
+        _, state, tier, _, scan_result, _ring, _co = entry
         if not scan_result["detected"]:
             return "undetected"
         fractured = state.get("spirit_fractured", False)
@@ -4815,26 +4830,40 @@ async def _show_armor_leaderboard(
             return "fractured"
         return tier or "nominal"
 
-    # Split into risk-ordered (damaged tiers) and randomized (nominal/undetected)
+    # Split into risk-ordered (damaged tiers) and randomized (nominal/undetected),
+    # but preserve ring-then-severity order *within* each group.
     damaged_entries = [e for e in top_10 if _get_display_tier(e) not in ("nominal", "undetected")]
     nominal_entries = [e for e in top_10 if _get_display_tier(e) == "nominal"]
     undetected_entries = [e for e in top_10 if _get_display_tier(e) == "undetected"]
 
-    # Damaged stay sorted by risk score (already sorted), randomize nominal/undetected
+    # Damaged stay sorted by (ring, risk), randomize nominal/undetected
     random.shuffle(nominal_entries)
     random.shuffle(undetected_entries)
 
-    # Reassemble: damaged first (by risk), then nominal (random), then undetected (random)
+    # Reassemble: damaged first (by ring/risk), then nominal (random), then undetected (random)
     top_10 = damaged_entries + nominal_entries + undetected_entries
+
+    # Count expansion across rings for description text
+    expansion_count = sum(1 for e in top_10 if e[5] > 0)
 
     # Build description based on company filter
     if company_filter:
         company_short = _b("_extract_company_short_name")(company_filter)
-        no_risk_desc = f"*All brothers in {company_short} nominal. No maintenance required.*"
-        with_risk_desc = f"*Top 10 brothers in {company_short} requiring attention*"
+        if expansion_count > 0:
+            no_risk_desc = "*All brothers nominal across all companies. No maintenance required.*"
+            with_risk_desc = (
+                f"*Top 10 — **{company_short}** + {expansion_count} backfilled "
+                f"from companies needing coverage*"
+            )
+        else:
+            no_risk_desc = (
+                f"*All brothers in {company_short} and beyond are nominal. "
+                f"No maintenance required.*"
+            )
+            with_risk_desc = f"*Top 10 brothers in {company_short} requiring attention*"
     else:
         no_risk_desc = "*All brothers nominal. No maintenance required.*"
-        with_risk_desc = "*Top 10 brothers requiring attention*"
+        with_risk_desc = "*Top 10 brothers requiring attention (fortress-wide)*"
 
     # Get MachineSpirit emoji
     _machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"  # Reserved for future use
@@ -4859,7 +4888,7 @@ async def _show_armor_leaderboard(
     )
 
     lines = []
-    for i, (member, state, current_tier, risk_score, scan_result) in enumerate(top_10, 1):
+    for i, (member, state, current_tier, risk_score, scan_result, _ring, _co) in enumerate(top_10, 1):
         points = state.get("points_since_blessing", 0)
         spirit_fractured = state.get("spirit_fractured", False)
         predictive_warning = scan_result.get("predictive_warning", False)
@@ -4888,11 +4917,20 @@ async def _show_armor_leaderboard(
         chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if bearer_chapter and guild else None
         chapter_str = f"{chapter_emoji}" if chapter_emoji else ""
 
+        # Per-line company tag for entries outside the caller's company (ring > 0).
+        # Lead Forgemaster (no caller company) shows no tags.
+        company_tag = ""
+        if company_filter and _ring and _ring > 0 and _co:
+            try:
+                company_tag = f" `({_b('_extract_company_short_name')(_co)})`"
+            except Exception:
+                company_tag = ""
+
         # Handle missed scans - show name but mask data
         if scan_missed:
             icon = "⚫"
             chapter_sep = f"{chapter_str} · " if chapter_str else "· "
-            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}???")
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name}{company_tag} {chapter_sep}???")
             continue
 
         # Status icon - predictive warnings get special indicator
@@ -4915,10 +4953,10 @@ async def _show_armor_leaderboard(
         chapter_sep = f"{chapter_str} · " if chapter_str else "· "
         if icon == "🟢":
             # Nominal brothers don't need cycle count shown
-            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_str}")
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name}{company_tag} {chapter_str}")
         else:
             # At-risk/damaged brothers show cycles for triage
-            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name} {chapter_sep}{points}c")
+            lines.append(f"`{i:>2}.` {icon} {rank_str}{bearer_name}{company_tag} {chapter_sep}{points}c")
 
     embed.add_field(
         name="▸ Brothers at Risk",
@@ -5007,20 +5045,15 @@ async def _armor_status(interaction: discord.Interaction):
         await interaction.response.send_message("Guild not found.", ephemeral=True)
         return
 
-    # Determine company filter based on role
-    company_filter = None
+    # Determine company scope based on role.
+    # Forgemaster (lead) is always fortress-wide. Techmarines start with their
+    # own company as ring 0, with gap-filling backfilling from other companies
+    # when their home turf is quiet. A Techmarine not assigned to any company
+    # falls through to fortress-wide.
     if role_key == "forgemaster":
-        # Forgemaster sees all
         company_filter = None
     else:
-        # Techmarine sees only their company
         company_filter = _b("_get_member_company_name")(interaction.user)
-        if not company_filter:
-            await interaction.response.send_message(
-                "You must be assigned to a Watch Company to view armor status.",
-                ephemeral=True,
-            )
-            return
 
     # Get invoker's blessing pool status
     pool_remaining, pool_next_regen = await _get_blessing_pool_display(interaction.user.id)
@@ -5135,7 +5168,7 @@ async def _requisition_supplies(
     new_forge_status = await _get_forge_pool_status()
 
     # Get the Techmarine's name
-    tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+    tech_name = _strip_display_name(interaction.user.display_name)
 
     embed = discord.Embed(
         title="⚙️ FORGE REQUISITION APPROVED",
@@ -5264,7 +5297,7 @@ async def _handle_intensive_scan_requisition(
     new_forge_status = await _get_forge_pool_status()
 
     # Get the Techmarine's name
-    tech_name = interaction.user.display_name.replace("●", "").replace("⚬", "").strip()
+    tech_name = _strip_display_name(interaction.user.display_name)
 
     embed = discord.Embed(
         title="🔬 INTENSIVE SCAN ACTIVATED",
@@ -5814,9 +5847,9 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
 
     # Armory Telemetry (description - top prominence)
     fortress_icon = "🟢" if nominal_pct >= 90 else ("🟡" if nominal_pct >= 70 else "🔴")
-    # Forge Pressure: green if < 1.0 (covered), yellow if < 2.0, red if >= 2.0
+    # Pressure: 🟢 < 1.0 covered, 🟡 < 2.0 elevated, 🔴 >= 2.0 strained, ⚠️ ∞ critical
     if forge_pressure == float("inf"):
-        pressure_icon = "🔴"
+        pressure_icon = "⚠️"
         pressure_str = "∞"
     elif forge_pressure < 1.0:
         pressure_icon = "🟢"

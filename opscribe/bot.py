@@ -1311,6 +1311,15 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     if uid in admin_ids:
         return True
 
+    # Debug mode: only Forgemaster (or admins, handled above) can use commands.
+    # Forgemaster can use ALL commands when debug is active.
+    if globals().get("DEBUG_MODE"):
+        try:
+            user_roles_dbg = _canonical_role_names(user)
+        except Exception:
+            user_roles_dbg = set()
+        return "Forgemaster" in user_roles_dbg
+
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
 
