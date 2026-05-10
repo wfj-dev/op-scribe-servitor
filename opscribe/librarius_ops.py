@@ -1860,7 +1860,7 @@ async def warp_cleanse(
 
     if not force:
         for uid, n in contributors:
-            ok = await _consume_librarian_charges(uid, n, display_name=str(uid))
+            ok = await _consume_librarian_charges(uid, n)
             if not ok:
                 await interaction.response.send_message(
                     "Charge consumption race detected. Try again.",
