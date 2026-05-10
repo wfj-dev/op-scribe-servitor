@@ -16,6 +16,7 @@ import os
 import json
 import math
 import random
+import re
 import shutil
 import discord
 from discord import app_commands
