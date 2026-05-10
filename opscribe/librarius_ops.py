@@ -2482,6 +2482,39 @@ async def warp_status(interaction: discord.Interaction):
         color=0x9B59B6,
     )
 
+    # Calculate available charges for Librarians.
+    if caller_role == "forgemaster_debug":
+        # Forgemaster testing: use placeholder values
+        total_charges = 12
+        charges_status = "🟢"  # Green (sufficient)
+    else:
+        # Real calculation: sum charges from all Librarians with exposure
+        total_charges = 0
+        charges_status = "🟢"
+        try:
+            for uid, raw in data.items():
+                if bool(raw.get("is_librarian")):
+                    try:
+                        available = await _get_librarian_available_charges(int(uid))
+                        total_charges += available
+                    except Exception:
+                        pass
+            # Status indicators: red if none, yellow if insufficient, green if adequate
+            brothers_needing_cleanse = len([r for r in rows if not r[5]])  # non-librarians with exposure
+            if total_charges == 0:
+                charges_status = "🔴"
+            elif brothers_needing_cleanse > 0 and total_charges < brothers_needing_cleanse:
+                charges_status = "🟡"
+        except Exception:
+            total_charges = 0
+            charges_status = "❓"
+
+    embed.add_field(
+        name="▸ Available Charges",
+        value=f"{charges_status} **{total_charges}** Warding Charges",
+        inline=False,
+    )
+
     # Truncate to Discord's 1024-char field limit, append soft footer if cut.
     value = "\n".join(lines)
     if len(value) > 1024:
