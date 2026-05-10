@@ -21,6 +21,7 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Blood Ravens": "Knowledge is power; guard it well within these sacred plates.",
     "Brazen Minotaurs": "Bronze and fury—your armor embodies the unstoppable siege.",
     "Carcharodons": "From the void you came, and to the void your enemies shall fall.",
+    "Celestial Lions": "Pride of Elysium and vengeance for Armageddon—your armor endures against every betrayal.",
     "Cowled Wardens": "The Unforgiven hunt eternal; your armor conceals the Lion's secret purpose.",
     "Crimson Fists": "The fist of Dorn strikes true; let your armor be unyielding.",
     "Dark Angels": "The secrets of the First are woven into your warplate's spirit.",
@@ -356,6 +357,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "The angel's grace flows through my work upon myself.",
         "Baal's nobility demands I tend my own perfection.",
     ],
+    "Celestial Lions": [
+        "Elysium's pride does not bow to misfortune; I tend my own armor and stand unbroken.",
+        "Armageddon taught us endurance through betrayal; these rites I trust to my own hand.",
+        "The lion still roars. I renew my warplate to carry that roar into battle.",
+    ],
     "Dark Angels": [
         "Some secrets are kept even from the forge. This rite is one.",
         "The Lion trusted few; I trust only myself for this.",
@@ -436,6 +442,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "From the void's depths, your service marks emerge.",
         "Silent and relentless—your studs speak where words cannot.",
         "The Outer Dark has forged these marks upon you.",
+    ],
+    "Celestial Lions": [
+        "Each stud is a vow remembered—Elysium's lions do not forget their dead.",
+        "Armageddon's ashes could not silence your chapter; your marks prove it still fights on.",
+        "Pride and resolve endure in every service stud upon your brow.",
     ],
     "Cowled Wardens": [
         "The Unforgiven mark your service in pursuit of the Fallen.",
