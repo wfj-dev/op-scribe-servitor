@@ -78,8 +78,17 @@ FORGE_POOL_LOCK = asyncio.Lock()
 # Lock for forge chronicle (immersive armor channel data)
 FORGE_CHRONICLE_LOCK = asyncio.Lock()
 
+# Lock for forge / armor subsystem kill switch
+FORGE_OVERRIDE_LOCK = asyncio.Lock()
+
 # Lock for LFG queue operations
 LFG_QUEUE_LOCK = asyncio.Lock()
+
+# Locks for Librarian / Warp Corruption subsystem
+WARP_EXPOSURE_LOCK = asyncio.Lock()
+WARDING_POOL_LOCK = asyncio.Lock()
+LIBRARIUM_CHRONICLE_LOCK = asyncio.Lock()
+LIBRARIUM_OVERRIDE_LOCK = asyncio.Lock()
 
 # In-memory LFG queues: {message_id: LFGQueue data}
 LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
@@ -774,15 +783,21 @@ _g.CHALLENGE_PROGRESS_LOCK = CHALLENGE_PROGRESS_LOCK
 _g.BLESSING_POOL_LOCK = BLESSING_POOL_LOCK
 _g.FORGE_POOL_LOCK = FORGE_POOL_LOCK
 _g.FORGE_CHRONICLE_LOCK = FORGE_CHRONICLE_LOCK
+_g.FORGE_OVERRIDE_LOCK = FORGE_OVERRIDE_LOCK
 _g.LFG_QUEUE_LOCK = LFG_QUEUE_LOCK
 _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
 _g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
+_g.WARP_EXPOSURE_LOCK = WARP_EXPOSURE_LOCK
+_g.WARDING_POOL_LOCK = WARDING_POOL_LOCK
+_g.LIBRARIUM_CHRONICLE_LOCK = LIBRARIUM_CHRONICLE_LOCK
+_g.LIBRARIUM_OVERRIDE_LOCK = LIBRARIUM_OVERRIDE_LOCK
 
 
 from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
+from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1299,6 +1314,15 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     uid = str(getattr(user, "id", None))
     if uid in admin_ids:
         return True
+
+    # Debug mode: only Forgemaster (or admins, handled above) can use commands.
+    # Forgemaster can use ALL commands when debug is active.
+    if globals().get("DEBUG_MODE"):
+        try:
+            user_roles_dbg = _canonical_role_names(user)
+        except Exception:
+            user_roles_dbg = set()
+        return "Forgemaster" in user_roles_dbg
 
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
