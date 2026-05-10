@@ -306,21 +306,32 @@ def _warp_render_subtree(
     visited: set,
     lines_out: List[str],
     max_depth: int = 2,
+    parent_last: bool = True,
+    prefix: str = "",
 ) -> None:
-    """Recursively render downstream contagion tree with indent-only style.
+    """Recursively render downstream contagion tree with box-drawing characters.
 
-    Mirrors ``/armor_status`` discipline (no ├─└─│ chrome). ``visited`` is
-    mutated to track all reached uids; ``lines_out`` collects rendered lines.
+    Uses ├─, └─, │ to create visually distinct tree structure that survives
+    Discord embed rendering. ``visited`` is mutated to track all reached uids;
+    ``lines_out`` collects rendered lines.
     """
     if depth >= max_depth:
         return
     children = _compute_outgoing_infections(int(node_uid), states=data, window_hours=24)
     children = [c for c in children if c not in visited]
-    for child in children:
+    
+    for idx, child in enumerate(children):
         visited.add(child)
-        indent = "   " * (depth + 1)
-        lines_out.append(f"{indent}{_warp_node_label(guild, data, child)}")
-        _warp_render_subtree(guild, data, child, depth + 1, visited, lines_out, max_depth)
+        is_last = (idx == len(children) - 1)
+        connector = "└─ " if is_last else "├─ "
+        lines_out.append(f"{prefix}{connector}{_warp_node_label(guild, data, child)}")
+        
+        if depth + 1 < max_depth:
+            child_prefix = prefix + ("   " if is_last else "│  ")
+            _warp_render_subtree(
+                guild, data, child, depth + 1, visited, lines_out,
+                max_depth, is_last, child_prefix
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -2396,12 +2407,12 @@ async def warp_status(interaction: discord.Interaction):
     # Out-of-authority rings (>= 2) never anchor a tree — their outbreaks belong
     # to peer librarians. The caller still sees ring-2 brothers as solo entries
     # if they're isolated cases, but won't see other librarians' chains.
-    tree_roots = []  # (direct_count, uid, name, pts, corrupted, is_super, ring, mem_company)
+    tree_roots = []  # (direct_count, uid, name, pts, tier, corrupted, is_super, ring, mem_company)
     for ring, pts, uid, name, tier, is_lib, corrupted, is_super, has_targets, mem_company in top_rows:
         in_authority = (caller_company is None) or (ring <= 1)
         if not is_lib and has_targets and in_authority:
             direct = len(_compute_outgoing_infections(int(uid), states=data, window_hours=24))
-            tree_roots.append((direct, uid, name, pts, corrupted, is_super, ring, mem_company))
+            tree_roots.append((direct, uid, name, pts, tier, corrupted, is_super, ring, mem_company))
     tree_roots.sort(key=lambda r: -r[0])
 
     # ── Pass 2: build the unified at-risk list. Roots render with their
@@ -2409,7 +2420,9 @@ async def warp_status(interaction: discord.Interaction):
     # render flat. Mirrors the single ▸ Brothers at Risk field of /armor_status.
     lines: List[str] = []
     covered_uids: set = set()
-    for _direct, root_uid, root_name, root_pts, root_corrupted, root_is_super, root_ring, root_company in tree_roots[:3]:
+    for _direct, root_uid, root_name, root_pts, root_tier, root_corrupted, root_is_super, root_ring, root_company in tree_roots[:3]:
+        if str(root_uid) in covered_uids:
+            continue
         rflags = ""
         if root_is_super:
             rflags += WARP_SPREADER_ICON
@@ -2422,6 +2435,8 @@ async def warp_status(interaction: discord.Interaction):
                 rcompany_tag = f" `({_b('_extract_company_short_name')(root_company)})`"
             except Exception:
                 rcompany_tag = ""
+        # Show the same tier icon convention used by flat rows.
+        root_icon = WARP_BROTHER_TIER_ICON.get(root_tier, "🟢")
         # Default scope: 1 hop only. Librarians use /warp_scry to trace deeper.
         visited = {str(root_uid)}
         subtree_lines: List[str] = []
@@ -2434,7 +2449,7 @@ async def warp_status(interaction: discord.Interaction):
         deeper = downstream - direct
         deeper_tag = f" _(+{deeper} deeper — /warp_scry)_" if deeper > 0 else ""
         lines.append(
-            f"{WARP_SPREADER_ICON} {root_name}{rcompany_tag} · {root_pts}c{rflag_str} _(→ {direct})_{deeper_tag}"
+            f"{root_icon} {root_name}{rcompany_tag} · {root_pts}c{rflag_str} _(→ {direct})_{deeper_tag}"
         )
         lines.extend(subtree_lines)
         covered_uids |= visited
