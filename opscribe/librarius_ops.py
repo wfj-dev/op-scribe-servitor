@@ -542,6 +542,211 @@ def _get_warp_tier_risk_display(tier: Optional[str]) -> str:
     return f"{pct}% (-{lo} to -{hi} AAR)"
 
 
+def _get_warp_detection_chances() -> Dict[str, float]:
+    """Derive per-tier early-warning detection chance.
+
+    Config keeps brother tiers consolidated, so this reads ``spread_chance`` from
+    each tier entry (mirroring existing ladder defaults) and falls back to
+    ``WARP_DETECTION_CHANCES`` when missing.
+    """
+    cfg = _warp_config()
+    tiers = cfg.get("brother_probability_tiers") or []
+    if not tiers:
+        return dict(WARP_DETECTION_CHANCES)
+    out: Dict[str, float] = {}
+    for entry in tiers:
+        tier = entry.get("tier")
+        if not tier:
+            continue
+        try:
+            out[str(tier)] = float(
+                entry.get("spread_chance", WARP_DETECTION_CHANCES.get(str(tier), 0.0))
+            )
+        except Exception:
+            continue
+    return out or dict(WARP_DETECTION_CHANCES)
+
+
+def _roll_warp_detection_alert(tier: Optional[str]) -> bool:
+    """Roll whether to post an early warning alert for this exposure tier."""
+    if not tier:
+        return False
+    chances = _get_warp_detection_chances()
+    chance = float(chances.get(tier, 0.0))
+    if chance <= 0:
+        return False
+    return random.random() < chance
+
+
+def _get_librarian_ping(guild: Optional[discord.Guild]) -> str:
+    """Return role mention for Librarian notifications."""
+    try:
+        cfg = _warp_config()
+        raw = cfg.get("librarian_role_id")
+        if raw:
+            return f"<@&{int(raw)}>"
+    except Exception:
+        pass
+    if guild is not None:
+        try:
+            role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+            if role:
+                return role.mention
+        except Exception:
+            pass
+    return f"@{LIBRARIAN_ROLE_NAME}"
+
+
+async def _post_warp_alert(
+    member: discord.Member,
+    tier: Optional[str],
+    guild: Optional[discord.Guild] = None,
+    op_mission: Optional[str] = None,
+    op_difficulty_class: Optional[str] = None,
+    op_url: Optional[str] = None,
+    squad_member_ids: Optional[List[str]] = None,
+    alert_type: str = "sustained",
+    penalty_amount: int = 0,
+    points: int = 0,
+    warp_corrupted: bool = False,
+):
+    """Post Librarium alert for sustained loss, detection warning, or corruption."""
+    channel_id = _get_librarium_watch_channel_id()
+    if not channel_id:
+        return
+
+    guild = guild or member.guild
+    if not guild:
+        return
+
+    channel = guild.get_channel(int(channel_id))
+    if channel is None:
+        try:
+            channel = await _g.bot.fetch_channel(int(channel_id))
+        except Exception:
+            return
+    if channel is None:
+        return
+
+    is_detection = alert_type == "detected"
+    is_corrupted = alert_type == "corrupted"
+    penalty_str = f" (-{penalty_amount} AAR)" if (penalty_amount > 0 and not is_detection) else ""
+
+    if is_corrupted:
+        color = 0x8B0000
+        title = "᛭⋅ WARP CORRUPTION MANIFEST ⋅᛭"
+        description = "*The wardline has failed — immediate Librarian intervention required*"
+    elif tier in ("catastrophic", "breached"):
+        if is_detection:
+            color = 0xE74C3C
+            title = "᛭⋅ CRITICAL WARP SIGNATURE DETECTED ⋅᛭"
+            description = "*Severe taint detected — intervention window open*"
+        else:
+            color = 0xE74C3C
+            title = f"᛭⋅ WARP SANCTION FAILURE ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to severe warp contamination*"
+    elif tier == "volatile":
+        if is_detection:
+            color = 0xF39C12
+            title = "᛭⋅ WARP INSTABILITY DETECTED ⋅᛭"
+            description = "*Escalation risk detected — cleansing window open*"
+        else:
+            color = 0xE67E22
+            title = f"᛭⋅ WARP SANCTION BREACH ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to warp instability*"
+    else:
+        if is_detection:
+            color = 0xF1C40F
+            title = "᛭⋅ TAINT DETECTED ⋅᛭"
+            description = "*Early contamination detected — preventive cleansing advised*"
+        else:
+            color = 0xE67E22
+            title = f"᛭⋅ WARP SANCTION ALERT ⋅᛭{penalty_str}"
+            description = "*AAR points lost due to warp taint*"
+
+    embed = discord.Embed(title=title, description=description, color=color)
+
+    try:
+        styled = (
+            _b("_format_member_styled")(guild, str(member.id), include_chapter=True)
+            if _b("_format_member_styled")
+            else _strip_display_name(member.display_name)
+        )
+    except Exception:
+        styled = _strip_display_name(member.display_name)
+
+    sanction_key = _warp_sanction_key_for_points(int(points or 0))
+    sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Sanctioned", ""))
+    flags = WARP_CORRUPTED_ICON if warp_corrupted else ""
+    flag_str = f" {flags}" if flags else ""
+    risk = _get_warp_tier_risk_display(tier)
+    tier_label = tier.title() if tier else "Clear"
+    if is_detection and tier:
+        tier_label += " (Early Warning)"
+
+    embed.add_field(
+        name="▸ Affected Brother",
+        value=(
+            f"{styled}\n"
+            f"**Exposure Tier:** {tier_label}{flag_str}\n"
+            f"**Warp Sanction:** {sanction_label}\n"
+            f"**Penalty Risk:** {risk}"
+        ),
+        inline=False,
+    )
+
+    if op_mission or op_difficulty_class or op_url or squad_member_ids:
+        debrief_lines = []
+        planet = None
+        clean_mission = None
+        if op_mission:
+            clean_mission = re.sub(r"\s*<@[!&]?\d+>.*$", "", op_mission).strip()
+            if "@" in clean_mission:
+                clean_mission = clean_mission.split("@")[0].strip()
+        if op_difficulty_class:
+            planet = MISSION_TO_PLANET.get(op_difficulty_class.lower().strip())
+        if not planet and clean_mission:
+            planet = MISSION_TO_PLANET.get(clean_mission.lower().strip())
+        if planet:
+            debrief_lines.append(f"Warp signatures spiked during deployment to **{planet}**")
+        elif clean_mission:
+            debrief_lines.append(f"Warp signatures spiked during **{clean_mission}** deployment")
+
+        if squad_member_ids and guild:
+            squad_names = []
+            for sid in squad_member_ids:
+                if str(sid) == str(member.id):
+                    continue
+                try:
+                    squad_member = guild.get_member(int(sid))
+                except Exception:
+                    squad_member = None
+                if squad_member:
+                    squad_names.append(_strip_display_name(squad_member.display_name))
+            if squad_names:
+                debrief_lines.append(f"Kill Team: {', '.join(squad_names)}")
+
+        if op_url:
+            debrief_lines.append(f"[View After Action Report]({op_url})")
+
+        if debrief_lines:
+            embed.add_field(name="▸ Debrief", value="\n".join(debrief_lines), inline=False)
+
+    if is_corrupted:
+        guidance = "Administer intensive cleansing via `/warp_cleanse intensive:True` and escalate to Void Warden."
+        field_name = "▸ Immediate Librarian Response Required"
+    elif is_detection:
+        guidance = "Taint detected before AAR loss. Administer `/warp_cleanse` to prevent penalties."
+        field_name = "▸ Preventive Cleansing Available"
+    else:
+        guidance = "AAR loss confirmed. Administer `/warp_cleanse` to restore sanction status."
+        field_name = "▸ Librarian Response Required"
+    embed.add_field(name=field_name, value=guidance, inline=False)
+
+    content = _get_librarian_ping(guild)
+    await channel.send(content=content, embed=embed)
+
+
 # ---------------------------------------------------------------------------
 # Override / kill switch
 # ---------------------------------------------------------------------------
@@ -1257,7 +1462,13 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
     if not brother_ids:
         return
 
+    # Per-brother AAR loss from warp penalties (rolled pre-save in aar_ops).
+    warp_penalties = record.get("warp_penalties") or {}
+    if not isinstance(warp_penalties, dict):
+        warp_penalties = {}
+
     bl_gain = _bl_gain_for_record(record)
+    alerts_to_post: Dict[str, dict] = {}
 
     try:
         async with _g.WARP_EXPOSURE_LOCK:
@@ -1265,6 +1476,7 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
 
             # Hydrate states for all squad members
             states: Dict[str, dict] = {}
+            prior_corrupted: Dict[str, bool] = {}
             is_active_fn = _b("_is_active_participant")
             for bid in brother_ids:
                 # Skip non-participants (no rank, Reserves, Interred) — symmetric
@@ -1292,6 +1504,7 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
                 # Apply lazy decay before mutating
                 state = _apply_decay(state)
                 states[str(bid)] = state
+                prior_corrupted[str(bid)] = bool(state.get("warp_corrupted"))
 
             now_iso = datetime.utcnow().isoformat()
 
@@ -1359,6 +1572,44 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
                             and state["restricted_aar_count"] >= corruption_threshold
                         ):
                             state["warp_corrupted"] = True
+
+                    # Alerting parity with armor system:
+                    # - sustained alert if AAR loss occurred
+                    # - detection alert if no loss but tier is at risk and unalerted
+                    # - corruption alert when threshold is crossed this AAR
+                    effective_tier = _brother_tier_for_points(pts)
+                    actual_penalty = int(warp_penalties.get(str(bid), 0) or 0)
+                    if actual_penalty > 0 and effective_tier:
+                        alerts_to_post[str(bid)] = {
+                            "member": None,
+                            "tier": effective_tier,
+                            "alert_type": "sustained",
+                            "penalty_amount": actual_penalty,
+                            "points": pts,
+                            "warp_corrupted": bool(state.get("warp_corrupted")),
+                        }
+                    elif effective_tier and not bool(state.get("warp_corrupted")):
+                        last_alert_tier = state.get("last_detection_alert_tier")
+                        if last_alert_tier != effective_tier and _roll_warp_detection_alert(effective_tier):
+                            state["last_detection_alert_tier"] = effective_tier
+                            alerts_to_post[str(bid)] = {
+                                "member": None,
+                                "tier": effective_tier,
+                                "alert_type": "detected",
+                                "penalty_amount": 0,
+                                "points": pts,
+                                "warp_corrupted": False,
+                            }
+
+                    if bool(state.get("warp_corrupted")) and not prior_corrupted.get(str(bid), False):
+                        alerts_to_post[str(bid)] = {
+                            "member": None,
+                            "tier": effective_tier,
+                            "alert_type": "corrupted",
+                            "penalty_amount": actual_penalty,
+                            "points": pts,
+                            "warp_corrupted": True,
+                        }
                 data[str(bid)] = state
 
             _save_warp_exposure(data)
@@ -1376,6 +1627,35 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
                 try:
                     await _sync_sanction_role_for_member(
                         member, guild, pts, bool(state.get("is_librarian"))
+                    )
+                except Exception:
+                    pass
+
+        # 4b) Post Librarian alerts outside locks (parity with armor flow)
+        if guild is not None and alerts_to_post:
+            op_mission = record.get("mission")
+            op_difficulty_class = record.get("difficulty_class")
+            op_url = record.get("message_url")
+            for bid, alert in alerts_to_post.items():
+                try:
+                    member = guild.get_member(int(bid))
+                except Exception:
+                    member = None
+                if member is None:
+                    continue
+                try:
+                    await _post_warp_alert(
+                        member=member,
+                        tier=alert.get("tier"),
+                        guild=guild,
+                        op_mission=op_mission,
+                        op_difficulty_class=op_difficulty_class,
+                        op_url=op_url,
+                        squad_member_ids=brother_ids,
+                        alert_type=alert.get("alert_type", "sustained"),
+                        penalty_amount=int(alert.get("penalty_amount", 0) or 0),
+                        points=int(alert.get("points", 0) or 0),
+                        warp_corrupted=bool(alert.get("warp_corrupted")),
                     )
                 except Exception:
                     pass
