@@ -1310,63 +1310,11 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         recent_lines.append("*No rites recorded.*")
     embed.add_field(name="▸ Recent Rites", value="\n".join(recent_lines), inline=False)
 
-    # ─── Librarian Custodians (mirrors forge Machine Spirits stats)
-    custodian_lines = []
-    if librarian_stats:
-        # Devoted: most cleanses performed.
-        devoted = max(
-            librarian_stats.items(),
-            key=lambda kv: int(kv[1].get("total_cleanses", 0) or 0),
-            default=None,
-        )
-        # Unwavering: highest success rate (min 3 rites to qualify).
-        qualified = [
-            (lid, s) for lid, s in librarian_stats.items()
-            if int(s.get("total_cleanses", 0) or 0) >= 3
-        ]
-        unwavering = None
-        if qualified:
-            unwavering = max(
-                qualified,
-                key=lambda kv: (
-                    int(kv[1].get("successes", 0) or 0)
-                    / max(1, int(kv[1].get("total_cleanses", 0) or 0))
-                ),
-            )
-        # Stalwart: most points purged.
-        stalwart = max(
-            librarian_stats.items(),
-            key=lambda kv: int(kv[1].get("removed_total", 0) or 0),
-            default=None,
-        )
-
-        def _styled(lid: str) -> str:
-            try:
-                if guild and _b("_format_member_styled"):
-                    return _b("_format_member_styled")(guild, str(lid), include_chapter=True)
-            except Exception:
-                pass
-            return f"<@{lid}>"
-
-        if devoted and int(devoted[1].get("total_cleanses", 0) or 0) > 0:
-            custodian_lines.append(
-                f"Devoted ({devoted[1].get('total_cleanses', 0)} rites): {_styled(devoted[0])}"
-            )
-        if unwavering:
-            total = int(unwavering[1].get("total_cleanses", 0) or 0)
-            successes = int(unwavering[1].get("successes", 0) or 0)
-            rate = (successes / total * 100) if total else 0
-            custodian_lines.append(
-                f"Unwavering ({rate:.0f}% over {total}): {_styled(unwavering[0])}"
-            )
-        if stalwart and int(stalwart[1].get("removed_total", 0) or 0) > 0 and (
-            not devoted or stalwart[0] != devoted[0]
-        ):
-            custodian_lines.append(
-                f"Stalwart ({stalwart[1].get('removed_total', 0)}c purged): {_styled(stalwart[0])}"
-            )
-    if custodian_lines:
-        embed.add_field(name="▸ 🧿 Librarian Custodians", value="\n".join(custodian_lines), inline=False)
+    # ─── Librarian Custodians removed in v2.5.1: the Epistolaries panel
+    # already ranks active librarians by (charges, success rate, total
+    # cleanses), so re-ranking the same data under opaque honorifics was
+    # redundant. Stats are still recorded to `librarian_stats` and surfaced
+    # via the Epistolaries panel + Recent Rites.
 
     # ─── Breach Memorial (recent backlash events last 28d — mirrors forge Spirit Memorial)
     memorial_lines = []
@@ -1396,26 +1344,55 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     if memorial_lines:
         embed.add_field(name="▸ Breach Memorial", value="\n".join(memorial_lines), inline=False)
 
-    # ─── Sanction Roster + Librarian Burden (inline pair — mirrors forge Reserves+Artificers)
-    sanction_labels = {
-        "screening_due": "Screening",
-        "under_review": "Review",
-        "restricted": "Restricted",
-    }
-    sanction_lines = []
-    for key in ("screening_due", "under_review", "restricted"):
-        count = bucket_counts.get(key, 0)
-        if count:
-            sanction_lines.append(
-                f"{WARP_SANCTION_STATUS_ICON[key]} {sanction_labels[key]}: **{count}**"
-            )
-    if corrupted_count:
-        sanction_lines.append(f"{WARP_CORRUPTED_ICON} Corrupted: **{corrupted_count}**")
-    if super_spreader_count:
-        sanction_lines.append(f"{WARP_SPREADER_ICON} Super-spreaders: **{super_spreader_count}**")
+    # ─── Warp Reservoir + Epistolaries (inline pair — mirrors forge Reserves+Artificers)
+    # Reservoir: aggregate charge capacity across all eligible librarians
+    # (excluding overloaded/abyssal, who cannot cleanse) plus a 7-day net
+    # tempo: rites completed vs backlashes.
+    max_reservoir = 0
+    pool_max = _cfg_int("warding_pool_max", WARDING_POOL_MAX)
+    for lib_id in librarian_user_ids:
+        lib_state = data.get(str(lib_id)) or {}
+        lib_tier = _librarian_tier_for_points(int(lib_state.get("points", 0) or 0))
+        if lib_tier in ("overloaded", "abyssal"):
+            continue
+        max_reservoir += pool_max
+    available_reservoir = int(total_librarian_charges)
+    reservoir_pct = (available_reservoir / max_reservoir * 100) if max_reservoir > 0 else 0
+    filled_blocks = int(reservoir_pct / 10)
+    empty_blocks = 10 - filled_blocks
+    reservoir_bar = "█" * filled_blocks + "░" * empty_blocks
+
+    week_cutoff = datetime.utcnow() - timedelta(days=7)
+    weekly_rites = 0
+    weekly_backlashes = 0
+    for entry in cleanse_history:
+        try:
+            ts = datetime.fromisoformat(entry.get("ts", ""))
+        except Exception:
+            continue
+        if ts < week_cutoff:
+            continue
+        weekly_rites += 1
+        if entry.get("outcome") == "backlash":
+            weekly_backlashes += 1
+    weekly_net = weekly_rites - weekly_backlashes
+    if weekly_net > 0:
+        net_icon = "📈"
+        net_text = f"+{weekly_net}"
+    elif weekly_net < 0:
+        net_icon = "📉"
+        net_text = str(weekly_net)
+    else:
+        net_icon = "➡️"
+        net_text = "0"
+
+    reservoir_value = (
+        f"{reservoir_bar} {available_reservoir} / {max_reservoir} charges\n"
+        f"📊 7d: +{weekly_rites} rites | -{weekly_backlashes} backlash | {net_icon} {net_text} net"
+    )
     embed.add_field(
-        name="▸ Sanction Roster",
-        value="\n".join(sanction_lines) if sanction_lines else "All clear.",
+        name="▸ Warp Reservoir",
+        value=reservoir_value,
         inline=True,
     )
 
@@ -1448,7 +1425,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             name = f"<@{lib_id}>"
         librarian_lines.append(f"{name} ({charges})")
     embed.add_field(
-        name="▸ Librarians",
+        name="▸ Epistolaries",
         value="\n".join(librarian_lines) if librarian_lines else "*No active librarians.*",
         inline=True,
     )
@@ -1457,15 +1434,80 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(
         name="▸ Key",
         value=(
-            "🟢 Sanctioned · 🟡 Screening · 🟠 Review · 🔴 Restricted · "
+            "� Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic · "
             f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
-            "Librarians `(N)` = available charges"
+            "Epistolaries `(N)` = available charges"
         ),
         inline=False,
     )
 
     embed.set_footer(text=f"Last updated • {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     return embed
+
+
+class LogToLibrariumView(discord.ui.View):
+    """View with a 'Log to Librarium' button for cleanse/scry attestations.
+
+    When clicked, posts the embed publicly to the Librarium watch channel
+    and (for cleanses) triggers a Chronicle repost at the bottom. Mirrors
+    the Forge's LogToForgeView pattern.
+    """
+
+    def __init__(
+        self,
+        embed: discord.Embed,
+        bearer_mention: Optional[str] = None,
+        repost_chronicle: bool = True,
+    ):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.embed = embed
+        self.bearer_mention = bearer_mention
+        self.repost_chronicle = repost_chronicle
+        self.logged = False
+
+    @discord.ui.button(
+        label="Log to Librarium",
+        style=discord.ButtonStyle.primary,
+        emoji="🧿",
+        custom_id="log_to_librarium",
+    )
+    async def log_to_librarium(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.logged:
+            await interaction.response.send_message("Already logged to Librarium.", ephemeral=True)
+            return
+
+        self.logged = True
+        button.disabled = True
+        button.label = "Logged"
+        button.style = discord.ButtonStyle.secondary
+
+        try:
+            await interaction.response.edit_message(view=self)
+        except Exception:
+            pass
+
+        channel_id = _get_librarium_watch_channel_id()
+        if not channel_id or not interaction.guild:
+            return
+        channel = interaction.guild.get_channel(channel_id)
+        if not channel:
+            return
+
+        try:
+            kwargs = {"embed": self.embed}
+            if self.bearer_mention:
+                kwargs["content"] = self.bearer_mention
+                kwargs["allowed_mentions"] = discord.AllowedMentions(users=True)
+            await channel.send(**kwargs)
+        except Exception as e:
+            _g.logger.warning(f"Failed to log to Librarium: {e}")
+            return
+
+        if self.repost_chronicle:
+            try:
+                await _repost_librarium_chronicle_at_bottom(interaction.guild)
+            except Exception as e:
+                _g.logger.debug(f"Chronicle repost after log failed: {e}")
 
 
 async def _repost_librarium_chronicle_at_bottom(guild: Optional[discord.Guild]):
@@ -2278,7 +2320,9 @@ async def warp_cleanse(
         except Exception:
             pass
 
-    # Record cleanse + repost Librarium Chronicle
+    # Record cleanse to chronicle datastore. Public posting + chronicle repost
+    # are deferred to the 'Log to Librarium' button so spam-free private use
+    # remains an option for the cleanser.
     try:
         await _record_cleanse_in_chronicle(
             int(member.id),
@@ -2287,10 +2331,6 @@ async def warp_cleanse(
             removed,
             transfer,
         )
-    except Exception:
-        pass
-    try:
-        await _repost_librarium_chronicle_at_bottom(interaction.guild)
     except Exception:
         pass
 
@@ -2343,7 +2383,12 @@ async def warp_cleanse(
         )
     embed.set_footer(text="The Librarium watches. The wards hold.")
 
-    await interaction.response.send_message(embed=embed)
+    view = LogToLibrariumView(
+        embed=embed,
+        bearer_mention=member.mention,
+        repost_chronicle=True,
+    )
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 @_g.bot.tree.command(
@@ -2751,7 +2796,8 @@ async def warp_scry(interaction: discord.Interaction, member: discord.Member):
         footer_bits.append(f"{cooldown_min}m between rites")
     if footer_bits:
         embed.set_footer(text=" · ".join(footer_bits))
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    view = LogToLibrariumView(embed=embed, bearer_mention=None, repost_chronicle=False)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 @_g.bot.tree.command(
