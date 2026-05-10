@@ -136,7 +136,8 @@
     },
     "librarium_chronicle": {
       "roles": [
-        "Void Warden"
+        "Void Warden",
+        "Forgemaster"
       ]
     },
     "librarium_override": {
