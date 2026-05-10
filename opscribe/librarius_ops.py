@@ -1163,9 +1163,6 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     else:
         warp_pressure = float("inf") if brothers_needing_cleanse > 0 else 0.0
 
-
-    ambient = random.choice(LIBRARIUM_AMBIENT_MESSAGES)
-
     # Load chronicle data once (used for Recent Rites, Custodians, Breach Memorial).
     try:
         async with _g.LIBRARIUM_CHRONICLE_LOCK:
@@ -1225,7 +1222,6 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     else:
         charges_icon = "🟢"
     embed.description = (
-        f"*{ambient}*\n\n"
         f"**▸ Warp Telemetry**\n"
         f"{sanctioned_icon} **{clean_pct:.0f}%** Sanctioned  "
         f"{pressure_icon} **{pressure_str}** Pressure  "
@@ -1422,31 +1418,38 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         value="\n".join(sanction_lines) if sanction_lines else "All clear.",
         inline=True,
     )
-    lib_labels = {
-        None: "Stable",
-        "stable": "Stable",
-        "resonant": "Resonant",
-        "surging": "Surging",
-        "overloaded": "Overloaded",
-        "abyssal": "Abyssal",
-    }
-    lib_lines = []
-    # Collapse None+stable into a single "Stable" row (both are 0–4 cycles bracket).
-    none_n = librarian_tier_counts.get(None, 0)
-    stable_n = librarian_tier_counts.get("stable", 0)
-    if none_n + stable_n:
-        lib_lines.append(
-            f"{WARP_LIBRARIAN_TIER_ICON.get(None, '🟩')} Stable: **{none_n + stable_n}**"
-        )
-    for tier in ("resonant", "surging", "overloaded", "abyssal"):
-        n = librarian_tier_counts.get(tier, 0)
-        if n:
-            lib_lines.append(
-                f"{WARP_LIBRARIAN_TIER_ICON.get(tier, '🟩')} {lib_labels[tier]}: **{n}**"
-            )
+
+    # ─── Librarians (mirrors forge "Artificers" — top 3 by charges/success/rites)
+    librarian_lines: List[str] = []
+    # Score every active guild librarian, even those without a stats record yet,
+    # so a freshly-promoted Librarian still appears with their charge count.
+    candidates: List[tuple] = []  # (charges, success_rate, total, lib_id)
+    for lib_id in librarian_user_ids:
+        # Suppress overloaded/abyssal librarians (cannot cleanse — same gate as supply).
+        lib_state = data.get(str(lib_id)) or {}
+        lib_tier = _librarian_tier_for_points(int(lib_state.get("points", 0) or 0))
+        if lib_tier in ("overloaded", "abyssal"):
+            continue
+        try:
+            charges = await _get_librarian_available_charges(int(lib_id))
+        except Exception:
+            charges = 0
+        stats = librarian_stats.get(str(lib_id), {}) or {}
+        total = int(stats.get("total_cleanses", 0) or 0)
+        successes = int(stats.get("successes", 0) or 0)
+        success_rate = (successes / total) * 100 if total > 0 else 0.0
+        candidates.append((int(charges), success_rate, total, int(lib_id)))
+    candidates.sort(reverse=True)
+    for charges, _rate, _total, lib_id in candidates[:3]:
+        try:
+            name = _b("_format_member_styled")(guild, str(lib_id), include_chapter=True) \
+                if (guild and _b("_format_member_styled")) else f"<@{lib_id}>"
+        except Exception:
+            name = f"<@{lib_id}>"
+        librarian_lines.append(f"{name} ({charges})")
     embed.add_field(
-        name="▸ Librarian Burden",
-        value="\n".join(lib_lines) if lib_lines else "Unburdened.",
+        name="▸ Librarians",
+        value="\n".join(librarian_lines) if librarian_lines else "*No active librarians.*",
         inline=True,
     )
 
@@ -1454,9 +1457,9 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(
         name="▸ Key",
         value=(
-            "**Brothers** (circles): 🟢 Sanctioned · 🟡 Screening · 🟠 Review · 🔴 Restricted\n"
-            "**Librarians** (squares): 🟩 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles"
+            "🟢 Sanctioned · 🟡 Screening · 🟠 Review · 🔴 Restricted · "
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
+            "Librarians `(N)` = available charges"
         ),
         inline=False,
     )
