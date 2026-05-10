@@ -1456,11 +1456,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         value=(
             "**Brothers** (circles): 🟢 Sanctioned · 🟡 Screening · 🟠 Review · 🔴 Restricted\n"
             "**Librarians** (squares): 🟩 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
-            "`Nc` = cumulative warp cycles\n"
-            "_Cycles accrue from BL participation (+1 absolute / +2 hard-strat / +3 omega) "
-            "and contagion (+1 per spread). Librarian cycles decay over time; brothers'  "
-            "must be cleansed via `/cleanse_brother`._"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles"
         ),
         inline=False,
     )
@@ -2585,8 +2581,7 @@ async def warp_status(interaction: discord.Interaction):
         value=(
             "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
             "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
-            "`Nc` = cumulative warp cycles (BL: +1 absolute / +2 hard-strat / +3 omega; +1 per spread)\n"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles · "
             "trace deeper with `/warp_scry`"
         ),
         inline=False,
@@ -2740,8 +2735,7 @@ async def warp_scry(interaction: discord.Interaction, member: discord.Member):
         value=(
             "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
             "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
-            "`Nc` = cumulative warp cycles (BL: +1 absolute / +2 hard-strat / +3 omega; +1 per spread)"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles"
         ),
         inline=False,
     )
