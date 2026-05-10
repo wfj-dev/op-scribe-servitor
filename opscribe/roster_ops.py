@@ -267,6 +267,67 @@ def _extract_company_short_name(company_role_name: str) -> str:
         return company_role_name
 
 
+# All Watch Company role names. Order matches numerical seniority.
+_WATCH_COMPANY_ROLE_NAMES: List[str] = [
+    "Watch Company Primus",
+    "Watch Company Secundus",
+    "Watch Company Tertius",
+    "Watch Company Quartus",
+    "Watch Company Quintus",
+]
+
+
+def _orphan_companies_for_role(guild: Optional[discord.Guild], specialist_role: str) -> set:
+    """Return the set of Watch Company role names that have no active member with ``specialist_role``.
+
+    A company is "covered" when at least one non-bot member has both ``specialist_role``
+    AND that company role. Used by /armor_status and /warp_status gap-filling so a
+    specialist whose home company is clear backfills coverage on companies without
+    a counterpart specialist before reaching into peer territory.
+    """
+    companies = set(_WATCH_COMPANY_ROLE_NAMES)
+    if guild is None:
+        return companies
+    covered: set = set()
+    try:
+        for member in guild.members:
+            if getattr(member, "bot", False):
+                continue
+            role_names = {
+                (getattr(r, "name", "") or "").strip()
+                for r in (getattr(member, "roles", []) or [])
+            }
+            if specialist_role not in role_names:
+                continue
+            for c in companies:
+                if c in role_names:
+                    covered.add(c)
+    except Exception:
+        pass
+    return companies - covered
+
+
+def _company_scope_ring(
+    member_company: Optional[str],
+    caller_company: Optional[str],
+    orphan_companies: set,
+) -> int:
+    """Return ring rank for a candidate brother: lower fills first.
+
+    0 — caller's own company (primary responsibility)
+    1 — orphan company (no counterpart specialist assigned)
+    2 — other companies (peer-covered territory, lowest priority)
+    3 — no company assignment
+    """
+    if not member_company:
+        return 3
+    if caller_company and member_company == caller_company:
+        return 0
+    if member_company in orphan_companies:
+        return 1
+    return 2
+
+
 def _find_company_command_staff(
     guild: discord.Guild, company_name: str
 ) -> Tuple[List[discord.Member], List[discord.Member]]:
@@ -5773,8 +5834,8 @@ def _format_member_styled(
 
     if member:
         display_name = member.nick or member.display_name
-        # Strip stud pips first
-        name = display_name.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+        # Normalize decorative unicode + strip stud pips in one pass
+        name = _strip_display_name(display_name)
         # Strip [R] prefix for Reserves members
         if name.startswith("[R] "):
             name = name[4:].strip()
@@ -7474,6 +7535,9 @@ __all__ = [
     "_get_effective_induction_date",
     "_get_member_company_name",
     "_extract_company_short_name",
+    "_orphan_companies_for_role",
+    "_company_scope_ring",
+    "_WATCH_COMPANY_ROLE_NAMES",
     "_find_company_command_staff",
     "_find_kt_sergeant",
     "_find_all_captains_and_lieutenants",

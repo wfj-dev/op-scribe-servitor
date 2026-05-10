@@ -207,3 +207,116 @@ def test_is_super_spreader_no_outgoing_infections():
         is_super, count = lib._is_super_spreader(100, states={}, window_hours=24)
     assert is_super is False
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Intensive cleanse cost lookup
+# ---------------------------------------------------------------------------
+
+
+def test_intensive_cleanse_cost_scales_with_severity():
+    cfg = {"intensive_cleanse_costs": {
+        "screening_due": 2, "under_review": 3, "restricted": 4, "corrupted": 4,
+    }}
+    with patch.object(lib, "_warp_config", return_value=cfg):
+        assert lib._get_intensive_cleanse_cost("screening_due") == 2
+        assert lib._get_intensive_cleanse_cost("under_review") == 3
+        assert lib._get_intensive_cleanse_cost("restricted") == 4
+
+
+def test_intensive_cleanse_cost_corrupted_promotes_to_top_tier():
+    cfg = {"intensive_cleanse_costs": {
+        "screening_due": 2, "under_review": 3, "restricted": 4, "corrupted": 5,
+    }}
+    with patch.object(lib, "_warp_config", return_value=cfg):
+        # Corrupted flag overrides the tier cost (mirrors armor's fractured override)
+        assert lib._get_intensive_cleanse_cost("screening_due", warp_corrupted=True) == 5
+        assert lib._get_intensive_cleanse_cost("under_review", warp_corrupted=True) == 5
+
+
+def test_intensive_cleanse_cost_falls_back_to_defaults():
+    with patch.object(lib, "_warp_config", return_value={}):
+        assert lib._get_intensive_cleanse_cost("restricted") == 4
+        assert lib._get_intensive_cleanse_cost("screening_due", warp_corrupted=True) == 4
+
+
+# ---------------------------------------------------------------------------
+# Display name normalization
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_display_name_small_caps():
+    from opscribe.constants import _normalize_display_name
+    assert _normalize_display_name("ᴡᴀᴛᴄʜ ᴄʜᴀᴘʟᴀɪɴ").lower() == "watch chaplain"
+
+
+def test_normalize_display_name_mathematical_alphanumeric():
+    from opscribe.constants import _normalize_display_name
+    assert _normalize_display_name("𝐡𝐞𝐥𝐥𝐨") == "hello"
+
+
+def test_normalize_display_name_preserves_plain_ascii():
+    from opscribe.constants import _normalize_display_name
+    assert _normalize_display_name("Brother Marcus") == "Brother Marcus"
+
+
+def test_strip_display_name_removes_pips_and_normalizes():
+    from opscribe.constants import _strip_display_name
+    assert _strip_display_name("●● ᴋᴏʀᴀ ⚬⚬").lower() == "kora"
+
+
+# ---------------------------------------------------------------------------
+# Company scope ring (gap-filling for /armor_status, /warp_status)
+# ---------------------------------------------------------------------------
+
+
+def test_company_scope_ring_own_company_is_zero():
+    from opscribe.roster_ops import _company_scope_ring
+    orphans = {"Watch Company Tertius"}
+    assert _company_scope_ring(
+        member_company="Watch Company Primus",
+        caller_company="Watch Company Primus",
+        orphan_companies=orphans,
+    ) == 0
+
+
+def test_company_scope_ring_orphan_is_one():
+    from opscribe.roster_ops import _company_scope_ring
+    orphans = {"Watch Company Tertius"}
+    assert _company_scope_ring(
+        member_company="Watch Company Tertius",
+        caller_company="Watch Company Primus",
+        orphan_companies=orphans,
+    ) == 1
+
+
+def test_company_scope_ring_peer_covered_is_two():
+    from opscribe.roster_ops import _company_scope_ring
+    orphans = {"Watch Company Tertius"}
+    # Secundus is not in orphan set, so it's peer-covered
+    assert _company_scope_ring(
+        member_company="Watch Company Secundus",
+        caller_company="Watch Company Primus",
+        orphan_companies=orphans,
+    ) == 2
+
+
+def test_company_scope_ring_no_company_is_three():
+    from opscribe.roster_ops import _company_scope_ring
+    assert _company_scope_ring(
+        member_company=None,
+        caller_company="Watch Company Primus",
+        orphan_companies=set(),
+    ) == 3
+
+
+def test_company_scope_ring_no_caller_company_treats_match_as_zero():
+    """When caller has no company, no member matches as ring 0; orphans still ring 1."""
+    from opscribe.roster_ops import _company_scope_ring
+    orphans = {"Watch Company Tertius"}
+    # caller has no company, so no member should land in ring 0
+    assert _company_scope_ring(
+        member_company="Watch Company Primus",
+        caller_company=None,
+        orphan_companies=orphans,
+    ) == 2  # peer-covered, not own

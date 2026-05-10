@@ -370,3 +370,68 @@ CHALLENGE_ROLES = [
 # ---------------------------------------------------------------------------
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
+
+
+# ---------------------------------------------------------------------------
+# Display-name normalization
+# ---------------------------------------------------------------------------
+# Some users set Discord nicknames using "small caps" / phonetic-block unicode
+# characters (e.g. "ᴡᴀᴛᴄʜ ᴄʜᴀᴘʟᴀɪɴ sᴏғᴀ"). These code points have NO Unicode
+# compatibility decomposition, so unicodedata.normalize("NFKD", ...) leaves
+# them untouched, which breaks rank-prefix matching and styled name display.
+# This translation table maps the common stylistic variants back to ASCII.
+_DECORATIVE_LETTER_MAP = {
+    # Latin small-caps (Phonetic Extensions, Latin Extended-D, etc.)
+    "ᴀ": "A", "ʙ": "B", "ᴄ": "C", "ᴅ": "D", "ᴇ": "E",
+    "ꜰ": "F", "ɢ": "G", "ʜ": "H", "ɪ": "I", "ᴊ": "J",
+    "ᴋ": "K", "ʟ": "L", "ᴍ": "M", "ɴ": "N", "ᴏ": "O",
+    "ᴘ": "P", "ǫ": "Q", "ʀ": "R", "ꜱ": "S", "ᴛ": "T",
+    "ᴜ": "U", "ᴠ": "V", "ᴡ": "W", "x": "x",            "ʏ": "Y", "ᴢ": "Z",
+    # Cyrillic look-alike used as small-caps F
+    "ғ": "F",
+    # Bold / italic / monospace mathematical alphanumeric letters
+    # (𝐀-𝐳, 𝐴-𝑧, 𝑨-𝒛, 𝒜-𝓏, 𝓐-𝔃, 𝔄-𝔷, 𝔸-𝕫, 𝕬-𝖟, 𝖠-𝗓, 𝗔-𝘇, 𝘈-𝘻, 𝘼-𝙯, 𝙰-𝚣)
+    # We handle these via NFKD which decomposes them properly; this dict only
+    # covers the small-cap block which NFKD leaves alone.
+}
+# Build str.translate-friendly table (ord -> str)
+_DECORATIVE_TRANSLATE = {ord(k): v for k, v in _DECORATIVE_LETTER_MAP.items()}
+
+
+def _normalize_display_name(name: str) -> str:
+    """Normalize decorative unicode in a display name back to plain ASCII letters.
+
+    Handles:
+    - Small-caps / phonetic letterforms (e.g. ``ᴡᴀᴛᴄʜ`` -> ``WATCH``)
+    - Mathematical alphanumeric variants via NFKD (e.g. ``𝗁𝖾𝗅𝗅𝗈`` -> ``hello``)
+
+    Does NOT remove stud pips (●⚬▬) — callers strip those separately so they
+    can keep that step optional. Returns the input unchanged on any error.
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    try:
+        import unicodedata as _ud
+        # First pass: bold/italic/monospace mathematical letters decompose via NFKD
+        out = _ud.normalize("NFKD", name)
+        # Second pass: small-caps block (no NFKD path) — direct translation
+        out = out.translate(_DECORATIVE_TRANSLATE)
+        # Drop combining marks left over from NFKD (e.g. accents); preserve
+        # spaces and punctuation.
+        out = "".join(ch for ch in out if not _ud.combining(ch))
+        return out
+    except Exception:
+        return name
+
+
+def _strip_display_name(name: str) -> str:
+    """Normalize decorative unicode AND strip stud pips (●⚬▬). Whitespace-trimmed.
+
+    Centralizes the common pattern previously implemented inline as
+    ``display_name.replace("●", "").replace("⚬", "").strip()`` across modules.
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    out = _normalize_display_name(name)
+    out = out.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+    return out
