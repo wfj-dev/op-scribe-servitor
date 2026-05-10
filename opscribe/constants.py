@@ -43,7 +43,13 @@ CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
 FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
 FORGE_CHRONICLE_PATH = os.path.join(DATA_DIR, "forge_chronicle.json")
+FORGE_OVERRIDE_PATH = os.path.join(DATA_DIR, "forge_override.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
+# Librarian / Warp Corruption subsystem
+WARP_EXPOSURE_PATH = os.path.join(DATA_DIR, "warp_exposure.json")
+WARDING_POOL_PATH = os.path.join(DATA_DIR, "warding_pool.json")
+LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
+LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 
 # ---------------------------------------------------------------------------
 # Channel IDs
@@ -56,6 +62,8 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 OATHSWORN_CHANNEL_ID = 1489282103119052903
 TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
 LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
+# Librarian operations / monitoring channel (set after creation; falls back to LIBRARIUS_STAFF_CHANNEL_ID)
+LIBRARIUM_WATCH_CHANNEL_ID: int = 0  # populate when channel is created
 # Dreadnought inactivity notification channel (High Command)
 DREADNOUGHT_INACTIVITY_CHANNEL_ID = 1443813516979994634
 
@@ -114,6 +122,40 @@ BLESSING_ROLL_PROBABILITIES = {
 BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
 BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
 BLESSING_CRIT_SUCCESS_GRACE_POINTS = -10  # Grace points on crit success
+
+# ---------------------------------------------------------------------------
+# Librarian / Warp Corruption pool configuration
+# ---------------------------------------------------------------------------
+WARDING_POOL_MAX = 10  # Max wards per Librarian
+WARDING_POOL_REGEN_HOURS = 24 / 10  # 2.4 hours per ward regeneration
+WARDING_RECIPIENT_COOLDOWN_HOURS = 24  # 24h window for recipient ward count
+WARDING_RECIPIENT_MAX_PER_DAY = 3  # Max wards per recipient per 24h
+WARDING_RECIPIENT_PER_WARDING_COOLDOWN_HOURS = 4  # Min hours between cleanses on same recipient
+
+# Direct exposure gain from Black Laurels missions (by difficulty class)
+# 1=absolute BL, 2=hard-strat BL (Black Reef Persecution), 3=omega BL
+WARP_BL_EXPOSURE_GAIN = {
+    "absolute": 1,
+    "hard_stratagem": 2,
+    "omega_ops": 3,
+}
+
+# Daily cap on unique infectious squadmates that can spread to a brother (24h rolling)
+WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP = 2
+# Spread amount per successful spread roll
+WARP_SPREAD_AMOUNT = 1
+
+# Post-cleanse immunity to spread (random within range, hours)
+WARP_POST_CLEANSE_IMMUNITY_MIN_HOURS = 24
+WARP_POST_CLEANSE_IMMUNITY_MAX_HOURS = 48
+
+# Librarian decay: -1 exposure point every N hours (mirrors regen cadence)
+WARP_LIBRARIAN_DECAY_HOURS = 24 / 10  # one point every 2.4h
+
+# Librarian transfer ratio: fraction of removed exposure absorbed by cleansing Librarian
+WARP_LIBRARIAN_TRANSFER_RATIO = 0.10
+# Minimum transfer amount when any exposure was removed
+WARP_LIBRARIAN_TRANSFER_MIN = 1
 
 # ---------------------------------------------------------------------------
 # Scheduler settings (defaults; can be overridden in config.json under
@@ -259,6 +301,8 @@ CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
 TECHMARINE_ROLE_NAME = "Watch Techmarine"
 APOTHECARY_ROLE_NAME = "Watch Apothecary"
 LIBRARIAN_ROLE_NAME = "Watch Librarian"
+VOID_WARDEN_ROLE_NAME = "Void Warden"
+FORGEMASTER_ROLE_NAME = "Forgemaster"
 
 # Award eligibility thresholds
 ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD = 200
@@ -327,3 +371,68 @@ CHALLENGE_ROLES = [
 # ---------------------------------------------------------------------------
 # Control whether startup/shutdown status broadcasts are sent.
 BROADCAST_STATUS = True
+
+
+# ---------------------------------------------------------------------------
+# Display-name normalization
+# ---------------------------------------------------------------------------
+# Some users set Discord nicknames using "small caps" / phonetic-block unicode
+# characters (e.g. "ᴡᴀᴛᴄʜ ᴄʜᴀᴘʟᴀɪɴ sᴏғᴀ"). These code points have NO Unicode
+# compatibility decomposition, so unicodedata.normalize("NFKD", ...) leaves
+# them untouched, which breaks rank-prefix matching and styled name display.
+# This translation table maps the common stylistic variants back to ASCII.
+_DECORATIVE_LETTER_MAP = {
+    # Latin small-caps (Phonetic Extensions, Latin Extended-D, etc.)
+    "ᴀ": "A", "ʙ": "B", "ᴄ": "C", "ᴅ": "D", "ᴇ": "E",
+    "ꜰ": "F", "ɢ": "G", "ʜ": "H", "ɪ": "I", "ᴊ": "J",
+    "ᴋ": "K", "ʟ": "L", "ᴍ": "M", "ɴ": "N", "ᴏ": "O",
+    "ᴘ": "P", "ǫ": "Q", "ʀ": "R", "ꜱ": "S", "ᴛ": "T",
+    "ᴜ": "U", "ᴠ": "V", "ᴡ": "W", "x": "x",            "ʏ": "Y", "ᴢ": "Z",
+    # Cyrillic look-alike used as small-caps F
+    "ғ": "F",
+    # Bold / italic / monospace mathematical alphanumeric letters
+    # (𝐀-𝐳, 𝐴-𝑧, 𝑨-𝒛, 𝒜-𝓏, 𝓐-𝔃, 𝔄-𝔷, 𝔸-𝕫, 𝕬-𝖟, 𝖠-𝗓, 𝗔-𝘇, 𝘈-𝘻, 𝘼-𝙯, 𝙰-𝚣)
+    # We handle these via NFKD which decomposes them properly; this dict only
+    # covers the small-cap block which NFKD leaves alone.
+}
+# Build str.translate-friendly table (ord -> str)
+_DECORATIVE_TRANSLATE = {ord(k): v for k, v in _DECORATIVE_LETTER_MAP.items()}
+
+
+def _normalize_display_name(name: str) -> str:
+    """Normalize decorative unicode in a display name back to plain ASCII letters.
+
+    Handles:
+    - Small-caps / phonetic letterforms (e.g. ``ᴡᴀᴛᴄʜ`` -> ``WATCH``)
+    - Mathematical alphanumeric variants via NFKD (e.g. ``𝗁𝖾𝗅𝗅𝗈`` -> ``hello``)
+
+    Does NOT remove stud pips (●⚬▬) — callers strip those separately so they
+    can keep that step optional. Returns the input unchanged on any error.
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    try:
+        import unicodedata as _ud
+        # First pass: bold/italic/monospace mathematical letters decompose via NFKD
+        out = _ud.normalize("NFKD", name)
+        # Second pass: small-caps block (no NFKD path) — direct translation
+        out = out.translate(_DECORATIVE_TRANSLATE)
+        # Drop combining marks left over from NFKD (e.g. accents); preserve
+        # spaces and punctuation.
+        out = "".join(ch for ch in out if not _ud.combining(ch))
+        return out
+    except Exception:
+        return name
+
+
+def _strip_display_name(name: str) -> str:
+    """Normalize decorative unicode AND strip stud pips (●⚬▬). Whitespace-trimmed.
+
+    Centralizes the common pattern previously implemented inline as
+    ``display_name.replace("●", "").replace("⚬", "").strip()`` across modules.
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    out = _normalize_display_name(name)
+    out = out.replace("●", "").replace("⚬", "").replace("▬", "").strip()
+    return out

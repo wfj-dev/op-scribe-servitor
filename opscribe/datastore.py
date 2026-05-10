@@ -25,9 +25,10 @@ def _compute_stats_for_user_from_records(user_id: str, records: list[dict]) -> d
                 if last_aar_ts is None or ts > last_aar_ts:
                     last_aar_ts = ts
 
-            # Get armor penalty for this user in this record
+            # Get armor + warp penalties for this user in this record
             armor_penalties = record.get("armor_penalties") or {}
-            user_penalty = int(armor_penalties.get(user_id, 0) or 0)
+            warp_penalties = record.get("warp_penalties") or {}
+            user_penalty = int(armor_penalties.get(user_id, 0) or 0) + int(warp_penalties.get(user_id, 0) or 0)
 
             if difficulty_class in ("normal_siege", "hard_siege"):
                 bw = record.get("brother_waves") or {}

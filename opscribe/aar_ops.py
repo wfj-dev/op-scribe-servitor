@@ -27,6 +27,11 @@ from .forge_ops import (
     _roll_armor_penalty,
     _increment_aar_generation,
 )
+from .librarius_ops import (
+    _apply_warp_exposure_for_aar,
+    _get_warp_exposure_state,
+    _roll_warp_penalty,
+)
 
 
 def _b(name):
@@ -1399,6 +1404,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     # Non-siege: use base difficulty points (before penalties)
                     base_points[bid] = base_difficulty_points
         armor_penalties = {}
+        warp_penalties = {}
 
         if guild and brother_ids:
             for bid in brother_ids:
@@ -1413,14 +1419,29 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                         penalty = _roll_armor_penalty(tier, spirit_fractured)
                         if penalty > 0:
                             armor_penalties[bid] = penalty
+
+                        # Warp penalty mirrors Techmarine probabilities by exposure tier
+                        warp_state = await _get_warp_exposure_state(int(bid))
+                        warp_tier = warp_state.get("exposure_tier")
+                        warp_pen = _roll_warp_penalty(warp_tier)
+                        if warp_pen > 0:
+                            warp_penalties[bid] = warp_pen
                 except Exception:
                     pass
 
         # Store armor penalties in the record
         if armor_penalties:
             record["armor_penalties"] = armor_penalties
+        if warp_penalties:
+            record["warp_penalties"] = warp_penalties
 
         await save_aar_record(record)
+
+        # Apply warp corruption gains/spread after recording this AAR.
+        try:
+            await _apply_warp_exposure_for_aar(record, guild)
+        except Exception as e:
+            _g.logger.debug(f"Warp exposure update failed for AAR {aar_id}: {e}")
 
         # --- Armor Integrity: Run checks and post alerts AFTER saving ---
         alerts_to_post = []
