@@ -1730,9 +1730,10 @@ async def warp_cleanse(
                     f"Next cleansing available in {cd}."
                 )
             else:
+                daily_cap = _cfg_int("warding_recipient_max_per_day", WARDING_RECIPIENT_MAX_PER_DAY)
                 msg = (
                     f"**{bearer_name}** has reached the daily cleansing limit "
-                    f"({WARDING_RECIPIENT_MAX_PER_DAY} per day).\n"
+                    f"({daily_cap} per day).\n"
                     f"Next cleansing slot available in {cd}."
                 )
             await interaction.response.send_message(msg, ephemeral=True)
