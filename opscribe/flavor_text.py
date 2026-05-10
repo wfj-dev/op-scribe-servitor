@@ -1234,13 +1234,15 @@ WARP_BROTHER_TIER_ICON = {
     "catastrophic": "⚫",
 }
 
+# Librarian tiers use square icons to stay visually distinct from brother
+# circle icons in the same field/legend (parity with armor ladder shape).
 WARP_LIBRARIAN_TIER_ICON = {
-    None: "🟢",
-    "stable": "🟡",
-    "resonant": "🟠",
-    "surging": "🔴",
-    "overloaded": "💀",
-    "abyssal": "⚫",
+    None: "🟩",
+    "stable": "🟨",
+    "resonant": "🟧",
+    "surging": "🟥",
+    "overloaded": "⬛",
+    "abyssal": "🟫",
 }
 
 # Sanction status uses a 4-key ladder (sanctioned/screening_due/under_review/restricted),

@@ -270,7 +270,9 @@ def _warp_node_label(guild: "discord.Guild", data: dict, node_uid: str) -> str:
     n_is_lib = bool(nraw.get("is_librarian"))
     if n_is_lib:
         nt = _librarian_tier_for_points(npts)
-        n_icon = f"{WARP_LIBRARIAN_MARKER_ICON}{WARP_LIBRARIAN_TIER_ICON.get(nt, '🟢')}"
+        # Distinct shape (squares) already differentiates librarian tier from
+        # brother tier; rank emoji on the styled name conveys "Librarian" status.
+        n_icon = WARP_LIBRARIAN_TIER_ICON.get(nt, "🟩")
     else:
         nt = _brother_tier_for_points(npts)
         n_icon = WARP_BROTHER_TIER_ICON.get(nt, "🟢")
@@ -1095,13 +1097,32 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     super_spreader_count = 0
     brothers_needing_cleanse = 0  # any sanctioned brother (>0 pts) or warp_corrupted
     librarian_user_ids: List[int] = []
+
+    # Enumerate all active guild Librarians/Void Wardens up front so we count
+    # charges and tier population correctly even when no warp_exposure record
+    # exists yet (new librarians, never been in a cleanse/squad with corruption).
+    if guild is not None:
+        is_active_fn = _b("_is_active_participant")
+        for member in guild.members:
+            if member.bot:
+                continue
+            role_names = {r.name for r in member.roles}
+            if not (LIBRARIAN_ROLE_NAME in role_names or VOID_WARDEN_ROLE_NAME in role_names):
+                continue
+            if is_active_fn and not is_active_fn(member):
+                continue
+            librarian_user_ids.append(int(member.id))
+
+    seen_lib_ids = set(librarian_user_ids)
     for uid, raw in data.items():
         pts = int((raw or {}).get("points", 0) or 0)
         if (raw or {}).get("is_librarian"):
             lt = _librarian_tier_for_points(pts)
             librarian_tier_counts[lt] = librarian_tier_counts.get(lt, 0) + 1
             try:
-                librarian_user_ids.append(int(uid))
+                if int(uid) not in seen_lib_ids:
+                    librarian_user_ids.append(int(uid))
+                    seen_lib_ids.add(int(uid))
             except Exception:
                 pass
         else:
@@ -1117,6 +1138,12 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                     super_spreader_count += 1
             except Exception:
                 pass
+
+    # Librarians with no exposure record yet count as Stable (None tier = 0c).
+    accounted_lib_count = sum(librarian_tier_counts.values())
+    untracked_libs = max(0, len(librarian_user_ids) - accounted_lib_count)
+    if untracked_libs:
+        librarian_tier_counts[None] = librarian_tier_counts.get(None, 0) + untracked_libs
 
     # Warp Pressure = demand (brothers needing cleanse) / supply (active librarian charges).
     # Mirrors forge_pressure semantics. Stable+ librarians only count as supply
@@ -1374,34 +1401,52 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         embed.add_field(name="▸ Breach Memorial", value="\n".join(memorial_lines), inline=False)
 
     # ─── Sanction Roster + Librarian Burden (inline pair — mirrors forge Reserves+Artificers)
-    sanction_bits = []
+    sanction_labels = {
+        "screening_due": "Screening",
+        "under_review": "Review",
+        "restricted": "Restricted",
+    }
+    sanction_lines = []
     for key in ("screening_due", "under_review", "restricted"):
         count = bucket_counts.get(key, 0)
         if count:
-            sanction_bits.append(f"{WARP_SANCTION_STATUS_ICON[key]} {count}")
-    flag_bits = []
+            sanction_lines.append(
+                f"{WARP_SANCTION_STATUS_ICON[key]} {sanction_labels[key]}: **{count}**"
+            )
     if corrupted_count:
-        flag_bits.append(f"{WARP_CORRUPTED_ICON} {corrupted_count}")
+        sanction_lines.append(f"{WARP_CORRUPTED_ICON} Corrupted: **{corrupted_count}**")
     if super_spreader_count:
-        flag_bits.append(f"{WARP_SPREADER_ICON} {super_spreader_count}")
-    sanction_value_lines = []
-    if sanction_bits:
-        sanction_value_lines.append(" · ".join(sanction_bits))
-    if flag_bits:
-        sanction_value_lines.append(" · ".join(flag_bits))
+        sanction_lines.append(f"{WARP_SPREADER_ICON} Super-spreaders: **{super_spreader_count}**")
     embed.add_field(
         name="▸ Sanction Roster",
-        value="\n".join(sanction_value_lines) if sanction_value_lines else "All clear.",
+        value="\n".join(sanction_lines) if sanction_lines else "All clear.",
         inline=True,
     )
-    lib_bits = []
-    for tier in (None, *WARP_LIBRARIAN_TIERS):
+    lib_labels = {
+        None: "Stable",
+        "stable": "Stable",
+        "resonant": "Resonant",
+        "surging": "Surging",
+        "overloaded": "Overloaded",
+        "abyssal": "Abyssal",
+    }
+    lib_lines = []
+    # Collapse None+stable into a single "Stable" row (both are 0–4 cycles bracket).
+    none_n = librarian_tier_counts.get(None, 0)
+    stable_n = librarian_tier_counts.get("stable", 0)
+    if none_n + stable_n:
+        lib_lines.append(
+            f"{WARP_LIBRARIAN_TIER_ICON.get(None, '🟩')} Stable: **{none_n + stable_n}**"
+        )
+    for tier in ("resonant", "surging", "overloaded", "abyssal"):
         n = librarian_tier_counts.get(tier, 0)
         if n:
-            lib_bits.append(f"{WARP_LIBRARIAN_TIER_ICON.get(tier, '🟢')} {n}")
+            lib_lines.append(
+                f"{WARP_LIBRARIAN_TIER_ICON.get(tier, '🟩')} {lib_labels[tier]}: **{n}**"
+            )
     embed.add_field(
         name="▸ Librarian Burden",
-        value=" · ".join(lib_bits) if lib_bits else "Unburdened.",
+        value="\n".join(lib_lines) if lib_lines else "Unburdened.",
         inline=True,
     )
 
@@ -1409,10 +1454,13 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(
         name="▸ Key",
         value=(
-            "🟡 Screening 🟠 Review 🔴 Restricted | "
-            f"{WARP_CORRUPTED_ICON} Corrupted {WARP_SPREADER_ICON} Spreader | "
-            "Librarian: 🟡 Stable 🟠 Resonant 🔴 Surging 💀 Overloaded ⚫ Abyssal | "
-            "c = cycles since cleansing"
+            "**Brothers** (circles): 🟢 Sanctioned · 🟡 Screening · 🟠 Review · 🔴 Restricted\n"
+            "**Librarians** (squares): 🟩 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
+            "`Nc` = cumulative warp cycles\n"
+            "_Cycles accrue from BL participation (+1 absolute / +2 hard-strat / +3 omega) "
+            "and contagion (+1 per spread). Librarian cycles decay over time; brothers'  "
+            "must be cleansed via `/cleanse_brother`._"
         ),
         inline=False,
     )
@@ -2458,8 +2506,8 @@ async def warp_status(interaction: discord.Interaction):
         if str(uid) in covered_uids:
             continue
         if is_lib:
-            tier_icon = WARP_LIBRARIAN_TIER_ICON.get(tier, "🟢")
-            marker = f"{WARP_LIBRARIAN_MARKER_ICON}{tier_icon}"
+            tier_icon = WARP_LIBRARIAN_TIER_ICON.get(tier, "�")
+            marker = tier_icon
         else:
             tier_icon = WARP_BROTHER_TIER_ICON.get(tier, "🟢")
             marker = tier_icon
@@ -2535,9 +2583,10 @@ async def warp_status(interaction: discord.Interaction):
     embed.add_field(
         name="▸ Key",
         value=(
-            "🟡 Tainted 🟠 Exposed 🔴 Volatile 💀 Breached ⚫ Catastrophic | "
-            f"{WARP_CORRUPTED_ICON} Corrupted {WARP_SPREADER_ICON} Spreader "
-            f"{WARP_LIBRARIAN_MARKER_ICON} Librarian | c = cycles | "
+            "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
+            "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
+            "`Nc` = cumulative warp cycles (BL: +1 absolute / +2 hard-strat / +3 omega; +1 per spread)\n"
             "trace deeper with `/warp_scry`"
         ),
         inline=False,
@@ -2689,9 +2738,10 @@ async def warp_scry(interaction: discord.Interaction, member: discord.Member):
     embed.add_field(
         name="▸ Key",
         value=(
-            "🟡 Tainted 🟠 Exposed 🔴 Volatile 💀 Breached ⚫ Catastrophic | "
-            f"{WARP_CORRUPTED_ICON} Corrupted {WARP_SPREADER_ICON} Spreader "
-            f"{WARP_LIBRARIAN_MARKER_ICON} Librarian | c = cycles"
+            "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
+            "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
+            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
+            "`Nc` = cumulative warp cycles (BL: +1 absolute / +2 hard-strat / +3 omega; +1 per spread)"
         ),
         inline=False,
     )
