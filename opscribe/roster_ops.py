@@ -328,6 +328,37 @@ def _company_scope_ring(
     return 2
 
 
+def _is_active_participant(member: Optional[discord.Member]) -> bool:
+    """Return True if ``member`` should participate in armor/warp systems.
+
+    A member counts as an active participant when they:
+      - Hold at least one Watch rank role (anything in RANK_HONORIFICS), AND
+      - Are not in Reserves, AND
+      - Are not Interred (sarcophagus inactive — Honored/Venerable Dreadnoughts
+        remain active until interred).
+
+    Bots and members without a Watch rank are excluded. Used as the single
+    authority for "should this member's AAR record drive armor damage / warp
+    exposure / appear in /armor_status / /warp_status?" — keeps both systems
+    in sync on inactive vs. participant status.
+    """
+    if member is None or getattr(member, "bot", False):
+        return False
+    roles = getattr(member, "roles", []) or []
+    role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
+    role_ids = {getattr(r, "id", 0) for r in roles}
+    # Must have at least one ranked role
+    if not (role_names & set(RANK_HONORIFICS.keys())):
+        return False
+    # Excluded: Reserves
+    if RESERVES_ROLE_ID in role_ids or "reserves" in {n.lower() for n in role_names}:
+        return False
+    # Excluded: Interred Brother (inactive sarcophagus)
+    if INTERRED_BROTHER_ROLE_ID in role_ids or "Interred Brother" in role_names:
+        return False
+    return True
+
+
 def _find_company_command_staff(
     guild: discord.Guild, company_name: str
 ) -> Tuple[List[discord.Member], List[discord.Member]]:
@@ -7537,6 +7568,7 @@ __all__ = [
     "_extract_company_short_name",
     "_orphan_companies_for_role",
     "_company_scope_ring",
+    "_is_active_participant",
     "_WATCH_COMPANY_ROLE_NAMES",
     "_find_company_command_staff",
     "_find_kt_sergeant",

@@ -2000,6 +2000,37 @@ async def _post_armor_alert(
         _g.logger.error(f"Failed to post armor alert for {member.display_name}: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Forge / Armor subsystem override (kill switch)
+# ---------------------------------------------------------------------------
+
+def _load_forge_override() -> dict:
+    try:
+        if not os.path.exists(FORGE_OVERRIDE_PATH):
+            return {"enabled": True}
+        with open(FORGE_OVERRIDE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f) or {"enabled": True}
+    except Exception:
+        return {"enabled": True}
+
+
+def _save_forge_override(data: dict):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(FORGE_OVERRIDE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+async def _is_forge_enabled() -> bool:
+    try:
+        async with _g.FORGE_OVERRIDE_LOCK:
+            return bool(_load_forge_override().get("enabled", True))
+    except Exception:
+        return True
+
+
 async def _process_armor_integrity_for_aar(
     brother_id: str,
     base_points: int,
@@ -2034,15 +2065,25 @@ async def _process_armor_integrity_for_aar(
     alert_info = None
     penalty = 0
 
+    # Honor forge subsystem kill switch (parity with librarius override).
+    if not await _is_forge_enabled():
+        return 0, None
+
     try:
         member = guild.get_member(int(brother_id))
         if not member:
             return 0, None
 
-        # Must have a Watch rank role to be in the armor system
-        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-        if not has_rank:
-            return 0, None
+        # Must be an active participant (ranked, non-Reserves, non-Interred).
+        # Symmetric with the warp AAR hook in librarius_ops.
+        is_active_fn = _b("_is_active_participant")
+        if is_active_fn:
+            if not is_active_fn(member):
+                return 0, None
+        else:
+            # Fallback: any rank role (legacy behavior)
+            if not any(r.name in RANK_HONORIFICS for r in member.roles):
+                return 0, None
 
         # Check current damage tier from roles
         current_tier = _b("_get_member_damage_tier")(member)
@@ -3880,6 +3921,13 @@ async def _attest(
 ):
     import random
 
+    if not await _is_forge_enabled():
+        await interaction.response.send_message(
+            "The Techmarine subsystem is currently disabled by Forgemaster decree.",
+            ephemeral=True,
+        )
+        return
+
     # Permission check: caller must be techmarine or forgemaster to run command
     allowed, _caller_role_key = _b("_is_techmarine_or_forgemaster")(interaction.user)
     if not allowed:
@@ -4772,10 +4820,14 @@ async def _show_armor_leaderboard(
         if not member:
             continue
 
-        # Skip members without a Watch rank role
-        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-        if not has_rank:
-            continue
+        # Skip non-participants (no rank, Reserves, Interred).
+        is_active_fn = _b("_is_active_participant")
+        if is_active_fn:
+            if not is_active_fn(member):
+                continue
+        else:
+            if not any(r.name in RANK_HONORIFICS for r in member.roles):
+                continue
 
         member_company = _b("_get_member_company_name")(member)
         # Determine ring: caller_company=None means fortress-wide (everyone in ring 0)
@@ -5024,6 +5076,12 @@ async def _show_armor_leaderboard(
 )
 async def _armor_status(interaction: discord.Interaction):
     """Display armor integrity leaderboard scoped by role."""
+    if not await _is_forge_enabled():
+        await interaction.response.send_message(
+            "The Techmarine subsystem is currently disabled.", ephemeral=True
+        )
+        return
+
     # Permission check: caller must be techmarine or forgemaster
     allowed, role_key = _b("_is_techmarine_or_forgemaster")(interaction.user, command_name="armor_status")
     if not allowed:
@@ -5086,6 +5144,12 @@ async def _requisition_supplies(
     requisition_type: str = "blessing_charge",
 ):
     """Techmarine command to requisition supplies from the forge pool."""
+    if not await _is_forge_enabled():
+        await interaction.response.send_message(
+            "The Techmarine subsystem is currently disabled.", ephemeral=True
+        )
+        return
+
     # Permission check: caller must be techmarine or forgemaster
     allowed, role_key = _b("_is_techmarine_or_forgemaster")(interaction.user, command_name="requisition_supplies")
     if not allowed:
@@ -5419,18 +5483,21 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Brothers needing attention: damaged+ OR nominal at 5+ cycles (entering risk zone)
     brothers_needing_attention = 0
 
+    is_active_fn = _b("_is_active_participant")
     for member in guild.members:
-        if member.bot:
-            continue
-        # Check if member has any rank role (indicating they're tracked)
-        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-        if not has_rank:
-            continue
-        # Exclude Reserves members
-        role_ids = {r.id for r in member.roles}
-        role_names = {r.name.lower() for r in member.roles}
-        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
-            continue
+        if is_active_fn:
+            if not is_active_fn(member):
+                continue
+        else:
+            # Fallback: legacy ranked + non-Reserves filter
+            if member.bot:
+                continue
+            if not any(r.name in RANK_HONORIFICS for r in member.roles):
+                continue
+            role_ids = {r.id for r in member.roles}
+            role_names = {r.name.lower() for r in member.roles}
+            if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                continue
 
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
@@ -5478,11 +5545,12 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
             member = guild.get_member(int(member_id_str))
             if not member:
                 return False
-            # Must have a Watch rank role
-            has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-            if not has_rank:
+            is_active_fn = _b("_is_active_participant")
+            if is_active_fn:
+                return bool(is_active_fn(member))
+            # Fallback: legacy ranked + non-Reserves filter
+            if not any(r.name in RANK_HONORIFICS for r in member.roles):
                 return False
-            # Must not be in Reserves
             role_ids = {r.id for r in member.roles}
             role_names = {r.name.lower() for r in member.roles}
             if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
@@ -5583,18 +5651,20 @@ async def _build_forge_chronicle_embed(guild: discord.Guild) -> discord.Embed:
     # Section 3: Watchlist (5 random brothers with armor)
     # ─────────────────────────────────────────────────────────────
     watchlist_entries = []
+    is_active_fn_wl = _b("_is_active_participant")
     for member in guild.members:
-        if member.bot:
-            continue
-        has_rank = any(r.name in RANK_HONORIFICS for r in member.roles)
-        if not has_rank:
-            continue
-
-        # Exclude Reserves members (same as Machine Spirits section)
-        role_ids = {r.id for r in member.roles}
-        role_names = {r.name.lower() for r in member.roles}
-        if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
-            continue
+        if is_active_fn_wl:
+            if not is_active_fn_wl(member):
+                continue
+        else:
+            if member.bot:
+                continue
+            if not any(r.name in RANK_HONORIFICS for r in member.roles):
+                continue
+            role_ids = {r.id for r in member.roles}
+            role_names = {r.name.lower() for r in member.roles}
+            if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                continue
 
         user_id_str = str(member.id)
         state = armor_data.get(user_id_str, {})
@@ -6114,6 +6184,12 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
     """Post or update the Forge Chronicle dashboard in the current channel."""
     # Defer immediately to avoid 3-second timeout
     await interaction.response.defer(ephemeral=True)
+
+    if not await _is_forge_enabled():
+        await interaction.followup.send(
+            "The Techmarine subsystem is currently disabled.", ephemeral=True
+        )
+        return
 
     # Permission check: uses config command_permissions (Forgemaster only)
     if not _b("check_command_permission")(interaction.user, "forge_chronicle"):
@@ -7120,6 +7196,37 @@ def _get_thread_reply_text(
 
 
 # ---------------------------------------------------------------------------
+# /forge_override — Forgemaster-only kill switch for the forge / armor subsystem
+# ---------------------------------------------------------------------------
+
+@_g.bot.tree.command(
+    name="forge_override",
+    description="Enable or disable the Techmarine / armor subsystem (Forgemaster only).",
+)
+@app_commands.describe(enabled="True to enable, False to disable")
+async def _forge_override(interaction: discord.Interaction, enabled: bool):
+    check = _b("check_command_permission")
+    if not (check and check(interaction.user, "forge_override")):
+        await interaction.response.send_message(
+            "Only the Forgemaster may toggle the Techmarine subsystem.", ephemeral=True
+        )
+        return
+    try:
+        async with _g.FORGE_OVERRIDE_LOCK:
+            _save_forge_override({
+                "enabled": bool(enabled),
+                "set_by": str(interaction.user.id),
+                "ts": datetime.utcnow().isoformat(),
+            })
+    except Exception:
+        pass
+    state_word = "ENABLED" if enabled else "DISABLED"
+    await interaction.response.send_message(
+        f"Techmarine subsystem **{state_word}**.", ephemeral=True
+    )
+
+
+# ---------------------------------------------------------------------------
 # __all__: export all names needed by tests and bot.py re-imports.
 # Must include underscore-prefixed names (Python's `import *` skips them
 # by default; __all__ overrides that behaviour).
@@ -7165,6 +7272,10 @@ __all__ = [
     "_show_armor_leaderboard",
     "_post_armor_alert",
     "_process_armor_integrity_for_aar",
+    # ── Forge override (kill switch) ─────────────────────────────────────────
+    "_load_forge_override",
+    "_save_forge_override",
+    "_is_forge_enabled",
     # ── Rites / machine spirits ──────────────────────────────────────────────
     "_load_rites",
     "_save_rites",
