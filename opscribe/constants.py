@@ -43,6 +43,7 @@ CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
 FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
 FORGE_CHRONICLE_PATH = os.path.join(DATA_DIR, "forge_chronicle.json")
+FORGE_OVERRIDE_PATH = os.path.join(DATA_DIR, "forge_override.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
 # Librarian / Warp Corruption subsystem
 WARP_EXPOSURE_PATH = os.path.join(DATA_DIR, "warp_exposure.json")

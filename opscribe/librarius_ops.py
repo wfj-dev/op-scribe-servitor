@@ -931,19 +931,25 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     librarian_stats: Dict[str, Dict[str, int]] = chron.get("librarian_stats") or {}
 
     # Sanctioned % — fortress-wide clean fraction (mirrors forge nominal %).
-    # Counts only ranked, non-Reserves members.
+    # Counts only active participants (ranked, non-Reserves, non-Interred).
     clean_pct = 100.0
     if guild is not None:
+        is_active_fn = _b("_is_active_participant")
         total_brothers = 0
         for member in guild.members:
-            if member.bot:
-                continue
-            if not any(r.name in RANK_HONORIFICS for r in member.roles):
-                continue
-            role_ids = {r.id for r in member.roles}
-            role_names = {(r.name or "").lower() for r in member.roles}
-            if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
-                continue
+            if is_active_fn:
+                if not is_active_fn(member):
+                    continue
+            else:
+                # Fallback if helper unavailable
+                if member.bot:
+                    continue
+                if not any(r.name in RANK_HONORIFICS for r in member.roles):
+                    continue
+                role_ids = {r.id for r in member.roles}
+                role_names = {(r.name or "").lower() for r in member.roles}
+                if RESERVES_ROLE_ID in role_ids or "reserves" in role_names:
+                    continue
             total_brothers += 1
         if total_brothers > 0:
             clean_pct = max(0.0, (total_brothers - brothers_needing_cleanse) / total_brothers * 100)
@@ -1258,7 +1264,17 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
 
             # Hydrate states for all squad members
             states: Dict[str, dict] = {}
+            is_active_fn = _b("_is_active_participant")
             for bid in brother_ids:
+                # Skip non-participants (no rank, Reserves, Interred) — symmetric
+                # with armor's _process_armor_integrity_for_aar gate.
+                if guild is not None and is_active_fn:
+                    try:
+                        m = guild.get_member(int(bid))
+                    except Exception:
+                        m = None
+                    if m is None or not is_active_fn(m):
+                        continue
                 base = _default_exposure_state()
                 state = dict(data.get(str(bid), base))
                 for k, v in base.items():
@@ -2033,6 +2049,11 @@ async def warp_status(interaction: discord.Interaction):
             member = None
         if member is None:
             continue
+        # Skip non-participants (no rank, Reserves, Interred) — symmetric with
+        # /armor_status and the warp AAR hook.
+        is_active_fn = _b("_is_active_participant")
+        if is_active_fn and not is_active_fn(member):
+            continue
         pts = int((raw or {}).get("points", 0) or 0)
         if pts <= 0:
             continue
@@ -2216,6 +2237,16 @@ async def warp_scry(interaction: discord.Interaction, member: discord.Member):
     guild = interaction.guild
     if guild is None:
         await interaction.response.send_message("Guild context required.", ephemeral=True)
+        return
+
+    # Target must be an active participant (ranked, not Reserves, not Interred).
+    is_active_fn = _b("_is_active_participant")
+    if is_active_fn and not is_active_fn(member):
+        await interaction.response.send_message(
+            f"**{member.display_name}** is not an active participant in the Librarium watch. "
+            "There are no warp-currents to trace.",
+            ephemeral=True,
+        )
         return
 
     # Authority check: librarians may only scry brothers in their own company
