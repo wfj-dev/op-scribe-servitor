@@ -1801,18 +1801,16 @@ async def warp_cleanse(
                 return
             contributors = [(int(attestor.id), charges_required)]
         else:
-            combined_charges = attestor_charges + invoker_charges
             if attestor_charges >= charges_required:
                 contributors = [(int(attestor.id), charges_required)]
             elif attestor_charges == 0 and invoker_charges >= charges_required:
                 attestor = interaction.user
                 contributors = [(invoker_id, charges_required)]
-            elif combined_charges >= charges_required:
+            elif attestor_charges + invoker_charges >= charges_required:
                 attestor_contribution = attestor_charges
                 invoker_contribution = charges_required - attestor_charges
                 contributors = [(int(attestor.id), attestor_contribution)]
-                if invoker_contribution > 0:
-                    contributors.append((invoker_id, invoker_contribution))
+                contributors.append((invoker_id, invoker_contribution))
             else:
                 await interaction.response.send_message(
                     "Both the attesting Librarian and your warding pools are depleted. "
