@@ -17,6 +17,7 @@ import sys as _sys
 import statistics
 
 from .constants import *  # noqa: F401,F403
+from .constants import _strip_display_name
 from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
