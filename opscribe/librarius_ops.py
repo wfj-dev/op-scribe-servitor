@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Tuple
 import sys as _sys
 
 from .constants import *  # noqa: F401,F403
+from .constants import _strip_display_name
 from .flavor_text import *  # noqa: F401,F403
 from .flavor_text import _warp_sanction_key_for_points  # private name, not re-exported by *
 from .permissions import *  # noqa: F401,F403
