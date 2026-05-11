@@ -1,3 +1,3 @@
 """OP-Scribe Servitor - Discord Bot Package"""
 
-__version__ = "2.5.3"
+__version__ = "2.5.4"

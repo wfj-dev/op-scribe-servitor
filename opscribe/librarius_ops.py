@@ -1625,9 +1625,10 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(
         name="▸ Key",
         value=(
-            "� Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic · "
+            "🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
             f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
-            "Epistolaries `(N)` = available charges"
+            "Epistolaries `(N)` = available charges\n"
+            "Rites: 🧿 Full · 🌗 Partial · ⚡ Backlash"
         ),
         inline=False,
     )
@@ -2741,7 +2742,7 @@ async def warp_status(interaction: discord.Interaction):
         if str(uid) in covered_uids:
             continue
         if is_lib:
-            tier_icon = WARP_LIBRARIAN_TIER_ICON.get(tier, "�")
+            tier_icon = WARP_LIBRARIAN_TIER_ICON.get(tier, "🟩")
             marker = tier_icon
         else:
             tier_icon = WARP_BROTHER_TIER_ICON.get(tier, "🟢")
