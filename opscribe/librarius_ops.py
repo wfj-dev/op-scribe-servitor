@@ -1344,6 +1344,191 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     if memorial_lines:
         embed.add_field(name="▸ Breach Memorial", value="\n".join(memorial_lines), inline=False)
 
+    # ─── Ward Highlights (curated 2-3 line digest — no Forge analog; librarium-
+    # specific facets distilled from cleanse_history + librarian_stats so the
+    # eye lands on something other than recency.)
+    highlight_lines: List[str] = []
+    # Vigil: librarian with the longest *current* consecutive non-backlash streak.
+    try:
+        streaks: Dict[str, int] = {}
+        # Per-librarian, walk newest → oldest; count until first backlash.
+        per_lib: Dict[str, List[dict]] = {}
+        for entry in cleanse_history:
+            lib_id = str(entry.get("librarian_id") or "")
+            if not lib_id:
+                continue
+            per_lib.setdefault(lib_id, []).append(entry)
+        for lib_id, entries in per_lib.items():
+            # Newest first
+            try:
+                entries_sorted = sorted(
+                    entries,
+                    key=lambda e: e.get("ts", ""),
+                    reverse=True,
+                )
+            except Exception:
+                entries_sorted = list(reversed(entries))
+            streak = 0
+            for e in entries_sorted:
+                if e.get("outcome") == "backlash":
+                    break
+                streak += 1
+            streaks[lib_id] = streak
+        if streaks:
+            best_lib, best_streak = max(streaks.items(), key=lambda kv: kv[1])
+            if best_streak >= 3:
+                try:
+                    name = _b("_format_member_styled")(guild, best_lib, include_chapter=True) \
+                        if (guild and _b("_format_member_styled")) else f"<@{best_lib}>"
+                except Exception:
+                    name = f"<@{best_lib}>"
+                highlight_lines.append(
+                    f"🛡️ **Vigil**: {name} · {best_streak} clean rites running"
+                )
+    except Exception:
+        pass
+    # Purge: largest single-rite removed value in last 28d.
+    try:
+        purge_cutoff = datetime.utcnow() - timedelta(days=28)
+        best_purge = None  # (removed, entry, ts)
+        for entry in cleanse_history:
+            try:
+                ts = datetime.fromisoformat(entry.get("ts", ""))
+            except Exception:
+                continue
+            if ts < purge_cutoff:
+                continue
+            removed = int(entry.get("removed", 0) or 0)
+            if removed <= 0:
+                continue
+            if best_purge is None or removed > best_purge[0]:
+                best_purge = (removed, entry, ts)
+        if best_purge:
+            removed, entry, ts = best_purge
+            age_days = max(0, (datetime.utcnow() - ts).days)
+            try:
+                lname = _b("_format_member_styled")(
+                    guild, str(entry.get("librarian_id")), include_chapter=True
+                ) if (guild and _b("_format_member_styled")) else f"<@{entry.get('librarian_id')}>"
+            except Exception:
+                lname = f"<@{entry.get('librarian_id')}>"
+            highlight_lines.append(
+                f"⚔️ **Purge**: {lname} · {removed}c removed ({age_days}d ago)"
+            )
+    except Exception:
+        pass
+    # First Light: most-recent full cleanse (outcome == "full").
+    try:
+        latest_full = None
+        for entry in reversed(cleanse_history):
+            if entry.get("outcome") != "full":
+                continue
+            try:
+                ts = datetime.fromisoformat(entry.get("ts", ""))
+            except Exception:
+                continue
+            latest_full = (ts, entry)
+            break
+        if latest_full:
+            ts, entry = latest_full
+            age_days = max(0, (datetime.utcnow() - ts).days)
+            age_str = "today" if age_days == 0 else f"{age_days}d ago"
+            try:
+                bname = _b("_format_member_styled")(
+                    guild, str(entry.get("bearer_id")), include_chapter=True
+                ) if (guild and _b("_format_member_styled")) else f"<@{entry.get('bearer_id')}>"
+            except Exception:
+                bname = f"<@{entry.get('bearer_id')}>"
+            highlight_lines.append(f"✨ **First Light**: {bname} cleansed clean · {age_str}")
+    except Exception:
+        pass
+    if highlight_lines:
+        embed.add_field(
+            name="▸ Ward Highlights",
+            value="\n".join(highlight_lines[:3]),
+            inline=False,
+        )
+
+    # ─── Contagion Watch (no Forge analog — surfaces active spread topology
+    # rather than per-brother severity. Three quick metrics: spreaders, longest
+    # active chain, and brothers already in the high-tier band.)
+    contagion_lines: List[str] = []
+    try:
+        # 1) Active super-spreaders count (already computed at top of builder).
+        if super_spreader_count > 0:
+            contagion_lines.append(
+                f"🕸️ **Spreaders active**: {super_spreader_count} · "
+                f"threshold ≥{_cfg_int('super_spreader_threshold', 3)} infections / 24h"
+            )
+
+        # 2) Largest active downstream chain (BFS over spread edges).
+        def _full_downstream(root_uid: str, states: dict) -> int:
+            visited = {root_uid}
+            stack = [root_uid]
+            while stack:
+                cur = stack.pop()
+                try:
+                    children = _compute_outgoing_infections(
+                        int(cur), states=states, window_hours=24
+                    )
+                except Exception:
+                    children = []
+                for tgt in children:
+                    if tgt not in visited:
+                        visited.add(tgt)
+                        stack.append(tgt)
+            return len(visited) - 1
+
+        biggest = None  # (count, uid)
+        for uid, raw in data.items():
+            if (raw or {}).get("is_librarian"):
+                continue
+            try:
+                count = _full_downstream(str(uid), data)
+            except Exception:
+                count = 0
+            if count <= 0:
+                continue
+            if biggest is None or count > biggest[0]:
+                biggest = (count, str(uid))
+        if biggest:
+            count, root_uid = biggest
+            try:
+                rname = _b("_format_member_styled")(guild, root_uid, include_chapter=True) \
+                    if (guild and _b("_format_member_styled")) else f"<@{root_uid}>"
+            except Exception:
+                rname = f"<@{root_uid}>"
+            contagion_lines.append(
+                f"🌳 **Largest chain**: {rname} → +{count} downstream"
+            )
+
+        # 3) Brothers already in the high-severity band (volatile / breached /
+        # catastrophic) — distinct from the sanction watchlist which uses
+        # different thresholds.
+        high_tier_count = 0
+        for uid, raw in data.items():
+            if (raw or {}).get("is_librarian"):
+                continue
+            pts = int((raw or {}).get("points", 0) or 0)
+            if pts <= 0:
+                continue
+            btier = _brother_tier_for_points(pts)
+            if btier in ("volatile", "breached", "catastrophic"):
+                high_tier_count += 1
+        if high_tier_count > 0:
+            contagion_lines.append(
+                f"🚨 **In Volatile+**: {high_tier_count} brother"
+                f"{'s' if high_tier_count != 1 else ''} above the cleanse-priority line"
+            )
+    except Exception:
+        pass
+    if contagion_lines:
+        embed.add_field(
+            name="▸ Contagion Watch",
+            value="\n".join(contagion_lines[:3]),
+            inline=False,
+        )
+
     # ─── Warp Reservoir + Epistolaries (inline pair — mirrors forge Reserves+Artificers)
     # Reservoir: aggregate charge capacity across all eligible librarians
     # (excluding overloaded/abyssal, who cannot cleanse) plus a 7-day net
@@ -2573,6 +2758,80 @@ async def warp_status(interaction: discord.Interaction):
         title="᛭⋅ WARP STATUS ⋅᛭",
         color=0x9B59B6,
     )
+
+    # ─── Your Vigil (personal panel — librarians only; void wardens / debug
+    # callers have no charge pool of their own, so this section is skipped).
+    if caller_role == "librarian":
+        try:
+            caller_state = data.get(str(interaction.user.id)) or {}
+            caller_pts = int(caller_state.get("points", 0) or 0)
+            caller_tier = _librarian_tier_for_points(caller_pts)
+            tier_icon = WARP_LIBRARIAN_TIER_ICON.get(caller_tier, "🟩")
+            tier_label = WARP_LIBRARIAN_TIER_DESCRIPTIONS.get(
+                caller_tier, ("CLEAR", "")
+            )[0].title()
+            pool_max_self = _cfg_int("warding_pool_max", WARDING_POOL_MAX)
+            own_charges = await _get_librarian_available_charges(int(interaction.user.id))
+            # Next-regen ETA: regen window minus age of oldest active (used) charge.
+            pool_state = await _get_librarian_pool_state(int(interaction.user.id))
+            active_ts = _filter_active_warding_timestamps(
+                pool_state.get("warding_timestamps") or []
+            )
+            regen_text = ""
+            if active_ts:
+                try:
+                    regen_seconds = _cfg_float(
+                        "warding_pool_regen_hours", WARDING_POOL_REGEN_HOURS
+                    ) * 3600
+                    oldest = min(
+                        datetime.fromisoformat(ts) for ts in active_ts if ts
+                    )
+                    remaining = timedelta(seconds=regen_seconds) - (
+                        datetime.utcnow() - oldest
+                    )
+                    total_s = int(remaining.total_seconds())
+                    if total_s > 0:
+                        hrs, mins = divmod(total_s // 60, 60)
+                        if hrs > 0:
+                            regen_text = f" · next +1 in {hrs}h{mins:02d}m"
+                        else:
+                            regen_text = f" · next +1 in {mins}m"
+                except Exception:
+                    pass
+            # Today's rites given (UTC day) sourced from the chronicle.
+            today_start = datetime.utcnow().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            cleanses_today = 0
+            backlashes_today = 0
+            try:
+                async with _g.LIBRARIUM_CHRONICLE_LOCK:
+                    _vigil_chron = _load_librarium_chronicle()
+                for _entry in (_vigil_chron.get("cleanse_history") or []):
+                    if str(_entry.get("librarian_id")) != str(interaction.user.id):
+                        continue
+                    try:
+                        _ts = datetime.fromisoformat(_entry.get("ts", ""))
+                    except Exception:
+                        continue
+                    if _ts < today_start:
+                        continue
+                    cleanses_today += 1
+                    if _entry.get("outcome") == "backlash":
+                        backlashes_today += 1
+            except Exception:
+                pass
+            vigil_value = (
+                f"{tier_icon} **{tier_label}** · {caller_pts}c · "
+                f"🧿 {own_charges}/{pool_max_self} charges{regen_text}\n"
+                f"Today: {cleanses_today} rite"
+                f"{'s' if cleanses_today != 1 else ''} · "
+                f"{backlashes_today} backlash"
+                f"{'es' if backlashes_today != 1 else ''}"
+            )
+            embed.add_field(name="▸ Your Vigil", value=vigil_value, inline=False)
+        except Exception:
+            pass
 
     # Calculate available charges for Librarians.
     if caller_role == "forgemaster_debug":
