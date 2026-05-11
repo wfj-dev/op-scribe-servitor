@@ -1274,9 +1274,11 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(name="▸ Watchlist", value="\n".join(watch_lines), inline=False)
 
     # ─── Recent Rites (last 5 cleanses — mirrors forge Recent Rites)
+    # Icons chosen to be thematically distinct from severity-tier circles
+    # used in Watchlist/Key (🟡=tainted), avoiding ambiguity.
     outcome_display = {
-        "full": ("✅", "Full Cleanse"),
-        "partial": ("🟡", "Partial"),
+        "full": ("🧿", "Full Cleanse"),
+        "partial": ("🌗", "Partial"),
         "backlash": ("⚡", "Backlash"),
     }
     recent_lines = []
@@ -1383,7 +1385,8 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                 except Exception:
                     name = f"<@{best_lib}>"
                 highlight_lines.append(
-                    f"🛡️ **Vigil**: {name} · {best_streak} clean rites running"
+                    f"🛡️ **Vigil** _(longest clean streak)_: {name} · "
+                    f"{best_streak} rites without backlash"
                 )
     except Exception:
         pass
@@ -1413,7 +1416,8 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             except Exception:
                 lname = f"<@{entry.get('librarian_id')}>"
             highlight_lines.append(
-                f"⚔️ **Purge**: {lname} · {removed}c removed ({age_days}d ago)"
+                f"⚔️ **Purge** _(biggest single rite, 28d)_: {lname} · "
+                f"{removed}c removed ({age_days}d ago)"
             )
     except Exception:
         pass
@@ -1439,7 +1443,9 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                 ) if (guild and _b("_format_member_styled")) else f"<@{entry.get('bearer_id')}>"
             except Exception:
                 bname = f"<@{entry.get('bearer_id')}>"
-            highlight_lines.append(f"✨ **First Light**: {bname} cleansed clean · {age_str}")
+            highlight_lines.append(
+                f"✨ **First Light** _(latest full cleanse)_: {bname} · {age_str}"
+            )
     except Exception:
         pass
     if highlight_lines:
