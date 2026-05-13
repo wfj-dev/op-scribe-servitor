@@ -2673,6 +2673,12 @@ async def warp_status(interaction: discord.Interaction):
     #   • Void Warden / Forgemaster (debug) → HighCom + Librarians
     #   • Librarian → own company
     #   • Anyone else → no bracket (flat list)
+    #
+    # "Needs cleansing" parity with armor's "actually damaged" rule:
+    # rows are already pre-filtered upstream to pts > 0 (anyone at the
+    # "sanctioned" / nominal tier is excluded before the bracket gate runs),
+    # so the only thing in-bracket here is a brother with screening_due+
+    # sanction OR warp_corrupted set. Either condition keeps the gate closed.
     bracket_fn = _b("_compute_authority_bracket_member_ids")
     authority_bracket_ids = (
         bracket_fn(interaction.user, guild, caller_role, "librarian")
@@ -2687,7 +2693,18 @@ async def warp_status(interaction: discord.Interaction):
                     in_bracket_rows.append(r)
             except (TypeError, ValueError):
                 continue
-        if in_bracket_rows:
+        # Row tuple: (ring, pts, uid, name, tier, is_lib, corrupted, ...)
+        # Needs attention = non-librarian brother with pts > 0 OR warp_corrupted.
+        # Librarians' own exposure is private and does NOT keep the gate
+        # closed for their authority's view.
+        def _needs_cleansing(r) -> bool:
+            _ring, _pts, _uid, _name, _tier, _is_lib, _corrupted = r[:7]
+            if _is_lib:
+                return False
+            return _pts > 0 or bool(_corrupted)
+
+        any_in_bracket_tainted = any(_needs_cleansing(r) for r in in_bracket_rows)
+        if any_in_bracket_tainted:
             rows = in_bracket_rows
             bracket_suppressed_out_of_bracket = True
 

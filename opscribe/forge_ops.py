@@ -4860,16 +4860,27 @@ async def _show_armor_leaderboard(
     # Sort by (ring asc, risk_score desc) — own-company first, then orphans, then peers.
     risk_list.sort(key=lambda x: (x[5], -x[3]))
 
-    # Authority-bracket filter: if the viewer's bracket has any brother needing
-    # attention (risk_score > 0), suppress out-of-bracket entries entirely.
-    # Only when the in-bracket cohort is fully clear do we fall through to show
-    # the wider fortress. This is independent of (and runs after) the ring-based
-    # gap-filling sort above. authority_bracket_ids being None disables the gate.
+    # Authority-bracket filter: if the viewer's bracket has any brother whose
+    # armor is *actually damaged* (damaged/compromised/critical tier, or
+    # spirit_fractured), suppress out-of-bracket entries. Nominal brothers
+    # with accumulated cycles since their last blessing do NOT keep the gate
+    # closed — only real damage does. Out-of-bracket falls through only when
+    # the in-bracket cohort is at-or-below nominal. authority_bracket_ids
+    # being None disables the gate.
     bracket_suppressed_out_of_bracket = False
     if authority_bracket_ids is not None:
         in_bracket = [e for e in risk_list if e[0].id in authority_bracket_ids]
-        any_in_bracket_at_risk = any(e[3] > 0 for e in in_bracket)
-        if any_in_bracket_at_risk:
+
+        def _needs_attention(entry) -> bool:
+            _m, _state, _tier, _risk, _scan, _ring, _co = entry
+            if _tier in ("damaged", "compromised", "critical"):
+                return True
+            if (_state or {}).get("spirit_fractured"):
+                return True
+            return False
+
+        any_in_bracket_damaged = any(_needs_attention(e) for e in in_bracket)
+        if any_in_bracket_damaged:
             risk_list = in_bracket
             bracket_suppressed_out_of_bracket = True
 

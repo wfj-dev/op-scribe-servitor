@@ -253,32 +253,37 @@ async def _run_ingest(
     _g.logger.info(f"auto_ingest: {summary}")
 
     # Private report — DM to Forgemaster (was posted in AAR channel previously).
-    flavor = "ready" if mode == "ready" else "forced (backlog/staleness override)"
-    report = (
-        "```ansi\n"
-        "\u001b[32m==============================================================================\n"
-        "  OPERATION-SCRIBE SERVITOR — AUTOMATED INGESTION RITE\n"
-        "==============================================================================\n"
-        f"  Trigger: {flavor}\n"
-        f"  Scan Window: Last {span} day(s)\n"
-        f"  Chronicled: {ingested}\n"
-        f"  Rejected: {rejected}\n"
-        f"  Pressure: mean {_score_str(snapshot.mean_score)} / "
-        f"max {_score_str(snapshot.max_score)}\n"
-        "==============================================================================\n"
-        "\u001b[0m```"
+    flavor = "Ready" if mode == "ready" else "Forced (backlog/staleness override)"
+    color = 0x2ECC71 if mode == "ready" else 0xE67E22
+    embed = discord.Embed(
+        title="᛭⋅ AUTOMATED INGESTION RITE ⋅᛭",
+        color=color,
+        description=f"_Trigger: **{flavor}**_",
     )
+    embed.add_field(name="▸ Chronicled", value=str(ingested), inline=True)
+    embed.add_field(name="▸ Rejected", value=str(rejected), inline=True)
+    embed.add_field(name="▸ Scan Window", value=f"Last {span} day(s)", inline=True)
+    embed.add_field(
+        name="▸ Pressure",
+        value=(
+            f"mean **{_score_str(snapshot.mean_score)}** / "
+            f"max **{_score_str(snapshot.max_score)}**\n"
+            f"backlog ≈ **{backlog}**"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Operation-Scribe Servitor · automated rite")
     user_id = _forgemaster_user_id()
     if user_id:
         try:
             user = _g.bot.get_user(user_id) or await _g.bot.fetch_user(user_id)
-            await user.send(report)
+            await user.send(embed=embed)
         except discord.Forbidden:
             _g.logger.warning(
                 "auto_ingest: Forgemaster has DMs disabled; falling back to AAR channel"
             )
             try:
-                await aar_channel.send(report)
+                await aar_channel.send(embed=embed)
             except Exception:
                 _g.logger.exception("auto_ingest: fallback channel post failed")
         except Exception:
@@ -542,44 +547,99 @@ async def auto_ingest_status(interaction: discord.Interaction):
         except Exception:
             _g.logger.exception("auto_ingest_status: live evaluation failed")
 
-    lines: List[str] = []
-    lines.append("```")
-    lines.append("AUTO-AAR-INGEST STATUS")
-    lines.append("=" * 56)
-    lines.append(
-        f"runtime_enabled : {state.runtime_enabled} "
-        f"(config: {_enabled_in_config()})"
+    # Pick an embed color from current state: blocked=red, cooldown=blue,
+    # ready/forced=green, otherwise neutral.
+    outcome = (state.last_check_outcome or "").upper()
+    if outcome == "BLOCKED":
+        color = 0xE74C3C
+    elif outcome == "COOLDOWN":
+        color = 0x3498DB
+    elif outcome in ("READY", "FORCED"):
+        color = 0x2ECC71
+    else:
+        color = 0x9B59B6
+
+    # ─── Verdict line + cooldown / next-check ETAs ─────────────────────────
+    cd_h = _cooldown_hours()
+    iv_min = _check_interval_seconds() // 60
+    last_ingest_age = _hours_since(state.last_ingest_at)
+    cooldown_remaining = None
+    if last_ingest_age is not None and last_ingest_age < cd_h:
+        cooldown_remaining = cd_h - last_ingest_age
+    last_check_age = _hours_since(state.last_check_at)
+    next_check_in_min = None
+    if last_check_age is not None:
+        elapsed_min = last_check_age * 60.0
+        next_check_in_min = max(0.0, iv_min - elapsed_min)
+
+    if cooldown_remaining is not None:
+        verdict = f"⏳ **COOLDOWN** — {cooldown_remaining:.1f}h until next eligible ingest"
+    elif snapshot is not None and snapshot.is_ready and (backlog or 0) > 0:
+        verdict = "✅ **READY** — will ingest on next tick"
+    elif snapshot is not None and snapshot.is_ready:
+        verdict = "✅ **READY** — no backlog to chronicle"
+    elif snapshot is not None:
+        blockers = snapshot.blockers()
+        names = ", ".join(b.display_name for b in blockers) or "unknown"
+        verdict = f"⚠️ **BLOCKED** — {names}"
+    else:
+        verdict = f"_{outcome or '—'}_"
+
+    embed = discord.Embed(
+        title="᛭⋅ AUTO-AAR-INGEST STATUS ⋅᛭",
+        description=verdict,
+        color=color,
     )
-    lines.append(f"check_interval  : {_check_interval_seconds() // 60} min")
-    lines.append(f"cooldown        : {_cooldown_hours():.1f}h")
-    lines.append(f"ingest_span     : {_span_days()} days")
-    lines.append(
-        f"forced if       : backlog ≥ {_forced_max_backlog()} OR "
+
+    # ─── Config field ─────────────────────────────────────────────────────
+    enabled_str = (
+        f"**Runtime:** {'on' if state.runtime_enabled else 'off'}\n"
+        f"**Config:** {'on' if _enabled_in_config() else 'off'}\n"
+        f"**Interval:** {iv_min} min · **Cooldown:** {cd_h:.1f}h · "
+        f"**Span:** {_span_days()}d\n"
+        f"**Forced if:** backlog ≥ {_forced_max_backlog()} OR "
         f"stale ≥ {_forced_max_stale_days()}d"
     )
-    lines.append("-" * 56)
-    lines.append(f"last_check_at   : {state.last_check_at or '—'}")
-    lines.append(f"last_outcome    : {state.last_check_outcome or '—'}")
-    lines.append(f"last_ingest_at  : {state.last_ingest_at or '—'}")
-    lines.append(f"last_mode       : {state.last_ingest_mode or '—'}")
-    lines.append(f"blocked_since   : {state.blocked_since or '—'}")
-    lines.append(f"fm_dm_at        : {state.forgemaster_dm_at or '—'}")
-    lines.append("-" * 56)
+    embed.add_field(name="▸ Configuration", value=enabled_str, inline=False)
+
+    # ─── Live pressure field ──────────────────────────────────────────────
     if snapshot is not None:
-        lines.append(
-            f"LIVE  mean={_score_str(snapshot.mean_score)}  "
-            f"max={_score_str(snapshot.max_score)}  "
-            f"backlog={backlog if backlog is not None else '?'}"
-        )
+        live_lines = [
+            f"mean **{_score_str(snapshot.mean_score)}** "
+            f"(needs < {READY_THRESHOLD:.1f})",
+            f"max **{_score_str(snapshot.max_score)}** "
+            f"(needs < {HARD_BLOCK_THRESHOLD:.1f})",
+            f"backlog **{backlog if backlog is not None else '?'}**",
+        ]
         for c in snapshot.cadres:
-            lines.append(
-                f"  {c.display_name:<14} score={_score_str(c.score)}  "
-                f"demand={c.demand:<4} supply={c.supply}"
+            live_lines.append(
+                f"  • {c.display_name}: score **{_score_str(c.score)}** "
+                f"(demand {c.demand} / supply {c.supply})"
             )
+        embed.add_field(name="▸ Live Pressure", value="\n".join(live_lines), inline=False)
     else:
-        lines.append("LIVE: unavailable (no guild context)")
-    lines.append("```")
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+        embed.add_field(
+            name="▸ Live Pressure",
+            value="_unavailable (no guild context)_",
+            inline=False,
+        )
+
+    # ─── History field ────────────────────────────────────────────────────
+    next_check_str = (
+        f"in ~{next_check_in_min:.0f} min" if next_check_in_min is not None else "pending"
+    )
+    history = (
+        f"**Last check:** {state.last_check_at or '—'} ({outcome or '—'})\n"
+        f"**Next check:** {next_check_str}\n"
+        f"**Last ingest:** {state.last_ingest_at or '—'}"
+        f" ({state.last_ingest_mode or '—'})\n"
+        f"**Blocked since:** {state.blocked_since or '—'}\n"
+        f"**Last FM DM:** {state.forgemaster_dm_at or '—'}"
+    )
+    embed.add_field(name="▸ History", value=history, inline=False)
+
+    embed.set_footer(text="Operation-Scribe Servitor · /auto_ingest_force to override")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @_g.bot.tree.command(
