@@ -7316,12 +7316,23 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
             except Exception:
                 pass
 
+    # Cadre-specific tier-1 notification channel (config override → default).
+    try:
+        cfg = _b("CONFIG") or {}
+        notify_channel_id = (
+            int(cfg.get("auto_ingest", {}).get("techmarine_blocker_channel_id", 0) or 0)
+            or 1485797067577102377
+        )
+    except Exception:
+        notify_channel_id = 1485797067577102377
+
     return CadrePressure(
         cadre_id="techmarine",
         display_name="Techmarines",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
+        notify_channel_id=notify_channel_id,
         detail=f"{demand} brother(s) need armor rites; {supply} charge(s) available",
     )
 

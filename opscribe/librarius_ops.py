@@ -3236,12 +3236,23 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     )
     notify_role_id = notify_role.id if notify_role else None
 
+    # Cadre-specific tier-1 notification channel (config override → default).
+    try:
+        cfg = _b("CONFIG") or {}
+        notify_channel_id = (
+            int(cfg.get("auto_ingest", {}).get("librarian_blocker_channel_id", 0) or 0)
+            or 1502840890446708766
+        )
+    except Exception:
+        notify_channel_id = 1502840890446708766
+
     return CadrePressure(
         cadre_id="librarian",
         display_name="Librarians",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
+        notify_channel_id=notify_channel_id,
         detail=f"{demand} brother(s) need cleansing; {supply} warding charge(s) available",
     )
 
