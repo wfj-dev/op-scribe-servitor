@@ -252,25 +252,41 @@ async def _run_ingest(
     )
     _g.logger.info(f"auto_ingest: {summary}")
 
-    # Public report
+    # Private report — DM to Forgemaster (was posted in AAR channel previously).
     flavor = "ready" if mode == "ready" else "forced (backlog/staleness override)"
-    try:
-        await aar_channel.send(
-            "```ansi\n"
-            "\u001b[32m==============================================================================\n"
-            "  OPERATION-SCRIBE SERVITOR — AUTOMATED INGESTION RITE\n"
-            "==============================================================================\n"
-            f"  Trigger: {flavor}\n"
-            f"  Scan Window: Last {span} day(s)\n"
-            f"  Chronicled: {ingested}\n"
-            f"  Rejected: {rejected}\n"
-            f"  Pressure: mean {_score_str(snapshot.mean_score)} / "
-            f"max {_score_str(snapshot.max_score)}\n"
-            "==============================================================================\n"
-            "\u001b[0m```"
+    report = (
+        "```ansi\n"
+        "\u001b[32m==============================================================================\n"
+        "  OPERATION-SCRIBE SERVITOR — AUTOMATED INGESTION RITE\n"
+        "==============================================================================\n"
+        f"  Trigger: {flavor}\n"
+        f"  Scan Window: Last {span} day(s)\n"
+        f"  Chronicled: {ingested}\n"
+        f"  Rejected: {rejected}\n"
+        f"  Pressure: mean {_score_str(snapshot.mean_score)} / "
+        f"max {_score_str(snapshot.max_score)}\n"
+        "==============================================================================\n"
+        "\u001b[0m```"
+    )
+    user_id = _forgemaster_user_id()
+    if user_id:
+        try:
+            user = _g.bot.get_user(user_id) or await _g.bot.fetch_user(user_id)
+            await user.send(report)
+        except discord.Forbidden:
+            _g.logger.warning(
+                "auto_ingest: Forgemaster has DMs disabled; falling back to AAR channel"
+            )
+            try:
+                await aar_channel.send(report)
+            except Exception:
+                _g.logger.exception("auto_ingest: fallback channel post failed")
+        except Exception:
+            _g.logger.exception("auto_ingest: failed to DM Forgemaster ingest report")
+    else:
+        _g.logger.warning(
+            "auto_ingest: forgemaster_user_id not configured; skipping ingest report"
         )
-    except Exception:
-        _g.logger.exception("auto_ingest: failed to post ingest report")
     return summary
 
 
