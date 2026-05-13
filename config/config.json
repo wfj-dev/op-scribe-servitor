@@ -56,20 +56,17 @@
     },
     "reconcile_records": {
       "roles": [
-        "Forgemaster",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "sanctify_battle_records": {
       "roles": [
-        "Watch Techmarine",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "audit_archive_discrepancies": {
       "roles": [
-        "Watch Techmarine",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "reparse_records": {
