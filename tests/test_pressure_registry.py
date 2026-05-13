@@ -3,10 +3,10 @@ import pytest
 from opscribe.pressure_registry import CadrePressure, PressureSnapshot
 
 
-def _cadre(score_id: str, demand: int, supply: int) -> CadrePressure:
+def _cadre(cadre_id: str, demand: int, supply: int) -> CadrePressure:
     return CadrePressure(
-        cadre_id=score_id,
-        display_name=score_id.title(),
+        cadre_id=cadre_id,
+        display_name=cadre_id.title(),
         demand=demand,
         supply=supply,
     )
