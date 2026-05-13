@@ -2667,6 +2667,29 @@ async def warp_status(interaction: discord.Interaction):
     # Sort by (ring asc, severity desc) — own company first, then orphans, then peers.
     rows.sort(key=lambda r: (r[0], -r[1]))
 
+    # Authority-bracket filter: hide out-of-bracket brothers unless the viewer's
+    # own bracket is fully clear. Mirrors /armor_status behavior. Bracket scope:
+    #   • Void Warden / Forgemaster (debug) → HighCom + Librarians
+    #   • Librarian → own company
+    #   • Anyone else → no bracket (flat list)
+    bracket_fn = _b("_compute_authority_bracket_member_ids")
+    authority_bracket_ids = (
+        bracket_fn(interaction.user, guild, caller_role, "librarian")
+        if bracket_fn else None
+    )
+    bracket_suppressed_out_of_bracket = False
+    if authority_bracket_ids is not None:
+        in_bracket_rows = []
+        for r in rows:
+            try:
+                if int(r[2]) in authority_bracket_ids:
+                    in_bracket_rows.append(r)
+            except (TypeError, ValueError):
+                continue
+        if in_bracket_rows:
+            rows = in_bracket_rows
+            bracket_suppressed_out_of_bracket = True
+
     if not rows:
         if caller_company:
             scope = (
@@ -2765,6 +2788,18 @@ async def warp_status(interaction: discord.Interaction):
         title="᛭⋅ WARP STATUS ⋅᛭",
         color=0x9B59B6,
     )
+    if bracket_suppressed_out_of_bracket:
+        if caller_role == "librarian":
+            scope_short = _b("_extract_company_short_name")(caller_company) if caller_company else "your company"
+            embed.description = (
+                f"*Scope: **{scope_short}** — the wider fortress is hidden "
+                f"until your company is fully clear.*"
+            )
+        else:
+            embed.description = (
+                "*Scope: **High Command + Librarians** — the wider fortress is "
+                "hidden until your authority is fully clear.*"
+            )
 
     # ─── Your Vigil (personal panel — librarians only; void wardens / debug
     # callers have no charge pool of their own, so this section is skipped).
