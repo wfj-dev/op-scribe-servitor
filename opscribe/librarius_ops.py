@@ -690,7 +690,8 @@ async def _post_warp_alert(
         styled = _strip_display_name(member.display_name)
 
     sanction_key = _warp_sanction_key_for_points(int(points or 0))
-    sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Sanctioned", ""))
+    # Display fallback uses "Cleansed" (the post-rename clean label).
+    sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Cleansed", ""))
     flags = WARP_CORRUPTED_ICON if warp_corrupted else ""
     flag_str = f" {flags}" if flags else ""
     risk = _get_warp_tier_risk_display(tier)
@@ -753,7 +754,7 @@ async def _post_warp_alert(
         guidance = "Taint detected before AAR loss. Administer `/warp_cleanse` to prevent penalties."
         field_name = "▸ Preventive Cleansing Available"
     else:
-        guidance = "AAR loss confirmed. Administer `/warp_cleanse` to restore sanction status."
+        guidance = "AAR loss confirmed. Administer `/warp_cleanse` to restore cleansed status."
         field_name = "▸ Librarian Response Required"
     embed.add_field(name=field_name, value=guidance, inline=False)
 
@@ -1223,12 +1224,12 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         charges_icon = "🟢"
     embed.description = (
         f"**▸ Warp Telemetry**\n"
-        f"{sanctioned_icon} **{clean_pct:.0f}%** Sanctioned  "
+        f"{sanctioned_icon} **{clean_pct:.0f}%** Cleansed  "
         f"{pressure_icon} **{pressure_str}** Pressure  "
         f"{charges_icon} **{total_librarian_charges}** Charges"
     )
 
-    # ─── Watchlist (sanctioned brothers — mirrors forge watchlist)
+    # ─── Watchlist (warp-exposed brothers — mirrors forge watchlist)
     watchlist_entries = []  # (severity_idx, pts, uid, raw)
     severity_order = {
         "catastrophic": 0, "breached": 1, "volatile": 2, "exposed": 3, "tainted": 4, None: 5,
@@ -1270,7 +1271,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             name = member.display_name
         watch_lines.append(f"{icon} {name} · {pts}c{flag_str}")
     if not watch_lines:
-        watch_lines.append("*The wards hold. No sanctioned brothers.*")
+        watch_lines.append("*The wards hold. No tainted brothers.*")
     embed.add_field(name="▸ Watchlist", value="\n".join(watch_lines), inline=False)
 
     # ─── Recent Rites (last 5 cleanses — mirrors forge Recent Rites)
@@ -2528,7 +2529,7 @@ async def warp_cleanse(
 
     flavor = random.choice(WARP_CLEANSE_OUTCOME_FLAVOR.get(outcome_key, ["The rite is complete."]))
     new_sanction_key = _warp_sanction_key_for_points(new_recipient_points)
-    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(new_sanction_key, ("Sanctioned", ""))
+    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(new_sanction_key, ("Cleansed", ""))
     bearer_name = _strip_display_name(member.display_name)
     cleanser_name = _strip_display_name(cleanser.display_name)
 
@@ -2667,6 +2668,29 @@ async def warp_status(interaction: discord.Interaction):
     # Sort by (ring asc, severity desc) — own company first, then orphans, then peers.
     rows.sort(key=lambda r: (r[0], -r[1]))
 
+    # Authority-bracket filter: hide out-of-bracket brothers unless the viewer's
+    # own bracket is fully clear. Mirrors /armor_status behavior. Bracket scope:
+    #   • Void Warden / Forgemaster (debug) → HighCom + Librarians
+    #   • Librarian → own company
+    #   • Anyone else → no bracket (flat list)
+    bracket_fn = _b("_compute_authority_bracket_member_ids")
+    authority_bracket_ids = (
+        bracket_fn(interaction.user, guild, caller_role, "librarian")
+        if bracket_fn else None
+    )
+    bracket_suppressed_out_of_bracket = False
+    if authority_bracket_ids is not None:
+        in_bracket_rows = []
+        for r in rows:
+            try:
+                if int(r[2]) in authority_bracket_ids:
+                    in_bracket_rows.append(r)
+            except (TypeError, ValueError):
+                continue
+        if in_bracket_rows:
+            rows = in_bracket_rows
+            bracket_suppressed_out_of_bracket = True
+
     if not rows:
         if caller_company:
             scope = (
@@ -2765,6 +2789,18 @@ async def warp_status(interaction: discord.Interaction):
         title="᛭⋅ WARP STATUS ⋅᛭",
         color=0x9B59B6,
     )
+    if bracket_suppressed_out_of_bracket:
+        if caller_role == "librarian":
+            scope_short = _b("_extract_company_short_name")(caller_company) if caller_company else "your company"
+            embed.description = (
+                f"*Scope: **{scope_short}** — the wider fortress is hidden "
+                f"until your company is fully clear.*"
+            )
+        else:
+            embed.description = (
+                "*Scope: **High Command + Librarians** — the wider fortress is "
+                "hidden until your authority is fully clear.*"
+            )
 
     # ─── Your Vigil (personal panel — librarians only; void wardens / debug
     # callers have no charge pool of their own, so this section is skipped).
@@ -3124,3 +3160,104 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
     await interaction.response.send_message(
         f"Librarian subsystem **{state_word}**.", ephemeral=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-AAR-ingest: Librarian cadre pressure contributor.
+#
+# Demand = active non-Librarian brothers with warp exposure points > 0 or
+#          flagged warp_corrupted.
+#
+# Supply = sum of available warding charges across all members of the
+# Watch Librarian / Void Warden roles whose personal exposure tier is NOT
+# overloaded/abyssal (they cannot cleanse others while in those tiers).
+#
+# See opscribe/pressure_registry.py for the aggregation contract.
+# ---------------------------------------------------------------------------
+
+async def evaluate_librarian_pressure(guild: discord.Guild):
+    """Pressure evaluator for the Librarian cadre. See pressure_registry."""
+    from .pressure_registry import CadrePressure
+
+    try:
+        async with _g.WARP_EXPOSURE_LOCK:
+            data = _load_warp_exposure()
+    except Exception:
+        data = {}
+
+    is_active_fn = _b("_is_active_participant")
+
+    # Collect active Librarian IDs (Librarians + Void Wardens).
+    librarian_ids: List[int] = []
+    for member in guild.members:
+        if member.bot:
+            continue
+        role_names = {r.name for r in member.roles}
+        if not (LIBRARIAN_ROLE_NAME in role_names or VOID_WARDEN_ROLE_NAME in role_names):
+            continue
+        if is_active_fn and not is_active_fn(member):
+            continue
+        librarian_ids.append(int(member.id))
+    lib_id_set = set(librarian_ids)
+
+    # Demand: active non-Librarian brothers with exposure points or corruption.
+    demand = 0
+    for uid_str, raw in (data or {}).items():
+        try:
+            uid = int(uid_str)
+        except Exception:
+            continue
+        if uid in lib_id_set or (raw or {}).get("is_librarian"):
+            continue
+        member = guild.get_member(uid)
+        if is_active_fn and not is_active_fn(member):
+            continue
+        pts = int((raw or {}).get("points", 0) or 0)
+        warp_corrupted = bool((raw or {}).get("warp_corrupted", False))
+        if pts > 0 or warp_corrupted:
+            demand += 1
+
+    # Supply: sum of available warding charges across capable Librarians.
+    supply = 0
+    for lib_id in librarian_ids:
+        try:
+            lib_state = (data or {}).get(str(lib_id)) or {}
+            lib_tier = _librarian_tier_for_points(int(lib_state.get("points", 0) or 0))
+            if lib_tier in ("overloaded", "abyssal"):
+                continue
+            supply += await _get_librarian_available_charges(lib_id)
+        except Exception:
+            continue
+
+    # Prefer the Watch Librarian role for blocker pings; fall back to Void Warden.
+    notify_role = (
+        discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+        or discord.utils.get(guild.roles, name=VOID_WARDEN_ROLE_NAME)
+    )
+    notify_role_id = notify_role.id if notify_role else None
+
+    # Cadre-specific tier-1 notification channel (config override → default).
+    try:
+        cfg = _b("CONFIG") or {}
+        notify_channel_id = (
+            int(cfg.get("auto_ingest", {}).get("librarian_blocker_channel_id", 0) or 0)
+            or 1502840890446708766
+        )
+    except Exception:
+        notify_channel_id = 1502840890446708766
+
+    return CadrePressure(
+        cadre_id="librarian",
+        display_name="Librarians",
+        demand=demand,
+        supply=supply,
+        notify_role_id=notify_role_id,
+        notify_channel_id=notify_channel_id,
+        detail=f"{demand} brother(s) need cleansing; {supply} warding charge(s) available",
+    )
+
+
+def _register_pressure_contributors() -> None:
+    """Register this module's cadre evaluator. Idempotent. Called from bot.py."""
+    from .pressure_registry import register_cadre
+    register_cadre(evaluate_librarian_pressure)

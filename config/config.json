@@ -56,20 +56,17 @@
     },
     "reconcile_records": {
       "roles": [
-        "Forgemaster",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "sanctify_battle_records": {
       "roles": [
-        "Watch Techmarine",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "audit_archive_discrepancies": {
       "roles": [
-        "Watch Techmarine",
-        "Watch Master"
+        "Forgemaster"
       ]
     },
     "reparse_records": {
@@ -149,6 +146,21 @@
       "roles": [
         "Forgemaster"
       ]
+    },
+    "auto_ingest_status": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "auto_ingest_set": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "auto_ingest_force": {
+      "roles": [
+        "Forgemaster"
+      ]
     }
   },
   "companies": {
@@ -186,6 +198,19 @@
     "weekly_maintenance_day": 1,
     "weekly_maintenance_hour": 3,
     "weekly_maintenance_ingest_span_days": 45
+  },
+  "auto_ingest": {
+    "enabled": true,
+    "check_interval_minutes": 90,
+    "cooldown_hours": 12,
+    "ingest_span_days": 45,
+    "forced_max_backlog": 30,
+    "forced_max_stale_days": 10,
+    "forgemaster_user_id": "281651485782310914",
+    "escalation_hours": 48,
+    "notification_channel_id": null,
+    "techmarine_blocker_channel_id": "1485797067577102377",
+    "librarian_blocker_channel_id": "1502840890446708766"
   },
   "milestones": {
     "enabled": true,
