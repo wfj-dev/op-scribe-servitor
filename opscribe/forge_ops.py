@@ -4773,6 +4773,7 @@ async def _show_armor_leaderboard(
     pool_remaining: Optional[int] = None,
     pool_next_regen: Optional[timedelta] = None,
     techmarine_id: Optional[int] = None,
+    authority_bracket_ids: Optional[set] = None,
 ):
     """Show top 10 brothers at risk of armor damage.
 
@@ -4859,6 +4860,19 @@ async def _show_armor_leaderboard(
     # Sort by (ring asc, risk_score desc) — own-company first, then orphans, then peers.
     risk_list.sort(key=lambda x: (x[5], -x[3]))
 
+    # Authority-bracket filter: if the viewer's bracket has any brother needing
+    # attention (risk_score > 0), suppress out-of-bracket entries entirely.
+    # Only when the in-bracket cohort is fully clear do we fall through to show
+    # the wider fortress. This is independent of (and runs after) the ring-based
+    # gap-filling sort above. authority_bracket_ids being None disables the gate.
+    bracket_suppressed_out_of_bracket = False
+    if authority_bracket_ids is not None:
+        in_bracket = [e for e in risk_list if e[0].id in authority_bracket_ids]
+        any_in_bracket_at_risk = any(e[3] > 0 for e in in_bracket)
+        if any_in_bracket_at_risk:
+            risk_list = in_bracket
+            bracket_suppressed_out_of_bracket = True
+
     # Filter out brothers on cooldown before taking top 10
     available_brothers = []
     for entry in risk_list:
@@ -4900,7 +4914,25 @@ async def _show_armor_leaderboard(
     expansion_count = sum(1 for e in top_10 if e[5] > 0)
 
     # Build description based on company filter
-    if company_filter:
+    if bracket_suppressed_out_of_bracket:
+        # Authority-bracket gate is active — only in-bracket brothers are listed.
+        if company_filter:
+            company_short = _b("_extract_company_short_name")(company_filter)
+            with_risk_desc = (
+                f"*Top brothers in **{company_short}** requiring attention "
+                f"(wider fortress hidden until your company is nominal)*"
+            )
+            no_risk_desc = (
+                f"*All brothers in {company_short} are nominal. "
+                f"No maintenance required.*"
+            )
+        else:
+            with_risk_desc = (
+                "*Top brothers requiring attention (High Command + Techmarines; "
+                "wider fortress hidden until your authority is nominal)*"
+            )
+            no_risk_desc = "*High Command and Techmarines all nominal.*"
+    elif company_filter:
         company_short = _b("_extract_company_short_name")(company_filter)
         if expansion_count > 0:
             no_risk_desc = "*All brothers nominal across all companies. No maintenance required.*"
@@ -5114,6 +5146,15 @@ async def _armor_status(interaction: discord.Interaction):
     else:
         company_filter = _b("_get_member_company_name")(interaction.user)
 
+    # Resolve authority bracket so out-of-bracket entries are suppressed until
+    # the viewer's own bracket is fully clear. See _compute_authority_bracket_member_ids
+    # in bot.py for semantics.
+    bracket_fn = _b("_compute_authority_bracket_member_ids")
+    authority_bracket_ids = (
+        bracket_fn(interaction.user, guild, role_key, "techmarine")
+        if bracket_fn else None
+    )
+
     # Get invoker's blessing pool status
     pool_remaining, pool_next_regen = await _get_blessing_pool_display(interaction.user.id)
 
@@ -5124,6 +5165,7 @@ async def _armor_status(interaction: discord.Interaction):
         pool_remaining=pool_remaining,
         pool_next_regen=pool_next_regen,
         techmarine_id=interaction.user.id,
+        authority_bracket_ids=authority_bracket_ids,
     )
 
 
