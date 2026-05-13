@@ -1431,7 +1431,7 @@ async def litany_of_function(interaction: discord.Interaction):
         "/set_rite rite_text — Save your personal consecration rite text.",
         "/forge_rite member:@User — Post an attestation block for a member (role-limited).",
         "/reconcile_records [span_days] — Reprocess and update the archive (admin).",
-        "/sanctify_battle_records [span_days] — Ingest sanctioned AARs (admin).",
+        "/sanctify_battle_records [span_days] — Ingest chronicled AARs (admin).",
         "/audit_archive_discrepancies [span_days] — Recheck rejected AARs (admin).",
         "/reparse_records [limit] — Re-parse stored AARs from message URLs (admin).",
         "/cache_stats — Show DataStore cache and flush stats (admin).",
@@ -3054,7 +3054,7 @@ async def tally_deeds(
                     sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
                     sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
                         sanction_key,
-                        ("Sanctioned", "Clear or minimal contamination detected."),
+                        ("Cleansed", "Clear or minimal contamination detected."),
                     )
                     if warp_state.get("warp_corrupted"):
                         sanction_label = f"{sanction_label} — CORRUPTED"
@@ -3841,7 +3841,7 @@ async def my_deeds(interaction: discord.Interaction):
         sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
         sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
             sanction_key,
-            ("Sanctioned", "Clear or minimal contamination detected."),
+            ("Cleansed", "Clear or minimal contamination detected."),
         )
         if warp_state.get("warp_corrupted"):
             sanction_label = f"{sanction_label} — CORRUPTED"

@@ -899,7 +899,7 @@ async def audit_archive_discrepancies(interaction: discord.Interaction, span_day
 
 @_g.bot.tree.command(
     name="sanctify_battle_records",
-    description="Ingest new sanctioned AARs (optionally scoped by span of days).",
+    description="Ingest new chronicled AARs (optionally scoped by span of days).",
 )
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
 async def sanctify_battle_records(interaction: discord.Interaction, span_days: int | None = None):
@@ -954,7 +954,7 @@ async def sanctify_battle_records(interaction: discord.Interaction, span_days: i
             "  OPERATION-SCRIBE SERVITOR — INGESTION RITE\n"
             "==============================================================================\n"
             + (f"  Scan Window: Last {span_days} day(s)\n" if span_days else "  Scan Window: Full history\n")
-            + f"  Sanctioned: {ingested}\n"
+            + f"  Chronicled: {ingested}\n"
             + f"  Rejected: {rejected}\n"
             + "==============================================================================\n"
             + "\u001b[0m```"
@@ -1012,7 +1012,7 @@ async def _reconciliation_core(interaction: discord.Interaction, span_days: int 
 
     report = (
         report_header
-        + f"  Sanctioned Operational Records: {ingested}\n"
+        + f"  Chronicled Operational Records: {ingested}\n"
         + f"  Logs Judged Corrupted or Unworthy: {rejected}\n"
         + f"  Restored Entries Returned to the Annals: {fixed}\n"
         + f"  Faulted Reports Under Quarantine: {still_broken}\n"
