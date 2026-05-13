@@ -798,6 +798,7 @@ from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
 from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
+from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1136,6 +1137,58 @@ def _is_techmarine_or_forgemaster(
         return True, "techmarine"
     # If no explicit forgemaster/techmarine role is present, treat as no role.
     return False, ""
+
+
+def _compute_authority_bracket_member_ids(
+    viewer: "discord.Member",
+    guild: "discord.Guild",
+    role_key: str,
+    cadre: str,
+) -> Optional[set]:
+    """Resolve the viewer's authority bracket for status displays.
+
+    ``cadre`` is ``"techmarine"`` or ``"librarian"`` and selects which specialist
+    role is treated as "under" a HighCom viewer (Forgemaster oversees Techmarines,
+    Void Warden oversees Librarians).
+
+    Bracket semantics — used to hide out-of-bracket brothers unless the viewer's
+    own bracket is fully clear:
+      • Forgemaster / Void Warden (and Forgemaster debug) → HighCom members +
+        members holding the relevant specialist cadre role.
+      • Company-level specialist (Watch Techmarine / Watch Librarian) → only
+        members of the viewer's company.
+      • Anyone else → returns None (no bracket; show flat list).
+    """
+    if guild is None:
+        return None
+    role_key = (role_key or "").lower()
+    cadre_role_name = TECHMARINE_ROLE_NAME if cadre == "techmarine" else LIBRARIAN_ROLE_NAME
+    if role_key in ("forgemaster", "forgemaster_debug", "void_warden"):
+        ids: set = set()
+        for m in guild.members:
+            if getattr(m, "bot", False):
+                continue
+            role_names = {r.name for r in getattr(m, "roles", []) or []}
+            if role_names & HIGH_COMMAND_ROLES:
+                ids.add(m.id)
+            elif cadre_role_name in role_names:
+                ids.add(m.id)
+        return ids
+    if role_key in ("techmarine", "librarian"):
+        company = _get_member_company_name(viewer)
+        if not company:
+            return None
+        ids = set()
+        for m in guild.members:
+            if getattr(m, "bot", False):
+                continue
+            try:
+                if _get_member_company_name(m) == company:
+                    ids.add(m.id)
+            except Exception:
+                continue
+        return ids
+    return None
 
 
 def _find_responsible_attestor(bearer: discord.Member, guild: discord.Guild) -> Tuple[Optional[discord.Member], str]:
@@ -1590,12 +1643,29 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start forge dashboard loop")
 
+    # Ambient flavor messages (forge + librarius channels) disabled by request.
+    # The loop, _maybe_post_ambient_message, and FORGE_AMBIENT_MESSAGES /
+    # LIBRARIUM_AMBIENT_MESSAGES constants are retained for future reuse but
+    # are no longer started at boot.
+    # try:
+    #     if not _forge_ambient_loop.is_running():
+    #         _forge_ambient_loop.start()
+    #         logger.info("Forge ambient message loop started (every 30 min).")
+    # except Exception:
+    #     logger.exception("Failed to start forge ambient loop")
+
+    # Register specialist cadre pressure contributors + start auto-ingest loop.
+    # See opscribe/pressure_registry.py and opscribe/auto_ingest.py.
     try:
-        if not _forge_ambient_loop.is_running():
-            _forge_ambient_loop.start()
-            logger.info("Forge ambient message loop started (every 30 min).")
+        from .forge_ops import _register_pressure_contributors as _fp_reg
+        from .librarius_ops import _register_pressure_contributors as _lp_reg
+        _fp_reg()
+        _lp_reg()
+        if not _auto_ingest._auto_ingest_loop.is_running():
+            _auto_ingest._auto_ingest_loop.start()
+            logger.info("Auto-AAR-ingest loop started (gated by config cadence).")
     except Exception:
-        logger.exception("Failed to start forge ambient loop")
+        logger.exception("Failed to start auto-ingest loop")
 
     # Restore LFG queue views and start expiration loop
     try:

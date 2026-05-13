@@ -1096,8 +1096,22 @@ WARP_LIBRARIAN_TIER_BANDS = {
 # Mirrors Techmarine armor outcome layer: 1 clean state (sanctioned ≈ nominal) +
 # 3 roled states (screening_due/under_review/restricted ≈ damaged/compromised/critical).
 # A separate boolean flag (warp_corrupted ≈ spirit_fractured) is tracked on top.
+#
+# TERMINOLOGY NOTE (partial display-only migration):
+#   User-facing labels have been updated in three places while the internal keys,
+#   helpers, and JSON fields below intentionally retain the legacy "sanction"
+#   vocabulary (full refactor deferred to a later migration):
+#       • Librarian clearing a brother of warp taint — displayed as "Cleansed"
+#         (internal dict key/state remains "sanctioned").
+#       • Techmarine clearing armor — conceptually displayed as "Attested"
+#         (internal already uses _find_responsible_attestor / attestor).
+#       • AAR accepted into the archive — displayed as "Chronicled"
+#         (internal helpers / state still talk about sanctioned AARs).
+#   Treat dict keys like "sanctioned", `_warp_sanction_key_for_points`,
+#   `_apply_sanction_role`, JSON field `is_sanctioned`, etc., as the legacy
+#   term for what is now displayed as "Cleansed" / "Attested" / "Chronicled".
 WARP_SANCTION_STATUS = {
-    "sanctioned": ("Sanctioned", "No corruption detected. Spirit clear."),
+    "sanctioned": ("Cleansed", "No corruption detected. Spirit clear."),
     "screening_due": ("Screening Due", "Trace contamination detected. Report for psychic screening."),
     "under_review": ("Under Review", "Significant exposure noted. Librarium oversight engaged."),
     "restricted": ("Restricted", "Severe exposure. Operational restrictions in effect pending Void Warden review."),
