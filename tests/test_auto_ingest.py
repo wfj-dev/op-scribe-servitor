@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import opscribe.bot  # noqa: F401
+import opscribe.bot as bot_module
 from opscribe import auto_ingest as ai
 from opscribe.pressure_registry import CadrePressure, PressureSnapshot
 
@@ -26,6 +26,7 @@ def _blocked_snapshot() -> PressureSnapshot:
 
 
 def _setup_tick_common(state, snapshot, backlog):
+    assert bot_module is not None
     aar_channel = MagicMock()
     guild = MagicMock()
     guild.get_channel.return_value = aar_channel
