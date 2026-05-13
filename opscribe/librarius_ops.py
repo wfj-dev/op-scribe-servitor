@@ -1229,7 +1229,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         f"{charges_icon} **{total_librarian_charges}** Charges"
     )
 
-    # ─── Watchlist (sanctioned brothers — mirrors forge watchlist)
+    # ─── Watchlist (warp-exposed brothers — mirrors forge watchlist)
     watchlist_entries = []  # (severity_idx, pts, uid, raw)
     severity_order = {
         "catastrophic": 0, "breached": 1, "volatile": 2, "exposed": 3, "tainted": 4, None: 5,
@@ -1271,7 +1271,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             name = member.display_name
         watch_lines.append(f"{icon} {name} · {pts}c{flag_str}")
     if not watch_lines:
-        watch_lines.append("*The wards hold. No cleansed brothers.*")
+        watch_lines.append("*The wards hold. No tainted brothers.*")
     embed.add_field(name="▸ Watchlist", value="\n".join(watch_lines), inline=False)
 
     # ─── Recent Rites (last 5 cleanses — mirrors forge Recent Rites)

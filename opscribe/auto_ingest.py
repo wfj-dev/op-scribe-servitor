@@ -22,11 +22,10 @@ timestamps and cooldown survive restarts.
 All Forgemaster-only commands (status, set, force) live in this module.
 """
 
-import asyncio
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import discord
@@ -34,7 +33,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 from . import _bot_globals as _g
-from .constants import AAR_CHANNEL_ID, FORGEMASTER_ROLE_NAME, DATA_DIR
+from .constants import AAR_CHANNEL_ID, DATA_DIR
 from .pressure_registry import (
     CadrePressure,
     PressureSnapshot,
@@ -254,7 +253,7 @@ async def _run_ingest(
     _g.logger.info(f"auto_ingest: {summary}")
 
     # Public report
-    flavor = "ready" if mode == "ready" else "forced (specialists overwhelmed)"
+    flavor = "ready" if mode == "ready" else "forced (backlog/staleness override)"
     try:
         await aar_channel.send(
             "```ansi\n"
