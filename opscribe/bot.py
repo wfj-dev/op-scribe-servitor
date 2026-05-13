@@ -798,6 +798,7 @@ from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
 from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
+from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1600,6 +1601,19 @@ async def on_ready():
     #         logger.info("Forge ambient message loop started (every 30 min).")
     # except Exception:
     #     logger.exception("Failed to start forge ambient loop")
+
+    # Register specialist cadre pressure contributors + start auto-ingest loop.
+    # See opscribe/pressure_registry.py and opscribe/auto_ingest.py.
+    try:
+        from .forge_ops import _register_pressure_contributors as _fp_reg
+        from .librarius_ops import _register_pressure_contributors as _lp_reg
+        _fp_reg()
+        _lp_reg()
+        if not _auto_ingest._auto_ingest_loop.is_running():
+            _auto_ingest._auto_ingest_loop.start()
+            logger.info("Auto-AAR-ingest loop started (gated by config cadence).")
+    except Exception:
+        logger.exception("Failed to start auto-ingest loop")
 
     # Restore LFG queue views and start expiration loop
     try:
