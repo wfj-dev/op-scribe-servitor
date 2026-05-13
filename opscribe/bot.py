@@ -1590,12 +1590,16 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start forge dashboard loop")
 
-    try:
-        if not _forge_ambient_loop.is_running():
-            _forge_ambient_loop.start()
-            logger.info("Forge ambient message loop started (every 30 min).")
-    except Exception:
-        logger.exception("Failed to start forge ambient loop")
+    # Ambient flavor messages (forge + librarius channels) disabled by request.
+    # The loop, _maybe_post_ambient_message, and FORGE_AMBIENT_MESSAGES /
+    # LIBRARIUM_AMBIENT_MESSAGES constants are retained for future reuse but
+    # are no longer started at boot.
+    # try:
+    #     if not _forge_ambient_loop.is_running():
+    #         _forge_ambient_loop.start()
+    #         logger.info("Forge ambient message loop started (every 30 min).")
+    # except Exception:
+    #     logger.exception("Failed to start forge ambient loop")
 
     # Restore LFG queue views and start expiration loop
     try:
