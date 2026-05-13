@@ -48,6 +48,7 @@ class CadrePressure:
     demand: int              # brothers needing attention from this cadre
     supply: int              # available charges (or analogous capacity)
     notify_role_id: Optional[int] = None  # role to ping when blocking
+    notify_channel_id: Optional[int] = None  # cadre-specific tier-1 channel
     detail: str = ""         # optional human-readable status detail
 
     @property

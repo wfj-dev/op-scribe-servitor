@@ -208,7 +208,9 @@
     "forced_max_stale_days": 10,
     "forgemaster_user_id": "281651485782310914",
     "escalation_hours": 48,
-    "notification_channel_id": null
+    "notification_channel_id": null,
+    "techmarine_blocker_channel_id": "1485797067577102377",
+    "librarian_blocker_channel_id": "1502840890446708766"
   },
   "milestones": {
     "enabled": true,

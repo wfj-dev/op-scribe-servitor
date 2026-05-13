@@ -27,7 +27,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import discord
 from discord import app_commands
@@ -278,35 +278,55 @@ async def _run_ingest(
 async def _post_tier1_blocker_notice(
     snapshot: PressureSnapshot, state: AutoIngestState, guild: discord.Guild
 ) -> None:
-    """Post a public notice naming the blocker cadres + pinging their roles."""
-    channel_id = _notification_channel_id()
-    channel = guild.get_channel(channel_id) or _g.bot.get_channel(channel_id)
-    if channel is None:
-        try:
-            channel = await _g.bot.fetch_channel(channel_id)
-        except Exception:
-            _g.logger.warning("auto_ingest: tier-1 channel %s not accessible", channel_id)
-            return
+    """Post a tier-1 notice in each blocking cadre's own channel.
 
+    Each blocker is routed to its own ``notify_channel_id`` (e.g. Techmarines
+    post to the arming-chamber, Librarians post to the librarium watch). When
+    a blocker has no channel configured we fall back to the global
+    ``notification_channel_id`` (or AAR_CHANNEL_ID). Multiple cadres sharing
+    one channel are coalesced into a single message there.
+    """
     blockers = snapshot.blockers() or snapshot.cadres
-    body = "\n".join(_format_cadre_line(c) for c in blockers)
-    pings = " ".join(
-        f"<@&{c.notify_role_id}>" for c in blockers if c.notify_role_id
-    )
-    msg = (
-        f"⚠️ **The Servitor stalls.** The pressure of un-chronicled records mounts, "
-        f"yet the specialists are not ready to bear it.\n"
-        f"{pings}\n"
-        f"{body}\n"
-        f"_Auto-ingest will resume when mean pressure falls below "
-        f"{READY_THRESHOLD:.1f} and no cadre exceeds {HARD_BLOCK_THRESHOLD:.1f}._"
-    )
-    try:
-        await channel.send(msg)
+    fallback_channel_id = _notification_channel_id()
+
+    # Group blockers by destination channel id so each channel receives a
+    # single message naming only the cadres that belong there.
+    groups: Dict[int, List[CadrePressure]] = {}
+    for c in blockers:
+        cid = c.notify_channel_id or fallback_channel_id
+        groups.setdefault(cid, []).append(c)
+
+    posted_any = False
+    for channel_id, group in groups.items():
+        channel = guild.get_channel(channel_id) or _g.bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await _g.bot.fetch_channel(channel_id)
+            except Exception:
+                _g.logger.warning("auto_ingest: tier-1 channel %s not accessible", channel_id)
+                continue
+
+        body = "\n".join(_format_cadre_line(c) for c in group)
+        pings = " ".join(
+            f"<@&{c.notify_role_id}>" for c in group if c.notify_role_id
+        )
+        msg = (
+            f"⚠️ **The Servitor stalls.** The pressure of un-chronicled records mounts, "
+            f"yet the specialists are not ready to bear it.\n"
+            f"{pings}\n"
+            f"{body}\n"
+            f"_Auto-ingest will resume when mean pressure falls below "
+            f"{READY_THRESHOLD:.1f} and no cadre exceeds {HARD_BLOCK_THRESHOLD:.1f}._"
+        )
+        try:
+            await channel.send(msg)
+            posted_any = True
+        except Exception:
+            _g.logger.exception("auto_ingest: failed to post tier-1 notice to %s", channel_id)
+
+    if posted_any:
         state.last_blocker_notice_at = _now_iso()
         state.last_blocker_set = sorted(c.cadre_id for c in blockers)
-    except Exception:
-        _g.logger.exception("auto_ingest: failed to post tier-1 notice")
 
 
 async def _dm_forgemaster_tier2(
