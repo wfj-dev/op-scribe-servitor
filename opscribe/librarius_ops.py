@@ -3124,3 +3124,93 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
     await interaction.response.send_message(
         f"Librarian subsystem **{state_word}**.", ephemeral=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-AAR-ingest: Librarian cadre pressure contributor.
+#
+# Demand = active non-Librarian brothers with warp exposure points > 0 or
+#          flagged warp_corrupted.
+#
+# Supply = sum of available warding charges across all members of the
+# Watch Librarian / Void Warden roles whose personal exposure tier is NOT
+# overloaded/abyssal (they cannot cleanse others while in those tiers).
+#
+# See opscribe/pressure_registry.py for the aggregation contract.
+# ---------------------------------------------------------------------------
+
+async def evaluate_librarian_pressure(guild: discord.Guild):
+    """Pressure evaluator for the Librarian cadre. See pressure_registry."""
+    from .pressure_registry import CadrePressure
+
+    try:
+        async with _g.WARP_EXPOSURE_LOCK:
+            data = _load_warp_exposure()
+    except Exception:
+        data = {}
+
+    is_active_fn = _b("_is_active_participant")
+
+    # Collect active Librarian IDs (Librarians + Void Wardens).
+    librarian_ids: List[int] = []
+    for member in guild.members:
+        if member.bot:
+            continue
+        role_names = {r.name for r in member.roles}
+        if not (LIBRARIAN_ROLE_NAME in role_names or VOID_WARDEN_ROLE_NAME in role_names):
+            continue
+        if is_active_fn and not is_active_fn(member):
+            continue
+        librarian_ids.append(int(member.id))
+    lib_id_set = set(librarian_ids)
+
+    # Demand: active non-Librarian brothers with exposure points or corruption.
+    demand = 0
+    for uid_str, raw in (data or {}).items():
+        try:
+            uid = int(uid_str)
+        except Exception:
+            continue
+        if uid in lib_id_set or (raw or {}).get("is_librarian"):
+            continue
+        member = guild.get_member(uid)
+        if is_active_fn and not is_active_fn(member):
+            continue
+        pts = int((raw or {}).get("points", 0) or 0)
+        warp_corrupted = bool((raw or {}).get("warp_corrupted", False))
+        if pts > 0 or warp_corrupted:
+            demand += 1
+
+    # Supply: sum of available warding charges across capable Librarians.
+    supply = 0
+    for lib_id in librarian_ids:
+        try:
+            lib_state = (data or {}).get(str(lib_id)) or {}
+            lib_tier = _librarian_tier_for_points(int(lib_state.get("points", 0) or 0))
+            if lib_tier in ("overloaded", "abyssal"):
+                continue
+            supply += await _get_librarian_available_charges(lib_id)
+        except Exception:
+            continue
+
+    # Prefer the Watch Librarian role for blocker pings; fall back to Void Warden.
+    notify_role = (
+        discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+        or discord.utils.get(guild.roles, name=VOID_WARDEN_ROLE_NAME)
+    )
+    notify_role_id = notify_role.id if notify_role else None
+
+    return CadrePressure(
+        cadre_id="librarian",
+        display_name="Librarians",
+        demand=demand,
+        supply=supply,
+        notify_role_id=notify_role_id,
+        detail=f"{demand} brother(s) need cleansing; {supply} warding charge(s) available",
+    )
+
+
+def _register_pressure_contributors() -> None:
+    """Register this module's cadre evaluator. Idempotent. Called from bot.py."""
+    from .pressure_registry import register_cadre
+    register_cadre(evaluate_librarian_pressure)

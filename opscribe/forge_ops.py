@@ -7228,6 +7228,72 @@ async def _forge_override(interaction: discord.Interaction, enabled: bool):
 
 
 # ---------------------------------------------------------------------------
+# Auto-AAR-ingest: Techmarine cadre pressure contributor.
+#
+# Demand = active brothers needing armor attention:
+#     - any non-nominal damage tier (damaged/compromised/critical), OR
+#     - spirit_fractured, OR
+#     - nominal but points_since_blessing >= 5 (entering risk zone)
+#
+# Supply = sum of available blessing-pool charges across all members of the
+# Watch Techmarine role.
+#
+# See opscribe/pressure_registry.py for the aggregation contract.
+# ---------------------------------------------------------------------------
+
+async def evaluate_techmarine_pressure(guild: discord.Guild):
+    """Pressure evaluator for the Techmarine cadre. See pressure_registry."""
+    from .pressure_registry import CadrePressure
+
+    armor_data = _load_armor_integrity()
+    is_active_fn = _b("_is_active_participant")
+
+    demand = 0
+    for member in guild.members:
+        if is_active_fn and not is_active_fn(member):
+            continue
+        state = armor_data.get(str(member.id), {}) or {}
+        points = int(state.get("points_since_blessing", 0) or 0)
+        spirit_fractured = bool(state.get("spirit_fractured", False))
+        damage_tier = _get_member_damage_tier(member)
+        if spirit_fractured or damage_tier in ("damaged", "compromised", "critical"):
+            demand += 1
+        elif damage_tier is None and points >= 5:
+            # "nominal at 5+ cycles" — entering risk zone, counts as demand
+            demand += 1
+
+    supply = 0
+    techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
+    notify_role_id = techmarine_role.id if techmarine_role else None
+    if techmarine_role:
+        for member in techmarine_role.members:
+            if member.bot:
+                continue
+            try:
+                supply += await _get_techmarine_available_charges(int(member.id))
+            except Exception:
+                pass
+
+    return CadrePressure(
+        cadre_id="techmarine",
+        display_name="Techmarines",
+        demand=demand,
+        supply=supply,
+        notify_role_id=notify_role_id,
+        detail=f"{demand} brother(s) need armor rites; {supply} charge(s) available",
+    )
+
+
+def _register_pressure_contributors() -> None:
+    """Register this module's cadre evaluator with the pressure registry.
+
+    Called once from bot.py at startup. Idempotent.
+    """
+    from .pressure_registry import register_cadre
+    register_cadre(evaluate_techmarine_pressure)
+
+
+# ---------------------------------------------------------------------------
 # __all__: export all names needed by tests and bot.py re-imports.
 # Must include underscore-prefixed names (Python's `import *` skips them
 # by default; __all__ overrides that behaviour).
@@ -7396,4 +7462,7 @@ __all__ = [
     "_preview_armor_alert",
     "_test_armor_alert",
     "_preview_stud_announcement",
+    # ── Auto-ingest pressure contributor ────────────────────────────────────
+    "evaluate_techmarine_pressure",
+    "_register_pressure_contributors",
 ]
