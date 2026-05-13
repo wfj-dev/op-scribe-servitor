@@ -172,9 +172,14 @@ def _hours_since(s: Optional[str]) -> Optional[float]:
 
 
 async def _count_backlog(aar_channel: discord.TextChannel) -> int:
-    """Cheap count of messages newer than the latest processed AAR id."""
+    """Cheap count of AAR-shaped messages newer than the latest processed AAR id.
+
+    Only messages that pass ``aar_ops.is_aar_message`` (i.e. contain the
+    ``++ MISSION REPORT ++`` marker) are counted, so chatter, bot reports,
+    edits, and other noise in the AAR channel don't inflate the backlog.
+    """
     try:
-        from .aar_ops import load_processed_ids
+        from .aar_ops import load_processed_ids, is_aar_message
         processed = load_processed_ids()
         if not processed:
             # Backlog is unbounded if we've never processed anything; treat as
@@ -183,10 +188,11 @@ async def _count_backlog(aar_channel: discord.TextChannel) -> int:
         latest_id = max(int(x) for x in processed if str(x).isdigit())
         count = 0
         # `after=` accepts a discord.Object with id.
-        async for _msg in aar_channel.history(
+        async for msg in aar_channel.history(
             limit=200, after=discord.Object(id=latest_id), oldest_first=True
         ):
-            count += 1
+            if is_aar_message(msg):
+                count += 1
         return count
     except Exception:
         _g.logger.exception("auto_ingest: backlog count failed")
