@@ -690,7 +690,8 @@ async def _post_warp_alert(
         styled = _strip_display_name(member.display_name)
 
     sanction_key = _warp_sanction_key_for_points(int(points or 0))
-    sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Sanctioned", ""))
+    # Display fallback uses "Cleansed" (the post-rename clean label).
+    sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Cleansed", ""))
     flags = WARP_CORRUPTED_ICON if warp_corrupted else ""
     flag_str = f" {flags}" if flags else ""
     risk = _get_warp_tier_risk_display(tier)
@@ -753,7 +754,7 @@ async def _post_warp_alert(
         guidance = "Taint detected before AAR loss. Administer `/warp_cleanse` to prevent penalties."
         field_name = "▸ Preventive Cleansing Available"
     else:
-        guidance = "AAR loss confirmed. Administer `/warp_cleanse` to restore sanction status."
+        guidance = "AAR loss confirmed. Administer `/warp_cleanse` to restore cleansed status."
         field_name = "▸ Librarian Response Required"
     embed.add_field(name=field_name, value=guidance, inline=False)
 
@@ -1223,7 +1224,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         charges_icon = "🟢"
     embed.description = (
         f"**▸ Warp Telemetry**\n"
-        f"{sanctioned_icon} **{clean_pct:.0f}%** Sanctioned  "
+        f"{sanctioned_icon} **{clean_pct:.0f}%** Cleansed  "
         f"{pressure_icon} **{pressure_str}** Pressure  "
         f"{charges_icon} **{total_librarian_charges}** Charges"
     )
@@ -1270,7 +1271,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             name = member.display_name
         watch_lines.append(f"{icon} {name} · {pts}c{flag_str}")
     if not watch_lines:
-        watch_lines.append("*The wards hold. No sanctioned brothers.*")
+        watch_lines.append("*The wards hold. No cleansed brothers.*")
     embed.add_field(name="▸ Watchlist", value="\n".join(watch_lines), inline=False)
 
     # ─── Recent Rites (last 5 cleanses — mirrors forge Recent Rites)
@@ -2528,7 +2529,7 @@ async def warp_cleanse(
 
     flavor = random.choice(WARP_CLEANSE_OUTCOME_FLAVOR.get(outcome_key, ["The rite is complete."]))
     new_sanction_key = _warp_sanction_key_for_points(new_recipient_points)
-    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(new_sanction_key, ("Sanctioned", ""))
+    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(new_sanction_key, ("Cleansed", ""))
     bearer_name = _strip_display_name(member.display_name)
     cleanser_name = _strip_display_name(cleanser.display_name)
 

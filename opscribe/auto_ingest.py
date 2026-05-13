@@ -263,7 +263,7 @@ async def _run_ingest(
             "==============================================================================\n"
             f"  Trigger: {flavor}\n"
             f"  Scan Window: Last {span} day(s)\n"
-            f"  Sanctioned: {ingested}\n"
+            f"  Chronicled: {ingested}\n"
             f"  Rejected: {rejected}\n"
             f"  Pressure: mean {_score_str(snapshot.mean_score)} / "
             f"max {_score_str(snapshot.max_score)}\n"
