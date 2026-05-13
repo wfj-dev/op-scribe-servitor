@@ -171,6 +171,21 @@ def _hours_since(s: Optional[str]) -> Optional[float]:
     return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
 
 
+def _fmt_ts(s: Optional[str]) -> str:
+    """Render an ISO timestamp as Discord dynamic markdown (short + relative).
+
+    Falls back to an em-dash when unparseable, or the raw string when parsing
+    fails on something that's still vaguely time-shaped.
+    """
+    if not s:
+        return "—"
+    dt = _parse_iso(s)
+    if dt is None:
+        return s
+    unix = int(dt.timestamp())
+    return f"<t:{unix}:f> (<t:{unix}:R>)"
+
+
 async def _count_backlog(aar_channel: discord.TextChannel) -> int:
     """Cheap count of AAR-shaped messages newer than the latest processed AAR id.
 
@@ -635,12 +650,12 @@ async def auto_ingest_status(interaction: discord.Interaction):
         f"in ~{next_check_in_min:.0f} min" if next_check_in_min is not None else "pending"
     )
     history = (
-        f"**Last check:** {state.last_check_at or '—'} ({outcome or '—'})\n"
+        f"**Last check:** {_fmt_ts(state.last_check_at)} ({outcome or '—'})\n"
         f"**Next check:** {next_check_str}\n"
-        f"**Last ingest:** {state.last_ingest_at or '—'}"
+        f"**Last ingest:** {_fmt_ts(state.last_ingest_at)}"
         f" ({state.last_ingest_mode or '—'})\n"
-        f"**Blocked since:** {state.blocked_since or '—'}\n"
-        f"**Last FM DM:** {state.forgemaster_dm_at or '—'}"
+        f"**Blocked since:** {_fmt_ts(state.blocked_since)}\n"
+        f"**Last FM DM:** {_fmt_ts(state.forgemaster_dm_at)}"
     )
     embed.add_field(name="▸ History", value=history, inline=False)
 
