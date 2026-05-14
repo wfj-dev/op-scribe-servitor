@@ -358,20 +358,20 @@ def _roll_scan_result(
             "miss_reason": "spirit_uncommunicative",
         }
 
-    # Nominal brother detected - check for predictive warning
-    for tier_info in ARMOR_SCAN_PREDICTIVE_TIERS:
-        min_pts = tier_info["min"]
-        max_pts = tier_info["max"]
-        if max_pts is None:
-            max_pts = float("inf")
-        if min_pts <= points_since_blessing <= max_pts:
-            if random.random() < tier_info["chance"]:
-                return {
-                    "detected": True,
-                    "predictive_warning": True,
-                    "miss_reason": None,
-                }
-            break
+    # Nominal brother detected. The ⚡ "at risk" marker now reflects actual
+    # statistical danger on the NEXT ingest — not a separate flavor roll.
+    # A brother is at risk iff their per-AAR damage probability meets the
+    # configured threshold (armor_integrity.at_risk_probability_threshold,
+    # default 0.20 = 20%). Under the default tiers that's 15+ cycles.
+    threshold = float(
+        _get_armor_config().get("at_risk_probability_threshold", 0.20)
+    )
+    if _get_damage_probability(points_since_blessing) >= threshold:
+        return {
+            "detected": True,
+            "predictive_warning": True,
+            "miss_reason": None,
+        }
 
     # No warning triggered for nominal brother with low risk
     # They are "detected" but without any warning status
@@ -7306,13 +7306,9 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
         if is_active_fn and not is_active_fn(member):
             continue
         state = armor_data.get(str(member.id), {}) or {}
-        points = int(state.get("points_since_blessing", 0) or 0)
         spirit_fractured = bool(state.get("spirit_fractured", False))
         damage_tier = _get_member_damage_tier(member)
         if spirit_fractured or damage_tier in ("damaged", "compromised", "critical"):
-            demand += 1
-        elif damage_tier is None and points >= 5:
-            # "nominal at 5+ cycles" — entering risk zone, counts as demand
             demand += 1
 
     supply = 0

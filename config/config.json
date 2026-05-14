@@ -202,9 +202,9 @@
   "auto_ingest": {
     "enabled": true,
     "check_interval_minutes": 90,
-    "cooldown_hours": 12,
+    "cooldown_hours": 2,
     "ingest_span_days": 45,
-    "forced_max_backlog": 30,
+    "forced_max_backlog": 50,
     "forced_max_stale_days": 10,
     "forgemaster_user_id": "281651485782310914",
     "escalation_hours": 48,
