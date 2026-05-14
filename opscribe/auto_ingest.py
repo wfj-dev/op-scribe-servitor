@@ -59,7 +59,7 @@ def _enabled_in_config() -> bool:
 
 
 def _check_interval_seconds() -> int:
-    return max(60, int(_cfg().get("check_interval_minutes", 90)) * 60)
+    return max(60, int(_cfg().get("check_interval_minutes", 360)) * 60)
 
 
 def _cooldown_hours() -> float:
@@ -71,7 +71,7 @@ def _span_days() -> int:
 
 
 def _forced_max_backlog() -> int:
-    return int(_cfg().get("forced_max_backlog", 30))
+    return int(_cfg().get("forced_max_backlog", 50))
 
 
 def _forced_max_stale_days() -> int:
