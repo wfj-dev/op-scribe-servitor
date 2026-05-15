@@ -264,11 +264,11 @@
       "restricted": "1499806133597245551"
     },
     "infection_probability_tiers": [
-      {"min": 0,  "max": 4,    "chance": 0.00, "spread_chance": 0.00, "infection_weights": {"tainted": 100, "exposed": 0,  "volatile": 0}},
-      {"min": 5,  "max": 9,    "chance": 0.02, "spread_chance": 0.20, "infection_weights": {"tainted": 90,  "exposed": 8,  "volatile": 2}},
-      {"min": 10, "max": 14,   "chance": 0.08, "spread_chance": 0.35, "infection_weights": {"tainted": 80,  "exposed": 15, "volatile": 5}},
-      {"min": 15, "max": 19,   "chance": 0.20, "spread_chance": 0.50, "infection_weights": {"tainted": 65,  "exposed": 25, "volatile": 10}},
-      {"min": 20, "max": null, "chance": 0.40, "spread_chance": 1.00, "infection_weights": {"tainted": 50,  "exposed": 35, "volatile": 15}}
+      {"min": 0,  "max": 4,    "chance": 0.00, "infection_weights": {"tainted": 100, "exposed": 0,  "volatile": 0}},
+      {"min": 5,  "max": 9,    "chance": 0.02, "infection_weights": {"tainted": 90,  "exposed": 8,  "volatile": 2}},
+      {"min": 10, "max": 14,   "chance": 0.08, "infection_weights": {"tainted": 80,  "exposed": 15, "volatile": 5}},
+      {"min": 15, "max": 19,   "chance": 0.20, "infection_weights": {"tainted": 65,  "exposed": 25, "volatile": 10}},
+      {"min": 20, "max": null, "chance": 0.40, "infection_weights": {"tainted": 50,  "exposed": 35, "volatile": 15}}
     ],
     "cleanse_outcome_probabilities": {
       "clean":     {"crit_fail": 0.01, "crit_success": 0.01},

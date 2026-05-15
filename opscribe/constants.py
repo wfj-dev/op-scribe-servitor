@@ -134,7 +134,7 @@ WARDING_RECIPIENT_PER_WARDING_COOLDOWN_HOURS = 4  # Min hours between cleanses o
 
 # Direct susceptibility gain from Black Laurels missions (by difficulty class).
 # Points accumulate as exposure/risk — not direct corruption. An infection
-# roll is rolled after the gain is applied (mirrors armor: wear accumulates,
+# roll is made after the gain is applied (mirrors armor: wear accumulates,
 # damage rolls on each exposure event).
 WARP_BL_SUSCEPTIBILITY_GAIN = {
     "absolute": 4,
