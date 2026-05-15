@@ -114,6 +114,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
     black_laurels = record.get("black_laurels_in_mission", False)
+    difficulty_class = record.get("difficulty_class") or ""
 
     # Skip if no mission name or no participants
     if not mission_name or not brother_ids:
@@ -146,7 +147,12 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             member = guild.get_member(int(brother_id)) if guild else None
 
             # === SOK-G: Pipehitter tracking ===
-            if pipehitter_mentioned and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS:
+            # Pipehitter challenges require Hard-Stratagem difficulty.
+            if (
+                pipehitter_mentioned
+                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
+                and difficulty_class == "hard_stratagem"
+            ):
                 # Check if team has existing Pipehitter or Distinguished Pipehitter
                 team_has_pipehitter = False
                 if member:
