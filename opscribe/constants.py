@@ -132,29 +132,40 @@ WARDING_RECIPIENT_COOLDOWN_HOURS = 24  # 24h window for recipient ward count
 WARDING_RECIPIENT_MAX_PER_DAY = 3  # Max wards per recipient per 24h
 WARDING_RECIPIENT_PER_WARDING_COOLDOWN_HOURS = 4  # Min hours between cleanses on same recipient
 
-# Direct exposure gain from Black Laurels missions (by difficulty class)
-# 1=absolute BL, 2=hard-strat BL (Black Reef Persecution), 3=omega BL
-WARP_BL_EXPOSURE_GAIN = {
-    "absolute": 1,
-    "hard_stratagem": 2,
-    "omega_ops": 3,
+# Direct susceptibility gain from Black Laurels missions (by difficulty class).
+# Points accumulate as exposure/risk — not direct corruption. An infection
+# roll is made after the gain is applied (mirrors armor: wear accumulates,
+# damage rolls on each exposure event).
+WARP_BL_SUSCEPTIBILITY_GAIN = {
+    "absolute": 4,
+    "hard_stratagem": 5,
+    "omega_ops": 20,
 }
+# Backwards-compat alias (some legacy code/tests may still import this name).
+WARP_BL_EXPOSURE_GAIN = WARP_BL_SUSCEPTIBILITY_GAIN
+
+# Susceptibility gain from /warp_scry on the casting Librarian.
+WARP_SCRY_SUSCEPTIBILITY_GAIN = 1
 
 # Daily cap on unique infectious squadmates that can spread to a brother (24h rolling)
 WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP = 2
-# Spread amount per successful spread roll
-WARP_SPREAD_AMOUNT = 1
+# Susceptibility added to a target when contagion successfully spreads.
+WARP_SPREAD_SUSCEPTIBILITY_GAIN = 1
+# Legacy alias retained for compatibility.
+WARP_SPREAD_AMOUNT = WARP_SPREAD_SUSCEPTIBILITY_GAIN
 
-# Post-cleanse immunity to spread (random within range, hours)
-WARP_POST_CLEANSE_IMMUNITY_MIN_HOURS = 24
-WARP_POST_CLEANSE_IMMUNITY_MAX_HOURS = 48
+# Grace susceptibility granted on a crit_success cleanse (per charge invested).
+# Mirrors armor's BLESSING_CRIT_SUCCESS_GRACE_POINTS (-10).
+WARP_CRIT_SUCCESS_GRACE_POINTS = -10
 
-# Librarian decay: -1 exposure point every N hours (mirrors regen cadence)
+# Librarian decay: -1 susceptibility every N hours (mirrors regen cadence).
+# Applies to Librarians regardless of infection_state — passive psychic discipline.
 WARP_LIBRARIAN_DECAY_HOURS = 24 / 10  # one point every 2.4h
 
-# Librarian transfer ratio: fraction of removed exposure absorbed by cleansing Librarian
+# Librarian transfer ratio: fraction of cleansed susceptibility absorbed by the
+# cleansing Librarian as their own susceptibility gain on normal/crit_fail outcomes.
 WARP_LIBRARIAN_TRANSFER_RATIO = 0.10
-# Minimum transfer amount when any exposure was removed
+# Minimum transfer amount when any exposure was removed.
 WARP_LIBRARIAN_TRANSFER_MIN = 1
 
 # ---------------------------------------------------------------------------

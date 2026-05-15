@@ -263,13 +263,25 @@
       "under_review": "1498104853153583275",
       "restricted": "1499806133597245551"
     },
-    "brother_probability_tiers": [
-      {"min": 0, "max": 4,    "tier": "tainted",      "spread_chance": 0.20, "penalty_distribution": {"0": 0.900, "1": 0.085, "2": 0.010, "3": 0.005}},
-      {"min": 5, "max": 9,    "tier": "exposed",      "spread_chance": 0.35, "penalty_distribution": {"0": 0.835, "1": 0.100, "2": 0.050, "3": 0.015}},
-      {"min": 10, "max": 14,  "tier": "volatile",     "spread_chance": 0.50, "penalty_distribution": {"0": 0.750, "1": 0.085, "2": 0.100, "3": 0.065}},
-      {"min": 15, "max": 19,  "tier": "breached",     "spread_chance": 1.00, "penalty_distribution": {"0": 0.700, "1": 0.050, "2": 0.085, "3": 0.100, "4": 0.065}},
-      {"min": 20, "max": null, "tier": "catastrophic", "spread_chance": 1.00, "penalty_distribution": {"0": 0.700, "1": 0.050, "2": 0.085, "3": 0.100, "4": 0.065}}
+    "infection_probability_tiers": [
+      {"min": 0,  "max": 4,    "chance": 0.00, "infection_weights": {"tainted": 100, "exposed": 0,  "volatile": 0}},
+      {"min": 5,  "max": 9,    "chance": 0.02, "infection_weights": {"tainted": 90,  "exposed": 8,  "volatile": 2}},
+      {"min": 10, "max": 14,   "chance": 0.08, "infection_weights": {"tainted": 80,  "exposed": 15, "volatile": 5}},
+      {"min": 15, "max": 19,   "chance": 0.20, "infection_weights": {"tainted": 65,  "exposed": 25, "volatile": 10}},
+      {"min": 20, "max": null, "chance": 0.40, "infection_weights": {"tainted": 50,  "exposed": 35, "volatile": 15}}
     ],
+    "cleanse_outcome_probabilities": {
+      "clean":     {"crit_fail": 0.01, "crit_success": 0.01},
+      "tainted":   {"crit_fail": 0.03, "crit_success": 0.03},
+      "exposed":   {"crit_fail": 0.05, "crit_success": 0.05},
+      "volatile":  {"crit_fail": 0.08, "crit_success": 0.06},
+      "corrupted": {"crit_fail": 0.10, "crit_success": 0.10}
+    },
+    "spread_chances_by_tier": {
+      "tainted": 0.20,
+      "exposed": 0.35,
+      "volatile": 0.50
+    },
     "librarian_probability_tiers": [
       {"min": 0, "max": 8, "tier": "stable"},
       {"min": 9, "max": 18, "tier": "resonant"},
@@ -278,6 +290,7 @@
       {"min": 39, "max": null, "tier": "abyssal"}
     ],
     "spread_daily_unique_source_cap": 2,
+    "spread_susceptibility_gain": 1,
     "spread_amount": 1,
     "super_spreader_threshold": 3,
     "super_spreader_cleanse_bonus_fraction": 0.10,
@@ -287,8 +300,6 @@
       "restricted": 4,
       "corrupted": 4
     },
-    "post_cleanse_immunity_min_hours": 24,
-    "post_cleanse_immunity_max_hours": 48,
     "librarian_decay_hours": 2.4,
     "librarian_transfer_ratio": 0.10,
     "librarian_transfer_min": 1,
@@ -296,13 +307,13 @@
     "warding_pool_regen_hours": 2.4,
     "warding_recipient_max_per_day": 3,
     "warding_recipient_per_warding_cooldown_hours": 4,
-    "bl_exposure_gain": {
-      "absolute": 1,
-      "hard_stratagem": 2,
-      "omega_ops": 3
+    "bl_susceptibility_gain": {
+      "absolute": 4,
+      "hard_stratagem": 5,
+      "omega_ops": 20
     },
-    "grace_period_min_points": 100,
-    "grace_period_min_days": 7,
+    "scry_susceptibility_gain": 1,
+    "crit_success_grace_points": -10,
     "warp_corruption_threshold": 3
   },
   "lfg": {

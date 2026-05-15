@@ -21,13 +21,16 @@ import shutil
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import sys as _sys
 
 from .constants import *  # noqa: F401,F403
 from .constants import _strip_display_name
 from .flavor_text import *  # noqa: F401,F403
-from .flavor_text import _warp_sanction_key_for_points  # private name, not re-exported by *
+from .flavor_text import (  # private names, not re-exported by *
+    _warp_sanction_key_for_points,
+    _warp_sanction_key_for_state,
+)
 from .permissions import *  # noqa: F401,F403
 from . import _bot_globals as _g
 
@@ -36,6 +39,9 @@ def _b(name):
     """Resolve name via bot module (test-mock compatibility)."""
     m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
+
+_SANCTION_STATE_UNSET = object()
 
 
 # ---------------------------------------------------------------------------
@@ -89,18 +95,13 @@ def _get_sanction_role_ids() -> dict:
 
 
 def _get_brother_tier_bands() -> Dict[Optional[str], Tuple[int, Optional[int]]]:
-    cfg = _warp_config()
-    tiers = cfg.get("brother_probability_tiers")
-    if not tiers:
-        return {k: v for k, v in WARP_BROTHER_TIER_BANDS.items()}
-    bands: Dict[Optional[str], Tuple[int, Optional[int]]] = {}
-    for entry in tiers:
-        tier = entry.get("tier")
-        lo = int(entry.get("min", 0))
-        hi = entry.get("max")
-        hi_val = int(hi) if hi is not None else None
-        bands[tier] = (lo, hi_val)
-    return bands
+    """Susceptibility display bands keyed by infection tier label.
+
+    The new schema doesn't ship per-tier point bands in config (the gate is the
+    ``infection_probability_tiers`` ladder), so this returns the flavor-text
+    defaults — only used for human-readable risk labels.
+    """
+    return {k: v for k, v in WARP_BROTHER_TIER_BANDS.items()}
 
 
 def _get_librarian_tier_bands() -> Dict[Optional[str], Tuple[int, Optional[int]]]:
@@ -119,43 +120,36 @@ def _get_librarian_tier_bands() -> Dict[Optional[str], Tuple[int, Optional[int]]
 
 
 def _get_penalty_probabilities() -> dict:
-    """Derive ``{tier: {penalty: prob}}`` from the consolidated tier list.
+    """Return ``{infection_state: {penalty: prob}}`` table.
 
-    Each ``brother_probability_tiers`` entry now owns its ``penalty_distribution``
-    (mirrors armor's ``damage_weights`` baked into ``probability_tiers``).
-    Falls back to ``WARP_PENALTY_PROBABILITIES`` if config is missing.
+    The new schema keeps these probabilities as flavor constants — config no
+    longer overrides the brother penalty distribution (mirrors the armor
+    system, which keeps damage-tier penalty weights in code).
     """
-    cfg = _warp_config()
-    tiers = cfg.get("brother_probability_tiers") or []
-    if not tiers:
-        return WARP_PENALTY_PROBABILITIES
-    out: Dict[Optional[str], Dict[int, float]] = {None: {0: 1.0}}
-    for entry in tiers:
-        tier = entry.get("tier")
-        dist = entry.get("penalty_distribution") or {}
-        try:
-            out[tier] = {int(k): float(v) for k, v in dist.items()}
-        except Exception:
-            continue
-    return out
+    return WARP_PENALTY_PROBABILITIES
 
 
 def _get_spread_chances() -> Dict[str, float]:
-    """Derive ``{tier: chance}`` from the consolidated tier list."""
+    """Return ``{infection_state: chance}`` for contagion spread rolls."""
     cfg = _warp_config()
-    tiers = cfg.get("brother_probability_tiers") or []
-    if not tiers:
+    raw = cfg.get("spread_chances_by_tier") or {}
+    if not raw:
         return dict(WARP_SPREAD_CHANCES)
     out: Dict[str, float] = {}
-    for entry in tiers:
-        tier = entry.get("tier")
-        if not tier:
-            continue
+    for k, v in raw.items():
         try:
-            out[str(tier)] = float(entry.get("spread_chance", 0.0))
+            out[str(k)] = float(v)
         except Exception:
             continue
-    return out
+    return out or dict(WARP_SPREAD_CHANCES)
+
+
+def _get_spread_susceptibility_gain() -> int:
+    """Return contagion spread gain (prefers new key, supports legacy alias)."""
+    cfg = _warp_config()
+    if cfg.get("spread_susceptibility_gain") is not None:
+        return _cfg_int("spread_susceptibility_gain", WARP_SPREAD_SUSCEPTIBILITY_GAIN)
+    return _cfg_int("spread_amount", WARP_SPREAD_SUSCEPTIBILITY_GAIN)
 
 
 def _cfg_int(key: str, default: int) -> int:
@@ -177,11 +171,16 @@ def _cfg_float(key: str, default: float) -> float:
 
 
 def _get_bl_exposure_gain() -> Dict[str, int]:
+    """Return ``{mission_kind: susceptibility_gain}`` from config.
+
+    Prefers the new ``bl_susceptibility_gain`` key; falls back to legacy
+    ``bl_exposure_gain`` for backward-compat with older config files.
+    """
     cfg = _warp_config()
-    raw = cfg.get("bl_exposure_gain") or {}
-    if not raw:
-        return dict(WARP_BL_EXPOSURE_GAIN)
-    out: Dict[str, int] = {}
+    raw = cfg.get("bl_susceptibility_gain") or cfg.get("bl_exposure_gain") or {}
+    if not isinstance(raw, dict):
+        return dict(WARP_BL_SUSCEPTIBILITY_GAIN)
+    out: Dict[str, int] = dict(WARP_BL_SUSCEPTIBILITY_GAIN)
     for k, v in raw.items():
         try:
             out[str(k)] = int(v)
@@ -342,17 +341,25 @@ def _warp_render_subtree(
 
 def _default_exposure_state() -> dict:
     return {
+        # Susceptibility points (was: "exposure points"). Accumulates from BL
+        # missions, contagion, and scrying. Drives the infection-roll probability
+        # band. Only resets on cleanse (mirrors armor points_since_blessing).
+        # May be negative on a crit_success cleanse (grace susceptibility).
         "points": 0,
-        # Brother fields
+        # Cached susceptibility band label for display. Recomputed on read.
+        # Mechanical decisions use ``infection_state`` instead.
         "exposure_tier": None,
+        # NEW: discrete infection state (mirrors armor damage_tier).
+        # None | "tainted" | "exposed" | "volatile". Set by infection rolls,
+        # cleared by cleanse. Escalate-only on re-rolls.
+        "infection_state": None,
+        # Warp corruption flag (mirrors armor spirit_fractured) — set when an
+        # infection roll while at "volatile" escalates further, or on a cleanse
+        # crit_fail at "volatile". Permanent until cleared by a successful cleanse.
+        "warp_corrupted": False,
         "last_detection_alert_tier": None,
         "spread_history": [],  # list of {"source_id": str, "ts": iso}
-        "immunity_until": None,
         "last_warding_timestamp": None,
-        # Warp corruption (mirrors armor spirit_fractured) — set when a brother
-        # accumulates ``warp_corruption_threshold`` AAR submissions at restricted.
-        "restricted_aar_count": 0,
-        "warp_corrupted": False,
         # Librarian fields
         "is_librarian": False,
         "librarian_tier": None,
@@ -360,12 +367,54 @@ def _default_exposure_state() -> dict:
     }
 
 
+def _migrate_exposure_record(state: dict) -> dict:
+    """One-shot migration from legacy 5-tier schema to 3-tier+flag schema.
+
+    - Maps legacy ``exposure_tier`` ("breached"/"catastrophic") to
+      ``infection_state="volatile"`` + ``warp_corrupted=True``.
+    - Maps ``volatile``/``exposed``/``tainted`` exposure_tier values to the
+      equivalent infection_state.
+    - Drops obsolete fields (``immunity_until``, ``restricted_aar_count``).
+    - Honours legacy ``warp_corrupted`` and ``restricted_aar_count >= 3``.
+    """
+    base = _default_exposure_state()
+    for k, v in base.items():
+        state.setdefault(k, v)
+    # Migrate legacy exposure_tier -> infection_state (idempotent — only sets
+    # infection_state if it's still None).
+    if state.get("infection_state") is None:
+        legacy = state.get("exposure_tier")
+        if legacy in ("breached", "catastrophic"):
+            state["infection_state"] = "volatile"
+            state["warp_corrupted"] = True
+        elif legacy in ("volatile", "exposed", "tainted"):
+            state["infection_state"] = legacy
+    # Promote any record with restricted_aar_count >= threshold to corrupted.
+    try:
+        legacy_count = int(state.get("restricted_aar_count", 0) or 0)
+    except Exception:
+        legacy_count = 0
+    threshold = _cfg_int("warp_corruption_threshold", DEFAULT_WARP_CORRUPTION_THRESHOLD)
+    if legacy_count >= int(threshold):
+        state["warp_corrupted"] = True
+    # Strip obsolete fields.
+    state.pop("immunity_until", None)
+    state.pop("restricted_aar_count", None)
+    return state
+
+
 def _load_warp_exposure() -> dict:
     try:
         if not os.path.exists(WARP_EXPOSURE_PATH):
             return {}
         with open(WARP_EXPOSURE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            data = json.load(f) or {}
+        # Apply migration lazily on every read so older records normalize as
+        # they're touched. The first save after load will persist the changes.
+        for uid, rec in list(data.items()):
+            if isinstance(rec, dict):
+                data[uid] = _migrate_exposure_record(rec)
+        return data
     except Exception:
         return {}
 
@@ -528,10 +577,17 @@ async def _get_warp_exposure_state(user_id: int) -> dict:  # noqa: F811
 # Penalty rolls
 # ---------------------------------------------------------------------------
 
-def _roll_warp_penalty(tier: Optional[str]) -> int:
-    """Roll a probabilistic AAR penalty by exposure tier (config-driven)."""
-    table = _get_penalty_probabilities()
-    probs = table.get(tier, {0: 1.0})
+def _roll_warp_penalty(tier: Optional[str], warp_corrupted: bool = False) -> int:
+    """Roll a probabilistic AAR penalty by infection_state (config-driven).
+
+    When ``warp_corrupted`` is True the corrupted distribution is used regardless
+    of the current infection_state — mirrors armor's spirit_fractured penalty.
+    """
+    if warp_corrupted:
+        probs = WARP_PENALTY_PROBABILITIES_CORRUPTED
+    else:
+        table = _get_penalty_probabilities()
+        probs = table.get(tier, {0: 1.0})
     roll = random.random()
     cumulative = 0.0
     for penalty, prob in sorted(probs.items()):
@@ -541,8 +597,169 @@ def _roll_warp_penalty(tier: Optional[str]) -> int:
     return 0
 
 
-def _get_warp_tier_risk_display(tier: Optional[str]) -> str:
-    probs = WARP_PENALTY_PROBABILITIES.get(tier, {0: 1.0})
+# ---------------------------------------------------------------------------
+# Infection-roll helpers (exact mirror of forge_ops._roll_damage_tier)
+# ---------------------------------------------------------------------------
+
+def _get_infection_probability_tiers() -> list:
+    """Return the configured infection probability ladder.
+
+    Falls back to ``WARP_INFECTION_PROBABILITY_TIERS`` when config missing.
+    """
+    cfg = _warp_config()
+    tiers = cfg.get("infection_probability_tiers")
+    if not tiers:
+        return list(WARP_INFECTION_PROBABILITY_TIERS)
+    return list(tiers)
+
+
+def _get_infection_probability_tier_for_points(points: int) -> Optional[dict]:
+    """Return the probability-tier entry whose [min,max] band contains ``points``."""
+    for entry in _get_infection_probability_tiers():
+        try:
+            lo = int(entry.get("min", 0))
+            hi = entry.get("max")
+            if hi is None:
+                if points >= lo:
+                    return entry
+            elif lo <= points <= int(hi):
+                return entry
+        except Exception:
+            continue
+    return None
+
+
+def _get_infection_probability(points: int) -> float:
+    """Probability that an infection roll succeeds at the given susceptibility."""
+    tier = _get_infection_probability_tier_for_points(points)
+    if not tier:
+        return 0.0
+    try:
+        return float(tier.get("chance", 0.0))
+    except Exception:
+        return 0.0
+
+
+def _roll_infection_tier(susceptibility: int) -> Optional[str]:
+    """Roll an infection event at the given susceptibility.
+
+    Returns one of "tainted"/"exposed"/"volatile", or None if no infection.
+    Two-step roll (gate by ``chance``, then weighted pick from
+    ``infection_weights``) — exact mirror of forge_ops._roll_damage_tier.
+    """
+    if int(susceptibility or 0) <= 0:
+        return None
+    tier = _get_infection_probability_tier_for_points(int(susceptibility or 0))
+    if not tier:
+        return None
+    try:
+        chance = float(tier.get("chance", 0.0))
+    except Exception:
+        chance = 0.0
+    if chance <= 0 or random.random() >= chance:
+        return None
+    weights = tier.get("infection_weights") or {}
+    candidates: List[str] = []
+    weight_list: List[float] = []
+    for state in WARP_INFECTION_TIERS:
+        try:
+            w = float(weights.get(state, 0))
+        except Exception:
+            w = 0.0
+        if w > 0:
+            candidates.append(state)
+            weight_list.append(w)
+    if not candidates:
+        return "tainted"
+    total = sum(weight_list)
+    roll = random.uniform(0, total)
+    cumulative = 0.0
+    for state, w in zip(candidates, weight_list):
+        cumulative += w
+        if roll <= cumulative:
+            return state
+    return candidates[-1]
+
+
+def _escalate_infection(current: Optional[str], rolled: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Return (new_state, became_corrupted).
+
+    Escalate-only — a rolled tier lower than current does NOT downgrade.
+    Rolling above the top tier ("volatile") sets the warp_corrupted flag.
+    """
+    order = [None, "tainted", "exposed", "volatile"]
+    try:
+        cur_i = order.index(current)
+    except ValueError:
+        cur_i = 0
+    try:
+        new_i = order.index(rolled) if rolled is not None else 0
+    except ValueError:
+        new_i = 0
+    # Re-roll while already at volatile that rolls volatile again → corrupted.
+    if cur_i >= len(order) - 1 and rolled == "volatile":
+        return current, True
+    if new_i > cur_i:
+        return order[new_i], False
+    return current, False
+
+
+# ---------------------------------------------------------------------------
+# Cleanse outcome roll (mirror of forge_ops._roll_blessing_outcome)
+# ---------------------------------------------------------------------------
+
+def _get_cleanse_outcome_probabilities() -> Dict[str, Dict[str, float]]:
+    cfg = _warp_config()
+    raw = cfg.get("cleanse_outcome_probabilities") or {}
+    if not raw:
+        return dict(WARP_CLEANSE_OUTCOME_PROBABILITIES)
+    out: Dict[str, Dict[str, float]] = {}
+    for k, v in raw.items():
+        if isinstance(v, dict):
+            try:
+                out[str(k)] = {
+                    "crit_fail": float(v.get("crit_fail", 0.0)),
+                    "crit_success": float(v.get("crit_success", 0.0)),
+                }
+            except Exception:
+                continue
+    return out or dict(WARP_CLEANSE_OUTCOME_PROBABILITIES)
+
+
+def _roll_cleanse_outcome_v2(
+    infection_state: Optional[str], warp_corrupted: bool = False
+) -> str:
+    """Roll cleanse outcome: 'crit_fail' / 'normal' / 'crit_success'.
+
+    Probabilities keyed by recipient state (corrupted overrides infection_state).
+    Exact mirror of forge_ops._roll_blessing_outcome.
+    """
+    key = "corrupted" if warp_corrupted else (infection_state or "clean")
+    table = _get_cleanse_outcome_probabilities()
+    entry = table.get(key) or table.get("clean", {"crit_fail": 0.01, "crit_success": 0.01})
+    try:
+        crit_fail = float(entry.get("crit_fail", 0.0))
+        crit_success = float(entry.get("crit_success", 0.0))
+    except Exception:
+        crit_fail, crit_success = 0.0, 0.0
+    roll = random.random()
+    if roll < crit_fail:
+        return "crit_fail"
+    if roll >= (1.0 - crit_success):
+        return "crit_success"
+    return "normal"
+
+
+def _get_warp_tier_risk_display(tier: Optional[str], warp_corrupted: bool = False) -> str:
+    if not tier:
+        if not warp_corrupted:
+            return "No risk"
+    if warp_corrupted:
+        probs = WARP_PENALTY_PROBABILITIES_CORRUPTED
+    else:
+        probs = WARP_PENALTY_PROBABILITIES.get(tier, {0: 1.0})
+    if not probs:
+        return "No risk"
     penalty_chance = sum(p for k, p in probs.items() if k > 0)
     if penalty_chance <= 0:
         return "No risk"
@@ -557,25 +774,20 @@ def _get_warp_tier_risk_display(tier: Optional[str]) -> str:
 
 
 def _get_warp_detection_chances() -> Dict[str, float]:
-    """Derive per-tier early-warning detection chance.
+    """Per-infection-state early-warning detection chance.
 
-    Config keeps brother tiers consolidated, so this reads ``spread_chance`` from
-    each tier entry (mirroring existing ladder defaults) and falls back to
-    ``WARP_DETECTION_CHANCES`` when missing.
+    Reuses ``spread_chances_by_tier`` from config (a brother more likely to
+    spread is also more likely to trigger a detection alert) and falls back
+    to ``WARP_DETECTION_CHANCES``.
     """
     cfg = _warp_config()
-    tiers = cfg.get("brother_probability_tiers") or []
-    if not tiers:
+    raw = cfg.get("spread_chances_by_tier") or {}
+    if not raw:
         return dict(WARP_DETECTION_CHANCES)
     out: Dict[str, float] = {}
-    for entry in tiers:
-        tier = entry.get("tier")
-        if not tier:
-            continue
+    for k, v in raw.items():
         try:
-            out[str(tier)] = float(
-                entry.get("spread_chance", WARP_DETECTION_CHANCES.get(str(tier), 0.0))
-            )
+            out[str(k)] = float(v)
         except Exception:
             continue
     return out or dict(WARP_DETECTION_CHANCES)
@@ -650,15 +862,6 @@ async def _post_warp_alert(
         color = 0x8B0000
         title = "᛭⋅ WARP CORRUPTION MANIFEST ⋅᛭"
         description = "*The wardline has failed — immediate Librarian intervention required*"
-    elif tier in ("catastrophic", "breached"):
-        if is_detection:
-            color = 0xE74C3C
-            title = "᛭⋅ CRITICAL WARP SIGNATURE DETECTED ⋅᛭"
-            description = "*Severe taint detected — intervention window open*"
-        else:
-            color = 0xE74C3C
-            title = f"᛭⋅ WARP SANCTION FAILURE ⋅᛭{penalty_str}"
-            description = "*AAR points lost due to severe warp contamination*"
     elif tier == "volatile":
         if is_detection:
             color = 0xF39C12
@@ -689,13 +892,16 @@ async def _post_warp_alert(
     except Exception:
         styled = _strip_display_name(member.display_name)
 
-    sanction_key = _warp_sanction_key_for_points(int(points or 0))
+    sanction_key = _warp_sanction_key_for_state(tier, warp_corrupted)
     # Display fallback uses "Cleansed" (the post-rename clean label).
     sanction_label, _sanction_desc = WARP_SANCTION_STATUS.get(sanction_key, ("Cleansed", ""))
     flags = WARP_CORRUPTED_ICON if warp_corrupted else ""
     flag_str = f" {flags}" if flags else ""
-    risk = _get_warp_tier_risk_display(tier)
-    tier_label = tier.title() if tier else "Clear"
+    risk = _get_warp_tier_risk_display(tier, warp_corrupted)
+    if warp_corrupted:
+        tier_label = "Corrupted"
+    else:
+        tier_label = tier.title() if tier else "Clear"
     if is_detection and tier:
         tier_label += " (Early Warning)"
 
@@ -831,14 +1037,10 @@ def _prune_spread_history(history: List[dict], window_hours: int = 24) -> List[d
 
 
 def _is_immune(state: dict) -> bool:
-    until = state.get("immunity_until")
-    if not until:
-        return False
-    try:
-        until_dt = datetime.fromisoformat(until)
-        return datetime.utcnow() < until_dt
-    except Exception:
-        return False
+    """Deprecated. Returns False — the immunity-window model has been replaced
+    by negative grace susceptibility on cleanse crit_success.
+    """
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -915,12 +1117,31 @@ async def _sync_sanction_role_for_member(
     guild: discord.Guild,
     new_points: int,
     is_librarian: bool,
+    *,
+    infection_state: Any = _SANCTION_STATE_UNSET,
+    warp_corrupted: Optional[bool] = None,
 ) -> None:
-    """Ensure the member's sanction role matches their current exposure points."""
+    """Ensure the member's sanction role matches their current infection state.
+
+    The new schema keys roles off ``infection_state`` (and the ``warp_corrupted``
+    flag) instead of raw susceptibility points. ``new_points`` is retained for
+    backward-compat with older call sites that only know the legacy points.
+    """
     if is_librarian:
         # Librarians don't get sanction roles (their burden is private)
         await _clear_sanction_roles(member, guild)
         return
+    # Prefer the new state-driven mapping when callers pass it through.
+    if infection_state is not _SANCTION_STATE_UNSET or warp_corrupted is not None:
+        resolved_state = None if infection_state is _SANCTION_STATE_UNSET else infection_state
+        is_corrupted = bool(warp_corrupted)
+        new_key = _warp_sanction_key_for_state(resolved_state, is_corrupted)
+        if new_key == "sanctioned":
+            await _clear_sanction_roles(member, guild)
+            return
+        await _apply_sanction_role(member, guild, new_key)
+        return
+    # Legacy fallback: derive from points (only used by older display paths).
     if new_points <= 0:
         await _clear_sanction_roles(member, guild)
         return
@@ -958,6 +1179,25 @@ def _save_librarium_chronicle(data: dict):
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+
+
+def _normalize_cleanse_outcome_key(outcome: Optional[str]) -> str:
+    """Normalize legacy/new cleanse outcome keys for dashboard aggregation."""
+    key = str(outcome or "").strip().lower()
+    mapping = {
+        "full": "normal",
+        "partial": "normal",
+        "backlash": "crit_fail",
+    }
+    return mapping.get(key, key)
+
+
+def _is_backlash_outcome(outcome: Optional[str]) -> bool:
+    return _normalize_cleanse_outcome_key(outcome) == "crit_fail"
+
+
+def _is_full_cleanse_outcome(outcome: Optional[str]) -> bool:
+    return _normalize_cleanse_outcome_key(outcome) in {"normal", "crit_success"}
 
 
 async def _get_librarium_dashboard_message_id() -> Optional[int]:
@@ -1033,7 +1273,13 @@ async def _check_warp_scry_cooldown(caller_id: int) -> Tuple[bool, Optional[time
 
 
 async def _record_warp_scry(caller_id: int, target_id: int) -> None:
-    """Stamp the caller's last-scry timestamp and append to a bounded log."""
+    """Stamp the caller's last-scry timestamp, append to a bounded log, and
+    apply the scry susceptibility tax to the caller.
+
+    Per the spec: scrying is a divinatory act that brushes the caller against
+    the warp — they gain ``scry_susceptibility_gain`` susceptibility and roll
+    for infection at the new total (escalate-only).
+    """
     async with _g.LIBRARIUM_CHRONICLE_LOCK:
         data = _load_librarium_chronicle()
         log = data.setdefault("scry_log", {})
@@ -1047,6 +1293,33 @@ async def _record_warp_scry(caller_id: int, target_id: int) -> None:
         if len(history) > 200:
             data["scry_history"] = history[-200:]
         _save_librarium_chronicle(data)
+
+    # Apply susceptibility + infection roll on the caller.
+    try:
+        gain = _cfg_int("scry_susceptibility_gain", WARP_SCRY_SUSCEPTIBILITY_GAIN)
+        if gain != 0:
+            async with _g.WARP_EXPOSURE_LOCK:
+                exposure = _load_warp_exposure()
+                cstate = dict(exposure.get(str(caller_id), _default_exposure_state()))
+                for k, v in _default_exposure_state().items():
+                    cstate.setdefault(k, v)
+                cstate["is_librarian"] = True
+                cstate["points"] = int(cstate.get("points", 0) or 0) + int(gain)
+                # Librarians soak their burden via decay — they still gain pts
+                # but don't roll for infection_state (their minds are warded).
+                if not cstate.get("is_librarian"):
+                    rolled = _roll_infection_tier(int(cstate["points"]))
+                    if rolled is not None:
+                        new_state, became_corrupted = _escalate_infection(
+                            cstate.get("infection_state"), rolled
+                        )
+                        cstate["infection_state"] = new_state
+                        if became_corrupted:
+                            cstate["warp_corrupted"] = True
+                exposure[str(caller_id)] = cstate
+                _save_warp_exposure(exposure)
+    except Exception:
+        pass
 
 
 async def _record_cleanse_in_chronicle(
@@ -1232,14 +1505,15 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     # ─── Watchlist (warp-exposed brothers — mirrors forge watchlist)
     watchlist_entries = []  # (severity_idx, pts, uid, raw)
     severity_order = {
-        "catastrophic": 0, "breached": 1, "volatile": 2, "exposed": 3, "tainted": 4, None: 5,
+        "corrupted": 0, "volatile": 1, "exposed": 2, "tainted": 3, None: 4,
     }
     if guild is not None:
         for uid, raw in data.items():
             if (raw or {}).get("is_librarian"):
                 continue
-            pts = int((raw or {}).get("points", 0) or 0)
-            if pts <= 0 and not (raw or {}).get("warp_corrupted"):
+            inf = (raw or {}).get("infection_state")
+            is_corrupted = bool((raw or {}).get("warp_corrupted"))
+            if not inf and not is_corrupted:
                 continue
             try:
                 member = guild.get_member(int(uid))
@@ -1247,8 +1521,9 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                 member = None
             if member is None:
                 continue
-            tier = _brother_tier_for_points(pts)
-            watchlist_entries.append((severity_order.get(tier, 5), -pts, uid, raw, member, tier))
+            pts = int((raw or {}).get("points", 0) or 0)
+            severity_key = "corrupted" if is_corrupted else inf
+            watchlist_entries.append((severity_order.get(severity_key, 5), -pts, uid, raw, member, inf))
     watchlist_entries.sort(key=lambda r: (r[0], r[1]))
     watch_lines = []
     for _, _, uid, raw, member, tier in watchlist_entries[:5]:
@@ -1278,13 +1553,13 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     # Icons chosen to be thematically distinct from severity-tier circles
     # used in Watchlist/Key (🟡=tainted), avoiding ambiguity.
     outcome_display = {
-        "full": ("🧿", "Full Cleanse"),
-        "partial": ("🌗", "Partial"),
-        "backlash": ("⚡", "Backlash"),
+        "normal": ("🧿", "Cleansed"),
+        "crit_success": ("✨", "Crit Success"),
+        "crit_fail": ("⚠️", "Backlash"),
     }
     recent_lines = []
     for entry in reversed(cleanse_history[-5:]):
-        outcome = entry.get("outcome", "?")
+        outcome = _normalize_cleanse_outcome_key(entry.get("outcome", "?"))
         removed = int(entry.get("removed", 0) or 0)
         bearer_id = entry.get("bearer_id")
         librarian_id = entry.get("librarian_id")
@@ -1324,7 +1599,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     cutoff = datetime.utcnow() - timedelta(days=28)
     backlashes = []
     for entry in cleanse_history:
-        if entry.get("outcome") != "backlash":
+        if not _is_backlash_outcome(entry.get("outcome")):
             continue
         try:
             ts = datetime.fromisoformat(entry.get("ts", ""))
@@ -1373,7 +1648,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                 entries_sorted = list(reversed(entries))
             streak = 0
             for e in entries_sorted:
-                if e.get("outcome") == "backlash":
+                if _is_backlash_outcome(e.get("outcome")):
                     break
                 streak += 1
             streaks[lib_id] = streak
@@ -1422,11 +1697,11 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             )
     except Exception:
         pass
-    # First Light: most-recent full cleanse (outcome == "full").
+    # First Light: most-recent successful cleanse.
     try:
         latest_full = None
         for entry in reversed(cleanse_history):
-            if entry.get("outcome") != "full":
+            if not _is_full_cleanse_outcome(entry.get("outcome")):
                 continue
             try:
                 ts = datetime.fromisoformat(entry.get("ts", ""))
@@ -1445,7 +1720,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             except Exception:
                 bname = f"<@{entry.get('bearer_id')}>"
             highlight_lines.append(
-                f"✨ **First Light** _(latest full cleanse)_: {bname} · {age_str}"
+                f"✨ **First Light** _(latest successful cleanse)_: {bname} · {age_str}"
             )
     except Exception:
         pass
@@ -1509,8 +1784,8 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
                 f"🌳 **Largest chain**: {rname} → +{count} downstream"
             )
 
-        # 3) Brothers already in the high-severity band (volatile / breached /
-        # catastrophic) — distinct from the sanction watchlist which uses
+        # 3) Brothers already in the high-severity band (volatile) —
+        # distinct from the sanction watchlist which uses
         # different thresholds.
         high_tier_count = 0
         for uid, raw in data.items():
@@ -1519,8 +1794,9 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
             pts = int((raw or {}).get("points", 0) or 0)
             if pts <= 0:
                 continue
-            btier = _brother_tier_for_points(pts)
-            if btier in ("volatile", "breached", "catastrophic"):
+            inf = (raw or {}).get("infection_state")
+            is_corrupted = bool((raw or {}).get("warp_corrupted"))
+            if inf == "volatile" or is_corrupted:
                 high_tier_count += 1
         if high_tier_count > 0:
             contagion_lines.append(
@@ -1565,7 +1841,7 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
         if ts < week_cutoff:
             continue
         weekly_rites += 1
-        if entry.get("outcome") == "backlash":
+        if _is_backlash_outcome(entry.get("outcome")):
             weekly_backlashes += 1
     weekly_net = weekly_rites - weekly_backlashes
     if weekly_net > 0:
@@ -1626,10 +1902,10 @@ async def _build_librarium_chronicle_embed(guild: Optional[discord.Guild]) -> di
     embed.add_field(
         name="▸ Key",
         value=(
-            "🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · "
+            f"🟡 Tainted · 🟠 Exposed · 🔴 Volatile · {WARP_CORRUPTED_ICON} Corrupted\n"
+            f"{WARP_SPREADER_ICON} Super-spreader · "
             "Epistolaries `(N)` = available charges\n"
-            "Rites: 🧿 Full · 🌗 Partial · ⚡ Backlash"
+            "Rites: ✨ Crit Success · 🧿 Cleansed · ⚠️ Backlash"
         ),
         inline=False,
     )
@@ -1802,103 +2078,127 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
 
             now_iso = datetime.utcnow().isoformat()
 
-            # 1) Direct BL gain — applies to all squadmates on a BL mission.
+            # 1) Direct BL susceptibility gain — all squadmates on a BL mission.
             if bl_gain > 0:
                 for bid, state in states.items():
-                    state["points"] = int(state.get("points", 0) or 0) + bl_gain
+                    if state.get("is_librarian"):
+                        # Librarians soak their burden through self-cleansing; the
+                        # BL gain still applies to feed their decay ladder.
+                        state["points"] = int(state.get("points", 0) or 0) + bl_gain
+                    else:
+                        state["points"] = int(state.get("points", 0) or 0) + bl_gain
 
-            # 2) Contagion spread — for every infected squadmate, roll spread
-            # against every other squadmate (subject to immunity + daily cap).
-            sources: List[Tuple[str, str]] = []  # (source_id, source_tier)
+            # 1b) Infection roll on the new susceptibility — escalate-only.
+            #     Librarians and already-corrupted brothers do not roll for new
+            #     infection_state changes (corrupted is the terminal flag and
+            #     escalation rolls cannot raise it further; cleanse is the only
+            #     exit). However, rolling at "volatile" can still set the
+            #     corruption flag, so we keep those in the pool.
+            if bl_gain > 0:
+                for bid, state in states.items():
+                    if state.get("is_librarian"):
+                        continue
+                    pts = int(state.get("points", 0) or 0)
+                    rolled = _roll_infection_tier(pts)
+                    if rolled is None:
+                        continue
+                    new_state, became_corrupted = _escalate_infection(
+                        state.get("infection_state"), rolled
+                    )
+                    state["infection_state"] = new_state
+                    if became_corrupted:
+                        state["warp_corrupted"] = True
+
+            # 2) Contagion spread — sources are squadmates whose infection_state
+            # is non-None after step 1b. Spread gives the target +1 susceptibility
+            # and triggers an infection roll at the new susceptibility.
+            sources: List[Tuple[str, str]] = []  # (source_id, source_infection_state)
             for bid, state in states.items():
-                pts = int(state.get("points", 0) or 0)
-                tier = _brother_tier_for_points(pts) if not state.get("is_librarian") else None
-                # Only brother-tier infections spread; Librarians have shielded minds
-                if tier:
-                    sources.append((bid, tier))
+                if state.get("is_librarian"):
+                    continue
+                inf = state.get("infection_state")
+                if inf:
+                    sources.append((bid, str(inf)))
 
             if sources:
                 spread_chances = _get_spread_chances()
                 spread_cap = _cfg_int("spread_daily_unique_source_cap", WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP)
-                spread_amt = _cfg_int("spread_amount", WARP_SPREAD_AMOUNT)
+                spread_gain = _get_spread_susceptibility_gain()
                 for tgt_id, tgt_state in states.items():
-                    if _is_immune(tgt_state):
+                    if tgt_state.get("is_librarian"):
                         continue
                     history = _prune_spread_history(tgt_state.get("spread_history") or [])
                     unique_today = {h.get("source_id") for h in history}
-                    for src_id, src_tier in sources:
+                    for src_id, src_inf in sources:
                         if src_id == tgt_id:
-                            continue
-                        if len(unique_today) >= spread_cap and src_id not in unique_today:
                             continue
                         if src_id in unique_today:
                             continue
-                        chance = spread_chances.get(src_tier, 0.0)
+                        if len(unique_today) >= spread_cap:
+                            continue
+                        chance = spread_chances.get(src_inf, 0.0)
                         if random.random() < chance:
-                            tgt_state["points"] = int(tgt_state.get("points", 0) or 0) + spread_amt
+                            tgt_state["points"] = int(tgt_state.get("points", 0) or 0) + spread_gain
+                            # Roll infection at the new susceptibility.
+                            rolled = _roll_infection_tier(int(tgt_state.get("points", 0) or 0))
+                            if rolled is not None:
+                                new_state, became_corrupted = _escalate_infection(
+                                    tgt_state.get("infection_state"), rolled
+                                )
+                                tgt_state["infection_state"] = new_state
+                                if became_corrupted:
+                                    tgt_state["warp_corrupted"] = True
                             history.append({"source_id": str(src_id), "ts": now_iso})
                             unique_today.add(src_id)
                     tgt_state["spread_history"] = history
 
-            # 3) Recompute tiers + corruption flag, then persist
-            corruption_threshold = _cfg_int(
-                "warp_corruption_threshold", DEFAULT_WARP_CORRUPTION_THRESHOLD
-            )
+            # 3) Recompute display tiers and emit alerts
             for bid, state in states.items():
                 pts = int(state.get("points", 0) or 0)
                 if state.get("is_librarian"):
                     state["librarian_tier"] = _librarian_tier_for_points(pts)
                     state["exposure_tier"] = None
-                    # Librarians don't accumulate brother-corruption; clear flags
-                    state["restricted_aar_count"] = 0
+                    # Librarians don't accumulate brother-corruption
                     state["warp_corrupted"] = False
+                    state["infection_state"] = None
                 else:
                     state["exposure_tier"] = _brother_tier_for_points(pts)
                     state["librarian_tier"] = None
-                    sanction = _warp_sanction_key_for_points(pts)
-                    if sanction == "restricted":
-                        state["restricted_aar_count"] = int(
-                            state.get("restricted_aar_count", 0) or 0
-                        ) + 1
-                        if (
-                            not state.get("warp_corrupted")
-                            and corruption_threshold > 0
-                            and state["restricted_aar_count"] >= corruption_threshold
-                        ):
-                            state["warp_corrupted"] = True
 
-                    # Alerting parity with armor system:
-                    # - sustained alert if AAR loss occurred
-                    # - detection alert if no loss but tier is at risk and unalerted
-                    # - corruption alert when threshold is crossed this AAR
-                    effective_tier = _brother_tier_for_points(pts)
+                    inf_state = state.get("infection_state")
+                    is_corrupted = bool(state.get("warp_corrupted"))
                     actual_penalty = int(warp_penalties.get(str(bid), 0) or 0)
-                    if actual_penalty > 0 and effective_tier:
+
+                    # Alerting parity with armor:
+                    # - sustained alert if AAR loss occurred
+                    # - detection alert when newly infected/escalated and not corrupted
+                    # - corruption alert when warp_corrupted flips true this AAR
+                    if actual_penalty > 0 and (inf_state or is_corrupted):
                         alerts_to_post[str(bid)] = {
                             "member": None,
-                            "tier": effective_tier,
+                            "tier": inf_state,
                             "alert_type": "sustained",
                             "penalty_amount": actual_penalty,
                             "points": pts,
-                            "warp_corrupted": bool(state.get("warp_corrupted")),
+                            "warp_corrupted": is_corrupted,
                         }
-                    elif effective_tier and not bool(state.get("warp_corrupted")):
+                    elif inf_state and not is_corrupted:
                         last_alert_tier = state.get("last_detection_alert_tier")
-                        if last_alert_tier != effective_tier and _roll_warp_detection_alert(effective_tier):
-                            state["last_detection_alert_tier"] = effective_tier
+                        if last_alert_tier != inf_state and _roll_warp_detection_alert(inf_state):
+                            state["last_detection_alert_tier"] = inf_state
                             alerts_to_post[str(bid)] = {
                                 "member": None,
-                                "tier": effective_tier,
+                                "tier": inf_state,
                                 "alert_type": "detected",
                                 "penalty_amount": 0,
                                 "points": pts,
                                 "warp_corrupted": False,
                             }
 
-                    if bool(state.get("warp_corrupted")) and not prior_corrupted.get(str(bid), False):
+                    if is_corrupted and not prior_corrupted.get(str(bid), False):
                         alerts_to_post[str(bid)] = {
                             "member": None,
-                            "tier": effective_tier,
+                            "tier": inf_state,
                             "alert_type": "corrupted",
                             "penalty_amount": actual_penalty,
                             "points": pts,
@@ -1920,7 +2220,12 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
                 pts = int(state.get("points", 0) or 0)
                 try:
                     await _sync_sanction_role_for_member(
-                        member, guild, pts, bool(state.get("is_librarian"))
+                        member,
+                        guild,
+                        pts,
+                        bool(state.get("is_librarian")),
+                        infection_state=state.get("infection_state"),
+                        warp_corrupted=bool(state.get("warp_corrupted")),
                     )
                 except Exception:
                     pass
@@ -2159,10 +2464,14 @@ def _format_cooldown(td: timedelta) -> str:
 # ---------------------------------------------------------------------------
 
 def _roll_cleanse_outcome(librarian_tier: Optional[str]) -> Tuple[str, float, int]:
-    """Returns (outcome_key, fraction_removed, librarian_extra)."""
+    """Deprecated. Returns (outcome_key, fraction_removed, librarian_extra).
+
+    Retained as a legacy shim for any out-of-tree caller; the new cleanse path
+    in ``warp_cleanse`` uses ``_roll_cleanse_outcome_v2`` driven by recipient
+    infection state.
+    """
     table = WARP_CLEANSE_OUTCOMES.get(librarian_tier)
     if not table:
-        # Treat unknown librarian tier as Clear
         table = WARP_CLEANSE_OUTCOMES[None]
     roll = random.random()
     cumulative = 0.0
@@ -2170,7 +2479,6 @@ def _roll_cleanse_outcome(librarian_tier: Optional[str]) -> Tuple[str, float, in
         cumulative += prob
         if roll < cumulative:
             return key, float(frac), int(extra)
-    # Fallback to last entry
     _, key, frac, extra = table[-1]
     return key, float(frac), int(extra)
 
@@ -2347,10 +2655,10 @@ async def warp_cleanse(
 
     # Recipient state needed early so we can size the intensive cost.
     recipient_state_preview = await _get_warp_exposure_state(int(member.id))
-    preview_points = int(recipient_state_preview.get("points", 0) or 0)
+    preview_inf = recipient_state_preview.get("infection_state")
     preview_corrupted = bool(recipient_state_preview.get("warp_corrupted"))
     if intensive:
-        sanction_key_for_cost = _warp_sanction_key_for_points(preview_points)
+        sanction_key_for_cost = _warp_sanction_key_for_state(preview_inf, preview_corrupted)
         if sanction_key_for_cost == "sanctioned" and not preview_corrupted:
             await interaction.response.send_message(
                 "Intensive rite requires an active sanction. The brother is already clear.",
@@ -2398,40 +2706,73 @@ async def warp_cleanse(
 
     recipient_state = await _get_warp_exposure_state(int(member.id))
     current_points = int(recipient_state.get("points", 0) or 0)
+    current_inf = recipient_state.get("infection_state")
+    current_corrupted = bool(recipient_state.get("warp_corrupted"))
 
     if intensive:
         # Intensive rite: guaranteed full purge, no roll, no crit/backlash.
         # Mirrors armor's intensive blessing (forge_ops _apply_blessing_intensive_normal).
-        outcome_key, fraction, extra = "full", 1.0, 0
+        outcome_key = "normal"
     else:
-        outcome_key, fraction, extra = _roll_cleanse_outcome(cleanser_tier)
+        outcome_key = _roll_cleanse_outcome_v2(current_inf, current_corrupted)
 
-    # Source bonus: cleansing a super-spreader applies +bonus_fraction to removal
-    # (capped at 1.0). Mirrors lore: snipping the root rot is more efficient than
-    # chasing branches. Skipped on intensive (already at 100%).
+    # Mechanical effects per outcome (mirror armor blessing outcomes):
+    #   normal       — fully cleanse (clear infection_state, points→0),
+    #                  standard librarian transfer.
+    #   crit_success — fully cleanse + grace susceptibility (negative points),
+    #                  no librarian transfer.
+    #   crit_fail    — no cleansing; infection escalates by one tier (or sets
+    #                  warp_corrupted when already volatile); librarian
+    #                  absorbs DOUBLE the standard transfer as backlash.
+    grace_pts = _cfg_int(
+        "crit_success_grace_points", WARP_CRIT_SUCCESS_GRACE_POINTS
+    )
+    if outcome_key == "crit_fail":
+        removed = 0
+        new_recipient_points = current_points
+        fraction = 0.0
+    elif outcome_key == "crit_success":
+        removed = current_points
+        new_recipient_points = grace_pts * max(1, int(charges_required))
+        fraction = 1.0
+    else:  # normal
+        removed = current_points
+        new_recipient_points = 0
+        fraction = 1.0
+
+    # Source bonus only meaningful on a successful cleanse with downstream
+    # infections to sever.
     source_bonus_applied = False
     source_bonus_outgoing = 0
-    if not intensive:
+    if outcome_key in ("normal", "crit_success"):
         try:
             is_super, outgoing = _is_super_spreader(int(member.id), window_hours=24)
             if is_super and not recipient_state.get("is_librarian"):
-                bonus = _cfg_float("super_spreader_cleanse_bonus_fraction", 0.10)
-                if bonus > 0:
-                    fraction = min(1.0, fraction + bonus)
-                    source_bonus_applied = True
-                    source_bonus_outgoing = outgoing
+                source_bonus_applied = True
+                source_bonus_outgoing = outgoing
         except Exception:
             pass
 
-    removed = int(round(current_points * fraction))
-    new_recipient_points = max(0, current_points - removed)
-
+    # Standard librarian transfer scales with how much susceptibility was removed.
     transfer = 0
     if removed > 0:
         transfer_min = _cfg_int("librarian_transfer_min", WARP_LIBRARIAN_TRANSFER_MIN)
         transfer_ratio = _cfg_float("librarian_transfer_ratio", WARP_LIBRARIAN_TRANSFER_RATIO)
         transfer = max(transfer_min, math.ceil(removed * transfer_ratio))
-    librarian_gain = transfer + max(0, extra)
+
+    if outcome_key == "crit_fail":
+        # Doubled backlash even though nothing was removed — based on the
+        # recipient's pre-cleanse susceptibility so the cost scales with
+        # severity (mirror: armor crit_fail spreads damage from current
+        # damage_tier).
+        transfer_min = _cfg_int("librarian_transfer_min", WARP_LIBRARIAN_TRANSFER_MIN)
+        transfer_ratio = _cfg_float("librarian_transfer_ratio", WARP_LIBRARIAN_TRANSFER_RATIO)
+        baseline = max(transfer_min, math.ceil(max(1, current_points) * transfer_ratio))
+        librarian_gain = 2 * baseline
+    elif outcome_key == "crit_success":
+        librarian_gain = 0
+    else:
+        librarian_gain = transfer
 
     if not force:
         for uid, n in contributors:
@@ -2456,22 +2797,25 @@ async def warp_cleanse(
             if rstate.get("is_librarian"):
                 rstate["librarian_tier"] = _librarian_tier_for_points(new_recipient_points)
             rstate["last_warding_timestamp"] = datetime.utcnow().isoformat()
-            immunity_h = random.randint(
-                _cfg_int("post_cleanse_immunity_min_hours", WARP_POST_CLEANSE_IMMUNITY_MIN_HOURS),
-                _cfg_int("post_cleanse_immunity_max_hours", WARP_POST_CLEANSE_IMMUNITY_MAX_HOURS),
-            )
-            rstate["immunity_until"] = (datetime.utcnow() + timedelta(hours=immunity_h)).isoformat()
-            if removed > 0:
-                rstate["last_detection_alert_tier"] = None
-            # Cleanse fully resets corruption tracking when brother returns to clean
-            if new_recipient_points <= 0:
-                rstate["warp_corrupted"] = False
-                rstate["restricted_aar_count"] = 0
+
+            if outcome_key == "crit_fail":
+                # Escalate infection — exact mirror of armor crit_fail damage step.
+                order = [None, "tainted", "exposed", "volatile"]
+                try:
+                    idx = order.index(current_inf)
+                except ValueError:
+                    idx = 0
+                if idx >= len(order) - 1:
+                    # Already at volatile → flip the corruption flag.
+                    rstate["warp_corrupted"] = True
+                else:
+                    rstate["infection_state"] = order[idx + 1]
+                # Detection alert tier holds — failure is visible
             else:
-                # Demoting below restricted clears the count (mirrors armor: leaving
-                # critical resets the fracture counter for the next escalation).
-                if _warp_sanction_key_for_points(new_recipient_points) != "restricted":
-                    rstate["restricted_aar_count"] = 0
+                # Successful cleanse — clear infection state and corruption flag.
+                rstate["infection_state"] = None
+                rstate["warp_corrupted"] = False
+                rstate["last_detection_alert_tier"] = None
             data[str(int(member.id))] = rstate
             _save_warp_exposure(data)
     except Exception as e:
@@ -2502,13 +2846,22 @@ async def warp_cleanse(
     await _record_warding_for_recipient(int(member.id))
 
     # Sync sanction roles for the bearer (and clear if zeroed)
+    post_inf = current_inf
+    post_corrupted = current_corrupted
     if interaction.guild is not None:
         try:
+            # Re-read the updated state so the role reflects the post-cleanse
+            # infection_state / warp_corrupted flags.
+            updated = await _get_warp_exposure_state(int(member.id))
+            post_inf = updated.get("infection_state")
+            post_corrupted = bool(updated.get("warp_corrupted"))
             await _sync_sanction_role_for_member(
                 member,
                 interaction.guild,
                 new_recipient_points,
-                bool(recipient_state.get("is_librarian")),
+                bool(updated.get("is_librarian")),
+                infection_state=post_inf,
+                warp_corrupted=post_corrupted,
             )
         except Exception:
             pass
@@ -2522,24 +2875,34 @@ async def warp_cleanse(
             int(cleanser.id),
             outcome_key,
             removed,
-            transfer,
+            librarian_gain,
         )
     except Exception:
         pass
 
     flavor = random.choice(WARP_CLEANSE_OUTCOME_FLAVOR.get(outcome_key, ["The rite is complete."]))
-    new_sanction_key = _warp_sanction_key_for_points(new_recipient_points)
+    new_sanction_key = _warp_sanction_key_for_state(post_inf, post_corrupted)
     sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(new_sanction_key, ("Cleansed", ""))
     bearer_name = _strip_display_name(member.display_name)
     cleanser_name = _strip_display_name(cleanser.display_name)
 
-    title_emoji = {"full": "🧿", "partial": "🌀", "backlash": "⚠️"}.get(outcome_key, "🧿")
+    title_emoji = {
+        "crit_success": "✨",
+        "normal": "🧿",
+        "crit_fail": "⚠️",
+        # legacy keys
+        "full": "🧿",
+        "partial": "🌀",
+        "backlash": "⚠️",
+    }.get(outcome_key, "🧿")
     title_text = "᛭⋅ INTENSIVE CLEANSING RITE ⋅᛭" if intensive else "᛭⋅ WARP CLEANSING RITE ⋅᛭"
 
     embed = discord.Embed(
         title=title_text,
         description=f"*{flavor}*",
-        color=0x9B59B6 if outcome_key != "backlash" else 0xE67E22,
+        color=0xF1C40F if outcome_key == "crit_success" else (
+            0xE67E22 if outcome_key in ("crit_fail", "backlash") else 0x9B59B6
+        ),
     )
     embed.add_field(name="▸ Bearer", value=f"**{bearer_name}**", inline=True)
     embed.add_field(name="▸ Cleanser", value=f"**{cleanser_name}**", inline=True)
@@ -2549,11 +2912,13 @@ async def warp_cleanse(
             value=f"🧿 **INTENSIVE** — {charges_required} charges · guaranteed full purge",
             inline=False,
         )
-    embed.add_field(
-        name="▸ Outcome",
-        value=f"{title_emoji} **{outcome_key.upper()}** — {int(fraction*100)}% removed",
-        inline=False,
-    )
+    outcome_pct = int(fraction * 100)
+    outcome_summary = {
+        "crit_success": f"✨ **CRITICAL SUCCESS** — full purge + grace ({new_recipient_points} susceptibility)",
+        "normal": f"{title_emoji} **CLEANSED** — {outcome_pct}% removed",
+        "crit_fail": f"{title_emoji} **BACKLASH** — cleanse failed, infection escalated",
+    }.get(outcome_key, f"{title_emoji} **{outcome_key.upper()}** — {outcome_pct}% removed")
+    embed.add_field(name="▸ Outcome", value=outcome_summary, inline=False)
     if source_bonus_applied:
         embed.add_field(
             name="▸ Source Bonus",
@@ -2877,7 +3242,7 @@ async def warp_status(interaction: discord.Interaction):
                     if _ts < today_start:
                         continue
                     cleanses_today += 1
-                    if _entry.get("outcome") == "backlash":
+                    if _is_backlash_outcome(_entry.get("outcome")):
                         backlashes_today += 1
             except Exception:
                 pass
@@ -2946,9 +3311,9 @@ async def warp_status(interaction: discord.Interaction):
     embed.add_field(
         name="▸ Key",
         value=(
-            "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
+            f"**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · {WARP_CORRUPTED_ICON} Corrupted\n"
             "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles · "
+            f"{WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles · "
             "trace deeper with `/warp_scry`"
         ),
         inline=False,
@@ -3100,9 +3465,9 @@ async def warp_scry(interaction: discord.Interaction, member: discord.Member):
     embed.add_field(
         name="▸ Key",
         value=(
-            "**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · 💀 Breached · ⚫ Catastrophic\n"
+            f"**Brothers** (circles): 🟡 Tainted · 🟠 Exposed · 🔴 Volatile · {WARP_CORRUPTED_ICON} Corrupted\n"
             "**Librarians** (squares): 🟨 Stable · 🟧 Resonant · 🟥 Surging · ⬛ Overloaded · 🟫 Abyssal\n"
-            f"{WARP_CORRUPTED_ICON} Corrupted · {WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles"
+            f"{WARP_SPREADER_ICON} Super-spreader · `Nc` = cycles"
         ),
         inline=False,
     )
