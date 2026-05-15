@@ -1420,10 +1420,12 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                         if penalty > 0:
                             armor_penalties[bid] = penalty
 
-                        # Warp penalty mirrors Techmarine probabilities by exposure tier
+                        # Warp penalty mirrors Techmarine probabilities by
+                        # infection state (3-tier + warp_corrupted flag).
                         warp_state = await _get_warp_exposure_state(int(bid))
-                        warp_tier = warp_state.get("exposure_tier")
-                        warp_pen = _roll_warp_penalty(warp_tier)
+                        warp_inf = warp_state.get("infection_state")
+                        warp_corrupted = bool(warp_state.get("warp_corrupted"))
+                        warp_pen = _roll_warp_penalty(warp_inf, warp_corrupted)
                         if warp_pen > 0:
                             warp_penalties[bid] = warp_pen
                 except Exception:

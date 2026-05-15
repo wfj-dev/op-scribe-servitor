@@ -1260,6 +1260,22 @@ WARP_CLEANSE_OUTCOME_FLAVOR = {
         "Wards crack. The Librarian absorbs the backlash to spare the brother.",
         "The rite holds—barely. Burden flows to the cleanser.",
     ],
+    # New three-outcome keys (mirror armor blessing outcomes)
+    "crit_success": [
+        "The wards sing in perfect harmony — the brother emerges fortified beyond cleansed.",
+        "A confluence of light: every shadow is burned away and a grace lingers in the warp.",
+        "The rite ascends. The brother walks free, and the warp recoils from him for a while.",
+    ],
+    "normal": [
+        "Wards hold. The taint is purged in full.",
+        "Litanies complete. The brother stands cleansed.",
+        "The Librarian seals the breach; the spirit clears.",
+    ],
+    "crit_fail": [
+        "The rite shatters. Corruption surges back twofold into the cleanser.",
+        "Wards splinter. The Librarian reels under doubled backlash; the taint deepens.",
+        "The cleanse inverts. The brother's affliction worsens and the cleanser bleeds the cost.",
+    ],
 }
 
 # Brief Librarian tier descriptions for warp_status displays
