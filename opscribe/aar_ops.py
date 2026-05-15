@@ -114,6 +114,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
     black_laurels = record.get("black_laurels_in_mission", False)
+    difficulty_class = record.get("difficulty_class") or ""
 
     # Skip if no mission name or no participants
     if not mission_name or not brother_ids:
@@ -146,7 +147,12 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             member = guild.get_member(int(brother_id)) if guild else None
 
             # === SOK-G: Pipehitter tracking ===
-            if pipehitter_mentioned and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS:
+            # Pipehitter challenges require Hard-Stratagem difficulty.
+            if (
+                pipehitter_mentioned
+                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
+                and difficulty_class == "hard_stratagem"
+            ):
                 # Check if team has existing Pipehitter or Distinguished Pipehitter
                 team_has_pipehitter = False
                 if member:
@@ -1420,10 +1426,12 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                         if penalty > 0:
                             armor_penalties[bid] = penalty
 
-                        # Warp penalty mirrors Techmarine probabilities by exposure tier
+                        # Warp penalty mirrors Techmarine probabilities by
+                        # infection state (3-tier + warp_corrupted flag).
                         warp_state = await _get_warp_exposure_state(int(bid))
-                        warp_tier = warp_state.get("exposure_tier")
-                        warp_pen = _roll_warp_penalty(warp_tier)
+                        warp_inf = warp_state.get("infection_state")
+                        warp_corrupted = bool(warp_state.get("warp_corrupted"))
+                        warp_pen = _roll_warp_penalty(warp_inf, warp_corrupted)
                         if warp_pen > 0:
                             warp_penalties[bid] = warp_pen
                 except Exception:

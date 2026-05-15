@@ -2,10 +2,9 @@
 
 Covers:
 - Sanction tiering: ``_warp_sanction_key_for_points`` boundary behavior.
-- Config readers: ``_get_penalty_probabilities`` / ``_get_spread_chances``
-  derive correctly from the consolidated ``brother_probability_tiers`` block,
-  and fall back to ``WARP_PENALTY_PROBABILITIES`` / ``WARP_SPREAD_CHANCES``
-  when the block is absent.
+- Config readers: ``_get_penalty_probabilities`` returns the flavor-text
+  defaults (no longer config-overridable) and ``_get_spread_chances`` reads
+  ``spread_chances_by_tier`` with a sane fallback.
 - Contagion graph: ``_compute_outgoing_infections`` honors the time window
   and inverts the recipient-side ``spread_history`` correctly.
 - Super-spreader detection: ``_is_super_spreader`` honors the
@@ -36,74 +35,94 @@ def test_sanction_key_clear_at_zero_or_below():
 
 def test_sanction_key_screening_due_band():
     assert _warp_sanction_key_for_points(1) == "screening_due"
-    assert _warp_sanction_key_for_points(9) == "screening_due"
+    assert _warp_sanction_key_for_points(4) == "screening_due"
 
 
 def test_sanction_key_under_review_band():
-    assert _warp_sanction_key_for_points(10) == "under_review"
-    assert _warp_sanction_key_for_points(19) == "under_review"
+    assert _warp_sanction_key_for_points(5) == "under_review"
+    assert _warp_sanction_key_for_points(9) == "under_review"
 
 
 def test_sanction_key_restricted_band():
-    assert _warp_sanction_key_for_points(20) == "restricted"
+    assert _warp_sanction_key_for_points(10) == "restricted"
     assert _warp_sanction_key_for_points(999) == "restricted"
 
 
 # ---------------------------------------------------------------------------
-# Config readers — consolidated tier list
+# Config readers — new schema
 # ---------------------------------------------------------------------------
 
 
-def _stub_warp_cfg(tiers=None, **extra):
-    cfg = {"brother_probability_tiers": tiers or []}
-    cfg.update(extra)
-    return cfg
-
-
-def test_get_penalty_probabilities_reads_from_consolidated_tiers():
-    tiers = [
-        {
-            "min": 0,
-            "max": 4,
-            "tier": "tainted",
-            "spread_chance": 0.20,
-            "penalty_distribution": {"0": 0.9, "1": 0.1},
-        },
-        {
-            "min": 5,
-            "max": 9,
-            "tier": "exposed",
-            "spread_chance": 0.35,
-            "penalty_distribution": {"0": 0.5, "1": 0.3, "2": 0.2},
-        },
-    ]
-    with patch.object(lib, "_warp_config", return_value=_stub_warp_cfg(tiers)):
-        out = lib._get_penalty_probabilities()
-    assert out["tainted"] == {0: 0.9, 1: 0.1}
-    assert out["exposed"] == {0: 0.5, 1: 0.3, 2: 0.2}
-
-
-def test_get_penalty_probabilities_falls_back_when_block_missing():
-    with patch.object(lib, "_warp_config", return_value={}):
-        out = lib._get_penalty_probabilities()
+def test_get_penalty_probabilities_returns_flavor_defaults():
+    # In the new (armor-mirror) schema the penalty distribution lives in the
+    # flavor-text constant; config does not override it.
+    out = lib._get_penalty_probabilities()
     assert out is WARP_PENALTY_PROBABILITIES
 
 
-def test_get_spread_chances_reads_from_consolidated_tiers():
-    tiers = [
-        {"tier": "tainted", "spread_chance": 0.20, "penalty_distribution": {}},
-        {"tier": "exposed", "spread_chance": 0.50, "penalty_distribution": {}},
-        {"tier": "breached", "spread_chance": 1.00, "penalty_distribution": {}},
-    ]
-    with patch.object(lib, "_warp_config", return_value=_stub_warp_cfg(tiers)):
+def test_get_spread_chances_reads_from_config_block():
+    cfg = {
+        "spread_chances_by_tier": {
+            "tainted": 0.20,
+            "exposed": 0.50,
+            "volatile": 1.00,
+        }
+    }
+    with patch.object(lib, "_warp_config", return_value=cfg):
         out = lib._get_spread_chances()
-    assert out == {"tainted": 0.20, "exposed": 0.50, "breached": 1.00}
+    assert out == {"tainted": 0.20, "exposed": 0.50, "volatile": 1.00}
 
 
 def test_get_spread_chances_falls_back_when_block_missing():
     with patch.object(lib, "_warp_config", return_value={}):
         out = lib._get_spread_chances()
     assert out == dict(WARP_SPREAD_CHANCES)
+
+
+def test_get_bl_exposure_gain_partial_override_keeps_new_defaults():
+    cfg = {"bl_susceptibility_gain": {"absolute": 9}}
+    with patch.object(lib, "_warp_config", return_value=cfg):
+        out = lib._get_bl_exposure_gain()
+    assert out == {"absolute": 9, "hard_stratagem": 5, "omega_ops": 20}
+
+
+# ---------------------------------------------------------------------------
+# Infection roll state machine
+# ---------------------------------------------------------------------------
+
+
+def test_infection_probability_tier_selects_open_ended_top_band():
+    with patch.object(lib, "_get_infection_probability_tiers", return_value=[
+        {"min": 0, "max": 4, "chance": 0.0},
+        {"min": 5, "max": None, "chance": 0.4},
+    ]):
+        tier = lib._get_infection_probability_tier_for_points(123)
+    assert tier == {"min": 5, "max": None, "chance": 0.4}
+
+
+def test_roll_infection_tier_non_positive_points_never_infect():
+    with patch.object(lib, "_get_infection_probability_tiers", return_value=[
+        {"min": 0, "max": 10, "chance": 1.0, "infection_weights": {"volatile": 1}},
+    ]):
+        assert lib._roll_infection_tier(0) is None
+        assert lib._roll_infection_tier(-3) is None
+
+
+def test_roll_infection_tier_malformed_weights_falls_back_to_tainted():
+    with (
+        patch.object(lib, "_get_infection_probability_tiers", return_value=[
+            {"min": 1, "max": None, "chance": 1.0, "infection_weights": {"tainted": "bad"}},
+        ]),
+        patch.object(lib.random, "random", return_value=0.0),
+    ):
+        rolled = lib._roll_infection_tier(5)
+    assert rolled == "tainted"
+
+
+def test_escalate_infection_volatile_reroll_sets_corrupted_flag():
+    new_state, became_corrupted = lib._escalate_infection("volatile", "volatile")
+    assert new_state == "volatile"
+    assert became_corrupted is True
 
 
 # ---------------------------------------------------------------------------
