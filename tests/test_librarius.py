@@ -79,6 +79,52 @@ def test_get_spread_chances_falls_back_when_block_missing():
     assert out == dict(WARP_SPREAD_CHANCES)
 
 
+def test_get_bl_exposure_gain_partial_override_keeps_new_defaults():
+    cfg = {"bl_susceptibility_gain": {"absolute": 9}}
+    with patch.object(lib, "_warp_config", return_value=cfg):
+        out = lib._get_bl_exposure_gain()
+    assert out == {"absolute": 9, "hard_stratagem": 5, "omega_ops": 20}
+
+
+# ---------------------------------------------------------------------------
+# Infection roll state machine
+# ---------------------------------------------------------------------------
+
+
+def test_infection_probability_tier_selects_open_ended_top_band():
+    with patch.object(lib, "_get_infection_probability_tiers", return_value=[
+        {"min": 0, "max": 4, "chance": 0.0},
+        {"min": 5, "max": None, "chance": 0.4},
+    ]):
+        tier = lib._get_infection_probability_tier_for_points(123)
+    assert tier == {"min": 5, "max": None, "chance": 0.4}
+
+
+def test_roll_infection_tier_non_positive_points_never_infect():
+    with patch.object(lib, "_get_infection_probability_tiers", return_value=[
+        {"min": 0, "max": 10, "chance": 1.0, "infection_weights": {"volatile": 1}},
+    ]):
+        assert lib._roll_infection_tier(0) is None
+        assert lib._roll_infection_tier(-3) is None
+
+
+def test_roll_infection_tier_malformed_weights_falls_back_to_tainted():
+    with (
+        patch.object(lib, "_get_infection_probability_tiers", return_value=[
+            {"min": 1, "max": None, "chance": 1.0, "infection_weights": {"tainted": "bad"}},
+        ]),
+        patch.object(lib.random, "random", return_value=0.0),
+    ):
+        rolled = lib._roll_infection_tier(5)
+    assert rolled == "tainted"
+
+
+def test_escalate_infection_volatile_reroll_sets_corrupted_flag():
+    new_state, became_corrupted = lib._escalate_infection("volatile", "volatile")
+    assert new_state == "volatile"
+    assert became_corrupted is True
+
+
 # ---------------------------------------------------------------------------
 # Contagion graph
 # ---------------------------------------------------------------------------

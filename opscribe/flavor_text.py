@@ -1084,7 +1084,7 @@ WARP_EXPOSURE_TIERS = WARP_INFECTION_TIERS
 WARP_BROTHER_TIER_BANDS = {
     "tainted": (1, 4),
     "exposed": (5, 9),
-    "volatile": (10, 14),
+    "volatile": (10, None),
 }
 
 # Librarian personal exposure tiers (2x brother bands; reflects psychic tolerance)
@@ -1340,4 +1340,3 @@ LIBRARIUM_AMBIENT_MESSAGES = [
     "*Somewhere, a litany ends. Another begins.*",
     "*The Librarians' vigil continues, unspoken and unbroken.*",
 ]
-
