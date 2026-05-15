@@ -137,7 +137,12 @@ async def backfill_challenge_progress(guild: discord.Guild):
             user_progress['display_name'] = member.display_name
             
             # === SOK-G: Pipehitter tracking ===
-            if pipehitter_mentioned and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS:
+            # Pipehitter challenges require Hard-Stratagem difficulty.
+            if (
+                pipehitter_mentioned
+                and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
+                and difficulty_class == 'hard_stratagem'
+            ):
                 # Skip if already has the role
                 if discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID) or \
                    discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
