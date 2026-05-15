@@ -1069,17 +1069,22 @@ FORGE_AMBIENT_MESSAGES = [
 # Librarian / Warp Corruption subsystem data
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Brother exposure tiers (numeric mirror of Techmarine armor tiers)
-WARP_EXPOSURE_TIERS = ["tainted", "exposed", "volatile", "breached", "catastrophic"]
+# Brother infection tiers (exact mirror of armor's damaged/compromised/critical).
+# The fourth state (warp_corrupted, parallel to spirit_fractured) is tracked as
+# a separate boolean flag on the state record — not a tier value.
+WARP_INFECTION_TIERS = ["tainted", "exposed", "volatile"]
 
-# Per-tier point bands for brothers. Mirrors Techmarine numeric model exactly.
-# (min_inclusive, max_inclusive) — None upper bound = unbounded.
+# Legacy alias retained for read-side compatibility; do NOT use for new code.
+WARP_EXPOSURE_TIERS = WARP_INFECTION_TIERS
+
+# Susceptibility bands — these map a brother's current susceptibility points to
+# the infection-roll probability tier (mirror of armor's probability_tiers config).
+# Bands no longer directly produce a tier label; they only determine the chance/
+# weights of the next infection roll. Kept here for legacy display fallback.
 WARP_BROTHER_TIER_BANDS = {
     "tainted": (1, 4),
     "exposed": (5, 9),
     "volatile": (10, 14),
-    "breached": (15, 19),
-    "catastrophic": (20, None),
 }
 
 # Librarian personal exposure tiers (2x brother bands; reflects psychic tolerance)
@@ -1117,21 +1122,42 @@ WARP_SANCTION_STATUS = {
     "restricted": ("Restricted", "Severe exposure. Operational restrictions in effect pending Void Warden review."),
 }
 
-# Map exposure point totals to sanction key (brothers).
-def _warp_sanction_key_for_points(points: int) -> str:
-    """Map a brother's exposure points to a Warp Sanction key.
+# Map a brother's INFECTION STATE to a Warp Sanction key.
+# Sanction keys now derive from the discrete infection state, not from
+# susceptibility points — exactly parallel to armor's sanction roles, which
+# track damage_tier (damaged/compromised/critical) rather than wear points.
+_WARP_INFECTION_TO_SANCTION = {
+    None: "sanctioned",
+    "tainted": "screening_due",
+    "exposed": "under_review",
+    "volatile": "restricted",
+}
 
-    3 escalating non-clean tiers (parity with armor's damaged/compromised/critical).
-    Catastrophic exposure (20+) maps to restricted; the warp_corrupted flag is
-    raised separately by AAR-count threshold (mirrors spirit_fractured).
+
+def _warp_sanction_key_for_state(infection_state, warp_corrupted: bool = False) -> str:
+    """Map a brother's infection_state (+ warp_corrupted flag) to a sanction key.
+
+    warp_corrupted brothers always surface as "restricted" regardless of the
+    current infection_state (mirrors spirit_fractured forcing a permanent
+    high-severity Discord role).
     """
+    if warp_corrupted:
+        return "restricted"
+    return _WARP_INFECTION_TO_SANCTION.get(infection_state, "sanctioned")
+
+
+# Legacy helper retained for read-side compatibility. Internally it just maps
+# the legacy point bands to the equivalent sanction key. New code should call
+# _warp_sanction_key_for_state instead.
+def _warp_sanction_key_for_points(points: int) -> str:
+    """DEPRECATED: legacy point-band → sanction mapping."""
     if points <= 0:
         return "sanctioned"
-    if points <= 9:
+    if points <= 4:
         return "screening_due"
-    if points <= 19:
+    if points <= 9:
         return "under_review"
-    return "restricted"  # 20+
+    return "restricted"
 
 
 # Warp corruption threshold (AAR submissions at restricted before brother is corrupted).
@@ -1139,34 +1165,54 @@ def _warp_sanction_key_for_points(points: int) -> str:
 DEFAULT_WARP_CORRUPTION_THRESHOLD = 3
 
 
-# Penalty tables — exact mirror of ARMOR_PENALTY_PROBABILITIES, keyed by exposure tier.
-# Catastrophic uses the same shape as breached/fractured.
+# Penalty tables — exact mirror of ARMOR_PENALTY_PROBABILITIES, keyed by
+# the brother's infection_state. warp_corrupted (the spirit_fractured
+# parallel) is handled by the resolver function below.
 WARP_PENALTY_PROBABILITIES = {
     None: {0: 1.0},
     "tainted": {0: 0.90, 1: 0.085, 2: 0.010, 3: 0.005},
     "exposed": {0: 0.835, 1: 0.10, 2: 0.05, 3: 0.015},
     "volatile": {0: 0.75, 1: 0.085, 2: 0.10, 3: 0.065},
-    "breached": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},
-    "catastrophic": {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065},
 }
 
-# Detection alert chances per AAR while exposed (mirrors ARMOR_DETECTION_CHANCES).
+# Penalty table for warp_corrupted (parallel to fractured) — strictly worse
+# than volatile alone.
+WARP_PENALTY_PROBABILITIES_CORRUPTED = {0: 0.70, 1: 0.05, 2: 0.085, 3: 0.10, 4: 0.065}
+
+# Detection alert chances per AAR while infected (mirrors ARMOR_DETECTION_CHANCES).
 WARP_DETECTION_CHANCES = {
     "tainted": 0.20,
     "exposed": 0.35,
     "volatile": 0.50,
-    "breached": 1.00,
-    "catastrophic": 1.00,
 }
 
-# Spread chance from an infected source by the source's tier.
-# Mirrors detection ladder for narrative consistency.
+# Spread chance from an infected source by the source's infection_state.
+# Only infected brothers can spread — clean brothers cannot.
 WARP_SPREAD_CHANCES = {
     "tainted": 0.20,
     "exposed": 0.35,
     "volatile": 0.50,
-    "breached": 1.00,
-    "catastrophic": 1.00,
+}
+
+# Infection probability tiers — exact mirror of forge_ops probability_tiers.
+# Keyed by susceptibility point ranges; each entry gives the chance an
+# infection roll succeeds AND the weights for picking which tier (when it does).
+WARP_INFECTION_PROBABILITY_TIERS = [
+    {"min": 0,  "max": 4,    "chance": 0.00, "infection_weights": {"tainted": 100, "exposed": 0,  "volatile": 0}},
+    {"min": 5,  "max": 9,    "chance": 0.02, "infection_weights": {"tainted": 90,  "exposed": 8,  "volatile": 2}},
+    {"min": 10, "max": 14,   "chance": 0.08, "infection_weights": {"tainted": 80,  "exposed": 15, "volatile": 5}},
+    {"min": 15, "max": 19,   "chance": 0.20, "infection_weights": {"tainted": 65,  "exposed": 25, "volatile": 10}},
+    {"min": 20, "max": None, "chance": 0.40, "infection_weights": {"tainted": 50,  "exposed": 35, "volatile": 15}},
+]
+
+# Cleanse outcome probabilities — exact mirror of BLESSING_ROLL_PROBABILITIES.
+# Keyed by recipient's current infection_state ("corrupted" used when warp_corrupted=True).
+WARP_CLEANSE_OUTCOME_PROBABILITIES = {
+    None:        {"crit_fail": 0.01, "crit_success": 0.01},
+    "tainted":   {"crit_fail": 0.03, "crit_success": 0.03},
+    "exposed":   {"crit_fail": 0.05, "crit_success": 0.05},
+    "volatile":  {"crit_fail": 0.08, "crit_success": 0.06},
+    "corrupted": {"crit_fail": 0.10, "crit_success": 0.10},
 }
 
 # Cleanse outcome matrix keyed by the cleansing Librarian's current tier.
@@ -1227,12 +1273,10 @@ WARP_LIBRARIAN_TIER_DESCRIPTIONS = {
 }
 
 WARP_BROTHER_TIER_DESCRIPTIONS = {
-    None: ("CLEAR", "No exposure detected."),
+    None: ("CLEAR", "No infection detected."),
     "tainted": ("TAINTED", "Minor warp residue."),
     "exposed": ("EXPOSED", "Notable contamination."),
     "volatile": ("VOLATILE", "Severe contamination; psychic instability."),
-    "breached": ("BREACHED", "Critical breach; immediate cleansing required."),
-    "catastrophic": ("CATASTROPHIC", "Lockdown protocols engaged."),
 }
 
 # ---------------------------------------------------------------------------
@@ -1244,8 +1288,6 @@ WARP_BROTHER_TIER_ICON = {
     "tainted": "🟡",
     "exposed": "🟠",
     "volatile": "🔴",
-    "breached": "💀",
-    "catastrophic": "⚫",
 }
 
 # Librarian tiers use square icons to stay visually distinct from brother
