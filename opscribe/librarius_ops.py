@@ -144,6 +144,14 @@ def _get_spread_chances() -> Dict[str, float]:
     return out or dict(WARP_SPREAD_CHANCES)
 
 
+def _get_spread_susceptibility_gain() -> int:
+    """Return contagion spread gain (prefers new key, supports legacy alias)."""
+    cfg = _warp_config()
+    if cfg.get("spread_susceptibility_gain") is not None:
+        return _cfg_int("spread_susceptibility_gain", WARP_SPREAD_SUSCEPTIBILITY_GAIN)
+    return _cfg_int("spread_amount", WARP_SPREAD_SUSCEPTIBILITY_GAIN)
+
+
 def _cfg_int(key: str, default: int) -> int:
     cfg = _warp_config()
     try:
@@ -2115,10 +2123,7 @@ async def _apply_warp_exposure_for_aar(record: dict, guild: Optional[discord.Gui
             if sources:
                 spread_chances = _get_spread_chances()
                 spread_cap = _cfg_int("spread_daily_unique_source_cap", WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP)
-                spread_gain = _cfg_int(
-                    "spread_susceptibility_gain",
-                    _cfg_int("spread_amount", WARP_SPREAD_SUSCEPTIBILITY_GAIN),
-                )
+                spread_gain = _get_spread_susceptibility_gain()
                 for tgt_id, tgt_state in states.items():
                     if tgt_state.get("is_librarian"):
                         continue
