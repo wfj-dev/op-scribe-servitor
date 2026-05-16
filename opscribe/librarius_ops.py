@@ -198,6 +198,17 @@ _DEFAULT_INTENSIVE_CLEANSE_COSTS = {
     "corrupted": 4,
 }
 
+# Demand cost per Librarian exposure tier — mirrors _DEFAULT_INTENSIVE_CLEANSE_COSTS
+# for brothers.  Librarians only receive standard rites (1 charge each), but the
+# tier scaling preserves the severity signal in the pressure score.
+_DEFAULT_LIBRARIAN_DEMAND_COSTS = {
+    "stable": 1,
+    "resonant": 2,
+    "surging": 3,
+    "overloaded": 4,
+    "abyssal": 4,
+}
+
 
 def _get_intensive_cleanse_cost(sanction_key: str, warp_corrupted: bool = False) -> int:
     """Return the charge cost for an intensive cleanse given the recipient state.
@@ -212,6 +223,23 @@ def _get_intensive_cleanse_cost(sanction_key: str, warp_corrupted: bool = False)
         return int(raw.get(key) or _DEFAULT_INTENSIVE_CLEANSE_COSTS.get(key, 4))
     except Exception:
         return _DEFAULT_INTENSIVE_CLEANSE_COSTS.get(key, 4)
+
+
+def _get_librarian_demand_cost(librarian_tier: Optional[str]) -> int:
+    """Return the demand charge contribution for a Librarian at the given exposure tier.
+
+    Mirrors ``_get_intensive_cleanse_cost`` for non-Librarian brothers: cost scales
+    with burden severity so that heavily-loaded Librarians weight the pressure signal
+    appropriately.  Configurable via ``librarian_demand_costs`` in warp config.
+    """
+    if not librarian_tier:
+        return 0
+    cfg = _warp_config()
+    raw = cfg.get("librarian_demand_costs") or _DEFAULT_LIBRARIAN_DEMAND_COSTS
+    try:
+        return int(raw.get(librarian_tier) or _DEFAULT_LIBRARIAN_DEMAND_COSTS.get(librarian_tier, 1))
+    except Exception:
+        return _DEFAULT_LIBRARIAN_DEMAND_COSTS.get(librarian_tier, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -3547,10 +3575,13 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
 # ---------------------------------------------------------------------------
 # Auto-AAR-ingest: Librarian cadre pressure contributor.
 #
-# Demand = charge-weighted sum of intensive cleanse costs for all active
-#          non-Librarian brothers who need cleansing, PLUS a fractional
-#          at-risk contribution for clean brothers based on the population's
-#          background transmission probability (SIR-style: 1 - ∏(1-spread_i)).
+# Demand = charge-weighted sum of:
+#   (a) intensive cleanse costs for all active non-Librarian brothers who need
+#       cleansing,
+#   (b) tier-scaled demand for active Librarians with a non-None exposure tier
+#       (cleansing them costs charges, whether via self-cleanse or Void Warden rite),
+#   (c) fractional at-risk contribution for clean brothers based on the
+#       population's background transmission probability (SIR-style: 1 - ∏(1-spread_i)).
 #
 # Supply = sum of available warding charges across all members of the
 # Watch Librarian / Void Warden roles whose personal exposure tier is NOT
@@ -3597,8 +3628,8 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
         librarian_ids.append(int(member.id))
     lib_id_set = set(librarian_ids)
 
-    # Demand pass: charge-weighted cost for infected brothers + collect infected
-    # tier list for the background-transmission calculation.
+    # Demand pass: charge-weighted cost for infected brothers and burdened
+    # Librarians + collect infected tier list for background-transmission.
     demand: float = 0.0
     infected_tiers: List[str] = []  # infection_state of each infected active non-lib brother
 
@@ -3607,10 +3638,20 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
             uid = int(uid_str)
         except Exception:
             continue
-        if uid in lib_id_set or (raw or {}).get("is_librarian"):
-            continue
+
+        is_lib_record = uid in lib_id_set or bool((raw or {}).get("is_librarian"))
         member = guild.get_member(uid)
-        if is_active_fn and not is_active_fn(member):
+        if is_active_fn and member is not None and not is_active_fn(member):
+            continue
+
+        if is_lib_record:
+            # Librarians contribute demand based on their personal exposure tier.
+            # Cleansing them (self-cleanse or Void Warden rite) costs charges even
+            # though they do not accumulate infection_state like brothers do.
+            lib_pts = int((raw or {}).get("points", 0) or 0)
+            lib_tier = _librarian_tier_for_points(lib_pts)
+            if lib_tier is not None:
+                demand += _get_librarian_demand_cost(lib_tier)
             continue
 
         infection_state = (raw or {}).get("infection_state")
