@@ -3640,7 +3640,9 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     p_no_infection = 1.0
     for tier in infected_tiers:
         p_no_infection *= 1.0 - spread_chances.get(tier, 0.0)
-    background_prob = 1.0 - p_no_infection
+    # Round to 10 sig figs to avoid floating-point representation artefacts
+    # (e.g. 1 - (1 - 0.20) = 0.19999...96 without rounding).
+    background_prob = round(1.0 - p_no_infection, 10)
 
     try:
         warp_at_risk_threshold = float(

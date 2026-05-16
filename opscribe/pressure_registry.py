@@ -59,6 +59,18 @@ class CadrePressure:
     detail: str = ""         # optional human-readable status detail
 
     @property
+    def demand_display(self) -> str:
+        """Human-readable demand string: integer when whole, 1 decimal otherwise.
+
+        Use this property whenever rendering ``demand`` in status messages or
+        logs so all callers produce a consistent representation without
+        duplicating the rounding logic.
+        """
+        if self.demand == int(self.demand):
+            return str(int(self.demand))
+        return f"{self.demand:.1f}"
+
+    @property
     def score(self) -> float:
         if self.supply <= 0:
             return float("inf") if self.demand > 0 else 0.0
