@@ -7309,7 +7309,12 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
 
     armor_data = _load_armor_integrity()
     is_active_fn = _b("_is_active_participant")
-    prob_threshold = _get_armor_config().get("at_risk_probability_threshold", 0.20)
+    try:
+        prob_threshold = float(
+            _get_armor_config().get("at_risk_probability_threshold", 0.20) or 0.20
+        )
+    except Exception:
+        prob_threshold = 0.20
 
     demand: float = 0.0
     for member in guild.members:
@@ -7349,6 +7354,7 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1485797067577102377
 
+    demand_display = str(int(demand)) if demand == int(demand) else f"{demand:.1f}"
     return CadrePressure(
         cadre_id="techmarine",
         display_name="Techmarines",
@@ -7356,7 +7362,7 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
         supply=supply,
         notify_role_id=notify_role_id,
         notify_channel_id=notify_channel_id,
-        detail=f"{demand:.0f} charge(s) of forge work outstanding; {supply} charge(s) available",
+        detail=f"{demand_display} charge(s) of forge work outstanding; {supply} charge(s) available",
     )
 
 
