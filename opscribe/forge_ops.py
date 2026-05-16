@@ -7295,21 +7295,42 @@ async def _forge_override(interaction: discord.Interaction, enabled: bool):
 # ---------------------------------------------------------------------------
 
 async def evaluate_techmarine_pressure(guild: discord.Guild):
-    """Pressure evaluator for the Techmarine cadre. See pressure_registry."""
+    """Pressure evaluator for the Techmarine cadre. See pressure_registry.
+
+    Uses charge-weighted demand: each brother contributes the number of
+    intensive blessing charges required to restore him to nominal, rather
+    than a flat head-count of 1.  At-risk nominal brothers (predictive
+    warning triggered) contribute 1 preventative charge each — a lighter
+    signal that matches the watchlist display.  This keeps the evaluator
+    consistent with the Forge Chronicle's ``brothers_needing_attention``
+    definition.
+    """
     from .pressure_registry import CadrePressure
 
     armor_data = _load_armor_integrity()
     is_active_fn = _b("_is_active_participant")
+    try:
+        prob_threshold = float(
+            _get_armor_config().get("at_risk_probability_threshold", 0.20) or 0.20
+        )
+    except Exception:
+        prob_threshold = 0.20
 
-    demand = 0
+    demand: float = 0.0
     for member in guild.members:
         if is_active_fn and not is_active_fn(member):
             continue
         state = armor_data.get(str(member.id), {}) or {}
         spirit_fractured = bool(state.get("spirit_fractured", False))
         damage_tier = _get_member_damage_tier(member)
-        if spirit_fractured or damage_tier in ("damaged", "compromised", "critical"):
-            demand += 1
+        cost = _get_intensive_charge_cost(damage_tier, spirit_fractured)
+        if cost > 0:
+            demand += cost
+        elif damage_tier is None and not spirit_fractured:
+            # Nominal: check for predictive-warning (at-risk) state.
+            pts = int(state.get("points_since_blessing", 0) or 0)
+            if _get_damage_probability(pts) >= prob_threshold:
+                demand += 1  # 1 preventative charge per at-risk nominal
 
     supply = 0
     techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
@@ -7333,15 +7354,16 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1485797067577102377
 
-    return CadrePressure(
+    result = CadrePressure(
         cadre_id="techmarine",
         display_name="Techmarines",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
         notify_channel_id=notify_channel_id,
-        detail=f"{demand} brother(s) need armor rites; {supply} charge(s) available",
     )
+    result.detail = f"{result.demand_display} charge(s) of forge work outstanding; {supply} charge(s) available"
+    return result
 
 
 def _register_pressure_contributors() -> None:
