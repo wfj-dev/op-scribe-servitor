@@ -41,15 +41,34 @@ HARD_BLOCK_THRESHOLD: float = 2.0
 
 @dataclass
 class CadrePressure:
-    """Snapshot of one cadre's supply/demand at a point in time."""
+    """Snapshot of one cadre's supply/demand at a point in time.
+
+    ``demand`` is charge-weighted: the total number of intensive charges
+    needed to restore all brothers requiring attention to a green state,
+    including a fractional at-risk contribution for brothers not yet
+    damaged but at elevated risk.  ``supply`` is the pool of available
+    charges the cadre can deploy right now.
+    """
 
     cadre_id: str            # stable identifier, e.g. "techmarine"
     display_name: str        # human-facing, e.g. "Techmarines"
-    demand: int              # brothers needing attention from this cadre
+    demand: float            # charges of work outstanding (charge-weighted; may be fractional)
     supply: int              # available charges (or analogous capacity)
     notify_role_id: Optional[int] = None  # role to ping when blocking
     notify_channel_id: Optional[int] = None  # cadre-specific tier-1 channel
     detail: str = ""         # optional human-readable status detail
+
+    @property
+    def demand_display(self) -> str:
+        """Human-readable demand string: integer when whole, 1 decimal otherwise.
+
+        Use this property whenever rendering ``demand`` in status messages or
+        logs so all callers produce a consistent representation without
+        duplicating the rounding logic.
+        """
+        if self.demand == int(self.demand):
+            return str(int(self.demand))
+        return f"{self.demand:.1f}"
 
     @property
     def score(self) -> float:

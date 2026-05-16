@@ -3547,8 +3547,10 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
 # ---------------------------------------------------------------------------
 # Auto-AAR-ingest: Librarian cadre pressure contributor.
 #
-# Demand = active non-Librarian brothers with warp exposure points > 0 or
-#          flagged warp_corrupted.
+# Demand = charge-weighted sum of intensive cleanse costs for all active
+#          non-Librarian brothers who need cleansing, PLUS a fractional
+#          at-risk contribution for clean brothers based on the population's
+#          background transmission probability (SIR-style: 1 - ∏(1-spread_i)).
 #
 # Supply = sum of available warding charges across all members of the
 # Watch Librarian / Void Warden roles whose personal exposure tier is NOT
@@ -3558,7 +3560,20 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
 # ---------------------------------------------------------------------------
 
 async def evaluate_librarian_pressure(guild: discord.Guild):
-    """Pressure evaluator for the Librarian cadre. See pressure_registry."""
+    """Pressure evaluator for the Librarian cadre. See pressure_registry.
+
+    Uses charge-weighted demand: each infected brother contributes the
+    number of intensive cleanse charges required to restore him rather
+    than a flat head-count of 1.
+
+    Additionally, a fractional at-risk demand is added for clean brothers
+    based on the background warp transmission probability — the cumulative
+    probability that a clean brother would contract an infection in a
+    typical AAR given the current infected population (SIR-style product
+    formula).  This mirrors the techmarine predictive-warning signal and
+    fires when background transmission probability reaches the configured
+    warp_at_risk_threshold (default 20 %).
+    """
     from .pressure_registry import CadrePressure
 
     try:
@@ -3582,8 +3597,11 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
         librarian_ids.append(int(member.id))
     lib_id_set = set(librarian_ids)
 
-    # Demand: active non-Librarian brothers with exposure points or corruption.
-    demand = 0
+    # Demand pass: charge-weighted cost for infected brothers + collect infected
+    # tier list for the background-transmission calculation.
+    demand: float = 0.0
+    infected_tiers: List[str] = []  # infection_state of each infected active non-lib brother
+
     for uid_str, raw in (data or {}).items():
         try:
             uid = int(uid_str)
@@ -3594,10 +3612,64 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
         member = guild.get_member(uid)
         if is_active_fn and not is_active_fn(member):
             continue
+
+        infection_state = (raw or {}).get("infection_state")
         pts = int((raw or {}).get("points", 0) or 0)
         warp_corrupted = bool((raw or {}).get("warp_corrupted", False))
-        if pts > 0 or warp_corrupted:
-            demand += 1
+
+        # Determine sanction key: prefer infection_state (canonical) over legacy points.
+        if warp_corrupted:
+            sanction_key = "restricted"
+        elif infection_state:
+            sanction_key = _warp_sanction_key_for_state(infection_state)
+        else:
+            sanction_key = _warp_sanction_key_for_points(pts)
+
+        if sanction_key != "sanctioned":
+            demand += _get_intensive_cleanse_cost(sanction_key, warp_corrupted)
+            tier_for_spread = infection_state or (
+                "volatile" if pts >= 10 else "exposed" if pts >= 5 else "tainted"
+            )
+            infected_tiers.append(tier_for_spread)
+
+    # At-risk signal: background transmission probability for clean brothers.
+    # P(at least one exposure) = 1 - ∏(1 - spread_chance[tier_i]) for each infected
+    # active non-lib brother.  Clean brothers contribute fractional demand equal to
+    # their background infection probability × the cost of an initial-tier cleanse.
+    spread_chances = _get_spread_chances()
+    p_no_infection = 1.0
+    for tier in infected_tiers:
+        p_no_infection *= 1.0 - spread_chances.get(tier, 0.0)
+    # Round to 10 sig figs to avoid floating-point representation artefacts
+    # (e.g. 1 - (1 - 0.20) = 0.19999...96 without rounding).
+    background_prob = round(1.0 - p_no_infection, 10)
+
+    try:
+        warp_at_risk_threshold = float(
+            _warp_config().get("at_risk_threshold", 0.20) or 0.20
+        )
+    except Exception:
+        warp_at_risk_threshold = 0.20
+
+    if background_prob >= warp_at_risk_threshold:
+        # Count active non-lib guild members with no infection record (clean brothers).
+        cleanse_cost_initial = _get_intensive_cleanse_cost("screening_due")
+        clean_active_count = 0
+        for member in guild.members:
+            if member.bot:
+                continue
+            if int(member.id) in lib_id_set:
+                continue
+            if is_active_fn and not is_active_fn(member):
+                continue
+            raw = (data or {}).get(str(member.id)) or {}
+            if (
+                not raw.get("infection_state")
+                and not raw.get("warp_corrupted")
+                and int(raw.get("points", 0) or 0) <= 0
+            ):
+                clean_active_count += 1
+        demand += clean_active_count * background_prob * cleanse_cost_initial
 
     # Supply: sum of available warding charges across capable Librarians.
     supply = 0
@@ -3628,15 +3700,16 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1502840890446708766
 
-    return CadrePressure(
+    result = CadrePressure(
         cadre_id="librarian",
         display_name="Librarians",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
         notify_channel_id=notify_channel_id,
-        detail=f"{demand} brother(s) need cleansing; {supply} warding charge(s) available",
     )
+    result.detail = f"{result.demand_display} charge(s) of warding work outstanding; {supply} warding charge(s) available"
+    return result
 
 
 def _register_pressure_contributors() -> None:
