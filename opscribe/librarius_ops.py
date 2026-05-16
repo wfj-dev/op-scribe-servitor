@@ -3643,9 +3643,8 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     background_prob = 1.0 - p_no_infection
 
     try:
-        cfg = _b("CONFIG") or {}
         warp_at_risk_threshold = float(
-            (cfg.get("armor_integrity") or {}).get("warp_at_risk_threshold", 0.20) or 0.20
+            _warp_config().get("at_risk_threshold", 0.20) or 0.20
         )
     except Exception:
         warp_at_risk_threshold = 0.20
@@ -3699,7 +3698,7 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1502840890446708766
 
-    demand_display = f"{demand:.1f}" if demand != int(demand) else f"{int(demand)}"
+    demand_display = f"{demand:.1f}" if demand != int(demand) else str(int(demand))
     return CadrePressure(
         cadre_id="librarian",
         display_name="Librarians",
