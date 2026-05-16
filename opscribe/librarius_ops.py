@@ -3641,7 +3641,9 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
 
         is_lib_record = uid in lib_id_set or bool((raw or {}).get("is_librarian"))
         member = guild.get_member(uid)
-        if is_active_fn and member is not None and not is_active_fn(member):
+        if member is None:
+            continue
+        if is_active_fn and not is_active_fn(member):
             continue
 
         if is_lib_record:
