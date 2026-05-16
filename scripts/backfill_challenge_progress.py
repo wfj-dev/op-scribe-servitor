@@ -332,8 +332,14 @@ async def main():
             await bot.start(DISCORD_TOKEN)
     except KeyboardInterrupt:
         print("\nInterrupted by user")
-    except Exception:
-        pass  # Bot already closed in on_ready
+    except discord.LoginFailure as e:
+        print(f"ERROR: Failed to log in to Discord — check that DISCORD_TOKEN is valid: {e}")
+        return 1
+    except Exception as e:
+        print(f"ERROR: Unexpected error while running bot: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
     
     return 0
 
