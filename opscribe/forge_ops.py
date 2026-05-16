@@ -7354,16 +7354,16 @@ async def evaluate_techmarine_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1485797067577102377
 
-    demand_display = str(int(demand)) if demand == int(demand) else f"{demand:.1f}"
-    return CadrePressure(
+    result = CadrePressure(
         cadre_id="techmarine",
         display_name="Techmarines",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
         notify_channel_id=notify_channel_id,
-        detail=f"{demand_display} charge(s) of forge work outstanding; {supply} charge(s) available",
     )
+    result.detail = f"{result.demand_display} charge(s) of forge work outstanding; {supply} charge(s) available"
+    return result
 
 
 def _register_pressure_contributors() -> None:

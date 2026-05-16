@@ -20,6 +20,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 import opscribe.bot  # noqa: F401  (ensures module-level setup runs)
 from opscribe import forge_ops as fo
 from opscribe import librarius_ops as lib
@@ -327,7 +328,6 @@ def test_librarian_sir_single_tainted_below_threshold():
     # Background prob: 1 - (1 - 0.20) = 0.20 >= 0.20 threshold
     # Clean brothers: uid=2 has no warp_data record → clean_active_count = 1
     # At-risk fractional demand: 1 * 0.20 * 2 = 0.40
-    import pytest
     assert result.demand == pytest.approx(2.0 + 0.40)
 
 
@@ -365,7 +365,6 @@ def test_librarian_sir_compound_probability():
     # P_no_infection = 0.8 * 0.8 * 0.5 = 0.32  → background_prob = 0.68
     # clean_active_count = 1 (uid=4 has no record)
     # at-risk demand = 1 * 0.68 * 2 = 1.36
-    import pytest
     assert result.demand == pytest.approx(8.0 + 1 * 0.68 * 2, rel=1e-4)
 
 
@@ -387,5 +386,4 @@ def test_librarian_sir_librarian_not_counted_as_clean_brother():
     )
 
     # background_prob = 0.20, clean count = 1 (uid=2), uid=3 excluded
-    import pytest
     assert result.demand == pytest.approx(2.0 + 1 * 0.20 * 2, rel=1e-4)

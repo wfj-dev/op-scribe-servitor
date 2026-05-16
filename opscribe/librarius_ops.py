@@ -3700,16 +3700,16 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
     except Exception:
         notify_channel_id = 1502840890446708766
 
-    demand_display = f"{demand:.1f}" if demand != int(demand) else str(int(demand))
-    return CadrePressure(
+    result = CadrePressure(
         cadre_id="librarian",
         display_name="Librarians",
         demand=demand,
         supply=supply,
         notify_role_id=notify_role_id,
         notify_channel_id=notify_channel_id,
-        detail=f"{demand_display} charge(s) of warding work outstanding; {supply} warding charge(s) available",
     )
+    result.detail = f"{result.demand_display} charge(s) of warding work outstanding; {supply} warding charge(s) available"
+    return result
 
 
 def _register_pressure_contributors() -> None:
