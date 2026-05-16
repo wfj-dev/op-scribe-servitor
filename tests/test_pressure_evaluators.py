@@ -14,6 +14,7 @@ Covers:
     * background_prob below threshold → no at-risk fractional demand
     * background_prob at or above threshold → clean brothers contribute fractional demand
     * Librarian brothers are excluded from clean-brother count
+    * Librarian brothers with warp exposure contribute tier-scaled demand
 """
 
 import asyncio
@@ -222,7 +223,9 @@ def _run_librarian(
 ):
     """Run evaluate_librarian_pressure with fully mocked inputs.
 
-    ``librarian_ids`` - set of member IDs treated as Librarians (excluded from demand).
+    ``librarian_ids`` - set of member IDs treated as Librarians.  Librarians
+    with no warp data record (or points == 0) contribute no demand; those with
+    a non-None librarian_tier do contribute tier-scaled demand.
     """
     librarian_ids = set(librarian_ids or [])
     guild = _make_guild(guild_members)
@@ -386,4 +389,121 @@ def test_librarian_sir_librarian_not_counted_as_clean_brother():
     )
 
     # background_prob = 0.20, clean count = 1 (uid=2), uid=3 excluded
+    # uid=3 librarian has no warp data → no demand contribution from librarian
     assert result.demand == pytest.approx(2.0 + 1 * 0.20 * 2, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# evaluate_librarian_pressure — librarian warp exposure demand
+# ---------------------------------------------------------------------------
+
+
+def _run_librarian_with_real_tiers(warp_data, guild_members, librarian_ids=None):
+    """Run evaluate_librarian_pressure without mocking _librarian_tier_for_points.
+
+    Used for tests that verify librarian demand, which requires the real tier
+    function to compute demand from actual point values.
+    """
+    librarian_ids = set(librarian_ids or [])
+    guild = _make_guild(guild_members)
+
+    async def _run():
+        lock_mock = MagicMock()
+        lock_mock.__aenter__ = AsyncMock(return_value=None)
+        lock_mock.__aexit__ = AsyncMock(return_value=None)
+
+        with (
+            patch.object(_g, "WARP_EXPOSURE_LOCK", lock_mock),
+            patch.object(lib, "_load_warp_exposure", return_value=warp_data),
+            patch.object(lib, "_get_librarian_available_charges", new=AsyncMock(return_value=5)),
+            patch.object(lib, "_warp_config", return_value={}),
+            patch("opscribe.bot._is_active_participant", new=None),
+            patch("opscribe.bot.CONFIG", {}),
+        ):
+            for m in guild_members:
+                if m.id in librarian_ids:
+                    role = MagicMock()
+                    role.name = "Watch Librarian"
+                    m.roles = [role]
+                else:
+                    m.roles = []
+            return await lib.evaluate_librarian_pressure(guild)
+
+    return asyncio.run(_run())
+
+
+def test_librarian_demand_stable_librarian_costs_one():
+    """A librarian at stable tier (1–8 pts) contributes 1 demand charge."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 5, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 1.0
+
+
+def test_librarian_demand_resonant_librarian_costs_two():
+    """A librarian at resonant tier (9–18 pts) contributes 2 demand charges."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 12, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 2.0
+
+
+def test_librarian_demand_surging_librarian_costs_three():
+    """A librarian at surging tier (19–28 pts) contributes 3 demand charges."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 22, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 3.0
+
+
+def test_librarian_demand_overloaded_librarian_costs_four():
+    """A librarian at overloaded tier (29–38 pts) contributes 4 demand charges."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 32, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 4.0
+
+
+def test_librarian_demand_abyssal_librarian_costs_four():
+    """A librarian at abyssal tier (39+ pts) contributes 4 demand charges."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 45, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 4.0
+
+
+def test_librarian_demand_zero_points_no_demand():
+    """A librarian with 0 points (no warp exposure) contributes 0 demand."""
+    m1 = _make_member(1)
+    warp_data = {"1": {"points": 0, "is_librarian": True}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    assert result.demand == 0.0
+
+
+def test_librarian_demand_combined_infected_brother_and_librarian():
+    """An infected brother (tainted, 2 charges) + burdened librarian (stable, 1 charge) = 3 total."""
+    m1 = _make_member(1)  # infected brother
+    m2 = _make_member(2)  # burdened librarian (stable tier)
+    warp_data = {
+        "1": {"infection_state": "tainted", "points": 2, "warp_corrupted": False},
+        "2": {"points": 5, "is_librarian": True},
+    }
+    result = _run_librarian_with_real_tiers(
+        warp_data=warp_data, guild_members=[m1, m2], librarian_ids={2}
+    )
+    assert result.demand == pytest.approx(3.0)
+
+
+def test_librarian_demand_ignores_infection_state_on_lib_record():
+    """A librarian record with a stale infection_state uses tier cost, not brother cost.
+
+    Librarians don't accumulate infection_state in normal operation (it is cleared
+    to None during AAR processing) but stale data could contain the field.  The
+    evaluator should route the record through the librarian tier path regardless.
+    """
+    m1 = _make_member(1)
+    # points=5 (stable, cost=1); infection_state="volatile" is stale/ignored
+    warp_data = {"1": {"points": 5, "is_librarian": True, "infection_state": "volatile", "warp_corrupted": False}}
+    result = _run_librarian_with_real_tiers(warp_data=warp_data, guild_members=[m1], librarian_ids={1})
+    # Should be stable-tier cost (1), NOT volatile brother cost (4)
+    assert result.demand == 1.0
