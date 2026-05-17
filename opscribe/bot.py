@@ -488,10 +488,15 @@ async def _scheduled_weekly_maintenance_loop():
             logger.info(
                 f"Weekly maintenance: Running reparse for last {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS} days"
             )
-            total, updated, failed, _ = await _run_reparse_records(
+            total, updated, failed, changes_by_field = await _run_reparse_records(
                 days=SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS
             )
-            logger.info(f"Weekly maintenance: Reparse processed={total}, updated={updated}, failed={failed}")
+            if changes_by_field:
+                sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
+                changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
+                logger.info(f"Weekly maintenance: Reparse processed={total}, updated={updated}, failed={failed} | fields: {changes_summary}")
+            else:
+                logger.info(f"Weekly maintenance: Reparse processed={total}, updated={updated}, failed={failed}")
 
             # 3) Run full audit (no span limit) to catch all fixed errors
             logger.info("Weekly maintenance: Running full audit (no span limit)")
