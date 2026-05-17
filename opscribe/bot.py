@@ -432,15 +432,13 @@ async def _monthly_audit_loop():
 # Track last weekly maintenance run date to prevent duplicate runs
 LAST_WEEKLY_MAINTENANCE_DATE: Optional[str] = None
 
-# Track last weekly reparse run date to prevent duplicate runs
-LAST_WEEKLY_REPARSE_DATE: Optional[str] = None
-
 
 @tasks.loop(minutes=60)
 async def _scheduled_weekly_maintenance_loop():
-    """Run hourly; on configured day/hour run sanctify + full audit.
+    """Run hourly; on configured day/hour run sanctify + reparse + full audit.
 
     Default: Tuesday 8 AM UTC. Runs sanctify (45-day span) to catch missed AARs,
+    then reparses the same span to apply any parsing improvements,
     then a full audit (no span limit) to retry all known errors.
     """
     global LAST_WEEKLY_MAINTENANCE_DATE
@@ -460,7 +458,7 @@ async def _scheduled_weekly_maintenance_loop():
             return
 
         logger.info(
-            f"Weekly maintenance starting: sanctify ({SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span) + full audit"
+            f"Weekly maintenance starting: sanctify + reparse ({SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span) + full audit"
         )
 
         guild = _resolve_notification_guild()
@@ -486,7 +484,21 @@ async def _scheduled_weekly_maintenance_loop():
             ingested, rejected = await _run_ingest_new(aar_channel, SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS)
             logger.info(f"Weekly maintenance: Ingested {ingested}, rejected {rejected}")
 
-            # 2) Run full audit (no span limit) to catch all fixed errors
+            # 2) Reparse the same span to apply any parsing improvements
+            logger.info(
+                f"Weekly maintenance: Running reparse for last {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS} days"
+            )
+            total, updated, failed, changes_by_field = await _run_reparse_records(
+                days=SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS
+            )
+            if changes_by_field:
+                sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
+                changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
+                logger.info(f"Weekly maintenance: Reparse processed={total}, updated={updated}, failed={failed} | fields: {changes_summary}")
+            else:
+                logger.info(f"Weekly maintenance: Reparse processed={total}, updated={updated}, failed={failed}")
+
+            # 3) Run full audit (no span limit) to catch all fixed errors
             logger.info("Weekly maintenance: Running full audit (no span limit)")
             fixed, still_broken = await _run_recheck_errors(aar_channel, None)
             logger.info(f"Weekly maintenance: Fixed {fixed}, still broken {still_broken}")
@@ -499,95 +511,6 @@ async def _scheduled_weekly_maintenance_loop():
 
 @_scheduled_weekly_maintenance_loop.before_loop
 async def _before_weekly_maintenance_loop():
-    await bot.wait_until_ready()
-
-
-@tasks.loop(minutes=60)
-async def _scheduled_weekly_reparse_loop():
-    """Run hourly; on configured day/hour reparse last N days of AAR records.
-
-    Default: Sunday 6 AM UTC. Reparses last 7 days to catch parsing improvements.
-    Posts results to Techmarine Staff channel.
-    """
-    global LAST_WEEKLY_REPARSE_DATE
-    try:
-        if DATASTORE is None:
-            return
-        # Use UTC for consistent scheduling
-        now_utc = datetime.now(timezone.utc)
-        today = now_utc.date()
-
-        # Check if it's the right day and hour
-        if now_utc.weekday() != SCHEDULE_WEEKLY_REPARSE_DAY or now_utc.hour != SCHEDULE_WEEKLY_REPARSE_HOUR:
-            return
-
-        # Prevent duplicate runs on same date
-        if LAST_WEEKLY_REPARSE_DATE == str(today):
-            return
-
-        logger.info(f"Weekly reparse starting: last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days")
-
-        guild = _resolve_notification_guild()
-        if not guild:
-            logger.warning("Weekly reparse: no guild available; skipping.")
-            return
-
-        # Get Techmarine Staff channel for results
-        staff_channel = None
-        try:
-            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
-            if staff_channel is None:
-                staff_channel = await bot.fetch_channel(TECHMARINE_STAFF_CHANNEL_ID)
-        except Exception:
-            logger.warning(f"Weekly reparse: Techmarine Staff channel {TECHMARINE_STAFF_CHANNEL_ID} not accessible.")
-
-        # Acquire lock to prevent concurrent reconciliations
-        if RECONCILE_LOCK.locked():
-            logger.info("Weekly reparse: reconcile lock held; skipping.")
-            if staff_channel:
-                try:
-                    await staff_channel.send("⚠️ **Weekly Reparse Skipped**: Another reconciliation is in progress.")
-                except Exception:
-                    pass
-            return
-
-        async with RECONCILE_LOCK:
-            logger.info(f"Weekly reparse: Running reparse for last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days")
-            total, updated, failed, changes_by_field = await _run_reparse_records(
-                days=SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS
-            )
-            logger.info(f"Weekly reparse: processed={total}, updated={updated}, failed={failed}")
-
-            # Post results to Techmarine Staff channel
-            if staff_channel:
-                try:
-                    changes_line = ""
-                    if changes_by_field:
-                        sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
-                        changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
-                        changes_line = f"\nFields updated: {changes_summary}"
-                    await staff_channel.send(
-                        f"✅ **Weekly Reparse Complete** (last {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS} days)\n"
-                        f"Processed: {total} | Updated: {updated} | Failed: {failed}{changes_line}"
-                    )
-                except Exception:
-                    logger.exception("Failed to post weekly reparse results")
-
-            LAST_WEEKLY_REPARSE_DATE = str(today)
-            logger.info("Weekly reparse completed successfully.")
-    except Exception:
-        logger.exception("Weekly reparse failed")
-        # Try to notify staff channel about failure
-        try:
-            staff_channel = bot.get_channel(TECHMARINE_STAFF_CHANNEL_ID)
-            if staff_channel:
-                await staff_channel.send("❌ **Weekly Reparse Failed**: Check logs for details.")
-        except Exception:
-            pass
-
-
-@_scheduled_weekly_reparse_loop.before_loop
-async def _before_weekly_reparse_loop():
     await bot.wait_until_ready()
 
 
@@ -1587,32 +1510,10 @@ async def on_ready():
                 day_name = day_names[SCHEDULE_WEEKLY_MAINTENANCE_DAY]
                 logger.info(
                     f"Weekly maintenance loop started ({day_name} {SCHEDULE_WEEKLY_MAINTENANCE_HOUR}:00 UTC, "
-                    f"sanctify {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span + full audit)."
+                    f"sanctify + reparse {SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS}-day span + full audit)."
                 )
     except Exception:
         logger.exception("Failed to start weekly maintenance loop")
-
-    # Start weekly reparse loop if enabled (default: enabled)
-    try:
-        if SCHEDULE_WEEKLY_REPARSE_ENABLED:
-            if not _scheduled_weekly_reparse_loop.is_running():
-                _scheduled_weekly_reparse_loop.start()
-                day_names = [
-                    "Monday",
-                    "Tuesday",
-                    "Wednesday",
-                    "Thursday",
-                    "Friday",
-                    "Saturday",
-                    "Sunday",
-                ]
-                day_name = day_names[SCHEDULE_WEEKLY_REPARSE_DAY]
-                logger.info(
-                    f"Weekly reparse loop started ({day_name} {SCHEDULE_WEEKLY_REPARSE_HOUR}:00 UTC, "
-                    f"reparse {SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS}-day span)."
-                )
-    except Exception:
-        logger.exception("Failed to start weekly reparse loop")
 
     # Start monthly archive audit loop if enabled (default: enabled)
     try:
