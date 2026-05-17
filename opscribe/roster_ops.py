@@ -757,6 +757,44 @@ async def _check_activity_status_changes():
                     else:
                         current_status = "inactive"
 
+                    # Guard against false-inactive transitions caused by a stale member_last_posts
+                    # cache. The "subsequent runs" scan only looks at records newer than
+                    # last_check_time; if an AAR was re-ingested or processed late with an old
+                    # Discord timestamp it will be skipped, leaving member_last_posts stale.
+                    # Before triggering an active->inactive notification, do a full scan of all
+                    # datastore records for this member to confirm the true last-post time.
+                    if current_status == "inactive" and _g.DATASTORE is not None:
+                        try:
+                            uid_int = int(user_id)
+                            true_last_post: Optional[str] = None
+                            for _rec in _g.DATASTORE.iter_records():
+                                _rec_brothers = _rec.get("brother_ids") or []
+                                if uid_int in _rec_brothers or user_id in _rec_brothers:
+                                    _ts = _rec.get("timestamp")
+                                    if _ts and (true_last_post is None or _ts > true_last_post):
+                                        true_last_post = _ts
+                                        # Early exit: already found a record within 28 days
+                                        try:
+                                            _early_dt = datetime.fromisoformat(_ts)
+                                            if _early_dt.tzinfo is not None:
+                                                _early_dt = _early_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                                            if _early_dt >= cutoff_datetime:
+                                                break
+                                        except Exception:
+                                            pass
+                            if true_last_post:
+                                _tp_dt = datetime.fromisoformat(true_last_post)
+                                if _tp_dt.tzinfo is not None:
+                                    _tp_dt = _tp_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                                if _tp_dt >= cutoff_datetime:
+                                    # Member is actually active; update cache and correct status
+                                    member_last_posts[user_id] = true_last_post
+                                    current_status = "active"
+                        except (ValueError, TypeError) as _e:
+                            _g.logger.debug(f"Activity status full-scan error for {user_id}: {_e}")
+                        except Exception as _e:
+                            _g.logger.debug(f"Activity status full-scan unexpected error for {user_id}: {_e}")
+
                     new_status_entry = {
                         "status": current_status,
                         "updated_at": check_start_time.isoformat(),
