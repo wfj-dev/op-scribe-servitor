@@ -181,12 +181,6 @@ SCHEDULE_WEEKLY_MAINTENANCE_INGEST_SPAN_DAYS = 45
 SCHEDULE_WEEKLY_MAINTENANCE_DAY = 1  # 0=Monday, 1=Tuesday, ..., 6=Sunday
 SCHEDULE_WEEKLY_MAINTENANCE_HOUR = 8  # Hour in UTC
 
-# Weekly reparse settings (Sunday 6 AM UTC by default, before weekly maintenance)
-SCHEDULE_WEEKLY_REPARSE_ENABLED = True
-SCHEDULE_WEEKLY_REPARSE_SPAN_DAYS = 7
-SCHEDULE_WEEKLY_REPARSE_DAY = 6  # 0=Monday, 1=Tuesday, ..., 6=Sunday
-SCHEDULE_WEEKLY_REPARSE_HOUR = 6  # Hour in UTC
-
 # Monthly archive audit settings (runs audit_archive_discrepancies on the 1st of each month)
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = True
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = 45
