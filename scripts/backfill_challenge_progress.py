@@ -215,12 +215,12 @@ async def backfill_challenge_progress(guild: discord.Guild):
                 if discord.utils.get(member.roles, id=DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID):
                     continue
                 
-                if 'black_reef_distinguished' not in user_progress:
-                    user_progress['black_reef_distinguished'] = []
+                if 'distinguished_black_reef' not in user_progress:
+                    user_progress['distinguished_black_reef'] = []
                 
-                existing_missions = {m['mission'] for m in user_progress['black_reef_distinguished']}
+                existing_missions = {m['mission'] for m in user_progress['distinguished_black_reef']}
                 if mission_name not in existing_missions:
-                    user_progress['black_reef_distinguished'].append({
+                    user_progress['distinguished_black_reef'].append({
                         'mission': mission_name,
                         'aar_id': aar_id,
                         'message_url': message_url,
