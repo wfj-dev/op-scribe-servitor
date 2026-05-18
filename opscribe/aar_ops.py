@@ -98,12 +98,15 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     - black_reef: All 8 Black Reef missions with @Black Reef Persecution tag
     - distinguished_black_reef: All 8 missions with BOTH @Black Reef Persecution and @Black Laurels
     - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
-    - order_omega: All 8 missions at Omega difficulty with @Black Laurels tag
+    - order_omega: All 12 missions at Omega difficulty with @Black Laurels tag
     """
     notifications = []
 
     # Extract AAR fields
-    mission_name = (record.get("mission") or record.get("mission_name") or "").lower()
+    # Strip role ID mentions (e.g., "<@&123456>") from mission name before comparisons so that
+    # missions like "Inferno <@&1435812894532042843>" match the clean set entries like "inferno".
+    _raw_mission = (record.get("mission") or record.get("mission_name") or "").lower()
+    mission_name = re.sub(r"<@&\d+>", "", _raw_mission).strip()
     brother_ids = record.get("brother_ids", [])
     aar_id = record.get("aar_id") or record.get("id", "")
     message_url = record.get("message_url", "")
@@ -113,7 +116,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     pipehitter_mentioned = record.get("pipehitter_mentioned", False)
     leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
-    black_laurels = record.get("black_laurels_in_mission", False)
+    # Black Laurels may appear on either the Mission or Difficulty line; treat both as valid.
+    black_laurels = record.get("black_laurels_in_mission", False) or record.get("black_laurels_in_difficulty", False)
     difficulty_class = record.get("difficulty_class") or ""
 
     # Skip if no mission name or no participants
