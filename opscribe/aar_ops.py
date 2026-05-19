@@ -354,10 +354,11 @@ def _get_challenge_librarian_mention(guild: discord.Guild) -> str:
     Resolves in order: config warp_corruption.librarian_role_id, name lookup, plain text.
     """
     try:
-        raw = ((_g.CONFIG or {}).get("warp_corruption", {}) or {}).get("librarian_role_id")
+        warp_cfg = ((_g.CONFIG or {}).get("warp_corruption") or {})
+        raw = warp_cfg.get("librarian_role_id")
         if raw:
             return f"<@&{int(raw)}>"
-    except Exception:
+    except (ValueError, TypeError):
         pass
     role = discord.utils.get(guild.roles, name="Watch Librarian")
     if role:
