@@ -348,6 +348,31 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     return notifications
 
 
+def _get_challenge_librarian_mention(guild: discord.Guild) -> str:
+    """Return the Watch Librarian role mention for challenge notifications.
+
+    Resolves in order: config warp_corruption.librarian_role_id, name lookup, plain text.
+    """
+    try:
+        raw = ((_g.CONFIG or {}).get("warp_corruption", {}) or {}).get("librarian_role_id")
+        if raw:
+            return f"<@&{int(raw)}>"
+    except Exception:
+        pass
+    role = discord.utils.get(guild.roles, name="Watch Librarian")
+    if role:
+        return role.mention
+    return "@Watch Librarian"
+
+
+def _get_challenge_keeper_mention(guild: discord.Guild) -> str:
+    """Return the Watch Keeper role mention for challenge notifications."""
+    role = discord.utils.get(guild.roles, name="Watch Keeper")
+    if role:
+        return role.mention
+    return "@Watch Keeper"
+
+
 async def _send_challenge_eligibility_notifications(
     notifications: List[Tuple[str, str, List[str]]], guild: discord.Guild
 ):
@@ -366,11 +391,8 @@ async def _send_challenge_eligibility_notifications(
         _g.logger.warning(f"Librarius Staff channel {LIBRARIUS_STAFF_CHANNEL_ID} not found")
         return
 
-    # Get Watch Librarian and Watch Keeper roles for mention
-    librarian_role = guild.get_role(WATCH_LIBRARIAN_ROLE_ID)
-    librarian_mention = librarian_role.mention if librarian_role else f"<@&{WATCH_LIBRARIAN_ROLE_ID}>"
-    keeper_role = guild.get_role(WATCH_KEEPER_ROLE_ID)
-    keeper_mention = keeper_role.mention if keeper_role else f"<@&{WATCH_KEEPER_ROLE_ID}>"
+    librarian_mention = _get_challenge_librarian_mention(guild)
+    keeper_mention = _get_challenge_keeper_mention(guild)
 
     # Send one notification per qualified member+challenge
     for user_id, challenge_name, aar_urls in notifications:
@@ -378,55 +400,59 @@ async def _send_challenge_eligibility_notifications(
             member = guild.get_member(int(user_id))
             member_mention = member.mention if member else f"<@{user_id}>"
 
-            # Format notification message
-            if "Crux Terminatus" in challenge_name:
-                # Special format for Crux Terminatus (auto-verification complete except Rank A)
-                msg = (
-                    f"{librarian_mention} {keeper_mention}\n\n"
-                    f"**Challenge Qualification Alert: Crux Terminatus**\n\n"
-                    f"{member_mention} has met all auto-verified requirements for **Crux Terminatus**:\n"
-                    f"✅ Watch Veteran rank\n"
-                    f"✅ 2+ SOK-G: Pipehitter missions completed\n"
-                    f"✅ All 8 Black Laurels missions completed\n"
-                    f"✅ 2+ Terminus Slayer class completions\n\n"
-                    f"**Manual verification required:**\n"
-                    f"❓ Rank A or higher extermination (highest difficulty requirement)\n\n"
-                    f"**Relevant SOK-G AAR Links:**\n"
-                )
-                # Add AAR links (limit to first 10 to avoid message length issues)
-                for url in aar_urls[:10]:
-                    msg += f"• {url}\n"
-                if len(aar_urls) > 10:
-                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
-                msg += "\nPlease audit the qualifying AARs and verify Rank A extermination requirement."
-            elif "The Order Omega" in challenge_name:
-                # Special format for The Order Omega
-                msg = (
-                    f"{librarian_mention}\n\n"
-                    f"**Challenge Qualification Alert: The Order Omega** :TheOrderOmega:\n\n"
-                    f"{member_mention} has completed all 12 required missions at Omega difficulty with Black Laurels tag.\n\n"
-                    f"**Qualifying AAR Links:**\n"
-                )
-                # Add AAR links (limit to first 10 to avoid message length issues)
-                for url in aar_urls[:10]:
-                    msg += f"• {url}\n"
-                if len(aar_urls) > 10:
-                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
-                msg += "\nPlease audit the qualifying AARs for verification."
-            else:
-                # Standard format for other challenges
-                msg = (
-                    f"{librarian_mention}\n\n"
-                    f"{member_mention} has met qualification for **{challenge_name}** — please audit relevant AARs.\n\n"
-                    f"**Qualifying AAR Links:**\n"
-                )
-                # Add AAR links (limit to first 10 to avoid message length issues)
-                for url in aar_urls[:10]:
-                    msg += f"• {url}\n"
-                if len(aar_urls) > 10:
-                    msg += f"_(+{len(aar_urls) - 10} more)_\n"
+            url_text = "\n".join(f"• {url}" for url in aar_urls[:10])
+            if len(aar_urls) > 10:
+                url_text += f"\n_(+{len(aar_urls) - 10} more)_"
 
-            await librarius_channel.send(msg)
+            if "Crux Terminatus" in challenge_name:
+                # Special embed for Crux Terminatus (auto-verification complete except Rank A)
+                ping_content = f"{librarian_mention} {keeper_mention}"
+                embed = discord.Embed(
+                    title="᛭⋅ Challenge Qualification: Crux Terminatus ⋅᛭",
+                    description=f"{member_mention} has met all auto-verified requirements for **Crux Terminatus**.",
+                    color=0xC0392B,
+                )
+                embed.add_field(
+                    name="✅ Auto-verified Requirements",
+                    value=(
+                        "Watch Veteran rank\n"
+                        "2+ SOK-G: Pipehitter missions completed\n"
+                        "All 8 Black Laurels missions completed\n"
+                        "2+ Terminus Slayer class completions"
+                    ),
+                    inline=False,
+                )
+                embed.add_field(
+                    name="❓ Manual Verification Required",
+                    value="Rank A or higher extermination (highest difficulty requirement)",
+                    inline=False,
+                )
+                embed.add_field(name="Relevant SOK-G AAR Links", value=url_text or "_(none)_", inline=False)
+                embed.set_footer(text="Please audit the qualifying AARs and verify the Rank A extermination requirement.")
+            elif "The Order Omega" in challenge_name:
+                # Special embed for The Order Omega
+                ping_content = librarian_mention
+                embed = discord.Embed(
+                    title="᛭⋅ Challenge Qualification: The Order Omega ⋅᛭",
+                    description=(
+                        f"{member_mention} has completed all 12 required missions "
+                        "at Omega difficulty with Black Laurels tag."
+                    ),
+                    color=0x9B59B6,
+                )
+                embed.add_field(name="Qualifying AAR Links", value=url_text or "_(none)_", inline=False)
+                embed.set_footer(text="Please audit the qualifying AARs for verification.")
+            else:
+                # Standard embed for other challenges
+                ping_content = librarian_mention
+                embed = discord.Embed(
+                    title=f"᛭⋅ Challenge Qualification: {challenge_name} ⋅᛭",
+                    description=f"{member_mention} has met qualification for **{challenge_name}** — please audit relevant AARs.",
+                    color=0xF1C40F,
+                )
+                embed.add_field(name="Qualifying AAR Links", value=url_text or "_(none)_", inline=False)
+
+            await librarius_channel.send(content=ping_content, embed=embed)
             _g.logger.info(f"Sent challenge eligibility notification for {user_id} - {challenge_name}")
 
             # Small delay to avoid rate limiting
@@ -3260,6 +3286,8 @@ __all__ = [
     "_load_challenge_progress",
     "_save_challenge_progress",
     "_process_challenge_tracking",
+    "_get_challenge_librarian_mention",
+    "_get_challenge_keeper_mention",
     "_send_challenge_eligibility_notifications",
     "_reconciliation_core",
     "_run_ingest_new",
