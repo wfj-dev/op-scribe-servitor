@@ -90,6 +90,9 @@ WARDING_POOL_LOCK = asyncio.Lock()
 LIBRARIUM_CHRONICLE_LOCK = asyncio.Lock()
 LIBRARIUM_OVERRIDE_LOCK = asyncio.Lock()
 
+# Lock for Terminus Kill Log subsystem
+TERMINUS_SLAYER_LOCK = asyncio.Lock()
+
 # In-memory LFG queues: {message_id: LFGQueue data}
 LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 
@@ -573,6 +576,20 @@ async def _before_monthly_archive_audit_loop():
     await bot.wait_until_ready()
 
 
+@tasks.loop(minutes=60)
+async def _terminus_reminder_loop():
+    """Hourly: post a reminder for kill log entries pending over 72 hours."""
+    try:
+        await _terminus_ops.check_stale_kill_logs()
+    except Exception:
+        logger.exception("Terminus kill log stale reminder check failed")
+
+
+@_terminus_reminder_loop.before_loop
+async def _before_terminus_reminder_loop():
+    await bot.wait_until_ready()
+
+
 # Config load
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
@@ -715,6 +732,7 @@ _g.WARP_EXPOSURE_LOCK = WARP_EXPOSURE_LOCK
 _g.WARDING_POOL_LOCK = WARDING_POOL_LOCK
 _g.LIBRARIUM_CHRONICLE_LOCK = LIBRARIUM_CHRONICLE_LOCK
 _g.LIBRARIUM_OVERRIDE_LOCK = LIBRARIUM_OVERRIDE_LOCK
+_g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
 
 
 from .forge_ops import *  # noqa: E402,F401,F403
@@ -722,6 +740,7 @@ from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
 from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
+from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1534,6 +1553,14 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start monthly archive audit loop")
 
+    # Start terminus kill log stale reminder loop
+    try:
+        if not _terminus_reminder_loop.is_running():
+            _terminus_reminder_loop.start()
+            logger.info("Terminus kill log reminder loop started (hourly check).")
+    except Exception:
+        logger.exception("Failed to start terminus kill log reminder loop")
+
     # Start milestone check loop if enabled (default: enabled)
     try:
         if MILESTONES_ENABLED:
@@ -1587,6 +1614,12 @@ async def on_ready():
             )
     except Exception:
         logger.exception("Failed to start LFG queue system")
+
+    # Register persistent views for Terminus kill log entries
+    try:
+        await _terminus_ops.register_persistent_views()
+    except Exception:
+        logger.exception("Failed to register terminus kill log persistent views")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
