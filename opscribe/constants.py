@@ -50,6 +50,8 @@ WARP_EXPOSURE_PATH = os.path.join(DATA_DIR, "warp_exposure.json")
 WARDING_POOL_PATH = os.path.join(DATA_DIR, "warding_pool.json")
 LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
 LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
+# Terminus Kill Log subsystem
+TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
 
 # ---------------------------------------------------------------------------
 # Channel IDs
@@ -62,6 +64,8 @@ BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 OATHSWORN_CHANNEL_ID = 1489282103119052903
 TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
 LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
+KILL_LOG_CHANNEL_ID = 1450572668750532699  # kill-log channel
+APOTHECARY_STAFF_CHANNEL_ID = 1484793764634693692  # apothecary staff / notifications
 # Librarian operations / monitoring channel (set after creation; falls back to LIBRARIUS_STAFF_CHANNEL_ID)
 LIBRARIUM_WATCH_CHANNEL_ID: int = 0  # populate when channel is created
 # Dreadnought inactivity notification channel (High Command)
@@ -336,6 +340,56 @@ TERMINUS_SLAYER_ROLE_IDS = {
     1450231189028737166,  # Terminus Slayer (Heavy)
     1476623936254115992,  # Terminus Slayer (Techmarine)
 }
+
+# Kill Log class roles (role_id -> display name).  Excludes Master Terminus Slayer.
+KILL_LOG_CLASS_ROLES: dict[int, str] = {
+    1449257352112111646: "Assault",
+    1450230789034737748: "Bulwark",
+    1450231189028737166: "Heavy",
+    1450231020686278656: "Sniper",
+    1450230281599713451: "Tactical",
+    1476623936254115992: "Techmarine",
+    1450230501804609697: "Vanguard",
+}
+
+# Valid terminus types for kill log submissions
+TERMINUS_TYPES = ["Neurothrope", "Carnifex", "Hellbrute"]
+
+# Ranks that may verify/deny kill log entries (Watch Veteran+)
+TERMINUS_VERIFIER_RANKS = {
+    "Watch Veteran",
+    "Oathsworn",
+    "Kill Team Champion",
+    "Company Champion",
+    "Lord Executioner",
+    "Watch Sergeant",
+    "Watch Lieutenant",
+    "Watch Captain",
+    "Watch Chaplain",
+    "Watch Apothecary",
+    "Watch Librarian",
+    "Watch Techmarine",
+    "Watch Keeper",
+    "High Chaplain",
+    "Chief Apothecary",
+    "Void Warden",
+    "Forgemaster",
+    "Castellan",
+    "Watch Master",
+    "Venerable Dreadnought",
+    "Honored Dreadnought",
+    "Interred Brother",
+}
+
+# Verifier tier thresholds (rolling 7-day window, verify + deny count equally)
+VERIFIER_TIER_THRESHOLDS = [
+    (12, 3, 3),   # 12+ actions -> Tier 3 -> +3 AAR bonus
+    (7,  2, 2),   # 7-11 actions -> Tier 2 -> +2 AAR bonus
+    (3,  1, 1),   # 3-6 actions  -> Tier 1 -> +1 AAR bonus
+]
+
+# Hours before an unverified kill log triggers a reminder ping
+KILL_LOG_REMINDER_HOURS = 72
 
 # ---------------------------------------------------------------------------
 # Challenge roles for /completed_challenges command
