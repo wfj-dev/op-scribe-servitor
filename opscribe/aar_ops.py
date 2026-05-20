@@ -147,8 +147,28 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             
             notified_challenges = user_progress.get("notified", [])
 
-            # Get member object for role checks
-            member = guild.get_member(int(brother_id)) if guild else None
+            # Rank gate: only send notifications for Watch Brother or higher.
+            # Progress is still accumulated regardless so retroactive alerts fire
+            # on the next AAR submission after the member reaches Watch Brother rank.
+            is_watch_brother_or_higher = False
+            if member:
+                _rn = {getattr(r, "name", "") for r in member.roles}
+                is_watch_brother_or_higher = (
+                    "Watch Brother" in _rn
+                    or "Watch Sister" in _rn
+                    or any(
+                        r in _rn
+                        for r in (
+                            "Watch Veteran", "Oathsworn", "Kill Team Champion",
+                            "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
+                            "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
+                            "Company Champion", "Watch Lieutenant", "Watch Captain",
+                            "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
+                            "Void Warden", "High Chaplain", "Chief Apothecary",
+                            "Castellan", "Lord Executioner", "Watch Master",
+                        )
+                    )
+                )
 
             # === SOK-G: Pipehitter tracking ===
             # Pipehitter challenges require Hard-Stratagem difficulty.
@@ -192,6 +212,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     if (
                         len(unique_missions) >= 10
                         and "sok_g_pipehitter" not in notified_challenges
+                        and is_watch_brother_or_higher
                         and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
                     ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
@@ -202,6 +223,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     if (
                         len(unique_missions) >= 2
                         and "distinguished_sok_g_pipehitter" not in notified_challenges
+                        and is_watch_brother_or_higher
                         and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
                     ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
@@ -227,6 +249,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and unique_missions == KADAKU_CAMPAIGN_REQUIRED_MISSIONS
                     and "kadaku_campaign" not in notified_challenges
                     and member
+                    and is_watch_brother_or_higher
                     and not discord.utils.get(member.roles, id=KADAKU_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
@@ -252,6 +275,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
                     and "black_reef" not in notified_challenges
                     and member
+                    and is_watch_brother_or_higher
                     and not discord.utils.get(member.roles, id=BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
@@ -277,6 +301,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and unique_missions == BLACK_REEF_REQUIRED_MISSIONS
                     and "distinguished_black_reef" not in notified_challenges
                     and member
+                    and is_watch_brother_or_higher
                     and not discord.utils.get(member.roles, id=DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
@@ -333,6 +358,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and unique_missions == ORDER_OMEGA_REQUIRED_MISSIONS
                     and "order_omega" not in notified_challenges
                     and member
+                    and is_watch_brother_or_higher
                     and not discord.utils.get(member.roles, id=THE_ORDER_OMEGA_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["order_omega"] if m["message_url"]]

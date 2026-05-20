@@ -936,8 +936,8 @@ async def _check_promotion_milestones():
         watch_command_mention = f"{captain_mention} / {lt_mention}"
 
         # Get Watch Veteran role for mentions
-        watch_veteran_role = discord.utils.get(guild.roles, name="Watch Veteran")
-        watch_veteran_mention = watch_veteran_role.mention if watch_veteran_role else "Watch Veteran"
+        watch_veteran_role = guild.get_role(WATCH_VETERAN_ROLE_ID)
+        watch_veteran_mention = watch_veteran_role.mention if watch_veteran_role else f"<@&{WATCH_VETERAN_ROLE_ID}>"
 
         # Get Watch Sergeant role for vet promotion mentions
         watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
@@ -968,9 +968,9 @@ async def _check_promotion_milestones():
         apothecarion_medal_mention = (
             apothecarion_medal_role.mention if apothecarion_medal_role else f"<@&{APOTHECARION_SERVICE_MEDAL_ROLE_ID}>"
         )
-        crimson_laurels_role = discord.utils.get(guild.roles, name=CRIMSON_LAURELS_ROLE_NAME)
+        crimson_laurels_role = guild.get_role(CRIMSON_LAURELS_ROLE_ID)
         crimson_laurels_mention = (
-            crimson_laurels_role.mention if crimson_laurels_role else f"@{CRIMSON_LAURELS_ROLE_NAME}"
+            crimson_laurels_role.mention if crimson_laurels_role else f"<@&{CRIMSON_LAURELS_ROLE_ID}>"
         )
 
         # Build a map of user_id -> set of completed Black Laurels missions

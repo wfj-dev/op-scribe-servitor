@@ -298,9 +298,10 @@ THE_ORDER_OMEGA_ROLE_ID = 1502135764312526858
 # Specialist award thresholds and role mappings
 # ---------------------------------------------------------------------------
 # Award role IDs (looked up by ID to avoid name change issues)
+WATCH_VETERAN_ROLE_ID = 1429340812902273044  # Watch Veteran
 ARDENT_RAIDER_ROLE_ID = 1436170746283163770  # Ardent Raider Ribbon
 APOTHECARION_SERVICE_MEDAL_ROLE_ID = 1436434868652212275  # Apothecarion Service Medal
-CRIMSON_LAURELS_ROLE_NAME = "Crimson Laurels"
+CRIMSON_LAURELS_ROLE_ID = 1450595241508733183  # Crimson Laurels
 
 # Specialist role names for mentions (looked up dynamically)
 TECHMARINE_ROLE_NAME = "Watch Techmarine"
