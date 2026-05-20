@@ -876,6 +876,210 @@ async def _check_activity_status_changes():
             _g.logger.exception(f"Activity status check failed: {e}")
 
 
+async def _check_award_milestones_for_members(member_ids: List[str], guild: discord.Guild) -> None:
+    """Check award eligibility immediately for specific members after AAR ingestion.
+
+    Runs Watch Veteran / Ardent Raider / Apothecarion Medal / Crimson Laurels checks
+    for only the given member IDs. Black Laurels, Service Studs, and Oathsworn are
+    omitted here — the 4-hourly loop handles those.
+    """
+    if not member_ids or _g.DATASTORE is None:
+        return
+
+    watch_veteran_role = guild.get_role(WATCH_VETERAN_ROLE_ID)
+    ardent_raider_role = guild.get_role(ARDENT_RAIDER_ROLE_ID)
+    apothecarion_medal_role = guild.get_role(APOTHECARION_SERVICE_MEDAL_ROLE_ID)
+    crimson_laurels_role = guild.get_role(CRIMSON_LAURELS_ROLE_ID)
+    black_laurels_role = discord.utils.get(guild.roles, name="Black Laurels")
+
+    tracking = _load_promotion_tracking()
+    notifications_sent = 0
+
+    for uid_str in member_ids:
+        try:
+            if not str(uid_str).isdigit():
+                continue
+            member = guild.get_member(int(uid_str))
+            if not member or member.bot:
+                continue
+
+            role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+            is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
+            is_veteran_or_higher = any(
+                r in role_names
+                for r in [
+                    "Watch Veteran", "Oathsworn", "Kill Team Champion",
+                    "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
+                    "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
+                    "Company Champion", "Watch Lieutenant", "Watch Captain",
+                    "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
+                    "Void Warden", "High Chaplain", "Chief Apothecary",
+                    "Castellan", "Lord Executioner", "Watch Master",
+                ]
+            )
+            is_watch_brother_only = is_watch_brother and not is_veteran_or_higher
+
+            if not (is_watch_brother_only or is_veteran_or_higher):
+                continue
+
+            user_tracking = tracking.get(uid_str, {})
+            stats = compute_stats_for_user(uid_str)
+            aar_points = int(stats.get("aar_points", 0) or 0)
+
+            member_chapter = "Unknown"
+            for role in getattr(member, "roles", []):
+                if getattr(role, "name", "") in _b("HOME_CHAPTERS"):
+                    member_chapter = role.name
+                    break
+
+            ann_channel: Optional[discord.abc.Messageable] = None
+            ann_channel_fetched = False
+
+            async def _get_ann_channel() -> Optional[discord.abc.Messageable]:
+                nonlocal ann_channel, ann_channel_fetched
+                if not ann_channel_fetched:
+                    ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+                    ann_channel_fetched = True
+                return ann_channel
+
+            # Watch Veteran (Watch Brother only, 200 AAR + 2 weeks)
+            if is_watch_brother_only and watch_veteran_role:
+                joined_at = _get_effective_induction_date(member)
+                if joined_at:
+                    if joined_at.tzinfo is not None:
+                        joined_at = joined_at.replace(tzinfo=None)
+                    weeks_in_server = max(0, (datetime.utcnow() - joined_at).days // 7)
+                else:
+                    weeks_in_server = 0
+                if (
+                    aar_points >= 200
+                    and weeks_in_server >= 2
+                    and watch_veteran_role not in member.roles
+                    and not user_tracking.get("veteran_assigned")
+                ):
+                    assigned = False
+                    try:
+                        await member.add_roles(watch_veteran_role, reason="Auto-promotion: 200 AAR + 2 weeks")
+                        assigned = True
+                    except Exception as e:
+                        _g.logger.warning(f"Failed to assign Watch Veteran role to {member.id}: {e}")
+                    if assigned:
+                        ch = await _get_ann_channel()
+                        if ch:
+                            content, embed, award_file = _b("_get_watch_veteran_announcement")(
+                                member=member, member_chapter=member_chapter, guild=guild
+                            )
+                            send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                            if award_file:
+                                send_kwargs["file"] = award_file
+                            await ch.send(content, **send_kwargs)
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+                        else:
+                            _g.logger.warning(f"Watch Veteran announcement channel not found for {member.id}; role assigned but no announcement sent")
+                        user_tracking["veteran_assigned"] = True
+
+            # Ardent Raider (200 armory points)
+            if ardent_raider_role:
+                armory_points = int(stats.get("armory_points", 0) or 0)
+                if ardent_raider_role in member.roles:
+                    user_tracking["ardent_raider_notified"] = True
+                elif armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD and not user_tracking.get("ardent_raider_notified"):
+                    assigned = False
+                    try:
+                        await member.add_roles(ardent_raider_role, reason="Auto-award: 200 armory points")
+                        assigned = True
+                    except Exception as e:
+                        _g.logger.warning(f"Failed to assign Ardent Raider role to {member.id}: {e}")
+                    if assigned:
+                        ch = await _get_ann_channel()
+                        if ch:
+                            content, embed, award_file = _b("_get_ardent_raider_announcement")(
+                                member=member, member_chapter=member_chapter, guild=guild
+                            )
+                            send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                            if award_file:
+                                send_kwargs["file"] = award_file
+                            await ch.send(content, **send_kwargs)
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+                        else:
+                            _g.logger.warning(f"Ardent Raider announcement channel not found for {member.id}; role assigned but no announcement sent")
+                        user_tracking["ardent_raider_notified"] = True
+
+            # Apothecarion Medal (150 gene-seed points)
+            if apothecarion_medal_role:
+                gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
+                if apothecarion_medal_role in member.roles:
+                    user_tracking["for_the_fallen_notified"] = True
+                elif gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD and not user_tracking.get("for_the_fallen_notified"):
+                    assigned = False
+                    try:
+                        await member.add_roles(apothecarion_medal_role, reason="Auto-award: 150 geneseed points")
+                        assigned = True
+                    except Exception as e:
+                        _g.logger.warning(f"Failed to assign Apothecarion Medal role to {member.id}: {e}")
+                    if assigned:
+                        ch = await _get_ann_channel()
+                        if ch:
+                            content, embed, award_file = _b("_get_apothecarion_medal_announcement")(
+                                member=member, member_chapter=member_chapter, guild=guild
+                            )
+                            send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                            if award_file:
+                                send_kwargs["file"] = award_file
+                            await ch.send(content, **send_kwargs)
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+                        else:
+                            _g.logger.warning(f"Apothecarion Medal announcement channel not found for {member.id}; role assigned but no announcement sent")
+                        user_tracking["for_the_fallen_notified"] = True
+
+            # Crimson Laurels (1000 AAR points + Black Laurels role)
+            if crimson_laurels_role:
+                has_bl_for_cl = black_laurels_role and black_laurels_role in member.roles
+                if crimson_laurels_role in member.roles:
+                    user_tracking["crimson_laurels_notified"] = True
+                elif aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD and has_bl_for_cl and not user_tracking.get("crimson_laurels_notified"):
+                    assigned = False
+                    try:
+                        await member.add_roles(crimson_laurels_role, reason="Auto-award: 1000 AAR + Black Laurels")
+                        assigned = True
+                    except Exception as e:
+                        _g.logger.warning(f"Failed to assign Crimson Laurels role to {member.id}: {e}")
+                    if assigned:
+                        ch = await _get_ann_channel()
+                        if ch:
+                            content, embed, award_file = _b("_get_crimson_laurels_announcement")(
+                                member=member, member_chapter=member_chapter, guild=guild
+                            )
+                            send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                            if award_file:
+                                send_kwargs["file"] = award_file
+                            await ch.send(content, **send_kwargs)
+                            notifications_sent += 1
+                            await asyncio.sleep(0.5)
+                        else:
+                            _g.logger.warning(f"Crimson Laurels announcement channel not found for {member.id}; role assigned but no announcement sent")
+                        user_tracking["crimson_laurels_notified"] = True
+
+            if user_tracking:
+                tracking[uid_str] = user_tracking
+
+        except Exception as e:
+            _g.logger.debug(f"Award check failed for member {uid_str}: {e}")
+            continue
+
+    async with _g.PROMOTION_TRACKING_LOCK:
+        fresh = _load_promotion_tracking()
+        for uid, data in tracking.items():
+            fresh.setdefault(uid, {}).update(data)
+        _save_promotion_tracking(fresh)
+
+    if notifications_sent > 0:
+        _g.logger.info(f"Award check (AAR-triggered) for {len(member_ids)} member(s): {notifications_sent} notification(s) sent")
+
+
 async def _check_promotion_milestones():
     """Check guild members for promotion eligibility milestones and send notifications.
 
@@ -7574,6 +7778,7 @@ __all__ = [
     # ── Promotion milestones ─────────────────────────────────────────────────
     "_load_promotion_tracking",
     "_save_promotion_tracking",
+    "_check_award_milestones_for_members",
     "_check_promotion_milestones",
     # ── Home chapter rotation ────────────────────────────────────────────────
     "_month_key_for_offset",

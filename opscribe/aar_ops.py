@@ -1335,6 +1335,12 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                 await _send_challenge_eligibility_notifications(challenge_notifications, guild)
                         except Exception as e:
                             _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
+                        try:
+                            await _b("_check_award_milestones_for_members")(
+                                [str(uid) for uid in record.get("brother_ids", [])], guild
+                            )
+                        except Exception as e:
+                            _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
 
                     # If an error entry exists for this AAR, attempt to remove
                     # the bot's previous reply and clear the error record.
@@ -1581,6 +1587,12 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     await _send_challenge_eligibility_notifications(challenge_notifications, guild)
             except Exception as e:
                 _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
+            try:
+                await _b("_check_award_milestones_for_members")(
+                    [str(uid) for uid in record.get("brother_ids", [])], guild
+                )
+            except Exception as e:
+                _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
 
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:
@@ -2060,6 +2072,12 @@ async def _run_reparse_records(
                     challenge_notifications = await _process_challenge_tracking(merged, guild_obj)
                     if challenge_notifications:
                         await _send_challenge_eligibility_notifications(challenge_notifications, guild_obj)
+                    try:
+                        await _b("_check_award_milestones_for_members")(
+                            [str(uid) for uid in merged.get("brother_ids", [])], guild_obj
+                        )
+                    except Exception as e:
+                        _g.logger.error(f"Error checking award milestones during reparse for AAR {merged.get('aar_id')}: {e}")
             except Exception as e:
                 _g.logger.error(f"Error processing challenge tracking during reparse for AAR {merged.get('aar_id')}: {e}")
 
