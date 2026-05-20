@@ -893,15 +893,6 @@ async def _check_promotion_milestones():
             _g.logger.debug("Promotion check: _g.DATASTORE not initialized")
             return
 
-        # Get veteran promotion channel
-        veteran_channel = guild.get_channel(VETERAN_PROMOTION_CHANNEL_ID)
-        if not veteran_channel:
-            try:
-                veteran_channel = await _g.bot.fetch_channel(VETERAN_PROMOTION_CHANNEL_ID)
-            except Exception:
-                _g.logger.warning(f"Veteran promotion channel {VETERAN_PROMOTION_CHANNEL_ID} not found")
-                veteran_channel = None
-
         # Get service studs channel
         studs_channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
         if not studs_channel:
@@ -929,7 +920,7 @@ async def _check_promotion_milestones():
                 _g.logger.warning(f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found")
                 oathsworn_channel = None
 
-        if not veteran_channel and not studs_channel and not black_laurels_channel and not oathsworn_channel:
+        if not studs_channel and not black_laurels_channel and not oathsworn_channel:
             _g.logger.warning("No promotion channels available")
             return
 
@@ -1069,6 +1060,15 @@ async def _check_promotion_milestones():
 
                 user_id = str(member.id)
                 user_tracking = tracking.get(user_id, {})
+                ann_channel: Optional[discord.abc.Messageable] = None
+                ann_channel_resolved = False
+
+                async def _get_member_award_announcement_channel() -> Optional[discord.abc.Messageable]:
+                    nonlocal ann_channel, ann_channel_resolved
+                    if not ann_channel_resolved:
+                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+                        ann_channel_resolved = True
+                    return ann_channel
 
                 # Get member stats
                 stats = compute_stats_for_user(user_id)
@@ -1091,48 +1091,34 @@ async def _check_promotion_milestones():
                         member_chapter = role_name
                         break
 
-                # Check Watch Veteran eligibility (200 AAR + 2 weeks)
-                # Only for Watch Brother ONLY (not already promoted to Veteran+)
-                if is_watch_brother_only and veteran_channel:
+                # Auto-assign Watch Veteran + public announcement (200 AAR + 2 weeks)
+                # Only for Watch Brother ONLY (not already Veteran+)
+                if is_watch_brother_only and watch_veteran_role:
                     is_eligible = aar_points >= 200 and weeks_in_server >= 2
-                    # Initialize tracking if needed
-                    if "last_veteran_eligible" not in user_tracking:
-                        user_tracking["last_veteran_eligible"] = is_eligible
-                    last_eligible = user_tracking["last_veteran_eligible"]
-
-                    # Notify if newly eligible or newly checked while eligible (once per eligibility session)
-                    # Similar to service studs: notify if is_eligible and last wasn't or is same
-                    if is_eligible and is_eligible >= last_eligible:
-                        # Get Watch Brother role for fallback mention
-                        watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
-                        # Strip rank prefix from display name to avoid "Watch Brother Watch Brother X"
-                        stripped_name = member.display_name
-                        for prefix in ("Watch Brother", "Watch Sister"):
-                            if stripped_name.lower().startswith(prefix.lower()):
-                                stripped_name = stripped_name[len(prefix) :].lstrip()
-                                break
-                        # Format: user mention, or if not mentionable use rank role + name
-                        if watch_brother_role:
-                            member_line = f"{watch_brother_role.mention} {stripped_name}"
-                        else:
-                            member_line = f"{member.mention}"
-                        # Send notification in the specified format
-                        msg = (
-                            f"᛭⋅ {member_line}\n"
-                            f"᛭⋅ Promoted To: {watch_veteran_mention}\n"
-                            f"᛭⋅ {member_chapter}\n"
-                            f"᛭⋅ {watch_sergeant_mention}\n"
-                            f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                        )
-                        await veteran_channel.send(
-                            msg,
-                            allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                        )
-                        notifications_sent += 1
-                        await asyncio.sleep(0.5)
-
-                    # Always update tracking with current state
-                    user_tracking["last_veteran_eligible"] = is_eligible
+                    has_veteran_role = watch_veteran_role in member.roles
+                    if is_eligible and not has_veteran_role and not user_tracking.get("veteran_assigned"):
+                        veteran_role_assigned = False
+                        try:
+                            await member.add_roles(watch_veteran_role, reason="Auto-promotion: 200 AAR + 2 weeks")
+                            veteran_role_assigned = True
+                        except Exception as e:
+                            _g.logger.warning(f"Failed to assign Watch Veteran role to {member.id}: {e}")
+                        if veteran_role_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_watch_veteran_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
+                            user_tracking["veteran_assigned"] = True
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
                 # Only notify when they've EARNED new studs (internal calculation)
@@ -1221,132 +1207,98 @@ async def _check_promotion_milestones():
                         notifications_sent += 1
                         await asyncio.sleep(0.5)
 
-                # Check Ardent Raider eligibility (200 armory points)
-                if black_laurels_channel:
+                # Auto-assign Ardent Raider Ribbon + public announcement (200 armory points)
+                if ardent_raider_role:
                     armory_points = int(stats.get("armory_points", 0) or 0)
                     is_ar_eligible = armory_points >= ARDENT_RAIDER_ARMORY_POINTS_THRESHOLD
-                    has_ar_role = ardent_raider_role and ardent_raider_role in member.roles
-                    # If already has role, mark as notified without sending
+                    has_ar_role = ardent_raider_role in member.roles
                     if has_ar_role:
                         user_tracking["ardent_raider_notified"] = True
-                    # Notify if eligible, doesn't have role, and not already notified
-                    elif not user_tracking.get("ardent_raider_notified"):
-                        if is_ar_eligible:
-                            # Get kill team or company role for mention
-                            team_mention = "Unknown"
-                            for r in member.roles:
-                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
-                                    team_mention = r.mention
-                                    break
-                                elif r.name in {
-                                    "Watch Company Primus",
-                                    "Watch Company Secundus",
-                                    "Watch Company Tertius",
-                                    "Watch Company Quartus",
-                                    "Watch Company Quintus",
-                                    "Dreadnought Cadre",
-                                }:
-                                    team_mention = r.mention
-                                    break
-                            msg = (
-                                f"᛭⋅ Name: {member.mention}\n"
-                                f"᛭⋅ 🎖️{ardent_raider_mention}\n"
-                                f"᛭⋅ Team: {team_mention}\n"
-                                f"᛭⋅ {watch_command_role_mention} {techmarine_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
+                    elif is_ar_eligible and not user_tracking.get("ardent_raider_notified"):
+                        ardent_raider_assigned = False
+                        try:
+                            await member.add_roles(ardent_raider_role, reason="Auto-award: 200 armory points")
+                            ardent_raider_assigned = True
+                        except Exception as e:
+                            _g.logger.warning(f"Failed to assign Ardent Raider role to {member.id}: {e}")
+                        if ardent_raider_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_ardent_raider_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
                             user_tracking["ardent_raider_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
 
-                # Check Apothecarion Service Medal eligibility (150 geneseed points)
-                if black_laurels_channel:
+                # Auto-assign Apothecarion Service Medal + public announcement (150 geneseed points)
+                if apothecarion_medal_role:
                     gene_seed_points = int(stats.get("gene_seed_points", 0) or 0)
                     is_ftf_eligible = gene_seed_points >= FOR_THE_FALLEN_GENESEED_POINTS_THRESHOLD
-                    has_ftf_role = apothecarion_medal_role and apothecarion_medal_role in member.roles
-                    # If already has role, mark as notified without sending
+                    has_ftf_role = apothecarion_medal_role in member.roles
                     if has_ftf_role:
                         user_tracking["for_the_fallen_notified"] = True
-                    # Notify if eligible, doesn't have role, and not already notified
-                    elif not user_tracking.get("for_the_fallen_notified"):
-                        if is_ftf_eligible:
-                            # Get kill team or company role for mention
-                            team_mention = "Unknown"
-                            for r in member.roles:
-                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
-                                    team_mention = r.mention
-                                    break
-                                elif r.name in {
-                                    "Watch Company Primus",
-                                    "Watch Company Secundus",
-                                    "Watch Company Tertius",
-                                    "Watch Company Quartus",
-                                    "Watch Company Quintus",
-                                    "Dreadnought Cadre",
-                                }:
-                                    team_mention = r.mention
-                                    break
-                            msg = (
-                                f"᛭⋅ Name: {member.mention}\n"
-                                f"᛭⋅ 🎖️{apothecarion_medal_mention}\n"
-                                f"᛭⋅ Team: {team_mention}\n"
-                                f"᛭⋅ {watch_command_role_mention} {apothecary_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
+                    elif is_ftf_eligible and not user_tracking.get("for_the_fallen_notified"):
+                        apothecarion_medal_assigned = False
+                        try:
+                            await member.add_roles(apothecarion_medal_role, reason="Auto-award: 150 geneseed points")
+                            apothecarion_medal_assigned = True
+                        except Exception as e:
+                            _g.logger.warning(f"Failed to assign Apothecarion Medal role to {member.id}: {e}")
+                        if apothecarion_medal_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_apothecarion_medal_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
                             user_tracking["for_the_fallen_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
 
-                # Check Crimson Laurels eligibility (1000 AAR points + Black Laurels completed)
-                if black_laurels_channel:
-                    # Check if user has Black Laurels role (required for Crimson)
+                # Auto-assign Crimson Laurels + public announcement (1000 AAR + Black Laurels)
+                if crimson_laurels_role:
                     has_bl_role_for_cl = black_laurels_role and black_laurels_role in member.roles
                     is_cl_eligible = aar_points >= CRIMSON_LAURELS_AAR_POINTS_THRESHOLD and has_bl_role_for_cl
-                    has_cl_role = crimson_laurels_role and crimson_laurels_role in member.roles
-                    # If already has role, mark as notified without sending
+                    has_cl_role = crimson_laurels_role in member.roles
                     if has_cl_role:
                         user_tracking["crimson_laurels_notified"] = True
-                    # Notify if eligible, doesn't have role, and not already notified
-                    elif not user_tracking.get("crimson_laurels_notified"):
-                        if is_cl_eligible:
-                            # Get kill team or company role for mention
-                            team_mention = "Unknown"
-                            for r in member.roles:
-                                if r.id in _b("ALLOWED_KT_ROLE_IDS"):
-                                    team_mention = r.mention
-                                    break
-                                elif r.name in {
-                                    "Watch Company Primus",
-                                    "Watch Company Secundus",
-                                    "Watch Company Tertius",
-                                    "Watch Company Quartus",
-                                    "Watch Company Quintus",
-                                    "Dreadnought Cadre",
-                                }:
-                                    team_mention = r.mention
-                                    break
-                            msg = (
-                                f"᛭⋅ Name: {member.mention}\n"
-                                f"᛭⋅ 🎖️{crimson_laurels_mention}\n"
-                                f"᛭⋅ Team: {team_mention}\n"
-                                f"᛭⋅ {watch_command_role_mention} {librarian_mention}\n"
-                                f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"
-                            )
-                            await black_laurels_channel.send(
-                                msg,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
+                    elif is_cl_eligible and not user_tracking.get("crimson_laurels_notified"):
+                        crimson_laurels_assigned = False
+                        try:
+                            await member.add_roles(crimson_laurels_role, reason="Auto-award: 1000 AAR + Black Laurels")
+                            crimson_laurels_assigned = True
+                        except Exception as e:
+                            _g.logger.warning(f"Failed to assign Crimson Laurels role to {member.id}: {e}")
+                        if crimson_laurels_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_crimson_laurels_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
                             user_tracking["crimson_laurels_notified"] = True
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower

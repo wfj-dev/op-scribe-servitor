@@ -3617,6 +3617,302 @@ def _get_member_rank_title(member: discord.Member) -> str:
     return "Brother"
 
 
+async def _get_award_announcement_channel(
+    member: discord.Member,
+    guild: discord.Guild,
+) -> Optional[discord.abc.Messageable]:
+    """Return the channel for a public award announcement.
+
+    Resolution order:
+    1. KT_ROLE_CHANNEL_MAP override (role_id → channel_id) if populated.
+    2. Active forum thread in ALLOWED_KT_FORUM_PARENT_IDS whose name matches
+       the member's Kill Team role (via _extract_killteam_name fuzzy match).
+    3. General channel (SERVICE_STUDS_CHANNEL_ID) as fallback.
+    """
+    # 1) Static map override
+    kt_channel_map: dict = _b("KT_ROLE_CHANNEL_MAP") or {}
+    if kt_channel_map:
+        for role in getattr(member, "roles", []):
+            channel_id = kt_channel_map.get(role.id)
+            if channel_id:
+                ch = guild.get_channel(channel_id)
+                if ch:
+                    return ch
+
+    # 2) Dynamic forum thread search
+    kt_name = _resolve_killteam_for_member(member)
+    if kt_name:
+        kt_short = _extract_killteam_name(kt_name).lower()
+        forum_parent_ids = _b("ALLOWED_KT_FORUM_PARENT_IDS") or set()
+        try:
+            active_threads = await guild.active_threads()
+            for thread in active_threads:
+                parent = thread.parent
+                if parent and parent.id in forum_parent_ids:
+                    thread_short = _extract_killteam_name(thread.name).lower()
+                    if thread_short and (kt_short in thread_short or thread_short in kt_short):
+                        return thread
+        except Exception as e:
+            _g.logger.debug(f"Failed to resolve KT thread for award announcement ({member.id}): {e}")
+
+    # 3) Fallback: general
+    return guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+
+
+def _get_watch_veteran_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed]:
+    """Generate a flavorful Watch Veteran promotion announcement embed.
+
+    Called after the bot auto-assigns the Watch Veteran role.
+    Returns (content, embed) where content holds the ping mentions.
+    """
+    # Use shared helper for display name / title but override honorific since
+    # the member was just promoted and may not yet reflect the new role.
+    _, display_name, member_title = _get_bearer_rank_and_title(member)
+
+    rank_emoji = _get_rank_emoji(guild, "Watch Veteran")
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+
+    opening = random.choice(WATCH_VETERAN_OPENINGS).format(name=display_name)
+    proclamation = random.choice(WATCH_VETERAN_PROCLAMATIONS)
+    chapter_coda = WATCH_VETERAN_CHAPTER_LINES.get(member_chapter, "")
+
+    dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_str}᛭⋅ WATCH VETERAN PROMOTION ⋅᛭{dw_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xC0C0C0,
+    )
+
+    proclamation_text = f"{opening}\n\n{proclamation}"
+    if chapter_coda:
+        proclamation_text += f"\n\n*{chapter_coda}*"
+    embed.add_field(
+        name="▸ Watch's Proclamation",
+        value=proclamation_text,
+        inline=False,
+    )
+
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**Honored Veteran {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Promoted Warrior", value=bearer_value, inline=True)
+
+    embed.add_field(
+        name="▸ Service Record",
+        value="Service: **200+ AAR Points** ✓\nTime: **2+ Weeks** ✓\nPromoted to: **Watch Veteran**",
+        inline=True,
+    )
+
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+
+    watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
+    sergeant_mention = watch_sergeant_role.mention if watch_sergeant_role else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
+    content = f"{sergeant_mention} {member.mention}"
+    return content, embed
+
+
+def _get_ardent_raider_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed]:
+    """Generate a flavorful Ardent Raider Ribbon award announcement embed."""
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+    rank_emoji = None
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+    ribbon_emoji = _get_emoji_by_name(guild, "ArdentRaiderRibbon")
+
+    opening = random.choice(ARDENT_RAIDER_OPENINGS).format(name=display_name)
+    proclamation = random.choice(ARDENT_RAIDER_PROCLAMATIONS)
+    chapter_coda = ARDENT_RAIDER_CHAPTER_LINES.get(member_chapter, "")
+
+    dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_str}᛭⋅ ARDENT RAIDER RIBBON ⋅᛭{dw_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xD4AF37,
+    )
+
+    proclamation_text = f"{opening}\n\n{proclamation}"
+    if chapter_coda:
+        proclamation_text += f"\n\n*{chapter_coda}*"
+    embed.add_field(
+        name="▸ Watch's Proclamation",
+        value=proclamation_text,
+        inline=False,
+    )
+
+    role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+    for rank in RANK_HONORIFICS:
+        if rank in role_names:
+            rank_emoji = _get_rank_emoji(guild, rank)
+            break
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+
+    ribbon_str = f"{ribbon_emoji} " if ribbon_emoji else "🎖️ "
+    embed.add_field(
+        name="▸ Award",
+        value=f"{ribbon_str}**Ardent Raider Ribbon**\n200+ Armory Points ✓",
+        inline=True,
+    )
+
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+
+    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
+    techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
+    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
+    tech_mention = techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
+    content = f"{command_mention} {tech_mention} {member.mention}"
+    return content, embed
+
+
+def _get_apothecarion_medal_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed]:
+    """Generate a flavorful Apothecarion Service Medal award announcement embed."""
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+    medal_emoji = _get_emoji_by_name(guild, "ApothecarionServiceMedal")
+
+    opening = random.choice(APOTHECARION_MEDAL_OPENINGS).format(name=display_name)
+    proclamation = random.choice(APOTHECARION_MEDAL_PROCLAMATIONS)
+    chapter_coda = APOTHECARION_MEDAL_CHAPTER_LINES.get(member_chapter, "")
+
+    dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_str}᛭⋅ APOTHECARION SERVICE MEDAL ⋅᛭{dw_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xFFFFFF,
+    )
+
+    proclamation_text = f"{opening}\n\n{proclamation}"
+    if chapter_coda:
+        proclamation_text += f"\n\n*{chapter_coda}*"
+    embed.add_field(
+        name="▸ Watch's Proclamation",
+        value=proclamation_text,
+        inline=False,
+    )
+
+    rank_emoji = None
+    for rank in RANK_HONORIFICS:
+        role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+        if rank in role_names:
+            rank_emoji = _get_rank_emoji(guild, rank)
+            break
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+
+    medal_str = f"{medal_emoji} " if medal_emoji else "🎖️ "
+    embed.add_field(
+        name="▸ Award",
+        value=f"{medal_str}**Apothecarion Service Medal**\n150+ Gene-Seed Points ✓",
+        inline=True,
+    )
+
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+
+    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
+    apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
+    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
+    apo_mention = apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
+    content = f"{command_mention} {apo_mention} {member.mention}"
+    return content, embed
+
+
+def _get_crimson_laurels_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed]:
+    """Generate a flavorful Crimson Laurels award announcement embed."""
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+    laurels_emoji = _get_emoji_by_name(guild, "CrimsonLaurelsMedal")
+
+    opening = random.choice(CRIMSON_LAURELS_OPENINGS).format(name=display_name)
+    proclamation = random.choice(CRIMSON_LAURELS_PROCLAMATIONS)
+    chapter_coda = CRIMSON_LAURELS_CHAPTER_LINES.get(member_chapter, "")
+
+    dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_str}᛭⋅ CRIMSON LAURELS ⋅᛭{dw_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=0xDC143C,
+    )
+
+    proclamation_text = f"{opening}\n\n{proclamation}"
+    if chapter_coda:
+        proclamation_text += f"\n\n*{chapter_coda}*"
+    embed.add_field(
+        name="▸ Watch's Proclamation",
+        value=proclamation_text,
+        inline=False,
+    )
+
+    rank_emoji = None
+    for rank in RANK_HONORIFICS:
+        role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+        if rank in role_names:
+            rank_emoji = _get_rank_emoji(guild, rank)
+            break
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+
+    laurels_str = f"{laurels_emoji} " if laurels_emoji else "🎖️ "
+    embed.add_field(
+        name="▸ Award",
+        value=f"{laurels_str}**Crimson Laurels**\n1000+ AAR Points ✓\nBlack Laurels ✓",
+        inline=True,
+    )
+
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+
+    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
+    librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
+    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
+    lib_mention = librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
+    content = f"{command_mention} {lib_mention} {member.mention}"
+    return content, embed
+
+
 def _compute_member_service_studs(member: discord.Member) -> int:
     """Compute the number of service studs a member has earned.
 
@@ -7501,6 +7797,11 @@ __all__ = [
     "_get_stud_marking_recipients",
     "_get_service_studs_announcement",
     "_get_oathsworn_announcement",
+    "_get_award_announcement_channel",
+    "_get_watch_veteran_announcement",
+    "_get_ardent_raider_announcement",
+    "_get_apothecarion_medal_announcement",
+    "_get_crimson_laurels_announcement",
     "_get_member_rank_title",
     "_compute_member_service_studs",
     "_get_bearer_rank_and_title",
