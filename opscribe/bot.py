@@ -842,6 +842,13 @@ ALLOWED_KT_ROLE_IDS: set[int] = set(
     ]
 )
 
+# Mapping of Kill Team role ID → that KT's chat channel ID.
+# Used to route auto-award announcements to the member's KT channel.
+# Falls back to the general channel (SERVICE_STUDS_CHANNEL_ID) if not found.
+# Format: {role_id: channel_id}
+# Example: {1458254715942080543: 1234567890123456789}
+KT_ROLE_CHANNEL_MAP: dict[int, int] = {}
+
 # Optional mapping: forum parent id -> set of company role IDs that own
 # the Kill Teams in that forum. Populate as needed to enable Lt/Captain checks.
 FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {}
