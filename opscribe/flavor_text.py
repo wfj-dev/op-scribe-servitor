@@ -883,7 +883,7 @@ OATHSWORN_PROCLAMATIONS: List[str] = [
 # Watch Veteran promotion announcement flavor text
 # ---------------------------------------------------------------------------
 WATCH_VETERAN_OPENINGS: List[str] = [
-    "By blood and bolter, by vigil and void, **{name}** has earned the right to stand among the Honoured Veteran.",
+    "By blood and bolter, by vigil and void, **{name}** has earned the right to stand among the Honoured Veterans.",
     "The Long Watch does not grant rank lightly. **{name}** has proven the measure of an Astartes in full.",
     "The Watch has tested **{name}** and found them worthy. Let the brotherhood bear witness.",
     "Few among the Deathwatch reach this threshold—**{name}** has crossed it, forged in the fires of the Long Watch.",
