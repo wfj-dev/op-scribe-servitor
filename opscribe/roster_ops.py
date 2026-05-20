@@ -1060,6 +1060,15 @@ async def _check_promotion_milestones():
 
                 user_id = str(member.id)
                 user_tracking = tracking.get(user_id, {})
+                ann_channel: Optional[discord.abc.Messageable] = None
+                ann_channel_resolved = False
+
+                async def _get_member_award_announcement_channel() -> Optional[discord.abc.Messageable]:
+                    nonlocal ann_channel, ann_channel_resolved
+                    if not ann_channel_resolved:
+                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+                        ann_channel_resolved = True
+                    return ann_channel
 
                 # Get member stats
                 stats = compute_stats_for_user(user_id)
@@ -1088,25 +1097,28 @@ async def _check_promotion_milestones():
                     is_eligible = aar_points >= 200 and weeks_in_server >= 2
                     has_veteran_role = watch_veteran_role in member.roles
                     if is_eligible and not has_veteran_role and not user_tracking.get("veteran_assigned"):
+                        veteran_role_assigned = False
                         try:
                             await member.add_roles(watch_veteran_role, reason="Auto-promotion: 200 AAR + 2 weeks")
+                            veteran_role_assigned = True
                         except Exception as e:
                             _g.logger.warning(f"Failed to assign Watch Veteran role to {member.id}: {e}")
-                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
-                        if ann_channel:
-                            content, embed = _b("_get_watch_veteran_announcement")(
-                                member=member,
-                                member_chapter=member_chapter,
-                                guild=guild,
-                            )
-                            await ann_channel.send(
-                                content,
-                                embed=embed,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
-                        user_tracking["veteran_assigned"] = True
+                        if veteran_role_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_watch_veteran_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
+                            user_tracking["veteran_assigned"] = True
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
                 # Only notify when they've EARNED new studs (internal calculation)
@@ -1203,25 +1215,28 @@ async def _check_promotion_milestones():
                     if has_ar_role:
                         user_tracking["ardent_raider_notified"] = True
                     elif is_ar_eligible and not user_tracking.get("ardent_raider_notified"):
+                        ardent_raider_assigned = False
                         try:
                             await member.add_roles(ardent_raider_role, reason="Auto-award: 200 armory points")
+                            ardent_raider_assigned = True
                         except Exception as e:
                             _g.logger.warning(f"Failed to assign Ardent Raider role to {member.id}: {e}")
-                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
-                        if ann_channel:
-                            content, embed = _b("_get_ardent_raider_announcement")(
-                                member=member,
-                                member_chapter=member_chapter,
-                                guild=guild,
-                            )
-                            await ann_channel.send(
-                                content,
-                                embed=embed,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
-                        user_tracking["ardent_raider_notified"] = True
+                        if ardent_raider_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_ardent_raider_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
+                            user_tracking["ardent_raider_notified"] = True
 
                 # Auto-assign Apothecarion Service Medal + public announcement (150 geneseed points)
                 if apothecarion_medal_role:
@@ -1231,25 +1246,28 @@ async def _check_promotion_milestones():
                     if has_ftf_role:
                         user_tracking["for_the_fallen_notified"] = True
                     elif is_ftf_eligible and not user_tracking.get("for_the_fallen_notified"):
+                        apothecarion_medal_assigned = False
                         try:
                             await member.add_roles(apothecarion_medal_role, reason="Auto-award: 150 geneseed points")
+                            apothecarion_medal_assigned = True
                         except Exception as e:
                             _g.logger.warning(f"Failed to assign Apothecarion Medal role to {member.id}: {e}")
-                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
-                        if ann_channel:
-                            content, embed = _b("_get_apothecarion_medal_announcement")(
-                                member=member,
-                                member_chapter=member_chapter,
-                                guild=guild,
-                            )
-                            await ann_channel.send(
-                                content,
-                                embed=embed,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
-                        user_tracking["for_the_fallen_notified"] = True
+                        if apothecarion_medal_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_apothecarion_medal_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
+                            user_tracking["for_the_fallen_notified"] = True
 
                 # Auto-assign Crimson Laurels + public announcement (1000 AAR + Black Laurels)
                 if crimson_laurels_role:
@@ -1259,25 +1277,28 @@ async def _check_promotion_milestones():
                     if has_cl_role:
                         user_tracking["crimson_laurels_notified"] = True
                     elif is_cl_eligible and not user_tracking.get("crimson_laurels_notified"):
+                        crimson_laurels_assigned = False
                         try:
                             await member.add_roles(crimson_laurels_role, reason="Auto-award: 1000 AAR + Black Laurels")
+                            crimson_laurels_assigned = True
                         except Exception as e:
                             _g.logger.warning(f"Failed to assign Crimson Laurels role to {member.id}: {e}")
-                        ann_channel = await _b("_get_award_announcement_channel")(member, guild)
-                        if ann_channel:
-                            content, embed = _b("_get_crimson_laurels_announcement")(
-                                member=member,
-                                member_chapter=member_chapter,
-                                guild=guild,
-                            )
-                            await ann_channel.send(
-                                content,
-                                embed=embed,
-                                allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                            )
-                            notifications_sent += 1
-                            await asyncio.sleep(0.5)
-                        user_tracking["crimson_laurels_notified"] = True
+                        if crimson_laurels_assigned:
+                            ann_channel = await _get_member_award_announcement_channel()
+                            if ann_channel:
+                                content, embed = _b("_get_crimson_laurels_announcement")(
+                                    member=member,
+                                    member_chapter=member_chapter,
+                                    guild=guild,
+                                )
+                                await ann_channel.send(
+                                    content,
+                                    embed=embed,
+                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
+                                )
+                                notifications_sent += 1
+                                await asyncio.sleep(0.5)
+                            user_tracking["crimson_laurels_notified"] = True
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
                 # Only Watch Veteran rank exactly - not higher, not lower

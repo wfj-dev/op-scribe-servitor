@@ -3728,7 +3728,7 @@ def _get_ardent_raider_announcement(
 ) -> Tuple[str, discord.Embed]:
     """Generate a flavorful Ardent Raider Ribbon award announcement embed."""
     rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
-    rank_emoji = _get_rank_emoji(guild, None)
+    rank_emoji = None
     chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
     deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
     ribbon_emoji = _get_emoji_by_name(guild, "ArdentRaiderRibbon")
@@ -3753,8 +3753,8 @@ def _get_ardent_raider_announcement(
         inline=False,
     )
 
+    role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
     for rank in RANK_HONORIFICS:
-        role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
         if rank in role_names:
             rank_emoji = _get_rank_emoji(guild, rank)
             break
