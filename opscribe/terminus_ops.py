@@ -387,60 +387,54 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
         )
         return
 
+    # Collect outcome inside the lock; send Discord responses outside.
+    error_msg: Optional[str] = None
+    entry: Optional[dict] = None
+    newly_confirmed = False
+    class_complete = False
+    brother_id: Optional[str] = None
+
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         entry = state["entries"].get(kill_log_id)
         if entry is None:
-            await interaction.response.send_message("Kill log entry not found.", ephemeral=True)
-            return
-
-        if entry["status"] != "pending":
-            await interaction.response.send_message(
-                f"This entry is no longer pending (status: {entry['status']}).",
-                ephemeral=True,
-            )
-            return
-
-        vet_id = str(interaction.user.id)
-        brother_id = str(entry["brother_id"])
-
-        if vet_id == brother_id:
-            await interaction.response.send_message(
-                "You cannot verify your own kill log entry.",
-                ephemeral=True,
-            )
-            return
-
-        verifications = entry.setdefault("verifications", [])
-        if vet_id in verifications:
-            await interaction.response.send_message(
-                "You have already verified this entry.",
-                ephemeral=True,
-            )
-            return
-
-        verifications.append(vet_id)
-        _record_verifier_action(state, vet_id, "verify", kill_log_id)
-
-        newly_confirmed = len(verifications) >= 3
-        if newly_confirmed:
-            entry["status"] = "verified"
-            entry["verified_at"] = _now_iso()
-            # Update progress
-            new_count = _increment_progress(
-                state,
-                brother_id,
-                entry["class_role_id"],
-                entry["terminus_type"],
-            )
-            class_complete = new_count >= 3 and _class_is_complete(
-                state, brother_id, entry["class_role_id"]
-            )
+            error_msg = "Kill log entry not found."
+        elif entry["status"] != "pending":
+            error_msg = f"This entry is no longer pending (status: {entry['status']})."
         else:
-            class_complete = False
-            new_count = None
+            vet_id = str(interaction.user.id)
+            brother_id = str(entry["brother_id"])
 
-        _save_state(state)
+            if vet_id == brother_id:
+                error_msg = "You cannot verify your own kill log entry."
+            else:
+                verifications = entry.setdefault("verifications", [])
+                if vet_id in verifications:
+                    error_msg = "You have already verified this entry."
+                else:
+                    verifications.append(vet_id)
+                    _record_verifier_action(state, vet_id, "verify", kill_log_id)
+
+                    newly_confirmed = len(verifications) >= 3
+                    if newly_confirmed:
+                        entry["status"] = "verified"
+                        entry["verified_at"] = _now_iso()
+                        # Update progress
+                        new_count = _increment_progress(
+                            state,
+                            brother_id,
+                            entry["class_role_id"],
+                            entry["terminus_type"],
+                        )
+                        class_complete = new_count >= 3 and _class_is_complete(
+                            state, brother_id, entry["class_role_id"]
+                        )
+                    _save_state(state)
+
+    # All Discord API calls happen outside the lock.
+    if error_msg:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
 
     # Update embed in-place
     guild = interaction.guild
@@ -461,35 +455,34 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str) -> No
         )
         return
 
+    # Collect outcome inside the lock; send Discord responses outside.
+    error_msg: Optional[str] = None
+    entry: Optional[dict] = None
+
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         entry = state["entries"].get(kill_log_id)
         if entry is None:
-            await interaction.response.send_message("Kill log entry not found.", ephemeral=True)
-            return
+            error_msg = "Kill log entry not found."
+        elif entry["status"] != "pending":
+            error_msg = f"This entry is no longer pending (status: {entry['status']})."
+        else:
+            vet_id = str(interaction.user.id)
+            brother_id = str(entry["brother_id"])
 
-        if entry["status"] != "pending":
-            await interaction.response.send_message(
-                f"This entry is no longer pending (status: {entry['status']}).",
-                ephemeral=True,
-            )
-            return
+            if vet_id == brother_id:
+                error_msg = "You cannot deny your own kill log entry."
+            else:
+                entry["status"] = "under_review"
+                entry["denied_by"] = vet_id
+                entry["denied_at"] = _now_iso()
+                _record_verifier_action(state, vet_id, "deny", kill_log_id)
+                _save_state(state)
 
-        vet_id = str(interaction.user.id)
-        brother_id = str(entry["brother_id"])
-
-        if vet_id == brother_id:
-            await interaction.response.send_message(
-                "You cannot deny your own kill log entry.",
-                ephemeral=True,
-            )
-            return
-
-        entry["status"] = "under_review"
-        entry["denied_by"] = vet_id
-        entry["denied_at"] = _now_iso()
-        _record_verifier_action(state, vet_id, "deny", kill_log_id)
-        _save_state(state)
+    # All Discord API calls happen outside the lock.
+    if error_msg:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
 
     # Update embed — remove buttons
     guild = interaction.guild
@@ -508,36 +501,41 @@ async def _handle_force_approve(interaction: discord.Interaction, kill_log_id: s
         )
         return
 
+    # Collect outcome inside the lock; send Discord responses outside.
+    error_msg: Optional[str] = None
+    entry: Optional[dict] = None
+    class_complete = False
+    brother_id: Optional[str] = None
+
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         entry = state["entries"].get(kill_log_id)
         if entry is None:
-            await interaction.response.send_message("Kill log entry not found.", ephemeral=True)
-            return
+            error_msg = "Kill log entry not found."
+        elif entry["status"] != "under_review":
+            error_msg = f"Entry is not under review (status: {entry['status']})."
+        else:
+            entry["status"] = "force_approved"
+            entry["apo_action"] = "force_approved"
+            entry["apo_actor_id"] = str(interaction.user.id)
+            entry["apo_acted_at"] = _now_iso()
 
-        if entry["status"] != "under_review":
-            await interaction.response.send_message(
-                f"Entry is not under review (status: {entry['status']}).",
-                ephemeral=True,
+            brother_id = str(entry["brother_id"])
+            new_count = _increment_progress(
+                state,
+                brother_id,
+                entry["class_role_id"],
+                entry["terminus_type"],
             )
-            return
+            class_complete = new_count >= 3 and _class_is_complete(
+                state, brother_id, entry["class_role_id"]
+            )
+            _save_state(state)
 
-        entry["status"] = "force_approved"
-        entry["apo_action"] = "force_approved"
-        entry["apo_actor_id"] = str(interaction.user.id)
-        entry["apo_acted_at"] = _now_iso()
-
-        brother_id = str(entry["brother_id"])
-        new_count = _increment_progress(
-            state,
-            brother_id,
-            entry["class_role_id"],
-            entry["terminus_type"],
-        )
-        class_complete = new_count >= 3 and _class_is_complete(
-            state, brother_id, entry["class_role_id"]
-        )
-        _save_state(state)
+    # All Discord API calls happen outside the lock.
+    if error_msg:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
 
     # Disable buttons on the apo notification
     await interaction.response.edit_message(
@@ -563,25 +561,28 @@ async def _handle_remove_entry(interaction: discord.Interaction, kill_log_id: st
         )
         return
 
+    # Collect outcome inside the lock; send Discord responses outside.
+    error_msg: Optional[str] = None
+    entry: Optional[dict] = None
+
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         entry = state["entries"].get(kill_log_id)
         if entry is None:
-            await interaction.response.send_message("Kill log entry not found.", ephemeral=True)
-            return
+            error_msg = "Kill log entry not found."
+        elif entry["status"] != "under_review":
+            error_msg = f"Entry is not under review (status: {entry['status']})."
+        else:
+            entry["status"] = "rejected"
+            entry["apo_action"] = "rejected"
+            entry["apo_actor_id"] = str(interaction.user.id)
+            entry["apo_acted_at"] = _now_iso()
+            _save_state(state)
 
-        if entry["status"] != "under_review":
-            await interaction.response.send_message(
-                f"Entry is not under review (status: {entry['status']}).",
-                ephemeral=True,
-            )
-            return
-
-        entry["status"] = "rejected"
-        entry["apo_action"] = "rejected"
-        entry["apo_actor_id"] = str(interaction.user.id)
-        entry["apo_acted_at"] = _now_iso()
-        _save_state(state)
+    # All Discord API calls happen outside the lock.
+    if error_msg:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
 
     await interaction.response.edit_message(
         content="❌ Kill log entry removed from record.",
@@ -704,9 +705,7 @@ async def check_stale_kill_logs() -> None:
             ]
             if not stale:
                 return
-            for e in stale:
-                e["reminder_sent"] = True
-            _save_state(state)
+            stale_ids = [e["kill_log_id"] for e in stale]
 
         channel = guild.get_channel(KILL_LOG_CHANNEL_ID)
         if channel is None:
@@ -721,6 +720,14 @@ async def check_stale_kill_logs() -> None:
             content=f"{mention} — kill log entries require verification:",
             embed=_build_reminder_embed(stale),
         )
+
+        # Mark as reminder_sent only after the message was successfully sent.
+        async with _g.TERMINUS_SLAYER_LOCK:
+            state = _load_state()
+            for eid in stale_ids:
+                if eid in state["entries"]:
+                    state["entries"][eid]["reminder_sent"] = True
+            _save_state(state)
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"terminus_ops: check_stale_kill_logs failed: {exc}")
@@ -762,10 +769,29 @@ async def submit_kill_log(
         )
         return
 
+    # Verify the submitter actually holds the chosen class role
+    if terminus_class not in interaction.user.roles:
+        await interaction.response.send_message(
+            "You do not hold that class role.",
+            ephemeral=True,
+        )
+        return
+
     # Require at least one video source
     if not video_url and not video:
         await interaction.response.send_message(
             "A recording is required. Attach a video file or provide a `video_url`.",
+            ephemeral=True,
+        )
+        return
+
+    # Validate channel before committing any state, so misconfigurations don't
+    # leave orphaned entries with no embed_message_id.
+    guild = interaction.guild
+    channel = guild.get_channel(KILL_LOG_CHANNEL_ID) if guild else None
+    if channel is None:
+        await interaction.response.send_message(
+            "Kill log channel not found. Contact a Forgemaster.",
             ephemeral=True,
         )
         return
@@ -811,15 +837,6 @@ async def submit_kill_log(
         _save_state(state)
 
     # Post embed to kill log channel
-    guild = interaction.guild
-    channel = guild.get_channel(KILL_LOG_CHANNEL_ID) if guild else None
-    if channel is None:
-        await interaction.response.send_message(
-            "Kill log channel not found. Contact a Forgemaster.",
-            ephemeral=True,
-        )
-        return
-
     view = TerminusKillLogView(kill_log_id)
     _g.bot.add_view(view)
 
