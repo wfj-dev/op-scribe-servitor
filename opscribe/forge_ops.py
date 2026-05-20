@@ -3659,11 +3659,21 @@ async def _get_award_announcement_channel(
     return guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
 
 
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+
+
+def _get_award_image(filename: str) -> Optional[discord.File]:
+    path = os.path.join(_ASSETS_DIR, filename)
+    if os.path.isfile(path):
+        return discord.File(path, filename=filename)
+    return None
+
+
 def _get_watch_veteran_announcement(
     member: discord.Member,
     member_chapter: str,
     guild: discord.Guild,
-) -> Tuple[str, discord.Embed]:
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
     """Generate a flavorful Watch Veteran promotion announcement embed.
 
     Called after the bot auto-assigns the Watch Veteran role.
@@ -3714,18 +3724,21 @@ def _get_watch_veteran_announcement(
     )
 
     embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    award_file = _get_award_image("award_watch_veteran.png")
+    if award_file:
+        embed.set_image(url="attachment://award_watch_veteran.png")
 
     watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
     sergeant_mention = watch_sergeant_role.mention if watch_sergeant_role else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
     content = f"{sergeant_mention} {member.mention}"
-    return content, embed
+    return content, embed, award_file
 
 
 def _get_ardent_raider_announcement(
     member: discord.Member,
     member_chapter: str,
     guild: discord.Guild,
-) -> Tuple[str, discord.Embed]:
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
     """Generate a flavorful Ardent Raider Ribbon award announcement embed."""
     rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
     rank_emoji = None
@@ -3776,20 +3789,23 @@ def _get_ardent_raider_announcement(
     )
 
     embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    award_file = _get_award_image("award_ardent_raider.png")
+    if award_file:
+        embed.set_image(url="attachment://award_ardent_raider.png")
 
     watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
     techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
     command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
     tech_mention = techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
     content = f"{command_mention} {tech_mention} {member.mention}"
-    return content, embed
+    return content, embed, award_file
 
 
 def _get_apothecarion_medal_announcement(
     member: discord.Member,
     member_chapter: str,
     guild: discord.Guild,
-) -> Tuple[str, discord.Embed]:
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
     """Generate a flavorful Apothecarion Service Medal award announcement embed."""
     rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
     chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
@@ -3840,20 +3856,23 @@ def _get_apothecarion_medal_announcement(
     )
 
     embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    award_file = _get_award_image("award_apothecarion_medal.png")
+    if award_file:
+        embed.set_image(url="attachment://award_apothecarion_medal.png")
 
     watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
     apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
     command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
     apo_mention = apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
     content = f"{command_mention} {apo_mention} {member.mention}"
-    return content, embed
+    return content, embed, award_file
 
 
 def _get_crimson_laurels_announcement(
     member: discord.Member,
     member_chapter: str,
     guild: discord.Guild,
-) -> Tuple[str, discord.Embed]:
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
     """Generate a flavorful Crimson Laurels award announcement embed."""
     rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
     chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
@@ -3904,13 +3923,16 @@ def _get_crimson_laurels_announcement(
     )
 
     embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    award_file = _get_award_image("award_crimson_laurels.png")
+    if award_file:
+        embed.set_image(url="attachment://award_crimson_laurels.png")
 
     watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
     librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
     command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
     lib_mention = librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
     content = f"{command_mention} {lib_mention} {member.mention}"
-    return content, embed
+    return content, embed, award_file
 
 
 def _compute_member_service_studs(member: discord.Member) -> int:
