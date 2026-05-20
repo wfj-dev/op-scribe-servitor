@@ -879,6 +879,282 @@ OATHSWORN_PROCLAMATIONS: List[str] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Watch Veteran promotion announcement flavor text
+# ---------------------------------------------------------------------------
+WATCH_VETERAN_OPENINGS: List[str] = [
+    "By blood and bolter, by vigil and void, **{name}** has earned the right to stand among the Honoured Veteran.",
+    "The Long Watch does not grant rank lightly. **{name}** has proven the measure of an Astartes in full.",
+    "The Watch has tested **{name}** and found them worthy. Let the brotherhood bear witness.",
+    "Few among the Deathwatch reach this threshold—**{name}** has crossed it, forged in the fires of the Long Watch.",
+    "In the crucible of Fortress Jericho's campaigns, **{name}** has emerged tempered and true.",
+    "The Long Watch remembers every campaign, every mission, every sacrifice. Today it calls **{name}** Veteran.",
+]
+
+WATCH_VETERAN_PROCLAMATIONS: List[str] = [
+    "The rank of Watch Veteran is not a gift—it is recognition that this warrior has already become indispensable.",
+    "Watch Veteran. The title borne by those who have bled for the Watch and returned for more.",
+    "The Watch Veteran stands where the Battle-Brother once stood, and looks back from a vantage of hard-won experience.",
+    "Those who wear the Veteran's mark have already paid its price a hundred times over. Today, the Watch names the debt settled.",
+    "Let the Long Watch know this name. Let the fortress remember. A Watch Veteran has been forged in the fires of Jericho.",
+    "The measure has been taken and found worthy. The rank of Watch Veteran is granted without reservation.",
+]
+
+# ---------------------------------------------------------------------------
+# Ardent Raider Ribbon announcement flavor text
+# ---------------------------------------------------------------------------
+ARDENT_RAIDER_OPENINGS: List[str] = [
+    "The void holds secrets the Xenos guard jealously—until **{name}** reclaims them for the Watch.",
+    "Among those who serve the Watch, **{name}** has proven a singular gift for the retrieval of knowledge most others cannot grasp.",
+    "Intelligence is the sword arm of the Deathwatch, and **{name}** has shown mastery of it beyond all expectation.",
+    "There are warriors who fight with bolter and blade—and those who fight with data. **{name}** stands among the finest of the latter.",
+    "**{name}** has plundered the secrets of the Xenos and delivered them to the Watch—a deed of incalculable worth.",
+]
+
+ARDENT_RAIDER_PROCLAMATIONS: List[str] = [
+    "The Ardent Raider Ribbon is bestowed upon those who have delivered the Watch's greatest advantage: knowledge of the enemy.",
+    "Without the tireless work of specialists like this, the Deathwatch would lose its edge. The Watch does not forget.",
+    "Archeotech retrieved. Xenoform data secured. The arsenal of Fortress Jericho is sharper for this warrior's service.",
+    "To gather what the enemy most fears losing—their secrets—is a victory worth a hundred firefights.",
+    "The Ribbon is earned not in a single act of glory but in the patient, relentless pursuit of every advantage.",
+]
+
+# ---------------------------------------------------------------------------
+# Apothecarion Service Medal announcement flavor text
+# ---------------------------------------------------------------------------
+APOTHECARION_MEDAL_OPENINGS: List[str] = [
+    "There are duties that transcend battle-glory, and **{name}** has answered the most sacred among them.",
+    "The gene-seed of the fallen does not perish so long as warriors like **{name}** still draw breath.",
+    "In the carnage of ferocious firefights, when others fought only to survive, **{name}** fought to preserve the Watch's future.",
+    "The heaviest burden a Watch Brother can carry is not their weapon—it is the legacy of their fallen brothers. **{name}** carried it.",
+    "**{name}** has done what few can, and fewer still dare: preserved the sacred gene-seed in the heart of battle.",
+]
+
+APOTHECARION_MEDAL_PROCLAMATIONS: List[str] = [
+    "The Apothecarion Service Medal honors those who carry the weight of the Watch Fortress's future upon their shoulders.",
+    "Though their bodies fall, their spirit must return to the Watch. This warrior has made it so—again and again.",
+    "Let the names of the fallen be preserved. Let the Watch endure. It is done through acts such as these.",
+    "In the fires of battle, when all else is chaos, this warrior answered the highest call of duty without hesitation.",
+    "The gene-seed of Fortress Jericho is richer for this warrior's service. The Watch owes a debt that cannot be repaid.",
+]
+
+# ---------------------------------------------------------------------------
+# Crimson Laurels announcement flavor text
+# ---------------------------------------------------------------------------
+CRIMSON_LAURELS_OPENINGS: List[str] = [
+    "**{name}** has walked where others would not follow, and returned where others would not dare.",
+    "There are warriors who seek battle—and there are warriors who become legend. **{name}** is the latter.",
+    "The chronicles of Watch Fortress Jericho speak **{name}**'s name with the reverence reserved for the Watch's greatest reapers.",
+    "Spoken of with whispered awe and dread. **{name}** has passed through the crucible that forges Crimson Laurels bearers.",
+    "The Long Watch has many servants. **{name}** is something rarer still—a warrior of surpassing legend.",
+]
+
+CRIMSON_LAURELS_PROCLAMATIONS: List[str] = [
+    "The Crimson Laurels are not merely an honor—they are testament to a warrior who has surpassed what any could ask of an Astartes.",
+    "It is said the Laurels are crimson not through metallurgy, but from the oceans of blood it took to earn them.",
+    "Legends in their own right, bearers of the Crimson Laurels are spoken of with whispered awe. Today a new name joins their ranks.",
+    "To have seen what they have seen, and lived to tell the tale, takes a rare kind indeed. The Watch names this warrior that kind.",
+    "The record is written. The measure has been taken. The Crimson Laurels are earned.",
+]
+
+# ---------------------------------------------------------------------------
+# Chapter-specific lines for award announcements
+# One line per chapter, keyed by HOME_CHAPTERS name.
+# Used to append a chapter-flavored coda to the proclamation field.
+# ---------------------------------------------------------------------------
+
+WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
+    "Angels of Defiance": "The Unforgiven do not bow—and neither does a warrior who has earned the Veteran's mark.",
+    "Angels of Vengeance": "The Lion's vengeance is patient; this veteran's service proves the same.",
+    "Black Templars": "The Eternal Crusade forges veterans—this one has proven themselves worthy of the blade.",
+    "Bleeding Hearts": "Through the hunt and the rage, this warrior has endured to stand among the Honored.",
+    "Blood Angels": "The sons of Sanguinius bleed freely—and this veteran has shed enough to earn this mark.",
+    "Blood Ravens": "Knowledge and valor together have earned this honor—the Blood Ravens' dual legacy serves well.",
+    "Brazen Minotaurs": "Every bastion breached, every siege endured—the Minotaur earns their honors through relentless advance.",
+    "Carcharodons": "Silence and service—the Void-born earn their marks without ceremony and without complaint.",
+    "Celestial Lions": "Elysium's sons do not falter; this veteran stands as proof that the Lions endure.",
+    "Cowled Wardens": "The cowl conceals the warrior—but their veteran's mark cannot be hidden.",
+    "Crimson Fists": "From the ashes of Rynn's World, the Fists are reborn; this veteran continues that defiant legacy.",
+    "Dark Angels": "The First Legion's resolve endures in this warrior—the veteran's mark is well earned.",
+    "Dark Krakens": "From the deep, this warrior rises—proven by pressure and darkness alike.",
+    "Dragonspears": "Fleet-born and fearless, this veteran hunts in the name of brothers consumed by the flame.",
+    "Death Spectres": "Neither life nor death could deter this warrior—the Veteran's mark is only the beginning.",
+    "Epsilon Paladins": "For Honour, for Duty, for Dorn—the Paladin's creed lives in every mission this veteran completed.",
+    "Exorcists": "Thrice-proven against the Warp itself, this warrior has earned more than a title.",
+    "Flesh Tearers": "The Red Thirst demands fury; the Long Watch demands discipline—this veteran has mastered both.",
+    "Genesis Chapter": "Guilliman's purity endures in this warrior; the veteran's mark joins a legacy of measured excellence.",
+    "Hawk Lords": "Swift to engage, swift to succeed—the Hawk Lords' speed of service earns swift recognition.",
+    "Hospitallers": "Healer of the broken and breaker of the wicked—this veteran's service is beyond reproach.",
+    "Imperial Fists": "Dorn's stone endures what others cannot—this veteran is proof of that heritage.",
+    "Iron Hands": "The flesh proved adequate; the service proved exceptional—the Iron Hands would approve.",
+    "Iron Hounds": "The hunt does not end until every quarry falls—this veteran knows no other way.",
+    "Iron Ravens": "In shadow and in silence, this warrior's service has spoken loud enough for all to hear.",
+    "Knights of the Raven": "Patient, cunning, and proven—the Raven's own shadow falls upon those who earn this mark.",
+    "Lamenters": "Cursed they may be, but this warrior's veteran status is a blessing none can deny.",
+    "Marines Errant": "The void-wanderers find honor wherever duty takes them—this veteran has ranged far and served well.",
+    "Mentors": "A veteran whose service is itself a lesson to those who serve alongside them.",
+    "Minotaurs": "The bronze bull does not yield—and this veteran's service has proven that lineage true.",
+    "Necropolis Hawks": "City after city reclaimed, ruin after ruin cleared—a veteran forged in the fires of urban war.",
+    "Raptors": "Silent, lethal, patient—this veteran's marks speak where the Raptor never would.",
+    "Raven Guard": "From shadow and silence, a veteran emerges—proof that endurance is the truest weapon.",
+    "Red Scorpions": "Purity in gene-seed and purity in service—the Red Scorpions would find no fault here.",
+    "Red Templars": "Fast as the blade, unyielding as the Fist—this veteran is Dorn's creed made flesh.",
+    "Salamanders": "Vulkan's sons protect those who cannot protect themselves—and this veteran has done so, again and again.",
+    "Scythes of the Emperor": "Sotha falls, but the Scythes endure—this veteran carries that spirit forward.",
+    "Sons of Medusa": "Calculated, disciplined, relentless—the Sons of Medusa mark service in data and deed alike.",
+    "Space Wolves": "The saga-skalds of Fenris would tell this warrior's deeds with pride.",
+    "Storm Giants": "Towering in deed as in stature—this veteran's service befits the Giant's legend.",
+    "Tempestuous Angels": "Drossmire's fire tempered this warrior—and their veteran's mark honors every soul they protected.",
+    "The Drakes": "From the dragon's flame, a veteran emerges—scorched, tempered, and unbreakable.",
+    "Ultramarines": "The Codex describes the ideal warrior; this veteran has proven it more than theory.",
+    "White Scars": "The steppe wind does not remember the fallen; this veteran ensures the Watch will.",
+    "Black Shield": "No lineage to claim—only deeds, and these deeds stand among the finest the Watch has witnessed.",
+}
+
+ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
+    "Angels of Defiance": "The Unforgiven have always kept their secrets close—and recognized those who wrest others' from them.",
+    "Angels of Vengeance": "The Lion's sons know the worth of intelligence in the war eternal.",
+    "Black Templars": "Even the Crusade requires supply lines—and this warrior has filled them beyond measure.",
+    "Bleeding Hearts": "The trophies of this hunt are not trophies of flesh, but of recovered secrets—both serve the Watch.",
+    "Blood Angels": "The sons of Sanguinius are as gifted at the acquisition of knowledge as they are at its destruction.",
+    "Blood Ravens": "The Blood Ravens know better than any the worth of recovered knowledge—this warrior honors that legacy.",
+    "Brazen Minotaurs": "The siege yields its secrets to those who press hard enough—and this warrior pressed hardest.",
+    "Carcharodons": "What the void swallows, this warrior reclaims—silent, patient, relentless.",
+    "Celestial Lions": "The Lions know the worth of intelligence; hard lessons of betrayal taught them well.",
+    "Cowled Wardens": "The hooded sons of the Lion have always valued what is hidden—and recognized those who uncover it.",
+    "Crimson Fists": "Rynn's World was not lost for lack of will—this warrior ensures no future failure from lack of intelligence.",
+    "Dark Angels": "The First Legion guards secrets jealously; this warrior has the rare gift of acquiring others'.",
+    "Dark Krakens": "From the abyss, knowledge is dragged to the surface—this warrior excels at the dragging.",
+    "Dragonspears": "Fleet-born hunters acquire not only blood but intelligence—this warrior has mastered both arts.",
+    "Death Spectres": "Between the living and the dead lies intelligence most never reach—this warrior crosses that threshold.",
+    "Epsilon Paladins": "For Dorn! Even the mightiest defense requires intelligence—this Paladin has provided it.",
+    "Exorcists": "Bound against the Warp and armed with its secrets—this warrior has earned a rare honor.",
+    "Flesh Tearers": "The berserker who also retrieves—a rarer breed, and a more dangerous one.",
+    "Genesis Chapter": "Guilliman would approve: the Codex values intelligence as much as blade and bolter.",
+    "Hawk Lords": "The raptor's eye misses nothing—and this warrior has returned with everything.",
+    "Hospitallers": "Those who tend the wounded learn much; those who fight their enemies learn more—this warrior does both.",
+    "Imperial Fists": "Every fortress requires supply; every war requires intelligence—Dorn built both into his doctrine.",
+    "Iron Hands": "Data recovered, artefacts secured, the machine-spirit satisfied—the Iron Hands could ask no more.",
+    "Iron Hounds": "The hound retrieves what the hunter needs—and this warrior retrieves it faster than any.",
+    "Iron Ravens": "Silent, precise, and laden with recovered intelligence—the Iron Raven's gift made manifest.",
+    "Knights of the Raven": "The strategist's most valuable weapon is information—this warrior has delivered it in abundance.",
+    "Lamenters": "Even the cursed may shine brightly in service—and this warrior's light is undimmed.",
+    "Marines Errant": "The void-wanderers find what others cannot reach—and this warrior has ranged furthest of all.",
+    "Mentors": "A warrior who demonstrates that gathering intelligence is as vital as drawing a blade.",
+    "Minotaurs": "The Minotaur's advance yields not just ground but secrets—and this warrior yields more than most.",
+    "Necropolis Hawks": "Every ruin holds secrets; this warrior has emptied them all.",
+    "Raptors": "Patient, unseen, and rich with recovered intelligence—the Raptor's way perfected.",
+    "Raven Guard": "From shadow, intelligence is plucked like fruit—and Corax's sons know every orchard.",
+    "Red Scorpions": "Purity of purpose is reflected in this warrior's exceptional service to the Watch's arsenal.",
+    "Red Templars": "Fast hands acquire much—and this warrior's acquisition record speaks for itself.",
+    "Salamanders": "Vulkan's artisans value rare materials; this warrior delivers them in abundance.",
+    "Scythes of the Emperor": "Against the Devourer, every weapon matters—this warrior has stacked the arsenal high.",
+    "Sons of Medusa": "Systematic, thorough, and precise—the Sons of Medusa's doctrine yields this ribbon.",
+    "Space Wolves": "A fine haul, fit for a Jarl's feast—the pack is better armed for this wolf's work.",
+    "Storm Giants": "The giant's grasp is wide—and this warrior has filled it with everything the Watch requires.",
+    "Tempestuous Angels": "To protect the people, you must first be armed—this warrior ensures neither ever fails.",
+    "The Drakes": "Fire reveals and destroys—this warrior knows which deserves which.",
+    "Ultramarines": "Theoretical and practical alignment—the Codex approves this exceptional service to the Watch.",
+    "White Scars": "The swift raid yields the most—and none raid swifter than the sons of Chogoris.",
+    "Black Shield": "No chapter's legacy, only deeds—and this warrior's deeds fill the Watch's arsenal and its archives alike.",
+}
+
+APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
+    "Angels of Defiance": "The Lion's line endures through warriors like this—the Unforgiven remember every recovered gene-seed.",
+    "Angels of Vengeance": "Every gene-seed recovered is vengeance denied to the alien—the Angels of Vengeance understand this well.",
+    "Black Templars": "The Crusade must be sustained—this warrior ensures the Chapter's future survives every battle.",
+    "Bleeding Hearts": "Even in death, the Brothers of this warrior's Chapter are preserved—the Rage cannot consume what this warrior protects.",
+    "Blood Angels": "Sanguinius' own gene-seed flows through those preserved by this warrior—a sacred duty answered.",
+    "Blood Ravens": "The deepest lore of a Chapter rests in its gene-seed—this warrior guards it with scholarly devotion.",
+    "Brazen Minotaurs": "Bronze and bone endure—this warrior ensures the Minotaur's legacy survives every siege.",
+    "Carcharodons": "The Void-born do not allow their kind to vanish into the dark—this warrior pulls them back.",
+    "Celestial Lions": "Against all odds and all betrayal, the Lions endure—because warriors like this refused to let them fall.",
+    "Cowled Wardens": "The Unforgiven know the weight of legacy—this warrior preserves it in bone and blood.",
+    "Crimson Fists": "Rynn's World was rebuilt from almost nothing—this warrior ensures the Fists need never face that again.",
+    "Dark Angels": "The First Legion's secrets are preserved in bone and blood—this warrior honors that duty without reservation.",
+    "Dark Krakens": "The deep swallows many—but this warrior ensures the Kraken endures where the abyss would claim them.",
+    "Dragonspears": "The fallen brothers remembered in the fleet—their legacy preserved by this warrior's sacred work.",
+    "Death Spectres": "Life and death are this chapter's domain—and this warrior walks that boundary to preserve what must survive.",
+    "Epsilon Paladins": "For Duty! The Paladin's doctrine demands that every fallen brother be honored—and preserved.",
+    "Exorcists": "Purity of gene-seed is preservation of faith—this warrior carries both burdens with equal resolve.",
+    "Flesh Tearers": "The line of Seth is precious—this warrior keeps it from the abyss of extinction.",
+    "Genesis Chapter": "Guilliman's purest heritage is preserved by warriors like this—the gene-seed of Macragge endures.",
+    "Hawk Lords": "The raptor's nest is preserved—this warrior ensures the Lords fly on for another generation.",
+    "Hospitallers": "The healer who heals the Chapter itself—there is no higher calling in the Apothecarion's tradition.",
+    "Imperial Fists": "Dorn's legacy is in the gene-seed—this warrior holds it against all who would see it lost.",
+    "Iron Hands": "The machine may fail; the flesh may fail; but the gene-seed must not—this warrior ensures it does not.",
+    "Iron Hounds": "The pack's lineage endures through this warrior's service—the hounds run on.",
+    "Iron Ravens": "In darkness, the genetic legacy is guarded—this warrior sees to it without fail.",
+    "Knights of the Raven": "The Chapter's continuity depends on those who guard the gene-seed—this warrior is indispensable.",
+    "Lamenters": "The cursed Chapter endures, stud by sacred stud—this warrior refuses to let the Lamenters fall silent.",
+    "Marines Errant": "Far from home, the wanderers still preserve each other—this warrior ensures no Errant is truly lost.",
+    "Mentors": "Teaching by example: there is no greater lesson than preservation of the Chapter's future.",
+    "Minotaurs": "The bull's bloodline must endure—this warrior ensures the Minotaurs charge on for another era.",
+    "Necropolis Hawks": "Among the ruins of the fallen, this warrior reclaims what must survive—efficient, steadfast, vital.",
+    "Raptors": "Silent in death as in life—and this warrior ensures their silence is not the silence of extinction.",
+    "Raven Guard": "Corax's legacy is too precious to lose—this warrior guards it in the dark where others cannot see.",
+    "Red Scorpions": "The Red Scorpions hold gene-seed purity above all—and this warrior's service is impeccable proof.",
+    "Red Templars": "The crusade of preservation is not one of blades alone—but without it, no crusade can continue.",
+    "Salamanders": "Vulkan taught that every brother matters—this warrior lives that teaching in the most direct way possible.",
+    "Scythes of the Emperor": "The Great Devourer could not devour what this warrior has preserved—the Scythes endure.",
+    "Sons of Medusa": "Logic demands that genetic continuity be maintained—this warrior satisfies that requirement absolutely.",
+    "Space Wolves": "The Allfather's children do not vanish from the sagas while warriors like this still live.",
+    "Storm Giants": "The giant's bloodline is a legacy worth defending—and this warrior defends it every time blades are drawn.",
+    "Tempestuous Angels": "To protect is to serve—and no service is more protective than this warrior's sacred recovery.",
+    "The Drakes": "Fire consumes, but this warrior preserves—proof that the Drake's soul is more than mere destruction.",
+    "Ultramarines": "The sons of Guilliman must endure—and this warrior has ensured it, again and again and again.",
+    "White Scars": "The Great Khan's blood must run on—this warrior ensures the steppe wind carries his legacy forward.",
+    "Black Shield": "Though their own past is gone, this warrior preserves the future of every brother who falls beside them.",
+}
+
+CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
+    "Angels of Defiance": "The First Legion has always walked in legend—and this warrior has earned a place among the greatest of them.",
+    "Angels of Vengeance": "Vengeance exacted across a thousand battles—the Lion would name this warrior worthy.",
+    "Black Templars": "The Eternal Crusade sings this warrior's name. Few reach this pinnacle; none of them regret the cost.",
+    "Bleeding Hearts": "The hunter of hunters, the martyr of martyrs—this warrior's legend is written in blood and purpose.",
+    "Blood Angels": "Sanguinius himself would pause to honor a warrior who bears the Crimson Laurels.",
+    "Blood Ravens": "A living library of war—this warrior's knowledge, bought with battle, fills volumes.",
+    "Brazen Minotaurs": "Every fortress falls. Every enemy yields. This warrior's legend is the siege that never ends.",
+    "Carcharodons": "From the darkest reaches of the void emerges one who has become legend even among the silent.",
+    "Celestial Lions": "Elysium's pride walks taller today—a Lion who has become legend in the face of every enemy's attempt to silence them.",
+    "Cowled Wardens": "The Unforgiven hunt eternal—and none has proven more relentless in that hunt than this warrior.",
+    "Crimson Fists": "A thousand battles answered, a thousand enemies unmade—Dorn's fist has never struck harder.",
+    "Dark Angels": "The Inner Circle looks upon this warrior and sees a brother whose deeds span the length of legend.",
+    "Dark Krakens": "What the abyss forged, the Watch has witnessed—and named it legendary without reservation.",
+    "Dragonspears": "A thousand fallen avenged, a thousand more to come—the fleet remembers, and the Dragonspears honor this warrior's name.",
+    "Death Spectres": "Between life and legend lies a threshold this warrior crossed long ago, without looking back.",
+    "Epsilon Paladins": "For Honour, for Duty, for Dorn—and now, for legend. The Paladins stand proud.",
+    "Exorcists": "Thrice-tested, a thousand times proven—the daemon itself would flee the warrior who bears these Laurels.",
+    "Flesh Tearers": "The wrath of Seth's heirs is legendary—this warrior has made that legend true.",
+    "Genesis Chapter": "The Codex predicted excellence; this warrior has far exceeded every theoretical expectation.",
+    "Hawk Lords": "The raptor circles over a thousand campaigns—and always returns with victory.",
+    "Hospitallers": "Mercy and wrath, a thousand times over—the Hospitaller's creed written in the Watch's own annals.",
+    "Imperial Fists": "Dorn built walls to last eternity—this warrior's legend is equally unyielding, equally eternal.",
+    "Iron Hands": "A thousand engagements calculated and executed—the Iron Hands' doctrine cannot fault a single one.",
+    "Iron Hounds": "A thousand quarries pursued; a thousand quarries taken—the Iron Hound never loses the scent.",
+    "Iron Ravens": "From shadow to legend, without a sound—the Ravens have always known this warrior's worth.",
+    "Knights of the Raven": "Ten thousand gambits waged, a thousand battles won—the Knight's board has never looked more assured.",
+    "Lamenters": "The curse has not broken this warrior. The Long Watch could not be more certain it never will.",
+    "Marines Errant": "The stars themselves have witnessed this warrior's deeds—and not one of them would dispute the honor.",
+    "Mentors": "This warrior's legend is the greatest lesson they could ever teach—and the Watch has learned it well.",
+    "Minotaurs": "A thousand sieges. A thousand victories. The bronze bull charges on into living legend.",
+    "Necropolis Hawks": "A thousand ruins reclaimed, a thousand domains delivered to the Emperor—the Hawks' legacy soars.",
+    "Raptors": "Silent, patient, and utterly devastating—a thousand times over, without ever being seen until it was too late.",
+    "Raven Guard": "Corax's son has moved through the dark and emerged bearing the highest honor the Watch can bestow.",
+    "Red Scorpions": "A thousand examinations of combat purity—each one passed without a single deviation from doctrine.",
+    "Red Templars": "Dorn's blade, a thousand times drawn, a thousand times victorious—legend forged in speed and steel.",
+    "Salamanders": "Vulkan's sons fight for others—and this warrior has done so more times than any could have asked.",
+    "Scythes of the Emperor": "The Great Devourer tried. A thousand times it tried. A thousand times this warrior refused.",
+    "Sons of Medusa": "A thousand engagements optimized—the data compiled by this warrior's career could fill the Librarium itself.",
+    "Space Wolves": "The sagas of the Fang will speak this warrior's name for generations—and every word will be earned.",
+    "Storm Giants": "The giant's legend stands taller than any mountain—and this warrior has earned every inch of that height.",
+    "Tempestuous Angels": "A thousand souls protected, a thousand enemies made to pay for threatening them—the Tempestuous Angels endure.",
+    "The Drakes": "Fire without end—this warrior has burned through a thousand battles and emerged legendary and unextinguished.",
+    "Ultramarines": "The Codex could not have theorized a more exemplary warrior—the practical has exceeded every theoretical.",
+    "White Scars": "A thousand hunts at full gallop, a thousand kills—the Great Khan rides beside this warrior's legend.",
+    "Black Shield": "No name, no lineage, no past—but a legend the Long Watch itself will carry forward, forever.",
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Armor Integrity / Forge subsystem data (extracted from bot.py)
 # ─────────────────────────────────────────────────────────────────────────────
