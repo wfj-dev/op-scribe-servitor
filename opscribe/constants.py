@@ -353,7 +353,7 @@ KILL_LOG_CLASS_ROLES: dict[int, str] = {
 }
 
 # Valid terminus types for kill log submissions
-TERMINUS_TYPES = ["Neurothrope", "Carnifex", "Hellbrute"]
+TERMINUS_TYPES = ["Neurothrope", "Carnifex", "Helbrute"]
 
 # Ranks that may verify/deny kill log entries (Watch Veteran+)
 TERMINUS_VERIFIER_RANKS = {

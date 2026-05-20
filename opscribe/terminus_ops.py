@@ -11,6 +11,7 @@ Tracks kill log entries for the Terminus Slayer challenge:
 
 import json
 import os
+import re
 import shutil
 import sys as _sys
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ import discord
 from discord import app_commands
 
 from .constants import (  # noqa: F401
+    AAR_CHANNEL_ID,
     APOTHECARY_STAFF_CHANNEL_ID,
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
@@ -36,6 +38,42 @@ def _b(name):
     """Resolve name via bot module (test-mock compatibility)."""
     m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
+
+_AAR_LINK_RE = re.compile(r"^https://discord\.com/channels/\d+/(\d+)/(\d+)$")
+
+
+async def _validate_aar_link(aar_link: str, guild: discord.Guild) -> Optional[str]:
+    """Return an error string if aar_link is not a real Absolute/Omega AAR."""
+    m = _AAR_LINK_RE.match(aar_link.strip())
+    if not m:
+        return "The AAR link must be a Discord message URL (`https://discord.com/channels/…`)."
+    channel_id_str, message_id_str = m.groups()
+    if int(channel_id_str) != AAR_CHANNEL_ID:
+        return f"The AAR link must point to a message in <#{AAR_CHANNEL_ID}>."
+    aar_ch = guild.get_channel(AAR_CHANNEL_ID)
+    if aar_ch is None:
+        return "AAR channel not accessible. Contact a Forgemaster."
+    try:
+        msg = await aar_ch.fetch_message(int(message_id_str))
+    except discord.NotFound:
+        return "That AAR message was not found. Double-check the link."
+    except discord.Forbidden:
+        return "Bot lacks permission to read the AAR channel."
+
+    # Terminus kills must be from an Absolute or Omega difficulty operation.
+    # Check the ingested DATASTORE record first; fall back to raw message content
+    # for AARs that haven't been processed yet.
+    record = _g.DATASTORE.get_record(message_id_str) if _g.DATASTORE else None
+    if record:
+        diff_class = record.get("difficulty_class") or ""
+        if diff_class != "absolute_ops":
+            return "The linked AAR must be an Absolute difficulty operation."
+    else:
+        content = (msg.content or "").lower()
+        if not re.search(r"\babsolute\b", content):
+            return "The linked AAR must be an Absolute difficulty operation."
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -792,6 +830,12 @@ async def submit_kill_log(
             "Kill log channel not found. Contact a Forgemaster.",
             ephemeral=True,
         )
+        return
+
+    # Validate AAR link — must be a real message in the AAR channel
+    aar_error = await _validate_aar_link(aar_link, guild)
+    if aar_error:
+        await interaction.response.send_message(aar_error, ephemeral=True)
         return
 
     class_name = KILL_LOG_CLASS_ROLES[slayer_class.id]
