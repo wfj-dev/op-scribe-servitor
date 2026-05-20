@@ -2631,6 +2631,8 @@ def parse_aar(message: discord.Message):
             and getattr(getattr(message, "channel", None), "id", None)
             else None
         ),
+        # ID of the member who posted the AAR (for verifier tier bonus)
+        "submitter_id": str(message.author.id),
     }
 
 
@@ -3281,6 +3283,19 @@ async def add_processed_id(aar_id: int):
 # Use DataStore for AAR records and processed IDs (async)
 async def save_aar_record(record: dict):
     key = str(record["aar_id"])
+
+    # Apply verifier tier bonus to points_for_op if the submitter has earned one
+    submitter_id = record.get("submitter_id")
+    if submitter_id:
+        try:
+            from . import terminus_ops as _terminus
+            bonus = _terminus.get_verifier_tier_bonus(submitter_id)
+            if bonus > 0:
+                record["points_for_op"] = (record.get("points_for_op") or 0) + bonus
+                record["verifier_tier_bonus"] = bonus
+        except Exception:
+            pass  # never block a save on a bonus lookup failure
+
     await _g.DATASTORE.set_record(key, record)
     await _g.DATASTORE.add_processed_id(key)
     # Add armory points to the community forge pool
