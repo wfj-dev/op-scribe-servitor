@@ -742,27 +742,35 @@ async def check_stale_kill_logs() -> None:
     description="Submit a Terminus kill log entry for the Terminus Slayer challenge.",
 )
 @app_commands.describe(
-    terminus_class="Your class for this kill (must match the challenge class).",
-    terminus_type="Which Terminus enemy was killed.",
+    slayer_class="Your class for this kill (must match the challenge class).",
+    terminus="Which Terminus enemy was killed.",
     aar_link="Link to the AAR for the mission where this kill occurred.",
     video_url="URL to your kill recording (YouTube, Medal, Streamable, etc.).",
     video="Direct video upload (attach a file). Use video_url for large recordings.",
 )
+@app_commands.rename(slayer_class="class")
 @app_commands.choices(
-    terminus_type=[
+    terminus=[
         app_commands.Choice(name=t, value=t) for t in TERMINUS_TYPES
     ]
 )
 async def submit_kill_log(
     interaction: discord.Interaction,
-    terminus_class: discord.Role,
-    terminus_type: app_commands.Choice[str],
+    slayer_class: discord.Role,
+    terminus: app_commands.Choice[str],
     aar_link: str,
     video_url: Optional[str] = None,
     video: Optional[discord.Attachment] = None,
 ):
+    if not _b("is_allowed_channel")(interaction):
+        await interaction.response.send_message(
+            f"This command can only be used in <#{KILL_LOG_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+
     # Validate class role
-    if terminus_class.id not in KILL_LOG_CLASS_ROLES:
+    if slayer_class.id not in KILL_LOG_CLASS_ROLES:
         await interaction.response.send_message(
             "Invalid class role. Please select one of the 7 Terminus Slayer class roles.",
             ephemeral=True,
@@ -777,8 +785,6 @@ async def submit_kill_log(
         )
         return
 
-    # Validate channel before committing any state, so misconfigurations don't
-    # leave orphaned entries with no embed_message_id.
     guild = interaction.guild
     channel = guild.get_channel(KILL_LOG_CHANNEL_ID) if guild else None
     if channel is None:
@@ -788,7 +794,7 @@ async def submit_kill_log(
         )
         return
 
-    class_name = KILL_LOG_CLASS_ROLES[terminus_class.id]
+    class_name = KILL_LOG_CLASS_ROLES[slayer_class.id]
     brother_id = str(interaction.user.id)
 
     async with _g.TERMINUS_SLAYER_LOCK:
@@ -796,16 +802,16 @@ async def submit_kill_log(
         kill_log_id = _next_kill_log_id(state)
 
         verified_prior = _get_verified_count(
-            state, brother_id, terminus_class.id, terminus_type.value
+            state, brother_id, slayer_class.id, terminus.value
         )
         kill_number = min(verified_prior + 1, 3)
 
         entry: dict = {
             "kill_log_id": kill_log_id,
             "brother_id": brother_id,
-            "class_role_id": terminus_class.id,
+            "class_role_id": slayer_class.id,
             "class_name": class_name,
-            "terminus_type": terminus_type.value,
+            "terminus_type": terminus.value,
             "kill_number": kill_number,
             "aar_link": aar_link,
             "video_url": video_url or "",
@@ -857,6 +863,13 @@ async def submit_kill_log(
     description="[Vet+] View the rolling 7-day verifier activity leaderboard.",
 )
 async def verifier_standing(interaction: discord.Interaction):
+    if not _b("is_allowed_channel")(interaction):
+        await interaction.response.send_message(
+            f"This command can only be used in <#{KILL_LOG_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+
     if not _is_verifier(interaction.user):
         await interaction.response.send_message(
             "This command is restricted to Watch Veterans and above.",

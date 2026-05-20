@@ -913,6 +913,13 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
             except Exception:
                 pass
 
+        # Check command-level channel restrictions: if a command is listed here,
+        # it may ONLY be invoked from the specified channel IDs.
+        restrictions = CONFIG.get("command_channel_restrictions") or {}
+        if cmd_name and cmd_name in restrictions:
+            allowed_cmd_channels = {str(c) for c in (restrictions[cmd_name] or [])}
+            return ch_id in allowed_cmd_channels
+
         # Check channel-specific policies from config (by name or ID)
         policies = CONFIG.get("channel_policies") or {}
         policy = None
