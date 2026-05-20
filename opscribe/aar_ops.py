@@ -374,6 +374,25 @@ def _get_challenge_keeper_mention(guild: discord.Guild) -> str:
     return "@Watch Keeper"
 
 
+_EMBED_FIELD_LIMIT = 1024
+
+
+def _build_url_field_text(aar_urls: List[str]) -> str:
+    """Build AAR URL list text for an embed field, capped at Discord's 1024-char field limit."""
+    lines: list[str] = []
+    for i, url in enumerate(aar_urls):
+        line = f"• {url}"
+        remaining = len(aar_urls) - i - 1
+        overflow = f"\n_(+{remaining} more)_" if remaining > 0 else ""
+        candidate = "\n".join(lines + [line]) + overflow
+        if len(candidate) > _EMBED_FIELD_LIMIT:
+            omitted = len(aar_urls) - i
+            overflow = f"\n_(+{omitted} more)_"
+            return ("\n".join(lines) + overflow) if lines else "_(none)_"
+        lines.append(line)
+    return "\n".join(lines) or "_(none)_"
+
+
 async def _send_challenge_eligibility_notifications(
     notifications: List[Tuple[str, str, List[str]]], guild: discord.Guild
 ):
@@ -401,9 +420,7 @@ async def _send_challenge_eligibility_notifications(
             member = guild.get_member(int(user_id))
             member_mention = member.mention if member else f"<@{user_id}>"
 
-            url_text = "\n".join(f"• {url}" for url in aar_urls[:10])
-            if len(aar_urls) > 10:
-                url_text += f"\n_(+{len(aar_urls) - 10} more)_"
+            url_text = _build_url_field_text(aar_urls)
 
             if "Crux Terminatus" in challenge_name:
                 # Special embed for Crux Terminatus (auto-verification complete except Rank A)
