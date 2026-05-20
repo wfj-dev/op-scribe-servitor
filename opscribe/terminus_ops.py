@@ -769,14 +769,6 @@ async def submit_kill_log(
         )
         return
 
-    # Verify the submitter actually holds the chosen class role
-    if terminus_class not in interaction.user.roles:
-        await interaction.response.send_message(
-            "You do not hold that class role.",
-            ephemeral=True,
-        )
-        return
-
     # Require at least one video source
     if not video_url and not video:
         await interaction.response.send_message(
