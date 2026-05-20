@@ -53,8 +53,8 @@ def test_get_award_announcement_channel_falls_back_to_service_studs_channel():
 def _make_promotion_fixture():
     watch_brother = _role(1, "Watch Brother")
     black_laurels = _role(2, "Black Laurels")
-    watch_veteran = _role(3, "Watch Veteran")
-    crimson_laurels = _role(4, bot.CRIMSON_LAURELS_ROLE_NAME)
+    watch_veteran = _role(bot.WATCH_VETERAN_ROLE_ID, "Watch Veteran")
+    crimson_laurels = _role(bot.CRIMSON_LAURELS_ROLE_ID, "Crimson Laurels")
     watch_captain = _role(5, "Watch Captain")
     watch_lieutenant = _role(6, "Watch Lieutenant")
     watch_sergeant = _role(bot.WATCH_SERGEANT_ROLE_ID, "Watch Sergeant")
