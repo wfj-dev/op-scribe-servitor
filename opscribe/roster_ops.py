@@ -1106,18 +1106,19 @@ async def _check_promotion_milestones():
                         if veteran_role_assigned:
                             ann_channel = await _get_member_award_announcement_channel()
                             if ann_channel:
-                                content, embed = _b("_get_watch_veteran_announcement")(
+                                content, embed, award_file = _b("_get_watch_veteran_announcement")(
                                     member=member,
                                     member_chapter=member_chapter,
                                     guild=guild,
                                 )
-                                await ann_channel.send(
-                                    content,
-                                    embed=embed,
-                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                                )
+                                send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                                if award_file:
+                                    send_kwargs["file"] = award_file
+                                await ann_channel.send(content, **send_kwargs)
                                 notifications_sent += 1
                                 await asyncio.sleep(0.5)
+                            else:
+                                _g.logger.warning(f"Watch Veteran announcement channel not found for {member.id}; role assigned but no announcement sent")
                             user_tracking["veteran_assigned"] = True
 
                 # Check Service Studs milestones (only for Watch Veteran or higher)
@@ -1224,18 +1225,19 @@ async def _check_promotion_milestones():
                         if ardent_raider_assigned:
                             ann_channel = await _get_member_award_announcement_channel()
                             if ann_channel:
-                                content, embed = _b("_get_ardent_raider_announcement")(
+                                content, embed, award_file = _b("_get_ardent_raider_announcement")(
                                     member=member,
                                     member_chapter=member_chapter,
                                     guild=guild,
                                 )
-                                await ann_channel.send(
-                                    content,
-                                    embed=embed,
-                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                                )
+                                send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                                if award_file:
+                                    send_kwargs["file"] = award_file
+                                await ann_channel.send(content, **send_kwargs)
                                 notifications_sent += 1
                                 await asyncio.sleep(0.5)
+                            else:
+                                _g.logger.warning(f"Ardent Raider announcement channel not found for {member.id}; role assigned but no announcement sent")
                             user_tracking["ardent_raider_notified"] = True
 
                 # Auto-assign Apothecarion Service Medal + public announcement (150 geneseed points)
@@ -1255,18 +1257,19 @@ async def _check_promotion_milestones():
                         if apothecarion_medal_assigned:
                             ann_channel = await _get_member_award_announcement_channel()
                             if ann_channel:
-                                content, embed = _b("_get_apothecarion_medal_announcement")(
+                                content, embed, award_file = _b("_get_apothecarion_medal_announcement")(
                                     member=member,
                                     member_chapter=member_chapter,
                                     guild=guild,
                                 )
-                                await ann_channel.send(
-                                    content,
-                                    embed=embed,
-                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                                )
+                                send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                                if award_file:
+                                    send_kwargs["file"] = award_file
+                                await ann_channel.send(content, **send_kwargs)
                                 notifications_sent += 1
                                 await asyncio.sleep(0.5)
+                            else:
+                                _g.logger.warning(f"Apothecarion Medal announcement channel not found for {member.id}; role assigned but no announcement sent")
                             user_tracking["for_the_fallen_notified"] = True
 
                 # Auto-assign Crimson Laurels + public announcement (1000 AAR + Black Laurels)
@@ -1286,18 +1289,19 @@ async def _check_promotion_milestones():
                         if crimson_laurels_assigned:
                             ann_channel = await _get_member_award_announcement_channel()
                             if ann_channel:
-                                content, embed = _b("_get_crimson_laurels_announcement")(
+                                content, embed, award_file = _b("_get_crimson_laurels_announcement")(
                                     member=member,
                                     member_chapter=member_chapter,
                                     guild=guild,
                                 )
-                                await ann_channel.send(
-                                    content,
-                                    embed=embed,
-                                    allowed_mentions=discord.AllowedMentions(users=True, roles=True),
-                                )
+                                send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions(users=True, roles=True)}
+                                if award_file:
+                                    send_kwargs["file"] = award_file
+                                await ann_channel.send(content, **send_kwargs)
                                 notifications_sent += 1
                                 await asyncio.sleep(0.5)
+                            else:
+                                _g.logger.warning(f"Crimson Laurels announcement channel not found for {member.id}; role assigned but no announcement sent")
                             user_tracking["crimson_laurels_notified"] = True
 
                 # Check Oathsworn eligibility (Watch Veteran ONLY + 3 service studs)
