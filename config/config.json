@@ -199,6 +199,10 @@
     "weekly_maintenance_hour": 3,
     "weekly_maintenance_ingest_span_days": 45
   },
+  "command_channel_restrictions": {
+    "submit_kill_log": [1450572668750532699],
+    "verifier_standing": [1450572668750532699]
+  },
   "auto_ingest": {
     "enabled": true,
     "check_interval_minutes": 90,
