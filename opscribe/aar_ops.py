@@ -2224,7 +2224,12 @@ def compute_armory_bonus_points(difficulty_class: str | None, armory_data: int |
 def is_aar_message(message: discord.Message):
     content = message.content
     # Treat presence of the start marker as sufficient; END marker optional
-    return "++ MISSION REPORT ++" in content or "++MISSION REPORT++" in content
+    return (
+        "++ MISSION REPORT ++" in content
+        or "++MISSION REPORT++" in content
+        or "++ ᴍɪѕѕɪᴏɴ ʀᴇᴘᴏʀᴛ ++" in content
+        or "++ᴍɪѕѕɪᴏɴ ʀᴇᴘᴏʀᴛ++" in content
+    )
 
 
 def get_user_ids_in_line(line: str, message: discord.Message):
@@ -2551,7 +2556,7 @@ def parse_aar(message: discord.Message):
     if brothers_start_idx is not None:
         for raw_line in lines[brothers_start_idx:]:
             line = raw_line.strip()
-            if "++ end of report ++" in line.lower():
+            if "++ end of report ++" in line.lower() or "ᴇɴᴅ ᴏғ ʀᴇᴘᴏʀᴛ" in line:
                 break
             if not line:
                 continue
