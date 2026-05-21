@@ -70,7 +70,6 @@ def test_lfg_queue_creation_uses_default_expiry_when_not_provided():
 
 
 def test_join_queue_prevents_duplicate_join():
-    view = bot.LFGQueueView(queue_id=111)
     interaction, member = _make_interaction(user_id=42)
     interaction.guild.get_member.return_value = member
 
@@ -80,18 +79,21 @@ def test_join_queue_prevents_duplicate_join():
         "players": [{"user_id": 42, "platform": "pc"}],
     }
 
-    with (
-        patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
-        patch("opscribe.bot._get_player_platform", return_value="pc"),
-        patch("opscribe.bot._get_lfg_queue_types", return_value={"operation": {"max_players": 3}}),
-    ):
-        _run(view.join_queue(interaction))
+    async def _inner():
+        view = bot.LFGQueueView(queue_id=111)
+        with (
+            patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
+            patch("opscribe.bot._get_player_platform", return_value="pc"),
+            patch("opscribe.bot._get_lfg_queue_types", return_value={"operation": {"max_players": 3}}),
+        ):
+            await view.join_queue(interaction)
+
+    _run(_inner())
 
     interaction.response.send_message.assert_awaited_once_with("You are already in this queue.", ephemeral=True)
 
 
 def test_join_queue_enforces_console_limit():
-    view = bot.LFGQueueView(queue_id=222)
     interaction, member = _make_interaction(user_id=77)
     interaction.guild.get_member.return_value = member
 
@@ -106,15 +108,19 @@ def test_join_queue_enforces_console_limit():
     }
     original_players = list(queue_data["players"])
 
-    with (
-        patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
-        patch("opscribe.bot._get_player_platform", return_value="console"),
-        patch(
-            "opscribe.bot._get_lfg_queue_types",
-            return_value={"omega": {"max_players": 5, "max_console": 2, "display": "Omega"}},
-        ),
-    ):
-        _run(view.join_queue(interaction))
+    async def _inner():
+        view = bot.LFGQueueView(queue_id=222)
+        with (
+            patch.object(view, "_get_queue_data", AsyncMock(return_value=queue_data)),
+            patch("opscribe.bot._get_player_platform", return_value="console"),
+            patch(
+                "opscribe.bot._get_lfg_queue_types",
+                return_value={"omega": {"max_players": 5, "max_console": 2, "display": "Omega"}},
+            ),
+        ):
+            await view.join_queue(interaction)
+
+    _run(_inner())
 
     message = interaction.response.send_message.await_args.args[0]
     assert "reached the console player limit (2)" in message

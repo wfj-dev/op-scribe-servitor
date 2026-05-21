@@ -7,7 +7,7 @@ Covers:
 
 - ARMOR_SCAN_PREDICTIVE_TIERS constant:
     * Validates expected predictive chances per point range
-    * No warnings in safe zone (0-40 pts)
+    * No warnings in safe zone (0-4 pts)
 
 - _roll_scan_result:
     * Returns detected=True for fractured (never missed)
@@ -52,7 +52,7 @@ from opscribe.bot import (
 
 def _run(coro):
     """Run a coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -69,10 +69,10 @@ def test_miss_chances_has_expected_tiers():
 
 
 def test_miss_chances_scaling():
-    """Miss chances should decrease with severity (more damage = harder to miss)."""
-    assert ARMOR_SCAN_MISS_CHANCES["damaged"] == 0.30  # 30% miss
-    assert ARMOR_SCAN_MISS_CHANCES["compromised"] == 0.15  # 15% miss
-    assert ARMOR_SCAN_MISS_CHANCES["critical"] == 0.05  # 5% miss
+    """All damage tiers share a uniform 20% miss chance; fractured is never missed."""
+    assert ARMOR_SCAN_MISS_CHANCES["damaged"] == 0.20  # 20% miss
+    assert ARMOR_SCAN_MISS_CHANCES["compromised"] == 0.20  # 20% miss
+    assert ARMOR_SCAN_MISS_CHANCES["critical"] == 0.20  # 20% miss
     assert ARMOR_SCAN_MISS_CHANCES["fractured"] == 0.0  # Never miss
 
 
@@ -93,15 +93,15 @@ def test_predictive_tiers_has_expected_ranges():
     assert len(tiers) == 5
 
     # Check ranges
-    assert tiers[0]["min"] == 0 and tiers[0]["max"] == 40  # Safe zone
-    assert tiers[1]["min"] == 41 and tiers[1]["max"] == 80
-    assert tiers[2]["min"] == 81 and tiers[2]["max"] == 110
-    assert tiers[3]["min"] == 111 and tiers[3]["max"] == 130
-    assert tiers[4]["min"] == 131 and tiers[4]["max"] is None  # Unbounded
+    assert tiers[0]["min"] == 0 and tiers[0]["max"] == 4  # Safe zone
+    assert tiers[1]["min"] == 5 and tiers[1]["max"] == 9
+    assert tiers[2]["min"] == 10 and tiers[2]["max"] == 14
+    assert tiers[3]["min"] == 15 and tiers[3]["max"] == 19
+    assert tiers[4]["min"] == 20 and tiers[4]["max"] is None  # Unbounded
 
 
 def test_predictive_tiers_safe_zone_no_warning():
-    """Safe zone (0-40 pts) should have 0% warning chance."""
+    """Safe zone (0-4 pts) should have 0% warning chance."""
     safe_tier = ARMOR_SCAN_PREDICTIVE_TIERS[0]
     assert safe_tier["chance"] == 0.0
 
@@ -109,11 +109,11 @@ def test_predictive_tiers_safe_zone_no_warning():
 def test_predictive_tiers_increasing_chances():
     """Warning chances should increase with point count."""
     tiers = ARMOR_SCAN_PREDICTIVE_TIERS
-    assert tiers[0]["chance"] == 0.0  # 0-40 pts
-    assert tiers[1]["chance"] == 0.10  # 41-80 pts
-    assert tiers[2]["chance"] == 0.25  # 81-110 pts
-    assert tiers[3]["chance"] == 0.40  # 111-130 pts
-    assert tiers[4]["chance"] == 0.60  # 131+ pts
+    assert tiers[0]["chance"] == 0.0  # 0-4 pts
+    assert tiers[1]["chance"] == 0.10  # 5-9 pts
+    assert tiers[2]["chance"] == 0.25  # 10-14 pts
+    assert tiers[3]["chance"] == 0.40  # 15-19 pts
+    assert tiers[4]["chance"] == 0.60  # 20+ pts
 
 
 def test_predictive_tiers_are_valid_probabilities():
@@ -149,69 +149,76 @@ def test_roll_scan_fractured_always_detected():
 def test_roll_scan_damaged_can_be_missed():
     """Damaged tiers can be missed based on miss chance."""
     with patch("opscribe.forge_ops.random.random") as mock_random:
-        # Below miss threshold (0.30) - should be missed
-        mock_random.return_value = 0.29
+        # Below miss threshold (0.20) - should be missed
+        mock_random.return_value = 0.19
         result = _roll_scan_result("damaged", 50, spirit_fractured=False)
         assert result["detected"] is False
         assert result["miss_reason"] == "spirit_uncommunicative"
 
         # At/above miss threshold - should be detected
-        mock_random.return_value = 0.30
+        mock_random.return_value = 0.20
         result = _roll_scan_result("damaged", 50, spirit_fractured=False)
         assert result["detected"] is True
 
 
 def test_roll_scan_critical_rarely_missed():
-    """Critical tier has only 5% miss chance."""
+    """Critical tier has a 20% miss chance (uniform across all damage tiers)."""
     with patch("opscribe.forge_ops.random.random") as mock_random:
-        # Below 0.05 - should be missed
-        mock_random.return_value = 0.04
+        # Below 0.20 - should be missed
+        mock_random.return_value = 0.19
         result = _roll_scan_result("critical", 100, spirit_fractured=False)
         assert result["detected"] is False
 
-        # At 0.05 - should be detected
-        mock_random.return_value = 0.05
+        # At 0.20 - should be detected
+        mock_random.return_value = 0.20
         result = _roll_scan_result("critical", 100, spirit_fractured=False)
         assert result["detected"] is True
 
 
 def test_roll_scan_nominal_predictive_warning():
-    """Nominal brothers can trigger predictive warnings based on points."""
+    """Nominal brothers trigger predictive warnings when damage probability >= threshold (0.20).
+
+    DEFAULT_ARMOR_PROBABILITY_TIERS: 15-19 pts → 20% chance (>= threshold), 14 pts → 8% (< threshold).
+    The random mock only guards against the 20% miss check; warnings are deterministic.
+    """
     with patch("opscribe.forge_ops.random.random") as mock_random:
-        # 81-110 pts range: 25% warning chance
-        # Below threshold - warning triggered
-        mock_random.return_value = 0.24
-        result = _roll_scan_result(None, 100, spirit_fractured=False)
+        mock_random.return_value = 0.50  # ensure no miss (>= 0.20)
+
+        # 15 pts → chance=0.20 >= threshold(0.20) → warning triggered
+        result = _roll_scan_result(None, 15, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is True
 
-        # At threshold - no warning
-        mock_random.return_value = 0.25
-        result = _roll_scan_result(None, 100, spirit_fractured=False)
+        # 14 pts → chance=0.08 < threshold(0.20) → no warning
+        result = _roll_scan_result(None, 14, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is False
 
 
 def test_roll_scan_nominal_safe_zone_no_warning():
-    """Nominal brothers in safe zone (0-40 pts) never get warnings."""
-    for _ in range(20):
-        result = _roll_scan_result(None, 30, spirit_fractured=False)
+    """Nominal brothers in safe zone (0-4 pts) never get predictive warnings."""
+    with patch("opscribe.forge_ops.random.random") as mock_random:
+        mock_random.return_value = 0.50  # ensure no miss
+        result = _roll_scan_result(None, 2, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is False
 
 
 def test_roll_scan_high_points_predictive_warning():
-    """High point count (131+) has 60% warning chance."""
+    """High point count (20+) has 40% damage probability, above 0.20 threshold, so warning always triggers.
+
+    Warning is deterministic (no random involved); mock only prevents the 20% miss.
+    """
     with patch("opscribe.forge_ops.random.random") as mock_random:
-        # Below 0.60 - warning triggered
-        mock_random.return_value = 0.59
-        result = _roll_scan_result(None, 150, spirit_fractured=False)
+        mock_random.return_value = 0.50  # ensure no miss
+
+        # points=25 → chance=0.40 >= threshold(0.20) → warning always triggered
+        result = _roll_scan_result(None, 25, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is True
 
-        # At 0.60 - no warning
-        mock_random.return_value = 0.60
-        result = _roll_scan_result(None, 150, spirit_fractured=False)
+        # points=7 → chance=0.02 < threshold(0.20) → no warning
+        result = _roll_scan_result(None, 7, spirit_fractured=False)
         assert result["detected"] is True
         assert result["predictive_warning"] is False
 
@@ -226,18 +233,22 @@ class TestScanStatePersistence:
 
     def setup_method(self):
         """Create temp directory and patch paths."""
+        import sys
         self.temp_dir = tempfile.mkdtemp()
         self.scan_state_path = os.path.join(self.temp_dir, "armor_scan_state.json")
 
-        # Patch the path constant
+        # Patch the path constant on both bot and forge_ops modules
+        self._forge_ops_mod = sys.modules["opscribe.forge_ops"]
         self._original_path = bot.ARMOR_SCAN_STATE_PATH
+        self._original_forge_ops_path = self._forge_ops_mod.ARMOR_SCAN_STATE_PATH
         bot.ARMOR_SCAN_STATE_PATH = self.scan_state_path
+        self._forge_ops_mod.ARMOR_SCAN_STATE_PATH = self.scan_state_path
 
     def teardown_method(self):
         """Restore original path and clean up."""
-        bot.ARMOR_SCAN_STATE_PATH = self._original_path
         import shutil
-
+        bot.ARMOR_SCAN_STATE_PATH = self._original_path
+        self._forge_ops_mod.ARMOR_SCAN_STATE_PATH = self._original_forge_ops_path
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_load_scan_state_empty_file(self):
@@ -375,17 +386,21 @@ class TestScanDetectionIntegration:
 
     def setup_method(self):
         """Create temp directory and patch paths."""
+        import sys
         self.temp_dir = tempfile.mkdtemp()
         self.scan_state_path = os.path.join(self.temp_dir, "armor_scan_state.json")
 
+        self._forge_ops_mod = sys.modules["opscribe.forge_ops"]
         self._original_path = bot.ARMOR_SCAN_STATE_PATH
+        self._original_forge_ops_path = self._forge_ops_mod.ARMOR_SCAN_STATE_PATH
         bot.ARMOR_SCAN_STATE_PATH = self.scan_state_path
+        self._forge_ops_mod.ARMOR_SCAN_STATE_PATH = self.scan_state_path
 
     def teardown_method(self):
         """Restore original path and clean up."""
-        bot.ARMOR_SCAN_STATE_PATH = self._original_path
         import shutil
-
+        bot.ARMOR_SCAN_STATE_PATH = self._original_path
+        self._forge_ops_mod.ARMOR_SCAN_STATE_PATH = self._original_forge_ops_path
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_intensive_scan_expires_on_new_aar(self):

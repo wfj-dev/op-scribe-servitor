@@ -233,6 +233,7 @@ PIPEHITTER_ELIGIBLE_MISSIONS = {
     "vortex",
     "reclamation",
     "disruption",
+    "purgation",
 }
 # Required missions for Black Laurels eligibility (all required for new earners)
 BLACK_LAURELS_REQUIRED_MISSIONS = {
@@ -244,6 +245,7 @@ BLACK_LAURELS_REQUIRED_MISSIONS = {
     "termination",
     "reclamation",
     "disruption",
+    "purgation",
 }
 # Grandfathered missions - users who already have the role are assumed to have completed these
 BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
@@ -275,7 +277,7 @@ BLACK_REEF_REQUIRED_MISSIONS = {
     "reclamation",
 }
 
-# The Order Omega required missions (all 12 available missions at Omega difficulty with Black Laurels tag)
+# The Order Omega required missions (all 13 available missions at Omega difficulty with Black Laurels tag)
 ORDER_OMEGA_REQUIRED_MISSIONS = {
     "inferno",
     "decapitation",
@@ -289,6 +291,7 @@ ORDER_OMEGA_REQUIRED_MISSIONS = {
     "reclamation",
     "disruption",
     "exfiltration",
+    "purgation",
 }
 
 # Challenge award role IDs for eligibility checking

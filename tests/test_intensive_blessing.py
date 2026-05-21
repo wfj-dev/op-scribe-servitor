@@ -15,10 +15,10 @@ Covers:
     * Oversized list → never returns negative
 
 - _consume_multiple_blessings:
-    * Consuming N charges appends N timestamps at the same instant
+    * Consuming N charges appends N staggered timestamps
     * Multi-consume trims to BLESSING_POOL_MAX (bounded)
     * Consuming more than pool size never exceeds BLESSING_POOL_MAX entries
-    * All appended timestamps are at or before now (never future-dated)
+    * Later appended timestamps may be future-dated by one regen interval each
 
 - Collaborative charge split logic:
     * Attestor alone has enough → solo contribution, not collaborative
@@ -53,7 +53,7 @@ def _hours_ago(hours: float) -> str:
 
 def _run(coro):
     """Run a coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _simulate_collaborative_split(attestor_charges, invoker_charges, charges_required):
@@ -212,7 +212,7 @@ def test_consume_multiple_appends_n_timestamps():
     async def fake_get_state(uid):
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -232,7 +232,7 @@ def test_consume_multiple_three_charges():
     async def fake_get_state(uid):
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -247,14 +247,16 @@ def test_consume_multiple_three_charges():
 
 
 def test_consume_multiple_timestamps_not_in_future():
-    """All appended timestamps must be at or before the current time (never future-dated)."""
+    """Consumed charges are staggered by BLESSING_POOL_REGEN_HOURS each so they
+    recharge one at a time.  Only the *first* timestamp is at-or-before call time;
+    subsequent ones are intentionally future-dated by design."""
     captured = {}
     before_call = datetime.utcnow()
 
     async def fake_get_state(uid):
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -265,20 +267,26 @@ def test_consume_multiple_timestamps_not_in_future():
 
     after_call = datetime.utcnow()
     stored_timestamps = captured["state"]["blessing_timestamps"]
-    for ts_str in stored_timestamps:
-        ts = datetime.fromisoformat(ts_str)
-        assert ts <= after_call, f"Timestamp {ts_str} is in the future"
-        assert ts >= before_call - timedelta(seconds=1), f"Timestamp {ts_str} predates the call"
+    assert len(stored_timestamps) == 2
+    # First timestamp is at call time
+    ts0 = datetime.fromisoformat(stored_timestamps[0])
+    assert ts0 >= before_call - timedelta(seconds=1)
+    assert ts0 <= after_call + timedelta(seconds=1)
+    # Second timestamp is one regen interval later
+    ts1 = datetime.fromisoformat(stored_timestamps[1])
+    regen_delta = timedelta(hours=BLESSING_POOL_REGEN_HOURS)
+    assert abs((ts1 - ts0) - regen_delta) < timedelta(seconds=1)
 
 
 def test_consume_multiple_timestamps_all_same():
-    """All N consumed charges are recorded at the same timestamp (simultaneous)."""
+    """N consumed charges are staggered by BLESSING_POOL_REGEN_HOURS so they
+    recharge one at a time rather than all simultaneously."""
     captured = {}
 
     async def fake_get_state(uid):
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -288,7 +296,12 @@ def test_consume_multiple_timestamps_all_same():
         _run(_consume_multiple_blessings(23, 3))
 
     stored_timestamps = captured["state"]["blessing_timestamps"]
-    assert len(set(stored_timestamps)) == 1, "All simultaneous charges should share a timestamp"
+    assert len(stored_timestamps) == 3
+    ts = [datetime.fromisoformat(s) for s in stored_timestamps]
+    regen_delta = timedelta(hours=BLESSING_POOL_REGEN_HOURS)
+    # Each consecutive pair is exactly one regen interval apart
+    assert abs((ts[1] - ts[0]) - regen_delta) < timedelta(seconds=1)
+    assert abs((ts[2] - ts[1]) - regen_delta) < timedelta(seconds=1)
 
 
 def test_consume_multiple_bounded_to_pool_max():
@@ -300,7 +313,7 @@ def test_consume_multiple_bounded_to_pool_max():
     async def fake_get_state(uid):
         return {"blessing_timestamps": list(pre_filled)}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -322,7 +335,7 @@ def test_consume_multiple_zero_is_noop():
         call_count["n"] += 1
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         call_count["n"] += 1
 
     with (
