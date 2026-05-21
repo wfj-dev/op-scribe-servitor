@@ -33,7 +33,7 @@ from opscribe.bot import (
 
 def _run(coro):
     """Run a coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +159,7 @@ def test_detection_alert_tracked_in_state():
 
     # Force detection roll to succeed
     with (
+        patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
         patch("opscribe.bot._get_member_damage_tier", return_value="damaged"),
@@ -228,6 +229,7 @@ def test_detection_alert_allowed_for_escalated_tier():
         }
 
     with (
+        patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
         patch("opscribe.bot._get_member_damage_tier", return_value="compromised"),
@@ -248,7 +250,7 @@ def test_detection_alert_allowed_for_escalated_tier():
 
 
 def test_sustained_alert_takes_priority_over_detection():
-    """When damage escalates, sustained alert should be sent (not detection)."""
+    """When actual_penalty > 0 and member has a damage tier, sustained alert fires."""
     mock_member = MagicMock()
     mock_member.id = 12345
     mock_member.roles = []
@@ -259,29 +261,26 @@ def test_sustained_alert_takes_priority_over_detection():
     async def mock_get_armor_state(uid):
         return {
             "points_since_blessing": 100,
-            "damage_tier": None,  # Was nominal
+            "damage_tier": "damaged",
             "last_detection_alert_tier": None,
         }
 
-    async def mock_apply_damage_tier(member, guild, current, rolled):
-        return "damaged"  # Damage occurs
-
     with (
+        patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
-        patch("opscribe.bot._get_member_damage_tier", return_value=None),
-        patch("opscribe.bot._get_damage_penalty", return_value=0),
+        patch("opscribe.bot._get_member_damage_tier", return_value="damaged"),
+        patch("opscribe.bot._get_damage_penalty", return_value=1),
         patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
         patch("opscribe.bot._check_armor_grace_period", return_value=True),
-        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
-        patch("opscribe.bot._roll_damage_tier", return_value="damaged"),
-        patch("opscribe.bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
+        patch("opscribe.bot._roll_detection_alert", return_value=True),
     ):
         from opscribe.bot import _process_armor_integrity_for_aar
 
-        penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
+        penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild, actual_penalty=1))
 
-    # Should be sustained, not detected
+    # Sustained alert fires (not detected) when penalty was actually applied
     assert alert_info is not None
     assert alert_info["alert_type"] == "sustained"
     assert alert_info["tier"] == "damaged"
@@ -301,30 +300,26 @@ def test_sustained_alert_updates_detection_tracking():
     async def mock_get_armor_state(uid):
         return {
             "points_since_blessing": 100,
-            "damage_tier": None,
+            "damage_tier": "compromised",
             "last_detection_alert_tier": None,
         }
 
     async def mock_set_armor_state(uid, state):
         captured_state.update(state)
 
-    async def mock_apply_damage_tier(member, guild, current, rolled):
-        return "compromised"
-
     with (
+        patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
-        patch("opscribe.bot._get_member_damage_tier", return_value=None),
-        patch("opscribe.bot._get_damage_penalty", return_value=0),
+        patch("opscribe.bot._get_member_damage_tier", return_value="compromised"),
+        patch("opscribe.bot._get_damage_penalty", return_value=2),
         patch("opscribe.bot.compute_stats_for_user", return_value={"aar_points": 200}),
         patch("opscribe.bot._check_armor_grace_period", return_value=True),
-        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=True),
-        patch("opscribe.bot._roll_damage_tier", return_value="compromised"),
-        patch("opscribe.bot._apply_damage_tier", side_effect=mock_apply_damage_tier),
+        patch("opscribe.bot._run_armor_integrity_check", new_callable=AsyncMock, return_value=False),
     ):
         from opscribe.bot import _process_armor_integrity_for_aar
 
-        penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild))
+        penalty, alert_info = _run(_process_armor_integrity_for_aar("12345", 4, mock_guild, actual_penalty=1))
 
     assert captured_state.get("last_detection_alert_tier") == "compromised"
 
