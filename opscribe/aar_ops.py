@@ -351,10 +351,10 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
                     )
 
-                # Check if all 12 missions completed at Omega with Black Laurels
+                # Check if all 13 missions completed at Omega with Black Laurels
                 unique_missions = {m["mission"] for m in user_progress["order_omega"]}
                 if (
-                    len(unique_missions) >= 12
+                    len(unique_missions) >= 13
                     and unique_missions == ORDER_OMEGA_REQUIRED_MISSIONS
                     and "order_omega" not in notified_challenges
                     and member
@@ -2692,7 +2692,7 @@ def validate_aar(record: dict):
         # Allowable missions:
         # Inferno, Decapitation, Vox Liberatis, Reliquary, Fall of Atreus,
         # Ballistic Engine, Termination, Obelisk, Vortex, Reclamation,
-        # Disruption, Exfiltration
+        # Disruption, Exfiltration, Purgation
         try:
             if not is_siege:
                 allowed_missions = {
@@ -2708,6 +2708,7 @@ def validate_aar(record: dict):
                     "reclamation",
                     "disruption",
                     "exfiltration",
+                    "purgation",
                 }
                 # Strip any trailing role/mention tokens (e.g., '<@&...>') and BOMs
                 mclean = re.sub(r"<.*", "", mstr or "").strip()
@@ -2788,7 +2789,7 @@ def validate_aar(record: dict):
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
                             "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                            "Exfiltration, Termination, Reclamation, Disruption."
+                            "Exfiltration, Termination, Reclamation, Disruption, Purgation."
                         )
             else:
                 # STRICT MODE (Feb 20, 2026+): Black Laurels ONLY on Mission line with @Absolute/@Omega on Difficulty
@@ -2808,7 +2809,7 @@ def validate_aar(record: dict):
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
                             "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
-                            "Exfiltration, Termination, Reclamation, Disruption."
+                            "Exfiltration, Termination, Reclamation, Disruption, Purgation."
                         )
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
@@ -2828,7 +2829,7 @@ def validate_aar(record: dict):
                 errors.append(
                     "@Pipehitter/@Distinguished_Pipehitter may only be used on eligible missions: "
                     "Inferno, Vox Liberatis, Reliquary, Fall of Atreus, Termination, Obelisk, "
-                    "Exfiltration, Vortex, Reclamation, Disruption."
+                    "Exfiltration, Vortex, Reclamation, Disruption, Purgation."
                 )
 
     # 3) Siege must have waves data. Accept either global 'Waves:' or per-brother waves parsed from Team lines.
