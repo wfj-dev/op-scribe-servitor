@@ -14,11 +14,10 @@ Covers:
 """
 
 import asyncio
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-import pytest
 
 import opscribe._bot_globals as _g_module
 from opscribe.constants import (
