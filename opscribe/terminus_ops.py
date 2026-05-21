@@ -43,8 +43,10 @@ def _b(name):
 _AAR_LINK_RE = re.compile(r"^https://discord\.com/channels/\d+/(\d+)/(\d+)$")
 
 
-async def _validate_aar_link(aar_link: str, guild: discord.Guild) -> Optional[str]:
-    """Return an error string if aar_link is not a real Absolute/Omega AAR."""
+async def _validate_aar_link(
+    aar_link: str, guild: discord.Guild, brother_id: str
+) -> Optional[str]:
+    """Return an error string if aar_link fails any kill log pre-condition."""
     m = _AAR_LINK_RE.match(aar_link.strip())
     if not m:
         return "The AAR link must be a Discord message URL (`https://discord.com/channels/…`)."
@@ -61,18 +63,20 @@ async def _validate_aar_link(aar_link: str, guild: discord.Guild) -> Optional[st
     except discord.Forbidden:
         return "Bot lacks permission to read the AAR channel."
 
-    # Terminus kills must be from an Absolute or Omega difficulty operation.
-    # Check the ingested DATASTORE record first; fall back to raw message content
-    # for AARs that haven't been processed yet.
+    # Check difficulty and participation. Use the ingested DATASTORE record when
+    # available; fall back to raw message content for un-ingested AARs.
     record = _g.DATASTORE.get_record(message_id_str) if _g.DATASTORE else None
     if record:
-        diff_class = record.get("difficulty_class") or ""
-        if diff_class != "absolute_ops":
+        if record.get("difficulty_class") != "absolute_ops":
             return "The linked AAR must be an Absolute difficulty operation."
+        if brother_id not in [str(b) for b in record.get("brother_ids", [])]:
+            return "You must have participated in the linked AAR to submit a kill log for it."
     else:
-        content = (msg.content or "").lower()
-        if not re.search(r"\babsolute\b", content):
+        content = msg.content or ""
+        if not re.search(r"\babsolute\b", content, re.IGNORECASE):
             return "The linked AAR must be an Absolute difficulty operation."
+        if not re.search(rf"<@!?{re.escape(brother_id)}>", content):
+            return "You must have participated in the linked AAR to submit a kill log for it."
     return None
 
 
@@ -832,8 +836,8 @@ async def submit_kill_log(
         )
         return
 
-    # Validate AAR link — must be a real message in the AAR channel
-    aar_error = await _validate_aar_link(aar_link, guild)
+    # Validate AAR link — must be a real Absolute AAR the submitter participated in
+    aar_error = await _validate_aar_link(aar_link, guild, str(interaction.user.id))
     if aar_error:
         await interaction.response.send_message(aar_error, ephemeral=True)
         return
