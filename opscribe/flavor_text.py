@@ -1166,6 +1166,7 @@ ARMOR_DAMAGE_PENALTIES = {"damaged": 1, "compromised": 2, "critical": 3}  # Lega
 MISSION_TO_PLANET = {
     "inferno": "Kadaku",
     "termination": "Kadaku",
+    "purgation": "Kadaku",
     "normal_siege": "Kadaku",
     "hard_siege": "Kadaku",
     "decapitation": "Avarax",

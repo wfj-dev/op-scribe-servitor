@@ -372,5 +372,9 @@
   },
   "default_allowed_channels": [
     "❖⋅data-vault⋅❖"
-  ]
+  ],
+  "challenge_grace_periods": {
+    "order_omega": "2026-06-18",
+    "black_laurels": "2026-06-18"
+  }
 }

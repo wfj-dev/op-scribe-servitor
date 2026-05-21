@@ -50,7 +50,7 @@ def _hours_ago(hours: float) -> str:
 
 def _run(coro):
     """Run a coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ def test_consume_blessing_appends_timestamp():
     async def fake_get_state(uid):
         return {"blessing_timestamps": []}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -331,7 +331,7 @@ def test_consume_blessing_does_not_exceed_pool_max():
     async def fake_get_state(uid):
         return {"blessing_timestamps": list(pre_filled)}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (
@@ -353,7 +353,7 @@ def test_consume_blessing_with_oversized_list_stays_bounded():
     async def fake_get_state(uid):
         return {"blessing_timestamps": list(oversized)}
 
-    async def fake_set_state(uid, state):
+    async def fake_set_state(uid, state, **kwargs):
         captured["state"] = state
 
     with (

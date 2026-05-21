@@ -1119,6 +1119,161 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
         )
 
 
+async def _enforce_challenge_grace_periods(
+    guild: discord.Guild,
+    user_bl_missions: Dict[str, set],
+    tracking: dict,
+) -> int:
+    """Revoke challenge awards once their grace-period deadline has passed and
+    the holder has not completed the updated mission requirements.
+
+    Config key ``challenge_grace_periods`` maps challenge name → deadline date string
+    ``"YYYY-MM-DD"``.  Once today >= deadline, every role holder who does not yet
+    satisfy the full current mission set has their award role silently removed and
+    their completion flag cleared so they can re-earn automatically.
+
+    Args:
+        guild: The Discord guild to operate on.
+        user_bl_missions: ``{user_id_str: set_of_mission_names}`` pre-computed by
+            ``_check_promotion_milestones`` for the Black Laurels check.
+        tracking: The promotion-tracking dict loaded by the caller; any BL flag
+            changes are written in-place and persisted by the caller's save block.
+
+    Returns:
+        Total number of roles revoked.
+    """
+    grace_cfg = ((_g.CONFIG or {}).get("challenge_grace_periods") or {})
+    if not grace_cfg:
+        return 0
+
+    today = datetime.utcnow().date()
+
+    # Maps challenge config key → (role_id, required_missions, data_source, notified_key)
+    # data_source "bl"  → qualification data from user_bl_missions (BL AAR scan)
+    # data_source "cp"  → qualification data from challenge_progress.json
+    CHALLENGE_META: Dict[str, tuple] = {
+        "black_laurels": (
+            BLACK_LAURELS_ROLE_ID,
+            BLACK_LAURELS_REQUIRED_MISSIONS,
+            "bl",
+            "black_laurels_notified",  # bool key in promotion_tracking
+        ),
+        "order_omega": (
+            THE_ORDER_OMEGA_ROLE_ID,
+            ORDER_OMEGA_REQUIRED_MISSIONS,
+            "cp",
+            "order_omega",  # entry in challenge_progress[uid]["notified"] list
+        ),
+    }
+
+    # Partition live deadlines by data source
+    bl_pending: list = []   # (role_id, required, notified_key)
+    cp_pending: list = []   # (challenge_name, role_id, required, notified_key)
+
+    for challenge_name, deadline_str in grace_cfg.items():
+        try:
+            deadline = datetime.strptime(deadline_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            _g.logger.warning(
+                f"Grace period: invalid deadline '{deadline_str}' for '{challenge_name}'"
+            )
+            continue
+
+        if today < deadline:
+            continue  # still inside the grace window
+
+        meta = CHALLENGE_META.get(challenge_name)
+        if meta is None:
+            _g.logger.warning(
+                f"Grace period: unknown challenge '{challenge_name}', skipping"
+            )
+            continue
+
+        role_id, required, source, notified_key = meta
+        if source == "bl":
+            bl_pending.append((role_id, required, notified_key))
+        else:
+            cp_pending.append((challenge_name, role_id, required, notified_key))
+
+    total_revoked = 0
+
+    # ── Black Laurels (uses pre-computed user_bl_missions) ──────────────────
+    for role_id, required, notified_key in bl_pending:
+        role = discord.utils.get(guild.roles, id=role_id)
+        if role is None:
+            _g.logger.warning(
+                f"Grace period: Black Laurels role {role_id} not found in guild"
+            )
+            continue
+        for member in guild.members:
+            if member.bot or role not in member.roles:
+                continue
+            uid = str(member.id)
+            if user_bl_missions.get(uid, set()) >= required:
+                continue  # member already has all new missions
+            try:
+                await member.remove_roles(
+                    role, reason="Grace period expired: new mission required"
+                )
+                total_revoked += 1
+                # Set to False (not delete) so the merge-save clears it on disk too
+                tracking.setdefault(uid, {})[notified_key] = False
+                _g.logger.info(
+                    f"Grace period: revoked {role.name} from {uid} ({member.display_name})"
+                )
+            except Exception as exc:
+                _g.logger.warning(
+                    f"Grace period: failed to revoke {role.name} from {uid}: {exc}"
+                )
+
+    # ── challenge_progress.json challenges (e.g. Order Omega) ───────────────
+    if cp_pending:
+        async with _g.CHALLENGE_PROGRESS_LOCK:
+            cp_data = _b("_load_challenge_progress")()
+            cp_dirty = False
+            for challenge_name, role_id, required, notified_key in cp_pending:
+                role = discord.utils.get(guild.roles, id=role_id)
+                if role is None:
+                    _g.logger.warning(
+                        f"Grace period: role {role_id} for '{challenge_name}' not found"
+                    )
+                    continue
+                for member in guild.members:
+                    if member.bot or role not in member.roles:
+                        continue
+                    uid = str(member.id)
+                    user_cp = cp_data.get(uid, {})
+                    logged = {m["mission"] for m in user_cp.get(challenge_name, [])}
+                    if logged >= required:
+                        continue  # still fully qualified
+                    try:
+                        await member.remove_roles(
+                            role, reason="Grace period expired: new mission required"
+                        )
+                        total_revoked += 1
+                        # Remove from notified list so they can re-earn
+                        notified_list = user_cp.get("notified", [])
+                        if notified_key in notified_list:
+                            notified_list.remove(notified_key)
+                            user_cp["notified"] = notified_list
+                            cp_data[uid] = user_cp
+                            cp_dirty = True
+                        _g.logger.info(
+                            f"Grace period: revoked {role.name} from {uid} ({member.display_name})"
+                        )
+                    except Exception as exc:
+                        _g.logger.warning(
+                            f"Grace period: failed to revoke {challenge_name} from {uid}: {exc}"
+                        )
+            if cp_dirty:
+                _b("_save_challenge_progress")(cp_data)
+
+    if total_revoked:
+        _g.logger.info(f"Grace period enforcement: {total_revoked} role(s) revoked")
+
+    return total_revoked
+
+
 async def _check_promotion_milestones():
     """Check guild members for promotion eligibility milestones and send notifications.
 
@@ -1615,6 +1770,7 @@ async def _check_promotion_milestones():
 
         # Save tracking data (merge with current on-disk state under lock to avoid
         # overwriting concurrent changes from promotion_queue)
+        await _enforce_challenge_grace_periods(guild, user_bl_missions, tracking)
         async with _g.PROMOTION_TRACKING_LOCK:
             fresh_tracking = _load_promotion_tracking()
             for uid, data in tracking.items():
@@ -7820,6 +7976,7 @@ __all__ = [
     "_load_promotion_tracking",
     "_save_promotion_tracking",
     "_check_award_milestones_for_members",
+    "_enforce_challenge_grace_periods",
     "_check_promotion_milestones",
     # ── Home chapter rotation ────────────────────────────────────────────────
     "_month_key_for_offset",
