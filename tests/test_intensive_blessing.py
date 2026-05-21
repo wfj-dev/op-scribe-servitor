@@ -15,10 +15,10 @@ Covers:
     * Oversized list → never returns negative
 
 - _consume_multiple_blessings:
-    * Consuming N charges appends N timestamps at the same instant
+    * Consuming N charges appends N staggered timestamps
     * Multi-consume trims to BLESSING_POOL_MAX (bounded)
     * Consuming more than pool size never exceeds BLESSING_POOL_MAX entries
-    * All appended timestamps are at or before now (never future-dated)
+    * Later appended timestamps may be future-dated by one regen interval each
 
 - Collaborative charge split logic:
     * Attestor alone has enough → solo contribution, not collaborative
