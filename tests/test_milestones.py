@@ -138,8 +138,6 @@ class TestScheduledMilestoneCheckGating:
 
     def test_skips_when_persisted_date_is_recent(self):
         """If the persisted last_check_date is recent (< 7 days), skip."""
-        import opscribe.bot as bot
-
         recent = str((date.today() - timedelta(days=3)))
         self._write_tracking(
             {
@@ -160,8 +158,6 @@ class TestScheduledMilestoneCheckGating:
 
     def test_runs_when_persisted_date_is_old_enough(self):
         """If persisted last_check_date is ≥ 7 days old the check proceeds."""
-        import opscribe.bot as bot
-
         old_date = str(date.today() - timedelta(days=8))
         self._write_tracking(
             {
@@ -191,8 +187,6 @@ class TestScheduledMilestoneCheckGating:
 
     def test_fallback_to_in_memory_when_no_persisted_date(self):
         """If persisted last_check_date is None, use in-memory value."""
-        import opscribe.bot as bot
-
         recent = str(date.today() - timedelta(days=2))
         # No persisted date
         self._write_tracking(
@@ -214,8 +208,6 @@ class TestScheduledMilestoneCheckGating:
     def test_persists_date_even_when_no_milestones_crossed(self):
         """On a no-op week (no milestones crossed), last_check_date is still
         persisted so the gate works correctly next time."""
-        import opscribe.bot as bot
-
         old_date = str(date.today() - timedelta(days=10))
         self._write_tracking(
             {

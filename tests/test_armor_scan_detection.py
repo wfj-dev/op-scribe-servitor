@@ -7,7 +7,7 @@ Covers:
 
 - ARMOR_SCAN_PREDICTIVE_TIERS constant:
     * Validates expected predictive chances per point range
-    * No warnings in safe zone (0-40 pts)
+    * No warnings in safe zone (0-4 pts)
 
 - _roll_scan_result:
     * Returns detected=True for fractured (never missed)
@@ -101,7 +101,7 @@ def test_predictive_tiers_has_expected_ranges():
 
 
 def test_predictive_tiers_safe_zone_no_warning():
-    """Safe zone (0-40 pts) should have 0% warning chance."""
+    """Safe zone (0-4 pts) should have 0% warning chance."""
     safe_tier = ARMOR_SCAN_PREDICTIVE_TIERS[0]
     assert safe_tier["chance"] == 0.0
 
@@ -109,11 +109,11 @@ def test_predictive_tiers_safe_zone_no_warning():
 def test_predictive_tiers_increasing_chances():
     """Warning chances should increase with point count."""
     tiers = ARMOR_SCAN_PREDICTIVE_TIERS
-    assert tiers[0]["chance"] == 0.0  # 0-40 pts
-    assert tiers[1]["chance"] == 0.10  # 41-80 pts
-    assert tiers[2]["chance"] == 0.25  # 81-110 pts
-    assert tiers[3]["chance"] == 0.40  # 111-130 pts
-    assert tiers[4]["chance"] == 0.60  # 131+ pts
+    assert tiers[0]["chance"] == 0.0  # 0-4 pts
+    assert tiers[1]["chance"] == 0.10  # 5-9 pts
+    assert tiers[2]["chance"] == 0.25  # 10-14 pts
+    assert tiers[3]["chance"] == 0.40  # 15-19 pts
+    assert tiers[4]["chance"] == 0.60  # 20+ pts
 
 
 def test_predictive_tiers_are_valid_probabilities():
@@ -234,7 +234,6 @@ class TestScanStatePersistence:
     def setup_method(self):
         """Create temp directory and patch paths."""
         import sys
-        import shutil
         self.temp_dir = tempfile.mkdtemp()
         self.scan_state_path = os.path.join(self.temp_dir, "armor_scan_state.json")
 
