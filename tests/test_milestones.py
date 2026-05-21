@@ -11,6 +11,7 @@ Covers:
 
 import json
 import os
+import asyncio
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -110,10 +111,10 @@ class TestScheduledMilestoneCheckGating:
         # Patch module-level constants / globals used by the function
         self.patches = []
 
-        p1 = patch("opscribe.bot.MILESTONES_ENABLED", True)
-        p2 = patch("opscribe.bot.DATASTORE", MagicMock())
-        p3 = patch("opscribe.bot.MILESTONE_TRACKING_PATH", self.tracking_path)
-        p4 = patch("opscribe.bot.MILESTONES_CHECK_INTERVAL_DAYS", 7)
+        p1 = patch("opscribe.roster_ops.MILESTONES_ENABLED", True)
+        p2 = patch("opscribe._bot_globals.DATASTORE", MagicMock())
+        p3 = patch("opscribe.roster_ops.MILESTONE_TRACKING_PATH", self.tracking_path)
+        p4 = patch("opscribe.roster_ops.MILESTONES_CHECK_INTERVAL_DAYS", 7)
 
         self.patches.extend([p1, p2, p3, p4])
         for p in self.patches:
@@ -135,8 +136,7 @@ class TestScheduledMilestoneCheckGating:
 
     # -- Persisted last_check_date is source of truth --
 
-    @pytest.mark.asyncio
-    async def test_skips_when_persisted_date_is_recent(self):
+    def test_skips_when_persisted_date_is_recent(self):
         """If the persisted last_check_date is recent (< 7 days), skip."""
         import opscribe.bot as bot
 
@@ -149,17 +149,16 @@ class TestScheduledMilestoneCheckGating:
         )
 
         # In-memory value is None (simulates fresh restart)
-        with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None):
+        with patch("opscribe._bot_globals.LAST_MILESTONE_CHECK_DATE", None):
             from opscribe.bot import _scheduled_milestone_check
 
-            await _scheduled_milestone_check()
+            asyncio.run(_scheduled_milestone_check())
 
         # Should not have advanced the check date — function returned early
         data = self._read_tracking()
         assert data["last_check_date"] == recent
 
-    @pytest.mark.asyncio
-    async def test_runs_when_persisted_date_is_old_enough(self):
+    def test_runs_when_persisted_date_is_old_enough(self):
         """If persisted last_check_date is ≥ 7 days old the check proceeds."""
         import opscribe.bot as bot
 
@@ -178,20 +177,19 @@ class TestScheduledMilestoneCheckGating:
         mock_guild.roles = []
 
         with (
-            patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
+            patch("opscribe._bot_globals.LAST_MILESTONE_CHECK_DATE", None),
             patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
-            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
+            patch("opscribe.roster_ops._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
             from opscribe.bot import _scheduled_milestone_check
 
-            await _scheduled_milestone_check()
+            asyncio.run(_scheduled_milestone_check())
 
         # Check ran — last_check_date should be updated to today
         data = self._read_tracking()
         assert data["last_check_date"] == str(date.today())
 
-    @pytest.mark.asyncio
-    async def test_fallback_to_in_memory_when_no_persisted_date(self):
+    def test_fallback_to_in_memory_when_no_persisted_date(self):
         """If persisted last_check_date is None, use in-memory value."""
         import opscribe.bot as bot
 
@@ -204,17 +202,16 @@ class TestScheduledMilestoneCheckGating:
             }
         )
 
-        with patch.object(bot, "LAST_MILESTONE_CHECK_DATE", recent):
+        with patch("opscribe._bot_globals.LAST_MILESTONE_CHECK_DATE", recent):
             from opscribe.bot import _scheduled_milestone_check
 
-            await _scheduled_milestone_check()
+            asyncio.run(_scheduled_milestone_check())
 
         # Should have skipped — in-memory date is recent
         data = self._read_tracking()
         assert data["last_check_date"] is None  # unchanged
 
-    @pytest.mark.asyncio
-    async def test_persists_date_even_when_no_milestones_crossed(self):
+    def test_persists_date_even_when_no_milestones_crossed(self):
         """On a no-op week (no milestones crossed), last_check_date is still
         persisted so the gate works correctly next time."""
         import opscribe.bot as bot
@@ -234,13 +231,13 @@ class TestScheduledMilestoneCheckGating:
         mock_guild.roles = []
 
         with (
-            patch.object(bot, "LAST_MILESTONE_CHECK_DATE", None),
+            patch("opscribe._bot_globals.LAST_MILESTONE_CHECK_DATE", None),
             patch("opscribe.bot._resolve_notification_guild", return_value=mock_guild),
-            patch("opscribe.bot._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
+            patch("opscribe.roster_ops._calculate_current_milestones", return_value={k: 0 for k in MILESTONES_INCREMENTS}),
         ):
             from opscribe.bot import _scheduled_milestone_check
 
-            await _scheduled_milestone_check()
+            asyncio.run(_scheduled_milestone_check())
 
         data = self._read_tracking()
         assert data["last_check_date"] == str(date.today())
