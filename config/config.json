@@ -372,5 +372,6 @@
   },
   "default_allowed_channels": [
     "❖⋅data-vault⋅❖"
-  ]
+  ],
+  "challenge_grace_periods": {}
 }
