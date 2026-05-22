@@ -310,7 +310,18 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
 
             # === Crux Terminatus tracking (auto-verification) ===
             # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes
-            # Manual verification needed: Rank A or higher extermination requirement only
+            # Manual verification needed: Rank A or higher extermination on Black Laurels missions
+
+            # Track Black Laurels AARs for Crux Terminatus Rank A audit
+            if black_laurels and message_url:
+                if "crux_bl_aars" not in user_progress:
+                    user_progress["crux_bl_aars"] = []
+                existing_ids = {m["aar_id"] for m in user_progress["crux_bl_aars"]}
+                if aar_id not in existing_ids:
+                    user_progress["crux_bl_aars"].append(
+                        {"aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
             if member:
                 # Check Watch Veteran rank
                 has_watch_veteran = any(r.name == "Watch Veteran" for r in member.roles)
@@ -332,8 +343,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and "crux_terminatus" not in notified_challenges
                     and not discord.utils.get(member.roles, id=CRUX_TERMINATUS_ROLE_ID)
                 ):
-                    # Gather AAR URLs for SOK-G missions
-                    aar_urls = [m["message_url"] for m in user_progress.get("sok_g_pipehitter", []) if m["message_url"]]
+                    # Gather AAR URLs for Black Laurels missions (Rank A audit)
+                    aar_urls = [m["message_url"] for m in user_progress.get("crux_bl_aars", []) if m["message_url"]]
                     notifications.append((user_id_str, "Crux Terminatus", aar_urls))
                     notified_challenges.append("crux_terminatus")
 
@@ -471,8 +482,8 @@ async def _send_challenge_eligibility_notifications(
                     value="Rank A or higher extermination (highest difficulty requirement)",
                     inline=False,
                 )
-                embed.add_field(name="Relevant SOK-G AAR Links", value=url_text or "_(none)_", inline=False)
-                embed.set_footer(text="Please audit the qualifying AARs and verify the Rank A extermination requirement.")
+                embed.add_field(name="Relevant Black Laurels AAR Links", value=url_text or "_(none)_", inline=False)
+                embed.set_footer(text="Please audit the Black Laurels AARs and verify the Rank A extermination requirement.")
             elif "The Order Omega" in challenge_name:
                 # Special embed for The Order Omega
                 ping_content = librarian_mention
