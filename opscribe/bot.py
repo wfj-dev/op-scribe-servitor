@@ -738,6 +738,7 @@ _g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
 from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
+from .roster_ops import _award_announcement_dispatch_loop  # noqa: E402 - underscore prefix excluded from import *
 from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
