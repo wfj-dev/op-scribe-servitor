@@ -89,6 +89,8 @@ HIGH_COMMAND_RANKS = {
     "Castellan",
     "Watch Master",
     "Venerable Dreadnought",
+    "Watch Captain",
+    "Lord Executioner",
 }
 
 # Watch Command = Sergeant+ from Battle Line, Company Champion+ from champion track, all Specialists, High Command

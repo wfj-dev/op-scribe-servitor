@@ -2570,7 +2570,8 @@ def _find_responsible_warden(bearer: discord.Member, guild: discord.Guild) -> Tu
                 return m
         return None
 
-    if HIGH_COMMAND_RANKS & bearer_roles or LIBRARIAN_ROLE_NAME in bearer_roles:
+    hc_roles = _b("HIGH_COMMAND_ROLES") or HIGH_COMMAND_RANKS
+    if hc_roles & bearer_roles or LIBRARIAN_ROLE_NAME in bearer_roles:
         vw = find_void_warden()
         return (vw, "void_warden") if vw else (None, "void_warden")
 
