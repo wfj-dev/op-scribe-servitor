@@ -1805,9 +1805,20 @@ async def _award_announcement_dispatch_loop():
             _g.logger.warning(f"Award dispatch: member {item['member_id']} not in guild; dropping item")
             return
 
-        channel = guild.get_channel(int(item["channel_id"]))
+        channel_id = int(item["channel_id"])
+        channel = guild.get_channel(channel_id) or guild.get_thread(channel_id)
         if not channel:
-            _g.logger.warning(f"Award dispatch: channel {item['channel_id']} not found; dropping item")
+            try:
+                channel = await _g.bot.fetch_channel(channel_id)
+            except Exception as exc:
+                _g.logger.warning(
+                    f"Award dispatch: channel {channel_id} not found ({exc}); falling back to service studs channel"
+                )
+                channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+        if not channel:
+            _g.logger.warning(
+                f"Award dispatch: no usable channel for item {item['member_id']}/{item['award_type']}; dropping item"
+            )
             return
 
         fn_name = _AWARD_DISPATCH_FN_MAP.get(item["award_type"])
@@ -1831,7 +1842,20 @@ async def _award_announcement_dispatch_loop():
         }
         if award_file:
             send_kwargs["file"] = award_file
-        await channel.send(content, **send_kwargs)
+        try:
+            await channel.send(content, **send_kwargs)
+        except Exception as exc:
+            fallback = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+            if fallback and fallback.id != getattr(channel, "id", None):
+                _g.logger.warning(
+                    f"Award dispatch: send to {getattr(channel, 'id', '?')} failed ({exc}); retrying in service studs channel"
+                )
+                # Re-open the file if it was consumed by the failed send
+                if award_file:
+                    send_kwargs["file"] = _b("_get_award_image")(award_file.filename) or award_file
+                await fallback.send(content, **send_kwargs)
+            else:
+                raise
         _g.logger.info(
             f"Award announcement dispatched: {item['award_type']} for {item['member_id']} "
             f"({len(queue)} remaining in queue)"
