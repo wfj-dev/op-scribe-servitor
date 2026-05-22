@@ -5819,10 +5819,13 @@ SPECIALIST_ROLES = {
 HIGH_COMMAND_ROLES = {
     "Watch Master",
     "Watch Captain",
+    "Lord Executioner",
     "High Chaplain",
     "Chief Apothecary",
     "Void Warden",
     "Forgemaster",
+    "Castellan",
+    "Venerable Dreadnought",
 }
 
 
