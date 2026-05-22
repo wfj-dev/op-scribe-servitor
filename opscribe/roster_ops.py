@@ -182,6 +182,52 @@ def _save_promotion_tracking(tracking_data: Dict[str, Dict]):
         _g.logger.exception(f"Failed to save promotion tracking: {e}")
 
 
+def _load_award_queue() -> List[Dict]:
+    """Load the pending award announcement queue."""
+    try:
+        if os.path.exists(AWARD_QUEUE_PATH):
+            with open(AWARD_QUEUE_PATH, "r") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_award_queue(queue: List[Dict]):
+    """Persist the award announcement queue to disk."""
+    try:
+        tmp_path = AWARD_QUEUE_PATH + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(queue, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, AWARD_QUEUE_PATH)
+    except Exception as e:
+        _g.logger.warning(f"Failed to save award queue: {e}")
+
+
+def _enqueue_award_announcement(
+    member_id: str,
+    award_type: str,
+    member_chapter: str,
+    channel_id: str,
+    guild_id: str,
+):
+    """Append one award announcement to the persistent queue."""
+    queue = _load_award_queue()
+    queue.append({
+        "member_id": member_id,
+        "award_type": award_type,
+        "member_chapter": member_chapter,
+        "channel_id": channel_id,
+        "guild_id": guild_id,
+        "queued_at": datetime.utcnow().isoformat(),
+    })
+    _save_award_queue(queue)
+
+
 def _load_induction_overrides() -> Dict[str, str]:
     """Load induction date overrides: user_id -> ISO date string (YYYY-MM-DD)."""
     try:
@@ -977,18 +1023,10 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                     if assigned:
                         ch = await _get_ann_channel()
                         if ch:
-                            content, embed, award_file = _b("_get_watch_veteran_announcement")(
-                                member=member, member_chapter=member_chapter, guild=guild
+                            _enqueue_award_announcement(
+                                str(member.id), "watch_veteran", member_chapter, str(ch.id), str(guild.id)
                             )
-                            send_kwargs = {
-                                "embed": embed,
-                                "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                            }
-                            if award_file:
-                                send_kwargs["file"] = award_file
-                            await ch.send(content, **send_kwargs)
                             notifications_sent += 1
-                            await asyncio.sleep(0.5)
                         else:
                             _g.logger.warning(
                                 f"Watch Veteran announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1011,18 +1049,10 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                         if not user_tracking.get("ardent_raider_notified"):
                             ch = await _get_ann_channel()
                             if ch:
-                                content, embed, award_file = _b("_get_ardent_raider_announcement")(
-                                    member=member, member_chapter=member_chapter, guild=guild
+                                _enqueue_award_announcement(
+                                    str(member.id), "ardent_raider", member_chapter, str(ch.id), str(guild.id)
                                 )
-                                send_kwargs = {
-                                    "embed": embed,
-                                    "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                }
-                                if award_file:
-                                    send_kwargs["file"] = award_file
-                                await ch.send(content, **send_kwargs)
                                 notifications_sent += 1
-                                await asyncio.sleep(0.5)
                             else:
                                 _g.logger.warning(
                                     f"Ardent Raider announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1045,18 +1075,10 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                         if not user_tracking.get("for_the_fallen_notified"):
                             ch = await _get_ann_channel()
                             if ch:
-                                content, embed, award_file = _b("_get_apothecarion_medal_announcement")(
-                                    member=member, member_chapter=member_chapter, guild=guild
+                                _enqueue_award_announcement(
+                                    str(member.id), "apothecarion_medal", member_chapter, str(ch.id), str(guild.id)
                                 )
-                                send_kwargs = {
-                                    "embed": embed,
-                                    "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                }
-                                if award_file:
-                                    send_kwargs["file"] = award_file
-                                await ch.send(content, **send_kwargs)
                                 notifications_sent += 1
-                                await asyncio.sleep(0.5)
                             else:
                                 _g.logger.warning(
                                     f"Apothecarion Medal announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1082,18 +1104,10 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                         if not user_tracking.get("crimson_laurels_notified"):
                             ch = await _get_ann_channel()
                             if ch:
-                                content, embed, award_file = _b("_get_crimson_laurels_announcement")(
-                                    member=member, member_chapter=member_chapter, guild=guild
+                                _enqueue_award_announcement(
+                                    str(member.id), "crimson_laurels", member_chapter, str(ch.id), str(guild.id)
                                 )
-                                send_kwargs = {
-                                    "embed": embed,
-                                    "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                }
-                                if award_file:
-                                    send_kwargs["file"] = award_file
-                                await ch.send(content, **send_kwargs)
                                 notifications_sent += 1
-                                await asyncio.sleep(0.5)
                             else:
                                 _g.logger.warning(
                                     f"Crimson Laurels announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1115,7 +1129,7 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
 
     if notifications_sent > 0:
         _g.logger.info(
-            f"Award check (AAR-triggered) for {len(member_ids)} member(s): {notifications_sent} notification(s) sent"
+            f"Award check (AAR-triggered) for {len(member_ids)} member(s): {notifications_sent} announcement(s) queued"
         )
 
 
@@ -1478,20 +1492,10 @@ async def _check_promotion_milestones():
                         if veteran_role_assigned:
                             ann_channel = await _get_member_award_announcement_channel()
                             if ann_channel:
-                                content, embed, award_file = _b("_get_watch_veteran_announcement")(
-                                    member=member,
-                                    member_chapter=member_chapter,
-                                    guild=guild,
+                                _enqueue_award_announcement(
+                                    str(member.id), "watch_veteran", member_chapter, str(ann_channel.id), str(guild.id)
                                 )
-                                send_kwargs = {
-                                    "embed": embed,
-                                    "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                }
-                                if award_file:
-                                    send_kwargs["file"] = award_file
-                                await ann_channel.send(content, **send_kwargs)
                                 notifications_sent += 1
-                                await asyncio.sleep(0.5)
                             else:
                                 _g.logger.warning(
                                     f"Watch Veteran announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1603,20 +1607,10 @@ async def _check_promotion_milestones():
                             if not user_tracking.get("ardent_raider_notified"):
                                 ann_channel = await _get_member_award_announcement_channel()
                                 if ann_channel:
-                                    content, embed, award_file = _b("_get_ardent_raider_announcement")(
-                                        member=member,
-                                        member_chapter=member_chapter,
-                                        guild=guild,
+                                    _enqueue_award_announcement(
+                                        str(member.id), "ardent_raider", member_chapter, str(ann_channel.id), str(guild.id)
                                     )
-                                    send_kwargs = {
-                                        "embed": embed,
-                                        "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                    }
-                                    if award_file:
-                                        send_kwargs["file"] = award_file
-                                    await ann_channel.send(content, **send_kwargs)
                                     notifications_sent += 1
-                                    await asyncio.sleep(0.5)
                                 else:
                                     _g.logger.warning(
                                         f"Ardent Raider announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1641,20 +1635,10 @@ async def _check_promotion_milestones():
                             if not user_tracking.get("for_the_fallen_notified"):
                                 ann_channel = await _get_member_award_announcement_channel()
                                 if ann_channel:
-                                    content, embed, award_file = _b("_get_apothecarion_medal_announcement")(
-                                        member=member,
-                                        member_chapter=member_chapter,
-                                        guild=guild,
+                                    _enqueue_award_announcement(
+                                        str(member.id), "apothecarion_medal", member_chapter, str(ann_channel.id), str(guild.id)
                                     )
-                                    send_kwargs = {
-                                        "embed": embed,
-                                        "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                    }
-                                    if award_file:
-                                        send_kwargs["file"] = award_file
-                                    await ann_channel.send(content, **send_kwargs)
                                     notifications_sent += 1
-                                    await asyncio.sleep(0.5)
                                 else:
                                     _g.logger.warning(
                                         f"Apothecarion Medal announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1679,20 +1663,10 @@ async def _check_promotion_milestones():
                             if not user_tracking.get("crimson_laurels_notified"):
                                 ann_channel = await _get_member_award_announcement_channel()
                                 if ann_channel:
-                                    content, embed, award_file = _b("_get_crimson_laurels_announcement")(
-                                        member=member,
-                                        member_chapter=member_chapter,
-                                        guild=guild,
+                                    _enqueue_award_announcement(
+                                        str(member.id), "crimson_laurels", member_chapter, str(ann_channel.id), str(guild.id)
                                     )
-                                    send_kwargs = {
-                                        "embed": embed,
-                                        "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
-                                    }
-                                    if award_file:
-                                        send_kwargs["file"] = award_file
-                                    await ann_channel.send(content, **send_kwargs)
                                     notifications_sent += 1
-                                    await asyncio.sleep(0.5)
                                 else:
                                     _g.logger.warning(
                                         f"Crimson Laurels announcement channel not found for {member.id}; role assigned but no announcement sent"
@@ -1778,7 +1752,7 @@ async def _check_promotion_milestones():
             _save_promotion_tracking(fresh_tracking)
 
         if notifications_sent > 0:
-            _g.logger.info(f"Promotion check complete: {notifications_sent} notification(s) sent")
+            _g.logger.info(f"Promotion check complete: {notifications_sent} announcement(s) queued")
         else:
             _g.logger.debug("Promotion check complete: no new milestones")
 
@@ -1800,6 +1774,70 @@ async def _activity_status_check_loop():
         await _check_promotion_milestones()
     except Exception:
         _g.logger.exception("Error running activity status check loop")
+
+
+_AWARD_DISPATCH_FN_MAP = {
+    "watch_veteran": "_get_watch_veteran_announcement",
+    "ardent_raider": "_get_ardent_raider_announcement",
+    "apothecarion_medal": "_get_apothecarion_medal_announcement",
+    "crimson_laurels": "_get_crimson_laurels_announcement",
+}
+
+
+@tasks.loop(minutes=15)
+async def _award_announcement_dispatch_loop():
+    """Drains one pending award announcement every 15 minutes to avoid post spam."""
+    try:
+        queue = _load_award_queue()
+        if not queue:
+            return
+
+        item = queue.pop(0)
+        _save_award_queue(queue)
+
+        guild = _g.bot.get_guild(int(item["guild_id"]))
+        if not guild:
+            _g.logger.warning(f"Award dispatch: guild {item['guild_id']} not found; dropping item")
+            return
+
+        member = guild.get_member(int(item["member_id"]))
+        if not member:
+            _g.logger.warning(f"Award dispatch: member {item['member_id']} not in guild; dropping item")
+            return
+
+        channel = guild.get_channel(int(item["channel_id"]))
+        if not channel:
+            _g.logger.warning(f"Award dispatch: channel {item['channel_id']} not found; dropping item")
+            return
+
+        fn_name = _AWARD_DISPATCH_FN_MAP.get(item["award_type"])
+        if not fn_name:
+            _g.logger.warning(f"Award dispatch: unknown award type '{item['award_type']}'; dropping item")
+            return
+
+        fn = _b(fn_name)
+        if not fn:
+            _g.logger.warning(f"Award dispatch: announcement function '{fn_name}' not found; dropping item")
+            return
+
+        content, embed, award_file = fn(
+            member=member,
+            member_chapter=item.get("member_chapter", "Unknown"),
+            guild=guild,
+        )
+        send_kwargs: Dict = {
+            "embed": embed,
+            "allowed_mentions": discord.AllowedMentions(users=True, roles=True),
+        }
+        if award_file:
+            send_kwargs["file"] = award_file
+        await channel.send(content, **send_kwargs)
+        _g.logger.info(
+            f"Award announcement dispatched: {item['award_type']} for {item['member_id']} "
+            f"({len(queue)} remaining in queue)"
+        )
+    except Exception:
+        _g.logger.exception("Error in award announcement dispatch loop")
 
 
 @_g.bot.tree.command(
