@@ -3594,17 +3594,11 @@ async def librarium_override(interaction: discord.Interaction, enabled: bool):
 async def evaluate_librarian_pressure(guild: discord.Guild):
     """Pressure evaluator for the Librarian cadre. See pressure_registry.
 
-    Uses charge-weighted demand: each infected brother contributes the
-    number of intensive cleanse charges required to restore him rather
-    than a flat head-count of 1.
-
-    Additionally, a fractional at-risk demand is added for clean brothers
-    based on the background warp transmission probability — the cumulative
-    probability that a clean brother would contract an infection in a
-    typical AAR given the current infected population (SIR-style product
-    formula).  This mirrors the techmarine predictive-warning signal and
-    fires when background transmission probability reaches the configured
-    warp_at_risk_threshold (default 20 %).
+    Demand = charge-weighted cost of all real work outstanding:
+      - each infected non-Librarian brother contributes the intensive
+        cleanse charge cost for his current sanction tier;
+      - each burdened Librarian contributes his tier-scaled demand cost.
+    Supply = sum of available warding charges across capable Librarians.
     """
     from .pressure_registry import CadrePressure
 
@@ -3629,10 +3623,8 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
         librarian_ids.append(int(member.id))
     lib_id_set = set(librarian_ids)
 
-    # Demand pass: charge-weighted cost for infected brothers and burdened
-    # Librarians + collect infected tier list for background-transmission.
+    # Demand pass: charge-weighted cost for infected brothers and burdened Librarians.
     demand: float = 0.0
-    infected_tiers: List[str] = []  # infection_state of each infected active non-lib brother
 
     for uid_str, raw in (data or {}).items():
         try:
@@ -3671,49 +3663,6 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
 
         if sanction_key != "sanctioned":
             demand += _get_intensive_cleanse_cost(sanction_key, warp_corrupted)
-            tier_for_spread = infection_state or (
-                "volatile" if pts >= 10 else "exposed" if pts >= 5 else "tainted"
-            )
-            infected_tiers.append(tier_for_spread)
-
-    # At-risk signal: background transmission probability for clean brothers.
-    # P(at least one exposure) = 1 - ∏(1 - spread_chance[tier_i]) for each infected
-    # active non-lib brother.  Clean brothers contribute fractional demand equal to
-    # their background infection probability × the cost of an initial-tier cleanse.
-    spread_chances = _get_spread_chances()
-    p_no_infection = 1.0
-    for tier in infected_tiers:
-        p_no_infection *= 1.0 - spread_chances.get(tier, 0.0)
-    # Round to 10 sig figs to avoid floating-point representation artefacts
-    # (e.g. 1 - (1 - 0.20) = 0.19999...96 without rounding).
-    background_prob = round(1.0 - p_no_infection, 10)
-
-    try:
-        warp_at_risk_threshold = float(
-            _warp_config().get("at_risk_threshold", 0.20) or 0.20
-        )
-    except Exception:
-        warp_at_risk_threshold = 0.20
-
-    if background_prob >= warp_at_risk_threshold:
-        # Count active non-lib guild members with no infection record (clean brothers).
-        cleanse_cost_initial = _get_intensive_cleanse_cost("screening_due")
-        clean_active_count = 0
-        for member in guild.members:
-            if member.bot:
-                continue
-            if int(member.id) in lib_id_set:
-                continue
-            if is_active_fn and not is_active_fn(member):
-                continue
-            raw = (data or {}).get(str(member.id)) or {}
-            if (
-                not raw.get("infection_state")
-                and not raw.get("warp_corrupted")
-                and int(raw.get("points", 0) or 0) <= 0
-            ):
-                clean_active_count += 1
-        demand += clean_active_count * background_prob * cleanse_cost_initial
 
     # Supply: sum of available warding charges across capable Librarians.
     supply = 0
