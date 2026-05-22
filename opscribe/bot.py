@@ -1526,6 +1526,14 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start activity status check loop")
 
+    # Start award announcement dispatch loop (drains 1 queued post every 15 min)
+    try:
+        if not _award_announcement_dispatch_loop.is_running():
+            _award_announcement_dispatch_loop.start()
+            logger.info("Award announcement dispatch loop started (15 min interval).")
+    except Exception:
+        logger.exception("Failed to start award announcement dispatch loop")
+
     # Start weekly maintenance loop if enabled (default: enabled)
     try:
         if SCHEDULE_WEEKLY_MAINTENANCE_ENABLED:
