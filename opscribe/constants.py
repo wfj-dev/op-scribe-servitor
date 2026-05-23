@@ -387,9 +387,7 @@ TERMINUS_VERIFIER_RANKS = {
 
 # Verifier tier thresholds (rolling 7-day window, verify + deny count equally)
 VERIFIER_TIER_THRESHOLDS = [
-    (12, 3, 3),   # 12+ actions -> Tier 3 -> +3 AAR bonus
-    (7,  2, 2),   # 7-11 actions -> Tier 2 -> +2 AAR bonus
-    (3,  1, 1),   # 3-6 actions  -> Tier 1 -> +1 AAR bonus
+    (7, 1, 1),   # 7+ actions -> Tier 1 -> +1 AAR bonus
 ]
 
 # Hours before an unverified kill log triggers a reminder ping

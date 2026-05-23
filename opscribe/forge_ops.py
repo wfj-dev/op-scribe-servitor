@@ -4275,6 +4275,19 @@ async def _attest(
         pass
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Reserves check - inactive members cannot receive blessings
+    # ─────────────────────────────────────────────────────────────────────────
+    member_role_ids = {r.id for r in member.roles}
+    member_role_names = {r.name.lower() for r in member.roles}
+    if RESERVES_ROLE_ID in member_role_ids or "reserves" in member_role_names:
+        bearer_name = _strip_display_name(member.display_name)
+        await interaction.response.send_message(
+            f"**{bearer_name}** is currently in Reserves. Blessings cannot be performed on inactive members.",
+            ephemeral=True,
+        )
+        return
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Recipient cooldown check (max 3 blessings per 24h, 4h between each)
     # ─────────────────────────────────────────────────────────────────────────
     if not force:

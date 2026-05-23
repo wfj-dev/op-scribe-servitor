@@ -883,7 +883,9 @@ async def submit_kill_log(
     _g.bot.add_view(view)
 
     embed = _build_kill_log_embed(entry, guild)
-    msg = await channel.send(embed=embed, view=view)
+    vet_role = discord.utils.find(lambda r: r.name == "Watch Veteran", guild.roles) if guild else None
+    vet_mention = vet_role.mention if vet_role else "Watch Veterans"
+    msg = await channel.send(content=f"{vet_mention} — new kill log submitted for verification:", embed=embed, view=view)
 
     # Store the message ID so we can edit it later
     async with _g.TERMINUS_SLAYER_LOCK:
