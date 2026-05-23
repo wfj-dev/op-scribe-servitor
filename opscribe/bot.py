@@ -782,6 +782,7 @@ HOME_CHAPTERS = [
     "Blood Ravens",
     "Brazen Minotaurs",
     "Carcharodons",
+    "Carmine Blades",
     "Celestial Lions",
     "Cowled Wardens",
     "Crimson Fists",
