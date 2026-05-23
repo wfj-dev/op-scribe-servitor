@@ -885,17 +885,71 @@ async def submit_kill_log(
     embed = _build_kill_log_embed(entry, guild)
     vet_role = discord.utils.find(lambda r: r.name == "Watch Veteran", guild.roles) if guild else None
     vet_mention = vet_role.mention if vet_role else "Watch Veterans"
-    msg = await channel.send(content=f"{vet_mention} — new kill log submitted for verification:", embed=embed, view=view)
 
-    # Store the message ID so we can edit it later
+    # Re-upload attached video as a file so Discord renders it inline rather than as a download link
+    video_file = None
+    if video is not None:
+        try:
+            video_file = await video.to_file()
+        except Exception as exc:
+            # Roll back the saved entry before aborting
+            async with _g.TERMINUS_SLAYER_LOCK:
+                state = _load_state()
+                state["entries"].pop(kill_log_id, None)
+                _save_state(state)
+            await interaction.response.send_message(
+                f"❌ Could not process your video attachment: `{exc}`\n"
+                "Use `video_url` with a YouTube, Medal, or Streamable link for recordings over 8 MB.",
+                ephemeral=True,
+            )
+            return
+
+    video_too_large = False
+    try:
+        msg = await channel.send(
+            content=f"{vet_mention} — new kill log submitted for verification:",
+            embed=embed,
+            view=view,
+            file=video_file,
+        )
+    except discord.HTTPException as exc:
+        if video_file is not None:
+            # File exceeds server upload limit — retry without it and warn the user
+            video_file = None
+            video_too_large = True
+            msg = await channel.send(
+                content=f"{vet_mention} — new kill log submitted for verification:",
+                embed=embed,
+                view=view,
+            )
+        else:
+            # Unrelated channel send failure — roll back and abort
+            async with _g.TERMINUS_SLAYER_LOCK:
+                state = _load_state()
+                state["entries"].pop(kill_log_id, None)
+                _save_state(state)
+            await interaction.response.send_message(
+                f"❌ Failed to post to the kill log channel: `{exc}`",
+                ephemeral=True,
+            )
+            return
+
+    # Store the message ID and (if re-uploaded) the channel attachment URL
     async with _g.TERMINUS_SLAYER_LOCK:
         state = _load_state()
         if kill_log_id in state["entries"]:
             state["entries"][kill_log_id]["embed_message_id"] = str(msg.id)
+            if video_file and msg.attachments:
+                state["entries"][kill_log_id]["video_attachment_url"] = msg.attachments[0].url
             _save_state(state)
 
     await interaction.response.send_message(
-        f"✅ Kill log **{kill_log_id}** submitted. Watch Veterans will verify it shortly.",
+        f"✅ Kill log **{kill_log_id}** submitted. Watch Veterans will verify it shortly."
+        + (
+            "\n\n⚠️ Your video attachment was too large to upload directly — it was not included. "
+            "Re-submit using `video_url` with a YouTube, Medal, or Streamable link."
+            if video_too_large else ""
+        ),
         ephemeral=True,
     )
 
