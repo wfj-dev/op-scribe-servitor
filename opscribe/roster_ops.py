@@ -1385,10 +1385,6 @@ async def _check_promotion_milestones():
             if not has_black_laurels:
                 continue
 
-            # Check @Absolute
-            if "absolute" not in difficulty:
-                continue
-
             mission = rec.get("mission")
             if not mission:
                 continue
