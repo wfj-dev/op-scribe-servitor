@@ -845,10 +845,13 @@ async def submit_kill_log(
         )
         return
 
+    # Defer now — AAR validation and video download can exceed the 3-second response window
+    await interaction.response.defer(ephemeral=True)
+
     # Validate AAR link — must be a real Absolute AAR the submitter participated in
     aar_error = await _validate_aar_link(aar_link, guild, str(interaction.user.id))
     if aar_error:
-        await interaction.response.send_message(aar_error, ephemeral=True)
+        await interaction.followup.send(aar_error, ephemeral=True)
         return
 
     class_name = KILL_LOG_CLASS_ROLES[slayer_class.id]
@@ -910,7 +913,7 @@ async def submit_kill_log(
                 state = _load_state()
                 state["entries"].pop(kill_log_id, None)
                 _save_state(state)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ Could not process your video attachment: `{exc}`\n"
                 "Use `video_url` with a YouTube, Medal, or Streamable link for recordings over 8 MB.",
                 ephemeral=True,
@@ -941,7 +944,7 @@ async def submit_kill_log(
                 state = _load_state()
                 state["entries"].pop(kill_log_id, None)
                 _save_state(state)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ Failed to post to the kill log channel: `{exc}`",
                 ephemeral=True,
             )
@@ -956,7 +959,7 @@ async def submit_kill_log(
                 state["entries"][kill_log_id]["video_attachment_url"] = msg.attachments[0].url
             _save_state(state)
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"✅ Kill log **{kill_log_id}** submitted. Watch Veterans will verify it shortly."
         + (
             "\n\n⚠️ Your video attachment was too large to upload directly — it was not included. "
