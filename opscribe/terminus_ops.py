@@ -31,7 +31,11 @@ from .constants import (  # noqa: F401
     TERMINUS_VERIFIER_RANKS,
     VERIFIER_TIER_THRESHOLDS,
 )
+from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS
 from . import _bot_globals as _g
+
+# Any role that counts as a server member (Watch Brother or higher on any track)
+_MEMBER_RANKS = BATTLE_LINE_RANKS | CHAMPION_RANKS | SPECIALIST_RANKS | HIGH_COMMAND_RANKS
 
 
 def _b(name):
@@ -803,6 +807,15 @@ async def submit_kill_log(
     if not _b("is_allowed_channel")(interaction):
         await interaction.response.send_message(
             f"This command can only be used in <#{KILL_LOG_CHANNEL_ID}>.",
+            ephemeral=True,
+        )
+        return
+
+    # Member check — must hold at least Watch Brother (or any equivalent rank)
+    member = interaction.user
+    if not any(r.name in _MEMBER_RANKS for r in getattr(member, "roles", [])):
+        await interaction.response.send_message(
+            "Only Watch Brothers and above may submit kill logs.",
             ephemeral=True,
         )
         return
