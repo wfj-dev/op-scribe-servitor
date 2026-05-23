@@ -67,14 +67,10 @@ async def _validate_aar_link(
     # available; fall back to raw message content for un-ingested AARs.
     record = _g.DATASTORE.get_record(message_id_str) if _g.DATASTORE else None
     if record:
-        if record.get("difficulty_class") != "absolute_ops":
-            return "The linked AAR must be an Absolute difficulty operation."
         if brother_id not in [str(b) for b in record.get("brother_ids", [])]:
             return "You must have participated in the linked AAR to submit a kill log for it."
     else:
         content = msg.content or ""
-        if not re.search(r"\babsolute\b", content, re.IGNORECASE):
-            return "The linked AAR must be an Absolute difficulty operation."
         if not re.search(rf"<@!?{re.escape(brother_id)}>", content):
             return "You must have participated in the linked AAR to submit a kill log for it."
     return None
