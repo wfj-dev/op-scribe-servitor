@@ -22,6 +22,8 @@ WATCH_LIBRARIAN_ROLE_ID = 1429339231654924318
 WATCH_KEEPER_ROLE_ID = 1488211606813806693
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
+# Ping role ID for Black Laurels challenge announcements
+BLACK_LAURELS_PING_ROLE_ID = 1429343212421644479
 
 # ---------------------------------------------------------------------------
 # Data file locations

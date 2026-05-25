@@ -85,20 +85,15 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
         _g.logger.exception(f"Failed to save challenge progress: {e}")
 
 
-async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, List[str]]]:
+async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
-    Returns list of (user_id, challenge_name, aar_urls) tuples for newly qualified members.
-    Only returns each challenge once per member (won't notify again).
+    Returns list of (user_id, challenge_display_name, role_id, award_type, aar_urls)
+    tuples for newly qualified members. Only returns each challenge once per
+    member (won't notify again).
 
-    Challenge tracking:
-    - sok_g_pipehitter: 10 SOK-G missions with @SOK-G: Pipehitter tag + existing Pipehitter on team
-    - distinguished_sok_g_pipehitter: 2+ SOK-G missions with tag + team requirement
-    - kadaku_campaign: All 3 Kadaku missions with @Leviathan Protocol tag
-    - black_reef: All 8 Black Reef missions with @Black Reef Persecution tag
-    - distinguished_black_reef: All 8 missions with BOTH @Black Reef Persecution and @Black Laurels
-    - crux_terminatus: Watch Veteran + 2+ SOK-G + All 8 Black Laurels + 2+ Terminus Slayer (auto-verify these)
-    - order_omega: All 12 missions at Omega difficulty with @Black Laurels tag
+    The bot only returns notifications that include a valid role_id and
+    award_type for auto-assignment and public award announcement dispatch.
     """
     notifications = []
 
@@ -171,11 +166,14 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 )
 
             # === SOK-G: Pipehitter tracking ===
-            # Pipehitter challenges require Hard-Stratagem difficulty.
+            # Pipehitter challenges require Hard-Stratagem difficulty AND Rank A.
+            # Legacy AARs that pre-date the rank field are treated as Rank A.
+            _aar_rank = (record.get("rank") or "A").upper()
             if (
                 pipehitter_mentioned
                 and mission_name in PIPEHITTER_ELIGIBLE_MISSIONS
                 and difficulty_class == "hard_stratagem"
+                and _aar_rank == "A"
             ):
                 # Check if team has existing Pipehitter or Distinguished Pipehitter
                 team_has_pipehitter = False
@@ -216,7 +214,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
                     ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
-                        notifications.append((user_id_str, "SOK-G: Pipehitter", aar_urls))
+                        notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
                         notified_challenges.append("sok_g_pipehitter")
 
                     # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
@@ -227,7 +225,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
                     ):
                         aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
-                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", aar_urls))
+                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
                         notified_challenges.append("distinguished_sok_g_pipehitter")
 
             # === Kadaku Campaign Medal tracking ===
@@ -253,7 +251,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and not discord.utils.get(member.roles, id=KADAKU_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
-                    notifications.append((user_id_str, "Kadaku Campaign Medal", aar_urls))
+                    notifications.append((user_id_str, "Kadaku Campaign Medal", KADAKU_CAMPAIGN_MEDAL_ROLE_ID, "kadaku_campaign_medal", aar_urls))
                     notified_challenges.append("kadaku_campaign")
 
             # === Black Reef Campaign Medal tracking ===
@@ -279,7 +277,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and not discord.utils.get(member.roles, id=BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["black_reef"] if m["message_url"]]
-                    notifications.append((user_id_str, "Black Reef Campaign Medal", aar_urls))
+                    notifications.append((user_id_str, "Black Reef Campaign Medal", BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "black_reef_campaign_medal", aar_urls))
                     notified_challenges.append("black_reef")
 
             # === Distinguished Black Reef Campaign Medal tracking ===
@@ -305,12 +303,34 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and not discord.utils.get(member.roles, id=DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
-                    notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", aar_urls))
+                    notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "distinguished_black_reef_campaign_medal", aar_urls))
                     notified_challenges.append("distinguished_black_reef")
 
+            # === Black Laurels tracking (auto-award) ===
+            # Track unique Black Laurels missions; auto-assign Black Laurels role once all 9 unique missions completed
+            if black_laurels and mission_name in BLACK_LAURELS_REQUIRED_MISSIONS:
+                if "black_laurels" not in user_progress:
+                    user_progress["black_laurels"] = []
+                existing_missions = {m["mission"] for m in user_progress["black_laurels"]}
+                if mission_name not in existing_missions:
+                    user_progress["black_laurels"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+                unique_missions = {m["mission"] for m in user_progress["black_laurels"]}
+                if (
+                    unique_missions >= BLACK_LAURELS_REQUIRED_MISSIONS
+                    and "black_laurels" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=BLACK_LAURELS_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["black_laurels"] if m["message_url"]]
+                    notifications.append((user_id_str, "Black Laurels", BLACK_LAURELS_ROLE_ID, "black_laurels", aar_urls))
+                    notified_challenges.append("black_laurels")
+
             # === Crux Terminatus tracking (auto-verification) ===
-            # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes
-            # Manual verification needed: Rank A or higher extermination on Black Laurels missions
+            # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes,
+            # plus at least one Rank A or higher extermination on a Black Laurels mission.
 
             # Track Black Laurels AARs for Crux Terminatus Rank A audit
             if black_laurels and message_url:
@@ -352,19 +372,30 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         for m in user_progress.get("crux_bl_aars", [])
                         if m.get("message_url")
                     }
+                    # Crux requires EVERY Black Laurels AAR for this user to be
+                    # Rank A.  Legacy AARs without a rank field are treated as
+                    # Rank A so the audit does not punish records that pre-date
+                    # the rank requirement.
+                    all_rank_a = True
+                    saw_any_bl = False
                     if _g.DATASTORE:
                         for _rec in _g.DATASTORE.iter_records():
-                            _url = _rec.get("message_url")
-                            if not _url:
-                                continue
                             _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
                             if not _bl:
                                 continue
-                            if user_id_str in [str(b) for b in (_rec.get("brother_ids") or [])]:
+                            if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
+                                continue
+                            saw_any_bl = True
+                            _url = _rec.get("message_url")
+                            if _url:
                                 aar_url_set.add(_url)
-                    aar_urls = sorted(aar_url_set)
-                    notifications.append((user_id_str, "Crux Terminatus", aar_urls))
-                    notified_challenges.append("crux_terminatus")
+                            if (_rec.get("rank") or "A").upper() != "A":
+                                all_rank_a = False
+                    # Gate the auto-award on every Black Laurels AAR being Rank A.
+                    if saw_any_bl and all_rank_a:
+                        aar_urls = sorted(aar_url_set)
+                        notifications.append((user_id_str, "Crux Terminatus", CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", aar_urls))
+                        notified_challenges.append("crux_terminatus")
 
             # === The Order Omega tracking ===
             # Track omega difficulty missions with Black Laurels tag (all 12 missions required)
@@ -391,7 +422,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and not discord.utils.get(member.roles, id=THE_ORDER_OMEGA_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["order_omega"] if m["message_url"]]
-                    notifications.append((user_id_str, "The Order Omega", aar_urls))
+                    notifications.append((user_id_str, "The Order Omega", THE_ORDER_OMEGA_ROLE_ID, "the_order_omega", aar_urls))
                     notified_challenges.append("order_omega")
 
             # Update notified list
@@ -449,90 +480,67 @@ def _build_url_field_text(aar_urls: List[str]) -> str:
 
 
 async def _send_challenge_eligibility_notifications(
-    notifications: List[Tuple[str, str, List[str]]], guild: discord.Guild
+    notifications: List[Tuple[str, str, int, str, List[str]]], guild: discord.Guild
 ):
-    """Send challenge eligibility notifications to Librarius Staff channel.
+    """Auto-assign roles and announce qualified challenge awards.
+
+    All challenge awards are auto-assigned and announced publicly via the
+    award announcement queue. The librarius staff audit pathway has been
+    retired in favor of public announcements with rich award embeds.
 
     Args:
-        notifications: List of (user_id, challenge_name, aar_urls) tuples
-        guild: Discord guild object
+        notifications: list of (user_id, challenge_name, role_id, award_type, aar_urls)
+        guild: Discord guild
     """
     if not notifications:
         return
 
-    # Get Librarius Staff channel
-    librarius_channel = guild.get_channel(LIBRARIUS_STAFF_CHANNEL_ID)
-    if not librarius_channel:
-        _g.logger.warning(f"Librarius Staff channel {LIBRARIUS_STAFF_CHANNEL_ID} not found")
-        return
+    home_chapters = _b("HOME_CHAPTERS") or []
 
-    librarian_mention = _get_challenge_librarian_mention(guild)
-    keeper_mention = _get_challenge_keeper_mention(guild)
-
-    # Send one notification per qualified member+challenge
-    for user_id, challenge_name, aar_urls in notifications:
+    for user_id, challenge_name, role_id, award_type, _aar_urls in notifications:
         try:
             member = guild.get_member(int(user_id))
-            member_mention = member.mention if member else f"<@{user_id}>"
-
-            url_text = _build_url_field_text(aar_urls)
-
-            if "Crux Terminatus" in challenge_name:
-                # Special embed for Crux Terminatus (auto-verification complete except Rank A)
-                ping_content = f"{librarian_mention} {keeper_mention}"
-                embed = discord.Embed(
-                    title="᛭⋅ Challenge Qualification: Crux Terminatus ⋅᛭",
-                    description=f"{member_mention} has met all auto-verified requirements for **Crux Terminatus**.",
-                    color=0xC0392B,
+            if not (role_id and award_type and member is not None):
+                _g.logger.warning(
+                    f"Challenge notification missing role_id/award_type/member for {user_id} {challenge_name}; skipping"
                 )
-                embed.add_field(
-                    name="✅ Auto-verified Requirements",
-                    value=(
-                        "Watch Veteran rank\n"
-                        "2+ SOK-G: Pipehitter missions completed\n"
-                        "All 8 Black Laurels missions completed\n"
-                        "2+ Terminus Slayer class completions"
-                    ),
-                    inline=False,
+                continue
+            role = guild.get_role(role_id)
+            if role is None:
+                _g.logger.warning(
+                    f"Auto-award role id {role_id} not found in guild for {challenge_name}; skipping {user_id}"
                 )
-                embed.add_field(
-                    name="❓ Manual Verification Required",
-                    value="Rank A extermination (highest difficulty requirement)",
-                    inline=False,
+                continue
+            try:
+                await member.add_roles(role, reason=f"Auto-award: {challenge_name}")
+            except Exception as e:
+                _g.logger.warning(
+                    f"Failed to assign {challenge_name} role to {user_id}: {e}"
                 )
-                embed.add_field(name="Relevant Black Laurels AAR Links", value=url_text or "_(none)_", inline=False)
-                embed.set_footer(text="Please audit the Black Laurels AARs and verify the Rank A extermination requirement.")
-            elif "The Order Omega" in challenge_name:
-                # Special embed for The Order Omega
-                ping_content = librarian_mention
-                embed = discord.Embed(
-                    title="᛭⋅ Challenge Qualification: The Order Omega ⋅᛭",
-                    description=(
-                        f"{member_mention} has completed all 12 required missions "
-                        "at Omega difficulty with Black Laurels tag."
-                    ),
-                    color=0x9B59B6,
+                continue
+            member_chapter = "Unknown"
+            for r in getattr(member, "roles", []):
+                if getattr(r, "name", "") in home_chapters:
+                    member_chapter = r.name
+                    break
+            ann_channel = None
+            try:
+                ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+            except Exception as e:
+                _g.logger.warning(f"Failed to resolve announcement channel for {user_id}: {e}")
+            if ann_channel is None:
+                _g.logger.warning(
+                    f"No announcement channel found for {user_id} {award_type}; role assigned but no announcement sent"
                 )
-                embed.add_field(name="Qualifying AAR Links", value=url_text or "_(none)_", inline=False)
-                embed.set_footer(text="Please audit the qualifying AARs for verification.")
             else:
-                # Standard embed for other challenges
-                ping_content = librarian_mention
-                embed = discord.Embed(
-                    title=f"᛭⋅ Challenge Qualification: {challenge_name} ⋅᛭",
-                    description=f"{member_mention} has met qualification for **{challenge_name}** — please audit relevant AARs.",
-                    color=0xF1C40F,
+                _b("_enqueue_award_announcement")(
+                    str(member.id), award_type, member_chapter, str(ann_channel.id), str(guild.id)
                 )
-                embed.add_field(name="Qualifying AAR Links", value=url_text or "_(none)_", inline=False)
-
-            await librarius_channel.send(content=ping_content, embed=embed)
-            _g.logger.info(f"Sent challenge eligibility notification for {user_id} - {challenge_name}")
-
-            # Small delay to avoid rate limiting
+            _g.logger.info(f"Auto-awarded {challenge_name} to {user_id}")
             await asyncio.sleep(0.5)
 
         except Exception as e:
-            _g.logger.exception(f"Failed to send challenge notification for {user_id} - {challenge_name}: {e}")
+            _g.logger.exception(f"Failed to process challenge notification for {user_id} - {challenge_name}: {e}")
 
 
 @_g.bot.tree.command(name="reconcile_records", description="Reprocess AARs and update the archive.")
@@ -1292,9 +1300,11 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                     except Exception:
                                         waves_for_brother = 0
                                     if difficulty_class == "normal_siege":
-                                        base_points[bid] = 3 * (waves_for_brother // 5)
+                                        n = waves_for_brother // 5
+                                        base_points[bid] = n * (n + 5) // 2
                                     else:
-                                        base_points[bid] = 4 * (waves_for_brother // 5)
+                                        n = waves_for_brother // 5
+                                        base_points[bid] = n * (n + 7) // 2
                                 else:
                                     base_points[bid] = base_difficulty_points
 
@@ -1512,9 +1522,11 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                     except Exception:
                         waves_for_brother = 0
                     if difficulty_class == "normal_siege":
-                        base_points[bid] = 3 * (waves_for_brother // 5)
+                        n = waves_for_brother // 5
+                        base_points[bid] = n * (n + 5) // 2
                     else:
-                        base_points[bid] = 4 * (waves_for_brother // 5)
+                        n = waves_for_brother // 5
+                        base_points[bid] = n * (n + 7) // 2
                 else:
                     # Non-siege: use base difficulty points (before penalties)
                     base_points[bid] = base_difficulty_points
@@ -2219,11 +2231,13 @@ def compute_points_for_op(difficulty_class: str | None, waves: int | None):
     if difficulty_class == "normal_siege":
         if waves is None:
             return 0
-        return 3 * (waves // 5)
+        n = waves // 5
+        return n * (n + 5) // 2
     if difficulty_class == "hard_siege":
         if waves is None:
             return 0
-        return 4 * (waves // 5)
+        n = waves // 5
+        return n * (n + 7) // 2
     if difficulty_class == "omega_ops":
         # Omega operations are fixed-value high-intensity missions
         return 20

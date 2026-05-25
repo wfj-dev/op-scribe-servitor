@@ -224,6 +224,37 @@ def _status_line(entry: dict) -> str:
     return status
 
 
+def _format_verifications_field(entry: dict) -> str:
+    """Return a human-readable verifier list with timestamps for the kill log embed.
+
+    Uses the per-verifier ``verification_log`` if present; falls back to a
+    bare list of vet_ids from ``verifications`` for legacy entries without
+    per-verifier timestamps.
+    """
+    log = entry.get("verification_log") or []
+    if log:
+        lines = []
+        for rec in log:
+            vid = rec.get("vet_id")
+            at = rec.get("at") or ""
+            if not vid:
+                continue
+            try:
+                ts = int(_parse_dt(at).timestamp()) if at else None
+            except Exception:
+                ts = None
+            if ts is not None:
+                lines.append(f"<@{vid}> — <t:{ts}:f>")
+            else:
+                lines.append(f"<@{vid}>")
+        return "\n".join(lines)
+    # Legacy fallback
+    verifications = entry.get("verifications") or []
+    if not verifications:
+        return ""
+    return "\n".join(f"<@{v}>" for v in verifications)
+
+
 def _build_kill_log_embed(entry: dict, guild: Optional[discord.Guild] = None) -> discord.Embed:
     brother_id = entry["brother_id"]
     class_name = entry["class_name"]
@@ -262,6 +293,9 @@ def _build_kill_log_embed(entry: dict, guild: Optional[discord.Guild] = None) ->
         value=_status_line(entry),
         inline=False,
     )
+    verifications_field = _format_verifications_field(entry)
+    if verifications_field:
+        embed.add_field(name="Verifications", value=verifications_field, inline=False)
     embed.set_footer(text=f"Kill Log ID: {entry['kill_log_id']}")
     embed.timestamp = _parse_dt(entry["submitted_at"])
     return embed
@@ -455,6 +489,9 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
                     error_msg = "You have already verified this entry."
                 else:
                     verifications.append(vet_id)
+                    entry.setdefault("verification_log", []).append(
+                        {"vet_id": vet_id, "at": _now_iso()}
+                    )
                     _record_verifier_action(state, vet_id, "verify", kill_log_id)
 
                     newly_confirmed = len(verifications) >= 3
