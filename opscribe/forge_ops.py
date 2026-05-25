@@ -3935,13 +3935,6 @@ def _get_crimson_laurels_announcement(
     return content, embed, award_file
 
 
-# --- Black Laurels role ID (resolved at module level for use in announcement) ---
-# Lazy-imported because constants.py uses star import already.
-
-_BLACK_LAURELS_PING_ROLE_ID = 1429343212421644479
-_CHALLENGE_PING_ROLE_ID = 1429281421931057283  # Watch Command (for Pipehitter / Crux)
-
-
 def _build_challenge_award_embed(
     *,
     member: discord.Member,
@@ -4034,7 +4027,7 @@ def _get_sok_g_pipehitter_announcement(
         rank_lines=SOK_G_PIPEHITTER_RANK_LINES,
         award_label="SOK-G: Pipehitter",
         award_image="award_sok_g_pipehitter.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4056,7 +4049,7 @@ def _get_distinguished_pipehitter_announcement(
         rank_lines=DISTINGUISHED_PIPEHITTER_RANK_LINES,
         award_label="Distinguished SOK-G: Pipehitter",
         award_image="award_distinguished_pipehitter.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4078,7 +4071,7 @@ def _get_black_laurels_announcement(
         rank_lines=BLACK_LAURELS_RANK_LINES,
         award_label="Black Laurels",
         award_image="award_black_laurels.png",
-        ping_role_id=_BLACK_LAURELS_PING_ROLE_ID,
+        ping_role_id=BLACK_LAURELS_PING_ROLE_ID,
     )
 
 
@@ -4100,7 +4093,7 @@ def _get_crux_terminatus_announcement(
         rank_lines=CRUX_TERMINATUS_RANK_LINES,
         award_label="Crux Terminatus",
         award_image="award_crux_terminatus.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4122,7 +4115,7 @@ def _get_kadaku_campaign_announcement(
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Kadaku Campaign Medal",
         award_image="award_kadaku_campaign_medal.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4144,7 +4137,7 @@ def _get_black_reef_campaign_announcement(
         rank_lines=BLACK_REEF_CAMPAIGN_RANK_LINES,
         award_label="Black Reef Campaign Medal",
         award_image="award_black_reef_campaign_medal.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4166,7 +4159,7 @@ def _get_distinguished_black_reef_announcement(
         rank_lines=DISTINGUISHED_BLACK_REEF_RANK_LINES,
         award_label="Distinguished Black Reef Campaign Medal",
         award_image="award_distinguished_black_reef.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4188,7 +4181,7 @@ def _get_order_omega_announcement(
         rank_lines=ORDER_OMEGA_RANK_LINES,
         award_label="The Order Omega",
         award_image="award_order_omega.png",
-        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 

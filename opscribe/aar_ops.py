@@ -92,10 +92,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     tuples for newly qualified members. Only returns each challenge once per
     member (won't notify again).
 
-    For challenges where role_id is non-zero, the bot will auto-assign the
-    role and enqueue a public award announcement. For challenges where
-    role_id is 0 (no auto-assign mapping yet), the librarian staff embed is
-    sent for manual handling.
+    The bot only returns notifications that include a valid role_id and
+    award_type for auto-assignment and public award announcement dispatch.
     """
     notifications = []
 
@@ -310,7 +308,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
 
             # === Black Laurels tracking (auto-award) ===
             # Track unique Black Laurels missions; auto-assign Black Laurels role once all 9 unique missions completed
-            if mission_name in BLACK_LAURELS_REQUIRED_MISSIONS:
+            if black_laurels and mission_name in BLACK_LAURELS_REQUIRED_MISSIONS:
                 if "black_laurels" not in user_progress:
                     user_progress["black_laurels"] = []
                 existing_missions = {m["mission"] for m in user_progress["black_laurels"]}
@@ -499,7 +497,7 @@ async def _send_challenge_eligibility_notifications(
 
     home_chapters = _b("HOME_CHAPTERS") or []
 
-    for user_id, challenge_name, role_id, award_type, aar_urls in notifications:
+    for user_id, challenge_name, role_id, award_type, _aar_urls in notifications:
         try:
             member = guild.get_member(int(user_id))
             if not (role_id and award_type and member is not None):
