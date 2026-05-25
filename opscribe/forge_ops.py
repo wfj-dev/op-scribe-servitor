@@ -3935,6 +3935,263 @@ def _get_crimson_laurels_announcement(
     return content, embed, award_file
 
 
+# --- Black Laurels role ID (resolved at module level for use in announcement) ---
+# Lazy-imported because constants.py uses star import already.
+
+_BLACK_LAURELS_PING_ROLE_ID = 1429343212421644479
+_CHALLENGE_PING_ROLE_ID = 1429281421931057283  # Watch Command (for Pipehitter / Crux)
+
+
+def _build_challenge_award_embed(
+    *,
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+    title: str,
+    color: int,
+    openings: List[str],
+    proclamations: List[str],
+    chapter_lines: dict,
+    award_label: str,
+    award_image: Optional[str],
+    ping_role_id: int,
+    rank_lines: Optional[dict] = None,
+    award_emoji_name: Optional[str] = None,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Shared builder for the challenge award announcements."""
+    rank_honorific, display_name, member_title = _get_bearer_rank_and_title(member)
+    chapter_emoji = _get_emoji_by_name(guild, member_chapter) if member_chapter != "Unknown" else None
+    deathwatch_emoji = _get_emoji_by_name(guild, "Deathwatch")
+    award_emoji = _get_emoji_by_name(guild, award_emoji_name) if award_emoji_name else None
+
+    # Detect member's primary rank (highest-precedence role in RANK_HONORIFICS order).
+    role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+    member_rank: Optional[str] = None
+    for rank in RANK_HONORIFICS:
+        if rank in role_names:
+            member_rank = rank
+            break
+
+    opening = random.choice(openings).format(name=display_name)
+    proclamation = random.choice(proclamations)
+    chapter_coda = chapter_lines.get(member_chapter, "") if chapter_lines else ""
+    rank_coda = rank_lines.get(member_rank, "") if (rank_lines and member_rank) else ""
+
+    dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
+    embed = discord.Embed(
+        title=f"{dw_str}᛭⋅ {title} ⋅᛭{dw_str}",
+        description="*⌾ Watch Fortress Jericho ⌾*",
+        color=color,
+    )
+
+    proclamation_text = f"{opening}\n\n{proclamation}"
+    if chapter_coda:
+        proclamation_text += f"\n\n*{chapter_coda}*"
+    if rank_coda:
+        proclamation_text += f"\n\n*{rank_coda}*"
+    embed.add_field(name="▸ Watch's Proclamation", value=proclamation_text, inline=False)
+
+    rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    bearer_value = f"{rank_prefix}**{rank_honorific} {display_name}**"
+    if member_title:
+        bearer_value += f"\n*{member_title}*"
+    if member_chapter != "Unknown":
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+
+    award_prefix = f"{award_emoji} " if award_emoji else "🎖️ "
+    embed.add_field(name="▸ Award", value=f"{award_prefix}**{award_label}**", inline=True)
+
+    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    award_file = _get_award_image(award_image) if award_image else None
+    if award_file:
+        embed.set_image(url=f"attachment://{award_image}")
+
+    ping_role = guild.get_role(ping_role_id)
+    ping_mention = ping_role.mention if ping_role else f"<@&{ping_role_id}>"
+    content = f"{ping_mention} {member.mention}"
+    return content, embed, award_file
+
+
+def _get_sok_g_pipehitter_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful SOK-G: Pipehitter award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="SOK-G: PIPEHITTER",
+        color=0x607D8B,
+        openings=SOK_G_PIPEHITTER_OPENINGS,
+        proclamations=SOK_G_PIPEHITTER_PROCLAMATIONS,
+        chapter_lines=SOK_G_PIPEHITTER_CHAPTER_LINES,
+        rank_lines=SOK_G_PIPEHITTER_RANK_LINES,
+        award_label="SOK-G: Pipehitter",
+        award_image="award_sok_g_pipehitter.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_distinguished_pipehitter_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Distinguished SOK-G: Pipehitter award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED SOK-G: PIPEHITTER",
+        color=0x455A64,
+        openings=DISTINGUISHED_PIPEHITTER_OPENINGS,
+        proclamations=DISTINGUISHED_PIPEHITTER_PROCLAMATIONS,
+        chapter_lines=DISTINGUISHED_PIPEHITTER_CHAPTER_LINES,
+        rank_lines=DISTINGUISHED_PIPEHITTER_RANK_LINES,
+        award_label="Distinguished SOK-G: Pipehitter",
+        award_image="award_distinguished_pipehitter.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_black_laurels_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Black Laurels award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="BLACK LAURELS",
+        color=0x1C2833,
+        openings=BLACK_LAURELS_OPENINGS,
+        proclamations=BLACK_LAURELS_PROCLAMATIONS,
+        chapter_lines=BLACK_LAURELS_CHAPTER_LINES,
+        rank_lines=BLACK_LAURELS_RANK_LINES,
+        award_label="Black Laurels",
+        award_image="award_black_laurels.png",
+        ping_role_id=_BLACK_LAURELS_PING_ROLE_ID,
+    )
+
+
+def _get_crux_terminatus_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Crux Terminatus award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="CRUX TERMINATUS",
+        color=0xC0392B,
+        openings=CRUX_TERMINATUS_OPENINGS,
+        proclamations=CRUX_TERMINATUS_PROCLAMATIONS,
+        chapter_lines=CRUX_TERMINATUS_CHAPTER_LINES,
+        rank_lines=CRUX_TERMINATUS_RANK_LINES,
+        award_label="Crux Terminatus",
+        award_image="award_crux_terminatus.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_kadaku_campaign_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Kadaku Campaign Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="KADAKU CAMPAIGN MEDAL",
+        color=0x6B5B3A,
+        openings=KADAKU_CAMPAIGN_OPENINGS,
+        proclamations=KADAKU_CAMPAIGN_PROCLAMATIONS,
+        chapter_lines=KADAKU_CAMPAIGN_CHAPTER_LINES,
+        rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
+        award_label="Kadaku Campaign Medal",
+        award_image="award_kadaku_campaign_medal.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_black_reef_campaign_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Black Reef Campaign Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="BLACK REEF CAMPAIGN MEDAL",
+        color=0x2C3E50,
+        openings=BLACK_REEF_CAMPAIGN_OPENINGS,
+        proclamations=BLACK_REEF_CAMPAIGN_PROCLAMATIONS,
+        chapter_lines=BLACK_REEF_CAMPAIGN_CHAPTER_LINES,
+        rank_lines=BLACK_REEF_CAMPAIGN_RANK_LINES,
+        award_label="Black Reef Campaign Medal",
+        award_image="award_black_reef_campaign_medal.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_distinguished_black_reef_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Distinguished Black Reef Campaign Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED BLACK REEF CAMPAIGN MEDAL",
+        color=0x1B2631,
+        openings=DISTINGUISHED_BLACK_REEF_OPENINGS,
+        proclamations=DISTINGUISHED_BLACK_REEF_PROCLAMATIONS,
+        chapter_lines=DISTINGUISHED_BLACK_REEF_CHAPTER_LINES,
+        rank_lines=DISTINGUISHED_BLACK_REEF_RANK_LINES,
+        award_label="Distinguished Black Reef Campaign Medal",
+        award_image="award_distinguished_black_reef.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
+def _get_order_omega_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Order Omega announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="THE ORDER OMEGA",
+        color=0x6C3483,
+        openings=ORDER_OMEGA_OPENINGS,
+        proclamations=ORDER_OMEGA_PROCLAMATIONS,
+        chapter_lines=ORDER_OMEGA_CHAPTER_LINES,
+        rank_lines=ORDER_OMEGA_RANK_LINES,
+        award_label="The Order Omega",
+        award_image="award_order_omega.png",
+        ping_role_id=_CHALLENGE_PING_ROLE_ID,
+    )
+
+
 def _compute_member_service_studs(member: discord.Member) -> int:
     """Compute the number of service studs a member has earned.
 
@@ -7837,6 +8094,14 @@ __all__ = [
     "_get_ardent_raider_announcement",
     "_get_apothecarion_medal_announcement",
     "_get_crimson_laurels_announcement",
+    "_get_sok_g_pipehitter_announcement",
+    "_get_distinguished_pipehitter_announcement",
+    "_get_black_laurels_announcement",
+    "_get_crux_terminatus_announcement",
+    "_get_kadaku_campaign_announcement",
+    "_get_black_reef_campaign_announcement",
+    "_get_distinguished_black_reef_announcement",
+    "_get_order_omega_announcement",
     "_get_member_rank_title",
     "_compute_member_service_studs",
     "_get_bearer_rank_and_title",
