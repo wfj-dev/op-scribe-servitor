@@ -3664,6 +3664,58 @@ async def evaluate_librarian_pressure(guild: discord.Guild):
         if sanction_key != "sanctioned":
             demand += _get_intensive_cleanse_cost(sanction_key, warp_corrupted)
 
+    # SIR-style background transmission: compound probability that at least one
+    # clean brother is at risk of warp infection from the infected population.
+    spread_chances = _get_spread_chances()
+    p_no_infection: float = 1.0
+    infected_uid_set: set = set()
+
+    for uid_str, raw in (data or {}).items():
+        try:
+            uid = int(uid_str)
+        except Exception:
+            continue
+        if uid in lib_id_set:
+            continue
+        member = guild.get_member(uid)
+        if member is None:
+            continue
+        if is_active_fn and not is_active_fn(member):
+            continue
+        warp_corrupted = bool((raw or {}).get("warp_corrupted", False))
+        infection_state = (raw or {}).get("infection_state")
+        if warp_corrupted:
+            chance = 1.0
+        elif infection_state in spread_chances:
+            chance = spread_chances[infection_state]
+        else:
+            continue  # sanctioned or unknown — no spread contribution
+        p_no_infection *= (1.0 - chance)
+        infected_uid_set.add(uid)
+
+    try:
+        at_risk_threshold = float(_warp_config().get("at_risk_threshold") or 1.0)
+    except Exception:
+        at_risk_threshold = 1.0
+
+    # Compare via p_no_infection <= (1 - threshold) to avoid floating-point
+    # precision loss from computing (1 - p_no_infection) before comparison.
+    if infected_uid_set and p_no_infection <= (1.0 - at_risk_threshold):
+        background_prob = 1.0 - p_no_infection
+        clean_active_count = 0
+        for member in guild.members:
+            if member.bot:
+                continue
+            uid = int(member.id)
+            if uid in lib_id_set:
+                continue
+            if uid in infected_uid_set:
+                continue
+            if is_active_fn and not is_active_fn(member):
+                continue
+            clean_active_count += 1
+        demand += clean_active_count * background_prob * 2.0
+
     # Supply: sum of available warding charges across capable Librarians.
     supply = 0
     for lib_id in librarian_ids:

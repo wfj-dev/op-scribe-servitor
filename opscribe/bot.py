@@ -797,8 +797,10 @@ HOME_CHAPTERS = [
     "Hawk Lords",
     "Hospitallers",
     "Imperial Fists",
+    "Imperius Reavers",
     "Iron Hands",
     "Iron Hounds",
+    "Iron Lords",
     "Iron Ravens",
     "Knights of the Raven",
     "Lamenters",
@@ -817,8 +819,10 @@ HOME_CHAPTERS = [
     "Storm Giants",
     "Tempestuous Angels",
     "The Drakes",
+    "Tome Keepers",
     "Ultramarines",
     "White Scars",
+    "Wolfspear",
     "Black Shield",
 ]
 

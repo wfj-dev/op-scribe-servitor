@@ -90,6 +90,7 @@ def _make_promotion_fixture():
     black_laurels_channel = MagicMock(send=AsyncMock())
     oathsworn_channel = MagicMock(send=AsyncMock())
     guild = SimpleNamespace(
+        id=12345,
         roles=all_roles,
         members=[member],
         get_role=MagicMock(side_effect=lambda rid: by_id.get(rid)),
