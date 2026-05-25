@@ -36,10 +36,12 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
     "Hospitallers": "Mercy and wrath unite—your armor shields the weak and smites the wicked.",
     "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
+    "Imperius Reavers": "The Eastern Fringe demands warriors without mercy—your armor carries the Stormbringers' unyielding defiance to every xenos threat.",
     "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
     "Iron Ravens": "Silent shadow, tempered iron—your armor moves unseen and strikes with precision.",
     "Iron Snakes": "The waters of Ithaka anoint your armor; as the Snakes strike, so shall you.",
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
+    "Iron Lords": "Iron of vigil, iron of grip—your armor upholds the Iron Watch; the Grendl Stars hold because you do.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
     "Lamenters": "Though cursed, your armor shall not fail—for those we cherish, we die.",
     "Marines Errant": "The stars are your homeworld, brother—your armor carries Dorn's quest eternal.",
@@ -57,8 +59,10 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Storm Giants": "The giant's strength flows through your armor; towering might breaks all foes.",
     "Tempestuous Angels": "Vulkan's altruism lives on—your armor shields the defenseless against the storm.",
     "The Drakes": "Fire cleanses all—your armor emerges purified and ready.",
+    "Tome Keepers": "Every battle is another chapter written upon these plates—your armor bears the accumulated knowledge of Istrouma's aeons.",
     "Ultramarines": "The Codex guides us; your armor upholds Guilliman's legacy.",
     "White Scars": "The wind of Chogoris propels your armor to swift victory.",
+    "Wolfspear": "Your oaths are carved into bolt and plate alike—the Dark Terror strides forward armored in Fenris's iron will.",
     "Black Shield": "Your past is forgotten; your armor serves only the Long Watch.",
 }
 
@@ -333,6 +337,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "The Gorgon would approve—self-sufficiency in all things.",
         "Logic dictates: who better to bless my iron than I?",
     ],
+    "Iron Lords": [
+        "The Iron Hands taught self-sufficiency; the Iron Lords have held that vigil for three thousand years.",
+        "My vigil demands I trust only iron-hard certainty—my own hands upon my own warplate.",
+        "Iron of vigil, iron of grip. Who better than I to bless what I alone have held?",
+    ],
     "Iron Snakes": [
         "The Wyrm-hunter tends his own lance—none know its balance better.",
         "Ithaka's sons know solitude upon the waves; I renew my own armor.",
@@ -347,6 +356,11 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "Dorn built his walls alone when needed. So do I.",
         "Stone and iron bend to my will; I need no other hand.",
         "The Praetorian taught self-reliance. I honor that lesson.",
+    ],
+    "Imperius Reavers": [
+        "Guilliman's teachings reach the Eastern Fringe—self-reliance in the void is not deviation, it is doctrine.",
+        "The Vidar Sector does not wait for aid, and I do not wait for another's hand upon my warplate.",
+        "The Reavers seize what they require; I claim this blessing with my own hands.",
     ],
     "Space Wolves": [
         "The lone wolf maintains his own fangs.",
@@ -393,10 +407,20 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "Guilliman's wisdom: know thyself, tend thyself.",
         "Macragge's sons are trained to be complete. I am complete.",
     ],
+    "Tome Keepers": [
+        "I have made detailed notes on this rite; the methodology is my own and the execution shall be as well.",
+        "My personal tome records the blessing I now perform—what is written is what I do.",
+        "The sons of Istrouma document everything; I document this rite as I conduct it, by my own hand.",
+    ],
     "White Scars": [
         "The lone rider tends his own mount on the endless steppe.",
         "Speed demands self-reliance—no time to wait for others.",
         "The Khan rode alone when needed. So do I bless alone.",
+    ],
+    "Wolfspear": [
+        "The lone wolf in the void must maintain its own fangs—no pack at hand, the rite is mine.",
+        "My oaths are carved into this warplate; who better to renew the blessing than the one who swore them?",
+        "Grimwolves trust no hearth but the one they carry—I tend my own armor in the dark between stars.",
     ],
 }
 
@@ -524,6 +548,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Stone and iron—your service stands unbreakable.",
         "The walls of Terra themselves honor such marks.",
     ],
+    "Imperius Reavers": [
+        "Each stud marks another enemy of the Eastern Fringe denied their victory—the Stormbringers do not tire.",
+        "Praedis Zeta stands because the Reavers endure; your marks honor every campaign fought on the Fringe's edge.",
+        "The alien and the Daemon test the Vidar Sector without end—your service marks prove you have answered them, blow for blow.",
+    ],
     "Iron Hands": [
         "The flesh may be weak, but your service is steel.",
         "Your studs are data-points of unwavering duty.",
@@ -533,6 +562,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Relentless as the hunt—your studs mark each pursuit to the end.",
         "Orinus breeds no weakness; your marks prove Guilliman's lineage.",
         "The pack honors your enduring service until every foe is slain.",
+    ],
+    "Iron Lords": [
+        "Each stud marks another span of vigil in the Iron Grip—the Barghesi do not sleep, and neither do you.",
+        "The Holdfasts of the Grendl Stars are built upon such endurance; your marks honor three thousand years of unyielding watch.",
+        "The Iron Lords count service not in glory but in years of steel-willed duty—your studs are that count made manifest.",
     ],
     "Iron Ravens": [
         "Silent as shadow, enduring as iron—your studs mark both cunning and strength.",
@@ -629,6 +663,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Each stud forged in the dragon's flame.",
         "Your marks burn bright with dedication.",
     ],
+    "Tome Keepers": [
+        "Each stud is another chapter written in service—the Tome Keepers record every mark upon the flesh as they do every mark upon the page.",
+        "The Closing of the Book shall come for all—your studs proclaim that your chapters are still being written.",
+        "The scholars of Istrouma lived short lives so that knowledge endures; your marks honor every Keeper who could not live to earn theirs.",
+    ],
     "Ultramarines": [
         "Guilliman's Codex approves such measured service.",
         "Theoretical and practical unite in your studs.",
@@ -638,6 +677,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The wind of Chogoris carries word of your marks.",
         "Swift as lightning, yet your service endures.",
         "Each stud earned on the endless hunt.",
+    ],
+    "Wolfspear": [
+        "Each stud marks another hunt completed in the void—the pack's oaths are carved deeper into warplate and bone alike.",
+        "Carved like runes upon ancient iron—your marks are oaths as much as honors, binding you to every packmate who fell before.",
+        "The Dark Terror earns its name one mission at a time; your studs record the tally of prey taken and oaths kept.",
     ],
     "Black Shield": [
         "Your past forgotten, but your service remembered forever.",
@@ -998,8 +1042,10 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
     "Hawk Lords": "Swift to engage, swift to succeed—the Hawk Lords' speed of service earns swift recognition.",
     "Hospitallers": "Healer of the broken and breaker of the wicked—this veteran's service is beyond reproach.",
     "Imperial Fists": "Dorn's stone endures what others cannot—this veteran is proof of that heritage.",
+    "Imperius Reavers": "The Eastern Fringe is a crucible without equal—this veteran emerged from it already proven before the Long Watch ever called them.",
     "Iron Hands": "The flesh proved adequate; the service proved exceptional—the Iron Hands would approve.",
     "Iron Hounds": "The hunt does not end until every quarry falls—this veteran knows no other way.",
+    "Iron Lords": "The Iron Grip holds because warriors like this hold it—the Grendl Stars remain contained by such iron resolve.",
     "Iron Ravens": "In shadow and in silence, this warrior's service has spoken loud enough for all to hear.",
     "Knights of the Raven": "Patient, cunning, and proven—the Raven's own shadow falls upon those who earn this mark.",
     "Lamenters": "Cursed they may be, but this warrior's veteran status is a blessing none can deny.",
@@ -1018,8 +1064,10 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
     "Storm Giants": "Towering in deed as in stature—this veteran's service befits the Giant's legend.",
     "Tempestuous Angels": "Drossmire's fire tempered this warrior—and their veteran's mark honors every soul they protected.",
     "The Drakes": "From the dragon's flame, a veteran emerges—scorched, tempered, and unbreakable.",
+    "Tome Keepers": "The Tome Keepers would inscribe this warrior's deeds in the Chapter chronicles—a veteran whose book is far from closed.",
     "Ultramarines": "The Codex describes the ideal warrior; this veteran has proven it more than theory.",
     "White Scars": "The steppe wind does not remember the fallen; this veteran ensures the Watch will.",
+    "Wolfspear": "The Dark Terror earns its name in the darkness between stars—this veteran has hunted there long enough to know every shadow by heart.",
     "Black Shield": "No lineage to claim—only deeds, and these deeds stand among the finest the Watch has witnessed.",
 }
 
@@ -1047,8 +1095,10 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Hawk Lords": "The raptor's eye misses nothing—and this warrior has returned with everything.",
     "Hospitallers": "Those who tend the wounded learn much; those who fight their enemies learn more—this warrior does both.",
     "Imperial Fists": "Every fortress requires supply; every war requires intelligence—Dorn built both into his doctrine.",
+    "Imperius Reavers": "The Stormbringers of Praedis Zeta know every trick of the alien—this warrior has turned those tricks against the enemy and brought their secrets home.",
     "Iron Hands": "Data recovered, artefacts secured, the machine-spirit satisfied—the Iron Hands could ask no more.",
     "Iron Hounds": "The hound retrieves what the hunter needs—and this warrior retrieves it faster than any.",
+    "Iron Lords": "The Iron Lords study every xenos foe with cold precision and absolute hatred—this warrior's intelligence serves the Watch's vigil as the Iron Grip serves the Grendl Stars.",
     "Iron Ravens": "Silent, precise, and laden with recovered intelligence—the Iron Raven's gift made manifest.",
     "Knights of the Raven": "The strategist's most valuable weapon is information—this warrior has delivered it in abundance.",
     "Lamenters": "Even the cursed may shine brightly in service—and this warrior's light is undimmed.",
@@ -1067,8 +1117,10 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Storm Giants": "The giant's grasp is wide—and this warrior has filled it with everything the Watch requires.",
     "Tempestuous Angels": "To protect the people, you must first be armed—this warrior ensures neither ever fails.",
     "The Drakes": "Fire reveals and destroys—this warrior knows which deserves which.",
+    "Tome Keepers": "The sons of Istrouma know that knowledge is the first weapon and the last defense—this warrior has stacked both arsenals high.",
     "Ultramarines": "Theoretical and practical alignment—the Codex approves this exceptional service to the Watch.",
     "White Scars": "The swift raid yields the most—and none raid swifter than the sons of Chogoris.",
+    "Wolfspear": "The Wolfspear track their prey by every trace left behind—and this warrior retrieved the most valuable trace of all: the enemy's own secrets.",
     "Black Shield": "No chapter's legacy, only deeds—and this warrior's deeds fill the Watch's arsenal and its archives alike.",
 }
 
@@ -1096,8 +1148,10 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Hawk Lords": "The raptor's nest is preserved—this warrior ensures the Lords fly on for another generation.",
     "Hospitallers": "The healer who heals the Chapter itself—there is no higher calling in the Apothecarion's tradition.",
     "Imperial Fists": "Dorn's legacy is in the gene-seed—this warrior holds it against all who would see it lost.",
+    "Imperius Reavers": "The Reavers' line has stood the Eastern Fringe for millennia—this warrior ensures it stands for millennia more.",
     "Iron Hands": "The machine may fail; the flesh may fail; but the gene-seed must not—this warrior ensures it does not.",
     "Iron Hounds": "The pack's lineage endures through this warrior's service—the hounds run on.",
+    "Iron Lords": "Three thousand years of vigil over the Grendl Stars—the Iron Lords' line endures because warriors like this refuse to let it falter.",
     "Iron Ravens": "In darkness, the genetic legacy is guarded—this warrior sees to it without fail.",
     "Knights of the Raven": "The Chapter's continuity depends on those who guard the gene-seed—this warrior is indispensable.",
     "Lamenters": "The cursed Chapter endures, stud by sacred stud—this warrior refuses to let the Lamenters fall silent.",
@@ -1116,8 +1170,10 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Storm Giants": "The giant's bloodline is a legacy worth defending—and this warrior defends it every time blades are drawn.",
     "Tempestuous Angels": "To protect is to serve—and no service is more protective than this warrior's sacred recovery.",
     "The Drakes": "Fire consumes, but this warrior preserves—proof that the Drake's soul is more than mere destruction.",
+    "Tome Keepers": "When a Tome Keeper's book is closed, the gene-seed must be recovered—this warrior honors that sacred rite and ensures every future chapter can be written.",
     "Ultramarines": "The sons of Guilliman must endure—and this warrior has ensured it, again and again and again.",
     "White Scars": "The Great Khan's blood must run on—this warrior ensures the steppe wind carries his legacy forward.",
+    "Wolfspear": "The Wolfspear swear oaths upon the First-slain; this warrior ensures the pack's bloodline endures to honor every oath sworn by those who fell before the Chapter was named.",
     "Black Shield": "Though their own past is gone, this warrior preserves the future of every brother who falls beside them.",
 }
 
@@ -1145,8 +1201,10 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Hawk Lords": "The raptor circles over a thousand campaigns—and always returns with victory.",
     "Hospitallers": "Mercy and wrath, a thousand times over—the Hospitaller's creed written in the Watch's own annals.",
     "Imperial Fists": "Dorn built walls to last eternity—this warrior's legend is equally unyielding, equally eternal.",
+    "Imperius Reavers": "The Vidar Sector's long war against alien and Daemon forges legends—and this warrior has become the greatest the Eastern Fringe has ever witnessed.",
     "Iron Hands": "A thousand engagements calculated and executed—the Iron Hands' doctrine cannot fault a single one.",
     "Iron Hounds": "A thousand quarries pursued; a thousand quarries taken—the Iron Hound never loses the scent.",
+    "Iron Lords": "Iron of vigil, iron of grip—and this warrior's legend is the strongest link in the Iron Chain that has held the Grendl Stars for three thousand years.",
     "Iron Ravens": "From shadow to legend, without a sound—the Ravens have always known this warrior's worth.",
     "Knights of the Raven": "Ten thousand gambits waged, a thousand battles won—the Knight's board has never looked more assured.",
     "Lamenters": "The curse has not broken this warrior. The Long Watch could not be more certain it never will.",
@@ -1165,8 +1223,10 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Storm Giants": "The giant's legend stands taller than any mountain—and this warrior has earned every inch of that height.",
     "Tempestuous Angels": "A thousand souls protected, a thousand enemies made to pay for threatening them—the Tempestuous Angels endure.",
     "The Drakes": "Fire without end—this warrior has burned through a thousand battles and emerged legendary and unextinguished.",
+    "Tome Keepers": "The chronicles of Istrouma have never carried a longer entry—this warrior's deeds fill volumes that will outlast the stars themselves.",
     "Ultramarines": "The Codex could not have theorized a more exemplary warrior—the practical has exceeded every theoretical.",
     "White Scars": "A thousand hunts at full gallop, a thousand kills—the Great Khan rides beside this warrior's legend.",
+    "Wolfspear": "From the darkest reaches of the Imperium Nihilus, a legend returns—oaths carved into every plate, fulfilled in every engagement, a thousand times over.",
     "Black Shield": "No name, no lineage, no past—but a legend the Long Watch itself will carry forward, forever.",
 }
 

@@ -36,6 +36,7 @@ def test_parse_and_validate_basic_stratagem():
     content = (
         "++ MISSION REPORT ++\n"
         "Mission: Inferno\n"
+        "Rank: A\n"
         f"Difficulty: <@&{r1.id}>\n"
         f"Gene-seed: <@{u1.id}>\n"
         "Armory Data: 2\n"
@@ -73,6 +74,7 @@ def _make_initiation_trial_message(include_watch_command: bool):
     content = (
         "++ MISSION REPORT ++\n"
         "Mission: Inferno\n"
+        "Rank: B\n"
         f"Difficulty: <@&{difficulty_role.id}>\n"
         f"<@&{INITIATION_TRIAL_ROLE_ID}> <@{initiate.id}>\n"
         f"{watch_command_line}\n"
@@ -130,6 +132,7 @@ def _make_omega_message(include_kia_line: bool, kia_value: int = 0):
     content = (
         "++ MISSION REPORT ++\n"
         "Mission: Terminus Protocol\n"
+        "Rank: C\n"
         f"Difficulty: <@&{omega_role.id}>\n"
         f"Gene-seed: <@{u1.id}>\n"
         "Armory Data: 3\n"

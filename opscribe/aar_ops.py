@@ -2258,6 +2258,7 @@ def is_aar_message(message: discord.Message):
         or "++MISSION REPORT++" in content
         or "++ ᴍɪѕѕɪᴏɴ ʀᴇᴘᴏʀᴛ ++" in content
         or "++ᴍɪѕѕɪᴏɴ ʀᴇᴘᴏʀᴛ++" in content
+        or "++ 𝐌𝐈𝐒𝐒𝐈𝐎𝐍 𝐑𝐄𝐏𝐎𝐑𝐓 ++" in content
     )
 
 
@@ -2310,6 +2311,8 @@ def parse_aar(message: discord.Message):
     pipehitter_mentioned = False
     # Watch Command role mention (required for Initiation Trials)
     watch_command_mentioned = False
+    # Mission rank (A/B/C/D)
+    rank = None
 
     brothers_start_idx = None
 
@@ -2317,7 +2320,10 @@ def parse_aar(message: discord.Message):
         line = raw_line.strip()
         lower = line.lower()
 
-        if lower.startswith("mission:"):
+        if lower.startswith("rank:"):
+            rank = line.split(":", 1)[1].strip().upper()
+
+        elif lower.startswith("mission:"):
             mission = line.split(":", 1)[1].strip()
             # Check if Black Laurels is in mission line (role ID or resolved name)
             if f"<@&{BLACK_LAURELS_ROLE_ID}>" in mission or (
@@ -2585,7 +2591,11 @@ def parse_aar(message: discord.Message):
     if brothers_start_idx is not None:
         for raw_line in lines[brothers_start_idx:]:
             line = raw_line.strip()
-            if "++ end of report ++" in line.lower() or "ᴇɴᴅ ᴏғ ʀᴇᴘᴏʀᴛ" in line:
+            if (
+                "++ end of report ++" in line.lower()
+                or "ᴇɴᴅ ᴏғ ʀᴇᴘᴏʀᴛ" in line
+                or "++ 𝐄𝐍𝐃 𝐎𝐅 𝐑𝐄𝐏𝐎𝐑𝐓 ++" in line
+            ):
                 break
             if not line:
                 continue
@@ -2665,6 +2675,8 @@ def parse_aar(message: discord.Message):
         # ID of the member who posted the AAR (for verifier tier bonus); may be
         # absent when message stubs (e.g. in unit tests) lack an author.
         "submitter_id": _submitter_id,
+        # Mission rank (A/B/C/D)
+        "rank": rank,
     }
 
 
@@ -2686,6 +2698,14 @@ def validate_aar(record: dict):
     brothers = record.get("brother_ids") or []
     gene_status = record.get("gene_seed_status")
     gene_carrier = record.get("gene_seed_carrier_id")
+    rank = record.get("rank")
+
+    # 0) Rank required and must be A, B, C, or D — only when a mission is present
+    if mission:
+        if not rank:
+            errors.append("Rank is missing (line starting with 'Rank:').")
+        elif rank not in ("A", "B", "C", "D"):
+            errors.append(f"Rank '{rank}' is not valid; must be A, B, C, or D.")
 
     # 1) Mission required (except Siege templates where Mission may be omitted)
     dlower = (record.get("difficulty") or "").lower()
