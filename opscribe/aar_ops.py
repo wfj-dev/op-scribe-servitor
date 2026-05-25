@@ -343,8 +343,26 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and "crux_terminatus" not in notified_challenges
                     and not discord.utils.get(member.roles, id=CRUX_TERMINATUS_ROLE_ID)
                 ):
-                    # Gather AAR URLs for Black Laurels missions (Rank A audit)
-                    aar_urls = [m["message_url"] for m in user_progress.get("crux_bl_aars", []) if m["message_url"]]
+                    # Gather AAR URLs for Black Laurels missions (Rank A audit).
+                    # The pre-built crux_bl_aars list only captures AARs processed
+                    # after this tracking was added.  Fall back to a live datastore
+                    # scan so that historical records with message_url are included.
+                    aar_url_set = {
+                        m["message_url"]
+                        for m in user_progress.get("crux_bl_aars", [])
+                        if m.get("message_url")
+                    }
+                    if _g.DATASTORE:
+                        for _rec in _g.DATASTORE.iter_records():
+                            _url = _rec.get("message_url")
+                            if not _url:
+                                continue
+                            _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
+                            if not _bl:
+                                continue
+                            if user_id_str in [str(b) for b in (_rec.get("brother_ids") or [])]:
+                                aar_url_set.add(_url)
+                    aar_urls = sorted(aar_url_set)
                     notifications.append((user_id_str, "Crux Terminatus", aar_urls))
                     notified_challenges.append("crux_terminatus")
 
@@ -479,7 +497,7 @@ async def _send_challenge_eligibility_notifications(
                 )
                 embed.add_field(
                     name="❓ Manual Verification Required",
-                    value="Rank A or higher extermination (highest difficulty requirement)",
+                    value="Rank A extermination (highest difficulty requirement)",
                     inline=False,
                 )
                 embed.add_field(name="Relevant Black Laurels AAR Links", value=url_text or "_(none)_", inline=False)
