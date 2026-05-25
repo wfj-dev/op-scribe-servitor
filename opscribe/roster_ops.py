@@ -1777,6 +1777,14 @@ _AWARD_DISPATCH_FN_MAP = {
     "ardent_raider": "_get_ardent_raider_announcement",
     "apothecarion_medal": "_get_apothecarion_medal_announcement",
     "crimson_laurels": "_get_crimson_laurels_announcement",
+    "sok_g_pipehitter": "_get_sok_g_pipehitter_announcement",
+    "distinguished_pipehitter": "_get_distinguished_pipehitter_announcement",
+    "black_laurels": "_get_black_laurels_announcement",
+    "crux_terminatus": "_get_crux_terminatus_announcement",
+    "kadaku_campaign_medal": "_get_kadaku_campaign_announcement",
+    "black_reef_campaign_medal": "_get_black_reef_campaign_announcement",
+    "distinguished_black_reef_campaign_medal": "_get_distinguished_black_reef_announcement",
+    "the_order_omega": "_get_order_omega_announcement",
 }
 
 
