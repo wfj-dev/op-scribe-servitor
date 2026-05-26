@@ -349,7 +349,7 @@ def _build_completion_embed(brother_id: str, class_name: str) -> discord.Embed:
     return embed
 
 
-def _build_reminder_embed(stale_entries: list[dict]) -> discord.Embed:
+def _build_reminder_embed(stale_entries: list[dict], guild_id: int) -> discord.Embed:
     embed = discord.Embed(
         title="📋 Kill Log — Pending Verification",
         description=(
@@ -361,10 +361,20 @@ def _build_reminder_embed(stale_entries: list[dict]) -> discord.Embed:
     )
     for entry in stale_entries[:10]:  # cap at 10 lines
         ts = int(_parse_dt(entry["submitted_at"]).timestamp())
+        embed_msg_id = entry.get("embed_message_id")
+        if embed_msg_id:
+            link = (
+                f"https://discord.com/channels/{guild_id}/"
+                f"{KILL_LOG_CHANNEL_ID}/{embed_msg_id}"
+            )
+            entry_label = f"[{entry['kill_log_id']}]({link})"
+        else:
+            entry_label = entry["kill_log_id"]
         embed.add_field(
             name=f"{entry['kill_log_id']} — {entry['class_name']} / {entry['terminus_type']}",
             value=(
-                f"<@{entry['brother_id']}> · Submitted <t:{ts}:R> · "
+                f"{entry_label} · <@{entry['brother_id']}> · "
+                f"Submitted <t:{ts}:R> · "
                 f"{len(entry.get('verifications', []))}/3 verified"
             ),
             inline=False,
@@ -797,7 +807,7 @@ async def check_stale_kill_logs() -> None:
         mention = vet_role.mention if vet_role else "Watch Veterans"
         await channel.send(
             content=f"{mention} — kill log entries require verification:",
-            embed=_build_reminder_embed(stale),
+            embed=_build_reminder_embed(stale, guild.id),
         )
 
         # Mark as reminder_sent only after the message was successfully sent.
