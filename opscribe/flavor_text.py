@@ -3237,9 +3237,9 @@ TERMINUS_SLAYER_VANGUARD_RANK_LINES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 MASTER_TERMINUS_SLAYER_OPENINGS: List[str] = [
     "Every class. Every Terminus type. Every kill verified. **{name}** has completed the most comprehensive personal Terminus Slayer record the Watch logs.",
-    "Six classes. Fifty-four verified kills. Three Terminus types faced in every configuration the Watch tracks. **{name}** has earned the title that fewer than anyone expected would ever be claimed.",
-    "\"Cover me brothers — this one is mine.\" **{name}** said it as an Assault warrior. As a Bulwark. As a Heavy. As a Sniper. As a Tactical. As a Vanguard. All nine types, all six times, all verified.",
-    "There is a word for what **{name}** has done — the Watch's kill logs contain six class completions, all Terminus types, all verification records intact. The word is Master.",
+    "Seven classes. Sixty-three verified kills. Three Terminus types faced in every configuration the Watch tracks. **{name}** has earned the title that fewer than anyone expected would ever be claimed.",
+    "\"Cover me brothers — this one is mine.\" **{name}** said it as an Assault warrior. As a Bulwark. As a Heavy. As a Sniper. As a Tactical. As a Techmarine. As a Vanguard. All nine types, all seven times, all verified.",
+    "There is a word for what **{name}** has done — the Watch's kill logs contain seven class completions, all Terminus types, all verification records intact. The word is Master.",
     "The Master Terminus Slayer is not given to warriors who merely fought well. It is given to **{name}**, who fought well in every class, against every Terminus threat, and produced the verified record for all of it.",
 ]
 
