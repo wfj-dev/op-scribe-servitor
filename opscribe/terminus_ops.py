@@ -76,7 +76,7 @@ async def _validate_aar_link(
         return f"The AAR link must point to a message in <#{AAR_CHANNEL_ID}>."
     aar_ch = guild.get_channel(AAR_CHANNEL_ID)
     if aar_ch is None:
-        return "AAR channel not accessible. Contact a Forgemaster."
+        return "AAR channel not accessible. Contact the Forgemaster."
     try:
         msg = await aar_ch.fetch_message(int(message_id_str))
     except discord.NotFound:
@@ -762,9 +762,16 @@ async def _notify_class_complete(
         try:
             ann_channel = await _b("_get_award_announcement_channel")(member, guild)
             if ann_channel:
-                _b("_enqueue_award_announcement")(
-                    str(member.id), award_type, member_chapter, str(ann_channel.id), str(guild.id)
-                )
+                _enqueue_fn = _b("_enqueue_award_announcement")
+                if _enqueue_fn is not None:
+                    _enqueue_fn(
+                        str(member.id), award_type, member_chapter, str(ann_channel.id), str(guild.id)
+                    )
+                else:
+                    if _g.logger:
+                        _g.logger.warning(
+                            f"terminus_ops: _enqueue_award_announcement not found; skipping {award_type}"
+                        )
             else:
                 if _g.logger:
                     _g.logger.warning(
@@ -965,7 +972,7 @@ async def submit_kill_log(
     channel = guild.get_channel(KILL_LOG_CHANNEL_ID) if guild else None
     if channel is None:
         await interaction.response.send_message(
-            "Kill log channel not found. Contact a Forgemaster.",
+            "Kill log channel not found. Contact the Forgemaster.",
             ephemeral=True,
         )
         return
@@ -1186,7 +1193,7 @@ async def challenge_progress(
     except Exception:
         _g.logger.exception("challenge-progress: unhandled error")
         try:
-            await interaction.followup.send("An error occurred building your challenge progress. Contact a Forgemaster.", ephemeral=True)
+            await interaction.followup.send("An error occurred building your challenge progress. Contact the Forgemaster.", ephemeral=True)
         except Exception:
             pass
 
@@ -1288,10 +1295,10 @@ async def _challenge_progress_inner(
     # Requirement 1: All Black Laurels missions completed with Rank A.
     has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
     bl_aars = user_progress.get("crux_bl_aars", [])
-    bl_missions_logged = {m["mission"] for m in bl_aars}
+    # Having the Black Laurels role already proves all missions are complete;
+    # also verify every tracked AAR was Rank A.
     all_bl_rank_a = (
         has_bl_role
-        and BLACK_LAURELS_REQUIRED_MISSIONS <= bl_missions_logged
         and all((m.get("rank") or "A").upper() == "A" for m in bl_aars)
     )
     # If they already hold the Crux role, treat everything as complete.
