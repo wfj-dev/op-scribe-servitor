@@ -23,10 +23,15 @@ from discord import app_commands
 from .constants import (  # noqa: F401
     AAR_CHANNEL_ID,
     APOTHECARY_STAFF_CHANNEL_ID,
+    BLACK_REEF_REQUIRED_MISSIONS,
+    BLACK_LAURELS_REQUIRED_MISSIONS,
+    CHALLENGE_PROGRESS_PATH,
+    KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
     KILL_LOG_REMINDER_HOURS,
     MASTER_TERMINUS_SLAYER_ROLE_ID,
+    ORDER_OMEGA_REQUIRED_MISSIONS,
     TERMINUS_SLAYER_CLASS_AWARD_TYPES,
     TERMINUS_SLAYER_PATH,
     TERMINUS_SLAYER_ROLE_IDS,
@@ -34,7 +39,7 @@ from .constants import (  # noqa: F401
     TERMINUS_VERIFIER_RANKS,
     VERIFIER_TIER_THRESHOLDS,
 )
-from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS
+from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES
 from . import _bot_globals as _g
 
 # Any role that counts as a server member (Watch Brother or higher on any track)
@@ -1139,4 +1144,140 @@ async def verifier_standing(interaction: discord.Interaction):
         embed.description = "\n".join(lines)
 
     embed.set_footer(text="Verify or deny kill logs to build your standing. Resets on a rolling 7-day window.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# ---------------------------------------------------------------------------
+# /challenge-progress command
+# ---------------------------------------------------------------------------
+
+@_g.bot.tree.command(
+    name="challenge-progress",
+    description="View your challenge progress — mission awards and Terminus Slayer kills.",
+)
+@app_commands.describe(
+    member="[Watch Command+] View another member's challenge progress.",
+)
+async def challenge_progress(
+    interaction: discord.Interaction,
+    member: Optional[discord.Member] = None,
+):
+    # Only Watch Command+ may query other members
+    if member is not None:
+        if not any(r.name in WATCH_COMMAND_ROLES for r in interaction.user.roles):
+            await interaction.response.send_message(
+                "Only Watch Command and above may view another member's challenge progress.",
+                ephemeral=True,
+            )
+            return
+
+    target = member or interaction.user
+    user_id_str = str(target.id)
+
+    # Load challenge progress
+    challenge_all: dict = {}
+    if os.path.exists(CHALLENGE_PROGRESS_PATH):
+        with open(CHALLENGE_PROGRESS_PATH, "r", encoding="utf-8") as f:
+            challenge_all = json.load(f)
+    user_progress = challenge_all.get(user_id_str, {})
+
+    # Load Terminus Slayer state
+    ts_state = _load_state()
+    ts_progress = ts_state.get("progress", {}).get(user_id_str, {})
+
+    # --- Helpers ---
+    def _unique_mission_count(key: str) -> int:
+        return len({m["mission"] for m in user_progress.get(key, [])})
+
+    def _bar(current: int, total: int) -> str:
+        filled = min(current, total)
+        empty = max(total - filled, 0)
+        check = "✅" if current >= total else "🔲"
+        blocks = "█" * filled + "░" * empty
+        return f"{check} `{blocks}` {current}/{total}"
+
+    # --- Section 1: Mission Challenges ---
+    challenge_rows = [
+        (
+            "Kadaku Campaign Medal",
+            _unique_mission_count("kadaku_campaign"),
+            len(KADAKU_CAMPAIGN_REQUIRED_MISSIONS),
+        ),
+        (
+            "Black Reef Campaign Medal",
+            _unique_mission_count("black_reef"),
+            len(BLACK_REEF_REQUIRED_MISSIONS),
+        ),
+        (
+            "Distinguished Black Reef Campaign Medal",
+            _unique_mission_count("distinguished_black_reef"),
+            len(BLACK_REEF_REQUIRED_MISSIONS),
+        ),
+        (
+            "Black Laurels",
+            _unique_mission_count("black_laurels"),
+            len(BLACK_LAURELS_REQUIRED_MISSIONS),
+        ),
+        (
+            "Dual Vigil",
+            _unique_mission_count("dual_vigil"),
+            len(BLACK_LAURELS_REQUIRED_MISSIONS),
+        ),
+        (
+            "Distinguished SOK-G: Pipehitter",
+            _unique_mission_count("sok_g_pipehitter"),
+            2,
+        ),
+        (
+            "SOK-G: Pipehitter",
+            _unique_mission_count("sok_g_pipehitter"),
+            10,
+        ),
+        (
+            "Order Omega",
+            _unique_mission_count("order_omega"),
+            len(ORDER_OMEGA_REQUIRED_MISSIONS),
+        ),
+    ]
+
+    challenge_lines = []
+    for label, current, total in challenge_rows:
+        challenge_lines.append(f"**{label}**\n{_bar(current, total)}")
+
+    # Crux Terminatus BL AARs is a supporting tracker (no fixed threshold — used in audit)
+    crux_aar_count = len(user_progress.get("crux_bl_aars", []))
+    challenge_lines.append(
+        f"**Crux Terminatus — Black Laurels AARs on record**\n"
+        f"📋 `{crux_aar_count}` AAR{'s' if crux_aar_count != 1 else ''} tracked "
+        f"(all must be Rank A for award eligibility)"
+    )
+
+    embed = discord.Embed(
+        title=f"Challenge Progress — {target.display_name}",
+        colour=discord.Colour.from_rgb(80, 140, 200),
+    )
+    embed.add_field(
+        name="⚔️ Mission Awards",
+        value="\n\n".join(challenge_lines),
+        inline=False,
+    )
+
+    # --- Section 2: Terminus Slayer Kill Grid ---
+    ts_lines = []
+    for class_role_id, class_name in KILL_LOG_CLASS_ROLES.items():
+        class_prog = ts_progress.get(str(class_role_id), {})
+        type_parts = []
+        for t_type in TERMINUS_TYPES:
+            count = class_prog.get(t_type, 0)
+            check = "✅" if count >= 3 else "🔲"
+            type_parts.append(f"{check} {t_type}: {count}/3")
+        ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
+
+    embed.add_field(
+        name="💀 Terminus Slayer Kills",
+        value="\n".join(ts_lines),
+        inline=False,
+    )
+
+    embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
