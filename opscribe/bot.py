@@ -1370,19 +1370,24 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     if cmd_perms:
         return False
 
-    # Default fallbacks for unconfigured commands (based on command name patterns)
-    # Admin-level commands default to Watch Master + Forgemaster
-    admin_commands = {
-        "reconcile_records",
-        "sanctify_battle_records",
-        "audit_archive_discrepancies",
-        "reparse_records",
-    }
-    if command_name in admin_commands:
-        return any(r in user_roles for r in ("Watch Master", "Forgemaster"))
+    # No explicit entry — fall back to the _default policy in config.
+    # If no _default is configured either, deny access.
+    default_perms = perms.get("_default", {}) or {}
+    if not default_perms:
+        return False
 
-    # Most other commands default to Watch Sergeant or higher
-    return is_sergeant_or_higher(user)
+    default_min_rank = default_perms.get("min_rank")
+    if default_min_rank and _user_meets_track_requirement(user_roles, default_min_rank):
+        return True
+
+    default_roles = set(default_perms.get("roles") or [])
+    if "Watch Command" in default_roles:
+        default_roles.discard("Watch Command")
+        default_roles.update(WATCH_COMMAND_ROLES)
+    if default_roles and user_roles & default_roles:
+        return True
+
+    return False
 
 
 def is_high_command(user: discord.User | discord.Member) -> bool:

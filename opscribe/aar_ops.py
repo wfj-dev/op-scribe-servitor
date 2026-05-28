@@ -207,10 +207,10 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                             }
                         )
 
-                    # Check if qualified for SOK-G: Pipehitter (10 missions)
+                    # Check if qualified for SOK-G: Pipehitter (1 mission)
                     unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
                     if (
-                        len(unique_missions) >= 10
+                        len(unique_missions) >= 1
                         and "sok_g_pipehitter" not in notified_challenges
                         and is_watch_brother_or_higher
                         and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
