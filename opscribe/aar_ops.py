@@ -113,6 +113,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
     # Black Laurels may appear on either the Mission or Difficulty line; treat both as valid.
     black_laurels = record.get("black_laurels_in_mission", False) or record.get("black_laurels_in_difficulty", False)
+    # Dual Vigil tag must be on the Mission line; tracked separately from Black Laurels.
+    dual_vigil = record.get("dual_vigil_in_mission", False)
     difficulty_class = record.get("difficulty_class") or ""
 
     # Skip if no mission name or no participants
@@ -305,6 +307,28 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["distinguished_black_reef"] if m["message_url"]]
                     notifications.append((user_id_str, "Distinguished Black Reef Campaign Medal", DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "distinguished_black_reef_campaign_medal", aar_urls))
                     notified_challenges.append("distinguished_black_reef")
+
+            # === Dual Vigil tracking (auto-award) ===
+            # Track unique Absolute 2-brother missions with @Dual Vigil tag; award once all 9 unique missions completed
+            if dual_vigil and difficulty_class == "absolute_ops" and mission_name in DUAL_VIGIL_REQUIRED_MISSIONS:
+                if "dual_vigil" not in user_progress:
+                    user_progress["dual_vigil"] = []
+                existing_missions = {m["mission"] for m in user_progress["dual_vigil"]}
+                if mission_name not in existing_missions:
+                    user_progress["dual_vigil"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+                unique_missions = {m["mission"] for m in user_progress["dual_vigil"]}
+                if (
+                    unique_missions >= DUAL_VIGIL_REQUIRED_MISSIONS
+                    and "dual_vigil" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=DUAL_VIGIL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["dual_vigil"] if m["message_url"]]
+                    notifications.append((user_id_str, "Dual Vigil", DUAL_VIGIL_ROLE_ID, "dual_vigil", aar_urls))
+                    notified_challenges.append("dual_vigil")
 
             # === Black Laurels tracking (auto-award) ===
             # Track unique Black Laurels missions; auto-assign Black Laurels role once all 9 unique missions completed
@@ -2339,6 +2363,8 @@ def parse_aar(message: discord.Message):
     leviathan_protocol_in_difficulty = False
     # Black Reef Persecution tracking (allows Black Laurels on Hard-Stratagem when present on Mission line)
     black_reef_persecution_in_mission = False
+    # Dual Vigil tracking (2-brother Absolute-only Black Laurels missions)
+    dual_vigil_in_mission = False
     # Pipehitter tracking
     pipehitter_mentioned = False
     # Watch Command role mention (required for Initiation Trials)
@@ -2370,6 +2396,9 @@ def parse_aar(message: discord.Message):
             # Check if Black Reef Persecution is in mission line
             if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or ("black reef persecution" in mission.lower()):
                 black_reef_persecution_in_mission = True
+            # Check if Dual Vigil is in mission line (role ID or resolved name)
+            if f"<@&{DUAL_VIGIL_ROLE_ID}>" in mission or ("dual vigil" in mission.lower()):
+                dual_vigil_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
                 import re
@@ -2694,6 +2723,8 @@ def parse_aar(message: discord.Message):
         "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
         # Black Reef Persecution tracking for validation
         "black_reef_persecution_in_mission": black_reef_persecution_in_mission,
+        # Dual Vigil tracking for validation and challenge progress
+        "dual_vigil_in_mission": dual_vigil_in_mission,
         # Pipehitter tracking for validation
         "pipehitter_mentioned": pipehitter_mentioned,
         # Link back to the original Discord message (if available)
@@ -2877,6 +2908,22 @@ def validate_aar(record: dict):
                 # Black Laurels cannot be mentioned elsewhere in strict mode
                 if record.get("black_laurels_mentioned_elsewhere", False):
                     errors.append("@Black_Laurels must be placed on the Mission line, not elsewhere in the AAR.")
+
+        # Dual Vigil validation: Absolute only, exactly 2 brothers, eligible missions
+        has_dual_vigil = record.get("dual_vigil_in_mission", False)
+        if has_dual_vigil:
+            if not has_absolute:
+                errors.append("@Dual_Vigil requires @Absolute on the Difficulty line.")
+            if len(brothers) != 2:
+                errors.append("@Dual_Vigil requires exactly 2 Brothers.")
+            dv_mission_lower = (mission or "").lower().strip()
+            dv_mission_clean = re.sub(r"<.*", "", dv_mission_lower).strip()
+            if dv_mission_clean and dv_mission_clean not in DUAL_VIGIL_REQUIRED_MISSIONS:
+                errors.append(
+                    "@Dual_Vigil may only be used on Black Laurels-eligible missions: "
+                    "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
+                    "Exfiltration, Termination, Reclamation, Disruption, Purgation."
+                )
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)

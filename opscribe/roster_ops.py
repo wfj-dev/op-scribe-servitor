@@ -1785,6 +1785,15 @@ _AWARD_DISPATCH_FN_MAP = {
     "black_reef_campaign_medal": "_get_black_reef_campaign_announcement",
     "distinguished_black_reef_campaign_medal": "_get_distinguished_black_reef_announcement",
     "the_order_omega": "_get_order_omega_announcement",
+    "dual_vigil": "_get_dual_vigil_announcement",
+    "terminus_slayer_assault": "_get_terminus_slayer_assault_announcement",
+    "terminus_slayer_bulwark": "_get_terminus_slayer_bulwark_announcement",
+    "terminus_slayer_heavy": "_get_terminus_slayer_heavy_announcement",
+    "terminus_slayer_sniper": "_get_terminus_slayer_sniper_announcement",
+    "terminus_slayer_tactical": "_get_terminus_slayer_tactical_announcement",
+    "terminus_slayer_techmarine": "_get_terminus_slayer_techmarine_announcement",
+    "terminus_slayer_vanguard": "_get_terminus_slayer_vanguard_announcement",
+    "master_terminus_slayer": "_get_master_terminus_slayer_announcement",
 }
 
 
