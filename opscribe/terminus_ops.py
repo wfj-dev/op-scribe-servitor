@@ -28,6 +28,7 @@ from .constants import (  # noqa: F401
     BLACK_REEF_REQUIRED_MISSIONS,
     BLACK_LAURELS_REQUIRED_MISSIONS,
     CHALLENGE_PROGRESS_PATH,
+    CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
     DUAL_VIGIL_ROLE_ID,
@@ -1252,7 +1253,7 @@ async def challenge_progress(
         (
             "SOK-G: Pipehitter",
             _unique_mission_count("sok_g_pipehitter"),
-            10,
+            1,
             PIPEHITTER_ROLE_ID,
         ),
         (
@@ -1267,12 +1268,40 @@ async def challenge_progress(
     for label, current, total, role_id in challenge_rows:
         challenge_lines.append(f"**{label}**\n{_bar(current, total, role_id)}")
 
-    # Crux Terminatus BL AARs is a supporting tracker (no fixed threshold — used in audit)
-    crux_aar_count = len(user_progress.get("crux_bl_aars", []))
+    # --- Crux Terminatus eligibility checklist ---
+    # Requirement 1: All Black Laurels missions completed with Rank A.
+    has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
+    bl_aars = user_progress.get("crux_bl_aars", [])
+    bl_missions_logged = {m["mission"] for m in bl_aars}
+    all_bl_rank_a = (
+        has_bl_role
+        and BLACK_LAURELS_REQUIRED_MISSIONS <= bl_missions_logged
+        and all((m.get("rank") or "A").upper() == "A" for m in bl_aars)
+    )
+    # If they already hold the Crux role, treat everything as complete.
+    has_crux = CRUX_TERMINATUS_ROLE_ID in target_role_ids
+    if has_crux:
+        all_bl_rank_a = True
+
+    # Requirement 2: Distinguished SOK-G Pipehitter role.
+    has_distinguished = DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids
+    if has_crux:
+        has_distinguished = True
+
+    # Requirement 3: 2+ Terminus Slayer class completions.
+    ts_class_count = sum(1 for rid in KILL_LOG_CLASS_ROLES if rid in target_role_ids)
+    ts_slays_met = ts_class_count >= 2
+    if has_crux:
+        ts_slays_met = True
+
+    bl_check = "✅" if all_bl_rank_a else "🔲"
+    dist_check = "✅" if has_distinguished else "🔲"
+    ts_check = "✅" if ts_slays_met else "🔲"
     challenge_lines.append(
-        f"**Crux Terminatus — Black Laurels AARs on record**\n"
-        f"📋 `{crux_aar_count}` AAR{'s' if crux_aar_count != 1 else ''} tracked "
-        f"(all must be Rank A for award eligibility)"
+        f"**Crux Terminatus**\n"
+        f"{bl_check} Black Laurels — all missions, Rank A\n"
+        f"{dist_check} Distinguished SOK-G: Pipehitter\n"
+        f"{ts_check} Terminus Slayer classes completed: {ts_class_count}/2"
     )
 
     embed = discord.Embed(
@@ -1289,9 +1318,13 @@ async def challenge_progress(
     ts_lines = []
     for class_role_id, class_name in KILL_LOG_CLASS_ROLES.items():
         class_prog = ts_progress.get(str(class_role_id), {})
+        has_class_role = class_role_id in target_role_ids
         type_parts = []
         for t_type in TERMINUS_TYPES:
             count = class_prog.get(t_type, 0)
+            # If the member already holds the class completion role, treat all types as done.
+            if has_class_role:
+                count = 3
             check = "✅" if count >= 3 else "🔲"
             type_parts.append(f"{check} {t_type}: {count}/3")
         ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))

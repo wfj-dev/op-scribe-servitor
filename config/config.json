@@ -156,7 +156,8 @@
     },
     "auto_ingest_status": {
       "roles": [
-        "Forgemaster"
+        "Watch Techmarine",
+        "Watch Librarian"
       ]
     },
     "auto_ingest_set": {
@@ -168,6 +169,55 @@
       "roles": [
         "Forgemaster"
       ]
+    },
+    "record_of_blood": {
+      "roles": [
+        "Watch Master",
+        "Forgemaster"
+      ]
+    },
+    "requisition_supplies": {
+      "roles": [
+        "Watch Techmarine",
+        "Forgemaster"
+      ]
+    },
+    "preview_stud_announcement": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "test_armor_alert": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "verifier_standing": {
+      "min_rank": "Watch Veteran"
+    },
+    "submit_kill_log": {
+      "min_rank": "Watch Brother"
+    },
+    "challenge-progress": {
+      "min_rank": "Watch Brother"
+    },
+    "my_deeds": {
+      "min_rank": "Watch Brother"
+    },
+    "lfg_queue": {
+      "min_rank": "Watch Brother"
+    },
+    "lfg_join": {
+      "min_rank": "Watch Brother"
+    },
+    "lfg_leave": {
+      "min_rank": "Watch Brother"
+    },
+    "lfg_close": {
+      "min_rank": "Watch Brother"
+    },
+    "_default": {
+      "min_rank": "Watch Sergeant"
     }
   },
   "companies": {
