@@ -568,6 +568,18 @@ async def auto_ingest_status(interaction: discord.Interaction):
         except Exception:
             _g.logger.exception("auto_ingest_status: live evaluation failed")
 
+    # Fetch subsystem enabled states (late imports to avoid circular deps).
+    try:
+        from .forge_ops import _is_forge_enabled
+        forge_enabled: Optional[bool] = await _is_forge_enabled()
+    except Exception:
+        forge_enabled = None
+    try:
+        from .librarius_ops import _is_librarius_enabled
+        librarius_enabled: Optional[bool] = await _is_librarius_enabled()
+    except Exception:
+        librarius_enabled = None
+
     # Pick an embed color from current state: blocked=red, cooldown=blue,
     # ready/forced=green, otherwise neutral.
     outcome = (state.last_check_outcome or "").upper()
@@ -613,13 +625,20 @@ async def auto_ingest_status(interaction: discord.Interaction):
     )
 
     # ─── Config field ─────────────────────────────────────────────────────
+    def _on_off(v: Optional[bool]) -> str:
+        if v is None:
+            return "?"
+        return "on" if v else "off"
+
     enabled_str = (
         f"**Runtime:** {'on' if state.runtime_enabled else 'off'}\n"
         f"**Config:** {'on' if _enabled_in_config() else 'off'}\n"
         f"**Interval:** {iv_min} min · **Cooldown:** {cd_h:.1f}h · "
         f"**Span:** {_span_days()}d\n"
         f"**Forced if:** backlog ≥ {_forced_max_backlog()} OR "
-        f"stale ≥ {_forced_max_stale_days()}d"
+        f"stale ≥ {_forced_max_stale_days()}d\n"
+        f"**Librarium system:** {_on_off(librarius_enabled)} · "
+        f"**Forge system:** {_on_off(forge_enabled)}"
     )
     embed.add_field(name="▸ Configuration", value=enabled_str, inline=False)
 

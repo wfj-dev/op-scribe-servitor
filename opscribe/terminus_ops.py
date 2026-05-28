@@ -23,15 +23,23 @@ from discord import app_commands
 from .constants import (  # noqa: F401
     AAR_CHANNEL_ID,
     APOTHECARY_STAFF_CHANNEL_ID,
+    BLACK_LAURELS_ROLE_ID,
+    BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     BLACK_REEF_REQUIRED_MISSIONS,
     BLACK_LAURELS_REQUIRED_MISSIONS,
     CHALLENGE_PROGRESS_PATH,
+    DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
+    DISTINGUISHED_PIPEHITTER_ROLE_ID,
+    DUAL_VIGIL_ROLE_ID,
+    KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
     KILL_LOG_REMINDER_HOURS,
     MASTER_TERMINUS_SLAYER_ROLE_ID,
     ORDER_OMEGA_REQUIRED_MISSIONS,
+    PIPEHITTER_ROLE_ID,
+    THE_ORDER_OMEGA_ROLE_ID,
     TERMINUS_SLAYER_CLASS_AWARD_TYPES,
     TERMINUS_SLAYER_PATH,
     TERMINUS_SLAYER_ROLE_IDS,
@@ -1189,7 +1197,13 @@ async def challenge_progress(
     def _unique_mission_count(key: str) -> int:
         return len({m["mission"] for m in user_progress.get(key, [])})
 
-    def _bar(current: int, total: int) -> str:
+    # Collect target's role IDs for completed-role detection.
+    target_role_ids: set[int] = {r.id for r in getattr(target, "roles", [])}
+
+    def _bar(current: int, total: int, role_id: Optional[int] = None) -> str:
+        # If the member already holds the award role, treat as fully complete.
+        if role_id is not None and role_id in target_role_ids:
+            current = total
         filled = min(current, total)
         empty = max(total - filled, 0)
         check = "✅" if current >= total else "🔲"
@@ -1197,52 +1211,61 @@ async def challenge_progress(
         return f"{check} `{blocks}` {current}/{total}"
 
     # --- Section 1: Mission Challenges ---
+    # Tuples: (label, current, total, role_id)
     challenge_rows = [
         (
             "Kadaku Campaign Medal",
             _unique_mission_count("kadaku_campaign"),
             len(KADAKU_CAMPAIGN_REQUIRED_MISSIONS),
+            KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
         ),
         (
             "Black Reef Campaign Medal",
             _unique_mission_count("black_reef"),
             len(BLACK_REEF_REQUIRED_MISSIONS),
+            BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
         ),
         (
             "Distinguished Black Reef Campaign Medal",
             _unique_mission_count("distinguished_black_reef"),
             len(BLACK_REEF_REQUIRED_MISSIONS),
+            DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
         ),
         (
             "Black Laurels",
             _unique_mission_count("black_laurels"),
             len(BLACK_LAURELS_REQUIRED_MISSIONS),
+            BLACK_LAURELS_ROLE_ID,
         ),
         (
             "Dual Vigil",
             _unique_mission_count("dual_vigil"),
             len(BLACK_LAURELS_REQUIRED_MISSIONS),
+            DUAL_VIGIL_ROLE_ID,
         ),
         (
             "Distinguished SOK-G: Pipehitter",
             _unique_mission_count("sok_g_pipehitter"),
             2,
+            DISTINGUISHED_PIPEHITTER_ROLE_ID,
         ),
         (
             "SOK-G: Pipehitter",
             _unique_mission_count("sok_g_pipehitter"),
             10,
+            PIPEHITTER_ROLE_ID,
         ),
         (
             "Order Omega",
             _unique_mission_count("order_omega"),
             len(ORDER_OMEGA_REQUIRED_MISSIONS),
+            THE_ORDER_OMEGA_ROLE_ID,
         ),
     ]
 
     challenge_lines = []
-    for label, current, total in challenge_rows:
-        challenge_lines.append(f"**{label}**\n{_bar(current, total)}")
+    for label, current, total, role_id in challenge_rows:
+        challenge_lines.append(f"**{label}**\n{_bar(current, total, role_id)}")
 
     # Crux Terminatus BL AARs is a supporting tracker (no fixed threshold — used in audit)
     crux_aar_count = len(user_progress.get("crux_bl_aars", []))
