@@ -3596,12 +3596,10 @@ def _get_oathsworn_announcement(
     poll.add_answer(text="Aye, elevate to Oathsworn", emoji="⚔️")
     poll.add_answer(text="Nay, more service required", emoji="🛡️")
 
-    # Content with mentions (Watch Captain/Lieutenant for visibility)
-    watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
-    watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-    captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
-    lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
-    content = f"{captain_mention} {lt_mention} {member.mention}"
+    # Content with mentions
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
 
     return content, embed, poll
 
@@ -3728,9 +3726,9 @@ def _get_watch_veteran_announcement(
     if award_file:
         embed.set_image(url="attachment://award_watch_veteran.png")
 
-    watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
-    sergeant_mention = watch_sergeant_role.mention if watch_sergeant_role else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
-    content = f"{sergeant_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3793,11 +3791,9 @@ def _get_ardent_raider_announcement(
     if award_file:
         embed.set_image(url="attachment://award_ardent_raider.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    tech_mention = techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
-    content = f"{command_mention} {tech_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3860,11 +3856,9 @@ def _get_apothecarion_medal_announcement(
     if award_file:
         embed.set_image(url="attachment://award_apothecarion_medal.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    apo_mention = apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
-    content = f"{command_mention} {apo_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3927,11 +3921,9 @@ def _get_crimson_laurels_announcement(
     if award_file:
         embed.set_image(url="attachment://award_crimson_laurels.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    lib_mention = librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
-    content = f"{command_mention} {lib_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3947,7 +3939,6 @@ def _build_challenge_award_embed(
     chapter_lines: dict,
     award_label: str,
     award_image: Optional[str],
-    ping_role_id: int,
     rank_lines: Optional[dict] = None,
     award_emoji_name: Optional[str] = None,
 ) -> Tuple[str, discord.Embed, Optional[discord.File]]:
@@ -3966,9 +3957,28 @@ def _build_challenge_award_embed(
             break
 
     opening = random.choice(openings).format(name=display_name)
-    proclamation = random.choice(proclamations)
-    chapter_coda = chapter_lines.get(member_chapter, "") if chapter_lines else ""
-    rank_coda = rank_lines.get(member_rank, "") if (rank_lines and member_rank) else ""
+    proclamation = random.choice(proclamations).format(name=display_name)
+    chapter_coda = (chapter_lines.get(member_chapter, "") or "").format(name=display_name) if chapter_lines else ""
+    rank_coda = (rank_lines.get(member_rank, "") or "").format(name=display_name) if (rank_lines and member_rank) else ""
+
+    # Blend coda selection: when both chapter and rank codas are available, pick one
+    # based on rank-tier blend ratios (same as forge rite stud flavor blending).
+    # Higher ranks skew toward rank coda; line warriors skew toward chapter coda.
+    if chapter_coda and rank_coda:
+        rank_category = _get_rank_category_for_blend(member_rank or "")
+        blend_thresholds = {
+            "watchers": 0.9,          # 90% rank, 10% chapter
+            "high_cmd_specialist": 0.8,  # 80% rank, 20% chapter
+            "company_cmd": 0.5,        # 50/50
+            "specialist": 0.5,         # 50/50
+            "line": 0.2,               # 20% rank, 80% chapter
+        }
+        rank_weight = blend_thresholds.get(rank_category, 0.5)
+        selected_coda = rank_coda if random.random() < rank_weight else chapter_coda
+    elif rank_coda:
+        selected_coda = rank_coda
+    else:
+        selected_coda = chapter_coda
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
@@ -3978,10 +3988,8 @@ def _build_challenge_award_embed(
     )
 
     proclamation_text = f"{opening}\n\n{proclamation}"
-    if chapter_coda:
-        proclamation_text += f"\n\n*{chapter_coda}*"
-    if rank_coda:
-        proclamation_text += f"\n\n*{rank_coda}*"
+    if selected_coda:
+        proclamation_text += f"\n\n*{selected_coda}*"
     embed.add_field(name="▸ Watch's Proclamation", value=proclamation_text, inline=False)
 
     rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
@@ -4003,9 +4011,9 @@ def _build_challenge_award_embed(
     if award_file:
         embed.set_image(url=f"attachment://{award_image}")
 
-    ping_role = guild.get_role(ping_role_id)
-    ping_mention = ping_role.mention if ping_role else f"<@&{ping_role_id}>"
-    content = f"{ping_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -4027,7 +4035,6 @@ def _get_sok_g_pipehitter_announcement(
         rank_lines=SOK_G_PIPEHITTER_RANK_LINES,
         award_label="SOK-G: Pipehitter",
         award_image="award_sok_g_pipehitter.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4049,7 +4056,6 @@ def _get_distinguished_pipehitter_announcement(
         rank_lines=DISTINGUISHED_PIPEHITTER_RANK_LINES,
         award_label="Distinguished SOK-G: Pipehitter",
         award_image="award_distinguished_pipehitter.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4071,7 +4077,6 @@ def _get_black_laurels_announcement(
         rank_lines=BLACK_LAURELS_RANK_LINES,
         award_label="Black Laurels",
         award_image="award_black_laurels.png",
-        ping_role_id=BLACK_LAURELS_PING_ROLE_ID,
     )
 
 
@@ -4093,7 +4098,6 @@ def _get_crux_terminatus_announcement(
         rank_lines=CRUX_TERMINATUS_RANK_LINES,
         award_label="Crux Terminatus",
         award_image="award_crux_terminatus.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4115,7 +4119,6 @@ def _get_kadaku_campaign_announcement(
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Kadaku Campaign Medal",
         award_image="award_kadaku_campaign_medal.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4137,7 +4140,6 @@ def _get_black_reef_campaign_announcement(
         rank_lines=BLACK_REEF_CAMPAIGN_RANK_LINES,
         award_label="Black Reef Campaign Medal",
         award_image="award_black_reef_campaign_medal.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4159,7 +4161,6 @@ def _get_distinguished_black_reef_announcement(
         rank_lines=DISTINGUISHED_BLACK_REEF_RANK_LINES,
         award_label="Distinguished Black Reef Campaign Medal",
         award_image="award_distinguished_black_reef.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4181,7 +4182,195 @@ def _get_order_omega_announcement(
         rank_lines=ORDER_OMEGA_RANK_LINES,
         award_label="The Order Omega",
         award_image="award_order_omega.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_dual_vigil_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Dual Vigil award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DUAL VIGIL",
+        color=0x1A252F,
+        openings=DUAL_VIGIL_OPENINGS,
+        proclamations=DUAL_VIGIL_PROCLAMATIONS,
+        chapter_lines=DUAL_VIGIL_CHAPTER_LINES,
+        rank_lines=DUAL_VIGIL_RANK_LINES,
+        award_label="Dual Vigil",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_assault_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Assault) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — ASSAULT",
+        color=0xC0392B,
+        openings=TERMINUS_SLAYER_ASSAULT_OPENINGS,
+        proclamations=TERMINUS_SLAYER_ASSAULT_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_ASSAULT_RANK_LINES,
+        award_label="Terminus Slayer (Assault)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_bulwark_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Bulwark) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — BULWARK",
+        color=0x1A5276,
+        openings=TERMINUS_SLAYER_BULWARK_OPENINGS,
+        proclamations=TERMINUS_SLAYER_BULWARK_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_BULWARK_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_BULWARK_RANK_LINES,
+        award_label="Terminus Slayer (Bulwark)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_heavy_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Heavy) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — HEAVY",
+        color=0x1B4F2A,
+        openings=TERMINUS_SLAYER_HEAVY_OPENINGS,
+        proclamations=TERMINUS_SLAYER_HEAVY_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_HEAVY_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_HEAVY_RANK_LINES,
+        award_label="Terminus Slayer (Heavy)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_sniper_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Sniper) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — SNIPER",
+        color=0x4E5B4A,
+        openings=TERMINUS_SLAYER_SNIPER_OPENINGS,
+        proclamations=TERMINUS_SLAYER_SNIPER_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_SNIPER_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_SNIPER_RANK_LINES,
+        award_label="Terminus Slayer (Sniper)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_tactical_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Tactical) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — TACTICAL",
+        color=0x2E4057,
+        openings=TERMINUS_SLAYER_TACTICAL_OPENINGS,
+        proclamations=TERMINUS_SLAYER_TACTICAL_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_TACTICAL_RANK_LINES,
+        award_label="Terminus Slayer (Tactical)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_techmarine_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Techmarine) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — TECHMARINE",
+        color=0x871A16,
+        openings=TERMINUS_SLAYER_TECHMARINE_OPENINGS,
+        proclamations=TERMINUS_SLAYER_TECHMARINE_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_TECHMARINE_RANK_LINES,
+        award_label="Terminus Slayer (Techmarine)",
+        award_image=None,
+    )
+
+
+def _get_terminus_slayer_vanguard_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Vanguard) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — VANGUARD",
+        color=0x4A235A,
+        openings=TERMINUS_SLAYER_VANGUARD_OPENINGS,
+        proclamations=TERMINUS_SLAYER_VANGUARD_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES,
+        rank_lines=TERMINUS_SLAYER_VANGUARD_RANK_LINES,
+        award_label="Terminus Slayer (Vanguard)",
+        award_image=None,
+    )
+
+
+def _get_master_terminus_slayer_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Master Terminus Slayer award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="MASTER TERMINUS SLAYER",
+        color=0xB7950B,
+        openings=MASTER_TERMINUS_SLAYER_OPENINGS,
+        proclamations=MASTER_TERMINUS_SLAYER_PROCLAMATIONS,
+        chapter_lines=MASTER_TERMINUS_SLAYER_CHAPTER_LINES,
+        rank_lines=MASTER_TERMINUS_SLAYER_RANK_LINES,
+        award_label="Master Terminus Slayer",
+        award_image=None,
     )
 
 

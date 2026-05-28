@@ -220,6 +220,8 @@ BLACK_LAURELS_ROLE_ID = 1440108298115485716
 LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 # Black Reef Persecution role ID - allows Black Laurels with Hard-Stratagem when present on Mission line
 BLACK_REEF_PERSECUTION_ROLE_ID = 1496892435496833054
+# Dual Vigil role ID - 2-brother Absolute missions across all Black Laurels missions
+DUAL_VIGIL_ROLE_ID = 1509277797611470931
 # Pipehitter role IDs for parsing
 PIPEHITTER_ROLE_ID = 1435812894532042843
 DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
@@ -250,6 +252,9 @@ BLACK_LAURELS_REQUIRED_MISSIONS = {
     "disruption",
     "purgation",
 }
+# Dual Vigil required missions — identical to Black Laurels; all 9 missions at Absolute with exactly 2 brothers
+DUAL_VIGIL_REQUIRED_MISSIONS = BLACK_LAURELS_REQUIRED_MISSIONS
+
 # Grandfathered missions - users who already have the role are assumed to have completed these
 BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
     "inferno",
@@ -295,6 +300,20 @@ ORDER_OMEGA_REQUIRED_MISSIONS = {
     "disruption",
     "exfiltration",
     "purgation",
+}
+
+# Dedicated Master Terminus Slayer role ID constant for terminus_ops auto-award
+MASTER_TERMINUS_SLAYER_ROLE_ID = 1452803611477147668
+
+# Mapping from Terminus Slayer class role ID → award_type string used in the dispatch queue
+TERMINUS_SLAYER_CLASS_AWARD_TYPES: dict[int, str] = {
+    1449257352112111646: "terminus_slayer_assault",
+    1450230789034737748: "terminus_slayer_bulwark",
+    1450231189028737166: "terminus_slayer_heavy",
+    1450231020686278656: "terminus_slayer_sniper",
+    1450230281599713451: "terminus_slayer_tactical",
+    1476623936254115992: "terminus_slayer_techmarine",
+    1450230501804609697: "terminus_slayer_vanguard",
 }
 
 # Challenge award role IDs for eligibility checking
@@ -414,9 +433,10 @@ CHALLENGE_ROLES = [
     (1450231020686278656, "Terminus Slayer (Sniper)", "1stAwardTerminusSlayer"),
     (1450231189028737166, "Terminus Slayer (Heavy)", "1stAwardTerminusSlayer"),
     (1476623936254115992, "Terminus Slayer (Techmarine)", "1stAwardTerminusSlayer"),
-    # Laurels
+    # Laurels / Vigil
     (1450595241508733183, "Crimson Laurels", "CrimsonLaurelsMedal"),
     (1440108298115485716, "Black Laurels", "BlackLaurelsMedal"),
+    (1509277797611470931, "Dual Vigil", None),
     # Service awards
     (1436434868652212275, "Apothecarion Service Medal", "ApothecarionServiceMedal"),
     (1436170746283163770, "Ardent Raider Ribbon", "ArdentRaiderRibbon"),
