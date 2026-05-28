@@ -4185,6 +4185,204 @@ def _get_order_omega_announcement(
     )
 
 
+def _get_dual_vigil_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Dual Vigil award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DUAL VIGIL",
+        color=0x1A252F,
+        openings=DUAL_VIGIL_OPENINGS,
+        proclamations=DUAL_VIGIL_PROCLAMATIONS,
+        chapter_lines=DUAL_VIGIL_CHAPTER_LINES,
+        rank_lines=DUAL_VIGIL_RANK_LINES,
+        award_label="Dual Vigil",
+        award_image=None,
+        ping_role_id=DUAL_VIGIL_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_assault_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Assault) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — ASSAULT",
+        color=0xC0392B,
+        openings=TERMINUS_SLAYER_ASSAULT_OPENINGS,
+        proclamations=TERMINUS_SLAYER_ASSAULT_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Assault)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_bulwark_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Bulwark) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — BULWARK",
+        color=0x1A5276,
+        openings=TERMINUS_SLAYER_BULWARK_OPENINGS,
+        proclamations=TERMINUS_SLAYER_BULWARK_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_BULWARK_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Bulwark)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_heavy_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Heavy) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — HEAVY",
+        color=0x1B4F2A,
+        openings=TERMINUS_SLAYER_HEAVY_OPENINGS,
+        proclamations=TERMINUS_SLAYER_HEAVY_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_HEAVY_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Heavy)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_sniper_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Sniper) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — SNIPER",
+        color=0x4E5B4A,
+        openings=TERMINUS_SLAYER_SNIPER_OPENINGS,
+        proclamations=TERMINUS_SLAYER_SNIPER_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_SNIPER_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Sniper)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_tactical_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Tactical) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — TACTICAL",
+        color=0x2E4057,
+        openings=TERMINUS_SLAYER_TACTICAL_OPENINGS,
+        proclamations=TERMINUS_SLAYER_TACTICAL_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Tactical)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_techmarine_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Techmarine) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — TECHMARINE",
+        color=0x871A16,
+        openings=TERMINUS_SLAYER_TECHMARINE_OPENINGS,
+        proclamations=TERMINUS_SLAYER_TECHMARINE_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Techmarine)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_terminus_slayer_vanguard_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Terminus Slayer (Vanguard) award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="TERMINUS SLAYER — VANGUARD",
+        color=0x4A235A,
+        openings=TERMINUS_SLAYER_VANGUARD_OPENINGS,
+        proclamations=TERMINUS_SLAYER_VANGUARD_PROCLAMATIONS,
+        chapter_lines=TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES,
+        rank_lines=None,
+        award_label="Terminus Slayer (Vanguard)",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
+def _get_master_terminus_slayer_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Master Terminus Slayer award announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="MASTER TERMINUS SLAYER",
+        color=0xB7950B,
+        openings=MASTER_TERMINUS_SLAYER_OPENINGS,
+        proclamations=MASTER_TERMINUS_SLAYER_PROCLAMATIONS,
+        chapter_lines=MASTER_TERMINUS_SLAYER_CHAPTER_LINES,
+        rank_lines=MASTER_TERMINUS_SLAYER_RANK_LINES,
+        award_label="Master Terminus Slayer",
+        award_image=None,
+        ping_role_id=WATCH_COMMAND_ROLE_ID,
+    )
+
+
 def _compute_member_service_studs(member: discord.Member) -> int:
     """Compute the number of service studs a member has earned.
 

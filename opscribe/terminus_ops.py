@@ -26,7 +26,10 @@ from .constants import (  # noqa: F401
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
     KILL_LOG_REMINDER_HOURS,
+    MASTER_TERMINUS_SLAYER_ROLE_ID,
+    TERMINUS_SLAYER_CLASS_AWARD_TYPES,
     TERMINUS_SLAYER_PATH,
+    TERMINUS_SLAYER_ROLE_IDS,
     TERMINUS_TYPES,
     TERMINUS_VERIFIER_RANKS,
     VERIFIER_TIER_THRESHOLDS,
@@ -711,16 +714,77 @@ async def _notify_class_complete(
     class_role_id: int,
     class_name: str,
 ) -> None:
+    """Assign the class Terminus Slayer role, enqueue a public award announcement,
+    and check whether Master Terminus Slayer has now been earned."""
     if guild is None:
         return
-    channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
-    if channel is None:
-        return
-    try:
-        await channel.send(embed=_build_completion_embed(brother_id, class_name))
-    except Exception as exc:
+
+    member = guild.get_member(int(brother_id))
+    if member is None:
         if _g.logger:
-            _g.logger.warning(f"terminus_ops: failed to send completion notification: {exc}")
+            _g.logger.warning(f"terminus_ops: member {brother_id} not found in guild for class completion")
+        return
+
+    # Assign the class role
+    class_role = guild.get_role(class_role_id)
+    if class_role is not None and class_role not in member.roles:
+        try:
+            await member.add_roles(class_role, reason=f"Auto-award: Terminus Slayer ({class_name})")
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.warning(f"terminus_ops: failed to assign {class_name} role to {brother_id}: {exc}")
+
+    # Determine member chapter
+    home_chapters = _b("HOME_CHAPTERS") or []
+    member_chapter = "Unknown"
+    for r in getattr(member, "roles", []):
+        if getattr(r, "name", "") in home_chapters:
+            member_chapter = r.name
+            break
+
+    # Enqueue public announcement for this class award
+    award_type = TERMINUS_SLAYER_CLASS_AWARD_TYPES.get(class_role_id)
+    if award_type:
+        try:
+            ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+            if ann_channel:
+                _b("_enqueue_award_announcement")(
+                    str(member.id), award_type, member_chapter, str(ann_channel.id), str(guild.id)
+                )
+            else:
+                if _g.logger:
+                    _g.logger.warning(
+                        f"terminus_ops: no announcement channel for {brother_id} {award_type}; role assigned"
+                    )
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.warning(f"terminus_ops: failed to enqueue announcement for {award_type}: {exc}")
+
+    # Check if all 6 class roles are now held → award Master Terminus Slayer
+    class_role_ids = set(TERMINUS_SLAYER_CLASS_AWARD_TYPES.keys())
+    member_role_ids = {r.id for r in getattr(member, "roles", [])}
+    # Re-include the just-assigned role in case Discord hasn't reflected it yet
+    if class_role is not None:
+        member_role_ids.add(class_role_id)
+    all_classes_done = class_role_ids <= member_role_ids
+
+    if all_classes_done:
+        master_role = guild.get_role(MASTER_TERMINUS_SLAYER_ROLE_ID)
+        if master_role is not None and master_role not in member.roles:
+            try:
+                await member.add_roles(master_role, reason="Auto-award: Master Terminus Slayer")
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(f"terminus_ops: failed to assign Master Terminus Slayer to {brother_id}: {exc}")
+            try:
+                ann_channel = await _b("_get_award_announcement_channel")(member, guild)
+                if ann_channel:
+                    _b("_enqueue_award_announcement")(
+                        str(member.id), "master_terminus_slayer", member_chapter, str(ann_channel.id), str(guild.id)
+                    )
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(f"terminus_ops: failed to enqueue master announcement for {brother_id}: {exc}")
 
 
 async def _refresh_kill_log_embed(guild: Optional[discord.Guild], entry: dict) -> None:
