@@ -3966,9 +3966,28 @@ def _build_challenge_award_embed(
             break
 
     opening = random.choice(openings).format(name=display_name)
-    proclamation = random.choice(proclamations)
-    chapter_coda = chapter_lines.get(member_chapter, "") if chapter_lines else ""
-    rank_coda = rank_lines.get(member_rank, "") if (rank_lines and member_rank) else ""
+    proclamation = random.choice(proclamations).format(name=display_name)
+    chapter_coda = (chapter_lines.get(member_chapter, "") or "").format(name=display_name) if chapter_lines else ""
+    rank_coda = (rank_lines.get(member_rank, "") or "").format(name=display_name) if (rank_lines and member_rank) else ""
+
+    # Blend coda selection: when both chapter and rank codas are available, pick one
+    # based on rank-tier blend ratios (same as forge rite stud flavor blending).
+    # Higher ranks skew toward rank coda; line warriors skew toward chapter coda.
+    if chapter_coda and rank_coda:
+        rank_category = _get_rank_category_for_blend(member_rank or "")
+        blend_thresholds = {
+            "watchers": 0.9,          # 90% rank, 10% chapter
+            "high_cmd_specialist": 0.8,  # 80% rank, 20% chapter
+            "company_cmd": 0.5,        # 50/50
+            "specialist": 0.5,         # 50/50
+            "line": 0.2,               # 20% rank, 80% chapter
+        }
+        rank_weight = blend_thresholds.get(rank_category, 0.5)
+        selected_coda = rank_coda if random.random() < rank_weight else chapter_coda
+    elif rank_coda:
+        selected_coda = rank_coda
+    else:
+        selected_coda = chapter_coda
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
@@ -3978,10 +3997,8 @@ def _build_challenge_award_embed(
     )
 
     proclamation_text = f"{opening}\n\n{proclamation}"
-    if chapter_coda:
-        proclamation_text += f"\n\n*{chapter_coda}*"
-    if rank_coda:
-        proclamation_text += f"\n\n*{rank_coda}*"
+    if selected_coda:
+        proclamation_text += f"\n\n*{selected_coda}*"
     embed.add_field(name="▸ Watch's Proclamation", value=proclamation_text, inline=False)
 
     rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
@@ -4222,7 +4239,7 @@ def _get_terminus_slayer_assault_announcement(
         openings=TERMINUS_SLAYER_ASSAULT_OPENINGS,
         proclamations=TERMINUS_SLAYER_ASSAULT_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_ASSAULT_RANK_LINES,
         award_label="Terminus Slayer (Assault)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4244,7 +4261,7 @@ def _get_terminus_slayer_bulwark_announcement(
         openings=TERMINUS_SLAYER_BULWARK_OPENINGS,
         proclamations=TERMINUS_SLAYER_BULWARK_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_BULWARK_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_BULWARK_RANK_LINES,
         award_label="Terminus Slayer (Bulwark)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4266,7 +4283,7 @@ def _get_terminus_slayer_heavy_announcement(
         openings=TERMINUS_SLAYER_HEAVY_OPENINGS,
         proclamations=TERMINUS_SLAYER_HEAVY_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_HEAVY_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_HEAVY_RANK_LINES,
         award_label="Terminus Slayer (Heavy)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4288,7 +4305,7 @@ def _get_terminus_slayer_sniper_announcement(
         openings=TERMINUS_SLAYER_SNIPER_OPENINGS,
         proclamations=TERMINUS_SLAYER_SNIPER_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_SNIPER_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_SNIPER_RANK_LINES,
         award_label="Terminus Slayer (Sniper)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4310,7 +4327,7 @@ def _get_terminus_slayer_tactical_announcement(
         openings=TERMINUS_SLAYER_TACTICAL_OPENINGS,
         proclamations=TERMINUS_SLAYER_TACTICAL_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_TACTICAL_RANK_LINES,
         award_label="Terminus Slayer (Tactical)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4332,7 +4349,7 @@ def _get_terminus_slayer_techmarine_announcement(
         openings=TERMINUS_SLAYER_TECHMARINE_OPENINGS,
         proclamations=TERMINUS_SLAYER_TECHMARINE_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_TECHMARINE_RANK_LINES,
         award_label="Terminus Slayer (Techmarine)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
@@ -4354,7 +4371,7 @@ def _get_terminus_slayer_vanguard_announcement(
         openings=TERMINUS_SLAYER_VANGUARD_OPENINGS,
         proclamations=TERMINUS_SLAYER_VANGUARD_PROCLAMATIONS,
         chapter_lines=TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES,
-        rank_lines=None,
+        rank_lines=TERMINUS_SLAYER_VANGUARD_RANK_LINES,
         award_label="Terminus Slayer (Vanguard)",
         award_image=None,
         ping_role_id=WATCH_COMMAND_ROLE_ID,
