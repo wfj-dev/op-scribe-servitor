@@ -1294,28 +1294,37 @@ async def _challenge_progress_inner(
     # --- Crux Terminatus eligibility checklist ---
     # Requirement 1: All Black Laurels missions completed with Rank A.
     has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
-    bl_aars = user_progress.get("crux_bl_aars", [])
-    # Having the Black Laurels role already proves all missions are complete;
-    # also verify every tracked AAR was Rank A.
-    all_bl_rank_a = (
-        has_bl_role
-        and all((m.get("rank") or "A").upper() == "A" for m in bl_aars)
-    )
     # If they already hold the Crux role, treat everything as complete.
     has_crux = CRUX_TERMINATUS_ROLE_ID in target_role_ids
     if has_crux:
         all_bl_rank_a = True
+    else:
+        # Scan the full datastore for every Black Laurels AAR belonging to this
+        # user and check that all of them are Rank A.  The crux_bl_aars list in
+        # the progress file is incomplete for historical records, so we cannot
+        # rely on it for the gate — mirror the same logic used by the auto-award.
+        all_bl_rank_a = False
+        if has_bl_role and _g.DATASTORE:
+            saw_any_bl = False
+            _all_rank_a = True
+            for _rec in _g.DATASTORE.iter_records():
+                _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
+                if not _bl:
+                    continue
+                if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
+                    continue
+                saw_any_bl = True
+                if (_rec.get("rank") or "A").upper() != "A":
+                    _all_rank_a = False
+                    break
+            all_bl_rank_a = saw_any_bl and _all_rank_a
 
     # Requirement 2: Distinguished SOK-G Pipehitter role.
-    has_distinguished = DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids
-    if has_crux:
-        has_distinguished = True
+    has_distinguished = has_crux or (DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids)
 
     # Requirement 3: 2+ Terminus Slayer class completions.
     ts_class_count = sum(1 for rid in KILL_LOG_CLASS_ROLES if rid in target_role_ids)
-    ts_slays_met = ts_class_count >= 2
-    if has_crux:
-        ts_slays_met = True
+    ts_slays_met = has_crux or (ts_class_count >= 2)
 
     bl_check = "✅" if all_bl_rank_a else "🔲"
     dist_check = "✅" if has_distinguished else "🔲"

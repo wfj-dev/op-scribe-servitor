@@ -1797,6 +1797,31 @@ _AWARD_DISPATCH_FN_MAP = {
 }
 
 
+async def _dm_award_failure(item: Dict, reason: str) -> None:
+    """DM all admin_user_ids when an award announcement is dropped."""
+    admin_ids = [str(a) for a in (_g.CONFIG.get("admin_user_ids") or [])]
+    if not admin_ids:
+        return
+    member_id = item.get("member_id", "?")
+    award_type = item.get("award_type", "?")
+    channel_id = item.get("channel_id", "?")
+    msg = (
+        f"⚠️ **Award announcement dropped**\n"
+        f"• Award: `{award_type}`\n"
+        f"• Member: <@{member_id}> (`{member_id}`)\n"
+        f"• Channel: <#{channel_id}> (`{channel_id}`)\n"
+        f"• Reason: {reason}"
+    )
+    for admin_id in admin_ids:
+        try:
+            user = await _g.bot.fetch_user(int(admin_id))
+            if user:
+                await user.send(msg)
+        except Exception as dm_exc:
+            if _g.logger:
+                _g.logger.warning(f"Award dispatch: failed to DM admin {admin_id}: {dm_exc}")
+
+
 @tasks.loop(minutes=15)
 async def _award_announcement_dispatch_loop():
     """Drains one pending award announcement every 15 minutes to avoid post spam."""
@@ -1810,12 +1835,16 @@ async def _award_announcement_dispatch_loop():
 
         guild = _g.bot.get_guild(int(item["guild_id"]))
         if not guild:
-            _g.logger.warning(f"Award dispatch: guild {item['guild_id']} not found; dropping item")
+            reason = f"guild `{item['guild_id']}` not found"
+            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            await _dm_award_failure(item, reason)
             return
 
         member = guild.get_member(int(item["member_id"]))
         if not member:
-            _g.logger.warning(f"Award dispatch: member {item['member_id']} not in guild; dropping item")
+            reason = f"member `{item['member_id']}` not found in guild"
+            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            await _dm_award_failure(item, reason)
             return
 
         channel_id = int(item["channel_id"])
@@ -1829,19 +1858,23 @@ async def _award_announcement_dispatch_loop():
                 )
                 channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
         if not channel:
-            _g.logger.warning(
-                f"Award dispatch: no usable channel for item {item['member_id']}/{item['award_type']}; dropping item"
-            )
+            reason = f"no usable channel (tried `{channel_id}` + service studs fallback)"
+            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            await _dm_award_failure(item, reason)
             return
 
         fn_name = _AWARD_DISPATCH_FN_MAP.get(item["award_type"])
         if not fn_name:
-            _g.logger.warning(f"Award dispatch: unknown award type '{item['award_type']}'; dropping item")
+            reason = f"unknown award type `{item['award_type']}`"
+            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            await _dm_award_failure(item, reason)
             return
 
         fn = _b(fn_name)
         if not fn:
-            _g.logger.warning(f"Award dispatch: announcement function '{fn_name}' not found; dropping item")
+            reason = f"announcement function `{fn_name}` not found in bot module"
+            _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            await _dm_award_failure(item, reason)
             return
 
         content, embed, award_file = fn(
@@ -8196,6 +8229,7 @@ __all__ = [
     "_load_award_queue",
     "_save_award_queue",
     "_enqueue_award_announcement",
+    "_dm_award_failure",
     "_award_announcement_dispatch_loop",
     # ── Public names ─────────────────────────────────────────────────────────
     "HIGH_COMMAND_ROLES",
