@@ -3596,12 +3596,10 @@ def _get_oathsworn_announcement(
     poll.add_answer(text="Aye, elevate to Oathsworn", emoji="⚔️")
     poll.add_answer(text="Nay, more service required", emoji="🛡️")
 
-    # Content with mentions (Watch Captain/Lieutenant for visibility)
-    watch_captain_role = discord.utils.get(guild.roles, name="Watch Captain")
-    watch_lt_role = discord.utils.get(guild.roles, name="Watch Lieutenant")
-    captain_mention = watch_captain_role.mention if watch_captain_role else "@Watch Captain"
-    lt_mention = watch_lt_role.mention if watch_lt_role else "@Watch Lieutenant"
-    content = f"{captain_mention} {lt_mention} {member.mention}"
+    # Content with mentions
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
 
     return content, embed, poll
 
@@ -3728,9 +3726,9 @@ def _get_watch_veteran_announcement(
     if award_file:
         embed.set_image(url="attachment://award_watch_veteran.png")
 
-    watch_sergeant_role = guild.get_role(WATCH_SERGEANT_ROLE_ID)
-    sergeant_mention = watch_sergeant_role.mention if watch_sergeant_role else f"<@&{WATCH_SERGEANT_ROLE_ID}>"
-    content = f"{sergeant_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3793,11 +3791,9 @@ def _get_ardent_raider_announcement(
     if award_file:
         embed.set_image(url="attachment://award_ardent_raider.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    techmarine_role = discord.utils.get(guild.roles, name=TECHMARINE_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    tech_mention = techmarine_role.mention if techmarine_role else f"@{TECHMARINE_ROLE_NAME}"
-    content = f"{command_mention} {tech_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3860,11 +3856,9 @@ def _get_apothecarion_medal_announcement(
     if award_file:
         embed.set_image(url="attachment://award_apothecarion_medal.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    apothecary_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    apo_mention = apothecary_role.mention if apothecary_role else f"@{APOTHECARY_ROLE_NAME}"
-    content = f"{command_mention} {apo_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -3927,11 +3921,9 @@ def _get_crimson_laurels_announcement(
     if award_file:
         embed.set_image(url="attachment://award_crimson_laurels.png")
 
-    watch_command_role = guild.get_role(WATCH_COMMAND_ROLE_ID)
-    librarian_role = discord.utils.get(guild.roles, name=LIBRARIAN_ROLE_NAME)
-    command_mention = watch_command_role.mention if watch_command_role else f"<@&{WATCH_COMMAND_ROLE_ID}>"
-    lib_mention = librarian_role.mention if librarian_role else f"@{LIBRARIAN_ROLE_NAME}"
-    content = f"{command_mention} {lib_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
@@ -4020,9 +4012,9 @@ def _build_challenge_award_embed(
     if award_file:
         embed.set_image(url=f"attachment://{award_image}")
 
-    ping_role = guild.get_role(ping_role_id)
-    ping_mention = ping_role.mention if ping_role else f"<@&{ping_role_id}>"
-    content = f"{ping_mention} {member.mention}"
+    watch_brother_role = discord.utils.get(guild.roles, name="Watch Brother")
+    wb_mention = watch_brother_role.mention if watch_brother_role else ""
+    content = f"{wb_mention} {member.mention}".strip()
     return content, embed, award_file
 
 
