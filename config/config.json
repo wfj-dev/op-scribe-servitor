@@ -172,7 +172,6 @@
     },
     "requeue_award": {
       "roles": [
-        "Watch Master",
         "Forgemaster"
       ]
     },
