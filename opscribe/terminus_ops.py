@@ -765,7 +765,7 @@ async def _notify_class_complete(
             if _g.logger:
                 _g.logger.warning(f"terminus_ops: failed to enqueue announcement for {award_type}: {exc}")
 
-    # Check if all 6 class roles are now held → award Master Terminus Slayer
+    # Check if all 7 class roles are now held → award Master Terminus Slayer
     class_role_ids = set(TERMINUS_SLAYER_CLASS_AWARD_TYPES.keys())
     member_role_ids = {r.id for r in getattr(member, "roles", [])}
     # Re-include the just-assigned role in case Discord hasn't reflected it yet
