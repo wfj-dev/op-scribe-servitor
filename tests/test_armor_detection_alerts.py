@@ -159,6 +159,7 @@ def test_detection_alert_tracked_in_state():
 
     # Force detection roll to succeed
     with (
+        patch("opscribe.forge_ops._is_forge_enabled", new_callable=AsyncMock, return_value=True),
         patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),
@@ -229,6 +230,7 @@ def test_detection_alert_allowed_for_escalated_tier():
         }
 
     with (
+        patch("opscribe.forge_ops._is_forge_enabled", new_callable=AsyncMock, return_value=True),
         patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
@@ -266,6 +268,7 @@ def test_sustained_alert_takes_priority_over_detection():
         }
 
     with (
+        patch("opscribe.forge_ops._is_forge_enabled", new_callable=AsyncMock, return_value=True),
         patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", new_callable=AsyncMock),
@@ -308,6 +311,7 @@ def test_sustained_alert_updates_detection_tracking():
         captured_state.update(state)
 
     with (
+        patch("opscribe.forge_ops._is_forge_enabled", new_callable=AsyncMock, return_value=True),
         patch("opscribe.bot._is_active_participant", return_value=True),
         patch("opscribe.bot._get_armor_state", side_effect=mock_get_armor_state),
         patch("opscribe.bot._set_armor_state", side_effect=mock_set_armor_state),

@@ -2657,6 +2657,32 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Black Shield": "No Chapter claims the kill — only the record. **{name}**'s record shows nine Terminus threats met, nine Thunder Hammers delivered, nine threats resolved.",
 }
 
+TERMINUS_SLAYER_ASSAULT_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "Where the Watch Master charges, the Thunder Hammer arrives first — at full thrust, without ceremony, and without anything left standing.",
+    "High Chaplain": "The litanies the High Chaplain carries into combat are most effective at Thunder Hammer range. The jump pack's arc is the faith made kinetic.",
+    "Chief Apothecary": "The Chief Apothecary beneath jump pack thrust has settled on the most direct form of medicine — remove the threat before it requires a response.",
+    "Void Warden": "The Void Warden's vigilance resolves at the end of a jump pack's arc. No threat warranting a Thunder Hammer should have the leisure to see the Warden coming.",
+    "Forgemaster": "The Forgemaster has examined every weapon the Watch carries. The one brought to Thunder Hammer range under full thrust is the one that requires no further refinement.",
+    "Castellan": "The Castellan does not always defend from a fixed position — sometimes the fortress launches itself at jump pack velocity, Thunder Hammer already in hand.",
+    "Lord Executioner": "The Lord Executioner who interprets the execution mandate as a jump pack charge at Thunder Hammer distance has interpreted it correctly.",
+    "Venerable Dreadnought": "The ancient has carried the close-quarters charge across centuries. Where the jump pack shortens the approach, the Venerable Dreadnought already knew the destination.",
+    "Honored Dreadnought": "The Honored Dreadnought needs no novel doctrine to confirm the oldest truth — close the distance, deliver the blow, and the rest follows.",
+    "Interred Brother": "Preserved in iron, uninterested in waiting — the Interred Brother beneath jump pack thrust is the Watch's most surprising argument for closing first and asking nothing.",
+    "Watch Chaplain": "The Chaplain's creed flies furthest when launched beneath a jump pack. The Thunder Hammer is where the sermon ends and the result begins.",
+    "Watch Apothecary": "The Apothecary who masters the direct charge has decided that the finest preventative care is delivered at Thunder Hammer range, before any wound is possible.",
+    "Watch Librarian": "The Librarian brings considerable gifts to every engagement. At Thunder Hammer range, the most valuable gift is the willingness to close without hesitation.",
+    "Watch Techmarine": "The Techmarine has calibrated the jump pack's thrust with the same precision applied to everything else. The Thunder Hammer's delivery point is exactly where the calculation said it would be.",
+    "Watch Keeper": "The Keeper's watch ends when the jump pack fires. There is a form of vigilance that can only be fulfilled at close-quarters distance, Thunder Hammer in hand.",
+    "Company Champion": "The Company Champion at jump pack range is the Chapter's finest argument delivered in person — the blade and the hammer both carried to the point of maximum decision.",
+    "Kill Team Champion": "The Kill Team Champion who closes beneath jump pack thrust leads the charge the team cannot. The Thunder Hammer at the end of it makes the result available to everyone.",
+    "Watch Captain": "The Captain who arrives first under a jump pack's thrust commands in the oldest sense of the word. Thunder Hammer range is where leadership becomes undeniable.",
+    "Watch Lieutenant": "The Lieutenant who closes at Thunder Hammer distance has concluded that the correct position for an officer is at the end of the charge, not behind it.",
+    "Watch Sergeant": "The Sergeant beneath jump pack thrust shows the squad exactly what the front looks like. The Thunder Hammer confirms the lesson before the squad arrives to learn it.",
+    "Oathsworn": "The oath to close on what others cannot reach has a specific mechanism in Assault class. The jump pack provides the commitment; the Thunder Hammer provides the resolution.",
+    "Watch Veteran": "The Veteran's experience turns every jump pack launch into certainty. The Thunder Hammer has been delivered enough times that the approach requires no reconsideration.",
+    "Watch Brother": "The Watch Brother who masters the Assault class has committed to the close-quarters charge before most have decided it is warranted. The jump pack confirms the decision in flight.",
+}
+
 # ---------------------------------------------------------------------------
 # Terminus Slayer (Bulwark) award announcement flavor text
 # ---------------------------------------------------------------------------
@@ -2727,6 +2753,32 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "White Scars": "Speed does not require a jump pack. **{name}** has proven the Bulwark can close on Terminus threats quickly enough — nine times over.",
     "Wolfspear": "The Dark Terror's shield protects the hunt. **{name}** protected the hunt for nine Terminus engagements and confirmed every kill personally.",
     "Black Shield": "No banner marks the chapter — but nine Terminus kills mark the warrior. **{name}**'s record stands without lineage, without qualification.",
+}
+
+TERMINUS_SLAYER_BULWARK_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master's Bulwark discipline is the Watch's doctrine in two movements — the banner for brothers first, the blade for the threat second. Neither phase is optional.",
+    "High Chaplain": "The High Chaplain plants the banner for the brothers and draws the blade for the threat. Faith is not passive behind the shield — it is the preparation for what follows.",
+    "Chief Apothecary": "The Chief Apothecary behind shield and banner has mastered the Bulwark's first truth: protect what matters, then answer what threatens it. Both acts belong to the same warrior.",
+    "Void Warden": "The Void Warden's shield is a watching post. The vigil continues until the banner is planted and the brothers are covered — and then the blade settles what remains.",
+    "Forgemaster": "The Forgemaster understands that the shield and the blade are not opposed tools. They are sequential ones, and the Bulwark's craft is knowing exactly when the sequence advances.",
+    "Castellan": "The Castellan's walls take every form available — including the shield that comes before the blade. The fortress is never finished until both phases are complete.",
+    "Lord Executioner": "The Lord Executioner who works from behind a banner has not abandoned the mandate — they have staged it. The shield absorbs; the blade executes on schedule.",
+    "Venerable Dreadnought": "The ancient has watched warriors learn the Bulwark's lesson across centuries. The shield comes first. The blade earns its moment. This is not a doctrine — it is an understanding.",
+    "Honored Dreadnought": "The Honored Dreadnought endures long enough to complete both phases of the Bulwark's work — the banner planted for brothers, the blade drawn when the position has served its purpose.",
+    "Interred Brother": "The Interred Brother behind shield and banner is the Watch's most fortified position made mobile. The blade that emerges after the banner has been planted is the position's second phase.",
+    "Watch Chaplain": "The Chaplain behind the banner is the creed made structural — brothers sheltered by the shield's width, the blade held for the moment the creed requires answering what threatens them.",
+    "Watch Apothecary": "The Apothecary behind the Bulwark's shield protects in both directions — the banner gives brothers what the narthecium would have needed, and the blade settles what made it necessary.",
+    "Watch Librarian": "The Librarian's Bulwark discipline is strategy made physical — the banner positioned where it serves, the shield held on purpose, the blade drawn precisely when the position it created has done its work.",
+    "Watch Techmarine": "The Techmarine behind shield and banner has assessed the engagement sequence and found the Bulwark's two-phase approach to be the most mechanically sound available.",
+    "Watch Keeper": "The Keeper's vigil has a second act. After the banner is planted and the brothers are covered, the blade answers whatever the shield absorbed. Both phases belong to the same watch.",
+    "Company Champion": "The Company Champion behind the Bulwark's shield is the Chapter's defender in the fullest sense — the blade that emerges from the protected position is the Chapter's answer after the protection has been given.",
+    "Kill Team Champion": "The Kill Team Champion who masters the Bulwark class gives the team everything the shield and banner offer, and then gives the team one more thing — the blade drawn when the position has served its purpose.",
+    "Watch Captain": "A Watch Captain's Bulwark discipline is command demonstrated in sequence — the banner for the brothers before the blade for the threat. Both phases are the officer's responsibility.",
+    "Watch Lieutenant": "The Lieutenant who raises the banner first and draws the blade second has learned the Bulwark's lesson. The shield is not the end of the engagement — it is the beginning of the second phase.",
+    "Watch Sergeant": "The Sergeant's Bulwark discipline shows the squad what sequence looks like in practice — the shield deployed, the banner raised, and then the blade drawn at exactly the right moment.",
+    "Oathsworn": "The oath behind the Bulwark's shield comes in two parts. The banner honors the first part. The blade honors the second. Neither is ever forgotten by the warrior who has sworn both.",
+    "Watch Veteran": "The Veteran knows the Bulwark's sequence well enough that the transition from banner to blade requires no decision. By this point, the shield has done its work and the blade knows it.",
+    "Watch Brother": "The Watch Brother who masters the Bulwark class has already learned what takes most warriors years to understand — protect first, answer second, and never confuse the order.",
 }
 
 # ---------------------------------------------------------------------------
@@ -2801,6 +2853,32 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Black Shield": "No lineage accompanies the record. Nine Terminus kills in heavy weapon class. **{name}**'s Terminus Slayer mark requires nothing else.",
 }
 
+TERMINUS_SLAYER_HEAVY_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master behind the barrier with a heavy weapon in hand has taken the Watch's most powerful standard tools and applied them from the most defensible position available. The question of whether this is sufficient answers itself.",
+    "High Chaplain": "The High Chaplain's heaviest sermon is delivered from behind the barrier. The heavy weapon's argument is theological in its own way — sustained, authoritative, and final.",
+    "Chief Apothecary": "The Chief Apothecary behind a barrier with a heavy weapon has determined that the most effective form of care is applied before the wound can occur. Sustained firepower makes this determination in bulk.",
+    "Void Warden": "The Void Warden's watch from behind the barrier is the vigil fortified — the heavy weapon extending the reach of the position further than any wall the watch could occupy.",
+    "Forgemaster": "The Forgemaster knows which weapons the Watch carries and which position makes those weapons most effective. The barrier confirms the position; the heavy weapon confirms the Forgemaster's assessment.",
+    "Castellan": "The Castellan's barrier is a wall in miniature — portable, sufficient, and deployed forward of the threat rather than behind it. The heavy weapon behind it is the wall's active component.",
+    "Lord Executioner": "The Lord Executioner behind the barrier with sustained heavy fire has determined that the warrant does not require proximity. Maximum range and maximum firepower produce the same finality.",
+    "Venerable Dreadnought": "The ancient behind the barrier demonstrates that the longest effective range and the heaviest weapons are as valid a counsel as any — and that patience is the virtue that makes both possible.",
+    "Honored Dreadnought": "The Honored Dreadnought behind the barrier is endurance applied to the heaviest position available. The heavy weapon speaks for as long as the position demands.",
+    "Interred Brother": "The Interred Brother behind the barrier is the Watch's most sustained position — the heavy weapon held at the angle the preserved warrior calculated, for as long as the engagement requires.",
+    "Watch Chaplain": "The Chaplain's creed from behind the barrier is the Watch's heaviest theology — the barrier shelters brothers, the heavy weapon delivers the argument at sustained range.",
+    "Watch Apothecary": "The Apothecary behind the Heavy's barrier has made the barrier itself the first form of care — the heavy weapon ensuring that what shelters behind it never has to be mended.",
+    "Watch Librarian": "The Librarian behind the Heavy's barrier has identified the most effective firing solution and committed to it. Sustained fire at the correct target is not a compromise — it is the conclusion of the calculation.",
+    "Watch Techmarine": "The Techmarine behind the barrier has assessed the structural integrity, verified the firing angles, and brought the heavy weapon to bear with the mechanical satisfaction the Omnissiah expects.",
+    "Watch Keeper": "The Keeper's vigil from behind the barrier with a heavy weapon is the watch at its most fortified — the position held, the weapon speaking, the vigil sustained for as long as the engagement requires.",
+    "Company Champion": "The Company Champion behind the Heavy's barrier is the Chapter's heaviest argument — sustained fire at the range where the heavy weapon is most effective, the position held until the argument is resolved.",
+    "Kill Team Champion": "The Kill Team Champion who holds the Heavy's firing position gives the team the most sustained form of fire support available. The barrier makes the position permanent; the heavy weapon makes it lethal.",
+    "Watch Captain": "A Watch Captain who holds the Heavy's position is an officer who understands that the best position is not always the most forward one — it is the one from which the heavy weapon speaks most effectively.",
+    "Watch Lieutenant": "The Lieutenant who masters the Heavy class has learned that some engagements are won from a fixed position with sustained fire rather than a charge. The barrier is the decision made physical.",
+    "Watch Sergeant": "The Sergeant behind the barrier shows the squad what the Heavy's position looks like when it is held correctly — the heavy weapon speaking at range, the squad supported by the fire it provides.",
+    "Oathsworn": "The oath behind the Heavy's barrier is sustained in every sense — the position held, the weapon firing, the vow maintained for as long as the engagement requires the heavy weapon to speak.",
+    "Watch Veteran": "The Veteran behind the Heavy's barrier has held enough positions to know when the barrier is where the engagement will be decided. The heavy weapon confirms the assessment over sustained fire.",
+    "Watch Brother": "The Watch Brother who masters the Heavy class has committed to the discipline of holding the position — the barrier set, the heavy weapon levelled, the line held for as long as the engagement requires.",
+}
+
 # ---------------------------------------------------------------------------
 # Terminus Slayer (Sniper) award announcement flavor text
 # ---------------------------------------------------------------------------
@@ -2871,6 +2949,32 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "White Scars": "The hunt chose a new path — not the charge, but the patient shot. **{name}** adapted the White Scars' principle to nine Terminus kills at range.",
     "Wolfspear": "The Dark Terror's long sight finds the prey before the prey finds the pack. **{name}** has found nine Terminus threats from Sniper range and confirmed every kill.",
     "Black Shield": "The warrior behind the scope leaves no trace but the result. **{name}**'s result is nine Terminus kills. The record confirms everything the Watch requires.",
+}
+
+TERMINUS_SLAYER_SNIPER_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master behind the scope has decided that authority does not require proximity. The cloak, the angle, and the patience to wait for certainty — that is command at maximum range.",
+    "High Chaplain": "The High Chaplain's litanies carry furthest when delivered from concealment. The scope finds the angle; the trigger is the sermon's conclusion. The target's awareness is irrelevant.",
+    "Chief Apothecary": "The Chief Apothecary behind the Sniper's cloak has chosen prevention over remedy — the most precise intervention available, delivered at the range where the threat cannot close before the result is already final.",
+    "Void Warden": "The Void Warden watches longest at the furthest range. From behind the cloak, the vigil is perfect — the threat observed, the angle confirmed, the shot placed before the threat can act on being watched.",
+    "Forgemaster": "The Forgemaster has calibrated the Sniper's tools to their theoretical maximum. The cloak, the scope, the precise application of force at distance — all of it performs exactly as the Omnissiah intended.",
+    "Castellan": "The Castellan's longest wall is the range the Sniper holds. Nothing that threatens from inside the scope's reach has any path to the position — the cloak ensures it stays that way.",
+    "Lord Executioner": "The Lord Executioner who delivers the warrant from concealment has found the most final form of execution — the target has no opportunity to contest the order, no way to locate the officer, and no forewarning whatsoever.",
+    "Venerable Dreadnought": "The ancient has learned patience in ways few warriors can comprehend. From behind the Sniper's cloak, that patience resolves the moment the angle is certain.",
+    "Honored Dreadnought": "The Honored Dreadnought behind the scope is endurance applied to precision — the position held, the cloak maintained, the shot fired exactly when the engagement demands it.",
+    "Interred Brother": "The Interred Brother beneath the Sniper's cloak is the Watch's most patient combatant — the preserved warrior who waited for the angle and took it from the range no one expected.",
+    "Watch Chaplain": "The Chaplain's faith from behind the scope is quiet and certain. The cloak conceals the warrior; the trigger delivers the creed at maximum range.",
+    "Watch Apothecary": "The Apothecary at Sniper range has determined that the most effective form of care is placed before the wound can occur. The cloak ensures the placement is made from a distance that cannot be closed in time.",
+    "Watch Librarian": "The Librarian behind the scope has calculated the optimal approach and found it to be patience, concealment, and the single shot placed where it cannot be recovered from.",
+    "Watch Techmarine": "The Techmarine behind the Sniper's rifle has assessed the weapon's effective range, the target's vulnerabilities, and the optimal deployment of the cloak — the shot that follows is the calculation's conclusion.",
+    "Watch Keeper": "The Keeper behind the scope watches longest and from furthest. The cloak is the vigil's form; the trigger is its resolution.",
+    "Company Champion": "The Company Champion at Sniper range is the Chapter's finest precision — the blade's equivalent at distance, delivered from behind the cloak where no counterargument is possible.",
+    "Kill Team Champion": "The Kill Team Champion who masters the Sniper class gives the team its longest reach — the cloak covering the approach, the scope finding the angle, the shot removing what the team could not otherwise safely close on.",
+    "Watch Captain": "A Watch Captain behind the scope leads from a position that cannot be countered. The cloak conceals the command; the trigger exercises it from the range the threat cannot bridge.",
+    "Watch Lieutenant": "The Lieutenant who masters the Sniper class has learned that precision at range serves the team as fully as a charge at close quarters — from behind the cloak, both the officer and the mission are effectively invisible.",
+    "Watch Sergeant": "The Sergeant's Sniper discipline teaches the squad that the furthest position is sometimes the most effective one. The cloak stabilises the approach; the scope confirms when 'effective' becomes 'final.'",
+    "Oathsworn": "The oath behind the Sniper's cloak is fulfilled at the furthest possible range — the vow that no threat warranting a scope's attention will outlast the patience required to place the shot correctly.",
+    "Watch Veteran": "The Veteran behind the scope has spent enough time in the cloak to know exactly when to fire. The patience required to reach that certainty is the Sniper class's deepest discipline.",
+    "Watch Brother": "The Watch Brother who masters the Sniper class has already learned what most warriors sit with for years — that the cloak, the patience, and the precisely placed shot are the fullest expression of what one warrior can accomplish at range.",
 }
 
 # ---------------------------------------------------------------------------
@@ -2945,6 +3049,32 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Black Shield": "No chapter doctrine. No doctrinal limitation. Only nine Terminus kills recorded under the Tactical class. **{name}**'s record speaks for the warrior.",
 }
 
+TERMINUS_SLAYER_TACTICAL_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master's authority extends to every approach the Watch teaches. The Tactical class is the doctrine of that authority made personal — no preferred weapon, no preferred range, only the response that the auspex confirms is correct.",
+    "High Chaplain": "The High Chaplain carries every weapon the faith demands. The auspex scan identifies which one the moment requires; the High Chaplain carries no preference that would slow the answer.",
+    "Chief Apothecary": "The Chief Apothecary who masters the Tactical class has extended the same all-round competence that defines the apothecary's art into the full range of combat capabilities the Watch recognises.",
+    "Void Warden": "The Void Warden watches for threats in every direction and answers them with whatever the auspex prescribes. The Tactical class is the vigil expressed as comprehensive capability.",
+    "Forgemaster": "The Forgemaster's mastery of the Watch's weapons extends to the Tactical class's full range of approaches. The auspex identifies the weakness; the Forgemaster carries whatever addresses it.",
+    "Castellan": "The Castellan's fortress is most effective when it adapts. The Tactical class is adaptation made doctrine — the auspex scan as the first act, the correct response as the second, no preference limiting either.",
+    "Lord Executioner": "The Lord Executioner's mandate specifies no preferred method. The Tactical class is the fullest expression of that mandate — the auspex identifies the weakpoint; the weapon is selected accordingly.",
+    "Venerable Dreadnought": "The ancient has applied every approach the Watch teaches across more engagements than most warriors can count. The Tactical class, in the Venerable Dreadnought's hands, is accumulated mastery applied without limitation.",
+    "Honored Dreadnought": "The Honored Dreadnought who masters the Tactical class has outlasted the limitations most warriors impose on themselves. Every approach is available; the auspex determines which one the engagement requires.",
+    "Interred Brother": "The Interred Brother in the Tactical class brings preserved experience to bear across the full range of approaches the Watch recognises — the auspex scan, the weakpoint, and whatever weapon the moment demands.",
+    "Watch Chaplain": "The Chaplain behind the auspex carries every weapon the faith allows and applies whichever one the scan confirms as necessary. No approach is beneath the creed; every weakpoint is within its scope.",
+    "Watch Apothecary": "The Apothecary in the Tactical class is all-round care extended to combat — the auspex identifies the threat's vulnerability, and the narthecium is still in one hand while the correct weapon fills the other.",
+    "Watch Librarian": "The Librarian behind the auspex scan has the fullest picture of what the engagement requires. The Tactical class is the mind's most complete expression — every approach kept ready, every weakpoint addressed by the optimal response.",
+    "Watch Techmarine": "The Techmarine who masters the Tactical class has verified that every approach the Watch teaches is mechanically sound. The auspex confirms which one the engagement requires; the preparation ensures it is always available.",
+    "Watch Keeper": "The Keeper's vigil in the Tactical class encompasses every approach the Watch teaches. The auspex extends the watch; the correct weapon extends the resolution.",
+    "Company Champion": "The Company Champion who masters the Tactical class is the Chapter's most complete expression — every weapon applied, every weakpoint addressed, no approach refused.",
+    "Kill Team Champion": "The Kill Team Champion in the Tactical class is the team's most complete asset — the auspex identifies what the team cannot close on alone, and the Champion selects from every approach available to address it.",
+    "Watch Captain": "A Watch Captain who masters the Tactical class leads from the widest possible understanding — every approach available, every weakpoint identified, every weapon in the arsenal considered before the one most suited is selected.",
+    "Watch Lieutenant": "The Lieutenant who masters the Tactical class has extended their effectiveness across every range and approach the Watch teaches. The auspex scan is the officer's widest command — it precedes every other decision.",
+    "Watch Sergeant": "The Sergeant in the Tactical class gives the squad the most adaptable anchor available — the auspex reading the engagement, the NCO selecting the correct response from every approach the Watch has taught.",
+    "Oathsworn": "The oath behind the Tactical class has no preferred direction — it applies to every approach, every weakpoint, every weapon the Watch carries. The auspex confirms which one the moment requires; the oath ensures the warrior is ready for all of them.",
+    "Watch Veteran": "The Veteran in the Tactical class has made every approach available and every option reliable. The auspex scan runs faster because the warrior has seen every result it can recommend.",
+    "Watch Brother": "The Watch Brother who masters the Tactical class has already demonstrated what takes most warriors years to learn — that the Tactical's full capability, properly applied, arrives at the correct answer faster than any single preference would.",
+}
+
 # ---------------------------------------------------------------------------
 # Terminus Slayer (Techmarine) award announcement flavor text
 # ---------------------------------------------------------------------------
@@ -3017,6 +3147,32 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Black Shield": "No forge-world claims the credits. The kills are logged, the machine-spirits satisfied, and **{name}**'s nine Terminus kills stand without further annotation required.",
 }
 
+TERMINUS_SLAYER_TECHMARINE_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master who engineers the kill zone has elevated command to its most deliberate form — the battlefield itself made into the weapon, the machine-spirits serving as execution.",
+    "High Chaplain": "The High Chaplain who deploys the Tarantula Sentry Guns has found the Omnissiah's most practical form of faith — the machine-spirits prepared, the zone locked, the litany backed by automated fire.",
+    "Chief Apothecary": "The Chief Apothecary who masters zone control has found the broadest form of care — the kill zone prevents more wounds than the narthecium could ever address, built before the engagement begins.",
+    "Void Warden": "The Void Warden's watch becomes structural when the Tarantula Sentry Guns are deployed. The machine-spirits watch where the warrior cannot; the zone controls what the vigil alone could not.",
+    "Forgemaster": "The Forgemaster who builds the kill zone is working in the most familiar medium — the battlefield engineered with the same craft applied to the armoury, the machine-spirits directed with the same authority.",
+    "Castellan": "The Castellan deploys the Tarantula Sentry Guns as forward battlements — the zone control a portable fortress, the machine-spirits the garrison that never tires.",
+    "Lord Executioner": "The Lord Executioner who makes the Tarantula Sentry Gun the instrument of the warrant has found the most mechanical form of execution — the zone built, the machine-spirit aimed, the result independent of the blade.",
+    "Venerable Dreadnought": "The ancient who deploys the kill zone has refined the patience of centuries into a single deliberate act — the Tarantula Sentry Guns placed where only experience would know to put them.",
+    "Honored Dreadnought": "The Honored Dreadnought who masters zone control has built endurance into the battlefield itself. The machine-spirits sustain the position; the Honored Dreadnought sustains the machine-spirits.",
+    "Interred Brother": "The Interred Brother who engineers the kill zone has converted preserved knowledge into terrain — the Tarantula Sentry Guns placed where only accumulated experience identifies the correct angle.",
+    "Watch Chaplain": "The Chaplain who deploys the Tarantula Sentry Guns has engineered the creed into the battlefield. The machine-spirits are as dutiful as any brother; the zone they control is the Chaplain's most permanent sermon.",
+    "Watch Apothecary": "The Apothecary who masters zone control has constructed the broadest form of care — the Tarantula Sentry Guns addressing the threat before it reaches the brothers, the preparation serving in place of the remedy.",
+    "Watch Librarian": "The Librarian who deploys the kill zone has applied calculation to the battlefield rather than the individual. The Tarantula Sentry Guns execute the analysis; the zone is the Librarian's most spatial conclusion.",
+    "Watch Techmarine": "The Watch Techmarine who engineers the kill zone has given the Omnissiah's tools their fullest expression — the machine-spirits deployed, the zone locked, the battlefield itself made into the mechanism of the Watch's intent.",
+    "Watch Keeper": "The Keeper's vigil extends through the Tarantula Sentry Guns' sensors. The kill zone is the watch made permanent — the machine-spirits maintaining where the warrior cannot stand alone.",
+    "Company Champion": "The Company Champion who deploys the kill zone has made the battlefield the Chapter's champion — the Tarantula Sentry Guns fighting where the blade cannot reach, the zone protecting what the blade stands before.",
+    "Kill Team Champion": "The Kill Team Champion who engineers the kill zone gives the team the most deliberate support available — the zone built before the engagement, the machine-spirits active so the team can operate inside the preparation.",
+    "Watch Captain": "A Watch Captain who engineers the kill zone commands before the engagement begins — the Tarantula Sentry Guns placed, the zone established, the engagement shaped by the preparation rather than the reaction.",
+    "Watch Lieutenant": "The Lieutenant who masters zone control has found the widest form of leadership in this class — the Tarantula Sentry Guns extending the officer's reach across the full depth of the engagement.",
+    "Watch Sergeant": "The Sergeant who deploys the kill zone has given the squad the most mechanically sophisticated form of support available — the Tarantula Sentry Guns watching the approach, the zone controlling what the squad cannot.",
+    "Oathsworn": "The oath behind the Techmarine's zone control is kept before the first enemy arrives — the machine-spirits deployed, the Tarantula Sentry Guns aimed, the vow fulfilled in the engineering of the conditions for victory.",
+    "Watch Veteran": "The Veteran who masters zone control has learned to engineer the engagement rather than simply enter it. The Tarantula Sentry Guns are placed where experience says they will matter most.",
+    "Watch Brother": "The Watch Brother who masters the Techmarine class has already learned the discipline the class demands above all others — the kill zone must be built before it is needed, and the machine-spirits must be prepared before they are called on.",
+}
+
 # ---------------------------------------------------------------------------
 # Terminus Slayer (Vanguard) award announcement flavor text
 # ---------------------------------------------------------------------------
@@ -3048,6 +3204,32 @@ TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
     "White Scars": "Speed above all — and the Vanguard's grapnel makes speed absolute. **{name}** applied White Scars principle to nine Terminus kills at the closest possible range.",
     "Black Templars": "The eternal charge is not always on foot. **{name}** launched the grapnel and charged nine Terminus threats in the Templar's eternal spirit.",
     "Black Shield": "No chapter. No lineage. Only the grapnel's trajectory and nine Terminus kills logged under the Vanguard class. **{name}**'s record is the complete statement.",
+}
+
+TERMINUS_SLAYER_VANGUARD_RANK_LINES: Dict[str, str] = {
+    "Watch Master": "The Watch Master's authority does not require a gradual approach. The grapnel closes the distance; everything else follows from the moment of arrival.",
+    "High Chaplain": "The High Chaplain who masters the Vanguard class delivers the creed at the speed the grapnel allows — the litany arriving with the warrior, at the range where the warrior is already inside the response.",
+    "Chief Apothecary": "The Chief Apothecary who closes by grapnel has decided the fastest form of intervention is the one that arrives before the wound is possible. The grapnel is the narthecium's preemptive argument.",
+    "Void Warden": "The Void Warden's vigil becomes something else when the grapnel fires. The watch ends the moment the line reaches the target — the distance collapsed, the engagement decided at close quarters.",
+    "Forgemaster": "The Forgemaster who masters the Vanguard class has verified that the grapnel's mechanism functions precisely as designed. The close-quarters weapon at the end of the line functions the same way.",
+    "Castellan": "The Castellan does not always hold ground — sometimes the fortress launches the grapnel and arrives at the threat's position before the threat can choose the terms of the engagement.",
+    "Lord Executioner": "The Lord Executioner who closes by grapnel has delivered the warrant at the speed it deserves — the target reached before it could prepare, the outcome settled at the range the grapnel selected.",
+    "Venerable Dreadnought": "The ancient who masters the Vanguard class has found a way to close distance that centuries of experience confirm is correct. The grapnel is the oldest argument for arriving first, made modern.",
+    "Honored Dreadnought": "The Honored Dreadnought who closes by grapnel has refused to accept that preservation limits the approach. The line launches, the distance collapses, and the close-quarters weapon does what it was made for.",
+    "Interred Brother": "The Interred Brother who fires the grapnel is the Watch's most unexpected arrival — the preserved warrior who collapses the distance at Vanguard speed and engages at close quarters before anyone has accounted for the trajectory.",
+    "Watch Chaplain": "The Chaplain who closes by grapnel delivers the creed at the range where the target cannot fail to receive it. The grapnel commits; the close-quarters weapon concludes.",
+    "Watch Apothecary": "The Apothecary who closes by grapnel has chosen the most direct form of prevention — arriving at the threat's position at Vanguard speed ensures the threat cannot reach the brothers it was aimed at.",
+    "Watch Librarian": "The Librarian who masters the Vanguard class has calculated that the optimal engagement distance is sometimes the shortest one. The grapnel commits to that calculation; the close-quarters weapon resolves it.",
+    "Watch Techmarine": "The Techmarine who fires the grapnel has verified the mechanism, assessed the anchor point, and committed to the trajectory. The close-quarters engagement at the end of the line is the calculation concluded.",
+    "Watch Keeper": "The Keeper's vigil ends when the grapnel fires. The distance maintained through the approach collapses the moment the line reaches its anchor — the vigil becomes an arrival.",
+    "Company Champion": "The Company Champion who closes by grapnel is the Chapter's finest argument delivered at speed — the blade arriving at the threat's position before the threat has finished deciding how to meet it.",
+    "Kill Team Champion": "The Kill Team Champion who masters the Vanguard class closes on what the team cannot. The grapnel launches before the formation reaches the target; the engagement at close quarters removes the threat before it can reverse the distance.",
+    "Watch Captain": "A Watch Captain who closes by grapnel commands from the front in the most direct sense — arriving at the threat's position first, engaging at close quarters, and leaving no ambiguity about who led the approach.",
+    "Watch Lieutenant": "The Lieutenant who masters the Vanguard class has found that the fastest contribution to the engagement is sometimes the most useful one. The grapnel closes the distance; the close-quarters weapon closes the account.",
+    "Watch Sergeant": "The Sergeant who launches the grapnel has decided that the threat is the squad's first problem and the squad's least patient NCO is the first response. The close-quarters weapon confirms the Sergeant's intent on arrival.",
+    "Oathsworn": "The oath behind the grapnel's line is kinetic — the vow to close on what others cannot reach is fulfilled the moment the anchor holds and the distance is no longer what it was.",
+    "Watch Veteran": "The Veteran who masters the Vanguard class has learned when to fire the grapnel — the calculation is instant now, the commitment reflexive, the close-quarters engagement at the end of the line already decided before the trigger is pulled.",
+    "Watch Brother": "The Watch Brother who masters the Vanguard class has answered the question that every warrior considers at some point — when the grapnel is the right tool, and how to commit to the close-quarters engagement at the end of the line without hesitation.",
 }
 
 # ---------------------------------------------------------------------------
