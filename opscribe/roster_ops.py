@@ -8192,6 +8192,11 @@ __all__ = [
     "_format_audit_summary",
     "_format_audit_full",
     "_parse_iso_ts_to_utc_naive",
+    # ── Award announcement queue ─────────────────────────────────────────────
+    "_load_award_queue",
+    "_save_award_queue",
+    "_enqueue_award_announcement",
+    "_award_announcement_dispatch_loop",
     # ── Public names ─────────────────────────────────────────────────────────
     "HIGH_COMMAND_ROLES",
     "BATTLE_LINE_ORDER",
