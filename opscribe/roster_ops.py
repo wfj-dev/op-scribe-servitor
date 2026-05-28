@@ -1911,6 +1911,85 @@ async def litany_of_function(interaction: discord.Interaction):
     await interaction.response.send_message(text, ephemeral=True)
 
 
+async def _requeue_award_type_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    return [
+        app_commands.Choice(name=k, value=k)
+        for k in _AWARD_DISPATCH_FN_MAP
+        if current.lower() in k.lower()
+    ][:25]
+
+
+@_g.bot.tree.command(
+    name="requeue_award",
+    description="Manually enqueue a missed award announcement for a member (admin).",
+)
+@app_commands.describe(
+    member="The member who earned the award.",
+    award_type="Award type string (e.g. terminus_slayer_tactical).",
+    channel="Channel to post in (defaults to the member's announcement channel).",
+)
+@app_commands.autocomplete(award_type=_requeue_award_type_autocomplete)
+async def requeue_award(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    award_type: str,
+    channel: Optional[discord.TextChannel] = None,
+):
+    if not _b("check_command_permission")(interaction.user, "requeue_award"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    if award_type not in _AWARD_DISPATCH_FN_MAP:
+        known = ", ".join(f"`{k}`" for k in sorted(_AWARD_DISPATCH_FN_MAP))
+        await interaction.response.send_message(
+            f"Unknown award type `{award_type}`.\nKnown types: {known}", ephemeral=True
+        )
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Must be used in a server.", ephemeral=True)
+        return
+
+    # Resolve posting channel
+    target_channel = channel
+    if target_channel is None:
+        try:
+            target_channel = await _b("_get_award_announcement_channel")(member, guild)
+        except Exception:
+            pass
+    if target_channel is None:
+        await interaction.response.send_message(
+            "Could not resolve an announcement channel. Provide one explicitly with the `channel` parameter.",
+            ephemeral=True,
+        )
+        return
+
+    # Determine chapter
+    home_chapters: list[str] = _b("HOME_CHAPTERS") or []
+    member_role_names = {r.name for r in member.roles}
+    member_chapter = next(
+        (hc for hc in home_chapters if hc in member_role_names), "Unknown"
+    )
+
+    _enqueue_award_announcement(
+        str(member.id),
+        award_type,
+        member_chapter,
+        str(target_channel.id),
+        str(guild.id),
+    )
+
+    await interaction.response.send_message(
+        f"✅ Enqueued `{award_type}` for {member.mention} → <#{target_channel.id}>.\n"
+        f"It will be posted within the next dispatch cycle (≤15 min).",
+        ephemeral=True,
+    )
+
+
 ROTATION_STATE_PATH = os.path.join(DATA_DIR, "home_chapter_rotation.json")
 
 
@@ -8122,6 +8201,7 @@ __all__ = [
     "ToggleFormatView",
     # ── Public command functions ──────────────────────────────────────────────
     "litany_of_function",
+    "requeue_award",
     "pick_home_chapters",
     "tally_deeds",
     "my_deeds",

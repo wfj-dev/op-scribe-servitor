@@ -170,6 +170,12 @@
         "Forgemaster"
       ]
     },
+    "requeue_award": {
+      "roles": [
+        "Watch Master",
+        "Forgemaster"
+      ]
+    },
     "record_of_blood": {
       "roles": [
         "Watch Master",
