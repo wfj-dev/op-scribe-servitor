@@ -3660,6 +3660,13 @@ async def _get_award_announcement_channel(
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 
 
+def _trunc(text: str, limit: int = 1024) -> str:
+    """Truncate text to Discord embed field limit, appending ellipsis if cut."""
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1] + "…"
+
+
 def _get_award_image(filename: str) -> Optional[discord.File]:
     path = os.path.join(_ASSETS_DIR, filename)
     if os.path.isfile(path):
@@ -3701,7 +3708,7 @@ def _get_watch_veteran_announcement(
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
         name="▸ Watch's Proclamation",
-        value=proclamation_text,
+        value=_trunc(proclamation_text),
         inline=False,
     )
 
@@ -3760,7 +3767,7 @@ def _get_ardent_raider_announcement(
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
         name="▸ Watch's Proclamation",
-        value=proclamation_text,
+        value=_trunc(proclamation_text),
         inline=False,
     )
 
@@ -3824,7 +3831,7 @@ def _get_apothecarion_medal_announcement(
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
         name="▸ Watch's Proclamation",
-        value=proclamation_text,
+        value=_trunc(proclamation_text),
         inline=False,
     )
 
@@ -3889,7 +3896,7 @@ def _get_crimson_laurels_announcement(
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
         name="▸ Watch's Proclamation",
-        value=proclamation_text,
+        value=_trunc(proclamation_text),
         inline=False,
     )
 
@@ -3990,7 +3997,7 @@ def _build_challenge_award_embed(
     proclamation_text = f"{opening}\n\n{proclamation}"
     if selected_coda:
         proclamation_text += f"\n\n*{selected_coda}*"
-    embed.add_field(name="▸ Watch's Proclamation", value=proclamation_text, inline=False)
+    embed.add_field(name="▸ Watch's Proclamation", value=_trunc(proclamation_text), inline=False)
 
     rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""

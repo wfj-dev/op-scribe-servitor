@@ -1304,15 +1304,27 @@ async def challenge_progress(
         f"{ts_check} Terminus Slayer classes completed: {ts_class_count}/2"
     )
 
+    def _add_chunked_fields(embed: discord.Embed, name: str, items: list[str], sep: str = "\n\n") -> None:
+        """Add items joined by sep across as many fields as needed, each ≤ 1024 chars."""
+        current = ""
+        first = True
+        for item in items:
+            prefix = "" if current == "" else sep
+            candidate = current + prefix + item
+            if len(candidate) > 1024:
+                embed.add_field(name=name if first else "\u200b", value=current, inline=False)
+                first = False
+                current = item
+            else:
+                current = candidate
+        if current:
+            embed.add_field(name=name if first else "\u200b", value=current, inline=False)
+
     embed = discord.Embed(
         title=f"Challenge Progress — {target.display_name}",
         colour=discord.Colour.from_rgb(80, 140, 200),
     )
-    embed.add_field(
-        name="⚔️ Mission Awards",
-        value="\n\n".join(challenge_lines),
-        inline=False,
-    )
+    _add_chunked_fields(embed, "⚔️ Mission Awards", challenge_lines)
 
     # --- Section 2: Terminus Slayer Kill Grid ---
     ts_lines = []
@@ -1329,11 +1341,7 @@ async def challenge_progress(
             type_parts.append(f"{check} {t_type}: {count}/3")
         ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
 
-    embed.add_field(
-        name="💀 Terminus Slayer Kills",
-        value="\n".join(ts_lines),
-        inline=False,
-    )
+    _add_chunked_fields(embed, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
 
     embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
