@@ -1180,6 +1180,22 @@ async def challenge_progress(
             )
             return
 
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        await _challenge_progress_inner(interaction, member)
+    except Exception:
+        _g.logger.exception("challenge-progress: unhandled error")
+        try:
+            await interaction.followup.send("An error occurred building your challenge progress. Contact a Forgemaster.", ephemeral=True)
+        except Exception:
+            pass
+
+
+async def _challenge_progress_inner(
+    interaction: discord.Interaction,
+    member: Optional[discord.Member],
+) -> None:
+
     target = member or interaction.user
     user_id_str = str(target.id)
 
@@ -1344,4 +1360,4 @@ async def challenge_progress(
     _add_chunked_fields(embed, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
 
     embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed.")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
