@@ -3939,7 +3939,6 @@ def _build_challenge_award_embed(
     chapter_lines: dict,
     award_label: str,
     award_image: Optional[str],
-    ping_role_id: int,
     rank_lines: Optional[dict] = None,
     award_emoji_name: Optional[str] = None,
 ) -> Tuple[str, discord.Embed, Optional[discord.File]]:
@@ -4036,7 +4035,6 @@ def _get_sok_g_pipehitter_announcement(
         rank_lines=SOK_G_PIPEHITTER_RANK_LINES,
         award_label="SOK-G: Pipehitter",
         award_image="award_sok_g_pipehitter.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4058,7 +4056,6 @@ def _get_distinguished_pipehitter_announcement(
         rank_lines=DISTINGUISHED_PIPEHITTER_RANK_LINES,
         award_label="Distinguished SOK-G: Pipehitter",
         award_image="award_distinguished_pipehitter.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4080,7 +4077,6 @@ def _get_black_laurels_announcement(
         rank_lines=BLACK_LAURELS_RANK_LINES,
         award_label="Black Laurels",
         award_image="award_black_laurels.png",
-        ping_role_id=BLACK_LAURELS_PING_ROLE_ID,
     )
 
 
@@ -4102,7 +4098,6 @@ def _get_crux_terminatus_announcement(
         rank_lines=CRUX_TERMINATUS_RANK_LINES,
         award_label="Crux Terminatus",
         award_image="award_crux_terminatus.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4124,7 +4119,6 @@ def _get_kadaku_campaign_announcement(
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Kadaku Campaign Medal",
         award_image="award_kadaku_campaign_medal.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4146,7 +4140,6 @@ def _get_black_reef_campaign_announcement(
         rank_lines=BLACK_REEF_CAMPAIGN_RANK_LINES,
         award_label="Black Reef Campaign Medal",
         award_image="award_black_reef_campaign_medal.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4168,7 +4161,6 @@ def _get_distinguished_black_reef_announcement(
         rank_lines=DISTINGUISHED_BLACK_REEF_RANK_LINES,
         award_label="Distinguished Black Reef Campaign Medal",
         award_image="award_distinguished_black_reef.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4190,7 +4182,6 @@ def _get_order_omega_announcement(
         rank_lines=ORDER_OMEGA_RANK_LINES,
         award_label="The Order Omega",
         award_image="award_order_omega.png",
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4212,7 +4203,6 @@ def _get_dual_vigil_announcement(
         rank_lines=DUAL_VIGIL_RANK_LINES,
         award_label="Dual Vigil",
         award_image=None,
-        ping_role_id=DUAL_VIGIL_ROLE_ID,
     )
 
 
@@ -4234,7 +4224,6 @@ def _get_terminus_slayer_assault_announcement(
         rank_lines=TERMINUS_SLAYER_ASSAULT_RANK_LINES,
         award_label="Terminus Slayer (Assault)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4256,7 +4245,6 @@ def _get_terminus_slayer_bulwark_announcement(
         rank_lines=TERMINUS_SLAYER_BULWARK_RANK_LINES,
         award_label="Terminus Slayer (Bulwark)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4278,7 +4266,6 @@ def _get_terminus_slayer_heavy_announcement(
         rank_lines=TERMINUS_SLAYER_HEAVY_RANK_LINES,
         award_label="Terminus Slayer (Heavy)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4300,7 +4287,6 @@ def _get_terminus_slayer_sniper_announcement(
         rank_lines=TERMINUS_SLAYER_SNIPER_RANK_LINES,
         award_label="Terminus Slayer (Sniper)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4322,7 +4308,6 @@ def _get_terminus_slayer_tactical_announcement(
         rank_lines=TERMINUS_SLAYER_TACTICAL_RANK_LINES,
         award_label="Terminus Slayer (Tactical)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4344,7 +4329,6 @@ def _get_terminus_slayer_techmarine_announcement(
         rank_lines=TERMINUS_SLAYER_TECHMARINE_RANK_LINES,
         award_label="Terminus Slayer (Techmarine)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4366,7 +4350,6 @@ def _get_terminus_slayer_vanguard_announcement(
         rank_lines=TERMINUS_SLAYER_VANGUARD_RANK_LINES,
         award_label="Terminus Slayer (Vanguard)",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
@@ -4388,7 +4371,6 @@ def _get_master_terminus_slayer_announcement(
         rank_lines=MASTER_TERMINUS_SLAYER_RANK_LINES,
         award_label="Master Terminus Slayer",
         award_image=None,
-        ping_role_id=WATCH_COMMAND_ROLE_ID,
     )
 
 
