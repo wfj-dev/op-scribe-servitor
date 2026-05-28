@@ -3245,8 +3245,8 @@ MASTER_TERMINUS_SLAYER_OPENINGS: List[str] = [
 
 MASTER_TERMINUS_SLAYER_PROCLAMATIONS: List[str] = [
     "The Master Terminus Slayer is the Watch's highest individual combat honour — awarded only to those whose verified kill records span every class, every Terminus type, every required kill.",
-    "To complete the Terminus Slayer challenge in one class is remarkable. To complete it in all six is something the Watch's records have rarely if ever required an entry for. **{name}** has required one.",
-    "Six class completions. Every Terminus type met in every configuration. The Master Terminus Slayer title is not a rank — it is a comprehensive record that speaks every language of combat the Watch teaches.",
+    "To complete the Terminus Slayer challenge in one class is remarkable. To complete it in all seven is something the Watch's records have rarely if ever required an entry for. **{name}** has required one.",
+    "Seven class completions. Every Terminus type met in every configuration. The Master Terminus Slayer title is not a rank — it is a comprehensive record that speaks every language of combat the Watch teaches.",
     "The Watch teaches versatility by principle. The Master Terminus Slayer proves versatility in practice — every class deployed, every Terminus threat eliminated, every kill logged and verified.",
     "The Master Terminus Slayer is the Watch's recognition that **{name}** has not found a preferred approach to Terminus-level threats. They have mastered every approach.",
     "Where most warriors find their class and their method, **{name}** found the answer to a question the Watch rarely asks: what does a warrior look like who has done it all? This. This is what it looks like.",
