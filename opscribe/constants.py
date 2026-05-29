@@ -212,8 +212,8 @@ MILESTONES_INCREMENTS = {
 # ---------------------------------------------------------------------------
 # Black Laurels / Campaign Medal configuration
 # ---------------------------------------------------------------------------
-# Black Laurels strict enforcement begins on Feb 20, 2026 at 00:00 UTC
-BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 2, 20, 0, 0, 0, tzinfo=timezone.utc)
+# Black Laurels strict enforcement begins on Jun 1, 2026 at 00:00 UTC
+BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Leviathan Protocol role ID for parsing
