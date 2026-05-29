@@ -605,64 +605,96 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
     Returns the number of awards queued.
     """
     if guild is None:
+        _g.logger.warning("challenge sweep: called with no guild; skipping")
         return 0
 
     notifications: List[Tuple[str, str, int, str, List[str]]] = []
+    scanned = 0
+    skipped_no_member = 0
+    skipped_rank = 0
+    errors = 0
+
+    _g.logger.info("challenge sweep: starting")
 
     async with _g.CHALLENGE_PROGRESS_LOCK:
-        progress_data = _load_challenge_progress()
+        try:
+            progress_data = _load_challenge_progress()
+        except Exception as exc:
+            _g.logger.exception(f"challenge sweep: failed to load challenge_progress.json: {exc}")
+            return 0
+
         changed = False
 
         for user_id_str, user_progress in progress_data.items():
+            scanned += 1
             try:
                 member = guild.get_member(int(user_id_str))
-            except Exception:
+            except Exception as exc:
+                _g.logger.debug(f"challenge sweep: could not resolve member {user_id_str}: {exc}")
+                errors += 1
                 continue
             if member is None:
+                skipped_no_member += 1
                 continue
 
             member_role_names = {getattr(r, "name", "") for r in member.roles}
             if not member_role_names & _WATCH_BROTHER_OR_HIGHER:
+                skipped_rank += 1
                 continue
 
             notified = user_progress.get("notified", [])
 
-            # --- Simple set-complete challenges ---
-            for prog_key, required, role_id, display_name, award_type, notified_key in _SIMPLE_CHALLENGE_SPECS:
-                if notified_key in notified:
-                    continue
-                if discord.utils.get(member.roles, id=role_id):
-                    continue
-                entries = user_progress.get(prog_key, [])
-                if not entries:
-                    continue
-                unique = {e["mission"] for e in entries}
-                if unique >= required:
-                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
-                    notifications.append((user_id_str, display_name, role_id, award_type, aar_urls))
-                    notified.append(notified_key)
-                    user_progress["notified"] = notified
-                    changed = True
+            try:
+                # --- Simple set-complete challenges ---
+                for prog_key, required, role_id, display_name, award_type, notified_key in _SIMPLE_CHALLENGE_SPECS:
+                    if notified_key in notified:
+                        continue
+                    if discord.utils.get(member.roles, id=role_id):
+                        continue
+                    entries = user_progress.get(prog_key, [])
+                    if not entries:
+                        continue
+                    unique = {e["mission"] for e in entries}
+                    if unique >= required:
+                        aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                        notifications.append((user_id_str, display_name, role_id, award_type, aar_urls))
+                        notified.append(notified_key)
+                        user_progress["notified"] = notified
+                        changed = True
+                        _g.logger.info(
+                            f"challenge sweep: {display_name} queued for "
+                            f"{member.display_name} ({user_id_str}) "
+                            f"[{len(unique)}/{len(required)} missions]"
+                        )
 
-            # --- SOK-G Pipehitter (1 mission) ---
-            if "sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
-                entries = user_progress.get("sok_g_pipehitter", [])
-                if len({e["mission"] for e in entries}) >= 1:
-                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
-                    notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
-                    notified.append("sok_g_pipehitter")
-                    user_progress["notified"] = notified
-                    changed = True
+                # --- SOK-G Pipehitter (1 mission) ---
+                if "sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
+                    entries = user_progress.get("sok_g_pipehitter", [])
+                    if len({e["mission"] for e in entries}) >= 1:
+                        aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                        notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
+                        notified.append("sok_g_pipehitter")
+                        user_progress["notified"] = notified
+                        changed = True
+                        _g.logger.info(f"challenge sweep: SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
 
-            # --- Distinguished SOK-G Pipehitter (2+ missions) ---
-            if "distinguished_sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
-                entries = user_progress.get("sok_g_pipehitter", [])
-                if len({e["mission"] for e in entries}) >= 2:
-                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
-                    notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
-                    notified.append("distinguished_sok_g_pipehitter")
-                    user_progress["notified"] = notified
-                    changed = True
+                # --- Distinguished SOK-G Pipehitter (2+ missions) ---
+                if "distinguished_sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
+                    entries = user_progress.get("sok_g_pipehitter", [])
+                    if len({e["mission"] for e in entries}) >= 2:
+                        aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                        notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
+                        notified.append("distinguished_sok_g_pipehitter")
+                        user_progress["notified"] = notified
+                        changed = True
+                        _g.logger.info(f"challenge sweep: Distinguished SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
+
+            except Exception as exc:
+                _g.logger.exception(
+                    f"challenge sweep: error evaluating member {user_id_str} "
+                    f"({getattr(member, 'display_name', '?')}): {exc}"
+                )
+                errors += 1
 
             # NOTE: Crux Terminatus is intentionally excluded from the sweep.
             # It requires a live Rank-A audit across all Black Laurels AARs in
@@ -670,11 +702,21 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
             # datastore is fully loaded, not in a background sweep.
 
         if changed:
-            _save_challenge_progress(progress_data)
+            try:
+                _save_challenge_progress(progress_data)
+            except Exception as exc:
+                _g.logger.exception(f"challenge sweep: failed to save challenge_progress.json: {exc}")
+
+    _g.logger.info(
+        f"challenge sweep: done — scanned={scanned}, awards_queued={len(notifications)}, "
+        f"skipped_no_member={skipped_no_member}, skipped_rank={skipped_rank}, errors={errors}"
+    )
 
     if notifications:
-        _g.logger.info(f"challenge sweep: found {len(notifications)} pending award(s); processing")
-        await _send_challenge_eligibility_notifications(notifications, guild)
+        try:
+            await _send_challenge_eligibility_notifications(notifications, guild)
+        except Exception as exc:
+            _g.logger.exception(f"challenge sweep: error in _send_challenge_eligibility_notifications: {exc}")
 
     return len(notifications)
 

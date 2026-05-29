@@ -1903,6 +1903,20 @@ _AWARD_DISPATCH_FN_MAP = {
     "master_terminus_slayer": "_get_master_terminus_slayer_announcement",
 }
 
+# Maps award_type → (role_id, challenge_progress_notified_key) for challenge awards.
+# Non-challenge awards (promotions, terminus slayer, etc.) are not listed here.
+_CHALLENGE_AWARD_ROLE_MAP: dict[str, tuple[int, str]] = {
+    "sok_g_pipehitter":                        (PIPEHITTER_ROLE_ID,                              "sok_g_pipehitter"),
+    "distinguished_pipehitter":                (DISTINGUISHED_PIPEHITTER_ROLE_ID,                "distinguished_sok_g_pipehitter"),
+    "black_laurels":                           (BLACK_LAURELS_ROLE_ID,                           "black_laurels"),
+    "crux_terminatus":                         (CRUX_TERMINATUS_ROLE_ID,                         "crux_terminatus"),
+    "kadaku_campaign_medal":                   (KADAKU_CAMPAIGN_MEDAL_ROLE_ID,                   "kadaku_campaign"),
+    "black_reef_campaign_medal":               (BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,               "black_reef"),
+    "distinguished_black_reef_campaign_medal": (DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "distinguished_black_reef"),
+    "the_order_omega":                         (THE_ORDER_OMEGA_ROLE_ID,                         "order_omega"),
+    "dual_vigil":                              (DUAL_VIGIL_AWARD_ROLE_ID,                        "dual_vigil"),
+}
+
 
 async def _dm_award_failure(item: Dict, reason: str) -> None:
     """DM all admin_user_ids when an award announcement is dropped."""
@@ -2115,6 +2129,51 @@ async def requeue_award(
         (hc for hc in home_chapters if hc in member_role_names), "Unknown"
     )
 
+    # --- Role assignment ---
+    role_assigned = False
+    challenge_info = _CHALLENGE_AWARD_ROLE_MAP.get(award_type)
+    if challenge_info:
+        role_id, notified_key = challenge_info
+        role = guild.get_role(role_id)
+        if role is None:
+            await interaction.response.send_message(
+                f"⚠️ Could not find role ID `{role_id}` for `{award_type}` in this guild.",
+                ephemeral=True,
+            )
+            return
+        if discord.utils.get(member.roles, id=role_id):
+            await interaction.response.send_message(
+                f"ℹ️ {member.mention} already has the **{role.name}** role. "
+                f"Enqueue anyway? If so, remove the role first and re-run.",
+                ephemeral=True,
+            )
+            return
+        try:
+            await member.add_roles(role, reason=f"requeue_award: {award_type} by {interaction.user}")
+            role_assigned = True
+        except Exception as exc:
+            await interaction.response.send_message(
+                f"❌ Failed to assign **{role.name}** to {member.mention}: `{exc}`",
+                ephemeral=True,
+            )
+            return
+
+        # --- Mark notified in challenge_progress.json ---
+        try:
+            async with _g.CHALLENGE_PROGRESS_LOCK:
+                cp_data = _b("_load_challenge_progress")()
+                user_entry = cp_data.setdefault(str(member.id), {"notified": []})
+                notified_list = user_entry.setdefault("notified", [])
+                if notified_key not in notified_list:
+                    notified_list.append(notified_key)
+                    user_entry["notified"] = notified_list
+                    _b("_save_challenge_progress")(cp_data)
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.warning(
+                    f"requeue_award: could not mark notified for {member.id} / {notified_key}: {exc}"
+                )
+
     _enqueue_award_announcement(
         str(member.id),
         award_type,
@@ -2123,8 +2182,9 @@ async def requeue_award(
         str(guild.id),
     )
 
+    role_note = f" Role **{role.name}** assigned." if role_assigned else ""
     await interaction.response.send_message(
-        f"✅ Enqueued `{award_type}` for {member.mention} → <#{target_channel.id}>.\n"
+        f"✅ Enqueued `{award_type}` for {member.mention} → <#{target_channel.id}>.{role_note}\n"
         f"It will be posted within the next dispatch cycle (≤15 min).",
         ephemeral=True,
     )
