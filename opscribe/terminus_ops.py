@@ -24,6 +24,7 @@ from .constants import (  # noqa: F401
     AAR_CHANNEL_ID,
     APOTHECARY_STAFF_CHANNEL_ID,
     BLACK_LAURELS_ROLE_ID,
+    BLACK_LAURELS_STRICT_ENFORCEMENT_DATE,
     BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     BLACK_REEF_REQUIRED_MISSIONS,
     BLACK_LAURELS_REQUIRED_MISSIONS,
@@ -31,6 +32,7 @@ from .constants import (  # noqa: F401
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
+    DUAL_VIGIL_REQUIRED_MISSIONS,
     DUAL_VIGIL_ROLE_ID,
     KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
@@ -50,6 +52,7 @@ from .constants import (  # noqa: F401
 )
 from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES
 from . import _bot_globals as _g
+
 
 # Any role that counts as a server member (Watch Brother or higher on any track)
 _MEMBER_RANKS = BATTLE_LINE_RANKS | CHAMPION_RANKS | SPECIALIST_RANKS | HIGH_COMMAND_RANKS
@@ -1262,12 +1265,6 @@ async def _challenge_progress_inner(
             BLACK_LAURELS_ROLE_ID,
         ),
         (
-            "Dual Vigil",
-            _unique_mission_count("dual_vigil"),
-            len(BLACK_LAURELS_REQUIRED_MISSIONS),
-            DUAL_VIGIL_ROLE_ID,
-        ),
-        (
             "Distinguished SOK-G: Pipehitter",
             _unique_mission_count("sok_g_pipehitter"),
             2,
@@ -1292,39 +1289,51 @@ async def _challenge_progress_inner(
         challenge_lines.append(f"**{label}**\n{_bar(current, total, role_id)}")
 
     # --- Crux Terminatus eligibility checklist ---
-    # Requirement 1: All Black Laurels missions completed with Rank A.
+    # All requirements are evaluated live against current roles and AAR records.
+    # Holding the Crux role does NOT short-circuit — roles can be revoked if new
+    # missions are added and requirements are no longer met.
+
+    # Requirement 1: Black Laurels role held AND every BL AAR is Rank A (no missing rank).
     has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
-    # If they already hold the Crux role, treat everything as complete.
-    has_crux = CRUX_TERMINATUS_ROLE_ID in target_role_ids
-    if has_crux:
-        all_bl_rank_a = True
-    else:
-        # Scan the full datastore for every Black Laurels AAR belonging to this
-        # user and check that all of them are Rank A.  The crux_bl_aars list in
-        # the progress file is incomplete for historical records, so we cannot
-        # rely on it for the gate — mirror the same logic used by the auto-award.
-        all_bl_rank_a = False
-        if has_bl_role and _g.DATASTORE:
-            saw_any_bl = False
-            _all_rank_a = True
-            for _rec in _g.DATASTORE.iter_records():
-                _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
-                if not _bl:
-                    continue
-                if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
-                    continue
-                saw_any_bl = True
-                if (_rec.get("rank") or "A").upper() != "A":
+    all_bl_rank_a = False
+    if has_bl_role and _g.DATASTORE:
+        saw_any_bl = False
+        _all_rank_a = True
+        for _rec in _g.DATASTORE.iter_records():
+            # Match by BL flag OR by mission name being in the BL mission set,
+            # so older records that predate BL-tag parsing are still caught.
+            _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
+            _mission = (_rec.get("mission") or "").lower().strip()
+            if not _bl and _mission not in BLACK_LAURELS_REQUIRED_MISSIONS:
+                continue
+            if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
+                continue
+            saw_any_bl = True
+            _rank = (_rec.get("rank") or "").upper()
+            if _rank != "A":
+                # Pre-enforcement AARs (before BLACK_LAURELS_STRICT_ENFORCEMENT_DATE)
+                # had no rank tracking — treat missing rank as passing only for those.
+                # Post-enforcement AARs must have an explicit Rank A.
+                _ts = _rec.get("timestamp", "")
+                _pre_enforcement = True
+                try:
+                    if _ts:
+                        _rec_dt = datetime.fromisoformat(_ts)
+                        if _rec_dt >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
+                            _pre_enforcement = False
+                except Exception:
+                    pass
+                if not _pre_enforcement:
                     _all_rank_a = False
                     break
-            all_bl_rank_a = saw_any_bl and _all_rank_a
+        all_bl_rank_a = saw_any_bl and _all_rank_a
 
-    # Requirement 2: Distinguished SOK-G Pipehitter role.
-    has_distinguished = has_crux or (DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids)
+    # Requirement 2: Distinguished SOK-G Pipehitter role held.
+    has_distinguished = DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids
 
-    # Requirement 3: 2+ Terminus Slayer class completions.
+    # Requirement 3: 2+ Terminus Slayer class completions (role-held).
     ts_class_count = sum(1 for rid in KILL_LOG_CLASS_ROLES if rid in target_role_ids)
-    ts_slays_met = has_crux or (ts_class_count >= 2)
+    ts_slays_met = ts_class_count >= 2
 
     bl_check = "✅" if all_bl_rank_a else "🔲"
     dist_check = "✅" if has_distinguished else "🔲"
@@ -1334,6 +1343,21 @@ async def _challenge_progress_inner(
         f"{bl_check} Black Laurels — all missions, Rank A\n"
         f"{dist_check} Distinguished SOK-G: Pipehitter\n"
         f"{ts_check} Terminus Slayer classes completed: {ts_class_count}/2"
+    )
+
+    # --- Dual Vigil eligibility checklist ---
+    # Dual Vigil requires all BL missions completed at Absolute with exactly 2 brothers.
+    # The role can be lost if a new mission is added and not completed in time.
+    # Always evaluate live progress — holding the role does NOT short-circuit,
+    # because the required mission set may have grown since the role was awarded.
+    dv_unique_missions = {m["mission"] for m in user_progress.get("dual_vigil", [])}
+    dv_met = dv_unique_missions >= DUAL_VIGIL_REQUIRED_MISSIONS
+    dv_count = len(dv_unique_missions)
+    dv_total = len(DUAL_VIGIL_REQUIRED_MISSIONS)
+    dv_check = "✅" if dv_met else "🔲"
+    dv_blocks = "█" * min(dv_count, dv_total) + "░" * max(dv_total - dv_count, 0)
+    challenge_lines.append(
+        f"**Dual Vigil**\n{dv_check} `{dv_blocks}` {dv_count}/{dv_total}"
     )
 
     def _add_chunked_fields(embed: discord.Embed, name: str, items: list[str], sep: str = "\n\n") -> None:
