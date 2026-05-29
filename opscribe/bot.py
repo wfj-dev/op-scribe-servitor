@@ -590,7 +590,29 @@ async def _before_terminus_reminder_loop():
     await bot.wait_until_ready()
 
 
-# Config load
+@tasks.loop(hours=4)
+async def _challenge_sweep_loop():
+    """Every 4 hours: sweep challenge_progress.json for completed but un-notified awards.
+
+    Catches members who finished all required ops before a bot restart, code
+    change, or data reset — cases the per-AAR trigger would never re-evaluate.
+    """
+    try:
+        guild = _resolve_notification_guild()
+        if guild is None:
+            return
+        count = await _sweep_challenge_completions(guild)
+        if count:
+            logger.info(f"challenge sweep: queued {count} award(s)")
+    except Exception:
+        logger.exception("Challenge sweep loop failed")
+
+
+@_challenge_sweep_loop.before_loop
+async def _before_challenge_sweep_loop():
+    await bot.wait_until_ready()
+    # Short delay on first run to let member cache fully populate.
+    await asyncio.sleep(300)
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
@@ -1583,6 +1605,9 @@ async def on_ready():
     try:
         if not _terminus_reminder_loop.is_running():
             _terminus_reminder_loop.start()
+
+        if not _challenge_sweep_loop.is_running():
+            _challenge_sweep_loop.start()
             logger.info("Terminus kill log reminder loop started (hourly check).")
     except Exception:
         logger.exception("Failed to start terminus kill log reminder loop")
