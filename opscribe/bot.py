@@ -598,12 +598,13 @@ async def _challenge_sweep_loop():
     change, or data reset — cases the per-AAR trigger would never re-evaluate.
     """
     try:
+        logger.info("challenge sweep loop: tick")
         guild = _resolve_notification_guild()
         if guild is None:
+            logger.warning("challenge sweep loop: no guild resolved; skipping")
             return
         count = await _sweep_challenge_completions(guild)
-        if count:
-            logger.info(f"challenge sweep: queued {count} award(s)")
+        logger.info(f"challenge sweep loop: complete, awards_queued={count}")
     except Exception:
         logger.exception("Challenge sweep loop failed")
 
@@ -612,7 +613,8 @@ async def _challenge_sweep_loop():
 async def _before_challenge_sweep_loop():
     await bot.wait_until_ready()
     # Short delay on first run to let member cache fully populate.
-    await asyncio.sleep(300)
+    logger.info("challenge sweep loop: waiting 60s for member cache before first run")
+    await asyncio.sleep(60)
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
