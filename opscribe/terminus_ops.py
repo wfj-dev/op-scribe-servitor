@@ -749,6 +749,7 @@ async def _handle_remove_entry(interaction: discord.Interaction, kill_log_id: st
     )
 
     await _refresh_kill_log_embed(interaction.guild, entry)
+    await _notify_kill_log_denied(interaction.guild, entry)
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +775,37 @@ async def _notify_apo_denial(guild: Optional[discord.Guild], entry: dict) -> Non
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"terminus_ops: failed to send apo denial notification: {exc}")
+
+
+async def _notify_kill_log_denied(guild: Optional[discord.Guild], entry: dict) -> None:
+    """Post a denial notice in the kill log channel tagging the brother."""
+    if guild is None:
+        return
+    channel = guild.get_channel(KILL_LOG_CHANNEL_ID)
+    if channel is None:
+        return
+
+    brother_mention = f"<@{entry['brother_id']}>"
+    kill_log_id = entry["kill_log_id"]
+
+    # Build a link to the original kill log embed if we have the message ID.
+    embed_message_id = entry.get("embed_message_id")
+    if embed_message_id:
+        msg_link = f"https://discord.com/channels/{guild.id}/{KILL_LOG_CHANNEL_ID}/{embed_message_id}"
+        entry_ref = f"[{kill_log_id}]({msg_link})"
+    else:
+        entry_ref = f"`{kill_log_id}`"
+
+    deny_reason = entry.get("deny_reason", "").strip()
+    reason_line = f"\n**Reason:** {deny_reason}" if deny_reason else ""
+
+    try:
+        await channel.send(
+            f"{brother_mention} your kill log {entry_ref} has been **denied** by the Apothecarium.{reason_line}"
+        )
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.warning(f"terminus_ops: failed to send kill log denial notice: {exc}")
 
 
 async def _notify_class_complete(
