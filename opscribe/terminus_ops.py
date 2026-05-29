@@ -1176,10 +1176,12 @@ async def verifier_standing(interaction: discord.Interaction):
 )
 @app_commands.describe(
     member="[Watch Command+] View another member's challenge progress.",
+    verbose="Show missing missions for incomplete challenges.",
 )
 async def challenge_progress(
     interaction: discord.Interaction,
     member: Optional[discord.Member] = None,
+    verbose: bool = False,
 ):
     # Only Watch Command+ may query other members
     if member is not None:
@@ -1192,7 +1194,7 @@ async def challenge_progress(
 
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
-        await _challenge_progress_inner(interaction, member)
+        await _challenge_progress_inner(interaction, member, verbose=verbose)
     except Exception:
         _g.logger.exception("challenge-progress: unhandled error")
         try:
@@ -1204,6 +1206,7 @@ async def challenge_progress(
 async def _challenge_progress_inner(
     interaction: discord.Interaction,
     member: Optional[discord.Member],
+    verbose: bool = False,
 ) -> None:
 
     target = member or interaction.user
@@ -1221,8 +1224,11 @@ async def _challenge_progress_inner(
     ts_progress = ts_state.get("progress", {}).get(user_id_str, {})
 
     # --- Helpers ---
+    def _unique_missions(key: str) -> set:
+        return {m["mission"] for m in user_progress.get(key, [])}
+
     def _unique_mission_count(key: str) -> int:
-        return len({m["mission"] for m in user_progress.get(key, [])})
+        return len(_unique_missions(key))
 
     # Collect target's role IDs for completed-role detection.
     target_role_ids: set[int] = {r.id for r in getattr(target, "roles", [])}
@@ -1237,71 +1243,60 @@ async def _challenge_progress_inner(
         blocks = "█" * filled + "░" * empty
         return f"{check} `{blocks}` {current}/{total}"
 
+    def _missing_line(completed: set, required: set, role_id: Optional[int] = None) -> str:
+        """Return a short 'Missing: x, y' line if verbose and missions are missing."""
+        if not verbose:
+            return ""
+        if role_id is not None and role_id in target_role_ids:
+            return ""
+        missing = sorted(required - completed)
+        if not missing:
+            return ""
+        return "\n_Missing: " + ", ".join(missing) + "_"
+
     # --- Section 1: Mission Challenges ---
-    # Tuples: (label, current, total, role_id)
+    # Tuples: (label, progress_key, required_set, role_id)
     challenge_rows = [
-        (
-            "Kadaku Campaign Medal",
-            _unique_mission_count("kadaku_campaign"),
-            len(KADAKU_CAMPAIGN_REQUIRED_MISSIONS),
-            KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
-        ),
-        (
-            "Black Reef Campaign Medal",
-            _unique_mission_count("black_reef"),
-            len(BLACK_REEF_REQUIRED_MISSIONS),
-            BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
-        ),
-        (
-            "Distinguished Black Reef Campaign Medal",
-            _unique_mission_count("distinguished_black_reef"),
-            len(BLACK_REEF_REQUIRED_MISSIONS),
-            DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
-        ),
-        (
-            "Black Laurels",
-            _unique_mission_count("black_laurels"),
-            len(BLACK_LAURELS_REQUIRED_MISSIONS),
-            BLACK_LAURELS_ROLE_ID,
-        ),
-        (
-            "Distinguished SOK-G: Pipehitter",
-            _unique_mission_count("sok_g_pipehitter"),
-            2,
-            DISTINGUISHED_PIPEHITTER_ROLE_ID,
-        ),
-        (
-            "SOK-G: Pipehitter",
-            _unique_mission_count("sok_g_pipehitter"),
-            1,
-            PIPEHITTER_ROLE_ID,
-        ),
-        (
-            "Order Omega",
-            _unique_mission_count("order_omega"),
-            len(ORDER_OMEGA_REQUIRED_MISSIONS),
-            THE_ORDER_OMEGA_ROLE_ID,
-        ),
+        ("Kadaku Campaign Medal",              "kadaku_campaign",       KADAKU_CAMPAIGN_REQUIRED_MISSIONS,              KADAKU_CAMPAIGN_MEDAL_ROLE_ID),
+        ("Black Reef Campaign Medal",          "black_reef",            BLACK_REEF_REQUIRED_MISSIONS,                   BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID),
+        ("Distinguished Black Reef",           "distinguished_black_reef", BLACK_REEF_REQUIRED_MISSIONS,               DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID),
+        ("Black Laurels",                      "black_laurels",         BLACK_LAURELS_REQUIRED_MISSIONS,               BLACK_LAURELS_ROLE_ID),
+        ("Distinguished SOK-G: Pipehitter",    "sok_g_pipehitter",      None,                                          DISTINGUISHED_PIPEHITTER_ROLE_ID),
+        ("SOK-G: Pipehitter",                  "sok_g_pipehitter",      None,                                          PIPEHITTER_ROLE_ID),
+        ("Order Omega",                        "order_omega",           ORDER_OMEGA_REQUIRED_MISSIONS,                 THE_ORDER_OMEGA_ROLE_ID),
     ]
+    # Fixed totals for non-mission-set rows
+    _fixed_totals = {
+        "Distinguished SOK-G: Pipehitter": 2,
+        "SOK-G: Pipehitter": 1,
+    }
 
     challenge_lines = []
-    for label, current, total, role_id in challenge_rows:
-        challenge_lines.append(f"**{label}**\n{_bar(current, total, role_id)}")
+    for label, key, required, role_id in challenge_rows:
+        if required is not None:
+            total = len(required)
+            completed = _unique_missions(key)
+            current = len(completed)
+            line = f"**{label}**\n{_bar(current, total, role_id)}{_missing_line(completed, required, role_id)}"
+        else:
+            total = _fixed_totals[label]
+            current = _unique_mission_count(key)
+            line = f"**{label}**\n{_bar(current, total, role_id)}"
+        challenge_lines.append(line)
 
     # --- Crux Terminatus eligibility checklist ---
     # All requirements are evaluated live against current roles and AAR records.
     # Holding the Crux role does NOT short-circuit — roles can be revoked if new
     # missions are added and requirements are no longer met.
 
-    # Requirement 1: Black Laurels role held AND every BL AAR is Rank A (no missing rank).
+    # Requirement 1: Black Laurels role held AND every post-enforcement BL AAR is Rank A.
     has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
     all_bl_rank_a = False
+    non_a_missions: list[str] = []  # verbose: missions with non-A rank post-enforcement
     if has_bl_role and _g.DATASTORE:
         saw_any_bl = False
         _all_rank_a = True
         for _rec in _g.DATASTORE.iter_records():
-            # Match by BL flag OR by mission name being in the BL mission set,
-            # so older records that predate BL-tag parsing are still caught.
             _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
             _mission = (_rec.get("mission") or "").lower().strip()
             if not _bl and _mission not in BLACK_LAURELS_REQUIRED_MISSIONS:
@@ -1311,9 +1306,6 @@ async def _challenge_progress_inner(
             saw_any_bl = True
             _rank = (_rec.get("rank") or "").upper()
             if _rank != "A":
-                # Pre-enforcement AARs (before BLACK_LAURELS_STRICT_ENFORCEMENT_DATE)
-                # had no rank tracking — treat missing rank as passing only for those.
-                # Post-enforcement AARs must have an explicit Rank A.
                 _ts = _rec.get("timestamp", "")
                 _pre_enforcement = True
                 try:
@@ -1325,7 +1317,8 @@ async def _challenge_progress_inner(
                     pass
                 if not _pre_enforcement:
                     _all_rank_a = False
-                    break
+                    if verbose and _mission and _mission not in non_a_missions:
+                        non_a_missions.append(_mission)
         all_bl_rank_a = saw_any_bl and _all_rank_a
 
     # Requirement 2: Distinguished SOK-G Pipehitter role held.
@@ -1338,9 +1331,12 @@ async def _challenge_progress_inner(
     bl_check = "✅" if all_bl_rank_a else "🔲"
     dist_check = "✅" if has_distinguished else "🔲"
     ts_check = "✅" if ts_slays_met else "🔲"
+    bl_rank_detail = ""
+    if verbose and non_a_missions:
+        bl_rank_detail = "\n  _Non-Rank A (post-enforcement): " + ", ".join(sorted(non_a_missions)) + "_"
     challenge_lines.append(
         f"**Crux Terminatus**\n"
-        f"{bl_check} Black Laurels — all missions, Rank A\n"
+        f"{bl_check} Black Laurels — all missions, Rank A{bl_rank_detail}\n"
         f"{dist_check} Distinguished SOK-G: Pipehitter\n"
         f"{ts_check} Terminus Slayer classes completed: {ts_class_count}/2"
     )
@@ -1356,8 +1352,9 @@ async def _challenge_progress_inner(
     dv_total = len(DUAL_VIGIL_REQUIRED_MISSIONS)
     dv_check = "✅" if dv_met else "🔲"
     dv_blocks = "█" * min(dv_count, dv_total) + "░" * max(dv_total - dv_count, 0)
+    dv_missing_line = _missing_line(dv_unique_missions, DUAL_VIGIL_REQUIRED_MISSIONS)
     challenge_lines.append(
-        f"**Dual Vigil**\n{dv_check} `{dv_blocks}` {dv_count}/{dv_total}"
+        f"**Dual Vigil**\n{dv_check} `{dv_blocks}` {dv_count}/{dv_total}{dv_missing_line}"
     )
 
     def _add_chunked_fields(embed: discord.Embed, name: str, items: list[str], sep: str = "\n\n") -> None:
@@ -1387,17 +1384,23 @@ async def _challenge_progress_inner(
     for class_role_id, class_name in KILL_LOG_CLASS_ROLES.items():
         class_prog = ts_progress.get(str(class_role_id), {})
         has_class_role = class_role_id in target_role_ids
-        type_parts = []
+        counts = {}
         for t_type in TERMINUS_TYPES:
             count = class_prog.get(t_type, 0)
-            # If the member already holds the class completion role, treat all types as done.
             if has_class_role:
                 count = 3
-            check = "✅" if count >= 3 else "🔲"
-            type_parts.append(f"{check} {t_type}: {count}/3")
-        ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
+            counts[t_type] = count
+        # If all types complete, collapse to a single checkmark line to save space
+        if all(c >= 3 for c in counts.values()):
+            ts_lines.append(f"**{class_name}** ✅")
+        else:
+            type_parts = []
+            for t_type, count in counts.items():
+                check = "✅" if count >= 3 else "🔲"
+                type_parts.append(f"{check} {t_type}: {count}/3")
+            ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
 
     _add_chunked_fields(embed, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
 
-    embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed.")
+    embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed. Use verbose=True to see missing missions.")
     await interaction.followup.send(embed=embed, ephemeral=True)
