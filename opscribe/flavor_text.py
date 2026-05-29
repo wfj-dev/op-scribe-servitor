@@ -1849,11 +1849,11 @@ BLACK_LAURELS_OPENINGS: List[str] = [
 ]
 
 BLACK_LAURELS_PROCLAMATIONS: List[str] = [
-    "The Black Laurels are awarded to those who place the success of the Kill Team above any notion of personal glory.",
+    "The Black Laurels are awarded to those who place the success of the Kill Team above any notion of personal glory — and the Watch sets that devotion in adamantium.",
     "The Tyranid plague spreads ever deeper into the galaxy. The Deathwatch Kill Team is the first line of defense — and this warrior is one of its truest sons.",
-    "Each Kill Team is a force multiplier greater than the sum of its parts. This warrior is what makes that mathematics possible.",
-    "Forged from bonds built through battle, this warrior has put the team before themselves until that bond became unbreakable.",
-    "The Black Laurels honor not the individual blade, but the warrior who sharpened every blade beside them.",
+    "Each Kill Team is a force multiplier greater than the sum of its parts. This warrior is what makes that mathematics possible — and the Black Laurels are the Watch's recognition of it.",
+    "Forged from bonds built through battle, this warrior has put the team before themselves until that bond became unbreakable — and the Watch has honored that bond with wargear worthy of it.",
+    "The Black Laurels are not earned by the warrior who claims the killing blow — they are earned by the warrior who ensured every brother was still standing when the last blow fell.",
 ]
 
 BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
@@ -2057,11 +2057,11 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 # Black Reef Campaign Medal announcement flavor text
 # ---------------------------------------------------------------------------
 BLACK_REEF_CAMPAIGN_OPENINGS: List[str] = [
-    "**{name}** has marched the length of the Black Reef Persecution — and the heretic finds no harbor where this warrior treads.",
-    "From the first incursion to the final cleansing, **{name}** has carried the Black Reef Persecution to its end.",
-    "The Black Reef offered no easy operation; **{name}** completed them all regardless.",
+    "**{name}** has answered every call of the Black Reef Persecution — and the heretic finds no harbor where this warrior treads.",
+    "From the first incursion to the final accounting, **{name}** has seen the Black Reef Persecution through to its end.",
+    "The Black Reef Persecution offered no easy operation; **{name}** completed them all regardless.",
     "**{name}** has earned the Black Reef Campaign Medal through persistence no lesser warrior could match.",
-    "Every operation, every void-stretch, every cleansing on the Black Reef — **{name}** stood among the warriors who saw them through.",
+    "Every operation, every void-stretch, every cleansing — **{name}** stood among the warriors who saw the Black Reef Persecution through.",
 ]
 
 BLACK_REEF_CAMPAIGN_PROCLAMATIONS: List[str] = [
@@ -2131,7 +2131,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 DISTINGUISHED_BLACK_REEF_OPENINGS: List[str] = [
     "**{name}** has marched the Black Reef Persecution as a Kill Team's heart — every operation, every bond, every brother.",
     "The Black Reef's foes met not one warrior in **{name}** — they met a Kill Team in which **{name}** was every brother's strength.",
-    "**{name}** carried the Black Reef Persecution and the Black Laurels both — a warrior who refused to fight alone.",
+    "**{name}** carried every operation of the Black Reef Persecution as a Kill Team's strength — a warrior who refused to fight alone.",
     "Distinguished service across every Reef-operation, with brothers always at hand — **{name}** has earned the deeper mark.",
     "**{name}** completed every Black Reef operation, and did so as part of every Kill Team they joined. None were left behind.",
 ]
@@ -2201,7 +2201,7 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
 # The Order Omega announcement flavor text
 # ---------------------------------------------------------------------------
 ORDER_OMEGA_OPENINGS: List[str] = [
-    "**{name}** has walked through the final difficulty of every operation, bearing the Black Laurels each step — the Watch knows few honors greater.",
+    "**{name}** has walked through the final difficulty of every required operation and emerged with every brother still standing — the Watch knows few who can claim the same.",
     "At the highest difficulty the Watch can offer, **{name}** has prevailed — and done so without ever forsaking their brothers.",
     "**{name}** has earned admittance to The Order Omega — a fellowship whose name is whispered, never shouted.",
     "Where Omega difficulty broke other warriors, **{name}** broke Omega — and did so as the heart of every Kill Team they joined.",
@@ -2213,7 +2213,7 @@ ORDER_OMEGA_PROCLAMATIONS: List[str] = [
     "To bear the Order Omega mark is to have crossed the threshold past which the Watch tests no further — there is no higher operational measure.",
     "The Omega-difficulty operations were not designed to be survived alone. The Order Omega gathers those who survived them as a Kill Team's heart.",
     "Where the Crux honors elite warriors, The Order Omega honors elite Kill Teams — and the warriors who held them together at the impossible difficulty.",
-    "This warrior has done what the Watch did not believe possible — at Omega difficulty, with Black Laurels, on every required operation. The Order Omega opens to them now.",
+    "This warrior has done what the Watch did not believe possible — at Omega difficulty, on every required operation, without fail. The Order Omega opens to them now.",
 ]
 
 ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
@@ -2489,21 +2489,21 @@ ORDER_OMEGA_RANK_LINES: Dict[str, str] = {
 DUAL_VIGIL_OPENINGS: List[str] = [
     "**{name}** has proven that two brothers, bound by purpose, can hold the line as surely as any full fireteam.",
     "Two warriors. Every mission. No retreat. **{name}** has demonstrated what it means to place absolute trust in a single brother.",
-    "The Watch does not always measure strength in numbers. **{name}** has carried the Dual Vigil through every required operation — and earned what few can claim.",
-    "**{name}** has stood watch with a single brother at their side across the entirety of verified Black Laurels operations. That is not fortune. That is discipline.",
-    "There are warriors who fight in the shadow of a full Kill Team. Then there are warriors like **{name}** — who go to the absolute edge of operations with one brother, and come back.",
-    "**{name}** walked every required operation in the tightest formation the Watch recognises — two, together, absolute. The Vigil is earned.",
-    "Two brothers. All missions. **{name}** has borne the Dual Vigil's demands without compromise.",
+    "The Watch does not always measure strength in numbers. **{name}** has carried every required operation at the absolute edge — and earned what few can claim.",
+    "**{name}** has stood watch with a single brother at their side across every required absolute operation. That is not fortune. That is discipline.",
+    "There are warriors who fight in the shadow of a full Kill Team. Then there are warriors like **{name}** — who go to the absolute edge with one brother, and come back.",
+    "**{name}** walked every required operation in the tightest formation the Watch recognises — two, together, absolute. The Order of the Aquiline Brotherhood is earned.",
+    "Two brothers. All missions. **{name}** has borne every demand without compromise — the Order of the Aquiline Brotherhood is theirs.",
 ]
 
 DUAL_VIGIL_PROCLAMATIONS: List[str] = [
-    "The Dual Vigil is awarded to those who completed every verified Black Laurels operation at Absolute difficulty with exactly one brother at their side.",
-    "Where the Black Laurels honour the Kill Team, the Dual Vigil honours the pair — the two warriors who held together long after others would have called for reinforcement.",
-    "The Dual Vigil recognises a singular depth of trust: the warrior who chose, every time, to fight the hardest operations with one brother instead of three.",
-    "To earn the Dual Vigil is to have proven that two brothers, operating as one, can face the Watch's most demanding missions and prevail.",
-    "The Black Laurels speak of the team. The Dual Vigil speaks of the bond — two brothers, standing vigil across every absolute front.",
+    "The Order of the Aquiline Brotherhood is awarded to those who completed every required operation at Absolute difficulty with exactly one brother at their side.",
+    "The Watch recognises a singular depth of trust: the warrior who chose, every time, to fight the hardest operations with one brother instead of three.",
+    "To earn the Order of the Aquiline Brotherhood is to have proven that two brothers, operating as one, can face the Watch's most demanding missions and prevail.",
     "Not every warrior finds a brother they would take to every absolute operation. **{name}** has done exactly that — and the Watch records it accordingly.",
-    "The Dual Vigil is not given lightly. It is the mark of brothers who treated every absolute operation as a test of what two warriors in complete trust can achieve.",
+    "The Order of the Aquiline Brotherhood is not given lightly. It is the mark of brothers who treated every absolute operation as a test of what two warriors in complete trust can achieve.",
+    "Where others demand a full fireteam, the pair who earned this order demanded only each other — and answered everything the Watch put before them.",
+    "Two warriors who refused to be separated by difficulty, by odds, or by the weight of the mission. The Order of the Aquiline Brotherhood is the Watch's answer.",
 ]
 
 DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
@@ -2512,11 +2512,11 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Black Templars": "The Eternal Crusade does not always require a full crusade force. **{name}** has proven what two Templars, committed to every absolute operation, can achieve.",
     "Bleeding Hearts": "Pack-bond concentrated to a single pairing — **{name}** has run every absolute operation required with one brother. The hunt was answered.",
     "Blood Angels": "Sanguinius died in the company of the greatest. **{name}** chose one brother for every absolute operation and made that pairing into something worthy of the primarch's memory.",
-    "Blood Ravens": "Knowledge is nothing without the brother beside you. **{name}** has shared every absolute operation with one companion — the Dual Vigil is the record of that partnership.",
+    "Blood Ravens": "Knowledge is nothing without the brother beside you. **{name}** has shared every absolute operation with one companion — the Order of the Aquiline Brotherhood is the record of that partnership.",
     "Brazen Minotaurs": "The bronze herd knows that two warriors in lockstep are more than the sum of their parts. **{name}** has proven it across every required absolute mission.",
-    "Carcharodons": "The Void-born speak through deeds. **{name}**'s deeds are nine absolute operations completed alongside one brother — the Dual Vigil is the only words required.",
+    "Carcharodons": "The Void-born speak through deeds. **{name}**'s deeds are every required absolute operation completed alongside one brother — the Order of the Aquiline Brotherhood is the only words required.",
     "Carmine Blades": "The curse of Baal isolates none who refuse to be isolated. **{name}** refused, choosing one brother for every absolute engagement — and completing them all.",
-    "Celestial Lions": "Elysium's sons stand together or not at all. **{name}** stood with one brother through every absolute operation — the Dual Vigil is Elysium's mark on the Watch.",
+    "Celestial Lions": "Elysium's sons stand together or not at all. **{name}** stood with one brother through every absolute operation — the Order of the Aquiline Brotherhood is Elysium's mark on the Watch.",
     "Cowled Wardens": "The cowl shelters one; two Wardens together are a fortress. **{name}** made every absolute operation a fortress with one companion at their side.",
     "Crimson Fists": "Few in number is the Fist's legacy. **{name}** took that legacy to its sharpest point — one brother, every absolute operation, complete.",
     "Dark Angels": "The First Legion guards its greatest secrets with pairs, not crowds. **{name}** has operated in that spirit across every required absolute mission.",
@@ -2534,10 +2534,10 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hands": "The weakest link breaks the chain. **{name}** forged a two-link chain across every required absolute operation — and neither link failed.",
     "Iron Hounds": "Two hounds on the same scent are worth ten scattered. **{name}** and one brother tracked every required absolute mission together without deviation.",
     "Iron Lords": "The Iron Grip requires anchor points. **{name}** was one anchor; their one chosen brother was the other — every absolute operation, complete.",
-    "Iron Ravens": "Shadow falls heaviest on two warriors who share it. **{name}**'s Dual Vigil is shadow shared with one brother across every required absolute mission.",
+    "Iron Ravens": "Shadow falls heaviest on two warriors who share it. **{name}**'s Order of the Aquiline Brotherhood is shadow shared with one brother across every required absolute mission.",
     "Knights of the Raven": "The Raven's patience is sharpest when the hunt is small. **{name}** hunted every absolute operation with one companion — patient, precise, complete.",
-    "Lamenters": "The cursed Chapter finds hope in the smallest companionships. **{name}**'s Dual Vigil is one such hope, forged over nine absolute operations with one unwavering brother.",
-    "Marines Errant": "The errant finds their purpose in unexpected partnerships. **{name}** found theirs in one brother, every absolute operation — the Dual Vigil records the finding.",
+    "Lamenters": "The cursed Chapter finds hope in the smallest companionships. **{name}**'s Order of the Aquiline Brotherhood is one such hope, forged over every required absolute operation with one unwavering brother.",
+    "Marines Errant": "The errant finds their purpose in unexpected partnerships. **{name}** found theirs in one brother, every absolute operation — the Order of the Aquiline Brotherhood records the finding.",
     "Mentors": "The finest lesson a Mentor can teach is commitment. **{name}** taught it by example — one brother, every required absolute operation, nothing withheld.",
     "Minotaurs": "The bull charges hardest in pairs. **{name}** paired with one brother for every absolute operation the Dual Vigil requires — and the charge was sufficient every time.",
     "Necropolis Hawks": "Ruined cities are held by two warriors who refuse to yield. **{name}** refused across every required absolute mission — the Dual Vigil is the holding.",
@@ -2556,33 +2556,33 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Ultramarines": "The Codex describes formations of three; **{name}** has written the addendum — two warriors with absolute commitment can complete every required absolute mission.",
     "White Scars": "Two riders on the same path, at full speed, through every absolute front required. **{name}** has completed the ride — the Dual Vigil is the trophy of that journey.",
     "Wolfspear": "The Dark Terror hunts as a pair. **{name}** has taken that Wolfspear principle into every required absolute operation — one brother, full commitment, complete.",
-    "Black Shield": "No name, no Chapter, one brother, every absolute operation. **{name}** has built the Dual Vigil from the most elemental materials available.",
+    "Black Shield": "No name, no Chapter, one brother, every absolute operation. **{name}** has built the Order of the Aquiline Brotherhood from the most elemental materials available.",
 }
 
 DUAL_VIGIL_RANK_LINES: Dict[str, str] = {
-    "Watch Master": "The Watch Master bearing the Dual Vigil is the Watch's highest authority confirming what two warriors can achieve when fully committed.",
-    "High Chaplain": "The High Chaplain's Dual Vigil is faith made manifest in partnership — two voices, every absolute front, every oath held.",
-    "Chief Apothecary": "The Chief Apothecary's Dual Vigil is protection extended to one brother, every absolute operation, without fail.",
-    "Void Warden": "The Void Warden's Dual Vigil is the paired vigil taken to the Watch's absolute edge — two companions, every station, every front.",
-    "Forgemaster": "The Forgemaster's Dual Vigil is the Omnissiah's recognition that even the machine-spirits respect a bond forged across every absolute operation.",
-    "Castellan": "The Castellan's Dual Vigil is the fortress reduced to its truest element — two warriors, holding together through everything.",
-    "Lord Executioner": "The Lord Executioner's Dual Vigil is the executioner's blade sharpened by partnership — one brother at the side, every absolute mission.",
-    "Venerable Dreadnought": "A Venerable Dreadnought's Dual Vigil is antiquity's proof that the deepest bonds are forged in the smallest formations.",
-    "Honored Dreadnought": "The Honored Dreadnought's Dual Vigil is endurance's testament — the eternal paired with one brother through every absolute front.",
-    "Interred Brother": "An Interred Brother's Dual Vigil is the rarest bond of all — the preserved warrior and one companion, absolute operations, absolute commitment.",
-    "Watch Chaplain": "The Chaplain's Dual Vigil is faith and partnership made indistinguishable — every absolute mission, one brother, one purpose.",
-    "Watch Apothecary": "The Apothecary's Dual Vigil is the healer's vow concentrated — one brother kept whole across every absolute operation required.",
-    "Watch Librarian": "The Librarian's Dual Vigil is the psyker's focus narrowed to one companion — every absolute front, every required mission, together.",
-    "Watch Techmarine": "The Techmarine's Dual Vigil is the Omnissiah's blessing on a partnership honed across every absolute operation.",
-    "Watch Keeper": "The Keeper's Dual Vigil is the vigil shared with one brother, every operation, without deviation.",
-    "Company Champion": "The Company Champion's Dual Vigil is the Chapter's blade paired with one brother's — every absolute mission a testament to what two champions can achieve.",
-    "Kill Team Champion": "The Kill Team Champion's Dual Vigil is the team distilled to its truest pair — two warriors, absolute operations, complete.",
-    "Watch Captain": "A Watch Captain's Dual Vigil is leadership reduced to its most essential form — two warriors, every absolute mission, no compromise.",
-    "Watch Lieutenant": "The Lieutenant's Dual Vigil is the bond between warriors who earned their rank in the hardest possible company — one brother, every front.",
-    "Watch Sergeant": "The Sergeant's Dual Vigil marks a warrior who led from the smallest possible formation — one brother, absolute difficulty, every required mission.",
-    "Oathsworn": "Oathsworn's Dual Vigil is an oath kept in the most concentrated form — every absolute mission, exactly one brother, no deviation.",
-    "Watch Veteran": "The Veteran's Dual Vigil is the mark of a warrior whose experience runs deep enough to trust a single brother through every absolute operation.",
-    "Watch Brother": "A Watch Brother bearing the Dual Vigil has already shown a depth of commitment that veterans twice their seniority would respect.",
+    "Watch Master": "The Watch Master bearing the Order of the Aquiline Brotherhood is the Watch's highest authority confirming what two warriors can achieve when fully committed.",
+    "High Chaplain": "The High Chaplain's Order of the Aquiline Brotherhood is faith made manifest in partnership — two voices, every absolute front, every oath held.",
+    "Chief Apothecary": "The Chief Apothecary's Order of the Aquiline Brotherhood is protection extended to one brother, every absolute operation, without fail.",
+    "Void Warden": "The Void Warden's Order of the Aquiline Brotherhood is the paired vigil taken to the Watch's absolute edge — two companions, every station, every front.",
+    "Forgemaster": "The Forgemaster's Order of the Aquiline Brotherhood is the Omnissiah's recognition that even the machine-spirits respect a bond forged across every absolute operation.",
+    "Castellan": "The Castellan's Order of the Aquiline Brotherhood is the fortress reduced to its truest element — two warriors, holding together through everything.",
+    "Lord Executioner": "The Lord Executioner's Order of the Aquiline Brotherhood is the executioner's blade sharpened by partnership — one brother at the side, every absolute mission.",
+    "Venerable Dreadnought": "A Venerable Dreadnought's Order of the Aquiline Brotherhood is antiquity's proof that the deepest bonds are forged in the smallest formations.",
+    "Honored Dreadnought": "The Honored Dreadnought's Order of the Aquiline Brotherhood is endurance's testament — the eternal paired with one brother through every absolute front.",
+    "Interred Brother": "An Interred Brother's Order of the Aquiline Brotherhood is the rarest bond of all — the preserved warrior and one companion, absolute operations, absolute commitment.",
+    "Watch Chaplain": "The Chaplain's Order of the Aquiline Brotherhood is faith and partnership made indistinguishable — every absolute mission, one brother, one purpose.",
+    "Watch Apothecary": "The Apothecary's Order of the Aquiline Brotherhood is the healer's vow concentrated — one brother kept whole across every absolute operation required.",
+    "Watch Librarian": "The Librarian's Order of the Aquiline Brotherhood is the psyker's focus narrowed to one companion — every absolute front, every required mission, together.",
+    "Watch Techmarine": "The Techmarine's Order of the Aquiline Brotherhood is the Omnissiah's blessing on a partnership honed across every absolute operation.",
+    "Watch Keeper": "The Keeper's Order of the Aquiline Brotherhood is the vigil shared with one brother, every operation, without deviation.",
+    "Company Champion": "The Company Champion's Order of the Aquiline Brotherhood is the Chapter's blade paired with one brother's — every absolute mission a testament to what two champions can achieve.",
+    "Kill Team Champion": "The Kill Team Champion's Order of the Aquiline Brotherhood is the team distilled to its truest pair — two warriors, absolute operations, complete.",
+    "Watch Captain": "A Watch Captain's Order of the Aquiline Brotherhood is leadership reduced to its most essential form — two warriors, every absolute mission, no compromise.",
+    "Watch Lieutenant": "The Lieutenant's Order of the Aquiline Brotherhood is the bond between warriors who earned their rank in the hardest possible company — one brother, every front.",
+    "Watch Sergeant": "The Sergeant's Order of the Aquiline Brotherhood marks a warrior who led from the smallest possible formation — one brother, absolute difficulty, every required mission.",
+    "Oathsworn": "Oathsworn's Order of the Aquiline Brotherhood is an oath kept in the most concentrated form — every absolute mission, exactly one brother, no deviation.",
+    "Watch Veteran": "The Veteran's Order of the Aquiline Brotherhood is the mark of a warrior whose experience runs deep enough to trust a single brother through every absolute operation.",
+    "Watch Brother": "A Watch Brother bearing the Order of the Aquiline Brotherhood has already shown a depth of commitment that veterans twice their seniority would respect.",
 }
 
 # ---------------------------------------------------------------------------
