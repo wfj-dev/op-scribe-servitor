@@ -292,7 +292,8 @@
     }
   },
   "armor_integrity": {
-    "arming_chamber_channel_id": "1509598835599610029",
+    "armor_integrity_channel_id": "1509598835599610029",
+    "arming_chamber_channel_id": "1429303902343401575",
     "techmarine_role_id": "1429342203251265576",
     "armor_status_allowed_channels": [
       "1445526714749943898",

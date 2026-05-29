@@ -1631,17 +1631,6 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start forge dashboard loop")
 
-    # Ambient flavor messages (forge + librarius channels) disabled by request.
-    # The loop, _maybe_post_ambient_message, and FORGE_AMBIENT_MESSAGES /
-    # LIBRARIUM_AMBIENT_MESSAGES constants are retained for future reuse but
-    # are no longer started at boot.
-    # try:
-    #     if not _forge_ambient_loop.is_running():
-    #         _forge_ambient_loop.start()
-    #         logger.info("Forge ambient message loop started (every 30 min).")
-    # except Exception:
-    #     logger.exception("Failed to start forge ambient loop")
-
     # Register specialist cadre pressure contributors + start auto-ingest loop.
     # See opscribe/pressure_registry.py and opscribe/auto_ingest.py.
     try:

@@ -148,8 +148,8 @@ async def _delete_machine_spirit(user_id: int) -> Optional[str]:
 # Armor Integrity / Forge subsystem data tables (ARMOR_DAMAGE_TIERS,
 # ARMOR_DAMAGE_PENALTIES, MISSION_TO_PLANET, ARMOR_PENALTY_PROBABILITIES,
 # ARMOR_DETECTION_CHANCES, ARMOR_SCAN_*, ARMOR_STATUS_*, INTENSIVE_SCAN_COST,
-# DEFAULT_ARMOR_*, SPIRIT_RESTORATION_PHRASES, SPIRIT_RECONSECRATION_PHRASES,
-# FORGE_AMBIENT_MESSAGES) live in flavor_text.py.
+# DEFAULT_ARMOR_*, SPIRIT_RESTORATION_PHRASES, SPIRIT_RECONSECRATION_PHRASES)
+# live in flavor_text.py.
 
 
 def _load_armor_integrity() -> dict:
@@ -507,8 +507,20 @@ def _get_armor_damage_role_ids() -> dict:
     return config.get("damage_role_ids", {})
 
 
+def _get_armor_integrity_channel_id() -> Optional[int]:
+    """Get the armor integrity notifications channel ID."""
+    config = _get_armor_config()
+    cid = config.get("armor_integrity_channel_id")
+    if cid:
+        try:
+            return int(cid)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def _get_arming_chamber_channel_id() -> Optional[int]:
-    """Get the arming chamber channel ID for alerts."""
+    """Get the arming chamber channel ID for 'Log to Forge' posts and public embeds."""
     config = _get_armor_config()
     cid = config.get("arming_chamber_channel_id")
     if cid:
@@ -1360,7 +1372,6 @@ def _load_forge_chronicle() -> dict:
         "rite_history": [],
         "techmarine_stats": {},
         "dashboard_message_id": None,
-        "last_ambient_ts": None,
     }
     try:
         if not os.path.exists(FORGE_CHRONICLE_PATH):
@@ -1568,27 +1579,6 @@ async def _set_dashboard_message_id(message_id: int):
         _b("_save_forge_chronicle")(data)
 
 
-async def _get_last_ambient_ts() -> Optional[datetime]:
-    """Get the timestamp of the last ambient message."""
-    async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b("_load_forge_chronicle")()
-        ts_str = data.get("last_ambient_ts")
-        if ts_str:
-            try:
-                return datetime.fromisoformat(ts_str)
-            except Exception:
-                pass
-        return None
-
-
-async def _set_last_ambient_ts():
-    """Update the timestamp of the last ambient message."""
-    async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b("_load_forge_chronicle")()
-        data["last_ambient_ts"] = datetime.utcnow().isoformat()
-        _b("_save_forge_chronicle")(data)
-
-
 async def _increment_forge_pool_balance(points: int):
     """Add armory points to the forge pool balance (capped at max)."""
     if points <= 0:
@@ -1737,7 +1727,7 @@ async def _post_armor_alert(
         alert_type: "sustained" (penalty applied, AAR loss) or "detected" (early warning)
         penalty_amount: How many AAR points were lost (for sustained alerts)
     """
-    channel_id = _get_arming_chamber_channel_id()
+    channel_id = _get_armor_integrity_channel_id()
     if not channel_id:
         return
 
@@ -2823,7 +2813,7 @@ class LogToForgeView(discord.ui.View):
 
 async def _repost_chronicle_at_bottom(guild: discord.Guild):
     """Delete the old chronicle and repost it at the bottom of the arming chamber."""
-    channel_id = _get_arming_chamber_channel_id()
+    channel_id = _get_armor_integrity_channel_id()
     if not channel_id:
         return
 
@@ -7029,7 +7019,7 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
 
     # Channel restriction: arming chamber or techmarine channel
     channel_id = getattr(interaction.channel, "id", None)
-    arming_chamber_id = _get_arming_chamber_channel_id()
+    arming_chamber_id = _get_armor_integrity_channel_id()
     allowed_channels = _get_armor_status_allowed_channels()
     if channel_id not in allowed_channels:
         await interaction.followup.send(
@@ -7072,92 +7062,6 @@ async def _forge_chronicle_cmd(interaction: discord.Interaction):
         await interaction.followup.send(f"Failed to post chronicle: {e}", ephemeral=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Ambient Messages Task
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Ambient message configuration
-AMBIENT_MESSAGE_MIN_QUIET_HOURS = 6  # Hours of quiet before ambient can trigger
-AMBIENT_MESSAGE_MIN_INTERVAL_HOURS = 12  # Minimum hours between ambient messages
-AMBIENT_MESSAGE_CHANCE = 0.25  # 25% chance to post when eligible
-
-
-async def _maybe_post_ambient_message():
-    """Check if the forge has been quiet and maybe post an ambient message."""
-    import random
-
-    channel_id = _get_arming_chamber_channel_id()
-    if not channel_id:
-        return
-
-    guild = None
-    channel = None
-    for g in _g.bot.guilds:
-        channel = g.get_channel(channel_id)
-        if channel:
-            guild = g
-            break
-
-    if not guild or not channel:
-        return
-
-    # Check last ambient timestamp
-    last_ambient = await _get_last_ambient_ts()
-    now = datetime.utcnow()
-
-    if last_ambient:
-        hours_since_ambient = (now - last_ambient).total_seconds() / 3600
-        if hours_since_ambient < AMBIENT_MESSAGE_MIN_INTERVAL_HOURS:
-            return  # Too soon since last ambient
-
-    # Check recent rite activity
-    async with _g.FORGE_CHRONICLE_LOCK:
-        data = _b("_load_forge_chronicle")()
-
-    rite_history = data.get("rite_history", [])
-
-    # Find most recent rite timestamp
-    most_recent_rite = None
-    for entry in reversed(rite_history):
-        try:
-            most_recent_rite = datetime.fromisoformat(entry.get("ts", ""))
-            break
-        except Exception:
-            pass
-
-    if most_recent_rite:
-        hours_since_rite = (now - most_recent_rite).total_seconds() / 3600
-        if hours_since_rite < AMBIENT_MESSAGE_MIN_QUIET_HOURS:
-            return  # Forge has been active recently
-
-    # Random chance to post
-    if random.random() > AMBIENT_MESSAGE_CHANCE:
-        return
-
-    # Post ambient message
-    try:
-        message = random.choice(FORGE_AMBIENT_MESSAGES)
-        await channel.send(message)
-        await _set_last_ambient_ts()
-        _g.logger.info(f"Posted ambient forge message: {message[:50]}...")
-    except Exception as e:
-        _g.logger.warning(f"Failed to post ambient message: {e}")
-
-
-@tasks.loop(minutes=30)
-async def _forge_ambient_loop():
-    """Check every 30 minutes whether to post an ambient forge message."""
-    try:
-        # Skip first run to avoid immediate post on startup
-        if not getattr(_forge_ambient_loop, "_first_run_done", False):
-            setattr(_forge_ambient_loop, "_first_run_done", True)
-            return
-
-        await _maybe_post_ambient_message()
-    except Exception as e:
-        _g.logger.warning(f"Ambient message loop error: {e}")
-
-
 @tasks.loop(minutes=30)
 async def _forge_dashboard_loop():
     """Update the Forge Chronicle dashboard every 30 minutes."""
@@ -7171,7 +7075,7 @@ async def _forge_dashboard_loop():
         if not dashboard_msg_id:
             return  # No dashboard to update
 
-        channel_id = _get_arming_chamber_channel_id()
+        channel_id = _get_armor_integrity_channel_id()
         if not channel_id:
             return
 
@@ -8191,6 +8095,7 @@ __all__ = [
     "_check_armor_grace_period",
     "_get_armor_status_for_blessing",
     "_get_armor_damage_role_ids",
+    "_get_armor_integrity_channel_id",
     "_get_arming_chamber_channel_id",
     "_get_techmarine_role_id",
     "_get_armor_status_allowed_channels",
@@ -8327,7 +8232,6 @@ __all__ = [
     "LFGQueueView",
     "LogToForgeView",
     # ── Loops (tasks) ────────────────────────────────────────────────────────
-    "_forge_ambient_loop",
     "_forge_dashboard_loop",
     "_lfg_queue_expiration_loop",
     # ── Public command functions ─────────────────────────────────────────────
