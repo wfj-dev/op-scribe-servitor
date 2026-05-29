@@ -220,8 +220,10 @@ BLACK_LAURELS_ROLE_ID = 1440108298115485716
 LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 # Black Reef Persecution role ID - allows Black Laurels with Hard-Stratagem when present on Mission line
 BLACK_REEF_PERSECUTION_ROLE_ID = 1496892435496833054
-# Dual Vigil role ID - 2-brother Absolute missions across all Black Laurels missions
+# Dual Vigil tag role ID - used on the Mission line in AARs (detection only)
 DUAL_VIGIL_ROLE_ID = 1509277797611470931
+# Dual Vigil award role ID - the role actually granted when the challenge is completed
+DUAL_VIGIL_AWARD_ROLE_ID = 1509561627580694638
 # Pipehitter role IDs for parsing
 PIPEHITTER_ROLE_ID = 1435812894532042843
 DISTINGUISHED_PIPEHITTER_ROLE_ID = 1480420419063386275
@@ -436,7 +438,7 @@ CHALLENGE_ROLES = [
     # Laurels / Vigil
     (1450595241508733183, "Crimson Laurels", "CrimsonLaurelsMedal"),
     (1440108298115485716, "Black Laurels", "BlackLaurelsMedal"),
-    (1509277797611470931, "Dual Vigil", None),
+    (1509561627580694638, "Order of the Aquiline Brotherhood", None),
     # Service awards
     (1436434868652212275, "Apothecarion Service Medal", "ApothecarionServiceMedal"),
     (1436170746283163770, "Ardent Raider Ribbon", "ArdentRaiderRibbon"),

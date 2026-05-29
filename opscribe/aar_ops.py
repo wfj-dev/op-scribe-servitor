@@ -324,10 +324,10 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     and "dual_vigil" not in notified_challenges
                     and member
                     and is_watch_brother_or_higher
-                    and not discord.utils.get(member.roles, id=DUAL_VIGIL_ROLE_ID)
+                    and not discord.utils.get(member.roles, id=DUAL_VIGIL_AWARD_ROLE_ID)
                 ):
                     aar_urls = [m["message_url"] for m in user_progress["dual_vigil"] if m["message_url"]]
-                    notifications.append((user_id_str, "Dual Vigil", DUAL_VIGIL_ROLE_ID, "dual_vigil", aar_urls))
+                    notifications.append((user_id_str, "Order of the Aquiline Brotherhood", DUAL_VIGIL_AWARD_ROLE_ID, "dual_vigil", aar_urls))
                     notified_challenges.append("dual_vigil")
 
             # === Black Laurels tracking (auto-award) ===

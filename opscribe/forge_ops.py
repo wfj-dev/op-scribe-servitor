@@ -4197,19 +4197,19 @@ def _get_dual_vigil_announcement(
     member_chapter: str,
     guild: discord.Guild,
 ) -> Tuple[str, discord.Embed, Optional[discord.File]]:
-    """Generate a flavorful Dual Vigil award announcement embed."""
+    """Generate a flavorful Order of the Aquiline Brotherhood award announcement embed."""
     return _build_challenge_award_embed(
         member=member,
         member_chapter=member_chapter,
         guild=guild,
-        title="DUAL VIGIL",
+        title="ORDER OF THE AQUILINE BROTHERHOOD",
         color=0x1A252F,
         openings=DUAL_VIGIL_OPENINGS,
         proclamations=DUAL_VIGIL_PROCLAMATIONS,
         chapter_lines=DUAL_VIGIL_CHAPTER_LINES,
         rank_lines=DUAL_VIGIL_RANK_LINES,
-        award_label="Dual Vigil",
-        award_image=None,
+        award_label="Order of the Aquiline Brotherhood",
+        award_image="award_dual_vigil.png",
     )
 
 

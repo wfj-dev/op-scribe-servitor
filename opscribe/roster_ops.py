@@ -1198,7 +1198,7 @@ async def _enforce_challenge_grace_periods(
             "black_laurels_notified",  # bool key in promotion_tracking
         ),
         "dual_vigil": (
-            DUAL_VIGIL_ROLE_ID,
+            DUAL_VIGIL_AWARD_ROLE_ID,
             DUAL_VIGIL_REQUIRED_MISSIONS,
             "cp",
             "dual_vigil",  # entry in challenge_progress[uid]["notified"] list
