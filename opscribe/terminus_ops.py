@@ -64,7 +64,7 @@ def _b(name):
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
 
 
-_AAR_LINK_RE = re.compile(r"^https://discord\.com/channels/\d+/(\d+)/(\d+)$")
+_AAR_LINK_RE = re.compile(r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/\d+/(\d+)/(\d+)$")
 
 
 async def _validate_aar_link(
