@@ -27,7 +27,11 @@ from opscribe.constants import (
     BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     BLACK_LAURELS_ROLE_ID,
+    BLACK_LAURELS_REQUIRED_MISSIONS,
     CRUX_TERMINATUS_ROLE_ID,
+    DUAL_VIGIL_ROLE_ID,
+    DUAL_VIGIL_AWARD_ROLE_ID,
+    DUAL_VIGIL_REQUIRED_MISSIONS,
     ORDER_OMEGA_REQUIRED_MISSIONS,
     THE_ORDER_OMEGA_ROLE_ID,
     TERMINUS_SLAYER_ROLE_IDS,
@@ -109,6 +113,7 @@ async def backfill_challenge_progress(guild: discord.Guild):
         leviathan_protocol = record.get('leviathan_protocol_in_mission', False)
         black_reef_persecution = record.get('black_reef_persecution_in_mission', False)
         black_laurels = record.get('black_laurels_in_mission', False) or record.get('black_laurels_in_difficulty', False)
+        dual_vigil = record.get('dual_vigil_in_mission', False)
         difficulty_class = record.get('difficulty_class') or ''
         
         # Skip if no mission name or no participants
@@ -244,6 +249,48 @@ async def backfill_challenge_progress(guild: discord.Guild):
                         'message_url': message_url,
                         'timestamp': timestamp,
                     })
+
+            # === Dual Vigil (Order of the Aquiline Brotherhood) tracking ===
+            # Requires dual_vigil tag on mission line + absolute_ops difficulty.
+            if dual_vigil and difficulty_class == 'absolute_ops' and mission_name in DUAL_VIGIL_REQUIRED_MISSIONS:
+                # Skip if already holds the award role
+                if discord.utils.get(member.roles, id=DUAL_VIGIL_AWARD_ROLE_ID):
+                    continue
+
+                if 'dual_vigil' not in user_progress:
+                    user_progress['dual_vigil'] = []
+
+                existing_missions = {m['mission'] for m in user_progress['dual_vigil']}
+                if mission_name not in existing_missions:
+                    user_progress['dual_vigil'].append({
+                        'mission': mission_name,
+                        'aar_id': aar_id,
+                        'message_url': message_url,
+                        'timestamp': timestamp,
+                    })
+
+            # === Black Laurels tracking ===
+            # Requires black_laurels tag (mission line or difficulty line).
+            if black_laurels and mission_name in BLACK_LAURELS_REQUIRED_MISSIONS:
+                # Skip if already holds the role
+                if discord.utils.get(member.roles, id=BLACK_LAURELS_ROLE_ID):
+                    continue
+
+                if 'black_laurels' not in user_progress:
+                    user_progress['black_laurels'] = []
+
+                existing_missions = {m['mission'] for m in user_progress['black_laurels']}
+                if mission_name not in existing_missions:
+                    user_progress['black_laurels'].append({
+                        'mission': mission_name,
+                        'aar_id': aar_id,
+                        'message_url': message_url,
+                        'timestamp': timestamp,
+                    })
+
+            # NOTE: Crux Terminatus is intentionally NOT backfilled here.
+            # It requires the member to currently hold BLACK_LAURELS_ROLE_ID at award
+            # time, which cannot be reconstructed retroactively from AAR history.
     
     print(f"✓ Processed {processed} AAR records")
     
@@ -263,8 +310,10 @@ async def backfill_challenge_progress(guild: discord.Guild):
         'sok_g_pipehitter': 0,
         'kadaku_campaign': 0,
         'black_reef': 0,
-        'black_reef_distinguished': 0,
+        'distinguished_black_reef': 0,
         'order_omega': 0,
+        'dual_vigil': 0,
+        'black_laurels': 0,
     }
     
     for user_data in progress_data.values():
@@ -276,8 +325,11 @@ async def backfill_challenge_progress(guild: discord.Guild):
     print(f"  SOK-G Pipehitter: {challenge_counts['sok_g_pipehitter']}")
     print(f"  Kadaku Campaign: {challenge_counts['kadaku_campaign']}")
     print(f"  Black Reef: {challenge_counts['black_reef']}")
-    print(f"  Distinguished Black Reef: {challenge_counts['black_reef_distinguished']}")
+    print(f"  Distinguished Black Reef: {challenge_counts['distinguished_black_reef']}")
     print(f"  Order Omega: {challenge_counts['order_omega']}")
+    print(f"  Dual Vigil (Order of the Aquiline Brotherhood): {challenge_counts['dual_vigil']}")
+    print(f"  Black Laurels: {challenge_counts['black_laurels']}")
+    print("  Crux Terminatus: (not backfilled — requires live role check)")
     
     # Save progress
     save_challenge_progress(progress_data)
