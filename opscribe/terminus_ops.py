@@ -22,6 +22,7 @@ from discord import app_commands
 
 from .constants import (  # noqa: F401
     AAR_CHANNEL_ID,
+    APOTHECARY_ROLE_NAME,
     APOTHECARY_STAFF_CHANNEL_ID,
     BLACK_LAURELS_ROLE_ID,
     BLACK_LAURELS_STRICT_ENFORCEMENT_DATE,
@@ -344,6 +345,9 @@ def _build_apo_notification_embed(entry: dict) -> discord.Embed:
     if denied_at:
         ts = int(_parse_dt(denied_at).timestamp())
         embed.add_field(name="Denied At", value=f"<t:{ts}:f>", inline=True)
+    deny_reason = entry.get("deny_reason", "").strip()
+    if deny_reason:
+        embed.add_field(name="Deny Reason", value=deny_reason, inline=False)
     video_url = entry.get("video_url") or entry.get("video_attachment_url") or ""
     if video_url:
         embed.add_field(name="Recording", value=f"[Watch]({video_url})", inline=False)
@@ -433,7 +437,41 @@ class TerminusKillLogView(discord.ui.View):
         custom_id="terminus_deny:__placeholder__",
     )
     async def _deny_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await _handle_deny(interaction, self.kill_log_id)
+        await interaction.response.send_modal(DenyReasonModal(self.kill_log_id))
+
+
+# ---------------------------------------------------------------------------
+# Modal: deny reason
+# ---------------------------------------------------------------------------
+
+class DenyReasonModal(discord.ui.Modal, title="Deny Kill Log Entry"):
+    """Optional reason modal shown when a verifier clicks Deny."""
+
+    reason: discord.ui.TextInput = discord.ui.TextInput(
+        label="Reason (optional)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Describe why this entry is being flagged for review…",
+        required=False,
+        max_length=500,
+    )
+
+    def __init__(self, kill_log_id: str):
+        super().__init__()
+        self.kill_log_id = kill_log_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await _handle_deny(interaction, self.kill_log_id, reason=self.reason.value or "")
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        if _g.logger:
+            _g.logger.error(f"terminus_ops: DenyReasonModal error for {self.kill_log_id}: {error}")
+        try:
+            await interaction.response.send_message(
+                "An error occurred while processing the denial. The entry status may already be updated — check the kill log channel.",
+                ephemeral=True,
+            )
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +594,7 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
         await _notify_class_complete(guild, brother_id, entry["class_role_id"], entry["class_name"])
 
 
-async def _handle_deny(interaction: discord.Interaction, kill_log_id: str) -> None:
+async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reason: str = "") -> None:
     if not _is_verifier(interaction.user):
         await interaction.response.send_message(
             "Only Watch Veterans and above may deny kill log entries.",
@@ -585,6 +623,8 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str) -> No
                 entry["status"] = "under_review"
                 entry["denied_by"] = vet_id
                 entry["denied_at"] = _now_iso()
+                if reason.strip():
+                    entry["deny_reason"] = reason.strip()
                 _record_verifier_action(state, vet_id, "deny", kill_log_id)
                 _save_state(state)
 
@@ -593,12 +633,21 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str) -> No
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
 
-    # Update embed — remove buttons
+    # Acknowledge the modal submission, then update the kill log embed independently.
     guild = interaction.guild
-    embed = _build_kill_log_embed(entry, guild)
-    await interaction.response.edit_message(embed=embed, view=None)
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.warning(f"terminus_ops: could not defer deny interaction: {exc}")
 
-    # Notify apothecary channel
+    try:
+        await _refresh_kill_log_embed(guild, entry)
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.warning(f"terminus_ops: could not refresh kill log embed after deny: {exc}")
+
+    # Notify apothecary channel — always attempted regardless of embed refresh outcome
     await _notify_apo_denial(guild, entry)
 
 
@@ -712,9 +761,11 @@ async def _notify_apo_denial(guild: Optional[discord.Guild], entry: dict) -> Non
     channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
     if channel is None:
         return
+    apo_role = discord.utils.get(guild.roles, name=APOTHECARY_ROLE_NAME)
+    ping = apo_role.mention if apo_role else "@Watch Apothecary"
     view = TerminusApoView(entry["kill_log_id"])
     try:
-        msg = await channel.send(embed=_build_apo_notification_embed(entry), view=view)
+        msg = await channel.send(content=ping, embed=_build_apo_notification_embed(entry), view=view)
         async with _g.TERMINUS_SLAYER_LOCK:
             state = _load_state()
             if entry["kill_log_id"] in state["entries"]:
