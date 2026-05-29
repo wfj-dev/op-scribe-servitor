@@ -567,6 +567,118 @@ async def _send_challenge_eligibility_notifications(
             _g.logger.exception(f"Failed to process challenge notification for {user_id} - {challenge_name}: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Periodic challenge completion sweep
+# ---------------------------------------------------------------------------
+
+_WATCH_BROTHER_OR_HIGHER = {
+    "Watch Brother", "Watch Sister",
+    "Watch Veteran", "Oathsworn", "Kill Team Champion",
+    "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
+    "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
+    "Company Champion", "Watch Lieutenant", "Watch Captain",
+    "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
+    "Void Warden", "High Chaplain", "Chief Apothecary",
+    "Castellan", "Lord Executioner", "Watch Master",
+}
+
+# Map of challenge_key → (required_missions_set, award_role_id, display_name, award_type, notified_key)
+# Pipehitter and Crux Terminatus have non-standard conditions and are handled separately below.
+_SIMPLE_CHALLENGE_SPECS = [
+    ("kadaku_campaign",       KADAKU_CAMPAIGN_REQUIRED_MISSIONS,       KADAKU_CAMPAIGN_MEDAL_ROLE_ID,                   "Kadaku Campaign Medal",                     "kadaku_campaign_medal",                    "kadaku_campaign"),
+    ("black_reef",            BLACK_REEF_REQUIRED_MISSIONS,            BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,               "Black Reef Campaign Medal",                 "black_reef_campaign_medal",                "black_reef"),
+    ("distinguished_black_reef", BLACK_REEF_REQUIRED_MISSIONS,         DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "Distinguished Black Reef Campaign Medal",   "distinguished_black_reef_campaign_medal",  "distinguished_black_reef"),
+    ("dual_vigil",            DUAL_VIGIL_REQUIRED_MISSIONS,            DUAL_VIGIL_AWARD_ROLE_ID,                        "Order of the Aquiline Brotherhood",         "dual_vigil",                               "dual_vigil"),
+    ("black_laurels",         BLACK_LAURELS_REQUIRED_MISSIONS,         BLACK_LAURELS_ROLE_ID,                           "Black Laurels",                             "black_laurels",                            "black_laurels"),
+    ("order_omega",           ORDER_OMEGA_REQUIRED_MISSIONS,           THE_ORDER_OMEGA_ROLE_ID,                         "The Order Omega",                           "the_order_omega",                          "order_omega"),
+]
+
+
+async def _sweep_challenge_completions(guild: discord.Guild) -> int:
+    """Scan all tracked members and fire awards for anyone whose challenge
+    progress is complete but whose award has not yet been queued.
+
+    This catches members who finished all required ops before a bot restart,
+    code change, or data reset — cases where the AAR-triggered path never
+    had a chance to evaluate completion.
+
+    Returns the number of awards queued.
+    """
+    if guild is None:
+        return 0
+
+    notifications: List[Tuple[str, str, int, str, List[str]]] = []
+
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        progress_data = _load_challenge_progress()
+        changed = False
+
+        for user_id_str, user_progress in progress_data.items():
+            try:
+                member = guild.get_member(int(user_id_str))
+            except Exception:
+                continue
+            if member is None:
+                continue
+
+            member_role_names = {getattr(r, "name", "") for r in member.roles}
+            if not member_role_names & _WATCH_BROTHER_OR_HIGHER:
+                continue
+
+            notified = user_progress.get("notified", [])
+
+            # --- Simple set-complete challenges ---
+            for prog_key, required, role_id, display_name, award_type, notified_key in _SIMPLE_CHALLENGE_SPECS:
+                if notified_key in notified:
+                    continue
+                if discord.utils.get(member.roles, id=role_id):
+                    continue
+                entries = user_progress.get(prog_key, [])
+                if not entries:
+                    continue
+                unique = {e["mission"] for e in entries}
+                if unique >= required:
+                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                    notifications.append((user_id_str, display_name, role_id, award_type, aar_urls))
+                    notified.append(notified_key)
+                    user_progress["notified"] = notified
+                    changed = True
+
+            # --- SOK-G Pipehitter (1 mission) ---
+            if "sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
+                entries = user_progress.get("sok_g_pipehitter", [])
+                if len({e["mission"] for e in entries}) >= 1:
+                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                    notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
+                    notified.append("sok_g_pipehitter")
+                    user_progress["notified"] = notified
+                    changed = True
+
+            # --- Distinguished SOK-G Pipehitter (2+ missions) ---
+            if "distinguished_sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
+                entries = user_progress.get("sok_g_pipehitter", [])
+                if len({e["mission"] for e in entries}) >= 2:
+                    aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                    notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
+                    notified.append("distinguished_sok_g_pipehitter")
+                    user_progress["notified"] = notified
+                    changed = True
+
+            # NOTE: Crux Terminatus is intentionally excluded from the sweep.
+            # It requires a live Rank-A audit across all Black Laurels AARs in
+            # the datastore — that evaluation only makes sense per-AAR when the
+            # datastore is fully loaded, not in a background sweep.
+
+        if changed:
+            _save_challenge_progress(progress_data)
+
+    if notifications:
+        _g.logger.info(f"challenge sweep: found {len(notifications)} pending award(s); processing")
+        await _send_challenge_eligibility_notifications(notifications, guild)
+
+    return len(notifications)
+
+
 @_g.bot.tree.command(name="reconcile_records", description="Reprocess AARs and update the archive.")
 @app_commands.describe(span_days="Optional: only scan messages from the last N days.")
 async def reconcile_records(interaction: discord.Interaction, span_days: int | None = None):
@@ -3482,6 +3594,7 @@ __all__ = [
     "_load_challenge_progress",
     "_save_challenge_progress",
     "_process_challenge_tracking",
+    "_sweep_challenge_completions",
     "_get_challenge_librarian_mention",
     "_get_challenge_keeper_mention",
     "_send_challenge_eligibility_notifications",
