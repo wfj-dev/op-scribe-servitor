@@ -971,6 +971,7 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                     "Chief Apothecary",
                     "Castellan",
                     "Lord Executioner",
+                    "Huntmaster",
                     "Watch Master",
                 ]
             )
@@ -1538,6 +1539,7 @@ async def _check_promotion_milestones():
                         "Chief Apothecary",
                         "Castellan",
                         "Lord Executioner",
+                        "Huntmaster",
                         "Watch Master",
                     ]
                 )
@@ -1801,6 +1803,7 @@ async def _check_promotion_milestones():
                             "Chief Apothecary",
                             "Castellan",
                             "Lord Executioner",
+                            "Huntmaster",
                             "Watch Master",
                         ]
                     )
@@ -3015,6 +3018,7 @@ async def tally_deeds(
             high_command = {
                 "Watch Master",
                 "Lord Executioner",
+                "Huntmaster",
                 "Forgemaster",
                 "Void Warden",
                 "Chief Apothecary",
@@ -4385,6 +4389,7 @@ async def my_deeds(interaction: discord.Interaction):
         high_command = {
             "Watch Master",
             "Lord Executioner",
+            "Huntmaster",
             "Forgemaster",
             "Void Warden",
             "Chief Apothecary",
@@ -6174,6 +6179,7 @@ HIGH_COMMAND_ROLES = {
     "Watch Master",
     "Watch Captain",
     "Lord Executioner",
+    "Huntmaster",
     "High Chaplain",
     "Chief Apothecary",
     "Void Warden",
@@ -7005,6 +7011,7 @@ async def _scheduled_milestone_check():
 POSITION_LABEL_MAP = {
     "WatchMaster": "Watch Master",
     "LordExecutioner": "Lord Executioner",
+    "Huntmaster": "Huntmaster",
     "ChiefApothecary": "Chief Apothecary",
     "HighChaplain": "High Chaplain",
     "Forgemaster": "Forgemaster",
@@ -7776,6 +7783,7 @@ async def promotion_queue(interaction: discord.Interaction):
         "High Chaplain",
         "Chief Apothecary",
         "Lord Executioner",
+        "Huntmaster",
         "Watch Master",
     }
 

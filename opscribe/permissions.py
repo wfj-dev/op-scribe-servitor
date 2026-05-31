@@ -91,6 +91,7 @@ HIGH_COMMAND_RANKS = {
     "Venerable Dreadnought",
     "Watch Captain",
     "Lord Executioner",
+    "Huntmaster",
 }
 
 # Watch Command = Sergeant+ from Battle Line, Company Champion+ from champion track, all Specialists, High Command
@@ -103,6 +104,7 @@ WATCH_COMMAND_ROLES = {
     # Champion track (Company Champion+)
     "Company Champion",
     "Lord Executioner",
+    "Huntmaster",
     # Specialist track (all)
     "Watch Chaplain",
     "Watch Apothecary",
