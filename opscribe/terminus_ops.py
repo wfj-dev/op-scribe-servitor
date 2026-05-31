@@ -177,6 +177,58 @@ def _class_is_complete(state: dict, brother_id: str, class_role_id: int) -> bool
     return all(class_data.get(t, 0) >= 3 for t in TERMINUS_TYPES)
 
 
+def _decrement_progress(state: dict, brother_id: str, class_role_id: int, terminus_type: str) -> int:
+    """Decrement verified kill count (floor 0) and return new total."""
+    prog = state.setdefault("progress", {})
+    bid = str(brother_id)
+    cid = str(class_role_id)
+    prog.setdefault(bid, {}).setdefault(cid, {k: 0 for k in TERMINUS_TYPES})
+    current = prog[bid][cid].get(terminus_type, 0)
+    new_val = max(current - 1, 0)
+    prog[bid][cid][terminus_type] = new_val
+    return new_val
+
+
+def _would_break_class_completion(state: dict, brother_id: str, class_role_id: int, terminus_type: str) -> bool:
+    """Return True if decrementing this terminus type would make the class incomplete.
+
+    The class is currently complete only if *every* terminus type is at 3.  If
+    the entry being revoked holds one of those 3s, removing it drops the class
+    below the completion threshold.
+    """
+    prog = state.get("progress", {})
+    class_data = prog.get(str(brother_id), {}).get(str(class_role_id), {})
+    # Class must currently be fully complete AND this type must be at exactly 3
+    # (or above, though 3 is the cap) for the decrement to break it.
+    if not all(class_data.get(t, 0) >= 3 for t in TERMINUS_TYPES):
+        return False
+    return class_data.get(terminus_type, 0) >= 3
+
+
+def _dequeue_terminus_class_award(member_id: str, class_role_id: int) -> bool:
+    """Remove a queued Terminus Slayer class award announcement if present.
+
+    Returns True if an entry was found and removed, False if the queue held no
+    matching entry (meaning the announcement was already delivered).
+    """
+    award_type = TERMINUS_SLAYER_CLASS_AWARD_TYPES.get(class_role_id)
+    if not award_type:
+        return False
+    load_fn = _b("_load_award_queue")
+    save_fn = _b("_save_award_queue")
+    if load_fn is None or save_fn is None:
+        return False
+    queue = load_fn()
+    new_queue = [
+        item for item in queue
+        if not (str(item.get("member_id")) == str(member_id) and item.get("award_type") == award_type)
+    ]
+    if len(new_queue) == len(queue):
+        return False  # nothing removed
+    save_fn(new_queue)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Verifier tier helpers
 # ---------------------------------------------------------------------------
@@ -242,6 +294,8 @@ def _status_line(entry: dict) -> str:
         return "⚠️ Under Review — Awaiting Apothecary Decision"
     if status == "rejected":
         return "❌ Rejected by Apothecary"
+    if status == "apo_revoked":
+        return "🛑 Revoked by Apothecary"
     return status
 
 
@@ -1487,3 +1541,253 @@ async def _challenge_progress_inner(
 
     embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed. Use verbose=True to see missing missions.")
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ---------------------------------------------------------------------------
+# /revoke_slay command
+# ---------------------------------------------------------------------------
+
+async def _apo_revoke_kill_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete: list verified/force_approved entries, filtered by current input."""
+    try:
+        state = _load_state()
+        choices = []
+        current_lower = current.lower()
+        for entry in state.get("entries", {}).values():
+            if entry.get("status") not in ("verified", "force_approved"):
+                continue
+            kid = entry["kill_log_id"]
+            label = (
+                f"{kid} — {entry['class_name']} / {entry['terminus_type']} "
+                f"(Brother: {entry['brother_id']})"
+            )
+            if current_lower and current_lower not in label.lower():
+                continue
+            choices.append(app_commands.Choice(name=label[:100], value=kid))
+            if len(choices) >= 25:
+                break
+        return choices
+    except Exception:
+        return []
+
+
+async def _handle_apo_revoke_kill(
+    interaction: discord.Interaction,
+    kill_log_id: str,
+    reason: str,
+) -> None:
+    """Core logic for /revoke_slay — runs outside the view layer so it can
+    be tested directly and reused if a button surface is ever added."""
+
+    check_perm = _b("check_command_permission")
+    if check_perm is None or not check_perm(interaction.user, "revoke_slay"):
+        await interaction.response.send_message(
+            "Only Watch Apothecaries or Chief Apothecaries may revoke verified or force-approved kill log entries.",
+            ephemeral=True,
+        )
+        return
+
+    reason_clean = reason.strip()
+    if not reason_clean:
+        await interaction.response.send_message(
+            "Reason is required and cannot be blank.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    actor_id = str(interaction.user.id)
+    guild = interaction.guild
+
+    # --- State mutation (inside lock) ---
+    error_msg: Optional[str] = None
+    blocked_msg: Optional[str] = None
+    entry: Optional[dict] = None
+    award_stripped: bool = False
+    role_stripped: bool = False
+    breaks_completion: bool = False
+
+    async with _g.TERMINUS_SLAYER_LOCK:
+        state = _load_state()
+        entry = state["entries"].get(kill_log_id)
+
+        if entry is None:
+            error_msg = f"Kill log entry `{kill_log_id}` not found."
+        elif entry["status"] not in ("verified", "force_approved"):
+            error_msg = (
+                f"Entry `{kill_log_id}` is not in a revocable state "
+                f"(current status: `{entry['status']}`)."
+            )
+        else:
+            brother_id = str(entry["brother_id"])
+            class_role_id = int(entry["class_role_id"])
+            terminus_type = entry["terminus_type"]
+
+            breaks_completion = _would_break_class_completion(
+                state, brother_id, class_role_id, terminus_type
+            )
+
+            if breaks_completion:
+                # Check if the award is still in the queue (not yet delivered).
+                award_in_queue = _dequeue_terminus_class_award(brother_id, class_role_id)
+                if award_in_queue:
+                    award_stripped = True
+                    # Award removed from queue — safe to proceed; role may have
+                    # been assigned already (role grant happens before enqueue).
+                    # We attempt role removal below, outside the lock.
+                else:
+                    # Queue had nothing — check if the member already holds the role.
+                    member = guild.get_member(int(brother_id)) if guild else None
+                    class_role = guild.get_role(class_role_id) if guild else None
+                    if member is not None and class_role is not None and class_role in member.roles:
+                        # Award was delivered. Block revocation.
+                        blocked_msg = (
+                            f"❌ Cannot revoke `{kill_log_id}`: the Terminus Slayer class award for "
+                            f"**{entry['class_name']}** has already been delivered to <@{brother_id}>. "
+                            "Manual escalation to High Command is required to strip the role."
+                        )
+                    # else: queue is empty AND role not held — edge case (e.g. prior
+                    # revoke already cleared it). Safe to proceed without award action.
+
+            if blocked_msg is None and error_msg is None:
+                # Commit the revocation.
+                _decrement_progress(state, brother_id, class_role_id, terminus_type)
+                entry["status"] = "apo_revoked"
+                entry["apo_revoke_actor_id"] = actor_id
+                entry["apo_revoke_at"] = _now_iso()
+                entry["apo_revoke_reason"] = reason_clean
+                _save_state(state)
+
+    # --- Bail paths (no state was mutated) ---
+    if error_msg:
+        await interaction.followup.send(error_msg, ephemeral=True)
+        return
+
+    if blocked_msg:
+        await interaction.followup.send(blocked_msg, ephemeral=True)
+        # Also alert the apo-staff channel so the situation is visible.
+        if guild:
+            apo_ch = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
+            if apo_ch:
+                try:
+                    await apo_ch.send(
+                        f"⚠️ **Kill revoke blocked** — <@{actor_id}> attempted to revoke "
+                        f"`{kill_log_id}` for <@{entry['brother_id']}> "
+                        f"(**{entry['class_name']} / {entry['terminus_type']}**) "
+                        "but the class award has already been delivered. "
+                        "High Command intervention required."
+                    )
+                except Exception as exc:
+                    if _g.logger:
+                        _g.logger.warning(f"terminus_ops: failed to send blocked-revoke notice: {exc}")
+        return
+
+    # --- Post-commit side-effects ---
+    # Strip the class role when the award was still in the queue (grant had
+    # already executed before enqueue, so the member likely holds the role).
+    if breaks_completion and guild:
+        brother_id_str = str(entry["brother_id"])
+        member = guild.get_member(int(brother_id_str))
+        class_role = guild.get_role(int(entry["class_role_id"]))
+        if member is not None and class_role is not None and class_role in member.roles:
+            try:
+                await member.remove_roles(
+                    class_role,
+                    reason=f"Terminus kill revoked by Apothecary {actor_id}: {kill_log_id}",
+                )
+                role_stripped = True
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(
+                        f"terminus_ops: failed to strip class role for {brother_id_str} "
+                        f"after revoke of {kill_log_id}: {exc}"
+                    )
+
+    # Refresh the original kill log embed (no buttons — revoked is a terminal state).
+    await _refresh_kill_log_embed(guild, entry)
+
+    # Notify the brother in the kill log channel.
+    if guild:
+        kl_channel = guild.get_channel(KILL_LOG_CHANNEL_ID)
+        if kl_channel:
+            embed_message_id = entry.get("embed_message_id")
+            if embed_message_id:
+                msg_link = (
+                    f"https://discord.com/channels/{guild.id}"
+                    f"/{KILL_LOG_CHANNEL_ID}/{embed_message_id}"
+                )
+                entry_ref = f"[{kill_log_id}]({msg_link})"
+            else:
+                entry_ref = f"`{kill_log_id}`"
+            reason_line = f"\n**Reason:** {reason.strip()}" if reason.strip() else ""
+            try:
+                await kl_channel.send(
+                    f"<@{entry['brother_id']}> your kill log {entry_ref} has been "
+                    f"**retroactively revoked** by the Apothecarium.{reason_line}"
+                )
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(f"terminus_ops: failed to send revoke notice to kill log channel: {exc}")
+
+    # Post confirmation to the apo-staff channel.
+    if guild:
+        apo_ch = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
+        if apo_ch:
+            embed = discord.Embed(
+                title="🩸 Kill Log — Apothecary Revocation",
+                colour=discord.Colour.dark_red(),
+            )
+            embed.add_field(name="Kill Log ID", value=kill_log_id, inline=True)
+            embed.add_field(name="Brother", value=f"<@{entry['brother_id']}>", inline=True)
+            embed.add_field(
+                name="Class / Terminus",
+                value=f"{entry['class_name']} / {entry['terminus_type']}",
+                inline=True,
+            )
+            embed.add_field(name="Revoked By", value=f"<@{actor_id}>", inline=True)
+            embed.add_field(
+                name="Award Queue Entry Removed",
+                value="Yes" if award_stripped else "N/A",
+                inline=True,
+            )
+            embed.add_field(
+                name="Class Role Stripped",
+                value="Yes" if role_stripped else "No",
+                inline=True,
+            )
+            if reason_clean:
+                embed.add_field(name="Reason", value=reason_clean, inline=False)
+            embed.timestamp = datetime.now(timezone.utc)
+            try:
+                await apo_ch.send(embed=embed)
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(f"terminus_ops: failed to send revoke confirmation to apo channel: {exc}")
+
+    await interaction.followup.send(
+        f"✅ Kill log `{kill_log_id}` has been retroactively revoked."
+        + (" The queued class award announcement was removed." if award_stripped else "")
+        + (" The class role has been stripped." if role_stripped else ""),
+        ephemeral=True,
+    )
+
+
+@_g.bot.tree.command(
+    name="revoke_slay",
+    description="[Apothecary] Retroactively revoke a verified kill log entry.",
+)
+@app_commands.describe(
+    kill_log_id="Kill log entry to revoke (type to search by ID, class, or terminus).",
+    reason="Reason for revocation (required — recorded in the audit trail).",
+)
+@app_commands.autocomplete(kill_log_id=_apo_revoke_kill_autocomplete)
+async def revoke_slay(
+    interaction: discord.Interaction,
+    kill_log_id: str,
+    reason: str,
+):
+    await _handle_apo_revoke_kill(interaction, kill_log_id, reason)
