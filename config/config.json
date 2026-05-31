@@ -203,6 +203,9 @@
     "submit_kill_log": {
       "min_rank": "Watch Brother"
     },
+    "revoke_slay": {
+      "roles": ["Watch Apothecary", "Chief Apothecary"]
+    },
     "challenge-progress": {
       "min_rank": "Watch Brother"
     },
