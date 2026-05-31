@@ -294,6 +294,8 @@ def _status_line(entry: dict) -> str:
         return "⚠️ Under Review — Awaiting Apothecary Decision"
     if status == "rejected":
         return "❌ Rejected by Apothecary"
+    if status == "apo_revoked":
+        return "🛑 Revoked by Apothecary"
     return status
 
 
@@ -1542,7 +1544,7 @@ async def _challenge_progress_inner(
 
 
 # ---------------------------------------------------------------------------
-# /apo_revoke_kill  command
+# /revoke_slay command
 # ---------------------------------------------------------------------------
 
 async def _apo_revoke_kill_autocomplete(
@@ -1577,13 +1579,21 @@ async def _handle_apo_revoke_kill(
     kill_log_id: str,
     reason: str,
 ) -> None:
-    """Core logic for /apo_revoke_kill — runs outside the view layer so it can
+    """Core logic for /revoke_slay — runs outside the view layer so it can
     be tested directly and reused if a button surface is ever added."""
 
     check_perm = _b("check_command_permission")
     if check_perm is None or not check_perm(interaction.user, "revoke_slay"):
         await interaction.response.send_message(
-            "Only Watch Apothecaries may revoke verified kill log entries.",
+            "Only Watch Apothecaries or Chief Apothecaries may revoke verified or force-approved kill log entries.",
+            ephemeral=True,
+        )
+        return
+
+    reason_clean = reason.strip()
+    if not reason_clean:
+        await interaction.response.send_message(
+            "Reason is required and cannot be blank.",
             ephemeral=True,
         )
         return
@@ -1649,7 +1659,7 @@ async def _handle_apo_revoke_kill(
                 entry["status"] = "apo_revoked"
                 entry["apo_revoke_actor_id"] = actor_id
                 entry["apo_revoke_at"] = _now_iso()
-                entry["apo_revoke_reason"] = reason.strip()
+                entry["apo_revoke_reason"] = reason_clean
                 _save_state(state)
 
     # --- Bail paths (no state was mutated) ---
@@ -1749,8 +1759,8 @@ async def _handle_apo_revoke_kill(
                 value="Yes" if role_stripped else "No",
                 inline=True,
             )
-            if reason.strip():
-                embed.add_field(name="Reason", value=reason.strip(), inline=False)
+            if reason_clean:
+                embed.add_field(name="Reason", value=reason_clean, inline=False)
             embed.timestamp = datetime.now(timezone.utc)
             try:
                 await apo_ch.send(embed=embed)
