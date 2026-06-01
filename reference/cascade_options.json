@@ -1,0 +1,466 @@
+{
+  "_schema_version": 1,
+  "_notes": {
+    "purpose": "Named option vocabulary for every cascade decision in the campaign system. Defines the fixed option set each role can choose from during their cascade window.",
+    "weight_matrix": "This file defines WHAT the options are. HOW they compose (weights from upstream choices + chapter doctrine) is defined in cascade_weights.json (to be authored).",
+    "scope_principle": "HC specialists set theatre-wide doctrine — their pick is an ORDER that flows down to the company specialist in the same domain and shapes that specialist's weighted menu. Company specialists make tactical decisions within that order. Each role has its own section and vocabulary; no two roles share options.",
+    "tags": "Each option has a tags list. Tags drive strat pool weighting in the weight matrix. Tag vocabulary is defined in _tag_vocabulary below.",
+    "option_key_format": "snake_case strings. Used in campaign_state.json cascade submissions.",
+    "track_map": "Each role maps to its own section key — see _track_map at bottom. Influence flow (which HC specialist shapes which company specialist) is in rank_mappings.json influence_sources.track.",
+    "battle_line_note": "Battle-line personal focus is always 2 options. The SAME 2 options are always presented; their relative weights shift based on Watch Sergeant doctrine. See personal_focus section.",
+    "kt_champion_note": "Kill Team Champion does not have a named option vocabulary — they submit a mission_id directly plus an optional terminus_call. No cascade_options entry needed.",
+    "huntmaster_note": "Huntmaster has no Company-tier equivalent. hunt_priority is HC-only."
+  },
+
+  "_tag_vocabulary": {
+    "aggressive":   "Favors high-pressure, offensive, force-multiplication strats.",
+    "defensive":    "Favors holding, resilience, fortification, area-denial strats.",
+    "terminus":     "Elevates terminus engagement strats and kill-scoring modifiers.",
+    "elimination":  "Precise, targeted killing — assassination, decapitation, single-threat focus.",
+    "stealth":      "Covert, surgical, low-footprint approaches. Denies enemy reaction.",
+    "intel":        "Reconnaissance, information denial, counterintelligence, foreknowledge.",
+    "void":         "Warp, psychic, void-theatre, warp-entity engagement.",
+    "tech":         "Machine spirits, engineering, weapons systems, field logistics.",
+    "faith":        "Litanies, oaths, spiritual endurance, Chaplaincy rites.",
+    "resilience":   "Endurance, recovery, sustainability — keeping the force fighting.",
+    "recovery":     "Asset recovery — gene-seed, relics, extracted personnel, hostile tech.",
+    "suppression":  "Area denial, forcing enemy posture changes, suppression economy.",
+    "fortify":      "Position hardening, securing gains, denying enemy recapture."
+  },
+
+  "watch_master": {
+    "_decision": "theatre_order",
+    "_description": "The Watch Master's strategic posture for the beat — shapes the entire cascade tree below. Presented alongside his traversal pick.",
+    "iron_vigil": {
+      "name": "Iron Vigil",
+      "description": "Hold ground. The Watch does not yield — fortify the committed node, resist the tide of pressure, deny the enemy any momentum. Resilience is the weapon.",
+      "tags": ["defensive", "fortify", "resilience", "suppression"]
+    },
+    "advance_the_spear": {
+      "name": "Advance the Spear",
+      "description": "Push outward. The Watch expands its presence, relieves pressure on contested nodes, and drives the enemy from initiative. The kill teams are the spearpoint.",
+      "tags": ["aggressive", "terminus", "elimination"]
+    },
+    "scour_the_reach": {
+      "name": "Scour the Reach",
+      "description": "Hunt what hides. Intelligence-led operations, void-theatre awareness, warp-threat identification. The enemy's secrets are more dangerous than its soldiers.",
+      "tags": ["intel", "void", "stealth", "recovery"]
+    }
+  },
+
+  "lord_executioner": {
+    "_decision": "execution",
+    "_description": "The Lord Executioner sets the theatre-level killing doctrine for the beat. His authority shapes how Champions below him prosecute war.",
+    "the_headsmans_mark": {
+      "name": "The Headsman's Mark",
+      "description": "One target. Every asset, every stratagem, every kill team bent toward the destruction of a single designated threat. The mark is death.",
+      "tags": ["terminus", "elimination", "aggressive"]
+    },
+    "no_quarter_given": {
+      "name": "No Quarter Given",
+      "description": "Total war. The Watch does not slow, does not negotiate, does not pause. Overwhelming force. Overkill is doctrine.",
+      "tags": ["aggressive", "suppression", "terminus"]
+    },
+    "righteous_severance": {
+      "name": "Righteous Severance",
+      "description": "The precise kill. Minimum expenditure. Maximum result. The Lord Executioner names a method and the Watch adheres to it — every death efficient, every stratagem justified.",
+      "tags": ["elimination", "stealth", "intel"]
+    }
+  },
+
+  "watch_captain": {
+    "_decision": "company_order",
+    "_description": "The Watch Captain translates the Watch Master's theatre order into a company-level directive. Shaped by WM theatre order and Lord Executioner execution style.",
+    "prosecute_with_vigour": {
+      "name": "Prosecute with Vigour",
+      "description": "Full commitment. The company drives at the objective without reservation. Every kill team in motion, every specialist pushing forward.",
+      "tags": ["aggressive", "terminus", "elimination"]
+    },
+    "calculated_advance": {
+      "name": "Calculated Advance",
+      "description": "Methodical prosecution. The company secures each gain before the next push. Kill teams are protected assets, not expendable tools.",
+      "tags": ["defensive", "resilience", "fortify", "intel"]
+    },
+    "hold_and_endure": {
+      "name": "Hold and Endure",
+      "description": "The company is the wall. Kill teams operate behind it. The Captain anchors the line and does not yield what has been taken.",
+      "tags": ["defensive", "fortify", "suppression", "resilience"]
+    }
+  },
+
+  "watch_lieutenant": {
+    "_decision": "directive",
+    "_description": "The Watch Lieutenant identifies and drives secondary vectors — exploits what the Captain's order opens, fills what it cannot reach. Shaped by Captain company order and Company Champion execution.",
+    "press_the_flanks": {
+      "name": "Press the Flanks",
+      "description": "Secondary vectors. The Lieutenant identifies the edges the enemy cannot cover and sends the kill teams through. The flanks belong to the Watch.",
+      "tags": ["stealth", "intel", "aggressive"]
+    },
+    "fire_and_advance": {
+      "name": "Fire and Advance",
+      "description": "Classic Watch doctrine. Suppression and movement. Pressure maintained through every phase, no enemy position allowed to solidify.",
+      "tags": ["aggressive", "suppression", "resilience"]
+    },
+    "consolidate_gains": {
+      "name": "Consolidate Gains",
+      "description": "Lock what has been won. The Lieutenant ensures nothing slips back — positions hardened, kill teams resupplied, lines drawn before the next push.",
+      "tags": ["defensive", "fortify", "resilience", "recovery"]
+    }
+  },
+
+  "company_champion": {
+    "_decision": "execution",
+    "_description": "The Company Champion sets the company-level killing doctrine. Shaped by Watch Captain order and Lord Executioner execution above.",
+    "honour_the_duel": {
+      "name": "Honour the Duel",
+      "description": "Challenge the enemy's finest. The Champion seeks the hardest blade and breaks it — drawing the enemy's strength onto a single point, shattering their morale with it.",
+      "tags": ["elimination", "terminus", "aggressive"]
+    },
+    "break_the_shield": {
+      "name": "Break the Shield",
+      "description": "Kill the anchors. Target cohesion, not numbers — destroy the units holding the line and the rest scatter. Formation is the enemy's weapon; remove it.",
+      "tags": ["aggressive", "suppression", "elimination"]
+    },
+    "blade_consecrated": {
+      "name": "Blade Consecrated",
+      "description": "Every kill is a rite. The Champion sets a ritualized killing doctrine — deliberate, certain, each death a statement of the Watch's authority over this battlefield.",
+      "tags": ["elimination", "faith", "stealth"]
+    }
+  },
+
+  "watch_sergeant": {
+    "_decision": "doctrine",
+    "_description": "The Watch Sergeant locks the kill team's fighting doctrine for the ops window. Shapes the personal focus options available to battle-line below. Shaped by the full command chain above.",
+    "oath_of_moment": {
+      "name": "Oath of Moment",
+      "description": "One objective. One purpose. One kill team. Everything stripped to a single lethal focus — the oath is sworn and the kill team does not turn from it until it is kept or broken.",
+      "tags": ["elimination", "terminus", "aggressive"]
+    },
+    "combined_arms": {
+      "name": "Combined Arms",
+      "description": "Trust the kill team. Every specialist's contribution matters, every angle covered, interlocking fields of expertise working as one. The kill team is the weapon.",
+      "tags": ["resilience", "recovery", "suppression", "intel"]
+    },
+    "duty_unto_death": {
+      "name": "Duty Unto Death",
+      "description": "No extraction. No retreat. The mission ends with completion or it ends with the kill team's last round. The Sergeant does not plan for failure.",
+      "tags": ["aggressive", "defensive", "resilience", "faith"]
+    }
+  },
+
+  "forgemaster": {
+    "_decision": "sacred_directive",
+    "_tier": "HC",
+    "_description": "The Forgemaster sets machine-doctrine at theatre level — an order that flows down to every Watch Techmarine in the companies below. His pick determines what the machine track prioritises across every op this beat.",
+    "omnissianic_mandate": {
+      "name": "Omnissianic Mandate",
+      "description": "The Forgemaster declares the Omnissiah's will for the entire theatre — every weapon on every kill team sacred, every system attended, every machine spirit aligned before the ops window opens. The machine doctrine of the Watch is set.",
+      "tags": ["tech", "faith", "resilience"]
+    },
+    "hostile_acquisition": {
+      "name": "Hostile Acquisition",
+      "description": "Strategic directive: the enemy's technology comes home. Every op this beat, recovery of xeno-tech, Heretek devices, and Chaos engines is a standing order. The Forgemaster will learn what hunts the Watch.",
+      "tags": ["tech", "recovery", "intel", "stealth"]
+    },
+    "iron_resupply": {
+      "name": "Iron Resupply",
+      "description": "The Forgemaster controls the theatre's logistical spine. Ammunition, field repairs, system redundancy — no company runs dry, no kill team goes in degraded. The Watch sustains itself.",
+      "tags": ["tech", "resilience", "defensive", "recovery"]
+    }
+  },
+
+  "watch_techmarine": {
+    "_decision": "sacred_mission",
+    "_tier": "Company",
+    "_description": "The Watch Techmarine executes the Forgemaster's theatre directive at company level — his pick is how this company applies the machine doctrine handed down. Shaped by Forgemaster's sacred_directive above.",
+    "machine_rite": {
+      "name": "Machine Rite",
+      "description": "Company weapons consecrated, servo-arms aligned, machine spirits of this company willing and ready. The Techmarine sees to every piece of kit before the kill teams move.",
+      "tags": ["tech", "resilience", "faith"]
+    },
+    "field_strip_and_repair": {
+      "name": "Field Strip and Repair",
+      "description": "No kit goes into the field degraded. The Techmarine tears down, rebuilds, and certifies every weapon and system this company carries. Failures cost lives; the Techmarine ensures there are none.",
+      "tags": ["tech", "resilience", "defensive"]
+    },
+    "scavenge_and_salvage": {
+      "name": "Scavenge and Salvage",
+      "description": "This company's Techmarine works the battlefield — enemy materiel claimed, broken Watch equipment rebuilt, nothing wasted. The company leaves richer than it arrived.",
+      "tags": ["tech", "recovery", "intel"]
+    }
+  },
+
+  "chief_apothecary": {
+    "_decision": "medical_authority",
+    "_tier": "HC",
+    "_description": "The Chief Apothecary issues a theatre-wide medical decree for the beat — an order that flows down to every Watch Apothecary in the companies. His pick determines what the medical track prioritises across every op.",
+    "gene_seed_imperative": {
+      "name": "Gene-Seed Imperative",
+      "description": "Theatre-wide declaration: no progenoid falls on any field this beat. The Chief Apothecary's authority is absolute — recovery before retreat, always. The Chapter's future does not end here.",
+      "tags": ["recovery", "resilience", "faith"]
+    },
+    "battlefield_augmentation": {
+      "name": "Battlefield Augmentation",
+      "description": "HC-level stimm protocols authorised. The Watch's physiological limits are extended theatre-wide — the cost is accepted. The kill teams fight harder, longer, past the point flesh alone would break.",
+      "tags": ["aggressive", "resilience", "terminus"]
+    },
+    "quarantine_authority": {
+      "name": "Quarantine Authority",
+      "description": "The Chief Apothecary declares a biological or warp-biological threat across the theatre. All companies operate under quarantine protocols — identify, isolate, excise before it spreads to the Watch itself.",
+      "tags": ["defensive", "void", "resilience", "faith"]
+    }
+  },
+
+  "watch_apothecary": {
+    "_decision": "apothecary_purpose",
+    "_tier": "Company",
+    "_description": "The Watch Apothecary applies the Chief Apothecary's theatre decree at company level — how this company's medical support operates this beat. Shaped by Chief Apothecary medical_authority above.",
+    "progenoid_priority": {
+      "name": "Progenoid Priority",
+      "description": "No brother in this company falls without witness. Gene-seed is recovered. This company's legacy persists regardless of what the battlefield costs.",
+      "tags": ["recovery", "resilience", "faith"]
+    },
+    "combat_stimms": {
+      "name": "Combat Stimms",
+      "description": "Push this company's kill teams beyond their limits. The Apothecary administers, the brothers endure. The price is paid later.",
+      "tags": ["aggressive", "resilience", "terminus"]
+    },
+    "purge_the_corruption": {
+      "name": "Purge the Corruption",
+      "description": "Taint identified in this company's operational zone — Chaos corruption, xenos bio-weapons, warp sickness. The Apothecary cuts it out before it spreads. This company stays clean.",
+      "tags": ["defensive", "void", "resilience", "faith"]
+    }
+  },
+
+  "high_chaplain": {
+    "_decision": "spiritual_decree",
+    "_tier": "HC",
+    "_description": "The High Chaplain issues theatre-wide spiritual doctrine for the beat — an order that flows down to every Watch Chaplain in the companies and shapes the Judiciar's sentence options at KT tier. His word is the Watch's faith made law.",
+    "the_eternal_vigil": {
+      "name": "The Eternal Vigil",
+      "description": "The High Chaplain speaks for the dead. Theatre-wide declaration — every brother who has fallen on the Reach is witnessed. Every brother still fighting knows it. The Vigil is why they endure and why they cannot stop.",
+      "tags": ["faith", "resilience", "defensive", "fortify"]
+    },
+    "crusade_sanction": {
+      "name": "Crusade Sanction",
+      "description": "Holy war declared at theatre level. The High Chaplain consecrates the Watch's purpose this beat — every kill team acts with the Emperor's direct sanction, every death a righteous act, every advance a sacred charge.",
+      "tags": ["faith", "aggressive", "terminus", "suppression"]
+    },
+    "rites_of_absolution": {
+      "name": "Rites of Absolution",
+      "description": "The Watch is cleansed before it fights. Spiritual doubt, Chaos taint, warp-corruption, oaths broken under duress — the High Chaplain burns it away with rite and declaration before the ops window opens.",
+      "tags": ["faith", "defensive", "void", "resilience"]
+    }
+  },
+
+  "watch_chaplain": {
+    "_decision": "litany",
+    "_tier": "Company",
+    "_description": "The Watch Chaplain translates the High Chaplain's spiritual decree into a company-level litany — the specific faith weapon he wields for this company this beat. Shaped by High Chaplain spiritual_decree above. Judiciar's sentence is also influenced by this pick.",
+    "the_unbroken_oath": {
+      "name": "The Unbroken Oath",
+      "description": "The oath holds for this company. Endurance, resolve, duty that does not flinch before the impossible — the Chaplain reminds every brother what they swore and why it still stands.",
+      "tags": ["faith", "resilience", "defensive", "fortify"]
+    },
+    "litany_of_wrath": {
+      "name": "Litany of Wrath",
+      "description": "Holy fury consecrated in war-psalms. The Chaplain's words are weapons — battle-litanies drive this company past fear, past pain, into something that does not stop until the enemy is gone.",
+      "tags": ["faith", "aggressive", "terminus", "suppression"]
+    },
+    "rites_of_witness": {
+      "name": "Rites of Witness",
+      "description": "Every deed witnessed, every death recorded, every brotherhood in this company confirmed. The Chaplain is the company's memory — the Vigil made personal.",
+      "tags": ["faith", "recovery", "intel", "resilience"]
+    }
+  },
+
+  "huntmaster": {
+    "_decision": "hunt_priority",
+    "_tier": "HC",
+    "_description": "The Huntmaster's killing priority for the beat — how the hunt is structured. HC-only; no Company-tier equivalent. The Huntmaster FLAG + any Champion or domain Specialist ENGAGEMENT CALL = prestige terminus kill.",
+    "mark_the_apex": {
+      "name": "Mark the Apex",
+      "description": "One prey. The Huntmaster designates the single greatest threat on the field and every kill team is vectored around it. The apex dies first. Everything else follows.",
+      "tags": ["terminus", "elimination", "aggressive"]
+    },
+    "hunt_in_packs": {
+      "name": "Hunt in Packs",
+      "description": "Multiple vectors, simultaneous pressure. Several kills pursued in parallel — the Reach is hit from every angle at once. No single kill team carries the entire hunt.",
+      "tags": ["terminus", "aggressive", "intel", "suppression"]
+    },
+    "bleed_the_beast": {
+      "name": "Bleed the Beast",
+      "description": "Attrition before the kill. Degrade the prey across multiple operations, deny it strength, erode its support — then take it cleanly when it has nothing left to fight back with.",
+      "tags": ["stealth", "terminus", "resilience", "suppression"]
+    }
+  },
+
+  "void_warden": {
+    "_decision": "psychic_decree",
+    "_tier": "HC",
+    "_description": "The Void Warden sets psychic doctrine at theatre level — an order that flows down to every Watch Librarian in the companies. As Chief Librarian, his decree determines how the warp track engages across every op this beat.",
+    "warp_interdiction": {
+      "name": "Warp Interdiction",
+      "description": "The Chief Librarian raises an iron screen across the entire theatre — enemy psykers find no purchase, no summoning goes uncontested, no warp-entity crosses without the Watch's knowledge. The warp is denied.",
+      "tags": ["void", "defensive", "suppression", "resilience"]
+    },
+    "prescient_command": {
+      "name": "Prescient Command",
+      "description": "Foresight at theatre scale. The Watch Master's decisions are informed by psychic intelligence that the enemy cannot have anticipated. The Void Warden sees the battle several moves ahead and positions the Watch accordingly.",
+      "tags": ["void", "intel", "stealth", "defensive"]
+    },
+    "void_condemnation": {
+      "name": "Void Condemnation",
+      "description": "The Chief Librarian identifies a warp-entity or psyker of significance and condemns it at theatre level — warp signature mapped, approach vectors known. The Watch goes in with the target already marked for destruction.",
+      "tags": ["void", "aggressive", "terminus", "elimination"]
+    }
+  },
+
+  "watch_librarian": {
+    "_decision": "psychic_angle",
+    "_tier": "Company",
+    "_description": "The Watch Librarian applies the Void Warden's psychic decree at company level — how this company's psyker engages the warp this beat. Shaped by Void Warden psychic_decree above.",
+    "null_veil": {
+      "name": "Null Veil",
+      "description": "Suppress the warp around this company. The Librarian raises an iron screen — the enemy's psychic advantages are denied, nothing crosses uninvited into this company's operational space.",
+      "tags": ["void", "defensive", "suppression", "resilience"]
+    },
+    "the_long_dark": {
+      "name": "The Long Dark",
+      "description": "Psychic mapping and foresight at company scale. The Librarian reads what the warp holds before the kill teams move — positions them around what they cannot yet see.",
+      "tags": ["void", "intel", "stealth", "defensive"]
+    },
+    "pierce_the_veil": {
+      "name": "Pierce the Veil",
+      "description": "Offensive psychic application for this company. The Librarian strikes through the warp before the enemy can weaponise it — the warp is not the enemy's domain here, it is the Watch's.",
+      "tags": ["void", "aggressive", "terminus", "elimination"]
+    }
+  },
+
+  "castellan": {
+    "_decision": "strategic_intelligence",
+    "_tier": "HC",
+    "_description": "The Castellan sets theatre-wide intelligence doctrine — an order that flows down to every Watch Keeper in the companies. As Chief Watch Keeper, he defines how the Watch knows what it knows. His log_text is the narrative anchor for beat chronicle generation.",
+    "theatre_intelligence": {
+      "name": "Theatre Intelligence",
+      "description": "The Castellan has the complete picture before anyone else does — threat dossiers, route analyses, weakness assessments for every threat on the committed node. No kill team moves without knowing what waits.",
+      "tags": ["intel", "stealth", "void", "suppression"]
+    },
+    "black_operations": {
+      "name": "Black Operations",
+      "description": "Pre-positioned assets activate. The Castellan had operations in motion before the cascade began — covert resources, placed agents, intelligence infrastructure already established on the committed node before the Watch officially arrives.",
+      "tags": ["stealth", "intel", "aggressive", "recovery"]
+    },
+    "seal_the_reach": {
+      "name": "Seal the Reach",
+      "description": "Strategic counterintelligence. The enemy learns nothing of the Watch's composition, timing, or objectives this beat. Theatre-wide information denial — the Watch moves in silence.",
+      "tags": ["intel", "defensive", "fortify", "suppression"]
+    }
+  },
+
+  "watch_keeper": {
+    "_decision": "wardens_watch",
+    "_tier": "Company",
+    "_description": "The Watch Keeper applies the Castellan's theatre intelligence doctrine at company level — how this company's intel specialist operates this beat. Shaped by Castellan strategic_intelligence above.",
+    "the_watchers_eye": {
+      "name": "The Watcher's Eye",
+      "description": "Complete situational awareness for this company. No enemy action in this company's operational zone goes unobserved — the Keeper knows what waits in every shadow before the kill teams step into it.",
+      "tags": ["intel", "stealth", "void", "suppression"]
+    },
+    "close_the_gates": {
+      "name": "Close the Gates",
+      "description": "Counterintelligence for this company. The Watch keeps its secrets; the enemy learns nothing about this company's movements or objectives. Every breach sealed, every leak cauterised.",
+      "tags": ["intel", "defensive", "fortify", "suppression"]
+    },
+    "the_shadow_war": {
+      "name": "The Shadow War",
+      "description": "This company's Keeper had assets already in play — covert resources, pre-positioned contacts, contingencies the enemy cannot have anticipated at company scale.",
+      "tags": ["stealth", "intel", "aggressive", "recovery"]
+    }
+  },
+
+  "judiciar": {
+    "_decision": "sentence",
+    "_roles": ["Judiciar"],
+    "_description": "The Judiciar's killing focus for the beat. KT-tier only. Influenced by faith_track (Watch Chaplain + High Chaplain) above. The Judiciar issues sentence before battle and prosecutes it personally.",
+    "tempormortis": {
+      "name": "Tempormortis",
+      "description": "Time itself is the weapon. The Judiciar's blade slows the battlefield around one condemned target — the rest of the kill team works in the silence that creates.",
+      "tags": ["elimination", "suppression", "void", "terminus"]
+    },
+    "sentence_passed": {
+      "name": "Sentence Passed",
+      "description": "Judgment is rendered before battle. The guilty are named; the Judiciar's arrival is not combat — it is an execution already decided, simply being carried out.",
+      "tags": ["elimination", "terminus", "faith", "aggressive"]
+    },
+    "none_shall_pass": {
+      "name": "None Shall Pass",
+      "description": "The Judiciar becomes the kill team's wall. No breach permitted. No enemy that reaches the brothers lives to take another step. The blade covers everything the kill team cannot watch.",
+      "tags": ["defensive", "suppression", "resilience", "fortify"]
+    }
+  },
+
+  "dread_angle": {
+    "_decision": "ancients_will",
+    "_roles": ["Venerable Dreadnought", "Honored Dreadnought"],
+    "_description": "The Dreadnought's angle for the beat — how the ancient warrior commits. Floating across both HC and Company tier. Does not gate cascade advance; contributes strats and terminus call regardless.",
+    "ancient_fury": {
+      "name": "Ancient Fury",
+      "description": "The ancient goes to war without reservation. Millennia of battle-hate focused to a single engagement — the Dreadnought is not a relic at this moment. It is a weapon.",
+      "tags": ["aggressive", "terminus", "elimination", "suppression"]
+    },
+    "iron_remembrance": {
+      "name": "Iron Remembrance",
+      "description": "From the deep past, wisdom. The ancient warrior has seen this battle before — ten thousand years of pattern recognition turned toward a single beat. The counsel shapes the fight before a shot is fired.",
+      "tags": ["intel", "faith", "resilience", "defensive"]
+    },
+    "the_last_wall": {
+      "name": "The Last Wall",
+      "description": "The Dreadnought holds the line. No position is taken while the ancient guardian stands before it. The kill teams fight behind something that does not break.",
+      "tags": ["defensive", "fortify", "suppression", "resilience"]
+    }
+  },
+
+  "personal_focus": {
+    "_decision": "personal_focus",
+    "_roles": ["Oathsworn", "Watch Veteran", "Watch Brother"],
+    "_description": "Battle-line personal focus pick. Always exactly 2 options — presented AFTER the Watch Sergeant locks doctrine. Relative weights shift based on Sgt doctrine. Same vocabulary regardless of chapter.",
+    "honour_the_charge": {
+      "name": "Honour the Charge",
+      "description": "Lead the assault. Personal excellence in direct engagement — the brother at the tip of the spear, holding the oath in both hands and driving it into the enemy.",
+      "tags": ["aggressive", "terminus", "elimination", "faith"]
+    },
+    "brothers_keeper": {
+      "name": "Brother's Keeper",
+      "description": "Watch the line. Cover brothers, hold the formation, ensure no one fights alone and no one falls unwitnessed. The kill team is the weapon — the Keeper keeps it whole.",
+      "tags": ["defensive", "resilience", "recovery", "faith"]
+    }
+  },
+
+  "_track_map": {
+    "_note": "Maps canonical rank names (from rank_mappings.json) to their cascade_options section key. Each role has its own section. Influence flow between tiers (e.g. Forgemaster shapes Watch Techmarine's weights) is in rank_mappings.json influence_sources.track.",
+    "Watch Master":            "watch_master",
+    "Lord Executioner":        "lord_executioner",
+    "Forgemaster":             "forgemaster",
+    "Chief Apothecary":        "chief_apothecary",
+    "High Chaplain":           "high_chaplain",
+    "Huntmaster":              "huntmaster",
+    "Void Warden":             "void_warden",
+    "Castellan":               "castellan",
+    "Venerable Dreadnought":   "dread_angle",
+    "Watch Captain":           "watch_captain",
+    "Watch Lieutenant":        "watch_lieutenant",
+    "Company Champion":        "company_champion",
+    "Watch Techmarine":        "watch_techmarine",
+    "Watch Apothecary":        "watch_apothecary",
+    "Watch Chaplain":          "watch_chaplain",
+    "Watch Librarian":         "watch_librarian",
+    "Watch Keeper":            "watch_keeper",
+    "Honored Dreadnought":     "dread_angle",
+    "Watch Sergeant":          "watch_sergeant",
+    "Judiciar":                "judiciar",
+    "Oathsworn":               "personal_focus",
+    "Watch Veteran":           "personal_focus",
+    "Watch Brother":           "personal_focus"
+  }
+}
