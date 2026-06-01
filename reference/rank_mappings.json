@@ -306,18 +306,19 @@
     },
     "Judiciar": {
       "type": "Specialist",
+      "lore_note": "Chaplain-in-training. Operates under Chaplain track authority. Delivers sentences — marks HVTs for execution, does not call terminus engagements on apex creatures.",
       "influence_sources": { "command": ["Watch Sergeant"], "track": ["Watch Chaplain", "High Chaplain"] },
       "cascade_position": 5,
       "ops": {
         "mode": "affinity",
-        "mission_ids": [2, 7, 9],
-        "notes": "Execution/justice domain: Decapitation (02, execute Hive Tyrant), Termination (07), Exfiltration (09)."
+        "mission_ids": [2, 9],
+        "notes": "Execution/justice domain: Decapitation (02, mark Hive Tyrant for sentence), Exfiltration (09, mark Tech-Priest captor). Termination removed — Hierophant is an apex creature, not an HVT sentence target."
       },
       "strats": ["Aggravated Assault","Avenger","Buffed Enemies","Close In","Combat Mastery","Doomed Offensive","Enduring Foes","Enemy Sighted","Extreme Challenge","Fallen Vanguard","Fatality","Major Challenge","Measured Mercy","Rhythm of Carnage","Strike Out","Supremacy of the Strong","Surgical Strike","Twice the Foe","Unleashed Fury","You Only Live Once"],
       "terminus": {
-        "mode": "call_engagement",
-        "targets": ["all"],
-        "notes": "Execution/justice terminus call at KT level."
+        "mode": "sentence_mark",
+        "eligible_missions": [2, 9],
+        "notes": "During cascade, Judiciar marks the HVT on an eligible mission. If that KT runs the mission and executes the marked target, it counts as a prestige kill. Requires Huntmaster terminus flag to be set for the same target (or target type) to earn prestige. Does not call terminus engagement on roaming/apex targets."
       }
     },
     "Oathsworn": {
