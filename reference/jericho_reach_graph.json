@@ -1,0 +1,3768 @@
+{
+  "nodes": [
+    {
+      "id": "Phaegis",
+      "type": "dead_world",
+      "region": "iron_collar",
+      "x": 60,
+      "y": 65
+    },
+    {
+      "id": "The Warp Gate",
+      "type": "special",
+      "region": "iron_collar",
+      "x": 130,
+      "y": 185
+    },
+    {
+      "id": "Hethgard",
+      "type": "fortress_world",
+      "region": "iron_collar",
+      "x": 310,
+      "y": 120
+    },
+    {
+      "id": "Alphos",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 250,
+      "y": 220
+    },
+    {
+      "id": "Pyrathas",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 265,
+      "y": 250
+    },
+    {
+      "id": "Calisi",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 235,
+      "y": 275
+    },
+    {
+      "id": "Karlak",
+      "type": "war_world",
+      "region": "acheros_salient",
+      "x": 265,
+      "y": 295
+    },
+    {
+      "id": "Spite",
+      "type": "penal_world",
+      "region": "quarantined",
+      "x": 115,
+      "y": 295
+    },
+    {
+      "id": "Carmyn",
+      "type": "dead_world",
+      "region": "quarantined",
+      "x": 50,
+      "y": 295
+    },
+    {
+      "id": "Eleusis",
+      "type": "shrine_world",
+      "region": "orpheus_salient",
+      "x": 370,
+      "y": 195
+    },
+    {
+      "id": "Aurum",
+      "type": "agri_world",
+      "region": "orpheus_salient",
+      "x": 395,
+      "y": 235
+    },
+    {
+      "id": "Castolel",
+      "type": "hive_world",
+      "region": "orpheus_salient",
+      "x": 510,
+      "y": 195
+    },
+    {
+      "id": "Freya",
+      "type": "agri_world",
+      "region": "orpheus_salient",
+      "x": 580,
+      "y": 105
+    },
+    {
+      "id": "Vanir",
+      "type": "dead_world",
+      "region": "orpheus_salient",
+      "x": 570,
+      "y": 215
+    },
+    {
+      "id": "Herisor",
+      "type": "hive_world",
+      "region": "orpheus_salient",
+      "x": 700,
+      "y": 140
+    },
+    {
+      "id": "Atonement",
+      "type": "shrine_world",
+      "region": "orpheus_salient",
+      "x": 700,
+      "y": 215
+    },
+    {
+      "id": "Phonos",
+      "type": "dead_world",
+      "region": "orpheus_salient",
+      "x": 840,
+      "y": 250
+    },
+    {
+      "id": "Arkhas",
+      "type": "dead_world",
+      "region": "orpheus_salient",
+      "x": 830,
+      "y": 275
+    },
+    {
+      "id": "Beseritor",
+      "type": "war_world",
+      "region": "orpheus_salient",
+      "x": 700,
+      "y": 280
+    },
+    {
+      "id": "Jove's Descent",
+      "type": "mining_world",
+      "region": "orpheus_salient",
+      "x": 840,
+      "y": 170
+    },
+    {
+      "id": "Zanatov's Harbor",
+      "type": "frontier_world",
+      "region": "orpheus_salient",
+      "x": 1010,
+      "y": 215
+    },
+    {
+      "id": "Jerober XI",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 1155,
+      "y": 215
+    },
+    {
+      "id": "The Blood Trinity",
+      "type": "special",
+      "region": "cellebos_warzone",
+      "x": 455,
+      "y": 315
+    },
+    {
+      "id": "Vanity",
+      "type": "pleasure_world",
+      "region": "cellebos_warzone",
+      "x": 430,
+      "y": 355
+    },
+    {
+      "id": "Khazant",
+      "type": "war_world",
+      "region": "acheros_salient",
+      "x": 295,
+      "y": 360
+    },
+    {
+      "id": "Magog",
+      "type": "dead_world",
+      "region": "hadex",
+      "x": 565,
+      "y": 355
+    },
+    {
+      "id": "Bolgra",
+      "type": "dead_world",
+      "region": "hadex",
+      "x": 600,
+      "y": 390
+    },
+    {
+      "id": "Hlesan Secundus",
+      "type": "dead_world",
+      "region": "hadex",
+      "x": 470,
+      "y": 395
+    },
+    {
+      "id": "Samech",
+      "type": "forge_world",
+      "region": "hadex",
+      "x": 490,
+      "y": 430
+    },
+    {
+      "id": "Malehi",
+      "type": "dead_world",
+      "region": "hadex",
+      "x": 580,
+      "y": 425
+    },
+    {
+      "id": "Midsel",
+      "type": "dead_world",
+      "region": "hadex",
+      "x": 640,
+      "y": 390
+    },
+    {
+      "id": "Ormasim",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 215,
+      "y": 350
+    },
+    {
+      "id": "Credence",
+      "type": "agri_world",
+      "region": "acheros_salient",
+      "x": 200,
+      "y": 375
+    },
+    {
+      "id": "Kaggeran",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 175,
+      "y": 370
+    },
+    {
+      "id": "Argoth",
+      "type": "feral_world",
+      "region": "acheros_salient",
+      "x": 175,
+      "y": 400
+    },
+    {
+      "id": "Rheelas",
+      "type": "dead_world",
+      "region": "quarantined",
+      "x": 140,
+      "y": 385
+    },
+    {
+      "id": "Hestus",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 185,
+      "y": 430
+    },
+    {
+      "id": "Vespasia",
+      "type": "pleasure_world",
+      "region": "acheros_salient",
+      "x": 340,
+      "y": 415
+    },
+    {
+      "id": "Bellom",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 240,
+      "y": 420
+    },
+    {
+      "id": "Resgulus",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "x": 350,
+      "y": 450
+    },
+    {
+      "id": "Wrath",
+      "type": "war_world",
+      "region": "canis_salient",
+      "x": 215,
+      "y": 490
+    },
+    {
+      "id": "Scansion Beta",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 130,
+      "y": 510
+    },
+    {
+      "id": "Pelegius",
+      "type": "agri_world",
+      "region": "canis_salient",
+      "x": 255,
+      "y": 525
+    },
+    {
+      "id": "Themiskon Point",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 230,
+      "y": 550
+    },
+    {
+      "id": "Meskaile",
+      "type": "feral_world",
+      "region": "canis_salient",
+      "x": 140,
+      "y": 585
+    },
+    {
+      "id": "Meniscus",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 325,
+      "y": 575
+    },
+    {
+      "id": "Bekrin",
+      "type": "agri_world",
+      "region": "canis_salient",
+      "x": 315,
+      "y": 605
+    },
+    {
+      "id": "Oertha",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 380,
+      "y": 595
+    },
+    {
+      "id": "Baraban",
+      "type": "hive_world",
+      "region": "canis_salient",
+      "x": 340,
+      "y": 625
+    },
+    {
+      "id": "Dakinor",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 300,
+      "y": 635
+    },
+    {
+      "id": "Veren",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 305,
+      "y": 665
+    },
+    {
+      "id": "Ravacene",
+      "type": "dead_world",
+      "region": "canis_salient",
+      "x": 350,
+      "y": 670
+    },
+    {
+      "id": "Tabius Rasa",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 380,
+      "y": 495
+    },
+    {
+      "id": "Ries",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 435,
+      "y": 535
+    },
+    {
+      "id": "Iobel",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 490,
+      "y": 540
+    },
+    {
+      "id": "Ravacene (Erioch Belt)",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 580,
+      "y": 530
+    },
+    {
+      "id": "Erioch",
+      "type": "watch_station",
+      "region": "contested",
+      "x": 610,
+      "y": 540
+    },
+    {
+      "id": "Melancholia",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 510,
+      "y": 580
+    },
+    {
+      "id": "Vormos",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 610,
+      "y": 590
+    },
+    {
+      "id": "Pellor",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 535,
+      "y": 650
+    },
+    {
+      "id": "Andronicus",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 570,
+      "y": 695
+    },
+    {
+      "id": "Zurcon",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 395,
+      "y": 715
+    },
+    {
+      "id": "Iphigenia",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 390,
+      "y": 745
+    },
+    {
+      "id": "Krk'tikit",
+      "type": "dead_world",
+      "region": "black_reef",
+      "x": 360,
+      "y": 800
+    },
+    {
+      "id": "Tsua'Malor",
+      "type": "dead_world",
+      "region": "black_reef",
+      "x": 340,
+      "y": 840
+    },
+    {
+      "id": "Skapula",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 560,
+      "y": 780
+    },
+    {
+      "id": "Klaha",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 640,
+      "y": 495
+    },
+    {
+      "id": "Hector's Endeavour",
+      "type": "frontier_world",
+      "region": "contested",
+      "x": 700,
+      "y": 535
+    },
+    {
+      "id": "Kabiri",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 730,
+      "y": 580
+    },
+    {
+      "id": "Hestus (Eastern)",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 720,
+      "y": 640
+    },
+    {
+      "id": "Sagacity",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 750,
+      "y": 730
+    },
+    {
+      "id": "Cosel",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 740,
+      "y": 790
+    },
+    {
+      "id": "Ynnen",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 760,
+      "y": 760
+    },
+    {
+      "id": "Octavian",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 705,
+      "y": 430
+    },
+    {
+      "id": "Nunc",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 770,
+      "y": 420
+    },
+    {
+      "id": "Polyphemos",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 800,
+      "y": 490
+    },
+    {
+      "id": "Sovereign",
+      "type": "agri_world",
+      "region": "contested",
+      "x": 865,
+      "y": 545
+    },
+    {
+      "id": "Castiel",
+      "type": "dead_world",
+      "region": "contested",
+      "x": 750,
+      "y": 350
+    },
+    {
+      "id": "Credos",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 870,
+      "y": 300
+    },
+    {
+      "id": "Sedu",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 890,
+      "y": 360
+    },
+    {
+      "id": "Lovat IV",
+      "type": "mining_world",
+      "region": "slinnar_drift",
+      "x": 875,
+      "y": 395
+    },
+    {
+      "id": "Pilgrim's Loss",
+      "type": "shrine_world",
+      "region": "slinnar_drift",
+      "x": 1000,
+      "y": 355
+    },
+    {
+      "id": "Mackensee",
+      "type": "frontier_world",
+      "region": "slinnar_drift",
+      "x": 1095,
+      "y": 395
+    },
+    {
+      "id": "Mahir",
+      "type": "agri_world",
+      "region": "slinnar_drift",
+      "x": 945,
+      "y": 610
+    },
+    {
+      "id": "Vathor",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 955,
+      "y": 670
+    },
+    {
+      "id": "Cressid",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 900,
+      "y": 730
+    },
+    {
+      "id": "Falon's Lament",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 1000,
+      "y": 495
+    },
+    {
+      "id": "Belissar",
+      "type": "dead_world",
+      "region": "slinnar_drift",
+      "x": 1140,
+      "y": 545
+    },
+    {
+      "id": "Avarax",
+      "type": "dead_world",
+      "region": "acheros_salient",
+      "game_planet": true,
+      "chaos_tainted": true,
+      "x": 240,
+      "y": 320
+    },
+    {
+      "id": "Kadaku",
+      "type": "war_world",
+      "region": "acheros_salient",
+      "game_planet": true,
+      "x": 305,
+      "y": 390
+    },
+    {
+      "id": "Demerium",
+      "type": "shrine_world",
+      "region": "acheros_salient",
+      "game_planet": true,
+      "x": 390,
+      "y": 380
+    }
+  ],
+  "edges": [
+    {
+      "source": "Phaegis",
+      "target": "The Warp Gate",
+      "distance": 138.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Warp Gate",
+      "target": "Alphos",
+      "distance": 125.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Warp Gate",
+      "target": "Pyrathas",
+      "distance": 149.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Warp Gate",
+      "target": "Calisi",
+      "distance": 138.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Warp Gate",
+      "target": "Spite",
+      "distance": 111.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Warp Gate",
+      "target": "Carmyn",
+      "distance": 136.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hethgard",
+      "target": "Alphos",
+      "distance": 116.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hethgard",
+      "target": "Pyrathas",
+      "distance": 137.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hethgard",
+      "target": "Eleusis",
+      "distance": 96.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Hethgard",
+      "target": "Aurum",
+      "distance": 143.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Alphos",
+      "target": "Pyrathas",
+      "distance": 33.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Alphos",
+      "target": "Calisi",
+      "distance": 57.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Alphos",
+      "target": "Karlak",
+      "distance": 76.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Alphos",
+      "target": "Spite",
+      "distance": 154.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Alphos",
+      "target": "Eleusis",
+      "distance": 122.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Alphos",
+      "target": "Aurum",
+      "distance": 145.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Alphos",
+      "target": "Khazant",
+      "distance": 147.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Alphos",
+      "target": "Ormasim",
+      "distance": 134.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Calisi",
+      "distance": 39.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Karlak",
+      "distance": 45.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Spite",
+      "distance": 156.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Eleusis",
+      "distance": 118.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Aurum",
+      "distance": 130.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Khazant",
+      "distance": 114.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Ormasim",
+      "distance": 111.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Credence",
+      "distance": 140.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pyrathas",
+      "target": "Kaggeran",
+      "distance": 150.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Karlak",
+      "distance": 36.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Calisi",
+      "target": "Spite",
+      "distance": 121.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Eleusis",
+      "distance": 156.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Khazant",
+      "distance": 104.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Ormasim",
+      "distance": 77.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Calisi",
+      "target": "Credence",
+      "distance": 105.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Kaggeran",
+      "distance": 112.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Argoth",
+      "distance": 138.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Rheelas",
+      "distance": 145.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Calisi",
+      "target": "Bellom",
+      "distance": 145.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Spite",
+      "distance": 150.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Eleusis",
+      "distance": 145.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Aurum",
+      "distance": 143.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Khazant",
+      "distance": 71.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Karlak",
+      "target": "Ormasim",
+      "distance": 74.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Karlak",
+      "target": "Credence",
+      "distance": 103.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Kaggeran",
+      "distance": 117.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Argoth",
+      "distance": 138.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Rheelas",
+      "distance": 154.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Hestus",
+      "distance": 156.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Vespasia",
+      "distance": 141.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Karlak",
+      "target": "Bellom",
+      "distance": 127.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Spite",
+      "target": "Carmyn",
+      "distance": 65.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Spite",
+      "target": "Ormasim",
+      "distance": 114.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Spite",
+      "target": "Credence",
+      "distance": 116.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Spite",
+      "target": "Kaggeran",
+      "distance": 96.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Spite",
+      "target": "Argoth",
+      "distance": 120.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Spite",
+      "target": "Rheelas",
+      "distance": 93.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Spite",
+      "target": "Hestus",
+      "distance": 152.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Carmyn",
+      "target": "Kaggeran",
+      "distance": 145.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Carmyn",
+      "target": "Rheelas",
+      "distance": 127.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Eleusis",
+      "target": "Aurum",
+      "distance": 47.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Eleusis",
+      "target": "Castolel",
+      "distance": 140.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Eleusis",
+      "target": "The Blood Trinity",
+      "distance": 147.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Aurum",
+      "target": "Castolel",
+      "distance": 121.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Aurum",
+      "target": "The Blood Trinity",
+      "distance": 100.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Aurum",
+      "target": "Vanity",
+      "distance": 125.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Castolel",
+      "target": "Freya",
+      "distance": 114.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Castolel",
+      "target": "Vanir",
+      "distance": 63.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Castolel",
+      "target": "The Blood Trinity",
+      "distance": 132.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Freya",
+      "target": "Vanir",
+      "distance": 110.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Freya",
+      "target": "Herisor",
+      "distance": 125.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanir",
+      "target": "Herisor",
+      "distance": 150.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanir",
+      "target": "Atonement",
+      "distance": 130.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanir",
+      "target": "Beseritor",
+      "distance": 145.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanir",
+      "target": "The Blood Trinity",
+      "distance": 152.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanir",
+      "target": "Magog",
+      "distance": 140.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Herisor",
+      "target": "Atonement",
+      "distance": 75.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Herisor",
+      "target": "Beseritor",
+      "distance": 140.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Herisor",
+      "target": "Jove's Descent",
+      "distance": 143.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Atonement",
+      "target": "Phonos",
+      "distance": 144.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Atonement",
+      "target": "Arkhas",
+      "distance": 143.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Atonement",
+      "target": "Beseritor",
+      "distance": 65.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Atonement",
+      "target": "Jove's Descent",
+      "distance": 147.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Atonement",
+      "target": "Castiel",
+      "distance": 144.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Phonos",
+      "target": "Arkhas",
+      "distance": 26.9,
+      "proximity": "close"
+    },
+    {
+      "source": "Phonos",
+      "target": "Beseritor",
+      "distance": 143.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Phonos",
+      "target": "Jove's Descent",
+      "distance": 80.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Phonos",
+      "target": "Castiel",
+      "distance": 134.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Phonos",
+      "target": "Credos",
+      "distance": 58.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Phonos",
+      "target": "Sedu",
+      "distance": 120.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Phonos",
+      "target": "Lovat IV",
+      "distance": 149.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Beseritor",
+      "distance": 130.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Jove's Descent",
+      "distance": 105.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Nunc",
+      "distance": 156.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Castiel",
+      "distance": 109.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Credos",
+      "distance": 47.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Sedu",
+      "distance": 104.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Arkhas",
+      "target": "Lovat IV",
+      "distance": 128.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Magog",
+      "distance": 154.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Bolgra",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Midsel",
+      "distance": 125.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Octavian",
+      "distance": 150.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Nunc",
+      "distance": 156.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Beseritor",
+      "target": "Castiel",
+      "distance": 86.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Jove's Descent",
+      "target": "Credos",
+      "distance": 133.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Zanatov's Harbor",
+      "target": "Jerober XI",
+      "distance": 145.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Zanatov's Harbor",
+      "target": "Pilgrim's Loss",
+      "distance": 140.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Blood Trinity",
+      "target": "Vanity",
+      "distance": 47.2,
+      "proximity": "close"
+    },
+    {
+      "source": "The Blood Trinity",
+      "target": "Magog",
+      "distance": 117.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Blood Trinity",
+      "target": "Hlesan Secundus",
+      "distance": 81.4,
+      "proximity": "close"
+    },
+    {
+      "source": "The Blood Trinity",
+      "target": "Samech",
+      "distance": 120.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "The Blood Trinity",
+      "target": "Vespasia",
+      "distance": 152.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanity",
+      "target": "Khazant",
+      "distance": 135.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanity",
+      "target": "Magog",
+      "distance": 135.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanity",
+      "target": "Hlesan Secundus",
+      "distance": 56.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Vanity",
+      "target": "Samech",
+      "distance": 96.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Vanity",
+      "target": "Vespasia",
+      "distance": 108.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanity",
+      "target": "Resgulus",
+      "distance": 124.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vanity",
+      "target": "Tabius Rasa",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Ormasim",
+      "distance": 80.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Khazant",
+      "target": "Credence",
+      "distance": 96.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Khazant",
+      "target": "Kaggeran",
+      "distance": 120.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Argoth",
+      "distance": 126.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Rheelas",
+      "distance": 157.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Hestus",
+      "distance": 130.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Vespasia",
+      "distance": 71.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Khazant",
+      "target": "Bellom",
+      "distance": 81.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Khazant",
+      "target": "Resgulus",
+      "distance": 105.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Wrath",
+      "distance": 152.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Khazant",
+      "target": "Tabius Rasa",
+      "distance": 159.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Magog",
+      "target": "Bolgra",
+      "distance": 49.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Magog",
+      "target": "Hlesan Secundus",
+      "distance": 103.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Magog",
+      "target": "Samech",
+      "distance": 106.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Magog",
+      "target": "Malehi",
+      "distance": 71.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Magog",
+      "target": "Midsel",
+      "distance": 82.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Magog",
+      "target": "Klaha",
+      "distance": 158.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Magog",
+      "target": "Octavian",
+      "distance": 158.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Hlesan Secundus",
+      "distance": 130.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Samech",
+      "distance": 117.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Malehi",
+      "distance": 40.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Midsel",
+      "distance": 40.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 141.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Erioch",
+      "distance": 150.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Klaha",
+      "distance": 112.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Octavian",
+      "distance": 112.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bolgra",
+      "target": "Castiel",
+      "distance": 155.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Samech",
+      "distance": 40.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Malehi",
+      "distance": 114.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Vespasia",
+      "distance": 131.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Resgulus",
+      "distance": 132.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Tabius Rasa",
+      "distance": 134.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Ries",
+      "distance": 144.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hlesan Secundus",
+      "target": "Iobel",
+      "distance": 146.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Malehi",
+      "distance": 90.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Samech",
+      "target": "Midsel",
+      "distance": 155.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Vespasia",
+      "distance": 150.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Resgulus",
+      "distance": 141.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Tabius Rasa",
+      "distance": 127.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Ries",
+      "distance": 118.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Iobel",
+      "distance": 110.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 134.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Samech",
+      "target": "Melancholia",
+      "distance": 151.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Malehi",
+      "target": "Midsel",
+      "distance": 69.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Malehi",
+      "target": "Iobel",
+      "distance": 146.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Malehi",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 105.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Malehi",
+      "target": "Erioch",
+      "distance": 118.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Malehi",
+      "target": "Klaha",
+      "distance": 92.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Malehi",
+      "target": "Octavian",
+      "distance": 125.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 152.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Erioch",
+      "distance": 153.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Klaha",
+      "distance": 105.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Hector's Endeavour",
+      "distance": 156.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Octavian",
+      "distance": 76.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Midsel",
+      "target": "Nunc",
+      "distance": 133.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Midsel",
+      "target": "Castiel",
+      "distance": 117.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Credence",
+      "distance": 29.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Kaggeran",
+      "distance": 44.7,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Argoth",
+      "distance": 64.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Rheelas",
+      "distance": 82.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Hestus",
+      "distance": 85.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Vespasia",
+      "distance": 140.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Bellom",
+      "distance": 74.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Ormasim",
+      "target": "Wrath",
+      "distance": 140.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Credence",
+      "target": "Kaggeran",
+      "distance": 25.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Credence",
+      "target": "Argoth",
+      "distance": 35.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Credence",
+      "target": "Rheelas",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Credence",
+      "target": "Hestus",
+      "distance": 57.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Credence",
+      "target": "Vespasia",
+      "distance": 145.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Credence",
+      "target": "Bellom",
+      "distance": 60.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Credence",
+      "target": "Wrath",
+      "distance": 116.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Credence",
+      "target": "Scansion Beta",
+      "distance": 152.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Credence",
+      "target": "Pelegius",
+      "distance": 159.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Argoth",
+      "distance": 30.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Rheelas",
+      "distance": 38.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Hestus",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Bellom",
+      "distance": 82.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Wrath",
+      "distance": 126.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kaggeran",
+      "target": "Scansion Beta",
+      "distance": 147.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Argoth",
+      "target": "Rheelas",
+      "distance": 38.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Argoth",
+      "target": "Hestus",
+      "distance": 31.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Argoth",
+      "target": "Bellom",
+      "distance": 68.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Argoth",
+      "target": "Wrath",
+      "distance": 98.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Argoth",
+      "target": "Scansion Beta",
+      "distance": 118.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Argoth",
+      "target": "Pelegius",
+      "distance": 148.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Argoth",
+      "target": "Themiskon Point",
+      "distance": 159.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Rheelas",
+      "target": "Hestus",
+      "distance": 63.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Rheelas",
+      "target": "Bellom",
+      "distance": 105.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Rheelas",
+      "target": "Wrath",
+      "distance": 129.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Rheelas",
+      "target": "Scansion Beta",
+      "distance": 125.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hestus",
+      "target": "Vespasia",
+      "distance": 155.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hestus",
+      "target": "Bellom",
+      "distance": 55.9,
+      "proximity": "close"
+    },
+    {
+      "source": "Hestus",
+      "target": "Wrath",
+      "distance": 67.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Hestus",
+      "target": "Scansion Beta",
+      "distance": 97.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Hestus",
+      "target": "Pelegius",
+      "distance": 118.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hestus",
+      "target": "Themiskon Point",
+      "distance": 128.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Bellom",
+      "distance": 100.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Resgulus",
+      "distance": 36.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Wrath",
+      "distance": 145.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Pelegius",
+      "distance": 139.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Tabius Rasa",
+      "distance": 89.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Vespasia",
+      "target": "Ries",
+      "distance": 153.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bellom",
+      "target": "Resgulus",
+      "distance": 114.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bellom",
+      "target": "Wrath",
+      "distance": 74.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Bellom",
+      "target": "Scansion Beta",
+      "distance": 142.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bellom",
+      "target": "Pelegius",
+      "distance": 106.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bellom",
+      "target": "Themiskon Point",
+      "distance": 130.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bellom",
+      "target": "Tabius Rasa",
+      "distance": 158.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Wrath",
+      "distance": 140.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Pelegius",
+      "distance": 121.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Themiskon Point",
+      "distance": 156.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Meniscus",
+      "distance": 127.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Bekrin",
+      "distance": 158.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Oertha",
+      "distance": 148.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Tabius Rasa",
+      "distance": 54.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Resgulus",
+      "target": "Ries",
+      "distance": 120.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Wrath",
+      "target": "Scansion Beta",
+      "distance": 87.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Wrath",
+      "target": "Pelegius",
+      "distance": 53.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Wrath",
+      "target": "Themiskon Point",
+      "distance": 61.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Wrath",
+      "target": "Meskaile",
+      "distance": 121.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Wrath",
+      "target": "Meniscus",
+      "distance": 139.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Wrath",
+      "target": "Bekrin",
+      "distance": 152.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Scansion Beta",
+      "target": "Pelegius",
+      "distance": 125.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Scansion Beta",
+      "target": "Themiskon Point",
+      "distance": 107.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Scansion Beta",
+      "target": "Meskaile",
+      "distance": 75.7,
+      "proximity": "close"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Themiskon Point",
+      "distance": 35.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Meskaile",
+      "distance": 129.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Meniscus",
+      "distance": 86.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Bekrin",
+      "distance": 100.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Oertha",
+      "distance": 143.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Baraban",
+      "distance": 131.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Dakinor",
+      "distance": 118.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Veren",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pelegius",
+      "target": "Tabius Rasa",
+      "distance": 128.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Meskaile",
+      "distance": 96.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Meniscus",
+      "distance": 98.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Bekrin",
+      "distance": 101.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Oertha",
+      "distance": 156.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Baraban",
+      "distance": 133.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Dakinor",
+      "distance": 110.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Veren",
+      "distance": 137.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Themiskon Point",
+      "target": "Tabius Rasa",
+      "distance": 159.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Bekrin",
+      "distance": 31.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Oertha",
+      "distance": 58.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Baraban",
+      "distance": 52.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Dakinor",
+      "distance": 65.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Veren",
+      "distance": 92.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Ravacene",
+      "distance": 98.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Tabius Rasa",
+      "distance": 97.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Ries",
+      "distance": 117.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Meniscus",
+      "target": "Zurcon",
+      "distance": 156.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Oertha",
+      "distance": 65.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Baraban",
+      "distance": 32.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Dakinor",
+      "distance": 33.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Veren",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Ravacene",
+      "distance": 73.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Tabius Rasa",
+      "distance": 127.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Ries",
+      "distance": 138.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Zurcon",
+      "distance": 136.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Bekrin",
+      "target": "Iphigenia",
+      "distance": 158.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Oertha",
+      "target": "Baraban",
+      "distance": 50.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Oertha",
+      "target": "Dakinor",
+      "distance": 89.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Oertha",
+      "target": "Veren",
+      "distance": 102.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Oertha",
+      "target": "Ravacene",
+      "distance": 80.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Oertha",
+      "target": "Tabius Rasa",
+      "distance": 100.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Oertha",
+      "target": "Ries",
+      "distance": 81.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Oertha",
+      "target": "Iobel",
+      "distance": 123.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Oertha",
+      "target": "Melancholia",
+      "distance": 130.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Oertha",
+      "target": "Zurcon",
+      "distance": 120.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Oertha",
+      "target": "Iphigenia",
+      "distance": 150.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Baraban",
+      "target": "Dakinor",
+      "distance": 41.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Baraban",
+      "target": "Veren",
+      "distance": 53.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Baraban",
+      "target": "Ravacene",
+      "distance": 46.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Baraban",
+      "target": "Tabius Rasa",
+      "distance": 136.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Baraban",
+      "target": "Ries",
+      "distance": 130.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Baraban",
+      "target": "Zurcon",
+      "distance": 105.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Baraban",
+      "target": "Iphigenia",
+      "distance": 130.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Dakinor",
+      "target": "Veren",
+      "distance": 30.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Dakinor",
+      "target": "Ravacene",
+      "distance": 61.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Dakinor",
+      "target": "Zurcon",
+      "distance": 124.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Dakinor",
+      "target": "Iphigenia",
+      "distance": 142.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Veren",
+      "target": "Ravacene",
+      "distance": 45.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Veren",
+      "target": "Zurcon",
+      "distance": 103.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Veren",
+      "target": "Iphigenia",
+      "distance": 116.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Veren",
+      "target": "Krk'tikit",
+      "distance": 145.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ravacene",
+      "target": "Ries",
+      "distance": 159.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ravacene",
+      "target": "Zurcon",
+      "distance": 63.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene",
+      "target": "Iphigenia",
+      "distance": 85.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene",
+      "target": "Krk'tikit",
+      "distance": 130.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Tabius Rasa",
+      "target": "Ries",
+      "distance": 68.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Tabius Rasa",
+      "target": "Iobel",
+      "distance": 118.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Tabius Rasa",
+      "target": "Melancholia",
+      "distance": 155.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ries",
+      "target": "Iobel",
+      "distance": 55.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Ries",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 145.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ries",
+      "target": "Melancholia",
+      "distance": 87.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Ries",
+      "target": "Pellor",
+      "distance": 152.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Iobel",
+      "target": "Ravacene (Erioch Belt)",
+      "distance": 90.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Iobel",
+      "target": "Erioch",
+      "distance": 120.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Iobel",
+      "target": "Melancholia",
+      "distance": 44.7,
+      "proximity": "close"
+    },
+    {
+      "source": "Iobel",
+      "target": "Vormos",
+      "distance": 130.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Iobel",
+      "target": "Pellor",
+      "distance": 118.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Iobel",
+      "target": "Klaha",
+      "distance": 156.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Erioch",
+      "distance": 31.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Melancholia",
+      "distance": 86.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Vormos",
+      "distance": 67.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Pellor",
+      "distance": 128.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Klaha",
+      "distance": 69.5,
+      "proximity": "close"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Hector's Endeavour",
+      "distance": 120.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Ravacene (Erioch Belt)",
+      "target": "Kabiri",
+      "distance": 158.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Erioch",
+      "target": "Melancholia",
+      "distance": 107.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Erioch",
+      "target": "Vormos",
+      "distance": 50.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Erioch",
+      "target": "Pellor",
+      "distance": 133.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Erioch",
+      "target": "Klaha",
+      "distance": 54.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Erioch",
+      "target": "Hector's Endeavour",
+      "distance": 90.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Erioch",
+      "target": "Kabiri",
+      "distance": 126.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Erioch",
+      "target": "Hestus (Eastern)",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Erioch",
+      "target": "Octavian",
+      "distance": 145.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Melancholia",
+      "target": "Vormos",
+      "distance": 100.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Melancholia",
+      "target": "Pellor",
+      "distance": 74.3,
+      "proximity": "close"
+    },
+    {
+      "source": "Melancholia",
+      "target": "Andronicus",
+      "distance": 129.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Melancholia",
+      "target": "Klaha",
+      "distance": 155.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vormos",
+      "target": "Pellor",
+      "distance": 96.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Vormos",
+      "target": "Andronicus",
+      "distance": 112.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vormos",
+      "target": "Klaha",
+      "distance": 99.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Vormos",
+      "target": "Hector's Endeavour",
+      "distance": 105.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vormos",
+      "target": "Kabiri",
+      "distance": 120.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vormos",
+      "target": "Hestus (Eastern)",
+      "distance": 120.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pellor",
+      "target": "Andronicus",
+      "distance": 57.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Pellor",
+      "target": "Zurcon",
+      "distance": 154.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pellor",
+      "target": "Skapula",
+      "distance": 132.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Andronicus",
+      "target": "Skapula",
+      "distance": 85.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Andronicus",
+      "target": "Hestus (Eastern)",
+      "distance": 159.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Zurcon",
+      "target": "Iphigenia",
+      "distance": 30.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Zurcon",
+      "target": "Krk'tikit",
+      "distance": 91.9,
+      "proximity": "close"
+    },
+    {
+      "source": "Zurcon",
+      "target": "Tsua'Malor",
+      "distance": 136.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Iphigenia",
+      "target": "Krk'tikit",
+      "distance": 62.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Iphigenia",
+      "target": "Tsua'Malor",
+      "distance": 107.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Krk'tikit",
+      "target": "Tsua'Malor",
+      "distance": 44.7,
+      "proximity": "close"
+    },
+    {
+      "source": "Klaha",
+      "target": "Hector's Endeavour",
+      "distance": 72.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Klaha",
+      "target": "Kabiri",
+      "distance": 123.8,
+      "proximity": "medium"
+    },
+    {
+      "source": "Klaha",
+      "target": "Octavian",
+      "distance": 91.9,
+      "proximity": "close"
+    },
+    {
+      "source": "Klaha",
+      "target": "Nunc",
+      "distance": 150.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hector's Endeavour",
+      "target": "Kabiri",
+      "distance": 54.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Hector's Endeavour",
+      "target": "Hestus (Eastern)",
+      "distance": 106.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hector's Endeavour",
+      "target": "Octavian",
+      "distance": 105.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hector's Endeavour",
+      "target": "Nunc",
+      "distance": 134.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hector's Endeavour",
+      "target": "Polyphemos",
+      "distance": 109.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kabiri",
+      "target": "Hestus (Eastern)",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Kabiri",
+      "target": "Sagacity",
+      "distance": 151.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kabiri",
+      "target": "Octavian",
+      "distance": 152.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kabiri",
+      "target": "Polyphemos",
+      "distance": 114.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kabiri",
+      "target": "Sovereign",
+      "distance": 139.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hestus (Eastern)",
+      "target": "Sagacity",
+      "distance": 94.9,
+      "proximity": "close"
+    },
+    {
+      "source": "Hestus (Eastern)",
+      "target": "Cosel",
+      "distance": 151.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Hestus (Eastern)",
+      "target": "Ynnen",
+      "distance": 126.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sagacity",
+      "target": "Cosel",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Sagacity",
+      "target": "Ynnen",
+      "distance": 31.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Sagacity",
+      "target": "Cressid",
+      "distance": 150.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Cosel",
+      "target": "Ynnen",
+      "distance": 36.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Ynnen",
+      "target": "Cressid",
+      "distance": 143.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Octavian",
+      "target": "Nunc",
+      "distance": 65.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Octavian",
+      "target": "Polyphemos",
+      "distance": 112.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Octavian",
+      "target": "Castiel",
+      "distance": 91.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Nunc",
+      "target": "Polyphemos",
+      "distance": 76.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Nunc",
+      "target": "Sovereign",
+      "distance": 157.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Nunc",
+      "target": "Castiel",
+      "distance": 72.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Nunc",
+      "target": "Credos",
+      "distance": 156.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Nunc",
+      "target": "Sedu",
+      "distance": 134.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Nunc",
+      "target": "Lovat IV",
+      "distance": 107.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Polyphemos",
+      "target": "Sovereign",
+      "distance": 85.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Polyphemos",
+      "target": "Castiel",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Polyphemos",
+      "target": "Sedu",
+      "distance": 158.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Polyphemos",
+      "target": "Lovat IV",
+      "distance": 121.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sovereign",
+      "target": "Lovat IV",
+      "distance": 150.3,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sovereign",
+      "target": "Mahir",
+      "distance": 103.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sovereign",
+      "target": "Vathor",
+      "distance": 154.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sovereign",
+      "target": "Falon's Lament",
+      "distance": 144.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Castiel",
+      "target": "Credos",
+      "distance": 130.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Castiel",
+      "target": "Sedu",
+      "distance": 140.4,
+      "proximity": "medium"
+    },
+    {
+      "source": "Castiel",
+      "target": "Lovat IV",
+      "distance": 132.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Credos",
+      "target": "Sedu",
+      "distance": 63.2,
+      "proximity": "close"
+    },
+    {
+      "source": "Credos",
+      "target": "Lovat IV",
+      "distance": 95.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Credos",
+      "target": "Pilgrim's Loss",
+      "distance": 141.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Sedu",
+      "target": "Lovat IV",
+      "distance": 38.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Sedu",
+      "target": "Pilgrim's Loss",
+      "distance": 110.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Lovat IV",
+      "target": "Pilgrim's Loss",
+      "distance": 131.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pilgrim's Loss",
+      "target": "Mackensee",
+      "distance": 103.1,
+      "proximity": "medium"
+    },
+    {
+      "source": "Pilgrim's Loss",
+      "target": "Falon's Lament",
+      "distance": 140.0,
+      "proximity": "medium"
+    },
+    {
+      "source": "Mackensee",
+      "target": "Falon's Lament",
+      "distance": 137.9,
+      "proximity": "medium"
+    },
+    {
+      "source": "Mackensee",
+      "target": "Belissar",
+      "distance": 156.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Mahir",
+      "target": "Vathor",
+      "distance": 60.8,
+      "proximity": "close"
+    },
+    {
+      "source": "Mahir",
+      "target": "Cressid",
+      "distance": 128.2,
+      "proximity": "medium"
+    },
+    {
+      "source": "Mahir",
+      "target": "Falon's Lament",
+      "distance": 127.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Vathor",
+      "target": "Cressid",
+      "distance": 81.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Falon's Lament",
+      "target": "Belissar",
+      "distance": 148.7,
+      "proximity": "medium"
+    },
+    {
+      "source": "Avarax",
+      "target": "Kadaku",
+      "distance": 95.5,
+      "proximity": "medium"
+    },
+    {
+      "source": "Kadaku",
+      "target": "Demerium",
+      "distance": 85.6,
+      "proximity": "medium"
+    },
+    {
+      "source": "Avarax",
+      "target": "Demerium",
+      "distance": 161.6,
+      "proximity": "far"
+    },
+    {
+      "source": "Avarax",
+      "target": "Karlak",
+      "distance": 35.4,
+      "proximity": "close"
+    },
+    {
+      "source": "Avarax",
+      "target": "Ormasim",
+      "distance": 39.1,
+      "proximity": "close"
+    },
+    {
+      "source": "Kadaku",
+      "target": "Khazant",
+      "distance": 31.6,
+      "proximity": "close"
+    },
+    {
+      "source": "Kadaku",
+      "target": "Vespasia",
+      "distance": 43.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Demerium",
+      "target": "Vespasia",
+      "distance": 61.0,
+      "proximity": "close"
+    },
+    {
+      "source": "Demerium",
+      "target": "The Blood Trinity",
+      "distance": 91.9,
+      "proximity": "medium"
+    }
+  ],
+  "adjacency": {
+    "Phaegis": [],
+    "The Warp Gate": [],
+    "Hethgard": [
+      "Eleusis"
+    ],
+    "Alphos": [
+      "Calisi",
+      "Karlak",
+      "Pyrathas"
+    ],
+    "Pyrathas": [
+      "Alphos",
+      "Calisi",
+      "Karlak"
+    ],
+    "Calisi": [
+      "Alphos",
+      "Karlak",
+      "Ormasim",
+      "Pyrathas"
+    ],
+    "Karlak": [
+      "Alphos",
+      "Calisi",
+      "Khazant",
+      "Ormasim",
+      "Pyrathas"
+    ],
+    "Spite": [
+      "Carmyn",
+      "Kaggeran",
+      "Rheelas"
+    ],
+    "Carmyn": [
+      "Spite"
+    ],
+    "Eleusis": [
+      "Aurum",
+      "Hethgard"
+    ],
+    "Aurum": [
+      "Eleusis",
+      "The Blood Trinity"
+    ],
+    "Castolel": [
+      "Vanir"
+    ],
+    "Freya": [],
+    "Vanir": [
+      "Castolel"
+    ],
+    "Herisor": [
+      "Atonement"
+    ],
+    "Atonement": [
+      "Beseritor",
+      "Herisor"
+    ],
+    "Phonos": [
+      "Arkhas",
+      "Credos",
+      "Jove's Descent"
+    ],
+    "Arkhas": [
+      "Credos",
+      "Phonos"
+    ],
+    "Beseritor": [
+      "Atonement",
+      "Castiel"
+    ],
+    "Jove's Descent": [
+      "Phonos"
+    ],
+    "Zanatov's Harbor": [],
+    "Jerober XI": [],
+    "The Blood Trinity": [
+      "Aurum",
+      "Hlesan Secundus",
+      "Vanity"
+    ],
+    "Vanity": [
+      "Hlesan Secundus",
+      "Samech",
+      "The Blood Trinity"
+    ],
+    "Khazant": [
+      "Bellom",
+      "Credence",
+      "Karlak",
+      "Ormasim",
+      "Vespasia"
+    ],
+    "Magog": [
+      "Bolgra",
+      "Malehi",
+      "Midsel"
+    ],
+    "Bolgra": [
+      "Magog",
+      "Malehi",
+      "Midsel"
+    ],
+    "Hlesan Secundus": [
+      "Samech",
+      "The Blood Trinity",
+      "Vanity"
+    ],
+    "Samech": [
+      "Hlesan Secundus",
+      "Malehi",
+      "Vanity"
+    ],
+    "Malehi": [
+      "Bolgra",
+      "Klaha",
+      "Magog",
+      "Midsel",
+      "Samech"
+    ],
+    "Midsel": [
+      "Bolgra",
+      "Magog",
+      "Malehi",
+      "Octavian"
+    ],
+    "Ormasim": [
+      "Argoth",
+      "Bellom",
+      "Calisi",
+      "Credence",
+      "Hestus",
+      "Kaggeran",
+      "Karlak",
+      "Khazant",
+      "Rheelas"
+    ],
+    "Credence": [
+      "Argoth",
+      "Bellom",
+      "Hestus",
+      "Kaggeran",
+      "Khazant",
+      "Ormasim",
+      "Rheelas"
+    ],
+    "Kaggeran": [
+      "Argoth",
+      "Bellom",
+      "Credence",
+      "Hestus",
+      "Ormasim",
+      "Rheelas",
+      "Spite"
+    ],
+    "Argoth": [
+      "Bellom",
+      "Credence",
+      "Hestus",
+      "Kaggeran",
+      "Ormasim",
+      "Rheelas",
+      "Wrath"
+    ],
+    "Rheelas": [
+      "Argoth",
+      "Credence",
+      "Hestus",
+      "Kaggeran",
+      "Ormasim",
+      "Spite"
+    ],
+    "Hestus": [
+      "Argoth",
+      "Bellom",
+      "Credence",
+      "Kaggeran",
+      "Ormasim",
+      "Rheelas",
+      "Scansion Beta",
+      "Wrath"
+    ],
+    "Vespasia": [
+      "Khazant",
+      "Resgulus",
+      "Tabius Rasa"
+    ],
+    "Bellom": [
+      "Argoth",
+      "Credence",
+      "Hestus",
+      "Kaggeran",
+      "Khazant",
+      "Ormasim",
+      "Wrath"
+    ],
+    "Resgulus": [
+      "Tabius Rasa",
+      "Vespasia"
+    ],
+    "Wrath": [
+      "Argoth",
+      "Bellom",
+      "Hestus",
+      "Pelegius",
+      "Scansion Beta",
+      "Themiskon Point"
+    ],
+    "Scansion Beta": [
+      "Hestus",
+      "Meskaile",
+      "Wrath"
+    ],
+    "Pelegius": [
+      "Bekrin",
+      "Meniscus",
+      "Themiskon Point",
+      "Wrath"
+    ],
+    "Themiskon Point": [
+      "Meniscus",
+      "Meskaile",
+      "Pelegius",
+      "Wrath"
+    ],
+    "Meskaile": [
+      "Scansion Beta",
+      "Themiskon Point"
+    ],
+    "Meniscus": [
+      "Baraban",
+      "Bekrin",
+      "Dakinor",
+      "Oertha",
+      "Pelegius",
+      "Ravacene",
+      "Tabius Rasa",
+      "Themiskon Point",
+      "Veren"
+    ],
+    "Bekrin": [
+      "Baraban",
+      "Dakinor",
+      "Meniscus",
+      "Oertha",
+      "Pelegius",
+      "Ravacene",
+      "Veren"
+    ],
+    "Oertha": [
+      "Baraban",
+      "Bekrin",
+      "Dakinor",
+      "Meniscus",
+      "Ravacene",
+      "Ries",
+      "Tabius Rasa"
+    ],
+    "Baraban": [
+      "Bekrin",
+      "Dakinor",
+      "Meniscus",
+      "Oertha",
+      "Ravacene",
+      "Veren"
+    ],
+    "Dakinor": [
+      "Baraban",
+      "Bekrin",
+      "Meniscus",
+      "Oertha",
+      "Ravacene",
+      "Veren"
+    ],
+    "Veren": [
+      "Baraban",
+      "Bekrin",
+      "Dakinor",
+      "Meniscus",
+      "Ravacene"
+    ],
+    "Ravacene": [
+      "Baraban",
+      "Bekrin",
+      "Dakinor",
+      "Iphigenia",
+      "Meniscus",
+      "Oertha",
+      "Veren",
+      "Zurcon"
+    ],
+    "Tabius Rasa": [
+      "Meniscus",
+      "Oertha",
+      "Resgulus",
+      "Ries",
+      "Vespasia"
+    ],
+    "Ries": [
+      "Iobel",
+      "Melancholia",
+      "Oertha",
+      "Tabius Rasa"
+    ],
+    "Iobel": [
+      "Melancholia",
+      "Ravacene (Erioch Belt)",
+      "Ries"
+    ],
+    "Erioch": [
+      "Hector's Endeavour",
+      "Klaha",
+      "Ravacene (Erioch Belt)",
+      "Vormos"
+    ],
+    "Melancholia": [
+      "Iobel",
+      "Pellor",
+      "Ravacene (Erioch Belt)",
+      "Ries"
+    ],
+    "Vormos": [
+      "Erioch",
+      "Klaha",
+      "Pellor",
+      "Ravacene (Erioch Belt)"
+    ],
+    "Pellor": [
+      "Andronicus",
+      "Melancholia",
+      "Vormos"
+    ],
+    "Andronicus": [
+      "Pellor",
+      "Skapula"
+    ],
+    "Zurcon": [
+      "Iphigenia",
+      "Krk'tikit",
+      "Ravacene"
+    ],
+    "Iphigenia": [
+      "Krk'tikit",
+      "Ravacene",
+      "Zurcon"
+    ],
+    "Krk'tikit": [
+      "Iphigenia",
+      "Tsua'Malor",
+      "Zurcon"
+    ],
+    "Tsua'Malor": [
+      "Krk'tikit"
+    ],
+    "Skapula": [
+      "Andronicus"
+    ],
+    "Klaha": [
+      "Erioch",
+      "Hector's Endeavour",
+      "Malehi",
+      "Octavian",
+      "Ravacene (Erioch Belt)",
+      "Vormos"
+    ],
+    "Hector's Endeavour": [
+      "Erioch",
+      "Kabiri",
+      "Klaha"
+    ],
+    "Kabiri": [
+      "Hector's Endeavour",
+      "Hestus (Eastern)"
+    ],
+    "Sagacity": [
+      "Cosel",
+      "Hestus (Eastern)",
+      "Ynnen"
+    ],
+    "Cosel": [
+      "Sagacity",
+      "Ynnen"
+    ],
+    "Ynnen": [
+      "Cosel",
+      "Sagacity"
+    ],
+    "Octavian": [
+      "Castiel",
+      "Klaha",
+      "Midsel",
+      "Nunc"
+    ],
+    "Nunc": [
+      "Castiel",
+      "Octavian",
+      "Polyphemos"
+    ],
+    "Polyphemos": [
+      "Nunc",
+      "Sovereign"
+    ],
+    "Sovereign": [
+      "Polyphemos"
+    ],
+    "Castiel": [
+      "Beseritor",
+      "Nunc",
+      "Octavian"
+    ],
+    "Credos": [
+      "Arkhas",
+      "Lovat IV",
+      "Phonos",
+      "Sedu"
+    ],
+    "Sedu": [
+      "Credos",
+      "Lovat IV"
+    ],
+    "Lovat IV": [
+      "Credos",
+      "Sedu"
+    ],
+    "Pilgrim's Loss": [],
+    "Mackensee": [],
+    "Mahir": [
+      "Vathor"
+    ],
+    "Vathor": [
+      "Cressid",
+      "Mahir"
+    ],
+    "Cressid": [
+      "Vathor"
+    ],
+    "Falon's Lament": [],
+    "Belissar": [],
+    "Ravacene (Erioch Belt)": [
+      "Erioch",
+      "Iobel",
+      "Klaha",
+      "Melancholia",
+      "Vormos"
+    ],
+    "Hestus (Eastern)": [
+      "Kabiri",
+      "Sagacity"
+    ]
+  },
+  "_notes": {
+    "world_type_missions": "Maps world type \u2192 eligible mission IDs when that node is the committed front. Mission 11 (Reclamation) is always gated by Void Warden regardless of node type and never appears here.",
+    "game_planet": "Nodes with game_planet: true are the three in-game map planets. All other nodes use those maps with narrative reskinning \u2014 the bot picks geometry from the eligible mission IDs.",
+    "current_position": "Tracked in campaign state data file (not here). This graph is static.",
+    "pressure": "Per-node pressure tracked in campaign state data file.",
+    "traversal": "Each beat, before planet seeds generate, Watch Master picks: hold current node OR move to one adjacent node. Bot reads edges from current position and presents eligible moves filtered by proximity."
+  },
+  "world_type_missions": {
+    "dead_world": [
+      2,
+      7,
+      8,
+      10
+    ],
+    "war_world": [
+      1,
+      2,
+      6,
+      7,
+      12,
+      13
+    ],
+    "fortress_world": [
+      2,
+      4,
+      7,
+      12
+    ],
+    "shrine_world": [
+      3,
+      4,
+      8,
+      10,
+      12
+    ],
+    "hive_world": [
+      2,
+      3,
+      6,
+      12
+    ],
+    "forge_world": [
+      1,
+      5,
+      6,
+      9,
+      13
+    ],
+    "agri_world": [
+      4,
+      5,
+      8
+    ],
+    "feral_world": [
+      2,
+      5,
+      13
+    ],
+    "frontier_world": [
+      3,
+      5,
+      8,
+      9
+    ],
+    "mining_world": [
+      1,
+      6,
+      9
+    ],
+    "penal_world": [
+      2,
+      6,
+      13
+    ],
+    "pleasure_world": [
+      3,
+      5,
+      12
+    ],
+    "watch_station": [],
+    "special": [
+      3,
+      10
+    ]
+  },
+  "terrain_world_types": {
+    "industrial_outpost": [
+      "war_world",
+      "forge_world",
+      "mining_world"
+    ],
+    "urban_infrastructure": [
+      "hive_world",
+      "war_world",
+      "fortress_world",
+      "dead_world"
+    ],
+    "urban_ecclesiastical": [
+      "shrine_world",
+      "hive_world",
+      "pleasure_world"
+    ],
+    "ecclesiastical_compound": [
+      "shrine_world",
+      "fortress_world",
+      "agri_world"
+    ],
+    "mechanicus_compound": [
+      "forge_world",
+      "frontier_world",
+      "agri_world"
+    ],
+    "hive_urban": [
+      "hive_world",
+      "war_world",
+      "forge_world"
+    ],
+    "imperial_fortress": [
+      "fortress_world",
+      "war_world",
+      "dead_world"
+    ],
+    "burial_tomb": [
+      "dead_world",
+      "shrine_world",
+      "agri_world"
+    ],
+    "mechanicus_facility": [
+      "forge_world",
+      "mining_world",
+      "frontier_world"
+    ],
+    "astropathic_relay": [
+      "dead_world",
+      "shrine_world",
+      "special"
+    ],
+    "void_vessel": [],
+    "wilderness_swamp": [
+      "feral_world",
+      "war_world",
+      "forge_world"
+    ]
+  }
+}

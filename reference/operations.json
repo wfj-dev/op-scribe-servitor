@@ -1,0 +1,327 @@
+{
+  "planets": [
+    {
+      "id": "kadaku",
+      "name": "Kadaku",
+      "type": "Jungle death world",
+      "dominant_faction": "tyranid",
+      "notes": "Primary Tyranid front. Dense terrain, promethium infrastructure."
+    },
+    {
+      "id": "avarax",
+      "name": "Avarax",
+      "type": "Hive world",
+      "dominant_faction": "mixed",
+      "notes": "Largest mission pool. Mixed Tyranid/Chaos presence. Wrath of Espandor in orbit \u2014 Reclamation unlocked here by Void Warden."
+    },
+    {
+      "id": "demerium",
+      "name": "Demerium",
+      "type": "Cemetery and tomb world",
+      "dominant_faction": "chaos",
+      "notes": "Primary Chaos front. All Chaos-only missions force Intelligence Lapse."
+    },
+    {
+      "id": "wrath_of_espandor",
+      "name": "Wrath of Espandor",
+      "type": "Dauntless-class cruiser (ship interior)",
+      "dominant_faction": "tyranid",
+      "notes": "In orbit around Avarax. Unlocked when Avarax is committed planet AND Void Warden is present. Not a standalone planet \u2014 treated as Avarax sub-theatre."
+    }
+  ],
+  "roaming_terminus": [
+    {
+      "name": "Neurothrope",
+      "faction": "tyranid",
+      "eligible_maps": "Any Tyranid or Mixed mission (including Intel Lapse converted)"
+    },
+    {
+      "name": "Carnifex",
+      "faction": "tyranid",
+      "eligible_maps": "Any Tyranid or Mixed mission (including Intel Lapse converted)"
+    },
+    {
+      "name": "Helbrute",
+      "faction": "chaos",
+      "eligible_maps": "Mixed missions only (faction_effective = mixed)"
+    }
+  ],
+  "terminus_rules": {
+    "fixed_boss_missions": "Fixed terminus boss is the only terminus target \u2014 no roaming spawns on these missions.",
+    "roaming_eligible": "All missions without a fixed boss can spawn roaming terminus. Spawn is not player-controlled.",
+    "huntmaster_role": "Huntmaster flags terminus as a campaign target. Champion calls the engagement. Roaming still spawns regardless \u2014 Huntmaster + Champion call determines whether it counts as a prestige terminus kill."
+  },
+  "operations": [
+    {
+      "id": 1,
+      "name": "Inferno",
+      "planet": "kadaku",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Blow up a promethium refinery to thin the Tyranid swarm.",
+      "added_in": "launch",
+      "codename": "acid_bomb",
+      "terrain": "industrial_outpost",
+      "objective_type": "demolition_trap",
+      "environment": "promethium_refinery",
+      "strats_allowed": true
+    },
+    {
+      "id": 2,
+      "name": "Decapitation",
+      "planet": "avarax",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Rig a bridge for detonation to eliminate the Hive Tyrant leading the swarm at the Astropathic Relay.",
+      "added_in": "launch",
+      "codename": "tyrant",
+      "terrain": "urban_infrastructure",
+      "objective_type": "assassination",
+      "environment": "river_bridge",
+      "strats_allowed": true
+    },
+    {
+      "id": 3,
+      "name": "Vox Liberatis",
+      "planet": "avarax",
+      "faction_listed": "chaos",
+      "intel_lapse_forced": true,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Battle the Thousand Sons and uncover what is jamming vox communications.",
+      "added_in": "launch",
+      "codename": "daemonhost",
+      "terrain": "urban_ecclesiastical",
+      "objective_type": "cleanse_comms",
+      "environment": "cathedral_district",
+      "strats_allowed": true
+    },
+    {
+      "id": 4,
+      "name": "Reliquary",
+      "planet": "demerium",
+      "faction_listed": "chaos",
+      "intel_lapse_forced": true,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Infiltrate a captured Ecclesiarchy compound and destroy the Warp Beacon summoning Chaos reinforcements.",
+      "added_in": "launch",
+      "codename": "firestorm",
+      "terrain": "ecclesiastical_compound",
+      "objective_type": "destroy_beacon",
+      "environment": "catacombs",
+      "strats_allowed": true
+    },
+    {
+      "id": 5,
+      "name": "Fall of Atreus",
+      "planet": "demerium",
+      "faction_listed": "mixed",
+      "intel_lapse_forced": false,
+      "faction_effective": "mixed",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex",
+        "Helbrute"
+      ],
+      "description": "Find the Sword of Atreus Battle Barge and prepare it for launch.",
+      "added_in": "launch",
+      "codename": "ancient_weapon",
+      "terrain": "mechanicus_compound",
+      "objective_type": "recover_launch_asset",
+      "environment": "industrial_shipyard",
+      "strats_allowed": true
+    },
+    {
+      "id": 6,
+      "name": "Ballistic Engine",
+      "planet": "avarax",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Weaken the Tyranid swarm using a Nova Cannon Warhead delivered by train.",
+      "added_in": "launch",
+      "codename": "train",
+      "terrain": "hive_urban",
+      "objective_type": "weapons_delivery",
+      "environment": "rail_depot",
+      "strats_allowed": true
+    },
+    {
+      "id": 7,
+      "name": "Termination",
+      "planet": "kadaku",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": "Hierophant Bio-Titan",
+      "terminus_roaming": [],
+      "description": "Reactivate an abandoned Imperial fortress's defensive systems to destroy Tyranid capillary towers.",
+      "added_in": "Patch 4.0",
+      "codename": "biotitan",
+      "terrain": "imperial_fortress",
+      "objective_type": "reactivate_defences",
+      "environment": "fortress_ruins",
+      "strats_allowed": true
+    },
+    {
+      "id": 8,
+      "name": "Obelisk",
+      "planet": "demerium",
+      "faction_listed": "chaos",
+      "intel_lapse_forced": true,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex"
+      ],
+      "description": "Return to the burial world of Demerium to destroy a source of chaotic energy. Introduces Tzaangor Enlightened.",
+      "added_in": "Patch 5.0",
+      "codename": "obelisk",
+      "terrain": "burial_tomb",
+      "objective_type": "destroy_artifact",
+      "environment": "ancient_tomb",
+      "strats_allowed": true
+    },
+    {
+      "id": 9,
+      "name": "Exfiltration",
+      "planet": "avarax",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": "Trygon",
+      "terminus_roaming": [],
+      "description": "Retrieve a Tech-Priest who refused withdrawal orders from an AdMech facility.",
+      "added_in": "Patch 7.0",
+      "codename": "trygon",
+      "terrain": "mechanicus_facility",
+      "objective_type": "rescue_extraction",
+      "environment": "underground_facility",
+      "strats_allowed": true
+    },
+    {
+      "id": 10,
+      "name": "Vortex",
+      "planet": "avarax",
+      "faction_listed": "chaos",
+      "intel_lapse_forced": true,
+      "faction_effective": "tyranid",
+      "terminus_boss": "Mutalith Vortex Beast",
+      "terminus_roaming": [],
+      "terminus_note": "Intel Lapse forced for wave faction. Mutalith Vortex Beast terminus target is unchanged \u2014 it is a sealed Chaos entity, not a reinforcement wave.",
+      "description": "Investigate and cleanse the Astropathic Relay of heretical presence.",
+      "added_in": "Patch 10.0",
+      "codename": "relay",
+      "terrain": "astropathic_relay",
+      "objective_type": "cleanse_corruption",
+      "environment": "relay_compound",
+      "strats_allowed": true
+    },
+    {
+      "id": 11,
+      "name": "Reclamation",
+      "planet": "wrath_of_espandor",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": "Tyranid Prime",
+      "terminus_roaming": [],
+      "unlock_condition": "Avarax must be committed planet. Void Warden must be present at Highcom.",
+      "description": "Board the overrun cruiser Wrath of Espandor and destabilise its reactors to devastate the Hive Fleet.",
+      "added_in": "Patch 11.0",
+      "codename": "ship",
+      "terrain": "void_vessel",
+      "objective_type": "sabotage_reactor",
+      "environment": "warship_interior",
+      "strats_allowed": true
+    },
+    {
+      "id": 12,
+      "name": "Disruption",
+      "planet": "avarax",
+      "faction_listed": "mixed",
+      "intel_lapse_forced": true,
+      "faction_effective": "mixed",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex",
+        "Helbrute"
+      ],
+      "description": "Reinforce the Cadian defence and prevent the Thousand Sons from completing a ritual at the Ecclesiarchy cathedral.",
+      "added_in": "Patch 12.0",
+      "codename": "dread",
+      "terrain": "urban_ecclesiastical",
+      "objective_type": "defend_secure",
+      "environment": "cathedral_district",
+      "strats_allowed": true
+    },
+    {
+      "id": 13,
+      "name": "Purgation",
+      "planet": "kadaku",
+      "faction_listed": "mixed",
+      "intel_lapse_forced": false,
+      "faction_effective": "mixed",
+      "terminus_boss": null,
+      "terminus_roaming": [
+        "Neurothrope",
+        "Carnifex",
+        "Helbrute"
+      ],
+      "description": "Reclaim an Adeptus Mechanicus facility in the Kadaku swamps and secure Nozick's research.",
+      "added_in": "Patch 13.0",
+      "codename": "swamp",
+      "terrain": "wilderness_swamp",
+      "objective_type": "reclaim_secure",
+      "environment": "swamp_facility",
+      "strats_allowed": true
+    },
+    {
+      "id": 14,
+      "name": "Siege",
+      "codename": "fortress",
+      "planet": "kadaku",
+      "faction_listed": "tyranid",
+      "intel_lapse_forced": false,
+      "faction_effective": "tyranid",
+      "terminus_boss": null,
+      "terminus_roaming": [],
+      "terrain": "imperial_fortress",
+      "objective_type": "defend_waves",
+      "environment": "fortress_walls",
+      "strats_allowed": false,
+      "description": "Horde defence of an Imperial fortress against escalating waves. Stratagems are not permitted in this mode.",
+      "added_in": "Patch 13.0",
+      "notes": "Distinct game mode \u2014 not a standard operation. No strats. Not eligible for prestige missions or KT doctrine locking."
+    }
+  ]
+}
