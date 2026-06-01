@@ -13,10 +13,23 @@
       "primarch": "Lion El'Jonson",
       "homebrew": false,
       "lore_summary": "A Primaris-only Dark Angels successor raised during the Ultima Founding, embodying their primarch's legendary tenacity and his Legion's ability to bear great suffering to achieve victory. Organised in the Unforgiven pattern with Inner Circle and Deathwing and Ravenwing equivalents, they carry the shame of the Fallen alongside all their brothers. They earned commendations during the Indomitus Crusade and deployed to the Nachmund Rift War against Chaos forces threatening the vital Nachmund Gauntlet. Their defining trait is unyielding endurance that refuses to break under any pressure.",
-      "strengths": ["endurance under suffering", "Deathwing/Ravenwing equivalents", "Unforgiven Inner Circle discipline"],
-      "weaknesses": ["Fallen shame and secrecy", "Unforgiven obligations divert focus"],
+      "strengths": [
+        "endurance under suffering",
+        "Deathwing/Ravenwing equivalents",
+        "Unforgiven Inner Circle discipline"
+      ],
+      "weaknesses": [
+        "Fallen shame and secrecy",
+        "Unforgiven obligations divert focus"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "tenacious endurance assault"
+      "execution_style": "tenacious endurance assault",
+      "tag_weights": {
+        "resilience": 2,
+        "fortify": 1,
+        "faith": 1,
+        "stealth": -1
+      }
     },
     {
       "name": "Angels of Vengeance",
@@ -24,10 +37,23 @@
       "primarch": "Lion El'Jonson",
       "homebrew": false,
       "lore_summary": "A grim, dour Unforgiven Chapter descended from the Dark Angels, retaining jet-black armour and the secret of the Fallen. They fight with stubborn, relentless frontal assaults, refusing to retreat even against overwhelming odds, which has repeatedly brought them near destruction. Historically deployed against Chaos Space Marines and traitors, whom they hunt with single-minded zeal alongside their pursuit of the Fallen. Their defining flaw is an inflexible refusal to withdraw that costs them horrific casualties.",
-      "strengths": ["unbreakable resolve", "traitor-hunting expertise", "elite Terminator/assault wings"],
-      "weaknesses": ["refuses to retreat", "secrecy breeds isolation"],
+      "strengths": [
+        "unbreakable resolve",
+        "traitor-hunting expertise",
+        "elite Terminator/assault wings"
+      ],
+      "weaknesses": [
+        "refuses to retreat",
+        "secrecy breeds isolation"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "relentless stubborn frontal assault"
+      "execution_style": "relentless stubborn frontal assault",
+      "tag_weights": {
+        "resilience": 2,
+        "aggressive": 1,
+        "faith": 1,
+        "stealth": -2
+      }
     },
     {
       "name": "Black Shield",
@@ -38,7 +64,8 @@
       "strengths": [],
       "weaknesses": [],
       "faction_affinity": "neutral",
-      "execution_style": "unaligned independent action"
+      "execution_style": "unaligned independent action",
+      "tag_weights": {}
     },
     {
       "name": "Black Templars",
@@ -46,10 +73,23 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A fanatically zealous Imperial Fists successor organised as a perpetual Crusade rather than a Codex Chapter, eschewing Librarians out of hatred of the psychic. They specialise in overwhelming close-assault charges driven by faith, closing to melee as fast as possible. Historically deployed against Chaos, heretics and xenos across endless crusades, they purge any taint of the witch. Their flaw is reckless zealotry and distrust of psykers that can blind them tactically.",
-      "strengths": ["zealous melee charge", "massive crusading numbers", "unshakeable faith"],
-      "weaknesses": ["no Librarians", "reckless fanaticism"],
+      "strengths": [
+        "zealous melee charge",
+        "massive crusading numbers",
+        "unshakeable faith"
+      ],
+      "weaknesses": [
+        "no Librarians",
+        "reckless fanaticism"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "zealous close-assault charge"
+      "execution_style": "zealous close-assault charge",
+      "tag_weights": {
+        "faith": 2,
+        "aggressive": 2,
+        "void": -2,
+        "stealth": -1
+      }
     },
     {
       "name": "Bleeding Hearts",
@@ -57,10 +97,23 @@
       "primarch": "Sanguinius",
       "homebrew": true,
       "lore_summary": "A Blood Angels successor chapter who have forged a hunter-martyr culture around their proximity to the Black Rage. They do not suppress or mourn the Sanguinary curse but treat it as a sacred burden worn like a trophy — the Rage walks close, yet discipline over annihilation defines them. They hunt xenos relentlessly, adorning their wargear with the fangs and trophies of slain enemies, and regard self-sacrifice in the Emperor's name as the highest honour. Brothers who ultimately fall to the Rage are venerated rather than shamed, their sacrifice consecrating the chapter's ongoing hunt.",
-      "strengths": ["relentless xenos hunting", "martyr-warrior resolve under the Rage", "aggressive trophied assault"],
-      "weaknesses": ["perpetual Black Rage proximity", "high-casualty martyr ethos"],
+      "strengths": [
+        "relentless xenos hunting",
+        "martyr-warrior resolve under the Rage",
+        "aggressive trophied assault"
+      ],
+      "weaknesses": [
+        "perpetual Black Rage proximity",
+        "high-casualty martyr ethos"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "aggressive martyr-warrior xenos assault"
+      "execution_style": "aggressive martyr-warrior xenos assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "terminus": 1,
+        "faith": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Blood Angels",
@@ -68,10 +121,23 @@
       "primarch": "Sanguinius",
       "homebrew": false,
       "lore_summary": "A noble First Founding-descended Chapter renowned for artistry, aerial assault and elite close-combat prowess. They favour fast jump-pack strikes and ferocious melee, blending savagery with refinement. Deployed across all theatres against Chaos, xenos including Tyranids at the Devastation of Baal, and heretics. Their curse is the Red Thirst and the Black Rage, which can drive battle-brothers into uncontrollable bloodlust and madness.",
-      "strengths": ["aerial assault mastery", "elite close combat", "heroic resilience"],
-      "weaknesses": ["Red Thirst", "Black Rage madness"],
+      "strengths": [
+        "aerial assault mastery",
+        "elite close combat",
+        "heroic resilience"
+      ],
+      "weaknesses": [
+        "Red Thirst",
+        "Black Rage madness"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "aggressive aerial close assault"
+      "execution_style": "aggressive aerial close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "elimination": 1,
+        "resilience": 1,
+        "terminus": 1
+      }
     },
     {
       "name": "Blood Ravens",
@@ -79,10 +145,23 @@
       "primarch": "Unknown",
       "homebrew": false,
       "lore_summary": "A secretive Codex-compliant Chapter whose Founding, gene-seed and primarch are genuinely unknown, their records beginning only in M37. They field an unusually high proportion of Librarians, who command units and guide the Chapter with battlefield foresight. Deployed broadly against Chaos warbands, Eldar and Orks rather than one signature foe. Their defining trait is an obsessive hunger for lost knowledge and the unsettling mystery of their own dark origins.",
-      "strengths": ["abundant Librarians", "psychic foresight", "relic and lore acquisition"],
-      "weaknesses": ["mysterious origins", "knowledge obsession"],
+      "strengths": [
+        "abundant Librarians",
+        "psychic foresight",
+        "relic and lore acquisition"
+      ],
+      "weaknesses": [
+        "mysterious origins",
+        "knowledge obsession"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "psyker-led calculated strikes"
+      "execution_style": "psyker-led calculated strikes",
+      "tag_weights": {
+        "intel": 2,
+        "void": 2,
+        "recovery": 1,
+        "tech": 1
+      }
     },
     {
       "name": "Brazen Minotaurs",
@@ -90,10 +169,23 @@
       "primarch": "Unknown",
       "homebrew": false,
       "lore_summary": "A Codex-compliant Chapter from the jungle world Tauron, renowned for blunt, direct warfare and a desire to utterly eradicate rather than merely defeat foes. They favour brutal hand-to-hand combat and frontal charges, used as a blunt instrument of force. Historically deployed against Orks of WAAAGH! Grakka and Nurgle-aligned Chaos warbands such as Empyrion's Blight, often alongside the Raven Guard. Their flaw is overextension and heavy losses from their headlong aggression.",
-      "strengths": ["brutal melee power", "direct shock assault", "Raven Guard alliance"],
-      "weaknesses": ["lacks subtlety", "attrition losses"],
+      "strengths": [
+        "brutal melee power",
+        "direct shock assault",
+        "Raven Guard alliance"
+      ],
+      "weaknesses": [
+        "lacks subtlety",
+        "attrition losses"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "blunt frontal melee assault"
+      "execution_style": "blunt frontal melee assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "suppression": 1,
+        "stealth": -2,
+        "intel": -1
+      }
     },
     {
       "name": "Carcharodons",
@@ -101,10 +193,23 @@
       "primarch": "Corvus Corax (suspected)",
       "homebrew": false,
       "lore_summary": "A nomadic, fleet-based Chapter known as the Space Sharks, suspected Raven Guard successors who roam the outer void serving the 'Void Father'. They fight in eerie silence using speed, stealth ambushes, swift withdrawals and absolute close-quarters brutality. Deployed as ruthless enforcers against traitors and rebels, notably during the Badab War. Their flaw is a savage, predatory ruthlessness and reliance on aging, heavily modified wargear.",
-      "strengths": ["void warfare mastery", "brutal close assault", "stealth ambush"],
-      "weaknesses": ["aging wargear", "savage ruthlessness"],
+      "strengths": [
+        "void warfare mastery",
+        "brutal close assault",
+        "stealth ambush"
+      ],
+      "weaknesses": [
+        "aging wargear",
+        "savage ruthlessness"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "silent predatory shock assault"
+      "execution_style": "silent predatory shock assault",
+      "tag_weights": {
+        "stealth": 2,
+        "void": 1,
+        "elimination": 1,
+        "faith": -1
+      }
     },
     {
       "name": "Carmine Blades",
@@ -112,10 +217,22 @@
       "primarch": "Sanguinius",
       "homebrew": false,
       "lore_summary": "A Blood Angels successor from the feral world Haldroth, long mistaken for Ultramarines descendants until Astorath revealed their true lineage in late M41. They are savage but insular warriors who fight with ferocious close assault and Reiver shadow-war tactics. Deployed against Chaos such as the Black Legion and Tyranids at the Devastation of Baal, where they lost their Chapter Master and most of their strength. Their flaw is the Red Thirst and Black Rage they long concealed.",
-      "strengths": ["ferocious close combat", "shadow-war raids", "resilience"],
-      "weaknesses": ["Red Thirst", "Black Rage curse"],
+      "strengths": [
+        "ferocious close combat",
+        "shadow-war raids",
+        "resilience"
+      ],
+      "weaknesses": [
+        "Red Thirst",
+        "Black Rage curse"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "savage close assault"
+      "execution_style": "savage close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "stealth": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Celestial Lions",
@@ -123,10 +240,22 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A disciplined, honourable Imperial Fists successor from Elysium IX, using distinctive ranks such as Pride Leader and prizing storytelling and brotherhood. They fight as steadfast sons of Dorn with fast flanking maneuvers and proud line warfare. Famed for opposing the Inquisition after the Khattar atrocity, they were reduced to fewer than a company by Orks on Armageddon amid Inquisitorial sabotage. Their tragic flaw is the dwindling, near-extinct numbers and the enmity of the Imperium's own Inquisition.",
-      "strengths": ["honour and discipline", "tactical flexibility", "Dorn's resolve"],
-      "weaknesses": ["near-extinct numbers", "Inquisition enmity"],
+      "strengths": [
+        "honour and discipline",
+        "tactical flexibility",
+        "Dorn's resolve"
+      ],
+      "weaknesses": [
+        "near-extinct numbers",
+        "Inquisition enmity"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "disciplined honourable line warfare"
+      "execution_style": "disciplined honourable line warfare",
+      "tag_weights": {
+        "resilience": 1,
+        "intel": 1,
+        "fortify": 1
+      }
     },
     {
       "name": "Cowled Wardens",
@@ -134,10 +263,23 @@
       "primarch": "Lion El'Jonson",
       "homebrew": false,
       "lore_summary": "A Dark Angels Unforgiven successor fleet-based in hollowed-out asteroids of the Sirikoid Belt, nominally tasked with purging the savage Jehangir xenos but secretly hunting a large network of the Fallen believed to operate in the region. Captured Fallen are consigned to icy catacombs carved within a nameless asteroid. Lion El'Jonson himself visited them after his awakening and led the Chapter to final victory over the Jehangir species. They joined three-quarters of the Unforgiven in the Battle of Idolatros hunting the Greater Daemon Vashtorr during the Arks of Omen campaign.",
-      "strengths": ["Fallen-hunting expertise", "void operations from asteroid bases", "Inner Circle discipline"],
-      "weaknesses": ["extreme secrecy", "Fallen pursuit overrides broader duties"],
+      "strengths": [
+        "Fallen-hunting expertise",
+        "void operations from asteroid bases",
+        "Inner Circle discipline"
+      ],
+      "weaknesses": [
+        "extreme secrecy",
+        "Fallen pursuit overrides broader duties"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "secretive pursuit and capture"
+      "execution_style": "secretive pursuit and capture",
+      "tag_weights": {
+        "intel": 2,
+        "stealth": 2,
+        "elimination": 1,
+        "void": 1
+      }
     },
     {
       "name": "Crimson Fists",
@@ -145,10 +287,23 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A stoic Imperial Fists successor reduced to just 16 survivors when a faltering planetary-defence missile detonated their arsenal on Rynn's World, devastating the Chapter. They are masters of siege warfare, marksmanship and grim last-stand defence, fighting with disciplined resilience against impossible odds. Historically deployed against Orks and Chaos across the Loki Sector. Their defining trait is dogged endurance born of near-extinction and Dorn's stubborn refusal to yield.",
-      "strengths": ["siege and defence", "marksmanship", "stubborn resilience"],
-      "weaknesses": ["depleted numbers", "slow to rebuild"],
+      "strengths": [
+        "siege and defence",
+        "marksmanship",
+        "stubborn resilience"
+      ],
+      "weaknesses": [
+        "depleted numbers",
+        "slow to rebuild"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "methodical siege and defence"
+      "execution_style": "methodical siege and defence",
+      "tag_weights": {
+        "resilience": 2,
+        "defensive": 1,
+        "fortify": 1,
+        "stealth": -1
+      }
     },
     {
       "name": "Dark Angels",
@@ -156,10 +311,23 @@
       "primarch": "Lion El'Jonson",
       "homebrew": false,
       "lore_summary": "The secretive First Legion and leaders of the Unforgiven, organised around the Inner Circle, Deathwing and Ravenwing. They employ versatile combined-arms doctrine, from Terminator strikes to fast bike assaults, with grim discipline. Deployed across all fronts but obsessively hunting the Fallen traitors of their own bloodline against Chaos. Their flaw is the corrosive secrecy and shame of the Fallen that drives them to dangerous ends.",
-      "strengths": ["elite Deathwing/Ravenwing", "combined-arms versatility", "unyielding discipline"],
-      "weaknesses": ["obsessive secrecy", "shame of the Fallen"],
+      "strengths": [
+        "elite Deathwing/Ravenwing",
+        "combined-arms versatility",
+        "unyielding discipline"
+      ],
+      "weaknesses": [
+        "obsessive secrecy",
+        "shame of the Fallen"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "disciplined combined-arms strikes"
+      "execution_style": "disciplined combined-arms strikes",
+      "tag_weights": {
+        "intel": 2,
+        "stealth": 1,
+        "faith": 1,
+        "elimination": 1
+      }
     },
     {
       "name": "Dark Krakens",
@@ -167,10 +335,23 @@
       "primarch": "Vulkan",
       "homebrew": false,
       "lore_summary": "A Salamanders successor raised from Greyshields and based on the ocean world Naktis, where the native population hunts bioluminescent megafauna for sport and survival. Echoing this culture, the Dark Krakens seek out the largest and most numerous foes, fighting with all the resilience and stubbornness of their gene-sire Vulkan. Deployed against Hive Fleet Leviathan in the Pankallis Sub-sector's Cordon Impenetra, they fought gruelling months-long campaigns in alien forests with patient skirmish tactics and steadfast refusal to yield. Battle-brothers adorn their armour with bioluminescent symbols and ocean-beast trophies as campaign markings.",
-      "strengths": ["hunting the strongest foes", "Vulkan's resilience and tenacity", "patient skirmish warfare"],
-      "weaknesses": ["newly founded, limited tradition", "homeworld's isolating ocean culture"],
+      "strengths": [
+        "hunting the strongest foes",
+        "Vulkan's resilience and tenacity",
+        "patient skirmish warfare"
+      ],
+      "weaknesses": [
+        "newly founded, limited tradition",
+        "homeworld's isolating ocean culture"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "patient predatory hunting assault"
+      "execution_style": "patient predatory hunting assault",
+      "tag_weights": {
+        "terminus": 2,
+        "resilience": 1,
+        "stealth": 1,
+        "aggressive": 1
+      }
     },
     {
       "name": "Death Exorcists",
@@ -178,10 +359,23 @@
       "primarch": "Sanguinius",
       "homebrew": true,
       "lore_summary": "A Blood Angels successor chapter who have rejected the Sanguinary curse as a sacred gift, naming it instead \"Horus's plague\" — a corruption to be actively purged. They cultivate an unusually strong psyker tradition and rigorous mental discipline to resist the Red Thirst and Black Rage on their own terms rather than endure it. Their combat doctrine favours brutal shock assault followed by scorched-earth denial of the battlefield, ensuring no enemy and no taint remains. Brothers who resist the Rage without succumbing are honoured as proof that the plague can be exorcised by will and psychic clarity alone.",
-      "strengths": ["Rage resistance through psychic discipline", "shock assault doctrine", "scorched-earth denial"],
-      "weaknesses": ["still carries Sanguinary gene-seed curse", "extreme tactical destructiveness"],
+      "strengths": [
+        "Rage resistance through psychic discipline",
+        "shock assault doctrine",
+        "scorched-earth denial"
+      ],
+      "weaknesses": [
+        "still carries Sanguinary gene-seed curse",
+        "extreme tactical destructiveness"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "psychic shock assault with scorched-earth follow-through"
+      "execution_style": "psychic shock assault with scorched-earth follow-through",
+      "tag_weights": {
+        "void": 1,
+        "aggressive": 2,
+        "suppression": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Death Spectres",
@@ -189,10 +383,23 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "A Raven Guard successor of the mysterious 13th Founding, garrisoned on the cemetery world Occludus to guard the galaxy against the horrors of the Ghoul Stars. They favour stealth, infiltration and guerrilla tactics, and venerate death, requiring aspirants to return from near-death by will alone. Deployed against Necron Flayed Ones, Cythor Fiends and other deathless xenos, plus Chaos during the 13th Black Crusade. Their gene-seed quirk causes albinism, and their Chapter Master slowly dies upon the psychic Throne of Glass.",
-      "strengths": ["stealth infiltration", "death-defying will", "xenos containment"],
-      "weaknesses": ["isolated and unsupported", "draining Shariax burden"],
+      "strengths": [
+        "stealth infiltration",
+        "death-defying will",
+        "xenos containment"
+      ],
+      "weaknesses": [
+        "isolated and unsupported",
+        "draining Shariax burden"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "stealthy guerrilla raids"
+      "execution_style": "stealthy guerrilla raids",
+      "tag_weights": {
+        "stealth": 2,
+        "elimination": 1,
+        "resilience": 1,
+        "void": 1
+      }
     },
     {
       "name": "Dragonspears",
@@ -200,10 +407,23 @@
       "primarch": "Vulkan",
       "homebrew": false,
       "lore_summary": "A fleet-based Salamanders successor renowned as expert Greenskin hunters, winning renown alongside the Space Wolves against Orks at the Gnarion Reef. Their culture of self-sacrifice and endocannibalism — using their Omophagea implants to consume a portion of fallen brothers and preserve their memories — embodies Vulkan's creed that no brother is ever truly lost. They deployed eight companies in the Prosperan Rift War against the Thousand Sons and later honoured ancient oaths of brotherhood to join the Space Wolves against Ghazghkull Thraka's Great WAAAGH!. Their constant fleet movement made contact with the Salamanders difficult for many years.",
-      "strengths": ["Ork-hunting expertise", "Space Wolves brotherhood", "fierce self-sacrifice"],
-      "weaknesses": ["unconventional endocannibalism culture", "perpetually fleet-based and isolated"],
+      "strengths": [
+        "Ork-hunting expertise",
+        "Space Wolves brotherhood",
+        "fierce self-sacrifice"
+      ],
+      "weaknesses": [
+        "unconventional endocannibalism culture",
+        "perpetually fleet-based and isolated"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "aggressive close-assault Ork hunting"
+      "execution_style": "aggressive close-assault Ork hunting",
+      "tag_weights": {
+        "aggressive": 2,
+        "terminus": 1,
+        "resilience": 1,
+        "stealth": -1
+      }
     },
     {
       "name": "Epsilon Paladins",
@@ -211,10 +431,23 @@
       "primarch": "Rogal Dorn",
       "homebrew": true,
       "lore_summary": "Fleet-based Imperial Fists successors founded in the Era Indomitus under Chapter Master Dekra Akalius, bearing silver armour with a golden left arm. They roam the galaxy seeking faltering Imperial bastions and those in desperate need, mastering both defensive siege warfare and proactive honour charges. Active in Segmentum Pacificus and deployed to the Recidious System during the Fourth Tyrannic War alongside their progenitor chapter. Their warcry is 'For Honour! For Duty! For Dorn!'",
-      "strengths": ["siege and fortification", "honour charge shock assault", "brotherhood"],
-      "weaknesses": ["stealth and infiltration", "low starting numbers"],
+      "strengths": [
+        "siege and fortification",
+        "honour charge shock assault",
+        "brotherhood"
+      ],
+      "weaknesses": [
+        "stealth and infiltration",
+        "low starting numbers"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "siege hold and shock assault"
+      "execution_style": "siege hold and shock assault",
+      "tag_weights": {
+        "fortify": 2,
+        "aggressive": 1,
+        "resilience": 1,
+        "terminus": 1
+      }
     },
     {
       "name": "Exorcists",
@@ -222,10 +455,23 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A highly controversial Imperial Fists successor created under Inquisitorial seal to combat daemons, whose aspirants must survive ritual daemonic possession and exorcism. Codex-compliant but organised into twelve companies, they are exceptional daemon-hunters resistant to Chaos corruption. Historically deployed against the daemons and forces of Chaos, fighting them on par with the Grey Knights. Their flaw is the heretical taint of their initiation, which would see them purged if widely known.",
-      "strengths": ["daemon-hunting", "Chaos corruption resistance", "stoic resolve"],
-      "weaknesses": ["heretical reputation", "possession risk"],
+      "strengths": [
+        "daemon-hunting",
+        "Chaos corruption resistance",
+        "stoic resolve"
+      ],
+      "weaknesses": [
+        "heretical reputation",
+        "possession risk"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "anti-daemon close combat"
+      "execution_style": "anti-daemon close combat",
+      "tag_weights": {
+        "faith": 2,
+        "void": 1,
+        "elimination": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Flesh Tearers",
@@ -233,10 +479,23 @@
       "primarch": "Sanguinius",
       "homebrew": false,
       "lore_summary": "A savage Blood Angels successor led by Chapter Master Gabriel Seth, defined by an abnormally severe susceptibility to the Red Thirst and Black Rage. They strike first and alone with frenzied, blood-soaked close-assault savagery, distrusted by allies for their loss of control. Historically deployed against Tyranids at the Devastation of Baal and Chaos traitors, nearly excommunicated after atrocities on Armageddon. Their flaw is the genetic curse that has driven them to the brink of extinction.",
-      "strengths": ["frenzied melee fury", "strike-first aggression", "veteran ferocity"],
-      "weaknesses": ["severe Black Rage", "near-extinction"],
+      "strengths": [
+        "frenzied melee fury",
+        "strike-first aggression",
+        "veteran ferocity"
+      ],
+      "weaknesses": [
+        "severe Black Rage",
+        "near-extinction"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "frenzied blood-soaked close assault"
+      "execution_style": "frenzied blood-soaked close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "elimination": 2,
+        "stealth": -2,
+        "intel": -1
+      }
     },
     {
       "name": "Genesis Chapter",
@@ -244,10 +503,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "The first of the Ultramarines' Primogenitor successors, dogmatically loyal to Guilliman and the Codex Astartes from their homeworld Newfound. They fight as model Codex Marines with balanced, disciplined combined-arms doctrine, often filling gaps in Ultramarine companies. Deployed broadly against Orks, Chaos and Tyranids including Exterminatus missions ahead of Hive Fleet Leviathan. Their defining trait is rigid Codex orthodoxy and unwavering devotion to their primarch.",
-      "strengths": ["pure Codex discipline", "Ultramarine cooperation", "stable gene-seed"],
-      "weaknesses": ["doctrinal rigidity", "little autonomy"],
+      "strengths": [
+        "pure Codex discipline",
+        "Ultramarine cooperation",
+        "stable gene-seed"
+      ],
+      "weaknesses": [
+        "doctrinal rigidity",
+        "little autonomy"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "balanced Codex combined-arms"
+      "execution_style": "balanced Codex combined-arms",
+      "tag_weights": {
+        "fortify": 1,
+        "intel": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Hawk Lords",
@@ -255,10 +526,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "A Codex Chapter from Preyspire suspected to descend from the Ultramarines Legion's 21st Chapter, 'The Hawks', renowned for the skill of their pilots. They eschew drop pods in favour of Thunderhawk and Stormtalon air insertion, mastering low-altitude aerial assault and rapid strikes. Deployed against Orks during the War of the Beast, Chaos at Cadia, and unknown xenos near their homeworld. Their conflicting recorded lineage and reliance on air power are their notable traits.",
-      "strengths": ["aerial insertion mastery", "skilled pilots", "fast mobile strikes"],
-      "weaknesses": ["air-power dependence", "contested lineage"],
+      "strengths": [
+        "aerial insertion mastery",
+        "skilled pilots",
+        "fast mobile strikes"
+      ],
+      "weaknesses": [
+        "air-power dependence",
+        "contested lineage"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "airborne rapid strike"
+      "execution_style": "airborne rapid strike",
+      "tag_weights": {
+        "aggressive": 1,
+        "stealth": 1,
+        "elimination": 1
+      }
     },
     {
       "name": "Hospitallers",
@@ -266,10 +549,24 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A fleet-based Imperial Fists successor famous for rejecting the Codex Astartes, organising into only three companies built around sacred vows: defeating the Emperor's foes, protecting His faithful, and eternal vigilance. Uniquely among Space Marines, they recognise the Emperor as a literal god and maintain close ties with the Adeptus Ministorum, serving as itinerant crusaders guarding Imperial trade and pilgrimage routes. Their secretive veteran elite 'The Vigil' operates outside the three-company structure. They harbour bitter enmity toward the Iron Hands after Clan Raukaan boarded their flagship and abducted their Venerable Dreadnought Augustine Galvarro.",
-      "strengths": ["faith-driven resilience", "protection of Imperial routes and faithful", "Vigil veteran elite"],
-      "weaknesses": ["non-Codex organisation", "Iron Hands enmity", "faith over tactical flexibility"],
+      "strengths": [
+        "faith-driven resilience",
+        "protection of Imperial routes and faithful",
+        "Vigil veteran elite"
+      ],
+      "weaknesses": [
+        "non-Codex organisation",
+        "Iron Hands enmity",
+        "faith over tactical flexibility"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "faithful crusading protective warfare"
+      "execution_style": "faithful crusading protective warfare",
+      "tag_weights": {
+        "faith": 2,
+        "resilience": 2,
+        "recovery": 1,
+        "defensive": 1
+      }
     },
     {
       "name": "Imperial Fists",
@@ -277,10 +574,23 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "The stalwart sons of Rogal Dorn, the Imperium's foremost masters of siege warfare and fortification, defenders of the Emperor's Palace during the Heresy. They excel at defensive lines, marksmanship and breaking or holding fortresses with iron discipline. Deployed across all theatres against Chaos, Orks and rebels, ever bearing Dorn's legacy. Their flaw is an obsessive sense of duty and self-flagellating guilt, and a stubbornness in the face of stronger foes.",
-      "strengths": ["siegecraft mastery", "fortification and defence", "marksmanship"],
-      "weaknesses": ["obsessive guilt", "stubborn inflexibility"],
+      "strengths": [
+        "siegecraft mastery",
+        "fortification and defence",
+        "marksmanship"
+      ],
+      "weaknesses": [
+        "obsessive guilt",
+        "stubborn inflexibility"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "methodical siege warfare"
+      "execution_style": "methodical siege warfare",
+      "tag_weights": {
+        "fortify": 2,
+        "defensive": 2,
+        "suppression": 1,
+        "stealth": -1
+      }
     },
     {
       "name": "Imperius Reavers",
@@ -288,10 +598,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "An Ultramarines successor holding dominion over the turbulent Vidar Sector on the Eastern Fringe, a volatile region plagued by alien threats, daemon incursions and corrupt noble families. Veterans of the First Tyrannic War, their 2nd Company 'The Stormbringers' are renowned experts at detecting and eradicating Genestealer hybrid cults. They cleansed their own homeworld Praedis Zeta of a Genestealer Magus's corruption in 645.M39, showcasing their defining role as relentless hunters of xenos infiltration. They serve as a steadfast bulwark against the twin threats of the alien and the daemon at the galaxy's far eastern edge.",
-      "strengths": ["Genestealer cult detection and purging", "Tyranid expertise", "Eastern Fringe xenos experience"],
-      "weaknesses": ["isolated far from the core Imperium", "volatile corrupt political environment in their sector"],
+      "strengths": [
+        "Genestealer cult detection and purging",
+        "Tyranid expertise",
+        "Eastern Fringe xenos experience"
+      ],
+      "weaknesses": [
+        "isolated far from the core Imperium",
+        "volatile corrupt political environment in their sector"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "methodical alien-hunting operations"
+      "execution_style": "methodical alien-hunting operations",
+      "tag_weights": {
+        "intel": 2,
+        "terminus": 1,
+        "elimination": 1
+      }
     },
     {
       "name": "Iron Hands",
@@ -299,10 +621,23 @@
       "primarch": "Ferrus Manus",
       "homebrew": false,
       "lore_summary": "The cold, logical sons of Ferrus Manus, who abhor the weakness of flesh and replace their bodies with cybernetic augmetics. They wage methodical attrition warfare with heavy firepower, armour and unmatched mechanised resilience. Deployed broadly against Chaos, Orks and xenos, harbouring grudges since the betrayal at Isstvan V. Their flaw is an emotionless contempt for weakness and over-reliance on technology that can blind them.",
-      "strengths": ["cybernetic resilience", "heavy firepower", "mechanised warfare"],
-      "weaknesses": ["contempt for weakness", "emotional coldness"],
+      "strengths": [
+        "cybernetic resilience",
+        "heavy firepower",
+        "mechanised warfare"
+      ],
+      "weaknesses": [
+        "contempt for weakness",
+        "emotional coldness"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "methodical attrition warfare"
+      "execution_style": "methodical attrition warfare",
+      "tag_weights": {
+        "tech": 2,
+        "resilience": 2,
+        "faith": -1,
+        "aggressive": -1
+      }
     },
     {
       "name": "Iron Hounds",
@@ -310,10 +645,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "An Ultramarines successor from Orinus in the Ultima Segmentum, renowned for relentless pursuit that continues until every last foe is slain. Steadfast allies of the Ultramarines, they pledged warriors to the defence of Ultramar in the Plague Wars against the Death Guard and at the Third War for Damnos against the Szarekhan Dynasty Necrons. They subsequently joined the assault on the Scourge Stars to take the fight to Nurgle's daemon-held worlds, and Imperial high command believes the entire Chapter may have been destroyed there. Their defining trait is an iron refusal to abandon the hunt regardless of cost.",
-      "strengths": ["relentless pursuit", "Ultramarines alliance and cooperation", "stubborn refusal to quit"],
-      "weaknesses": ["may be destroyed fighting in the Scourge Stars", "relentlessness causes overextension"],
+      "strengths": [
+        "relentless pursuit",
+        "Ultramarines alliance and cooperation",
+        "stubborn refusal to quit"
+      ],
+      "weaknesses": [
+        "may be destroyed fighting in the Scourge Stars",
+        "relentlessness causes overextension"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "relentless pursuit to total annihilation"
+      "execution_style": "relentless pursuit to total annihilation",
+      "tag_weights": {
+        "resilience": 2,
+        "aggressive": 1,
+        "suppression": 1
+      }
     },
     {
       "name": "Iron Lords",
@@ -321,10 +668,23 @@
       "primarch": "Ferrus Manus",
       "homebrew": false,
       "lore_summary": "A Codex-compliant Iron Hands successor noted for stern demeanour and uncompromising hatred of all xenos life, maintaining the blockade of the Grendl Stars since M38. They fight with disciplined firepower and cybernetic resilience to confine the hyper-violent Barghesi and battle encroaching threats. Historically deployed against the Barghesi, Tyranids of Hive Fleet Kraken and the T'au. Their flaw is isolation in Imperium Nihilus, cut off from reinforcement amid endless desperate battles.",
-      "strengths": ["xenos-hunting zeal", "cybernetic durability", "disciplined firepower"],
-      "weaknesses": ["isolated and unsupported", "extreme xenophobia"],
+      "strengths": [
+        "xenos-hunting zeal",
+        "cybernetic durability",
+        "disciplined firepower"
+      ],
+      "weaknesses": [
+        "isolated and unsupported",
+        "extreme xenophobia"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "disciplined firepower attrition"
+      "execution_style": "disciplined firepower attrition",
+      "tag_weights": {
+        "terminus": 1,
+        "tech": 1,
+        "resilience": 1,
+        "suppression": 1
+      }
     },
     {
       "name": "Iron Ravens",
@@ -332,10 +692,22 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "A Raven Guard Primaris successor specialising in sudden decisive drop assaults called 'the Blade of Corax', where 10th Company scouts spend months building intelligence so the main force strikes with overwhelming and unstoppable precision. Unlike more rigidly stealth-focused Raven Guard successors, they are tactically flexible, shaped by their Greyshield experience fighting alongside warriors of many gene-lines during the Indomitus Crusade. They are not solely committed to stealth, adapting their doctrine to whatever enemy and theatre they face. They bear their iron resolve as their defining Chapter identity.",
-      "strengths": ["intelligence-led drop assault", "tactical flexibility", "adaptive doctrine"],
-      "weaknesses": ["months of preparation required before striking", "newly founded with limited tradition"],
+      "strengths": [
+        "intelligence-led drop assault",
+        "tactical flexibility",
+        "adaptive doctrine"
+      ],
+      "weaknesses": [
+        "months of preparation required before striking",
+        "newly founded with limited tradition"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "precision intelligence-led drop assault"
+      "execution_style": "precision intelligence-led drop assault",
+      "tag_weights": {
+        "intel": 2,
+        "stealth": 1,
+        "aggressive": 1
+      }
     },
     {
       "name": "Knights of the Raven",
@@ -343,10 +715,23 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "A secretive Codex-compliant Raven Guard successor from the feudal world Coralax, so reclusive that even the Deathwatch and Inquisition know little of them. They wage stealthy hit-and-run guerrilla warfare using the Raven Guard ambush doctrine and a cryptic battle-tongue. As penance for shedding fellow Astartes' blood, they now fight a guerrilla war against splinters of Hive Fleet Kraken. Their flaw is extreme secrecy and isolation from the wider Imperium.",
-      "strengths": ["stealth ambush", "guerrilla mobility", "operational secrecy"],
-      "weaknesses": ["isolation", "penitent obligation"],
+      "strengths": [
+        "stealth ambush",
+        "guerrilla mobility",
+        "operational secrecy"
+      ],
+      "weaknesses": [
+        "isolation",
+        "penitent obligation"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "stealthy hit-and-run guerrilla"
+      "execution_style": "stealthy hit-and-run guerrilla",
+      "tag_weights": {
+        "stealth": 2,
+        "intel": 1,
+        "elimination": 1,
+        "aggressive": -1
+      }
     },
     {
       "name": "Lamenters",
@@ -354,10 +739,22 @@
       "primarch": "Sanguinius",
       "homebrew": false,
       "lore_summary": "A tragic Blood Angels successor of the Cursed Founding, dogged by relentless misfortune despite their heroic compassion. A flexible, self-reliant fleet-based Chapter, they fight pragmatically and adapt to scarce resources after fighting without Imperial support. They sided mistakenly with the rebels in the Badab War, then were reduced to barely three companies battling Tyranids of Hive Fleet Kraken on their penitent crusade. Their flaw is supernatural ill-fortune and the eventual return of the Black Rage.",
-      "strengths": ["adaptability", "self-reliance", "unbreakable compassion"],
-      "weaknesses": ["cursed misfortune", "perpetually depleted"],
+      "strengths": [
+        "adaptability",
+        "self-reliance",
+        "unbreakable compassion"
+      ],
+      "weaknesses": [
+        "cursed misfortune",
+        "perpetually depleted"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "pragmatic adaptive warfare"
+      "execution_style": "pragmatic adaptive warfare",
+      "tag_weights": {
+        "resilience": 2,
+        "recovery": 1,
+        "defensive": 1
+      }
     },
     {
       "name": "Marines Errant",
@@ -365,10 +762,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "A fleet-based Ultramarines-lineage Chapter, credited as a successor of the Eagle Warriors, whose battle-brothers crusade independently across the galaxy. They follow a Codex doctrine modified for autonomous fleet operations, with captains commanding individual vessels for years at a time. Deployed in the Corinth Crusade against Orks and the Badab War, where they were ambushed and badly mauled by the Mantis Warriors. Their flaw is the heavy losses and command decapitation suffered at Bellerophon's Fall and Vilamus.",
-      "strengths": ["fleet autonomy", "crusading flexibility", "Codex discipline"],
-      "weaknesses": ["overextended forces", "vulnerable to ambush"],
+      "strengths": [
+        "fleet autonomy",
+        "crusading flexibility",
+        "Codex discipline"
+      ],
+      "weaknesses": [
+        "overextended forces",
+        "vulnerable to ambush"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "autonomous fleet crusading"
+      "execution_style": "autonomous fleet crusading",
+      "tag_weights": {
+        "recovery": 1,
+        "intel": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "Mentors",
@@ -376,10 +785,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "A cerebral Ultramarines successor and former 'Mentor Legion' that acts as a test-bed for experimental Imperial military technology from a secret fortress-monastery. They loan elite squads to other Imperial forces, serving as special-operations troops and force-multiplying unit leaders much like the Deathwatch. Deployed in highly specialised missions across the galaxy against varied foes, valuing knowledge and adaptability above all. Their trait is extreme secrecy and an extraordinary capacity for learning the art of war.",
-      "strengths": ["tactical adaptability", "advanced wargear", "special-operations skill"],
-      "weaknesses": ["scattered deployments", "secrecy and small presence"],
+      "strengths": [
+        "tactical adaptability",
+        "advanced wargear",
+        "special-operations skill"
+      ],
+      "weaknesses": [
+        "scattered deployments",
+        "secrecy and small presence"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "adaptive special-operations tactics"
+      "execution_style": "adaptive special-operations tactics",
+      "tag_weights": {
+        "intel": 2,
+        "tech": 1,
+        "stealth": 1
+      }
     },
     {
       "name": "Minotaurs",
@@ -387,10 +808,23 @@
       "primarch": "Unknown",
       "homebrew": false,
       "lore_summary": "A brutal, secretive Chapter acting as the enforcers of the High Lords of Terra, specialising in fighting other Space Marines. Led by Asterion Moloc, they combine masterful siegecraft and logistics with savage melee and overwhelming weight of numbers and rare wargear. Notoriously deployed during the Badab War to ambush the Lamenters and force their surrender, and against the Necrons in the Orphean War. Their flaw is a paranoid, bloody-handed ruthlessness and pragmatism that borders on the dishonourable.",
-      "strengths": ["vast rare wargear", "siegecraft and logistics", "brutal melee"],
-      "weaknesses": ["paranoid and aloof", "dishonourable pragmatism"],
+      "strengths": [
+        "vast rare wargear",
+        "siegecraft and logistics",
+        "brutal melee"
+      ],
+      "weaknesses": [
+        "paranoid and aloof",
+        "dishonourable pragmatism"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "brutal siege and melee"
+      "execution_style": "brutal siege and melee",
+      "tag_weights": {
+        "aggressive": 2,
+        "suppression": 2,
+        "fortify": 1,
+        "stealth": -2
+      }
     },
     {
       "name": "Necropolis Hawks",
@@ -398,10 +832,22 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "A Raven Guard Primaris successor extensively trained in close-quarters urban warfare, veterans of a dozen brutal city-fights. Their pragmatic brutality and relentlessly measured aggression turned the tide on Vigilus during the War of Beasts, taking the Dontoria hivesprawl building by building and ruthlessly demolishing zones deemed lost. They deployed to the Fourth Tyrannic War to defend the Segmentum Pacificus from Hive Fleet Leviathan and fought in the Nachmund Rift War. Battle-brothers bear their tactical insignia on their backpacks so comrades can identify them even through the choking smoke and dust of urban war.",
-      "strengths": ["urban close-quarters warfare", "pragmatic ruthless efficiency", "veteran city-fighters"],
-      "weaknesses": ["may struggle in open-field engagements", "Drukhari captured several battle-brothers on Vigilus"],
+      "strengths": [
+        "urban close-quarters warfare",
+        "pragmatic ruthless efficiency",
+        "veteran city-fighters"
+      ],
+      "weaknesses": [
+        "may struggle in open-field engagements",
+        "Drukhari captured several battle-brothers on Vigilus"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "methodical urban close-quarters assault"
+      "execution_style": "methodical urban close-quarters assault",
+      "tag_weights": {
+        "elimination": 2,
+        "stealth": 1,
+        "suppression": 1
+      }
     },
     {
       "name": "Raptors",
@@ -409,10 +855,23 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "A Raven Guard successor led by Chapter Master Lias Issodon, famed for exceptional survival, marksmanship and adaptation after being driven near extinction multiple times. They are masters of guerrilla warfare, infiltration, sabotage and precision strikes on enemy command and supply. Deployed in the Badab War, the Taros Campaign against the T'au, and across the Indomitus Crusade against Chaos and xenos. Their flaw is chronic understrength from operating as independent companies.",
-      "strengths": ["guerrilla warfare", "superb marksmanship", "resilience and adaptability"],
-      "weaknesses": ["often understrength", "dispersed companies"],
+      "strengths": [
+        "guerrilla warfare",
+        "superb marksmanship",
+        "resilience and adaptability"
+      ],
+      "weaknesses": [
+        "often understrength",
+        "dispersed companies"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "infiltration and precision strikes"
+      "execution_style": "infiltration and precision strikes",
+      "tag_weights": {
+        "stealth": 2,
+        "elimination": 1,
+        "intel": 1,
+        "aggressive": -1
+      }
     },
     {
       "name": "Raven Guard",
@@ -420,10 +879,23 @@
       "primarch": "Corvus Corax",
       "homebrew": false,
       "lore_summary": "The First Founding masters of stealth and lightning warfare, scions of Corvus Corax, who strike fast and lethal from the shadows. They specialise in infiltration, ambush, assassination and precise overwhelming assaults, disdaining reckless frontal charges and heavy armour. Deployed against Chaos, Orks and the T'au on the Eastern Fringe, ever mourning their losses at the Drop Site Massacre. Their flaw is depleted, deteriorating gene-seed and chronically low numbers.",
-      "strengths": ["stealth and infiltration", "lightning precision strikes", "fast mobility"],
-      "weaknesses": ["deteriorating gene-seed", "low numbers"],
+      "strengths": [
+        "stealth and infiltration",
+        "lightning precision strikes",
+        "fast mobility"
+      ],
+      "weaknesses": [
+        "deteriorating gene-seed",
+        "low numbers"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "hit-and-run guerrilla strikes"
+      "execution_style": "hit-and-run guerrilla strikes",
+      "tag_weights": {
+        "stealth": 2,
+        "intel": 1,
+        "elimination": 1,
+        "aggressive": -1
+      }
     },
     {
       "name": "Red Scorpions",
@@ -431,10 +903,22 @@
       "primarch": "Unknown",
       "homebrew": false,
       "lore_summary": "A fleet-based Chapter of fanatical Imperial purists obsessed with the purity of their gene-seed and the divinity of the Emperor, venerating no single primarch. They are rigid Codex literalists who fight with disciplined Tactical-heavy formations and refuse to serve alongside abhumans or 'tainted' Chapters. Deployed at the Siege of Vraks against Chaos and daemons, against Tyranids on Beta Anphelion IV, and in the Badab War. Their flaw is isolationist purity that makes them distrustful and inflexible.",
-      "strengths": ["gene-seed purity", "Codex discipline", "durable Tactical squads"],
-      "weaknesses": ["isolationist intolerance", "inflexible doctrine"],
+      "strengths": [
+        "gene-seed purity",
+        "Codex discipline",
+        "durable Tactical squads"
+      ],
+      "weaknesses": [
+        "isolationist intolerance",
+        "inflexible doctrine"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "disciplined Codex line warfare"
+      "execution_style": "disciplined Codex line warfare",
+      "tag_weights": {
+        "resilience": 1,
+        "fortify": 1,
+        "faith": 1
+      }
     },
     {
       "name": "Red Templars",
@@ -442,10 +926,22 @@
       "primarch": "Rogal Dorn",
       "homebrew": false,
       "lore_summary": "A Codex-compliant Imperial Fists successor of unknown founding, experts in search-and-destroy and relentless pursuit operations. Directly tasked by the High Lords of Terra alongside the Minotaurs to hunt down and destroy the excommunicated Night Reapers Chapter, they served as the persistent hounds pursuing their quarry across a dozen star systems over three years of running battles while the Minotaurs delivered the killing blow at Perun Cross. They make distinctive use of Assault Bikes at the squad level, underscoring their identity as mobile hunters. Their defining trait is the grim, relentless expertise of a Chapter built to run down the condemned.",
-      "strengths": ["search and destroy expertise", "relentless pursuit operations", "mobile combined operations"],
-      "weaknesses": ["limited broader lore record", "Codex rigidity"],
+      "strengths": [
+        "search and destroy expertise",
+        "relentless pursuit operations",
+        "mobile combined operations"
+      ],
+      "weaknesses": [
+        "limited broader lore record",
+        "Codex rigidity"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "search-and-destroy pursuit"
+      "execution_style": "search-and-destroy pursuit",
+      "tag_weights": {
+        "aggressive": 1,
+        "elimination": 1,
+        "stealth": 1
+      }
     },
     {
       "name": "Salamanders",
@@ -453,10 +949,23 @@
       "primarch": "Vulkan",
       "homebrew": false,
       "lore_summary": "The resilient, humane sons of Vulkan from the death world Nocturne, master artificers who prize self-sacrifice and protecting innocents. They favour flame and melta weapons, master-crafted wargear and close-range firefights, fighting with stoic endurance. Deployed broadly against Chaos, Orks and xenos, notably in the Badab War. Their notable traits are their onyx-black skin and burning red eyes, deep humanity, and relatively small numbers from slow Nocturnean recruitment.",
-      "strengths": ["flame and melta firepower", "master-crafted wargear", "resilience and humanity"],
-      "weaknesses": ["small numbers", "slow recruitment"],
+      "strengths": [
+        "flame and melta firepower",
+        "master-crafted wargear",
+        "resilience and humanity"
+      ],
+      "weaknesses": [
+        "small numbers",
+        "slow recruitment"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "close-range flame warfare"
+      "execution_style": "close-range flame warfare",
+      "tag_weights": {
+        "resilience": 2,
+        "tech": 1,
+        "faith": 1,
+        "suppression": 1
+      }
     },
     {
       "name": "Scythes of the Emperor",
@@ -464,10 +973,23 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "An Ultramarines successor from Sotha, descended from veterans who guarded the Pharos, whose homeworld was devoured by Hive Fleet Kraken. Reduced to barely a company, they wage a vengeful war against the Tyranids using hit-and-run tactics and boarding 'Saviour Squads' to recover battle-brothers and wargear from hive ships. Defined by their near-annihilation at the Giant's Coffin on Miral and rebuilding via Primaris reinforcements. Their flaw is catastrophic understrength and the trauma of genestealer infiltration.",
-      "strengths": ["Tyranid expertise", "void boarding actions", "vengeful resilience"],
-      "weaknesses": ["near-extinction", "trauma and scarcity"],
+      "strengths": [
+        "Tyranid expertise",
+        "void boarding actions",
+        "vengeful resilience"
+      ],
+      "weaknesses": [
+        "near-extinction",
+        "trauma and scarcity"
+      ],
       "faction_affinity": "tyranid",
-      "execution_style": "vengeful hit-and-run boarding"
+      "execution_style": "vengeful hit-and-run boarding",
+      "tag_weights": {
+        "terminus": 2,
+        "void": 1,
+        "resilience": 1,
+        "aggressive": 1
+      }
     },
     {
       "name": "Sons of Medusa",
@@ -475,10 +997,23 @@
       "primarch": "Ferrus Manus",
       "homebrew": false,
       "lore_summary": "An Iron Hands successor born from the Moirae Schism exiles, organised into War Clans and ratified as a Chapter by Imperial edict in 011.M37. Like their forebears they abhor weak flesh and rely on cybernetics, favouring aggressive armoured spearheads and mechanised assault. Deployed in the Badab War, the Great Cull and against Chaos at Mordian, and notorious for seizing wargear from foes. Their flaw is a reputation as scavenging 'carrion crows' and lingering distrust from their schismatic origins.",
-      "strengths": ["armoured spearheads", "cybernetic resilience", "vast forge resources"],
-      "weaknesses": ["scavenger reputation", "schismatic distrust"],
+      "strengths": [
+        "armoured spearheads",
+        "cybernetic resilience",
+        "vast forge resources"
+      ],
+      "weaknesses": [
+        "scavenger reputation",
+        "schismatic distrust"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "aggressive armoured spearhead"
+      "execution_style": "aggressive armoured spearhead",
+      "tag_weights": {
+        "tech": 2,
+        "resilience": 1,
+        "aggressive": 1,
+        "faith": -1
+      }
     },
     {
       "name": "Space Wolves",
@@ -486,10 +1021,24 @@
       "primarch": "Leman Russ",
       "homebrew": false,
       "lore_summary": "The fierce, independent sons of Leman Russ from Fenris, organised into Great Companies and defiant of the Codex Astartes. They fight with savage pack-hunting close assault, terror tactics and ferocious melee, blending Fenrisian barbarism with cunning. Deployed across all theatres against Chaos, Orks and traitors as the Emperor's executioners. Their flaw is the genetic Curse of the Wolfen and the Canis Helix that can turn battle-brothers into beasts, and their disdain for outside authority.",
-      "strengths": ["savage close combat", "pack-hunting tactics", "fierce independence"],
-      "weaknesses": ["Curse of the Wolfen", "defiance of authority"],
+      "strengths": [
+        "savage close combat",
+        "pack-hunting tactics",
+        "fierce independence"
+      ],
+      "weaknesses": [
+        "Curse of the Wolfen",
+        "defiance of authority"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "savage pack-hunting assault"
+      "execution_style": "savage pack-hunting assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "terminus": 1,
+        "resilience": 1,
+        "stealth": -1,
+        "intel": -1
+      }
     },
     {
       "name": "Storm Giants",
@@ -497,10 +1046,22 @@
       "primarch": "Vulkan (suspected)",
       "homebrew": false,
       "lore_summary": "A Codex-compliant Chapter of unknown origins created in the 36th Millennium or earlier, widely suspected to be Salamanders successors due to their similar physique, markings and tactical preference for close-range firefights. They display heightened physical strength even for Space Marines, possibly due to a mutation in their Biscopea gene-seed organ, though the Chapter has refused every Magi-genetor request to study them. They sent five companies to the Third War for Armageddon and fought alongside the Black Templars purging Chaos cultists during the Second Purging of Lastrati. Their four-stage Vindicator-supported assault doctrine is a signature of their close-range firepower approach.",
-      "strengths": ["exceptional physical strength", "close-range firepower", "coordinated Vindicator-supported assault"],
-      "weaknesses": ["gene-seed secrecy breeds suspicion", "unknown founding strains Mechanicus relations"],
+      "strengths": [
+        "exceptional physical strength",
+        "close-range firepower",
+        "coordinated Vindicator-supported assault"
+      ],
+      "weaknesses": [
+        "gene-seed secrecy breeds suspicion",
+        "unknown founding strains Mechanicus relations"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "close-range firepower and armoured assault"
+      "execution_style": "close-range firepower and armoured assault",
+      "tag_weights": {
+        "suppression": 2,
+        "aggressive": 1,
+        "fortify": 1
+      }
     },
     {
       "name": "Tempestuous Angels",
@@ -508,10 +1069,23 @@
       "primarch": "Vulkan",
       "homebrew": true,
       "lore_summary": "A Salamanders successor chapter known informally as the \"Emperor's Altruists,\" who hold the protection of the defenceless as their highest calling above all tactical considerations. Their history is bound to the tragedy of Drossmire, a world lost to fire — an event that shapes their doctrine and their grief in equal measure. They combine Vulkan's selfless creed with a storm-and-shield iconography, casting themselves as the wall between the innocent and the tempest. Self-sacrifice in defence of others is not merely expected but celebrated, and they field a disproportionate number of warriors trained in protective close-assault.",
-      "strengths": ["fierce protective assault doctrine", "civilian-shield close combat", "Salamanders resilience"],
-      "weaknesses": ["defensive posture limits aggressive output", "high self-sacrifice casualty rate"],
+      "strengths": [
+        "fierce protective assault doctrine",
+        "civilian-shield close combat",
+        "Salamanders resilience"
+      ],
+      "weaknesses": [
+        "defensive posture limits aggressive output",
+        "high self-sacrifice casualty rate"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "protective defensive close-assault"
+      "execution_style": "protective defensive close-assault",
+      "tag_weights": {
+        "resilience": 2,
+        "defensive": 1,
+        "faith": 1,
+        "aggressive": 1
+      }
     },
     {
       "name": "The Drakes",
@@ -519,10 +1093,23 @@
       "primarch": "Vulkan",
       "homebrew": true,
       "lore_summary": "A Salamanders successor chapter whose culture is built entirely around fire as both purification and weapon. They hold that fire reveals what must be preserved and destroys what must not be, and their initiation rites involve sustained exposure to intense heat as proof of the drake's temper within. Their name invokes the primordial drake — older and more primal than the dragon — and they employ overwhelming incendiary assault as both tactical doctrine and spiritual act. They are fiercely protective of their battle-brothers in the way a drake guards its brood, binding themselves to those they fight beside through fire-forged oaths.",
-      "strengths": ["incendiary assault mastery", "fire-hardened resilience", "brood-bond brotherhood"],
-      "weaknesses": ["limited tactical flexibility outside incendiary doctrine", "fire specialisation creates collateral risk"],
+      "strengths": [
+        "incendiary assault mastery",
+        "fire-hardened resilience",
+        "brood-bond brotherhood"
+      ],
+      "weaknesses": [
+        "limited tactical flexibility outside incendiary doctrine",
+        "fire specialisation creates collateral risk"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "overwhelming incendiary close assault"
+      "execution_style": "overwhelming incendiary close assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "resilience": 1,
+        "tech": 1,
+        "faith": 1
+      }
     },
     {
       "name": "Tome Keepers",
@@ -530,10 +1117,23 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "An Ultramarines successor from the irradiated Desert World Istrouma in Segmentum Pacificus, founded after the War of the Beast. They are warriors and scholars equally, keeping meticulous records of every battle and foe, driven by the short-lived culture of their homeworld where everything must be chronicled against the certainty of early death. They favour clinical battlefield discipline and deep knowledge of their enemies over brute aggression, and field an unusually high number of Librarians. They waged a 200-year war against the Necron Thokt Dynasty before participating in the Argovon Campaign of the Pariah Crusade, but their unfiltered record-keeping has earned them the enmity of the Ecclesiarchy.",
-      "strengths": ["deep tactical knowledge of enemies", "high Librarian count", "meticulous battlefield analysis"],
-      "weaknesses": ["Ecclesiarchy enmity", "depleted by long Necron wars", "uncensored records create institutional enemies"],
+      "strengths": [
+        "deep tactical knowledge of enemies",
+        "high Librarian count",
+        "meticulous battlefield analysis"
+      ],
+      "weaknesses": [
+        "Ecclesiarchy enmity",
+        "depleted by long Necron wars",
+        "uncensored records create institutional enemies"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "clinical knowledge-driven combined-arms"
+      "execution_style": "clinical knowledge-driven combined-arms",
+      "tag_weights": {
+        "intel": 2,
+        "void": 1,
+        "recovery": 1
+      }
     },
     {
       "name": "Ultramarines",
@@ -541,10 +1141,22 @@
       "primarch": "Roboute Guilliman",
       "homebrew": false,
       "lore_summary": "The exemplary First Founding Chapter and authors of the Codex Astartes, ruling the realm of Ultramar from Macragge as the template for all Space Marines. They embody balanced, disciplined and tactically flexible combined-arms warfare. Deployed across every front against Chaos, Orks, the T'au and Tyranids, famously halting Hive Fleet Behemoth at Macragge and the Kraken at Ichar IV. Their defining trait is unmatched discipline and the leadership of the resurrected primarch Roboute Guilliman.",
-      "strengths": ["tactical flexibility", "unmatched discipline", "strong leadership"],
-      "weaknesses": ["doctrinal orthodoxy", "spread thin defending Ultramar"],
+      "strengths": [
+        "tactical flexibility",
+        "unmatched discipline",
+        "strong leadership"
+      ],
+      "weaknesses": [
+        "doctrinal orthodoxy",
+        "spread thin defending Ultramar"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "balanced flexible combined-arms"
+      "execution_style": "balanced flexible combined-arms",
+      "tag_weights": {
+        "intel": 1,
+        "fortify": 1,
+        "resilience": 1
+      }
     },
     {
       "name": "White Scars",
@@ -552,10 +1164,23 @@
       "primarch": "Jaghatai Khan",
       "homebrew": false,
       "lore_summary": "The swift sons of Jaghatai Khan from Chogoris, masters of lightning-fast mobile warfare and hit-and-run cavalry tactics on bikes and fast attack vehicles. They strike with sudden encircling speed and overwhelming momentum before vanishing. Deployed across all theatres against Chaos, Orks and xenos, valuing the hunt and the kill. Their trait is unrivalled mobility and a nomadic warrior culture that other Chapters find inscrutable.",
-      "strengths": ["unrivalled mobility", "encircling speed", "hit-and-run mastery"],
-      "weaknesses": ["light on heavy armour", "poor at static defence"],
+      "strengths": [
+        "unrivalled mobility",
+        "encircling speed",
+        "hit-and-run mastery"
+      ],
+      "weaknesses": [
+        "light on heavy armour",
+        "poor at static defence"
+      ],
       "faction_affinity": "neutral",
-      "execution_style": "high-speed hit-and-run cavalry"
+      "execution_style": "high-speed hit-and-run cavalry",
+      "tag_weights": {
+        "stealth": 1,
+        "aggressive": 1,
+        "elimination": 1,
+        "fortify": -1
+      }
     },
     {
       "name": "Wolfspear",
@@ -563,10 +1188,23 @@
       "primarch": "Leman Russ",
       "homebrew": false,
       "lore_summary": "A Primaris-only Space Wolves successor raised in the Ultima Founding from Greyshields of Guilliman's Unnumbered Sons, blood-brothers of the sons of Russ. They wage intimidating pack-hunting warfare with stealthy killers, swift vehicles and terror tactics that sow confusion. Deployed against Chaos guarding the Pit of Raukos and across Imperium Nihilus. Their flaw is the lingering Canis Helix curse and anxiety over acceptance as true Sons of Russ.",
-      "strengths": ["pack-hunting tactics", "mobile precision strikes", "terror warfare"],
-      "weaknesses": ["Canis Helix curse", "insecurity over legacy"],
+      "strengths": [
+        "pack-hunting tactics",
+        "mobile precision strikes",
+        "terror warfare"
+      ],
+      "weaknesses": [
+        "Canis Helix curse",
+        "insecurity over legacy"
+      ],
       "faction_affinity": "chaos",
-      "execution_style": "predatory pack-hunting strikes"
+      "execution_style": "predatory pack-hunting strikes",
+      "tag_weights": {
+        "terminus": 1,
+        "stealth": 1,
+        "aggressive": 1,
+        "suppression": 1
+      }
     }
   ]
 }

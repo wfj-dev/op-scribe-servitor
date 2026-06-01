@@ -1,0 +1,181 @@
+{
+  "_schema_version": 1,
+  "_notes": {
+    "purpose": "Defines how cascade choices and chapter doctrine compose into weighted option menus. This file covers upstream cascade boosts only. Chapter tag_weights live in chapters.json per-chapter entry.",
+    "scoring_formula": "option_score = sum(upstream_boosts[tag] * option.tags[tag]) + sum(chapter.tag_weights[tag] * option.tags[tag]). Highest-scoring options surface at top of the presented menu.",
+    "upstream_boosts": "When a role makes a pick, the tags of that option become boost values for roles below it in the cascade tree. Boost = tag_boost_value per tag listed. Multiple upstream roles accumulate additively.",
+    "chapter_weights": "Applied once to the individual's own pick only. Not cascaded further. Source: chapters.json[chapter].tag_weights. Missing tag = 0.",
+    "scale": "Cascade boosts use integer values. +2 = strong alignment, +1 = mild alignment, -1 = mild friction, -2 = strong friction. Bot normalises scores to a 0-1 range for presentation ordering.",
+    "vacant_roles": "Vacant role contributes no upstream boost. The option menu for roles below is generated without that tier's input.",
+    "tree_structure": "Boost flows strictly downward. A choice boosts roles at lower cascade_position only. Peers do not influence each other.",
+    "chapter_note": "chapter_weights are looked up at presentation time using the submitting user's home chapter. Black Shield has empty tag_weights — no boost or penalty.",
+    "faction_affinity_note": "chapter.faction_affinity (chaos/tyranid/neutral) is NOT part of this weight file. The bot may apply a small additional boost (e.g. +1 to terminus) when the committed planet's primary faction matches the chapter's affinity — this is a separate runtime modifier, not stored here."
+  },
+
+  "_tag_boost_per_pick": {
+    "_note": "How much each tag from a chosen option's tags array is worth as an upstream boost to roles below. Flat value multiplied by tag presence (1 if tag present, 0 if absent). Currently all tags carry equal upstream weight of 1.",
+    "default": 1
+  },
+
+  "cascade_tree": {
+    "_note": "Defines the downstream influence graph. Each node = a role section key from cascade_options.json. Each entry lists which roles it directly boosts and with what multiplier. Multiplier on top of base tag_boost_per_pick.",
+
+    "watch_master": {
+      "boosts": {
+        "lord_executioner":   1.5,
+        "forgemaster":        1.0,
+        "chief_apothecary":   1.0,
+        "high_chaplain":      1.0,
+        "huntmaster":         1.0,
+        "void_warden":        1.0,
+        "castellan":          1.0,
+        "venerable_dread":    1.0,
+        "watch_captain":      1.5
+      },
+      "_rationale": "WM theatre order is the widest blast — touches every HC specialist and the Captain directly. Lord Executioner and Captain get 1.5x because they are the primary execution arm of WM's will."
+    },
+
+    "lord_executioner": {
+      "boosts": {
+        "company_champion":   1.5,
+        "watch_captain":      1.0
+      },
+      "_rationale": "LE shapes the killing doctrine flowing down to Company Champions. Watch Captain also receives it as a secondary shaping force alongside WM."
+    },
+
+    "forgemaster": {
+      "boosts": {
+        "watch_techmarine":   2.0
+      },
+      "_rationale": "Direct track authority. Forgemaster's sacred_directive is the order Watch Techmarine executes. Full 2x — strongest single-track influence in the system."
+    },
+
+    "chief_apothecary": {
+      "boosts": {
+        "watch_apothecary":   2.0
+      },
+      "_rationale": "Direct track authority. Chief Apothecary's medical_authority shapes Watch Apothecary's apothecary_purpose fully."
+    },
+
+    "high_chaplain": {
+      "boosts": {
+        "watch_chaplain":     2.0,
+        "judiciar":           1.0
+      },
+      "_rationale": "High Chaplain's spiritual_decree is doctrine for Watch Chaplain (direct track) and shapes Judiciar's sentence framing (faith influences justice, not commands it)."
+    },
+
+    "void_warden": {
+      "boosts": {
+        "watch_librarian":    2.0
+      },
+      "_rationale": "Direct track authority. Void Warden's psychic_decree sets Watch Librarian's psychic_angle."
+    },
+
+    "castellan": {
+      "boosts": {
+        "watch_keeper":       2.0
+      },
+      "_rationale": "Direct track authority. Castellan's strategic_intelligence sets Watch Keeper's wardens_watch."
+    },
+
+    "venerable_dread": {
+      "boosts": {
+        "honored_dread":      1.5
+      },
+      "_rationale": "Venerable Dreadnought's HC-tier angle shapes Honored Dreadnought at company tier — elder counsel to the company's ancient."
+    },
+
+    "watch_captain": {
+      "boosts": {
+        "watch_lieutenant":   1.5,
+        "company_champion":   1.0,
+        "watch_techmarine":   0.5,
+        "watch_apothecary":   0.5,
+        "watch_chaplain":     0.5,
+        "watch_librarian":    0.5,
+        "watch_keeper":       0.5,
+        "honored_dread":      0.5
+      },
+      "_rationale": "Captain's company_order flows strongly to LT (primary execution arm) and moderately to Company Champion. Company specialists receive a light echo — they're more strongly shaped by their HC track lead, but the Captain's posture still registers."
+    },
+
+    "watch_lieutenant": {
+      "boosts": {
+        "watch_sergeant":     1.5
+      },
+      "_rationale": "LT's directive flows directly to Watch Sergeant — LT is the conduit between company command and KT doctrine."
+    },
+
+    "company_champion": {
+      "boosts": {
+        "kt_champion":        1.5,
+        "watch_sergeant":     0.5
+      },
+      "_rationale": "Company Champion's execution style shapes KT Champion's mission pick and terminus call. Mild secondary flow to Watch Sergeant alongside LT's directive."
+    },
+
+    "watch_sergeant": {
+      "boosts": {
+        "judiciar":           1.0,
+        "enlisted":           2.0
+      },
+      "_rationale": "Sgt's doctrine is the primary shaper of battle-line personal focus (2.0 — strongest enlisted influence). Judiciar also receives it: the Sgt's doctrine frames the kill team's operational context, which informs the Judiciar's sentence posture alongside the faith track above."
+    },
+
+    "watch_chaplain": {
+      "boosts": {
+        "judiciar":           1.5
+      },
+      "_rationale": "Watch Chaplain's litany is a strong direct input to Judiciar's sentence — the Judiciar serves the Chaplain's spiritual authority at KT level."
+    },
+
+    "huntmaster": {
+      "boosts": {},
+      "_rationale": "Huntmaster is HC-only with no company-tier equivalent. His hunt_priority affects terminus scoring logic at runtime (flag + call = prestige), but does not flow into any cascade option menu below him."
+    },
+
+    "kt_champion": {
+      "boosts": {},
+      "_rationale": "Kill Team Champion submits a mission_id and terminus_call directly — no named option vocabulary, no cascade flow downward."
+    },
+
+    "honored_dread": {
+      "boosts": {},
+      "_rationale": "Honored Dreadnought is floating — does not gate cascade and has no downstream roles."
+    }
+  },
+
+  "scoring_example": {
+    "_note": "Worked example for a Watch Sergeant under an Iron Hands Captain who picked Hold and Endure, after a WM who picked Iron Vigil and LE who picked Righteous Severance.",
+    "watch_master_pick": "iron_vigil",
+    "iron_vigil_tags":   ["defensive", "fortify", "resilience", "suppression"],
+    "lord_executioner_pick": "righteous_severance",
+    "righteous_severance_tags": ["elimination", "stealth", "intel"],
+    "watch_captain_pick": "hold_and_endure",
+    "hold_and_endure_tags": ["defensive", "fortify", "suppression", "resilience"],
+    "chapter": "Iron Hands",
+    "iron_hands_tag_weights": {"tech": 2, "resilience": 2, "faith": -1, "aggressive": -1},
+    "sergeant_options": {
+      "oath_of_moment": {
+        "tags": ["elimination", "terminus", "aggressive"],
+        "upstream_score": "WM→sgt(via captain 1.5x): defensive+fortify+suppression+resilience hits none. LE→sgt(via compchamp 0.5x): elimination+stealth+intel → elimination:0.5. Captain→sgt(via lt 1.5x): defensive+fortify+suppression+resilience hits none. Total upstream: 0.5",
+        "chapter_score": "Iron Hands: aggressive:-1 → -1. Total chapter: -1",
+        "total": "≈ -0.5"
+      },
+      "combined_arms": {
+        "tags": ["resilience", "recovery", "suppression", "intel"],
+        "upstream_score": "WM(via captain 1.5x): resilience+suppression → 1.5+1.5=3. LE(via compchamp 0.5x): intel → 0.5. Captain(via lt 1.5x): suppression+resilience → 1.5+1.5=3. Total upstream: 7.0",
+        "chapter_score": "Iron Hands: resilience:+2 → 2. Total chapter: 2",
+        "total": "≈ 9.0"
+      },
+      "duty_unto_death": {
+        "tags": ["aggressive", "defensive", "resilience", "faith"],
+        "upstream_score": "WM(via captain 1.5x): defensive+resilience → 1.5+1.5=3. Captain(via lt 1.5x): defensive+resilience → 1.5+1.5=3. Total upstream: 6.0",
+        "chapter_score": "Iron Hands: aggressive:-1, resilience:+2, faith:-1 → 0. Total chapter: 0",
+        "total": "≈ 6.0"
+      }
+    },
+    "result": "Combined Arms scores highest (9.0) — the cascade of defensive/resilience posture from WM through Captain, amplified by Iron Hands' resilience affinity, strongly favours the methodical team-doctrine option. Oath of Moment is depressed by Iron Hands' dislike of aggressive posture."
+  }
+}

@@ -1,0 +1,285 @@
+{
+  "_schema_version": 1,
+  "_notes": {
+    "purpose": "Schema definition for data/campaign_state.json. This file is a reference template — field values here are type descriptors, not live data.",
+    "campaign_state_file": "data/campaign_state.json — created by bot when a campaign starts, updated each beat, archived on campaign end.",
+    "nullability": "Fields marked 'null until set' will be null in the live file until that phase or action occurs.",
+    "ids": "Discord snowflake IDs stored as strings to avoid 64-bit integer precision loss in JSON.",
+    "pressure": "Only nodes with pressure > 0 are stored in the pressure dict. Missing key = pressure 0.",
+    "companies_and_kts": "Keyed by Discord role ID string of the Watch Captain / Watch Sergeant respectively. One state entry per active company/KT.",
+    "cascade_submissions": "Each role submits once per beat. Submission = { option_key, submitted_by (user_id), submitted_at }. Specialists and floating dreads submit a boolean present flag; their strats are auto-contributed from rank_mappings.json.",
+    "vacant": "Vacant role = no submission entry in cascade_submissions for that role slot. Cascade passes through as per vacant rules in campaign_system.md.",
+    "strat_pool_locked": "True once all KT-tier windows close or ceiling reached. Pool is fixed for entire ops window.",
+    "prestige_window": "28-day rolling window. Bot prunes entries older than 28 days on each beat evaluation."
+  },
+
+  "campaign": {
+    "id": "string — unique campaign slug e.g. 'campaign_001'",
+    "beat": "int 1-4 — current beat number",
+    "phase": "string — one of: cascade_HC | cascade_Company | cascade_KT | ops | evaluating | complete",
+    "started_at": "ISO 8601 UTC timestamp",
+    "ended_at": "ISO 8601 UTC timestamp | null until complete",
+    "outcome": "null until complete — one of: Full Victory | Costly Victory | Heroic Defeat | Efficient Victory | Holding Action | Last Stand | Lucky Hold | Neglected Front | Rout",
+    "current_node": "string — node id from jericho_reach_graph.json",
+    "visited_nodes": ["list of node id strings visited this campaign, in order"],
+    "beat_history": ["list of beat_record objects, one per completed beat — see beat_record schema below"]
+  },
+
+  "pressure": {
+    "_note": "Dict of node_id → pressure int. Only non-zero nodes stored. Max meaningful value: 10+ = forced.",
+    "Avarax": "int 0-10+",
+    "Karlak": "int 0-10+",
+    "...any node id...": "int 0-10+"
+  },
+
+  "cascade": {
+    "_note": "Current beat's cascade state. Reset each beat when cascade phase opens.",
+    "beat": "int — which beat this cascade belongs to",
+    "HC": {
+      "_window_opened_at": "ISO timestamp | null",
+      "_window_closed_at": "ISO timestamp | null — null until tier advances",
+      "Watch Master": {
+        "traversal": {
+          "options_presented": ["list of node id strings presented to WM"],
+          "chosen_node": "string node id | null until submitted",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "theatre_order": {
+          "option_key": "string — named option key from cascade_options.json | null until submitted",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        }
+      },
+      "Lord Executioner": {
+        "option_key": "string — named execution option | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Forgemaster": {
+        "present": "bool — submitted their cascade participation flag",
+        "option_key": "string — named specialist angle | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Chief Apothecary": {
+        "present": "bool",
+        "option_key": "string — named specialist angle | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "High Chaplain": {
+        "present": "bool",
+        "option_key": "string — named specialist angle | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Huntmaster": {
+        "present": "bool",
+        "option_key": "string — named specialist angle | null until submitted",
+        "terminus_flag": "string — terminus target name flagged for the beat | null",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Void Warden": {
+        "present": "bool",
+        "option_key": "string — named specialist angle | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Castellan": {
+        "present": "bool",
+        "option_key": "string — named specialist angle | null until submitted",
+        "log_text": "string — Castellan's written narrative reasoning | null",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      },
+      "Venerable Dreadnought": {
+        "present": "bool — floating, does not gate cascade advance",
+        "option_key": "string — named dread angle | null until submitted",
+        "submitted_by": "discord user id string | null",
+        "submitted_at": "ISO timestamp | null"
+      }
+    },
+    "Company": {
+      "_window_opened_at": "ISO timestamp | null",
+      "_window_closed_at": "ISO timestamp | null",
+      "_note": "One entry per active company, keyed by Watch Captain discord user id string.",
+      "CAPTAIN_USER_ID": {
+        "Watch Captain": {
+          "option_key": "string — named company order | null until submitted",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Lieutenant": {
+          "option_key": "string — named directive | null until submitted",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Company Champion": {
+          "option_key": "string — named execution option | null until submitted",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Techmarine": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Apothecary": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Chaplain": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Librarian": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Watch Keeper": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Honored Dreadnought": {
+          "present": "bool — floating",
+          "option_key": "string — named dread angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        }
+      }
+    },
+    "KT": {
+      "_window_opened_at": "ISO timestamp | null",
+      "_window_closed_at": "ISO timestamp | null",
+      "_note": "One entry per active KT, keyed by Watch Sergeant discord user id string.",
+      "SGT_USER_ID": {
+        "Watch Sergeant": {
+          "oathsworn_votes": {
+            "_note": "Advisory votes cast before Sgt locks. Dict of user_id → option_key.",
+            "USER_ID": "string option_key"
+          },
+          "option_key": "string — locked doctrine | null until submitted",
+          "required_strat": "string — stratagem name locked as required for this KT's ops | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Kill Team Champion": {
+          "mission_id": "int — specific mission picked | null until submitted",
+          "terminus_call": "string — terminus target name called for engagement | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "Judiciar": {
+          "present": "bool",
+          "option_key": "string — named specialist angle | null",
+          "submitted_by": "discord user id string | null",
+          "submitted_at": "ISO timestamp | null"
+        },
+        "enlisted": {
+          "_note": "All enlisted members of this KT who submitted a personal focus pick. Keyed by discord user id string.",
+          "USER_ID": {
+            "rank": "string — Watch Veteran | Watch Brother | Oathsworn",
+            "option_key": "string — personal focus option | null until submitted",
+            "submitted_at": "ISO timestamp | null"
+          }
+        }
+      }
+    }
+  },
+
+  "strat_pool": {
+    "_note": "Locked stratagem pool for the ops window. Null until cascade KT window closes. Fixed for entire ops window.",
+    "locked": "bool — false during cascade, true once ops window opens",
+    "locked_at": "ISO timestamp | null",
+    "pool": ["list of stratagem name strings"],
+    "required_by_kt": {
+      "_note": "Per-KT required stratagem. Keyed by Sgt discord user id string.",
+      "SGT_USER_ID": "string — stratagem name"
+    }
+  },
+
+  "ops_window": {
+    "opened_at": "ISO timestamp | null",
+    "closes_at": "ISO timestamp | null",
+    "prestige_missions": {
+      "_note": "Per-KT prestige mission. Keyed by Sgt user id string.",
+      "SGT_USER_ID": "int — mission id"
+    },
+    "terminus_flag": "string — Huntmaster's flagged target for the beat | null",
+    "terminus_calls": {
+      "_note": "All engagement calls made during cascade. Keyed by role name.",
+      "Lord Executioner": "string target | null",
+      "Company Champion": "string target | null",
+      "Kill Team Champion": "string target | null",
+      "High Chaplain": "string target | null",
+      "Watch Chaplain": "string target | null",
+      "Watch Librarian": "string target | null",
+      "Void Warden": "string target | null",
+      "Venerable Dreadnought": "string target | null",
+      "Honored Dreadnought": "string target | null",
+      "Judiciar": "string target | null"
+    }
+  },
+
+  "prestige": {
+    "_note": "28-day rolling window. Pruned on each beat evaluation. Keyed by company/KT role id string.",
+    "companies": {
+      "COMPANY_ROLE_ID": {
+        "total": "int — current prestige total within window",
+        "tier": "string — Unrecorded | Marked | Recognized | Honored | Exalted | Storied",
+        "entries": [
+          {
+            "earned_at": "ISO timestamp",
+            "amount": "int",
+            "source": "string — op_baseline | prestige_mission | prestige_terminus | strat_mode_bonus"
+          }
+        ]
+      }
+    },
+    "kill_teams": {
+      "KT_SGT_USER_ID": {
+        "total": "int",
+        "tier": "string — Unproven | Initiated | Vigilant | Sworn | Hallowed | Eternal",
+        "entries": [
+          {
+            "earned_at": "ISO timestamp",
+            "amount": "int",
+            "source": "string — op_baseline | prestige_mission | prestige_terminus | strat_mode_bonus"
+          }
+        ]
+      }
+    }
+  },
+
+  "beat_record": {
+    "_note": "Archived per beat in campaign.beat_history once ops window closes and bot evaluates.",
+    "beat": "int 1-4",
+    "node": "string — node id committed this beat",
+    "theatre_order": "string — WM's theatre order option key",
+    "pressure_delta": {
+      "_note": "Per-node pressure change this beat. Positive = increased, negative = reduced.",
+      "node_id": "int delta"
+    },
+    "ops_run": "int — total ops submitted this beat",
+    "terminus_kills": {
+      "prestige": "int — terminus kills that qualified as prestige",
+      "regular": "int — terminus kills that did not qualify"
+    },
+    "strat_pool_snapshot": ["list of stratagem name strings used this beat"],
+    "chronicle_entry": "string — bot-generated narrative paragraph for this beat | null",
+    "castellan_log": "string — Castellan's written reasoning logged this beat | null",
+    "engagement_axis": "string — High | Medium | Low",
+    "pressure_axis": "string — Secured | Contested | Overwhelmed"
+  }
+}
