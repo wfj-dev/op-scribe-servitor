@@ -254,7 +254,6 @@
       "faction_effective": "tyranid",
       "terminus_boss": "Tyranid Prime",
       "terminus_roaming": [],
-      "unlock_condition": "Void Warden must be enlisted and present at Highcom. No planet commit restriction — the Wrath of Espandor is accessible from any node.",
       "description": "Board the overrun cruiser Wrath of Espandor and destabilise its reactors to devastate the Hive Fleet.",
       "added_in": "Patch 11.0",
       "codename": "ship",
