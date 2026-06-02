@@ -93,6 +93,9 @@ LIBRARIUM_OVERRIDE_LOCK = asyncio.Lock()
 # Lock for Terminus Kill Log subsystem
 TERMINUS_SLAYER_LOCK = asyncio.Lock()
 
+# Lock for auto-roster embed state
+ROSTER_STATE_LOCK = asyncio.Lock()
+
 # In-memory LFG queues: {message_id: LFGQueue data}
 LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 
@@ -757,6 +760,7 @@ _g.WARDING_POOL_LOCK = WARDING_POOL_LOCK
 _g.LIBRARIUM_CHRONICLE_LOCK = LIBRARIUM_CHRONICLE_LOCK
 _g.LIBRARIUM_OVERRIDE_LOCK = LIBRARIUM_OVERRIDE_LOCK
 _g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
+_g.ROSTER_STATE_LOCK = ROSTER_STATE_LOCK
 
 
 from .forge_ops import *  # noqa: E402,F401,F403
@@ -766,6 +770,7 @@ from .roster_ops import _award_announcement_dispatch_loop  # noqa: E402 - unders
 from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
+from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1615,6 +1620,15 @@ async def on_ready():
             logger.info("Terminus kill log reminder loop started (hourly check).")
     except Exception:
         logger.exception("Failed to start terminus kill log reminder loop")
+
+    # Start auto-roster daily update loop
+    try:
+        _roster_embeds._register_commands()
+        if not _roster_embeds._roster_update_loop.is_running():
+            _roster_embeds._roster_update_loop.start()
+            logger.info("Auto-roster embed daily update loop started (24h interval).")
+    except Exception:
+        logger.exception("Failed to start auto-roster update loop")
 
     # Start milestone check loop if enabled (default: enabled)
     try:
