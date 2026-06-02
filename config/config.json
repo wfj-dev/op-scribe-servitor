@@ -175,6 +175,16 @@
         "Forgemaster"
       ]
     },
+    "roster_post": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "roster_refresh": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
     "record_of_blood": {
       "roles": [
         "Watch Master",
