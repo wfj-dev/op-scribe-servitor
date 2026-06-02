@@ -258,11 +258,23 @@
   },
 
   "home_chapter_priority": {
-    "_note": "Adjusts the /pick_home_chapter algorithm. The chapter of the lore-priority KT's Sergeant (or their operationally attached CO if Sgt is absent) is moved to the front of the home_chapter_rotation queue for the next rotation cycle. If the same KT holds lore priority across multiple consecutive beats, their chapter keeps receiving priority rotation.",
-    "derives_from": "lore_priority.lore_prio_kt — must be set (not vacant) to activate chapter priority.",
-    "chapter_source": "KT Sgt's chapter (from enlistment record). If Sgt slot is vacant, falls back to the most senior attached member's chapter.",
-    "mechanism": "Bot prepends the prio chapter to the front of data/home_chapter_rotation.json at beat close. If chapter is already at front, no change.",
-    "carry_over": "Active as long as the same KT holds lore priority. Resets when lore priority shifts to a different KT."
+    "_note": "Adjusts the /pick_home_chapter algorithm. Any enlisted brother whose KT or company prestige is above the priority floor has their home chapter added to a priority queue for the next rotation cycle — BUT ONLY if that chapter has not already been selected in this campaign's rotation. Chapters already chosen are skipped. Priority is ordered by the group's prestige descending (higher-performing groups go first in the queue). Priority is lost individually when the member's group prestige drops below the retain floor.",
+
+    "priority_floor": {
+      "kt_member": "KT rolling prestige >= 60 (KT ribbon retain threshold). If the member's KT drops below 60, they exit the priority queue.",
+      "company_member": "Company rolling prestige >= 120 (company ribbon retain threshold). If the company drops below 120, they exit.",
+      "note": "This means any KT/company that holds a ribbon also contributes its members' chapters to the priority pool. Both conditions can apply to the same member (KT member in an active company)."
+    },
+
+    "priority_ordering": "All chapters currently in the priority pool are sorted by their group's rolling prestige descending. Within the same prestige value, tiebreak by earliest enlisted_at. The top chapter in this ordered list that has NOT already been selected this campaign rotation becomes the next home chapter.",
+
+    "already_chosen_skip": "Bot checks data/home_chapter_rotation.json. If a chapter appears in the current campaign's chosen list, it is excluded from the priority pool for subsequent rotation calls until all enlisted chapters have been chosen (full cycle). Once a full cycle completes, the chosen list resets.",
+
+    "chapter_source": "Each enlisted member contributes their own chapter (enlistment.USER_ID.chapter). Multiple members from the same chapter do not double-count — that chapter appears once in the pool, ranked by the highest prestige among the groups containing a member from that chapter.",
+
+    "mechanism": "At each /pick_home_chapter call (or nightly rotation job): (1) compute the current priority pool from campaign prestige; (2) filter out already-chosen chapters; (3) if priority pool is non-empty, select the top chapter; (4) if pool is empty (all priority chapters already chosen), fall back to the normal rotation order. Update home_chapter_rotation.json with the selection.",
+
+    "carry_over": "Priority status is re-evaluated live on each rotation call from current prestige. No static carry-over needed — the prestige data is already rolling."
   },
 
   "summary_table": {
