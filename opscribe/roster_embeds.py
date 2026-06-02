@@ -351,7 +351,7 @@ def _build_embed(
 
     # Title goes into description so role mentions are rendered by Discord
     SEPARATOR = "\u2500" * 24  # ────────────────────────
-    header = f"{title}\n**{count} {noun} Deployed**\n{SEPARATOR}"
+    header = f"{title}\n**{count} {noun} Assigned**\n{SEPARATOR}"
 
     if not members:
         embed.description = f"{header}\n*No members currently assigned.*"
@@ -490,8 +490,9 @@ async def _update_company_roster(
     company_emoji = _te(short_name)     # :Primus: / :Secundus: / etc.
 
     # Resolve role IDs for mentions (fallback to plain text if role not found)
-    company_role = discord.utils.get(guild.roles, name=company_name)
-    company_role_mention = f"<@&{company_role.id}>" if company_role else short_name.upper()
+    # Company Command embed uses "@Primus Command" / "@Secundus Command" role
+    cmd_role = discord.utils.get(guild.roles, name=f"{short_name} Command")
+    company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
 
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
