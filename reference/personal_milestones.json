@@ -1,128 +1,146 @@
 {
   "_notes": {
-    "summary": "Personal milestones are per-member campaign goals that persist for the full campaign (not per-beat). Completing a milestone grants a flat prestige bonus tracked separately from beat prestige.",
-    "availability": "Universal milestones are available to every enlisted member. Chapter-affinity milestones are available if the member's chapter has a tag_weight >= 1 for that tag. A member may have up to 13 chapter-affinity milestone sets active depending on their chapter.",
-    "tracking": "All milestones are count-based. auto_track: true means the bot can derive the count from campaign_log + beat_record data automatically. auto_track: false means the member self-reports via /milestone-claim with a screenshot URL. Bot logs claim with submitted_by + timestamp for WM review.",
-    "completion": "Once threshold is reached, bot posts announcement and adds prestige_reward to the member's prestige total. Milestone cannot be repeated — it completes once and stays completed.",
-    "milestone_ids": "Unique per section. Universal: u_01–u_08. Chapter-affinity prefixed by tag: term_01, agg_01, etc."
+    "summary": "Per-member campaign milestones. Persist for the full campaign — not reset per beat. Completing a milestone grants flat prestige tracked separately from beat prestige.",
+    "availability": "Universal milestones apply to every enlisted member. Chapter-affinity milestones apply when the member's chapter has tag_weight >= 1 for that tag. A member may have up to 13 active chapter-affinity milestone sets.",
+    "tracking": "All milestones are auto-tracked and auto-awarded. No screenshots, no co-confirms, no self-reports required. The bot derives all counts from AAR records and campaign_log entries.",
+    "data_sources": {
+      "aar_record": "Parsed AAR fields: mission name, difficulty_class, gene_seed_carrier_id, armory_data, brother_ids, killed_in_action. Member must be in brother_ids to have an AAR count toward their milestone.",
+      "aar_mission_lookup": "Bot maps AAR mission name to operations.json to get: planet, terminus_boss (null if roaming-only), terminus_roaming list.",
+      "campaign_log": "campaign_log entry submitted by this member: terminus_killed (bool), strats_active[]. Bot matches entry to the member's AAR via aar_ref or timestamp proximity.",
+      "beat_window": "Bot infers which beat an AAR belongs to by comparing the AAR timestamp to campaign_state beat date windows. Used for all same-beat cross-checks."
+    },
+    "completion": "Once threshold is reached the bot posts an announcement and adds prestige_reward to the member's campaign prestige total. Non-repeatable — milestone locks once completed.",
+    "milestone_ids": "Universal: u_01 through u_08. Chapter-affinity prefixed by tag abbreviation: term_01, agg_01, etc."
   },
 
   "universal": [
     {
       "id": "u_01",
       "label": "Geneseed Bearer",
-      "description": "Carry geneseed to extraction in a qualifying op.",
+      "description": "Carry geneseed to extraction in qualifying ops.",
       "threshold": 5,
       "unit": "carries",
       "prestige_reward": 3,
-      "auto_track": false,
-      "claim_note": "Self-report via /milestone-claim with screenshot of geneseed pickup or extraction screen."
+      "auto_track": true,
+      "data_source": "aar_record",
+      "tracking_rule": "gene_seed_carrier_id == member_id"
     },
     {
       "id": "u_02",
       "label": "Armory Adept",
-      "description": "Recover armory data in a qualifying op.",
+      "description": "Recover armory data in qualifying ops.",
       "threshold": 5,
-      "unit": "recoveries",
+      "unit": "ops",
       "prestige_reward": 3,
-      "auto_track": false,
-      "claim_note": "Self-report. Screenshot of armory data interaction or post-op summary."
+      "auto_track": true,
+      "data_source": "aar_record",
+      "tracking_rule": "armory_data > 0 AND member_id in brother_ids"
     },
     {
       "id": "u_03",
       "label": "Terminus Witness",
-      "description": "Participate in an op where a confirmed terminus target was killed (campaign_log terminus_killed field set).",
+      "description": "Participate in ops where a terminus target (roaming or fixed boss) was killed.",
       "threshold": 3,
       "unit": "ops",
       "prestige_reward": 4,
       "auto_track": true,
-      "claim_note": "Bot derives from campaign_log terminus_killed entries submitted by this member."
+      "data_source": "campaign_log",
+      "tracking_rule": "campaign_log entry submitted by member where terminus_killed == true"
     },
     {
       "id": "u_04",
       "label": "Apex Slayer",
-      "description": "Kill a named boss creature during an op — e.g. Trygon on Exfiltration, Hierophant on Termination, Lictor Prime on Purgation.",
+      "description": "Participate in ops where a fixed-boss terminus was killed. Fixed-boss missions: Termination (Hierophant Bio-Titan), Exfiltration (Trygon), Vortex (Mutalith Vortex Beast), Reclamation (Tyranid Prime).",
       "threshold": 3,
       "unit": "boss kills",
       "prestige_reward": 4,
-      "auto_track": false,
-      "claim_note": "Self-report. Screenshot of kill or post-op summary showing boss death."
+      "auto_track": true,
+      "data_source": "aar_mission_lookup + campaign_log",
+      "tracking_rule": "operations[mission].terminus_boss != null AND campaign_log entry by member where terminus_killed == true"
     },
     {
       "id": "u_05",
-      "label": "Sgt Bonded",
-      "description": "Complete ops in a squad led by a Watch Sergeant (Sgt must be in the same session and listed in the run).",
-      "threshold": 10,
-      "unit": "ops",
-      "prestige_reward": 3,
-      "auto_track": false,
-      "claim_note": "Self-report. Sgt must confirm via reaction or co-submission."
-    },
-    {
-      "id": "u_06",
       "label": "Campaign Veteran",
-      "description": "Complete qualifying ops during the campaign window (any difficulty, any mission).",
+      "description": "Complete qualifying ops across the campaign window.",
       "threshold": 15,
       "unit": "ops",
       "prestige_reward": 5,
       "auto_track": true,
-      "claim_note": "Bot derives from campaign_log entries submitted by this member for this campaign."
+      "data_source": "aar_record",
+      "tracking_rule": "member_id in brother_ids, AAR timestamp within campaign window"
     },
     {
-      "id": "u_07",
+      "id": "u_06",
       "label": "Mission Specialist",
-      "description": "Complete the same mission five times. Any mission ID — but must be the same one throughout.",
+      "description": "Complete 5 runs of the same mission. Bot awards for the first mission to hit the threshold.",
       "threshold": 5,
       "unit": "ops (same mission)",
       "prestige_reward": 3,
       "auto_track": true,
-      "claim_note": "Bot derives from campaign_log. Member declares mission ID when claiming.",
-      "claim_field": "mission_id"
+      "data_source": "aar_record",
+      "tracking_rule": "count per distinct mission name where member_id in brother_ids; award when any single mission count >= 5"
+    },
+    {
+      "id": "u_07",
+      "label": "Omega Operator",
+      "description": "Complete qualifying ops at omega_strats difficulty.",
+      "threshold": 3,
+      "unit": "ops",
+      "prestige_reward": 5,
+      "auto_track": true,
+      "data_source": "aar_record",
+      "tracking_rule": "difficulty_class == omega_ops AND member_id in brother_ids"
     },
     {
       "id": "u_08",
-      "label": "Full Extraction",
-      "description": "Complete an op where every squad member extracted alive — no one left incapacitated at the LZ.",
+      "label": "Mission Breadth",
+      "description": "Complete 5 distinct mission types across the campaign.",
       "threshold": 5,
-      "unit": "ops",
-      "prestige_reward": 3,
-      "auto_track": false,
-      "claim_note": "Self-report. Screenshot of extraction screen showing full squad alive."
+      "unit": "distinct missions",
+      "prestige_reward": 4,
+      "auto_track": true,
+      "data_source": "aar_record",
+      "tracking_rule": "count distinct mission names where member_id in brother_ids"
     }
   ],
 
   "chapter_affinity": {
 
     "terminus": {
-      "_note": "Available to chapters with tag_weight >= 1 in 'terminus'. Examples: Deathwatch, Red Hunters, Mortifactors.",
+      "_note": "Available to chapters with tag_weight >= 1 in 'terminus'. Examples: Deathwatch founding chapters, Red Hunters, Mortifactors.",
       "milestones": [
         {
           "id": "term_01",
           "label": "Hunt Complete",
-          "description": "Complete Termination (Op 7) or Exfiltration (Op 9) ops — the primary terminus-hunt missions.",
+          "description": "Complete ops on Termination (Op 7) or Exfiltration (Op 9) — the primary fixed-boss hunt missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Termination, Exfiltration] AND member_id in brother_ids"
         },
         {
           "id": "term_02",
           "label": "Terminus Confirmed",
-          "description": "Participate in ops where a terminus target was confirmed killed (terminus_killed field populated in your campaign_log entry).",
+          "description": "Participate in ops where any terminus target was killed (roaming or fixed boss) — elevated threshold.",
           "threshold": 5,
           "unit": "kills",
           "prestige_reward": 4,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "campaign_log",
+          "tracking_rule": "campaign_log entries submitted by member where terminus_killed == true"
         },
         {
           "id": "term_03",
-          "label": "Marked Quarry",
-          "description": "Participate in an op where a Judiciar sentence mark was placed and the HVT was subsequently executed.",
+          "label": "Reaper's Patience",
+          "description": "Participate in fixed-boss kills on omega_strats difficulty — a named boss under maximum strat pressure.",
           "threshold": 3,
           "unit": "ops",
-          "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Judiciar or Sgt must confirm via co-submission."
+          "prestige_reward": 5,
+          "auto_track": true,
+          "data_source": "aar_mission_lookup + campaign_log + aar_record",
+          "tracking_rule": "operations[mission].terminus_boss != null AND campaign_log terminus_killed == true AND difficulty_class == omega_ops, member is submitter"
         }
       ]
     },
@@ -133,30 +151,35 @@
         {
           "id": "agg_01",
           "label": "Forward Assault",
-          "description": "Complete Inferno (Op 1), Decapitation (Op 2), or Purgation (Op 13) ops — offensive-front missions.",
+          "description": "Complete ops on Inferno (Op 1), Decapitation (Op 2), or Purgation (Op 13) — offensive-front missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Inferno, Decapitation, Purgation] AND member_id in brother_ids"
         },
         {
           "id": "agg_02",
           "label": "Omega Proven",
-          "description": "Complete ops on Omega + Strats difficulty.",
+          "description": "Complete ops at omega_strats difficulty.",
           "threshold": 3,
           "unit": "ops",
           "prestige_reward": 5,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "difficulty_class == omega_ops AND member_id in brother_ids"
         },
         {
           "id": "agg_03",
-          "label": "Relentless",
-          "description": "Complete ops without going incapacitated once during the entire run (self-reported).",
+          "label": "Vanguard",
+          "description": "Complete ops on the Kadaku front (war world — Inferno, Termination, Purgation, Siege).",
           "threshold": 5,
           "unit": "ops",
-          "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Honor system."
+          "prestige_reward": 3,
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "operations[mission].planet == kadaku AND member_id in brother_ids"
         }
       ]
     },
@@ -167,135 +190,152 @@
         {
           "id": "faith_01",
           "label": "Shrine Pilgrim",
-          "description": "Complete ops on the Demerium front (shrine/tomb world). Any mission eligible for that node.",
+          "description": "Complete ops on the Demerium front (Reliquary, Fall of Atreus, Obelisk).",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Cross-ref against beat_record committed planet. Self-report if Demerium was committed front."
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "operations[mission].planet == demerium AND member_id in brother_ids"
         },
         {
           "id": "faith_02",
-          "label": "Litany Upheld",
-          "description": "Complete ops with a Watch Chaplain or High Chaplain enlisted in the same company.",
-          "threshold": 5,
-          "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Chaplain must co-submit or confirm."
+          "label": "Demerium Deep",
+          "description": "Complete all three Demerium missions at least once: Reliquary, Fall of Atreus, and Obelisk.",
+          "threshold": 3,
+          "unit": "distinct Demerium missions",
+          "prestige_reward": 4,
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "count distinct mission names where operations[mission].planet == demerium AND member_id in brother_ids; threshold hit when all three Demerium missions have >= 1 completed run"
         },
         {
           "id": "faith_03",
           "label": "Sanctified Ground",
-          "description": "Complete Reliquary (Op 4) or Obelisk (Op 8) ops — the ecclesiastical and burial-tomb missions.",
+          "description": "Complete ops on Reliquary (Op 4) or Obelisk (Op 8) — ecclesiastical and burial-tomb missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Reliquary, Obelisk] AND member_id in brother_ids"
         }
       ]
     },
 
     "tech": {
-      "_note": "Available to chapters with tag_weight >= 1 in 'tech'. Examples: Iron Hands, Salamanders, Adeptus Mechanicus aligned.",
+      "_note": "Available to chapters with tag_weight >= 1 in 'tech'. Examples: Iron Hands, Salamanders, AdMech-aligned chapters.",
       "milestones": [
         {
           "id": "tech_01",
           "label": "Machine Rite",
-          "description": "Recover armory data in qualifying ops — higher threshold than the universal milestone.",
+          "description": "Recover armory data in qualifying ops — elevated threshold.",
           "threshold": 8,
-          "unit": "recoveries",
+          "unit": "ops",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Screenshot required."
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "armory_data > 0 AND member_id in brother_ids"
         },
         {
           "id": "tech_02",
           "label": "Sacred Machine",
-          "description": "Complete Fall of Atreus (Op 5) or Ballistic Engine (Op 6) — Mechanicus-compound and hive-industrial missions.",
+          "description": "Complete ops on Fall of Atreus (Op 5) or Ballistic Engine (Op 6) — Mechanicus and hive-industrial missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Fall of Atreus, Ballistic Engine] AND member_id in brother_ids"
         },
         {
           "id": "tech_03",
-          "label": "Forgebound",
-          "description": "Complete ops with a Forgemaster or Watch Techmarine enlisted in the same company.",
-          "threshold": 5,
+          "label": "Forge Surplus",
+          "description": "Recover armory data in ops at omega_strats difficulty — high-yield recovery under maximum pressure.",
+          "threshold": 3,
           "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Forgemaster or Techmarine must co-submit or confirm."
+          "prestige_reward": 4,
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "armory_data > 0 AND difficulty_class == omega_ops AND member_id in brother_ids"
         }
       ]
     },
 
     "void": {
-      "_note": "Available to chapters with tag_weight >= 1 in 'void'. Examples: Howling Griffons, Novamarines, Void-walker aligned.",
+      "_note": "Available to chapters with tag_weight >= 1 in 'void'. Examples: Howling Griffons, Novamarines, void-walker aligned chapters.",
       "milestones": [
         {
           "id": "void_01",
           "label": "Void Walker",
-          "description": "Complete Reclamation (Op 11) on the Wrath of Espandor.",
+          "description": "Complete ops on Reclamation (Op 11) — boarding the Wrath of Espandor.",
           "threshold": 3,
           "unit": "ops",
           "prestige_reward": 4,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Reclamation AND member_id in brother_ids"
         },
         {
           "id": "void_02",
           "label": "Warp Attuned",
-          "description": "Complete Vortex (Op 10) — astropathic relay, strong warp resonance.",
+          "description": "Complete ops on Vortex (Op 10) — the astropathic relay Chaos cleanse.",
           "threshold": 3,
           "unit": "ops",
           "prestige_reward": 4,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Vortex AND member_id in brother_ids"
         },
         {
           "id": "void_03",
-          "label": "Psyker Watch",
-          "description": "Complete ops with a Void Warden or Watch Librarian enlisted in the same company.",
-          "threshold": 5,
-          "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Void Warden or Watch Librarian must confirm."
+          "label": "Transit Mastery",
+          "description": "Complete both Vortex and Reclamation within the same campaign beat.",
+          "threshold": 1,
+          "unit": "beat (binary — both missions within same beat window)",
+          "prestige_reward": 5,
+          "auto_track": true,
+          "data_source": "aar_record + beat_window",
+          "tracking_rule": "within a single beat window: member_id in brother_ids for >= 1 Vortex AAR AND >= 1 Reclamation AAR"
         }
       ]
     },
 
     "stealth": {
-      "_note": "Available to chapters with tag_weight >= 1 in 'stealth'. Examples: Raven Guard, Alpha Legion (loyalist cells), Shadow Stalkers.",
+      "_note": "Available to chapters with tag_weight >= 1 in 'stealth'. Examples: Raven Guard, Shadow Stalkers, Alpha Legion loyalist cells.",
       "milestones": [
         {
           "id": "stealth_01",
           "label": "Shadow Protocol",
-          "description": "Complete Vox Liberatis (Op 3) or Disruption (Op 12) — the urban infiltration and signal-disruption missions.",
+          "description": "Complete ops on Vox Liberatis (Op 3) or Disruption (Op 12) — urban infiltration and signal-disruption missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Vox Liberatis, Disruption] AND member_id in brother_ids"
         },
         {
           "id": "stealth_02",
-          "label": "Intel Asset",
-          "description": "Complete ops with a Castellan enlisted (strategic intelligence role).",
+          "label": "Infiltrator",
+          "description": "Complete ops at omega_strats difficulty — operating at maximum risk with full strat load.",
           "threshold": 5,
           "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Castellan must confirm."
+          "prestige_reward": 4,
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "difficulty_class == omega_ops AND member_id in brother_ids"
         },
         {
           "id": "stealth_03",
           "label": "Blind Passage",
-          "description": "Complete Vox Liberatis (Op 3), Disruption (Op 12), AND Reclamation (Op 11) at least once each within the same campaign beat.",
+          "description": "Complete Vox Liberatis, Disruption, and Reclamation at least once each within the same campaign beat.",
           "threshold": 1,
-          "unit": "beat (binary — complete the set in one ops window)",
+          "unit": "beat (binary — all three missions within same beat window)",
           "prestige_reward": 5,
           "auto_track": true,
-          "claim_note": "Bot cross-refs three campaign_log mission IDs [3, 11, 12] within the same beat number."
+          "data_source": "aar_record + beat_window",
+          "tracking_rule": "within a single beat window: member_id in brother_ids for >= 1 each of Vox Liberatis, Disruption, and Reclamation"
         }
       ]
     },
@@ -306,32 +346,35 @@
         {
           "id": "rec_01",
           "label": "Chirurgeon",
-          "description": "Carry geneseed to extraction — higher threshold than the universal milestone.",
+          "description": "Carry geneseed to extraction — elevated threshold.",
           "threshold": 8,
           "unit": "carries",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Screenshot required."
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "gene_seed_carrier_id == member_id"
         },
         {
           "id": "rec_02",
-          "label": "No Brother Left",
-          "description": "Complete ops where every squad member extracted alive.",
-          "threshold": 5,
-          "unit": "ops",
+          "label": "Omega Carrier",
+          "description": "Carry geneseed to extraction in ops at omega_strats difficulty.",
+          "threshold": 2,
+          "unit": "carries",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Screenshot of full-squad extraction."
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "gene_seed_carrier_id == member_id AND difficulty_class == omega_ops"
         },
         {
           "id": "rec_03",
-          "label": "Apothecary Watch",
-          "description": "Complete ops with a Chief Apothecary or Watch Apothecary enlisted in the same company.",
-          "threshold": 5,
-          "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Apothecary must confirm."
+          "label": "Terminus Recovery",
+          "description": "Carry geneseed to extraction in an op where a terminus target was also killed.",
+          "threshold": 2,
+          "unit": "carries",
+          "prestige_reward": 5,
+          "auto_track": true,
+          "data_source": "aar_record + campaign_log",
+          "tracking_rule": "gene_seed_carrier_id == member_id AND campaign_log entry by member where terminus_killed == true (same run)"
         }
       ]
     },
@@ -341,31 +384,36 @@
       "milestones": [
         {
           "id": "res_01",
-          "label": "Iron Will",
-          "description": "Complete ops without going incapacitated once during the run (self-reported).",
-          "threshold": 5,
+          "label": "Endurance Watch",
+          "description": "Complete ops on the Kadaku front — the highest-attrition campaign theatre.",
+          "threshold": 8,
           "unit": "ops",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Honor system."
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "operations[mission].planet == kadaku AND member_id in brother_ids"
         },
         {
           "id": "res_02",
           "label": "Enduring Service",
-          "description": "Complete qualifying ops across the campaign window — harder threshold than the universal milestone.",
+          "description": "Complete qualifying ops across the campaign window — elevated threshold.",
           "threshold": 20,
           "unit": "ops",
           "prestige_reward": 5,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "member_id in brother_ids, AAR within campaign window"
         },
         {
           "id": "res_03",
           "label": "Omega Endured",
-          "description": "Complete ops on Omega + Strats difficulty.",
+          "description": "Complete ops at omega_strats difficulty.",
           "threshold": 3,
           "unit": "ops",
           "prestige_reward": 5,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "difficulty_class == omega_ops AND member_id in brother_ids"
         }
       ]
     },
@@ -376,30 +424,35 @@
         {
           "id": "elim_01",
           "label": "Executioner",
-          "description": "Complete Termination (Op 7) or Exfiltration (Op 9) — HVT and extraction-kill missions.",
+          "description": "Complete ops on Termination (Op 7) or Exfiltration (Op 9) — HVT and extraction-kill missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Termination, Exfiltration] AND member_id in brother_ids"
         },
         {
           "id": "elim_02",
           "label": "Primary Secured",
-          "description": "Complete the primary objective in a qualifying op (honor system — all qualifying ops are assumed primary complete unless squad wipes).",
+          "description": "Complete qualifying ops — all eligible ops are assumed primary-objective complete.",
           "threshold": 8,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "member_id in brother_ids, any qualifying AAR difficulty"
         },
         {
           "id": "elim_03",
-          "label": "Sentence Fulfilled",
-          "description": "Participate in an op where a Judiciar sentence mark was placed and the HVT was executed that same run.",
-          "threshold": 3,
-          "unit": "ops",
+          "label": "Double Execution",
+          "description": "Complete both Termination and Exfiltration within the same campaign beat.",
+          "threshold": 1,
+          "unit": "beat (binary — both missions within same beat window)",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Judiciar must confirm sentence mark resolved."
+          "auto_track": true,
+          "data_source": "aar_record + beat_window",
+          "tracking_rule": "within a single beat window: member_id in brother_ids for >= 1 Termination AAR AND >= 1 Exfiltration AAR"
         }
       ]
     },
@@ -410,31 +463,35 @@
         {
           "id": "intel_01",
           "label": "Signal Recovered",
-          "description": "Complete Vox Liberatis (Op 3) or Ballistic Engine (Op 6) — signal intelligence and targeting data missions.",
+          "description": "Complete ops on Vox Liberatis (Op 3) or Ballistic Engine (Op 6) — signal intelligence and targeting data missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Vox Liberatis, Ballistic Engine] AND member_id in brother_ids"
         },
         {
           "id": "intel_02",
-          "label": "Field Observer",
-          "description": "Complete ops with a Castellan enlisted (the intel role in the cascade).",
-          "threshold": 5,
-          "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Castellan must confirm."
+          "label": "Sector Survey",
+          "description": "Complete 4 distinct missions within a single campaign beat — broad operational coverage.",
+          "threshold": 1,
+          "unit": "beat (binary — 4 distinct missions within same beat window)",
+          "prestige_reward": 4,
+          "auto_track": true,
+          "data_source": "aar_record + beat_window",
+          "tracking_rule": "within a single beat window: count distinct mission names where member_id in brother_ids >= 4"
         },
         {
           "id": "intel_03",
           "label": "Map Read",
-          "description": "Complete 3 distinct mission IDs on the same committed planet during one beat — full battlefield survey.",
+          "description": "Complete 3 distinct missions from the same planet within a single beat — full front survey.",
           "threshold": 1,
-          "unit": "beat (binary — 3 distinct missions in one ops window)",
+          "unit": "beat (binary — 3 distinct same-planet missions within same beat window)",
           "prestige_reward": 4,
           "auto_track": true,
-          "claim_note": "Bot cross-refs campaign_log mission IDs against beat_record committed planet for same beat."
+          "data_source": "aar_record + aar_mission_lookup + beat_window",
+          "tracking_rule": "within a single beat window: count distinct mission names grouped by operations[mission].planet where member_id in brother_ids; threshold hit when any planet group >= 3 distinct missions"
         }
       ]
     },
@@ -445,31 +502,35 @@
         {
           "id": "supp_01",
           "label": "Fire Line",
-          "description": "Complete Siege (Op 14) or Purgation (Op 13) — the sustained-combat attrition missions.",
+          "description": "Complete ops on Siege (Op 14) or Purgation (Op 13) — sustained-combat and attrition missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission in [Siege, Purgation] AND member_id in brother_ids"
         },
         {
           "id": "supp_02",
-          "label": "Watch Duty",
-          "description": "Complete ops with a Watch Keeper enlisted.",
-          "threshold": 5,
+          "label": "Siege Specialist",
+          "description": "Complete ops on Siege (Op 14) specifically.",
+          "threshold": 3,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Watch Keeper must confirm."
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Siege AND member_id in brother_ids"
         },
         {
           "id": "supp_03",
-          "label": "Sustained Presence",
-          "description": "Complete qualifying ops on the Kadaku front (war world) across the campaign.",
+          "label": "War World",
+          "description": "Complete ops on the Kadaku front — elevated threshold covering all Kadaku missions.",
           "threshold": 8,
           "unit": "ops",
           "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Cross-ref beat_record committed planet. Self-report if Kadaku was active front."
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "operations[mission].planet == kadaku AND member_id in brother_ids"
         }
       ]
     },
@@ -479,32 +540,36 @@
       "milestones": [
         {
           "id": "def_01",
-          "label": "Gene Guardian",
-          "description": "Complete ops without any squad geneseed being lost to extraction failure (all geneseed that dropped was recovered).",
-          "threshold": 10,
-          "unit": "ops",
-          "prestige_reward": 4,
-          "auto_track": false,
-          "claim_note": "Self-report. Honor system."
+          "label": "Geneseed Warden",
+          "description": "Carry geneseed to extraction across 3 distinct mission types — recovery breadth across the theatre.",
+          "threshold": 3,
+          "unit": "distinct missions with carry",
+          "prestige_reward": 3,
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "count distinct mission names where gene_seed_carrier_id == member_id; threshold hit when distinct mission count >= 3"
         },
         {
           "id": "def_02",
           "label": "Fortress Minded",
-          "description": "Complete Siege (Op 14) — the static defense mission.",
+          "description": "Complete ops on Siege (Op 14) — the static defence mission.",
           "threshold": 3,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Siege AND member_id in brother_ids"
         },
         {
           "id": "def_03",
-          "label": "Unmoved",
-          "description": "Complete ops without a full squad wipe at any point during the run.",
-          "threshold": 8,
+          "label": "Zero KIA",
+          "description": "Complete omega_strats ops where no brothers were killed in action (squad KIA count == 0).",
+          "threshold": 3,
           "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Self-report. Honor system."
+          "prestige_reward": 5,
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "difficulty_class == omega_ops AND killed_in_action == 0 AND member_id in brother_ids"
         }
       ]
     },
@@ -515,31 +580,35 @@
         {
           "id": "fort_01",
           "label": "Entrenched",
-          "description": "Complete Siege (Op 14) — the fortified-position defense mission.",
+          "description": "Complete ops on Siege (Op 14) — elevated threshold.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": true
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Siege AND member_id in brother_ids"
         },
         {
           "id": "fort_02",
-          "label": "Strongpoint",
-          "description": "Complete qualifying ops on the Kadaku front (war world, primary Siege node).",
-          "threshold": 8,
-          "unit": "ops",
-          "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Cross-ref beat_record committed planet. Self-report if Kadaku was active front."
-        },
-        {
-          "id": "fort_03",
-          "label": "Dig In",
-          "description": "Complete 5 ops with the same 3-man squad composition (same three enlisted players each time).",
+          "label": "Warfront Anchor",
+          "description": "Complete ops on the Kadaku front — full theatre commitment across all Kadaku missions.",
           "threshold": 5,
           "unit": "ops",
           "prestige_reward": 3,
-          "auto_track": false,
-          "claim_note": "Self-report. All three squad members must co-submit or confirm."
+          "auto_track": true,
+          "data_source": "aar_mission_lookup",
+          "tracking_rule": "operations[mission].planet == kadaku AND member_id in brother_ids"
+        },
+        {
+          "id": "fort_03",
+          "label": "Hard Siege",
+          "description": "Complete Siege ops at hard_siege difficulty (elevated Siege threat tier).",
+          "threshold": 3,
+          "unit": "ops",
+          "prestige_reward": 4,
+          "auto_track": true,
+          "data_source": "aar_record",
+          "tracking_rule": "mission == Siege AND difficulty_class == hard_siege AND member_id in brother_ids"
         }
       ]
     }
