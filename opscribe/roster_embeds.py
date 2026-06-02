@@ -293,7 +293,7 @@ def _get_kill_teams_for_company(
 # Embed rendering
 # ---------------------------------------------------------------------------
 
-_EMBED_COLOR = discord.Color.from_str("#2B2B2B")  # dark grey / Deathwatch aesthetic
+_EMBED_COLOR = discord.Color.from_rgb(96, 125, 139)  # Deathwatch steel blue-grey
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
@@ -338,14 +338,29 @@ def _build_embed(
     ROSTER_EMBED_DESC_LIMIT characters. Reports the truncation count in a
     footer note so admins are aware.
     """
+    ts = last_updated or datetime.now(timezone.utc)
+    count = len(members)
+    noun = "Brother" if count == 1 else "Brothers"
+
     embed = discord.Embed(title=title, color=_EMBED_COLOR)
 
+    # Guild icon as thumbnail
+    try:
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+    except Exception:
+        pass
+
+    # Header line above the member list
+    SEPARATOR = "\u2500" * 24  # ────────────────────────
+    header = f"*⌾ Watch Fortress Jericho ⌾*\n**{count} {noun} Deployed**\n{SEPARATOR}"
+
     if not members:
-        embed.description = "*No members currently assigned.*"
+        embed.description = f"{header}\n*No members currently assigned.*"
     else:
         lines: List[str] = []
         truncated_count = 0
-        running_len = 0
+        running_len = len(header) + 1  # account for header in limit
 
         for m in members:
             try:
@@ -363,7 +378,7 @@ def _build_embed(
             lines.append(line)
             running_len += len(line) + 1
 
-        description = "\n".join(lines)
+        description = header + "\n" + "\n".join(lines)
 
         if truncated_count:
             note = f"\n*…and {truncated_count} more not shown (embed limit reached)*"
@@ -374,9 +389,8 @@ def _build_embed(
 
         embed.description = description
 
-    ts = last_updated or datetime.now(timezone.utc)
     embed.set_footer(
-        text=f"Last updated · {ts.strftime('%Y-%m-%d %H:%M UTC')}"
+        text=f"⌾ Recorded by decree of Watch Command ⌾  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
     )
     return embed
 
@@ -456,7 +470,7 @@ async def _update_company_roster(
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_embed = _build_embed(
-        "⸸ HIGH COMMAND",
+        "᛭⋅ HIGH COMMAND ⋅᛭",
         hc_members,
         guild,
         last_updated=now,
@@ -469,7 +483,7 @@ async def _update_company_roster(
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     cmd_embed = _build_embed(
-        f"⸸ WATCH COMPANY {short_name.upper()} — COMMAND",
+        f"᛭⋅ WATCH COMPANY {short_name.upper()} — COMMAND ⋅᛭",
         cmd_members,
         guild,
         last_updated=now,
@@ -495,7 +509,7 @@ async def _update_company_roster(
 
     for kt_name, kt_members in kill_teams:
         kt_embed = _build_embed(
-            f"⸸ {kt_name.upper()}",
+            f"᛭⋅ {kt_name.upper()} ⋅᛭",
             kt_members,
             guild,
             last_updated=now,
