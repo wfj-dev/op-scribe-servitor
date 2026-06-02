@@ -266,7 +266,8 @@ def _get_kill_teams_for_company(
     """
     kt_roles: List[discord.Role] = []
     for role in guild.roles:
-        if "kill team" in (role.name or "").lower():
+        rn_lower = (role.name or "").lower()
+        if "kill team" in rn_lower and "champion" not in rn_lower:
             kt_roles.append(role)
     kt_roles.sort(key=lambda r: r.name)
 
@@ -482,6 +483,8 @@ async def _update_company_roster(
     # Resolve title emojis once; fall back to empty string gracefully
     def _te(name: str) -> str:
         e = _b("_get_emoji_by_name")(guild, name)
+        if not e:
+            _log().debug(f"Roster: emoji not found for name '{name}'")
         return str(e) if e else ""
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
