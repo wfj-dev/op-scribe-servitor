@@ -12,7 +12,7 @@
       "name": "Avarax",
       "type": "Hive world",
       "dominant_faction": "mixed",
-      "notes": "Largest mission pool. Mixed Tyranid/Chaos presence. Wrath of Espandor is in the Reach and accessible from any committed planet when Void Warden is present."
+      "notes": "Largest mission pool. Mixed Tyranid/Chaos presence."
     },
     {
       "id": "demerium",
@@ -26,7 +26,7 @@
       "name": "Wrath of Espandor",
       "type": "Dauntless-class cruiser (ship interior)",
       "dominant_faction": "tyranid",
-      "notes": "Dauntless-class cruiser operating in the Jericho Reach. Unlocked whenever Void Warden is present at Highcom — not tied to committed planet. Treated as a void sub-theatre accessible from any node."
+      "notes": "Dauntless-class cruiser operating in the Jericho Reach. Always in the eligible op pool regardless of committed planet — no gate, no unlock condition. Reclamation (Op 11) is the only mission run here."
     }
   ],
   "roaming_terminus": [

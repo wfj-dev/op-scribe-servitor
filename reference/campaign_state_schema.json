@@ -240,7 +240,7 @@
   },
 
   "strat_pool": {
-    "_note": "One uniform pool for the entire ops week. Derived from cascade tag aggregate. WM confirms or vetoes before ops window opens.",
+    "_note": "One uniform pool for the entire ops week. Derived from cascade tag aggregate. WM confirms or vetoes before ops window opens. See reference/strat_mandate.json for three-tier derivation logic.",
     "locked": "bool — false during cascade, true once WM confirms and ops window opens",
     "locked_at": "ISO timestamp | null",
     "confirmed_by": "string — WM user id | null",
@@ -248,6 +248,15 @@
     "cascade_tag_aggregate": {
       "_note": "Snapshot of tag frequencies used to generate the pool. Stored for audit.",
       "tag_name": "int — count of cascade picks contributing this tag"
+    },
+    "theatre_mandate": "string — stratagem name mandated for all enlisted members this beat | null",
+    "company_mandates": {
+      "_note": "Keyed by company identifier. Each company independently derives one strat from the pool.",
+      "COMPANY_ID": "string — stratagem name | null"
+    },
+    "kt_mandates": {
+      "_note": "Keyed by Sgt user ID. Each KT independently derives one strat from the remaining pool.",
+      "SGT_USER_ID": "string — stratagem name | null"
     }
   },
 
