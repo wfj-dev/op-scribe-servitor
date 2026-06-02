@@ -568,76 +568,71 @@ async def _roster_update_before_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Slash commands
+# Slash commands — registered at import time (same as roster_ops.py pattern)
+# so they are in the tree before tree.sync() fires in on_ready.
 # ---------------------------------------------------------------------------
 
-def _register_commands() -> None:
-    """Register /roster_post and /roster_refresh with the bot's command tree.
+@_g.bot.tree.command(
+    name="roster_post",
+    description="Post (or re-anchor) all roster embeds in company channels. Forgemaster only.",
+)
+async def roster_post(interaction: discord.Interaction) -> None:
+    if not _b("check_command_permission")(interaction.user, "roster_post"):
+        await interaction.response.send_message(
+            "Access denied. This command is restricted to Forgemaster.", ephemeral=True
+        )
+        return
 
-    Called once from bot.py after the bot object is available via _g.bot.
-    """
-    bot = _g.bot
+    await interaction.response.defer(ephemeral=True, thinking=True)
 
-    @bot.tree.command(
-        name="roster_post",
-        description="Post (or re-anchor) all roster embeds in company channels. Forgemaster only.",
-    )
-    async def roster_post(interaction: discord.Interaction) -> None:
-        if not _b("check_command_permission")(interaction.user, "roster_post"):
-            await interaction.response.send_message(
-                "Access denied. This command is restricted to Forgemaster.", ephemeral=True
-            )
-            return
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("Must be used in a server.", ephemeral=True)
+        return
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
+    results = await _update_all_rosters(guild)
 
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send("Must be used in a server.", ephemeral=True)
-            return
+    lines = ["**Roster embed status:**"]
+    for company, result in results.items():
+        short = company.replace("Watch Company", "").strip()
+        icon = "✅" if result == "ok" else "❌"
+        msg = "posted / updated" if result == "ok" else result
+        lines.append(f"{icon} **{short}**: {msg}")
 
-        results = await _update_all_rosters(guild)
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
 
-        lines = ["**Roster embed status:**"]
-        for company, result in results.items():
-            short = company.replace("Watch Company", "").strip()
-            icon = "✅" if result == "ok" else "❌"
-            msg = "posted / updated" if result == "ok" else result
-            lines.append(f"{icon} **{short}**: {msg}")
 
-        await interaction.followup.send("\n".join(lines), ephemeral=True)
+@_g.bot.tree.command(
+    name="roster_refresh",
+    description="Manually refresh all roster embeds now. Watch Command+.",
+)
+async def roster_refresh(interaction: discord.Interaction) -> None:
+    if not _b("check_command_permission")(interaction.user, "roster_refresh"):
+        await interaction.response.send_message(
+            "Access denied. Requires Watch Command or higher.", ephemeral=True
+        )
+        return
 
-    @bot.tree.command(
-        name="roster_refresh",
-        description="Manually refresh all roster embeds now. Watch Command+.",
-    )
-    async def roster_refresh(interaction: discord.Interaction) -> None:
-        if not _b("check_command_permission")(interaction.user, "roster_refresh"):
-            await interaction.response.send_message(
-                "Access denied. Requires Watch Command or higher.", ephemeral=True
-            )
-            return
+    await interaction.response.defer(ephemeral=True, thinking=True)
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("Must be used in a server.", ephemeral=True)
+        return
 
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send("Must be used in a server.", ephemeral=True)
-            return
+    results = await _update_all_rosters(guild)
 
-        results = await _update_all_rosters(guild)
+    lines = ["**Roster refresh complete:**"]
+    any_error = False
+    for company, result in results.items():
+        short = company.replace("Watch Company", "").strip()
+        icon = "✅" if result == "ok" else "❌"
+        msg = "updated" if result == "ok" else result
+        if result != "ok":
+            any_error = True
+        lines.append(f"{icon} **{short}**: {msg}")
 
-        lines = ["**Roster refresh complete:**"]
-        any_error = False
-        for company, result in results.items():
-            short = company.replace("Watch Company", "").strip()
-            icon = "✅" if result == "ok" else "❌"
-            msg = "updated" if result == "ok" else result
-            if result != "ok":
-                any_error = True
-            lines.append(f"{icon} **{short}**: {msg}")
+    if any_error:
+        lines.append("\n*Check bot logs for full error details.*")
 
-        if any_error:
-            lines.append("\n*Check bot logs for full error details.*")
-
-        await interaction.followup.send("\n".join(lines), ephemeral=True)
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
