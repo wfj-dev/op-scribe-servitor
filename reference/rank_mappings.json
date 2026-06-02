@@ -106,9 +106,9 @@
       "lore_role": "Chief Librarian — HC-tier psyker and warp-intelligence authority",
       "cascade_position": 2,
       "ops": {
-        "mode": "unlock + affinity",
+        "mode": "affinity",
         "mission_ids": [3, 10, 11],
-        "notes": "Unlocks Reclamation (11 / Wrath of Espandor) whenever Void Warden is present — no planet commit restriction. The Wrath of Espandor is in the Reach and accessible from any node. Also holds psyker/warp affinity toward Vox Liberatis (03, Thousand Sons) and Vortex (10, warp entity cleanse)."
+        "notes": "Psyker/warp affinity toward Vox Liberatis (03, Thousand Sons), Vortex (10, warp entity cleanse), and Reclamation (11, void vessel boarding). No unlock gate — Reclamation is always in the eligible pool."
       },
       "strats": ["Beset","Corrupted Relic","Hallowed Relic","Intelligence Lapse","Migraine","Reinforced Cranium","Summoner","Surgical Strike","Temporal Boosts","Warp Storm"],
       "terminus": {
