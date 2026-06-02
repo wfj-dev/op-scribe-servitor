@@ -836,6 +836,7 @@ HOME_CHAPTERS = [
     "Knights of the Raven",
     "Lamenters",
     "Marines Errant",
+    "Marines Malevolent",
     "Mentors",
     "Minotaurs",
     "Necropolis Hawks",
