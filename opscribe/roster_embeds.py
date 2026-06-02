@@ -481,12 +481,21 @@ async def _update_company_roster(
 
     short_name = company_name.replace("Watch Company", "").strip()  # "Primus" etc.
 
-    # Resolve title emojis once; fall back to empty string gracefully
+    # Fetch guild emojis fresh from the API so we don't depend on the cache.
+    try:
+        _fetched_emojis: list[discord.Emoji] = await guild.fetch_emojis()
+        _log().debug(f"Roster: fetched {len(_fetched_emojis)} emojis from guild {guild.id}")
+    except Exception as _fe:
+        _fetched_emojis = list(guild.emojis)
+        _log().warning(f"Roster: fetch_emojis() failed ({_fe}), falling back to cache ({len(_fetched_emojis)} emojis)")
+
     def _te(name: str) -> str:
-        e = _get_emoji_by_name(guild, name)
-        if not e:
-            _log().warning(f"Roster: emoji '{name}' not found in guild {getattr(guild, 'id', '?')}")
-        return str(e) if e else ""
+        normalized = name.replace(" ", "").replace("-", "").replace("'", "").lower()
+        for emoji in _fetched_emojis:
+            if emoji.name.lower() == normalized:
+                return str(emoji)
+        _log().warning(f"Roster: emoji '{name}' not found (searched {len(_fetched_emojis)} guild emojis)")
+        return ""
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
     cmd_emoji = _te("Command")          # :Command:
