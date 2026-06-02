@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 # Role IDs
 # ---------------------------------------------------------------------------
 WATCH_COMMAND_ROLE_ID = 1429281421931057283
+# High Command role ID (members with this role appear in the HC roster embed)
+HIGH_COMMAND_ROLE_ID = 1452913063970865203
 # Watch Sergeant Role ID (for vet promotions)
 WATCH_SERGEANT_ROLE_ID = 1429339146371203112
 # Watch Librarian Role ID (for challenge eligibility notifications)
@@ -440,7 +442,7 @@ CHALLENGE_ROLES = [
     # Laurels / Vigil
     (1450595241508733183, "Crimson Laurels", "CrimsonLaurelsMedal"),
     (1440108298115485716, "Black Laurels", "BlackLaurelsMedal"),
-    (1509561627580694638, "Order of the Aquiline Brotherhood", None),
+    (1509561627580694638, "Order of the Aquiline Brotherhood", "AquilineBrotherhood"),
     # Service awards
     (1436434868652212275, "Apothecarion Service Medal", "ApothecarionServiceMedal"),
     (1436170746283163770, "Ardent Raider Ribbon", "ArdentRaiderRibbon"),
@@ -453,6 +455,37 @@ CHALLENGE_ROLES = [
     (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
     (1502135764312526858, "The Order Omega", "TheOrderOmega"),
 ]
+
+# ---------------------------------------------------------------------------
+# Auto-roster embed configuration
+# ---------------------------------------------------------------------------
+ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
+
+# Maps Watch Company role name -> roster channel ID.
+# The bot posts and maintains embeds inside each of these channels.
+ROSTER_COMPANY_CHANNELS: dict[str, int] = {
+    "Watch Company Primus": 1433351509722267658,
+    "Watch Company Secundus": 1458255466189684999,
+}
+
+# Ranks that appear in the Company Command embed (in addition to members
+# whose highest rank is one of these AND who hold the company role).
+# Honored Dreadnought is included here per server rules.
+ROSTER_COMPANY_COMMAND_RANKS: set[str] = {
+    "Watch Captain",
+    "Watch Lieutenant",
+    "Company Champion",
+    "Watch Techmarine",
+    "Watch Apothecary",
+    "Watch Chaplain",
+    "Watch Librarian",
+    "Watch Keeper",
+    "Honored Dreadnought",
+}
+
+# Maximum characters to use inside a single roster embed description
+# before graceful truncation. Discord hard limit is 4096; we stay well below.
+ROSTER_EMBED_DESC_LIMIT = 3800
 
 # ---------------------------------------------------------------------------
 # Misc

@@ -30,3 +30,5 @@ LIBRARIUM_CHRONICLE_LOCK = None
 LIBRARIUM_OVERRIDE_LOCK = None
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_LOCK = None
+# Auto-roster embed subsystem
+ROSTER_STATE_LOCK = None
