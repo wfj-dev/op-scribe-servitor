@@ -35,7 +35,7 @@ from .constants import (
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
-from .forge_ops import _get_emoji_by_name, _get_rank_emoji
+from .forge_ops import _get_emoji_by_name
 from . import _bot_globals as _g
 
 # ---------------------------------------------------------------------------
@@ -316,12 +316,7 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:rankemoji: | :chapteremoji: | Name``."""
-    rank = _get_highest_rank(member)
-    rank_emoji_str = _get_rank_emoji(guild, rank) if rank else ""
-
-    name = _clean_roster_name(member)
-
+    """Render a single roster line: ``:chapteremoji: | @mention``."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     role_names = _member_role_names(member)
     chapter_emoji_str = ""
@@ -330,9 +325,9 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
-    left = rank_emoji_str or "·"
-    mid = chapter_emoji_str or "·"
-    return f"{left} | {mid} | {name}"
+    mention = member.mention
+    left = chapter_emoji_str or "·"
+    return f"{left} | {mention}"
 
 
 def _build_embed(
@@ -352,13 +347,6 @@ def _build_embed(
     noun = "Brother" if count == 1 else "Brothers"
 
     embed = discord.Embed(title=title, color=_EMBED_COLOR)
-
-    # Guild icon as thumbnail
-    try:
-        if guild.icon:
-            embed.set_thumbnail(url=guild.icon.url)
-    except Exception:
-        pass
 
     # Header line above the member list
     SEPARATOR = "\u2500" * 24  # ────────────────────────
