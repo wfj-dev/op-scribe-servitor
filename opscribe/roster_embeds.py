@@ -316,7 +316,7 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:rankemoji: Name :chapteremoji:``."""
+    """Render a single roster line: ``:rankemoji: | :chapteremoji: | Name``."""
     rank = _get_highest_rank(member)
     rank_emoji_str = _get_rank_emoji(guild, rank) if rank else ""
 
@@ -330,13 +330,9 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
-    parts = []
-    if rank_emoji_str:
-        parts.append(rank_emoji_str)
-    parts.append(name)
-    if chapter_emoji_str:
-        parts.append(chapter_emoji_str)
-    return " ".join(parts)
+    left = rank_emoji_str or "·"
+    mid = chapter_emoji_str or "·"
+    return f"{left} | {mid} | {name}"
 
 
 def _build_embed(
