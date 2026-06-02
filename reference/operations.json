@@ -12,7 +12,7 @@
       "name": "Avarax",
       "type": "Hive world",
       "dominant_faction": "mixed",
-      "notes": "Largest mission pool. Mixed Tyranid/Chaos presence. Wrath of Espandor in orbit \u2014 Reclamation unlocked here by Void Warden."
+      "notes": "Largest mission pool. Mixed Tyranid/Chaos presence. Wrath of Espandor is in the Reach and accessible from any committed planet when Void Warden is present."
     },
     {
       "id": "demerium",
@@ -26,7 +26,7 @@
       "name": "Wrath of Espandor",
       "type": "Dauntless-class cruiser (ship interior)",
       "dominant_faction": "tyranid",
-      "notes": "In orbit around Avarax. Unlocked when Avarax is committed planet AND Void Warden is present. Not a standalone planet \u2014 treated as Avarax sub-theatre."
+      "notes": "Dauntless-class cruiser operating in the Jericho Reach. Unlocked whenever Void Warden is present at Highcom — not tied to committed planet. Treated as a void sub-theatre accessible from any node."
     }
   ],
   "roaming_terminus": [
@@ -254,7 +254,7 @@
       "faction_effective": "tyranid",
       "terminus_boss": "Tyranid Prime",
       "terminus_roaming": [],
-      "unlock_condition": "Avarax must be committed planet. Void Warden must be present at Highcom.",
+      "unlock_condition": "Void Warden must be enlisted and present at Highcom. No planet commit restriction — the Wrath of Espandor is accessible from any node.",
       "description": "Board the overrun cruiser Wrath of Espandor and destabilise its reactors to devastate the Hive Fleet.",
       "added_in": "Patch 11.0",
       "codename": "ship",
