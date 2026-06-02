@@ -68,10 +68,8 @@ def _clean_roster_name(member: discord.Member) -> str:
        ``_normalize_display_name`` — keeps text readable without losing intent
     3. Strip stud-pip glyphs  ●⚬▬
     4. Collapse runs of whitespace to a single space and trim edges
-    5. Cap length at 40 chars to keep roster lines tidy
-
-    Intentionally does NOT attempt to strip Oathsworn titles or rank prefixes
-    because those form part of the member's chosen identity.
+    5. Strip rank name prefix (case-insensitive) so only the personal name remains
+    6. Cap length at 40 chars to keep roster lines tidy
     """
     raw = (
         getattr(member, "nick", None)
@@ -88,7 +86,14 @@ def _clean_roster_name(member: discord.Member) -> str:
     out = out.replace("●", "").replace("⚬", "").replace("▬", "")
     # 4. Collapse whitespace
     out = re.sub(r"\s+", " ", out).strip()
-    # 5. Length cap
+    # 5. Strip rank prefix (longest match first to handle multi-word ranks)
+    rank_list: list[str] = _b("RANK_ROLES_PRIORITY") or []
+    out_lower = out.lower()
+    for rank in sorted(rank_list, key=len, reverse=True):
+        if out_lower.startswith(rank.lower()):
+            out = out[len(rank):].strip()
+            break
+    # 6. Length cap
     if len(out) > 40:
         out = out[:37] + "…"
     return out or str(getattr(member, "id", "?"))
@@ -311,18 +316,12 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:rankemoji: Name :chapteremoji:``.
-
-    Falls back gracefully if emojis or chapter cannot be resolved.
-    """
+    """Render a single roster line: ``:rankemoji: Name :chapteremoji:``."""
     rank = _get_highest_rank(member)
-    rank_emoji_str = ""
-    if rank:
-        rank_emoji_str = _get_rank_emoji(guild, rank) or ""
+    rank_emoji_str = _get_rank_emoji(guild, rank) if rank else ""
 
     name = _clean_roster_name(member)
 
-    # Home chapter emoji
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     role_names = _member_role_names(member)
     chapter_emoji_str = ""
