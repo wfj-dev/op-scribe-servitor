@@ -3049,6 +3049,7 @@ def _get_rank_emoji(guild: discord.Guild, rank_name: str) -> str:
     RANK_EMOJI_OVERRIDES = {
         "Company Champion": "WatchChampion",
         "Kill Team Champion": "KillteamChampion",
+        "Venerable Dreadnought": "Venerable",
     }
     emoji_name = RANK_EMOJI_OVERRIDES.get(rank_name, rank_name)
     emoji = _get_emoji_by_name(guild, emoji_name)
