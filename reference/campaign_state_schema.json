@@ -28,14 +28,35 @@
   },
 
   "enlistment": {
-    "_note": "All enlisted members for this campaign. Keyed by Discord user id string. Populated via /campaign-enlist. Cleared on campaign end.",
+    "_note": "All enlisted members for this campaign. Keyed by Discord user id string. Populated via /campaign-enlist. Auto-removed after 28 days with no qualifying AAR. Cleared on campaign end.",
     "USER_ID": {
       "discord_name": "string",
       "role": "string — canonical role name from rank_mappings.json e.g. 'Watch Master'",
       "tier": "string — HC | Company | KT",
       "chapter": "string — chapter name from chapters.json",
       "enlisted_at": "ISO 8601 UTC timestamp",
-      "active": "bool — false if they unenlist mid-campaign (cascade slot becomes vacant)"
+      "active": "bool — false if they unenlist mid-campaign or are auto-de-enlisted for inactivity (cascade slot becomes vacant)",
+      "last_aar_timestamp": "ISO 8601 UTC timestamp | null — timestamp of most recent qualifying AAR (hard_strat or omega) this member appeared in as brother_id. Bot updates on each AAR ingest. Used for 28-day auto-de-enlist check.",
+      "auto_de_enlist_warning_sent": "bool — true if bot has sent a warning DM that this member is approaching 28-day inactivity threshold",
+      "company_id": "string — primus | secundus | tertius | quartus | quintus | null. Set at enlistment for Company and KT tier members. HC-tier members have null (derived from operational attachment instead).",
+      "kt_sgt_id": "string user id | null — the Sgt whose kill team this member belongs to. Set at enlistment for KT-tier members. Company-tier and HC-tier have null (no inherent KT).",
+      "operational_attachment": {
+        "_note": "Only populated for Company-tier and HC-tier members (those without an inherent KT or company assignment). Bot derives from AAR brother_ids co-occurrence over rolling 28-day window. KT-tier members always use kt_sgt_id — this block is null for them.",
+        "attached_kt_sgt_id": "string user id | null — Sgt of the KT this member most frequently runs with in the last 28 days",
+        "attached_company_id": "string | null — company_id of the company this member most frequently runs with",
+        "derived_at": "ISO 8601 UTC timestamp — when the bot last recomputed this attachment",
+        "shared_aars_with_kt": "int — count of AARs shared with attached KT members in the window (used for tiebreaking)"
+      },
+      "milestone_progress": {
+        "_note": "Per-member progress toward personal milestones. Keyed by milestone_id from personal_milestones.json. Bot updates on each qualifying AAR ingest and campaign_log submission.",
+        "MILESTONE_ID": {
+          "count": "int — current progress count toward threshold",
+          "threshold": "int — copied from personal_milestones.json at enlistment",
+          "completed": "bool",
+          "completed_at": "ISO 8601 UTC timestamp | null",
+          "prestige_awarded": "int | null — prestige credited on completion"
+        }
+      }
     }
   },
 
@@ -48,7 +69,15 @@
     "outcome": "null until complete — one of: Full Victory | Costly Victory | Heroic Defeat | Efficient Victory | Holding Action | Last Stand | Lucky Hold | Neglected Front | Rout",
     "current_node": "string — node id from jericho_reach_graph.json e.g. 'Kadaku'",
     "visited_nodes": ["list of node id strings visited this campaign in order"],
-    "beat_history": ["list of beat_record objects — see beat_record schema below"]
+    "beat_history": ["list of beat_record objects — see beat_record schema below"],
+    "beat_schedule": [
+      {
+        "beat": "int 1-3",
+        "opens_at": "ISO 8601 UTC timestamp — when this beat's ops window opens. Set by Forgemaster at campaign start.",
+        "closes_at": "ISO 8601 UTC timestamp — when this beat auto-closes. Bot locks campaign_log at this exact time and begins beat resolution.",
+        "resolved_at": "ISO 8601 UTC timestamp | null — when bot finished beat resolution and opened next beat (or ended campaign)."
+      }
+    ]
   },
 
   "beat_scenarios": {
@@ -315,21 +344,70 @@
     }
   },
 
-  "prestige": {
-    "_note": "28-day rolling window. Keyed by Discord role id string (company or KT role). Pruned on each beat evaluation.",
-    "ROLE_ID": {
-      "label": "string — role display name",
-      "type": "string — company | kill_team",
-      "total": "int — current prestige total within window",
-      "tier": "string — see campaign_system.md for tier thresholds",
-      "entries": [
+  "companies": {
+    "_note": "Five fixed companies. Keyed by company_id. Members are enrolled at enlistment via /campaign-enlist. Company prestige = sum of (25% of each KT's rolling prestige) + direct contributions from Company-tier members running within company bounds.",
+    "COMPANY_ID": {
+      "_company_ids": "primus | secundus | tertius | quartus | quintus",
+      "display_name": "string — e.g. 'Watch Company Primus'",
+      "title": "string | null — granted title e.g. 'The Iron Vigil'. Persists across beats/campaigns. Cleared only if prestige drops below retain threshold or WM revokes.",
+      "title_granted_by": "string user id | null",
+      "title_granted_at": "ISO 8601 UTC timestamp | null",
+      "honour": "string | null — active honour id from campaign_rewards.json e.g. 'co_honour_stalwart'",
+      "ribbon": "string | null — active ribbon id from campaign_rewards.json e.g. 'co_ribbon_vanguard'",
+      "lore_priority": "bool — true if this company is the current lore-priority company",
+      "prestige_window_total": "int — cached rolling 28-day prestige total. Recomputed on dashboard refresh, beat close, and reward checks.",
+      "last_prestige_check": "ISO 8601 UTC timestamp | null"
+    }
+  },
+
+  "kill_teams": {
+    "_note": "One entry per enlisted Watch Sergeant. Kill team prestige is derived from campaign_log entries where the member (or their operationally attached members) ran qualifying ops. KT prestige feeds 25% into company total.",
+    "SGT_USER_ID": {
+      "sgt_discord_name": "string",
+      "display_name": "string — e.g. 'Sgt Varen's Kill Team'",
+      "company_id": "string — primus | secundus | tertius | quartus | quintus",
+      "title": "string | null — granted title e.g. 'The Pale Watch'. Persists across beats/campaigns.",
+      "title_granted_by": "string user id | null — must be a Captain or Lieutenant in the same company",
+      "title_granted_at": "ISO 8601 UTC timestamp | null",
+      "honour": ["list of active honour id strings from campaign_rewards.json — multiple honours can be held"],
+      "ribbon": "string | null — active ribbon id (single display ribbon, highest applicable)",
+      "lore_priority": "bool — true if this KT is the current lore-priority kill team",
+      "prestige_window_total": "int — cached rolling 28-day prestige total. Recomputed on dashboard refresh, beat close, and reward checks.",
+      "last_prestige_check": "ISO 8601 UTC timestamp | null",
+      "prestige_log": [
         {
-          "earned_at": "ISO timestamp",
-          "amount": "int",
-          "source": "string — op_baseline | prestige_mission | prestige_terminus | judiciar_sentence | difficulty_bonus",
+          "_note": "Individual prestige credit entries. Each entry maps to one campaign_log submission by a member of this KT (or operationally attached to it).",
+          "earned_at": "ISO 8601 UTC timestamp — copied from the matched AAR timestamp (not campaign_log submitted_at)",
+          "member_id": "string user id",
+          "base_amount": "int — raw prestige before multiplier (5 for hard_strat, 20 for omega)",
+          "multiplier": "float — prestige multiplier applied based on who the member ran with (1.0 | 0.9 | 0.85 | 0.8 | 0.7)",
+          "credited_amount": "int — base_amount * multiplier, rounded",
+          "source_breakdown": {
+            "op_baseline": "int",
+            "prestige_mission": "int",
+            "prestige_terminus": "int",
+            "judiciar_sentence": "int",
+            "difficulty_bonus": "int"
+          },
           "campaign_log_entry_id": "string — ENTRY_ID reference"
         }
       ]
+    }
+  },
+
+  "lore_priority": {
+    "_note": "Marks the current lore-priority kill team and company. Used by lore writers to know whose story is being told. Exactly one KT and one company hold priority at any time (the top by rolling prestige if above floor). Updated at beat close and dashboard refresh.",
+    "kill_team": {
+      "sgt_user_id": "string | null — null if no KT clears the floor (180 prestige)",
+      "display_name": "string | null",
+      "prestige": "int | null",
+      "held_since": "ISO 8601 UTC timestamp | null"
+    },
+    "company": {
+      "company_id": "string | null — null if no company clears the floor (350 prestige)",
+      "display_name": "string | null",
+      "prestige": "int | null",
+      "held_since": "ISO 8601 UTC timestamp | null"
     }
   },
 

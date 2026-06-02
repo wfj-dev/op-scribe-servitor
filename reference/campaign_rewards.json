@@ -1,0 +1,292 @@
+{
+  "_notes": {
+    "summary": "Defines all campaign reward types: Ribbons, Titles, Honours, Lore Priority, and Home Chapter Priority. Two scopes: Kill Team (KT) and Company. Thresholds are calibrated against historical AAR data (7824 records, Oct 2025 – Jun 2026). Hard_strat = 5 prestige, omega = 20 prestige per op.",
+
+    "calibration_basis": {
+      "data_range": "Oct 2025 – Jun 2026, 31 weeks",
+      "qualifying_aars": "1320 hard_strat + omega AARs in full window",
+      "qualifying_per_week": "~42 qualifying AARs/week across all players",
+      "top_individual_28d": "885 prestige (absolute ceiling, single player, 28-day rolling window)",
+      "median_individual_28d": "50 prestige",
+      "typical_active_week_top3_combined": "450–900 prestige (raw, not necessarily co-occurring)",
+      "realistic_coordinated_kt_28d": "150–600 prestige for 3 members running mostly together",
+      "company_from_kt_cap": "25% of each KT's total flows to company — with 3 active KTs, company earns 150–450 prestige from KT contributions alone"
+    },
+
+    "scope": "KT = scoped to a specific kill team (keyed by sgt_user_id). Company = scoped to Watch Company Primus/Secundus/Tertius/Quartus/Quintus.",
+
+    "prestige_window": "All thresholds use the rolling 28-day window. Prestige is computed live at check time from campaign_log entries where the AAR timestamp falls within the last 28 days. Operational attachments (HC/Company members running with a KT) count toward that KT's prestige at their applicable rate.",
+
+    "kt_prestige_to_company": "Each KT contributes 25% of its rolling 28-day prestige to its company total. A single dominant KT cannot carry a company — breadth of KT activity is required to reach company honour thresholds.",
+
+    "acquisition_vs_retention": "All rewards use hysteresis: two thresholds prevent flickering. A reward is acquired when prestige rises above the acquire threshold. It is lost only when prestige falls below the retain threshold. The gap between the two provides a buffer against week-to-week variance.",
+
+    "beat_timing": {
+      "beat_1": "First week. Ribbons achievable for any active KT/company. Titles grantable by end of Beat 1 for elite performers.",
+      "beat_2": "Second week (28d window now spans 2 weeks of campaign data). Titles firmly established for sustained performers. Honours coming into reach for elite.",
+      "beat_3": "Third week (28d window spans full campaign). Honours achievable only for consistently elite groups. Lore priority clear and stable for top performers."
+    },
+
+    "prestige_multipliers": {
+      "_note": "Multipliers apply to how much an individual's op prestige credits toward their KT/company totals. Base prestige value (5 or 20) is unchanged — multiplier affects contribution rate only.",
+      "kt_member_with_own_kt": "1.0x — full credit. Running with your assigned KT squad.",
+      "kt_member_outside_kt_within_company": "0.85x — partial credit. Running with company members but not your KT.",
+      "kt_member_outside_company": "0.7x — reduced credit. Running with anyone outside your company.",
+      "company_member_with_attached_kt": "0.9x — guest rate. Company-tier roles (no inherent KT) operationally attached to a KT by co-occurrence.",
+      "company_member_within_company_no_kt": "0.85x — within company but not running with attached KT.",
+      "company_member_outside_company": "0.7x — outside company.",
+      "hc_or_venerable_with_attached_kt": "0.85x — HC-tier and Venerable Dreads running with their operationally attached KT.",
+      "hc_or_venerable_within_attached_company": "0.8x — within attached company but outside KT.",
+      "hc_or_venerable_outside_attachment": "0.7x — no attachment or running outside it."
+    },
+
+    "operational_attachment_rules": {
+      "who_can_be_attached": "Only members without an inherent KT assignment (Company-tier and HC-tier roles) can be operationally attached. KT-tier roles (Sgt, KT Champion, Judiciar, Oathsworn, Veteran, Brother) are always in their assigned KT — not attached.",
+      "how_derived": "Bot counts shared AARs (by brother_ids co-occurrence) over the rolling 28-day window. The KT whose members a non-KT player runs with most often becomes their operational attachment. Tiebreaker: most recent co-occurrence.",
+      "company_attachment": "Applies identically to HC-tier members and Venerable Dreadnoughts attaching to a company: most shared AARs with members of a company = attached to that company.",
+      "lore_prio_inclusion": "Operationally attached members count as part of the lore-priority KT/company for lore writer purposes."
+    }
+  },
+
+  "ribbons": {
+    "_note": "Automatic awards. Bot checks after each beat close and on dashboard refresh. Lost at beat end if prestige drops below retain threshold into the next beat window. No manual grant. One ribbon per scope (KT ribbon, Company ribbon) — the single highest-qualifying ribbon is displayed.",
+    "_beat_target": "Beat 1 achievable for any active KT/company.",
+
+    "kill_team": [
+      {
+        "id": "kt_ribbon_active",
+        "label": "Active Service Ribbon",
+        "description": "Kill team demonstrated consistent activity this beat.",
+        "acquire_threshold": 100,
+        "retain_threshold": 60,
+        "scope": "kill_team",
+        "grant": "automatic",
+        "display": "ribbon"
+      },
+      {
+        "id": "kt_ribbon_terminus",
+        "label": "Terminus Banner",
+        "description": "Kill team participated in a confirmed terminus kill this beat.",
+        "acquire_threshold": "at least 1 campaign_log terminus_killed == true in window by a KT member",
+        "retain_threshold": "same — lost if no terminus kill in last 28 days",
+        "scope": "kill_team",
+        "grant": "automatic",
+        "display": "ribbon"
+      },
+      {
+        "id": "kt_ribbon_omega",
+        "label": "Omega Citation",
+        "description": "Kill team completed the most omega_strats ops among all KTs this beat.",
+        "acquire_threshold": "relative — most omega ops among active KTs, minimum 2 omega ops",
+        "retain_threshold": "relative — lost if another KT surpasses",
+        "scope": "kill_team",
+        "grant": "automatic",
+        "note": "Only one KT holds this at a time.",
+        "display": "ribbon"
+      },
+      {
+        "id": "kt_ribbon_vanguard",
+        "label": "Vanguard Citation",
+        "description": "Kill team ran the most qualifying ops among all KTs this beat.",
+        "acquire_threshold": "relative — most total ops among active KTs, minimum 5 ops",
+        "retain_threshold": "relative — lost if another KT surpasses",
+        "scope": "kill_team",
+        "grant": "automatic",
+        "note": "Only one KT holds this at a time.",
+        "display": "ribbon"
+      }
+    ],
+
+    "company": [
+      {
+        "id": "co_ribbon_active",
+        "label": "Active Company Ribbon",
+        "description": "Company demonstrated consistent activity across its kill teams this beat.",
+        "acquire_threshold": 200,
+        "retain_threshold": 120,
+        "scope": "company",
+        "grant": "automatic",
+        "display": "ribbon"
+      },
+      {
+        "id": "co_ribbon_terminus",
+        "label": "Terminus Company Banner",
+        "description": "Company's kill teams participated in the most terminus kills this beat.",
+        "acquire_threshold": "relative — most terminus kills (terminus_killed == true) among companies, minimum 2",
+        "retain_threshold": "relative",
+        "scope": "company",
+        "grant": "automatic",
+        "note": "Only one company holds this at a time.",
+        "display": "ribbon"
+      },
+      {
+        "id": "co_ribbon_vanguard",
+        "label": "Company Vanguard Ribbon",
+        "description": "Company ran the most total qualifying ops among all companies this beat.",
+        "acquire_threshold": "relative — most ops among active companies, minimum 15 total ops",
+        "retain_threshold": "relative",
+        "scope": "company",
+        "grant": "automatic",
+        "note": "Only one company holds this at a time.",
+        "display": "ribbon"
+      }
+    ]
+  },
+
+  "titles": {
+    "_note": "Manual grants. Watch Master grants company titles. Watch Captain or Watch Lieutenant grants KT titles (within their own company only). Once per granting authority per 7 calendar days. Persistent — survives beat and campaign boundaries. Lost only if prestige falls below retain threshold (title stripped automatically) or explicitly revoked by the granting authority. Titles are given to the collective (KT or company), not to individuals.",
+    "_beat_target": "Title grant possible late Beat 1 for elite performers. Firmly established Beat 2 for sustained performers.",
+    "_format": {
+      "company": "Watch Company [Name] — \"[Granted Title]\"  e.g. Watch Company Primus — \"The Iron Vigil\"",
+      "kill_team": "Sgt [Name]'s Kill Team — \"[Granted Title]\"  e.g. Sgt Varen's Kill Team — \"The Pale Watch\""
+    },
+
+    "kill_team": {
+      "prestige_floor_to_grant": 250,
+      "prestige_retain": 150,
+      "grant_cooldown_days": 7,
+      "granted_by": ["Watch Captain", "Watch Lieutenant"],
+      "grant_restriction": "Captain/LT may only title KTs within their own company.",
+      "revocation": "Granted by same authority as grant. No cooldown on revocation. Granting a replacement title after revocation still costs the weekly slot.",
+      "carry_over": "Persists into next beat and next campaign. Bot stores title against kill_teams record.",
+      "max_concurrent": "No hard limit per company, but prestige floor means idle KTs naturally lose their title."
+    },
+
+    "company": {
+      "prestige_floor_to_grant": 500,
+      "prestige_retain": 300,
+      "grant_cooldown_days": 7,
+      "granted_by": ["Watch Master"],
+      "revocation": "Watch Master only. No cooldown on revocation.",
+      "carry_over": "Persists into next beat and next campaign.",
+      "max_concurrent": "No hard limit across all companies."
+    }
+  },
+
+  "honours": {
+    "_note": "Automatic awards for sustained elite performance across multiple beats. Bot checks at beat close and on dashboard refresh. Awarded when threshold is crossed and held — not only at campaign end. Persistent — survives campaign boundaries unless prestige drops below retain threshold.",
+    "_beat_target": "Beat 3 only for consistently elite groups. Beat 2 possible only for outlier performances.",
+
+    "kill_team": [
+      {
+        "id": "kt_honour_stalwart",
+        "label": "Stalwart Kill Team",
+        "description": "Kill team demonstrated sustained elite activity across the campaign.",
+        "acquire_threshold": 550,
+        "retain_threshold": 350,
+        "scope": "kill_team",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      },
+      {
+        "id": "kt_honour_terminus_veterans",
+        "label": "Terminus Veterans",
+        "description": "Kill team confirmed 5 or more terminus kills across the campaign window.",
+        "acquire_threshold": "5 terminus_killed == true campaign_log entries by KT members",
+        "retain_threshold": "4 — drops if old entries age out of 28d window",
+        "scope": "kill_team",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      },
+      {
+        "id": "kt_honour_omega_veterans",
+        "label": "Omega Veterans",
+        "description": "Kill team completed 10 or more omega_strats ops in the campaign window.",
+        "acquire_threshold": "10 omega_ops AARs with KT members",
+        "retain_threshold": "7",
+        "scope": "kill_team",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      }
+    ],
+
+    "company": [
+      {
+        "id": "co_honour_stalwart",
+        "label": "Campaign Stalwarts",
+        "description": "Company demonstrated sustained elite activity across the full campaign.",
+        "acquire_threshold": 1000,
+        "retain_threshold": 650,
+        "scope": "company",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      },
+      {
+        "id": "co_honour_terminus_company",
+        "label": "Terminus Company",
+        "description": "Company's kill teams collectively confirmed 10 or more terminus kills.",
+        "acquire_threshold": "10 terminus_killed == true campaign_log entries by company members",
+        "retain_threshold": "7",
+        "scope": "company",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      },
+      {
+        "id": "co_honour_omega_company",
+        "label": "Omega Company",
+        "description": "Company collectively completed 20 or more omega_strats ops.",
+        "acquire_threshold": "20 omega_ops AARs across company members",
+        "retain_threshold": "14",
+        "scope": "company",
+        "grant": "automatic",
+        "carry_over": true,
+        "display": "honour"
+      }
+    ]
+  },
+
+  "lore_priority": {
+    "_note": "A mark for lore writers — current lore being written for the Jericho Reach should centre on the lore-priority KT and company, including any operationally attached members. Not a mechanical prestige bonus. Exactly one KT and one company holds lore priority at any time (the top by rolling prestige, if above the floor). Can shift week-to-week as prestige shifts.",
+    "lore_prio_kt": {
+      "rule": "Kill team with the highest rolling 28-day prestige among all active KTs.",
+      "floor_to_qualify": 180,
+      "retain_floor": 100,
+      "note": "If no KT clears the floor, lore priority is vacant and noted as such in the dashboard."
+    },
+    "lore_prio_company": {
+      "rule": "Company with the highest rolling 28-day prestige among all active companies.",
+      "floor_to_qualify": 350,
+      "retain_floor": 200,
+      "note": "If no company clears the floor, lore priority is vacant."
+    },
+    "carry_over": "Lore priority status carries into the next beat if the same KT/company still holds the top position. Noted in beat open announcement."
+  },
+
+  "home_chapter_priority": {
+    "_note": "Adjusts the /pick_home_chapter algorithm. The chapter of the lore-priority KT's Sergeant (or their operationally attached CO if Sgt is absent) is moved to the front of the home_chapter_rotation queue for the next rotation cycle. If the same KT holds lore priority across multiple consecutive beats, their chapter keeps receiving priority rotation.",
+    "derives_from": "lore_priority.lore_prio_kt — must be set (not vacant) to activate chapter priority.",
+    "chapter_source": "KT Sgt's chapter (from enlistment record). If Sgt slot is vacant, falls back to the most senior attached member's chapter.",
+    "mechanism": "Bot prepends the prio chapter to the front of data/home_chapter_rotation.json at beat close. If chapter is already at front, no change.",
+    "carry_over": "Active as long as the same KT holds lore priority. Resets when lore priority shifts to a different KT."
+  },
+
+  "summary_table": {
+    "_note": "Quick reference for all thresholds. Prestige values are rolling 28-day window totals.",
+    "kill_team": {
+      "ribbon_active":      { "acquire": 100,  "retain": 60,  "grant": "auto",   "beat_target": 1 },
+      "ribbon_terminus":    { "acquire": "1+ terminus kill in window", "retain": "same", "grant": "auto", "beat_target": 1 },
+      "ribbon_omega":       { "acquire": "relative top, min 2 omega", "retain": "relative", "grant": "auto", "beat_target": 1 },
+      "ribbon_vanguard":    { "acquire": "relative top, min 5 ops",   "retain": "relative", "grant": "auto", "beat_target": 1 },
+      "title_floor":        { "acquire": 250,  "retain": 150, "grant": "manual (Captain/LT)", "beat_target": "1-2" },
+      "honour_stalwart":    { "acquire": 550,  "retain": 350, "grant": "auto",   "beat_target": "2-3" },
+      "honour_terminus_vet":{ "acquire": "5+ kills", "retain": "4+", "grant": "auto", "beat_target": 3 },
+      "honour_omega_vet":   { "acquire": "10+ omega", "retain": "7+", "grant": "auto", "beat_target": 3 },
+      "lore_priority_floor":{ "acquire": 180,  "retain": 100, "grant": "auto (relative top)", "beat_target": "1-2" }
+    },
+    "company": {
+      "ribbon_active":      { "acquire": 200,  "retain": 120, "grant": "auto",   "beat_target": 1 },
+      "ribbon_terminus":    { "acquire": "relative top, min 2 kills", "retain": "relative", "grant": "auto", "beat_target": 1 },
+      "ribbon_vanguard":    { "acquire": "relative top, min 15 ops",  "retain": "relative", "grant": "auto", "beat_target": 1 },
+      "title_floor":        { "acquire": 500,  "retain": 300, "grant": "manual (Watch Master)", "beat_target": "1-2" },
+      "honour_stalwart":    { "acquire": 1000, "retain": 650, "grant": "auto",   "beat_target": "2-3" },
+      "honour_terminus_co": { "acquire": "10+ kills", "retain": "7+", "grant": "auto", "beat_target": 3 },
+      "honour_omega_co":    { "acquire": "20+ omega", "retain": "14+", "grant": "auto", "beat_target": 3 },
+      "lore_priority_floor":{ "acquire": 350,  "retain": 200, "grant": "auto (relative top)", "beat_target": "1-2" }
+    }
+  }
+}
