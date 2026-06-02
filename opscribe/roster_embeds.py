@@ -486,7 +486,7 @@ async def _update_company_roster(
         return ""
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
-    cmd_emoji = _te("Command")          # :Command:
+    cmd_emoji = _te("WatchCommand")     # :WatchCommand:
     company_emoji = _te(short_name)     # :Primus: / :Secundus: / etc.
 
     # Resolve role IDs for mentions (fallback to plain text if role not found)
