@@ -1,7 +1,7 @@
 {
   "_schema_version": 1,
   "_notes": {
-    "purpose": "Named option vocabulary for every cascade decision in the campaign system. Defines the fixed option set each role can choose from during their cascade window.",
+    "purpose": "Named option vocabulary for every cascade decision in the campaign system. Defines the option pool each role can choose from during their cascade window. Most roles have a fixed set of 3 options. The Watch Master is the exception — see wm_selection below.",
     "weight_matrix": "This file defines WHAT the options are. HOW they compose (weights from upstream choices + chapter doctrine) is defined in cascade_weights.json (to be authored).",
     "scope_principle": "HC specialists set theatre-wide doctrine — their pick is an ORDER that flows down to the company specialist in the same domain and shapes that specialist's weighted menu. Company specialists make tactical decisions within that order. Each role has its own section and vocabulary; no two roles share options.",
     "tags": "Each option has a tags list. Tags drive strat pool weighting in the weight matrix. Tag vocabulary is defined in _tag_vocabulary below.",
@@ -9,7 +9,10 @@
     "track_map": "Each role maps to its own section key — see _track_map at bottom. Influence flow (which HC specialist shapes which company specialist) is in rank_mappings.json influence_sources.track.",
     "battle_line_note": "Battle-line personal focus is always 2 options. The SAME 2 options are always presented; their relative weights shift based on Watch Sergeant doctrine. See personal_focus section.",
     "kt_champion_note": "Kill Team Champion does not have a named option vocabulary — they submit a mission_id directly plus an optional terminus_call. No cascade_options entry needed.",
-    "huntmaster_note": "Huntmaster has no Company-tier equivalent. hunt_priority is HC-only."
+    "huntmaster_note": "Huntmaster has no Company-tier equivalent. hunt_priority is HC-only.",
+    "wm_selection": "The Watch Master's 3 presented options are not fixed — they are drawn from a pool of 8 theatre postures and vary each beat. Selection algorithm: (1) score every posture against the beat's scenario dominant_tags at 1.5x weight and the WM's home chapter doctrine_affinity tags at 1.0x weight; (2) rank postures by score; (3) take the top 3 provided no two share the same primary tag (first tag in their list) — if a conflict exists, replace the lower-scoring duplicate with the next-highest non-conflicting posture. Result: WM always sees exactly 3 options, always meaningfully distinct, always relevant to the scenario and his chapter. The watch_master section defines the full pool; _presented_count tells the bot how many to show.",
+    "wm_narrative_framing": "Narratively, the WM's options represent the intelligence brief assembled by Ordo Xenos assets operating in the Reach — inquisitors, agents, and Watch Station auguries — filtered through the WM's own chapter traditions. A Watch Master from the Ultramarines sees opportunity where a Space Wolf sees prey. The bot makes that real.",
+    "backburner_character_death": "TABLED. Concept: opt-in Oath of Martyrdom flag at enlistment. Triggers Fallen state for one beat on Omega + YOLO + full wipe. KT takes prestige hit. Brother returns from Apothecarion next beat. Name recorded on Roll of Honour. No studs lost. Not being implemented now — revisit after campaign system is live and stable."
   },
 
   "_tag_vocabulary": {
@@ -30,21 +33,48 @@
 
   "watch_master": {
     "_decision": "theatre_order",
-    "_description": "The Watch Master's strategic posture for the beat — shapes the entire cascade tree below. Presented alongside his traversal pick.",
-    "iron_vigil": {
-      "name": "Iron Vigil",
-      "description": "Hold ground. The Watch does not yield — fortify the committed node, resist the tide of pressure, deny the enemy any momentum. Resilience is the weapon.",
-      "tags": ["defensive", "fortify", "resilience", "suppression"]
-    },
+    "_description": "The Watch Master's strategic posture for the beat — shapes the entire cascade tree below. Drawn from the pool below; 3 options presented per beat based on scenario tags and WM's chapter doctrine. See _notes.wm_selection for algorithm.",
+    "_presented_count": 3,
+    "_selection_basis": ["scenario.dominant_tags at 1.5x", "wm_chapter.doctrine_affinity at 1.0x"],
     "advance_the_spear": {
       "name": "Advance the Spear",
       "description": "Push outward. The Watch expands its presence, relieves pressure on contested nodes, and drives the enemy from initiative. The kill teams are the spearpoint.",
       "tags": ["aggressive", "terminus", "elimination"]
     },
+    "iron_vigil": {
+      "name": "Iron Vigil",
+      "description": "Hold ground. The Watch does not yield — fortify the committed node, resist the tide of pressure, deny the enemy any momentum. Resilience is the weapon.",
+      "tags": ["defensive", "fortify", "resilience", "suppression"]
+    },
     "scour_the_reach": {
       "name": "Scour the Reach",
       "description": "Hunt what hides. Intelligence-led operations, void-theatre awareness, warp-threat identification. The enemy's secrets are more dangerous than its soldiers.",
       "tags": ["intel", "void", "stealth", "recovery"]
+    },
+    "sanctify_the_ground": {
+      "name": "Sanctify the Ground",
+      "description": "The Watch fights as a consecrated force. Faith and resilience are the doctrine — sacred ground is not surrendered, and the brothers stand together or not at all.",
+      "tags": ["faith", "resilience", "defensive", "fortify"]
+    },
+    "sever_the_cord": {
+      "name": "Sever the Cord",
+      "description": "Remove what commands the enemy. One precise operation — the head comes off and the body follows. Intelligence drives the blade.",
+      "tags": ["elimination", "stealth", "terminus", "intel"]
+    },
+    "deny_the_tide": {
+      "name": "Deny the Tide",
+      "description": "The Watch does not chase. It holds and grinds. Every wave that breaks on the kill teams is a wave that does not reach the sector. Suppression and endurance, nothing more.",
+      "tags": ["suppression", "resilience", "defensive", "fortify"]
+    },
+    "void_interdiction": {
+      "name": "Void Interdiction",
+      "description": "The theatre is not the ground — it is the warp and the void between. Hunt what no baseline force can track. The Watch knows the enemy's nature. Act on it.",
+      "tags": ["void", "terminus", "intel", "stealth"]
+    },
+    "reclaim_the_reach": {
+      "name": "Reclaim the Reach",
+      "description": "What was lost can be recovered. Gene-seed, relics, positions — the Watch takes back what the enemy presumed was theirs. Forward momentum, but toward what matters.",
+      "tags": ["recovery", "resilience", "aggressive", "faith"]
     }
   },
 
