@@ -263,8 +263,8 @@ def _get_company_command_members(
 
 def _get_kill_teams_for_company(
     guild: discord.Guild, company_name: str
-) -> List[Tuple[str, List[discord.Member]]]:
-    """Return list of (kt_role_name, sorted_members) for Kill Teams in a company.
+) -> List[Tuple[str, int, List[discord.Member]]]:
+    """Return list of (kt_role_name, kt_role_id, sorted_members) for Kill Teams in a company.
 
     A Kill Team is a guild role whose name contains "Kill Team" (case-insensitive)
     and that has at least one non-Reserve member who also holds the company role.
@@ -290,7 +290,7 @@ def _get_kill_teams_for_company(
                 continue
             members.append(m)
         if members:
-            results.append((role.name, sorted(members, key=_sort_key_for_member)))
+            results.append((role.name, role.id, sorted(members, key=_sort_key_for_member)))
         if len(results) >= 4:
             break
     return results
@@ -338,19 +338,20 @@ def _build_embed(
 ) -> discord.Embed:
     """Build a roster discord.Embed for a list of members.
 
+    ``title`` is placed at the top of the description (so role mentions render)
+    rather than in the embed title field.
     Gracefully truncates the description if the member list would exceed
-    ROSTER_EMBED_DESC_LIMIT characters. Reports the truncation count in a
-    footer note so admins are aware.
+    ROSTER_EMBED_DESC_LIMIT characters.
     """
     ts = last_updated or datetime.now(timezone.utc)
     count = len(members)
     noun = "Brother" if count == 1 else "Brothers"
 
-    embed = discord.Embed(title=title, color=_EMBED_COLOR)
+    embed = discord.Embed(color=_EMBED_COLOR)
 
-    # Header line above the member list
+    # Title goes into description so role mentions are rendered by Discord
     SEPARATOR = "\u2500" * 24  # ────────────────────────
-    header = f"*⌾ Watch Fortress Jericho ⌾*\n**{count} {noun} Deployed**\n{SEPARATOR}"
+    header = f"{title}\n**{count} {noun} Deployed**\n{SEPARATOR}"
 
     if not members:
         embed.description = f"{header}\n*No members currently assigned.*"
@@ -484,10 +485,14 @@ async def _update_company_roster(
     cmd_emoji = _te("Command")          # :Command:
     company_emoji = _te(short_name)     # :Primus: / :Secundus: / etc.
 
+    # Resolve role IDs for mentions (fallback to plain text if role not found)
+    company_role = discord.utils.get(guild.roles, name=company_name)
+    company_role_mention = f"<@&{company_role.id}>" if company_role else short_name.upper()
+
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_embed = _build_embed(
-        _fmt_title("HIGH COMMAND", hc_emoji),
+        _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
         hc_members,
         guild,
         last_updated=now,
@@ -500,7 +505,7 @@ async def _update_company_roster(
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     cmd_embed = _build_embed(
-        _fmt_title(short_name.upper(), cmd_emoji),
+        _fmt_title(company_role_mention, cmd_emoji),
         cmd_members,
         guild,
         last_updated=now,
@@ -515,7 +520,7 @@ async def _update_company_roster(
     kt_message_ids: dict = dict(company_state.get("killteam_message_ids") or {})
 
     # Track which KT names are still active so we can clean up stale IDs
-    active_kt_names = {kt_name for kt_name, _ in kill_teams}
+    active_kt_names = {kt_name for kt_name, _, __ in kill_teams}
     # Remove stale entries (KT disbanded / no longer has members in this company)
     for stale_kt in list(kt_message_ids.keys()):
         if stale_kt not in active_kt_names:
@@ -524,12 +529,9 @@ async def _update_company_roster(
             )
             del kt_message_ids[stale_kt]
 
-    for kt_name, kt_members in kill_teams:
-        # Strip the 'Kill Team ' prefix for a compact title — the company emoji
-        # already provides context that this is a Kill Team roster.
-        kt_short = re.sub(r"(?i)^kill\s+team\s+", "", kt_name).strip().upper() or kt_name.upper()
+    for kt_name, kt_role_id, kt_members in kill_teams:
         kt_embed = _build_embed(
-            _fmt_title(kt_short, company_emoji),
+            _fmt_title(f"<@&{kt_role_id}>", company_emoji),
             kt_members,
             guild,
             last_updated=now,
