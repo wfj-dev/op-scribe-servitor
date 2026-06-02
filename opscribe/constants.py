@@ -461,8 +461,8 @@ CHALLENGE_ROLES = [
 # ---------------------------------------------------------------------------
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
 
-# Maps Watch Company role name -> roster channel ID.
-# The bot posts and maintains embeds inside each of these channels.
+# Maps configured Watch Company role name -> roster channel ID.
+# The bot posts and maintains embeds inside each configured company channel.
 ROSTER_COMPANY_CHANNELS: dict[str, int] = {
     "Watch Company Primus": 1433351509722267658,
     "Watch Company Secundus": 1458255466189684999,

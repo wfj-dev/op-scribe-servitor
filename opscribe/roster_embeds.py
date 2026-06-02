@@ -1,6 +1,6 @@
 """Auto-roster embed subsystem.
 
-Maintains persistent embed messages in each Watch Company's roster channel.
+Maintains persistent embed messages in each configured Watch Company's roster channel.
 Embeds are posted once via /roster_post (Forgemaster only) and then edited
 in-place by a daily task and by /roster_refresh (Watch Command+).
 
@@ -26,16 +26,14 @@ from typing import List, Optional, Tuple
 import discord
 from discord.ext import tasks
 
-from .constants import (  # noqa: F401
+from .constants import (
     HIGH_COMMAND_ROLE_ID,
-    INTERRED_BROTHER_ROLE_ID,
     RESERVES_ROLE_ID,
     ROSTER_COMPANY_CHANNELS,
     ROSTER_COMPANY_COMMAND_RANKS,
     ROSTER_EMBED_DESC_LIMIT,
     ROSTER_STATE_PATH,
     _normalize_display_name,
-    _strip_display_name,
 )
 from . import _bot_globals as _g
 
@@ -114,16 +112,7 @@ def _load_roster_state() -> dict:
             ...
         }
     """
-    try:
-        if os.path.exists(ROSTER_STATE_PATH):
-            with open(ROSTER_STATE_PATH, "r") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-    except Exception as exc:
-        _log().warning(f"Roster: failed to load state from {ROSTER_STATE_PATH}: {exc}")
-    # Return default structure when no file exists yet
-    return {
+    default_state = {
         company: {
             "channel_id": channel_id,
             "hc_message_id": None,
@@ -132,6 +121,32 @@ def _load_roster_state() -> dict:
         }
         for company, channel_id in ROSTER_COMPANY_CHANNELS.items()
     }
+    try:
+        if os.path.exists(ROSTER_STATE_PATH):
+            with open(ROSTER_STATE_PATH, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                merged_state = {}
+                for company, default_company_state in default_state.items():
+                    existing_company_state = data.get(company)
+                    if not isinstance(existing_company_state, dict):
+                        merged_state[company] = dict(default_company_state)
+                        continue
+                    merged_state[company] = {
+                        "channel_id": existing_company_state.get("channel_id", default_company_state["channel_id"]),
+                        "hc_message_id": existing_company_state.get("hc_message_id"),
+                        "command_message_id": existing_company_state.get("command_message_id"),
+                        "killteam_message_ids": (
+                            existing_company_state.get("killteam_message_ids")
+                            if isinstance(existing_company_state.get("killteam_message_ids"), dict)
+                            else {}
+                        ),
+                    }
+                return merged_state
+    except Exception as exc:
+        _log().warning(f"Roster: failed to load state from {ROSTER_STATE_PATH}: {exc}")
+    # Return default structure when no file exists yet
+    return default_state
 
 
 def _save_roster_state(state: dict) -> None:

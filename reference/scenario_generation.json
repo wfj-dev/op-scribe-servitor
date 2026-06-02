@@ -88,7 +88,7 @@
     "pleasure_world":   0,
     "penal_world":      0,
     "special":         -2,
-    "_note": "Negative = pressure reduced (securing). Zero = engagement ongoing, no net pressure gain from Watch presence alone. Positive modifier not used at scenario level — pressure increase is applied when Watch does NOT commit to a node."
+    "note": "Negative = pressure reduced (securing). Zero = engagement ongoing, no net pressure gain from Watch presence alone. Positive modifier not used at scenario level — pressure increase is applied when Watch does NOT commit to a node."
   },
 
   "mission_bias_table": {
@@ -114,7 +114,7 @@
     "recovery+suppression":  [11, 1],
     "suppression+resilience":[1, 14],
     "_fallback":             [1, 7],
-    "_note": "If dominant_tag pair not in table, check both orderings. If neither matches, use fallback. Operations: 1=Inferno, 2=Decapitation, 3=Vox Liberatis, 5=Fall of Atreus, 6=Ballistic Engine, 7=Termination, 8=Obelisk, 9=Exfiltration, 10=Vortex, 11=Reclamation, 12=Disruption, 13=Purgation, 14=Siege."
+    "note": "If dominant_tag pair not in table, check both orderings. If neither matches, use fallback. Operations: 1=Inferno, 2=Decapitation, 3=Vox Liberatis, 5=Fall of Atreus, 6=Ballistic Engine, 7=Termination, 8=Obelisk, 9=Exfiltration, 10=Vortex, 11=Reclamation, 12=Disruption, 13=Purgation, 14=Siege."
   },
 
   "codename_pools": {
