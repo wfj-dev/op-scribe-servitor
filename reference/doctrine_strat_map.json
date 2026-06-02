@@ -20,7 +20,17 @@
   "pool_blacklist": {
     "_note": "Strat names listed here are permanently excluded from campaign pool construction regardless of score. Useful for strats that are fine in casual play but should never be a campaign mandate. The bot still scores them internally so WM can see their rank — they are just excluded from the candidate list presented for confirmation. If WM explicitly names a blacklisted strat, the bot warns and allows a one-time override.",
     "_tuning": "To exclude a strat: add an entry to 'entries' with the strat name as key and a brief reason as value. To re-enable: delete the entry.",
-    "entries": {}
+    "entries": {
+      "Corrupted Relic":     "Community vote. Also invalidates You Only Live Once (Corrupted Relic prevents wounds so YOLO perma-death can never trigger). Relic slot is covered by Hallowed Relic.",
+      "No Delays":           "Community vote (Watch Captain Wi-Fi D. Saul). Time-pressure scaling on enemy HP produces frustrating pacing that conflicts with campaign narrative beats.",
+      "Great Responsibility": "Community vote (Asphyxia, Van). Shared-damage mission-fail condition is broadly considered the worst strat in the pool.",
+      "Aggravated Assault":  "Class penalty strats excluded by design — singling out one class without stacking all class penalties is considered unfair and arbitrary.",
+      "Bleary Sniper":       "Class penalty strats excluded by design.",
+      "Broken Bulwark":      "Class penalty strats excluded by design.",
+      "Fallen Vanguard":     "Class penalty strats excluded by design.",
+      "Heavy Burden":        "Class penalty strats excluded by design.",
+      "Tactical Weakness":   "Class penalty strats excluded by design."
+    }
   },
 
   "doctrine_families": {

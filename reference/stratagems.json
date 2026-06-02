@@ -821,6 +821,10 @@
       "Maintain Distance": {
         "blocks": ["Myopia"],
         "reason": "Maintain Distance reduces melee damage and rewards ranged play. Myopia reduces long-range damage by 75%. Together they penalize both melee and long-range simultaneously with no compensating benefit."
+      },
+      "Corrupted Relic": {
+        "blocks": ["You Only Live Once"],
+        "reason": "Corrupted Relic prevents wound accumulation entirely. You Only Live Once triggers perma-death on incapacitation. With Corrupted Relic active, incapacitation cannot occur, making YOLO a dead strat — it contributes nothing and misleads the team about their death risk."
       }
     }
   }
