@@ -780,6 +780,32 @@
       }
     },
     {
+      "name": "Marines Malevolent",
+      "founding": "Unknown (32nd Millennium)",
+      "primarch": "Unknown",
+      "homebrew": false,
+      "lore_summary": "A Loyalist Chapter of unknown genetic origin founded in the 32nd Millennium, the Marines Malevolent are deeply committed to the destruction of the Imperium's enemies but are infamous for callous disregard for civilian life and excessive collateral damage. Adhering to anti-psyker Council of Nikaea tenets, they pursue victory by any means necessary, believing innocence does not exist—only degrees of guilt. Notorious for shelling a refugee camp on Armageddon to kill an Ork warband, and for attempted salvage of Adeptus Mechanicus wargear from the Forge Ship Archimedes Rex, they have clashed repeatedly with the Salamanders and drawn repeated Inquisitorial censure. Their battle record is exemplary; their methods are not.",
+      "strengths": [
+        "ruthless pragmatism",
+        "aggressive combined-arms assault",
+        "Armageddon veteran expertise"
+      ],
+      "weaknesses": [
+        "censured by Inquisition",
+        "isolated from allies by brutal methods",
+        "critically undersupplied with wargear"
+      ],
+      "faction_affinity": "orks",
+      "execution_style": "callous all-means-necessary assault",
+      "tag_weights": {
+        "aggressive": 2,
+        "suppression": 2,
+        "resilience": 1,
+        "stealth": -1,
+        "faith": -1
+      }
+    },
+    {
       "name": "Mentors",
       "founding": "26th Founding",
       "primarch": "Roboute Guilliman",
