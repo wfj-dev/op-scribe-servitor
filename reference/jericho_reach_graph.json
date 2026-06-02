@@ -3622,7 +3622,7 @@
     ]
   },
   "_notes": {
-    "world_type_missions": "Maps world type \u2192 eligible mission IDs when that node is the committed front. Mission 11 (Reclamation) is always gated by Void Warden regardless of node type and never appears here.",
+    "world_type_missions": "Maps world type \u2192 eligible mission IDs when that node is the committed front. Reclamation (Op 11) is always in the eligible pool regardless of node type — it runs on the Wrath of Espandor void sub-theatre which is accessible from any committed planet. It does not appear in world_type_missions because it is not terrain-gated.",
     "game_planet": "Nodes with game_planet: true are the three in-game map planets. All other nodes use those maps with narrative reskinning \u2014 the bot picks geometry from the eligible mission IDs.",
     "current_position": "Tracked in campaign state data file (not here). This graph is static.",
     "pressure": "Per-node pressure tracked in campaign state data file.",
