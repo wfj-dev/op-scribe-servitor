@@ -4220,7 +4220,7 @@ def _get_terminus_slayer_assault_announcement(
         chapter_lines=TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_ASSAULT_RANK_LINES,
         award_label="Terminus Slayer (Assault)",
-        award_image=None,
+        award_image="award_terminus_slayer_assault.png",
     )
 
 
@@ -4241,7 +4241,7 @@ def _get_terminus_slayer_bulwark_announcement(
         chapter_lines=TERMINUS_SLAYER_BULWARK_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_BULWARK_RANK_LINES,
         award_label="Terminus Slayer (Bulwark)",
-        award_image=None,
+        award_image="award_terminus_slayer_bulwark.png",
     )
 
 
@@ -4262,7 +4262,7 @@ def _get_terminus_slayer_heavy_announcement(
         chapter_lines=TERMINUS_SLAYER_HEAVY_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_HEAVY_RANK_LINES,
         award_label="Terminus Slayer (Heavy)",
-        award_image=None,
+        award_image="award_terminus_slayer_heavy.png",
     )
 
 
@@ -4283,7 +4283,7 @@ def _get_terminus_slayer_sniper_announcement(
         chapter_lines=TERMINUS_SLAYER_SNIPER_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_SNIPER_RANK_LINES,
         award_label="Terminus Slayer (Sniper)",
-        award_image=None,
+        award_image="award_terminus_slayer_sniper.png",
     )
 
 
@@ -4304,7 +4304,7 @@ def _get_terminus_slayer_tactical_announcement(
         chapter_lines=TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_TACTICAL_RANK_LINES,
         award_label="Terminus Slayer (Tactical)",
-        award_image=None,
+        award_image="award_terminus_slayer_tactical.png",
     )
 
 
@@ -4325,7 +4325,7 @@ def _get_terminus_slayer_techmarine_announcement(
         chapter_lines=TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_TECHMARINE_RANK_LINES,
         award_label="Terminus Slayer (Techmarine)",
-        award_image=None,
+        award_image="award_terminus_slayer_techmarine.png",
     )
 
 
@@ -4346,7 +4346,7 @@ def _get_terminus_slayer_vanguard_announcement(
         chapter_lines=TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES,
         rank_lines=TERMINUS_SLAYER_VANGUARD_RANK_LINES,
         award_label="Terminus Slayer (Vanguard)",
-        award_image=None,
+        award_image="award_terminus_slayer_vanguard.png",
     )
 
 
@@ -4367,7 +4367,7 @@ def _get_master_terminus_slayer_announcement(
         chapter_lines=MASTER_TERMINUS_SLAYER_CHAPTER_LINES,
         rank_lines=MASTER_TERMINUS_SLAYER_RANK_LINES,
         award_label="Master Terminus Slayer",
-        award_image=None,
+        award_image="award_master_terminus_slayer.png",
     )
 
 

@@ -5,9 +5,7 @@
     "Cowled Wardens",
     "Crimson Fists",
     "Dark Angels",
-    "Exorcists",
     "Flesh Tearers",
-    "Imperial Fists",
     "Mentors",
     "Raptors",
     "Raven Guard",
@@ -19,11 +17,17 @@
     "Salamanders",
     "Bleeding Hearts",
     "Blood Ravens",
-    "Death Spectres",
     "Dragonspears",
     "Iron Hands",
     "Necropolis Hawks",
-    "Carmine Blades"
+    "Carmine Blades",
+    "Angels of Defiance",
+    "Imperius Reavers",
+    "Iron Hounds",
+    "Iron Lords",
+    "Iron Ravens",
+    "Minotaurs",
+    "Tome Keepers"
   ],
   "selected": {
     "2026-02": [
@@ -45,6 +49,10 @@
     "2026-06": [
       "Ultramarines",
       "White Scars"
+    ],
+    "2026-07": [
+      "Imperial Fists",
+      "Hospitallers"
     ]
   }
 }

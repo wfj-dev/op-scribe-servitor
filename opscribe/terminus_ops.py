@@ -1435,8 +1435,9 @@ async def _challenge_progress_inner(
         _all_rank_a = True
         for _rec in _g.DATASTORE.iter_records():
             _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
-            _mission = (_rec.get("mission") or "").lower().strip()
-            if not _bl and _mission not in BLACK_LAURELS_REQUIRED_MISSIONS:
+            _mission_raw = re.sub(r"<@&\d+>", "", (_rec.get("mission") or "")).lower().strip()
+            _mission = re.split(r"\s*@", _mission_raw)[0].strip()
+            if not _bl or _mission not in BLACK_LAURELS_REQUIRED_MISSIONS:
                 continue
             if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
                 continue
