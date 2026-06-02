@@ -478,7 +478,11 @@ async def _update_company_roster(
         for emoji in _fetched_emojis:
             if emoji.name.lower() == normalized:
                 return str(emoji)
-        _log().warning(f"Roster: emoji '{name}' not found (searched {len(_fetched_emojis)} guild emojis)")
+        all_names = sorted(e.name for e in _fetched_emojis)
+        _log().warning(
+            f"Roster: emoji '{name}' not found in guild {guild.id}. "
+            f"All {len(all_names)} emoji names: {all_names}"
+        )
         return ""
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
