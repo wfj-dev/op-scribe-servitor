@@ -1623,7 +1623,6 @@ async def on_ready():
 
     # Start auto-roster daily update loop
     try:
-        _roster_embeds._register_commands()
         if not _roster_embeds._roster_update_loop.is_running():
             _roster_embeds._roster_update_loop.start()
             logger.info("Auto-roster embed daily update loop started (24h interval).")
