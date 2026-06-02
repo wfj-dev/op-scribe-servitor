@@ -35,6 +35,7 @@ from .constants import (
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
+from .forge_ops import _get_emoji_by_name, _get_rank_emoji
 from . import _bot_globals as _g
 
 # ---------------------------------------------------------------------------
@@ -317,7 +318,7 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     rank = _get_highest_rank(member)
     rank_emoji_str = ""
     if rank:
-        rank_emoji_str = _b("_get_rank_emoji")(guild, rank) or ""
+        rank_emoji_str = _get_rank_emoji(guild, rank) or ""
 
     name = _clean_roster_name(member)
 
@@ -327,7 +328,7 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     chapter_emoji_str = ""
     for chapter in home_chapters:
         if chapter in role_names:
-            chapter_emoji_str = _b("_get_emoji_by_name")(guild, chapter) or ""
+            chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
     parts = []
@@ -482,9 +483,9 @@ async def _update_company_roster(
 
     # Resolve title emojis once; fall back to empty string gracefully
     def _te(name: str) -> str:
-        e = _b("_get_emoji_by_name")(guild, name)
+        e = _get_emoji_by_name(guild, name)
         if not e:
-            _log().debug(f"Roster: emoji not found for name '{name}'")
+            _log().warning(f"Roster: emoji '{name}' not found in guild {getattr(guild, 'id', '?')}")
         return str(e) if e else ""
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
