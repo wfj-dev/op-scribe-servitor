@@ -295,6 +295,25 @@ def _get_kill_teams_for_company(
 
 _EMBED_COLOR = discord.Color.from_rgb(96, 125, 139)  # Deathwatch steel blue-grey
 
+# Target text width for embed titles.  The text portion of every title is
+# centre-padded to this many characters using thin spaces (U+2009) so that
+# all embeds render at approximately the same width in Discord.
+# Thin spaces live *inside* the flanking ᛭⋅…⋅᛭ glyphs so Discord never
+# strips them as leading/trailing whitespace.
+_TITLE_TEXT_WIDTH = 34  # chars — matches longest fixed title (WATCH COMPANY SECUNDUS — COMMAND)
+
+
+def _fmt_title(text: str, emoji_str: str = "") -> str:
+    """Build a consistently-padded embed title.
+
+    ``text`` is the uppercase label (e.g. 'HIGH COMMAND').  It is
+    centre-padded to ``_TITLE_TEXT_WIDTH`` characters using thin spaces so
+    every roster embed has the same title length.  ``emoji_str`` is an
+    already-resolved Discord emoji string (``'<:Name:ID> '``) or empty.
+    """
+    padded = text.center(_TITLE_TEXT_WIDTH, "\u2009")  # U+2009 THIN SPACE
+    return f"\u16ed\u22c5 {emoji_str}{padded} \u22c5\u16ed"  # ᛭⋅ … ⋅᛭
+
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     """Render a single roster line: ``:rankemoji: Name :chapteremoji:``.
@@ -467,10 +486,19 @@ async def _update_company_roster(
 
     short_name = company_name.replace("Watch Company", "").strip()  # "Primus" etc.
 
+    # Resolve title emojis once; fall back to empty string gracefully
+    def _te(name: str) -> str:
+        e = _b("_get_emoji_by_name")(guild, name)
+        return f"{e} " if e else ""
+
+    hc_emoji = _te("Deathwatch")        # :Deathwatch:
+    cmd_emoji = _te("Command")          # :Command:
+    company_emoji = _te(short_name)     # :Primus: / :Secundus: / etc.
+
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_embed = _build_embed(
-        "᛭⋅ HIGH COMMAND ⋅᛭",
+        _fmt_title("HIGH COMMAND", hc_emoji),
         hc_members,
         guild,
         last_updated=now,
@@ -483,7 +511,7 @@ async def _update_company_roster(
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     cmd_embed = _build_embed(
-        f"᛭⋅ WATCH COMPANY {short_name.upper()} — COMMAND ⋅᛭",
+        _fmt_title(f"WATCH COMPANY {short_name.upper()} \u2014 COMMAND", cmd_emoji),
         cmd_members,
         guild,
         last_updated=now,
@@ -509,7 +537,7 @@ async def _update_company_roster(
 
     for kt_name, kt_members in kill_teams:
         kt_embed = _build_embed(
-            f"᛭⋅ {kt_name.upper()} ⋅᛭",
+            _fmt_title(kt_name.upper(), company_emoji),
             kt_members,
             guild,
             last_updated=now,
