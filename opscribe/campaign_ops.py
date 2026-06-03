@@ -3780,7 +3780,7 @@ async def _campaign_init(
     ):
         state[key] = blank[key]
     state.setdefault("kill_teams", {})
-    state.setdefault("companies", {})
+    state["companies"] = {}
     state.setdefault("enlistment", {})
     state["_schema_version"] = 1
     state["total_beats"] = 3  # will be overwritten below
