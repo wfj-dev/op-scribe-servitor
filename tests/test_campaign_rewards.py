@@ -105,42 +105,42 @@ def _base_state(kill_teams=None, companies=None, campaign_log=None, enlistment=N
 class TestKtRibbonActiveHysteresis:
     def test_below_acquire_threshold_no_ribbon(self):
         from opscribe import campaign_ops as c
-        state = _base_state(kill_teams={"sgt1": _make_kt(90)})
-        # Below acquire threshold (100) → should NOT qualify
+        state = _base_state(kill_teams={"sgt1": _make_kt(140)})
+        # Below acquire threshold (150) → should NOT qualify
         assert c.check_kt_ribbon_active("sgt1", state) is False
 
     def test_at_acquire_threshold_gets_ribbon(self):
         from opscribe import campaign_ops as c
-        state = _base_state(kill_teams={"sgt1": _make_kt(100)})
+        state = _base_state(kill_teams={"sgt1": _make_kt(150)})
         assert c.check_kt_ribbon_active("sgt1", state) is True
 
     def test_above_acquire_threshold_gets_ribbon(self):
         from opscribe import campaign_ops as c
-        state = _base_state(kill_teams={"sgt1": _make_kt(150)})
+        state = _base_state(kill_teams={"sgt1": _make_kt(200)})
         assert c.check_kt_ribbon_active("sgt1", state) is True
 
     def test_holding_ribbon_below_retain_loses_it(self):
         from opscribe import campaign_ops as c
-        # Already has ribbon, but drops below retain (60)
-        state = _base_state(kill_teams={"sgt1": _make_kt(50, ribbon="kt_ribbon_active")})
+        # Already has ribbon, but drops below retain (90)
+        state = _base_state(kill_teams={"sgt1": _make_kt(80, ribbon="kt_ribbon_active")})
         assert c.check_kt_ribbon_active("sgt1", state) is False
 
     def test_holding_ribbon_at_retain_keeps_it(self):
         from opscribe import campaign_ops as c
-        # Already has ribbon, at retain threshold (60) — should keep
-        state = _base_state(kill_teams={"sgt1": _make_kt(60, ribbon="kt_ribbon_active")})
+        # Already has ribbon, at retain threshold (90) — should keep
+        state = _base_state(kill_teams={"sgt1": _make_kt(90, ribbon="kt_ribbon_active")})
         assert c.check_kt_ribbon_active("sgt1", state) is True
 
     def test_holding_ribbon_between_retain_and_acquire_keeps_it(self):
         from opscribe import campaign_ops as c
-        # Has ribbon, between retain (60) and acquire (100) — keeps ribbon (hysteresis)
-        state = _base_state(kill_teams={"sgt1": _make_kt(80, ribbon="kt_ribbon_active")})
+        # Has ribbon, between retain (90) and acquire (150) — keeps ribbon (hysteresis)
+        state = _base_state(kill_teams={"sgt1": _make_kt(100, ribbon="kt_ribbon_active")})
         assert c.check_kt_ribbon_active("sgt1", state) is True
 
     def test_not_holding_ribbon_between_retain_and_acquire_no_grant(self):
         from opscribe import campaign_ops as c
-        # Does NOT have ribbon, between retain (60) and acquire (100) — no grant
-        state = _base_state(kill_teams={"sgt1": _make_kt(80, ribbon=None)})
+        # Does NOT have ribbon, between retain (90) and acquire (150) — no grant
+        state = _base_state(kill_teams={"sgt1": _make_kt(100, ribbon=None)})
         assert c.check_kt_ribbon_active("sgt1", state) is False
 
 
@@ -151,25 +151,25 @@ class TestKtRibbonActiveHysteresis:
 class TestCompanyRibbonHysteresis:
     def test_company_below_acquire_no_ribbon(self):
         from opscribe import campaign_ops as c
-        state = _base_state(companies={"primus": _make_company(150)})
+        state = _base_state(companies={"primus": _make_company(200)})
         result = c.check_reward_thresholds(state)
         assert result["companies"]["primus"]["ribbon"] is None
 
     def test_company_at_acquire_gets_ribbon(self):
         from opscribe import campaign_ops as c
-        state = _base_state(companies={"primus": _make_company(200)})
+        state = _base_state(companies={"primus": _make_company(250)})
         result = c.check_reward_thresholds(state)
         assert result["companies"]["primus"]["ribbon"] == "co_ribbon_active"
 
     def test_company_holding_ribbon_below_retain_loses_it(self):
         from opscribe import campaign_ops as c
-        state = _base_state(companies={"primus": _make_company(100, ribbon="co_ribbon_active")})
+        state = _base_state(companies={"primus": _make_company(130, ribbon="co_ribbon_active")})
         result = c.check_reward_thresholds(state)
         assert result["companies"]["primus"]["ribbon"] is None
 
     def test_company_holding_ribbon_above_retain_keeps_it(self):
         from opscribe import campaign_ops as c
-        state = _base_state(companies={"primus": _make_company(130, ribbon="co_ribbon_active")})
+        state = _base_state(companies={"primus": _make_company(160, ribbon="co_ribbon_active")})
         result = c.check_reward_thresholds(state)
         assert result["companies"]["primus"]["ribbon"] == "co_ribbon_active"
 
@@ -273,19 +273,19 @@ class TestKtRibbonOmega:
 class TestKtHonourStalwart:
     def test_below_acquire_no_honour(self):
         from opscribe import campaign_ops as c
-        state = _base_state(kill_teams={"sgt1": _make_kt(500)})
+        state = _base_state(kill_teams={"sgt1": _make_kt(900)})
         result = c.check_reward_thresholds(state)
         assert "kt_honour_stalwart" not in result["kill_teams"]["sgt1"]["honour"]
 
     def test_at_acquire_gets_honour(self):
         from opscribe import campaign_ops as c
-        state = _base_state(kill_teams={"sgt1": _make_kt(550)})
+        state = _base_state(kill_teams={"sgt1": _make_kt(1000)})
         result = c.check_reward_thresholds(state)
         assert "kt_honour_stalwart" in result["kill_teams"]["sgt1"]["honour"]
 
     def test_holding_honour_above_retain_keeps_it(self):
         from opscribe import campaign_ops as c
-        kt = _make_kt(400)
+        kt = _make_kt(700)
         kt["honour"] = ["kt_honour_stalwart"]
         state = _base_state(kill_teams={"sgt1": kt})
         result = c.check_reward_thresholds(state)
@@ -293,7 +293,7 @@ class TestKtHonourStalwart:
 
     def test_holding_honour_below_retain_loses_it(self):
         from opscribe import campaign_ops as c
-        kt = _make_kt(300)  # below retain (350)
+        kt = _make_kt(600)  # below retain (650)
         kt["honour"] = ["kt_honour_stalwart"]
         state = _base_state(kill_teams={"sgt1": kt})
         result = c.check_reward_thresholds(state)
@@ -309,7 +309,7 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        state = _base_state(kill_teams={"sgt1": _make_kt(150)})  # below floor (180)
+        state = _base_state(kill_teams={"sgt1": _make_kt(200)})  # below floor (250)
         c._save_campaign_state(state)
         updated = c.update_lore_priority(state, save=True)
         assert updated["lore_priority"]["kill_team"]["sgt_user_id"] is None
@@ -318,7 +318,7 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        state = _base_state(kill_teams={"sgt1": _make_kt(200)})  # above floor (180)
+        state = _base_state(kill_teams={"sgt1": _make_kt(300)})  # above floor (250)
         c._save_campaign_state(state)
         updated = c.update_lore_priority(state, save=True)
         assert updated["lore_priority"]["kill_team"]["sgt_user_id"] == "sgt1"
@@ -327,13 +327,13 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        # Already holds priority; prestige is between retain (100) and floor (180)
-        kt = _make_kt(120, lore_priority=True)
+        # Already holds priority; prestige is between retain (140) and floor (250)
+        kt = _make_kt(190, lore_priority=True)
         state = _base_state(kill_teams={"sgt1": kt})
         state["lore_priority"]["kill_team"] = {
             "sgt_user_id": "sgt1",
             "display_name": "Test KT",
-            "prestige": 120,
+            "prestige": 190,
             "held_since": "2026-01-01T00:00:00+00:00",
         }
         c._save_campaign_state(state)
@@ -344,12 +344,12 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        kt = _make_kt(80, lore_priority=True)  # below retain (100)
+        kt = _make_kt(120, lore_priority=True)  # below retain (140)
         state = _base_state(kill_teams={"sgt1": kt})
         state["lore_priority"]["kill_team"] = {
             "sgt_user_id": "sgt1",
             "display_name": "Test KT",
-            "prestige": 80,
+            "prestige": 120,
             "held_since": "2026-01-01T00:00:00+00:00",
         }
         c._save_campaign_state(state)
@@ -360,7 +360,7 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        state = _base_state(companies={"primus": _make_company(400)})  # above floor (350)
+        state = _base_state(companies={"primus": _make_company(450)})  # above floor (400)
         c._save_campaign_state(state)
         updated = c.update_lore_priority(state, save=True)
         assert updated["lore_priority"]["company"]["company_id"] == "primus"
@@ -369,7 +369,7 @@ class TestUpdateLorePriority:
         from opscribe import campaign_ops as c
         path = str(tmp_path / "campaign_state.json")
         monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
-        state = _base_state(companies={"primus": _make_company(300)})  # below floor (350)
+        state = _base_state(companies={"primus": _make_company(350)})  # below floor (400)
         c._save_campaign_state(state)
         updated = c.update_lore_priority(state, save=True)
         assert updated["lore_priority"]["company"]["company_id"] is None
