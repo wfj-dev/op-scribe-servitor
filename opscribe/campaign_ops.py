@@ -1406,6 +1406,7 @@ def generate_beat_scenario(
     region: Optional[str],
     current_pressure: int,
     beat_seed: Optional[int] = None,
+    beat_num: int = 0,
 ) -> dict:
     """Generate a scenario for a node for the upcoming beat.
 
@@ -1505,7 +1506,6 @@ def generate_beat_scenario(
         narrative = f"The Watch deploys to {node_id}."
 
     # Build scenario_id
-    beat_num = _load_campaign_state().get("campaign", {}).get("beat") or 0
     scenario_id = f"{node_id.lower().replace(' ', '_')}_b{beat_num}_a"
 
     return {
@@ -1596,6 +1596,7 @@ def _generate_node_scenarios(state: dict) -> None:
             region=region,
             current_pressure=pressure,
             beat_seed=beat_seed,
+            beat_num=beat,
         )
         beat_scenarios[nid] = scenario
 
@@ -3276,10 +3277,13 @@ async def _campaign_cascade(interaction: discord.Interaction):
         for rk, role_display, discord_name, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
             name_tag = f" ({discord_name})" if discord_name else ""
             sub = submissions.get(uid)
+            current_phase_idx = phase_order.index(phase) if phase in phase_order else len(phase_order)
             if sub and sub.get("phase") == cp:
                 choice_name = sub.get("choice_name", sub.get("choice_key", "?"))
                 lines.append(f"✅ **{role_display}**{name_tag} — {choice_name}")
-            elif i <= (phase_order.index(phase) if phase in phase_order else 3):
+            elif i < current_phase_idx:
+                lines.append(f"❌ **{role_display}**{name_tag} — did not submit")
+            elif i == current_phase_idx:
                 lines.append(f"⏳ **{role_display}**{name_tag} — pending")
             else:
                 lines.append(f"🔒 **{role_display}**{name_tag} — window not yet open")
