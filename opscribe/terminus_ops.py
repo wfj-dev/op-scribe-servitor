@@ -573,6 +573,25 @@ def _is_apothecary(member: discord.Member) -> bool:
     return any(r.name in apothecary_ranks for r in member.roles)
 
 
+def _verifier_in_aar(vet_id: str, entry: dict) -> bool:
+    """Return True if vet_id is listed as a participant in the entry's linked AAR.
+
+    Uses the ingested DATASTORE record when available so the check is
+    consistent with the participation gate in _validate_aar_link.
+    """
+    aar_link = entry.get("aar_link", "")
+    m = _AAR_LINK_RE.match(aar_link.strip())
+    if not m:
+        return False
+    _ch_id, message_id_str = m.groups()
+    if _g.DATASTORE is None:
+        return False
+    record = _g.DATASTORE.get_record(message_id_str)
+    if not record:
+        return False
+    return vet_id in [str(b) for b in record.get("brother_ids", [])]
+
+
 # ---------------------------------------------------------------------------
 # Button handlers
 # ---------------------------------------------------------------------------
@@ -605,6 +624,11 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
 
             if vet_id == brother_id:
                 error_msg = "You cannot verify your own kill log entry."
+            elif not _is_apothecary(interaction.user) and _verifier_in_aar(vet_id, entry):
+                error_msg = (
+                    "You participated in this operation and cannot verify this kill log. "
+                    "Only an Apothecary may act on an entry from an AAR they ran in."
+                )
             else:
                 verifications = entry.setdefault("verifications", [])
                 if vet_id in verifications:
@@ -673,6 +697,11 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
 
             if vet_id == brother_id:
                 error_msg = "You cannot deny your own kill log entry."
+            elif not _is_apothecary(interaction.user) and _verifier_in_aar(vet_id, entry):
+                error_msg = (
+                    "You participated in this operation and cannot deny this kill log. "
+                    "Only an Apothecary may act on an entry from an AAR they ran in."
+                )
             else:
                 entry["status"] = "under_review"
                 entry["denied_by"] = vet_id
