@@ -240,6 +240,9 @@ def _get_campaign_state_checked() -> Tuple[Optional[dict], Optional[str]]:
     phase = state.get("campaign", {}).get("phase", "inactive")
     if phase == "inactive":
         return None, "No campaign is currently active."
+    if phase == "paused":
+        camp_name = state.get("campaign", {}).get("name") or "The campaign"
+        return None, f"{camp_name} is currently **paused**. Wait for the Forgemaster to resume it."
     if phase in ("evaluating", "complete"):
         return None, f"Campaign is in **{phase}** phase — enlistment is closed."
     return state, None
@@ -2035,3 +2038,182 @@ async def _campaign_init(
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
+
+
+# --- /campaign-pause ---
+
+@_g.bot.tree.command(
+    name="campaign-pause",
+    description="Pause the active campaign. Halts new log entries and enlistment. (Forgemaster only)",
+)
+async def _campaign_pause(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-pause"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase == "inactive":
+        await interaction.response.send_message("No campaign is currently active.", ephemeral=True)
+        return
+    if phase == "paused":
+        await interaction.response.send_message("Campaign is already paused.", ephemeral=True)
+        return
+    if phase in ("complete", "evaluating"):
+        await interaction.response.send_message(f"Campaign is already in **{phase}** phase.", ephemeral=True)
+        return
+
+    state["campaign"]["phase"] = "paused"
+    state["campaign"].setdefault("pause_history", []).append({
+        "paused_at": _iso_now(),
+        "paused_by": str(interaction.user.id),
+        "previous_phase": phase,
+    })
+    _save_campaign_state(state)
+
+    camp_name = state["campaign"].get("name") or state["campaign"].get("id") or "Campaign"
+    await interaction.response.send_message(
+        f"⏸ **{camp_name}** paused. No new log entries or enlistments will be accepted until resumed.",
+    )
+
+
+# --- /campaign-resume ---
+
+@_g.bot.tree.command(
+    name="campaign-resume",
+    description="Resume a paused campaign, returning it to ops phase. (Forgemaster only)",
+)
+async def _campaign_resume(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-resume"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase != "paused":
+        await interaction.response.send_message(
+            f"Campaign is not paused (current phase: **{phase or 'inactive'}**).",
+            ephemeral=True,
+        )
+        return
+
+    state["campaign"]["phase"] = "ops"
+    pause_history = state["campaign"].get("pause_history", [])
+    if pause_history:
+        pause_history[-1]["resumed_at"] = _iso_now()
+        pause_history[-1]["resumed_by"] = str(interaction.user.id)
+    _save_campaign_state(state)
+
+    camp_name = state["campaign"].get("name") or state["campaign"].get("id") or "Campaign"
+    await interaction.response.send_message(
+        f"▶️ **{camp_name}** resumed. Phase is now **ops**.",
+    )
+
+
+# --- /campaign-end ---
+
+@_g.bot.tree.command(
+    name="campaign-end",
+    description="End the current campaign and record final standings. (Forgemaster only)",
+)
+@app_commands.describe(
+    outcome="Optional campaign outcome note (e.g. 'Victory — Sector Secured').",
+)
+async def _campaign_end(
+    interaction: discord.Interaction,
+    outcome: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-end"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase in ("inactive", "complete"):
+        await interaction.response.send_message(
+            f"No active campaign to end (phase: **{phase}**).",
+            ephemeral=True,
+        )
+        return
+
+    # Snapshot final prestige standings before closing
+    state = refresh_prestige_cache()
+    now_iso = _iso_now()
+    state["campaign"]["phase"] = "complete"
+    state["campaign"]["ended_at"] = now_iso
+    if outcome:
+        state["campaign"]["outcome"] = outcome
+
+    # Record final standings snapshot
+    kt_standings = sorted(
+        [
+            {"sgt_id": sgt_id, "display_name": kt.get("display_name", sgt_id), "prestige": kt.get("prestige_window_total", 0)}
+            for sgt_id, kt in state.get("kill_teams", {}).items()
+        ],
+        key=lambda x: x["prestige"],
+        reverse=True,
+    )
+    co_standings = sorted(
+        [
+            {"company_id": co_id, "display_name": co.get("display_name", co_id), "prestige": co.get("prestige_window_total", 0)}
+            for co_id, co in state.get("companies", {}).items()
+        ],
+        key=lambda x: x["prestige"],
+        reverse=True,
+    )
+    state["campaign"]["final_standings"] = {
+        "recorded_at": now_iso,
+        "kill_teams": kt_standings,
+        "companies": co_standings,
+    }
+    _save_campaign_state(state)
+
+    camp_name = state["campaign"].get("name") or state["campaign"].get("id") or "Campaign"
+    embed = discord.Embed(
+        title=f"⚔️ {camp_name} — Concluded",
+        description=outcome or "Campaign ended.",
+        color=0x555555,
+    )
+    embed.add_field(name="Ended At", value=now_iso[:19] + "Z", inline=False)
+    if kt_standings:
+        top_kts = "\n".join(f"{i+1}. {e['display_name']} — {e['prestige']}" for i, e in enumerate(kt_standings[:5]))
+        embed.add_field(name="Top Kill Teams", value=top_kts, inline=True)
+    if co_standings:
+        co_lines = "\n".join(f"{e['display_name']}: {e['prestige']}" for e in co_standings)
+        embed.add_field(name="Company Standings", value=co_lines, inline=True)
+    embed.set_footer(text=f"Closed by {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed)
+
+
+# --- /campaign-reset ---
+
+@_g.bot.tree.command(
+    name="campaign-reset",
+    description="Wipe all campaign progress back to a blank inactive state. Irreversible. (Forgemaster only)",
+)
+@app_commands.describe(
+    confirm="Type 'CONFIRM' to wipe all campaign data.",
+)
+async def _campaign_reset(
+    interaction: discord.Interaction,
+    confirm: str,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-reset"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    if confirm.strip().upper() != "CONFIRM":
+        await interaction.response.send_message(
+            "Reset aborted. Pass `confirm: CONFIRM` (all caps) to wipe campaign data.",
+            ephemeral=True,
+        )
+        return
+
+    os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
+    blank = _blank_campaign_state()
+    _save_campaign_state(blank)
+
+    await interaction.response.send_message(
+        "🗑️ Campaign data wiped. All prestige, enlistment, strats, and standings have been reset. "
+        "Run `/campaign-init` to start a new campaign.",
+    )

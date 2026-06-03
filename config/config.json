@@ -245,6 +245,26 @@
         "Forgemaster"
       ]
     },
+    "campaign-pause": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "campaign-resume": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "campaign-end": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
+    "campaign-reset": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
     "campaign-enlist": {
       "min_rank": "Watch Brother"
     },
