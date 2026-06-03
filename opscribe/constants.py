@@ -59,6 +59,8 @@ LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
 LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
+# Campaign subsystem
+CAMPAIGN_STATE_PATH = os.path.join(DATA_DIR, "campaign_state.json")
 
 # ---------------------------------------------------------------------------
 # Channel IDs
