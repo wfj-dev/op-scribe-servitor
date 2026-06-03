@@ -7,10 +7,7 @@ Covers:
 - refresh_prestige_cache: caches totals on state objects
 """
 
-import json
-import os
 import sys
-import tempfile
 import types
 from datetime import datetime, timedelta, timezone
 
@@ -21,16 +18,19 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _setup_mock_bot():
-    bg = types.ModuleType("opscribe._bot_globals")
-    class FakeBot:
-        class tree:
-            @staticmethod
-            def command(**kw):
-                def dec(fn):
-                    return fn
-                return dec
-    bg.bot = FakeBot()
-    sys.modules["opscribe._bot_globals"] = bg
+    if "opscribe._bot_globals" not in sys.modules:
+        bg = types.ModuleType("opscribe._bot_globals")
+
+        class FakeBot:
+            class tree:
+                @staticmethod
+                def command(**kw):
+                    def dec(fn):
+                        return fn
+                    return dec
+
+        bg.bot = FakeBot()
+        sys.modules["opscribe._bot_globals"] = bg
 
 
 _setup_mock_bot()
@@ -93,6 +93,49 @@ def _make_state(kt_sgt_id, prestige_log, companies=None):
         "cascade": {},
         "beat_record": {},
     }
+
+
+# ---------------------------------------------------------------------------
+# State helpers
+# ---------------------------------------------------------------------------
+
+def test_blank_campaign_state_seeds_total_beats_under_campaign(campaign_state_file):
+    _, c = campaign_state_file
+    state = c._blank_campaign_state()
+    assert state["campaign"]["total_beats"] == 3
+    assert "total_beats" not in state
+
+
+def test_save_campaign_state_creates_parent_directory(tmp_path, monkeypatch):
+    from opscribe import campaign_ops as c
+
+    path = tmp_path / "data" / "campaign_state.json"
+    monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", str(path))
+
+    state = _make_state("sgt1", [])
+    c._save_campaign_state(state)
+
+    assert path.exists()
+
+
+def test_enlist_member_keeps_company_for_hc_tier(campaign_state_file):
+    _, c = campaign_state_file
+    state = c._blank_campaign_state()
+    state["campaign"]["phase"] = "ops"
+    c._save_campaign_state(state)
+
+    success, _ = c.enlist_member(
+        user_id="hc-1",
+        discord_name="HC User",
+        chapter="Ultramarines",
+        company_id="primus",
+        tier="HC",
+        role="Watch Master",
+    )
+
+    assert success is True
+    saved = c._load_campaign_state()
+    assert saved["enlistment"]["hc-1"]["company_id"] == "primus"
 
 
 # ---------------------------------------------------------------------------

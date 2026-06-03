@@ -17,9 +17,7 @@ Covers:
 
 import sys
 import types
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
 # Module-level mock setup
@@ -218,6 +216,54 @@ class TestKtRibbonVanguard:
         )
         result = c.check_reward_thresholds(state)
         assert result["kill_teams"]["sgt1"]["ribbon"] is None
+
+    def test_attached_company_member_counts_toward_vanguard(self):
+        from opscribe import campaign_ops as c
+
+        state = _base_state(
+            kill_teams={"sgt1": _make_kt(0)},
+            campaign_log={
+                f"e{i}": {"submitted_by": "u1", "is_omega": False, "terminus_killed": False}
+                for i in range(5)
+            },
+            enlistment={
+                "u1": {
+                    "tier": "Company",
+                    "kt_sgt_id": None,
+                    "company_id": "primus",
+                    "active": True,
+                    "operational_attachment": {"attached_kt_sgt_id": "sgt1"},
+                }
+            },
+        )
+
+        result = c.check_reward_thresholds(state)
+        assert result["kill_teams"]["sgt1"]["ribbon"] == "kt_ribbon_vanguard"
+
+
+class TestKtRibbonOmega:
+    def test_attached_company_member_counts_toward_omega(self):
+        from opscribe import campaign_ops as c
+
+        state = _base_state(
+            kill_teams={"sgt1": _make_kt(0)},
+            campaign_log={
+                f"e{i}": {"submitted_by": "u1", "is_omega": True, "terminus_killed": False}
+                for i in range(2)
+            },
+            enlistment={
+                "u1": {
+                    "tier": "HC",
+                    "kt_sgt_id": None,
+                    "company_id": "primus",
+                    "active": True,
+                    "operational_attachment": {"attached_kt_sgt_id": "sgt1"},
+                }
+            },
+        )
+
+        result = c.check_reward_thresholds(state)
+        assert result["kill_teams"]["sgt1"]["ribbon"] == "kt_ribbon_omega"
 
 
 # ---------------------------------------------------------------------------
