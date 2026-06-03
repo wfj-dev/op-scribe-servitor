@@ -95,6 +95,7 @@ def _blank_campaign_state() -> dict:
         "ops_window": {},
         "strat_pool": {"locked": False, "pool": [], "theatre_mandate": [], "company_mandates": {}, "kt_mandates": {}},
         "campaign_log": {},
+        "credited_aars": {},
         "beat_scenarios": {},
         "pressure": {},
         "cascade": {},
@@ -154,17 +155,34 @@ def _b(name):
 # Utility helpers
 # ---------------------------------------------------------------------------
 
-_PRESTIGE_HARD_STRAT = 5
-_PRESTIGE_OMEGA = 20
+# Base prestige values per difficulty class
+_PRESTIGE_ABSOLUTE = 1
+_PRESTIGE_HARD_SIEGE_PER_5_WAVES = 0.5
+_PRESTIGE_OMEGA = 2
+_PRESTIGE_HARD_STRAT = 3
+_PRESTIGE_OMEGA_STRAT = 4
+
 _PRESTIGE_WINDOW_DAYS = 28
 
-# difficulty_class values that qualify for campaign prestige
-_QUALIFYING_DIFFICULTY_CLASSES = {"hard_stratagem", "omega_ops"}
+# All difficulty_class values that qualify for campaign prestige
+_QUALIFYING_DIFFICULTY_CLASSES = {"absolute_ops", "hard_siege", "omega_ops", "hard_stratagem", "omega_stratagem"}
 
-# Prestige multipliers based on who the member ran with
-_MULTIPLIER_OWN_KT = 1.0
-_MULTIPLIER_WITHIN_COMPANY = 0.85
-_MULTIPLIER_OUTSIDE_COMPANY = 0.7
+# Formation base rates (before squad depth bonus)
+_RATE_KT = 1.0
+_RATE_COMPANY = 0.75
+_RATE_HC = 0.60
+
+# Squad depth bonus steps per enrolled co-runner
+_KT_BROTHER_STEP = 0.15       # KT tier: same-KT enrolled co-runner
+_CO_BROTHER_STEP = 0.07       # KT tier: same-company different-KT enrolled co-runner
+_OWN_KT_STEP_COMPANY = 0.10  # Company tier: own-company KT member in run
+_KT_STEP_HC = 0.10            # HC tier: per enrolled KT member in run
+_CO_CMD_STEP_HC = 0.08        # HC tier: per enrolled Company Command member in run
+
+# Iron Compact thresholds
+_KT_IRON_COMPACT_RIBBON_OPS = 10   # unique ops per beat with Command/HC co-runner → beat ribbon
+_CO_IRON_COMPACT_RIBBON_OPS = 10
+# Honour requires qualifying in every beat of the campaign (dynamic, read from state.total_beats)
 
 
 def _utcnow() -> datetime:
@@ -191,6 +209,114 @@ def _entry_id() -> str:
     """Generate a unique log entry ID from current timestamp + randomness."""
     h = hashlib.sha1(f"{_utcnow().isoformat()}{random.random()}".encode()).hexdigest()
     return h[:12]
+
+
+def _compute_base_prestige(
+    difficulty_class: str,
+    strats_active: List[str],
+    waves: int,
+) -> float:
+    """Return the base prestige value for a completed op."""
+    if difficulty_class == "absolute_ops":
+        return float(_PRESTIGE_ABSOLUTE)
+    if difficulty_class == "hard_siege":
+        return max(0, int(waves / 5)) * _PRESTIGE_HARD_SIEGE_PER_5_WAVES
+    if difficulty_class == "omega_ops":
+        return float(_PRESTIGE_OMEGA_STRAT if strats_active else _PRESTIGE_OMEGA)
+    if difficulty_class == "hard_stratagem":
+        return float(_PRESTIGE_HARD_STRAT)
+    if difficulty_class == "omega_stratagem":
+        return float(_PRESTIGE_OMEGA_STRAT)
+    return 0.0
+
+
+def _resolve_aar_by_link(aar_link: str) -> Optional[dict]:
+    """Look up an AAR record by its Discord message URL.
+
+    Parses the message ID from the last URL segment and matches against
+    aar_records keyed by aar_id.
+    """
+    import re as _re
+    m = _re.search(r"/(\d+)/?$", aar_link.strip())
+    if not m:
+        return None
+    msg_id = m.group(1)
+    try:
+        with open(AAR_RECORDS_PATH, "r") as f:
+            records = json.load(f)
+    except Exception:
+        return None
+    # Records are keyed by aar_id (string message ID)
+    rec = records.get(msg_id)
+    if rec:
+        return rec
+    # Fallback: scan values for matching aar_id field
+    for rec in records.values():
+        if str(rec.get("aar_id", "")) == msg_id:
+            return rec
+    return None
+
+
+def _classify_co_runners(
+    user_id: str,
+    enlistment_record: dict,
+    brother_ids: List[str],
+    enlistment: dict,
+) -> dict:
+    """Classify enrolled co-runners by their formation relationship to user_id.
+
+    Returns a dict with:
+      kt_brothers        — same KT (KT tier only)
+      co_brothers        — same company, different KT (KT tier only)
+      kt_formations      — {sgt_id: count} of enrolled KT members (Company/HC tier)
+      co_formations      — {co_id: count} of enrolled Company cmd members (HC tier)
+      officer_tiers      — set of tiers (Company/HC) present among enrolled co-runners
+    """
+    tier = enlistment_record.get("tier")
+    kt_sgt_id = enlistment_record.get("kt_sgt_id")
+    company_id = enlistment_record.get("company_id")
+
+    kt_brothers = 0
+    co_brothers = 0
+    kt_formations: Dict[str, int] = {}
+    co_formations: Dict[str, int] = {}
+    officer_tiers: set = set()
+
+    for bid in brother_ids:
+        if bid == user_id:
+            continue
+        rec = enlistment.get(bid)
+        if not rec or not rec.get("active"):
+            continue
+        b_tier = rec.get("tier", "")
+        b_kt = rec.get("kt_sgt_id")
+        b_co = rec.get("company_id")
+
+        # Track officer tier presence for Iron Compact
+        if b_tier in ("Company", "HC"):
+            officer_tiers.add(b_tier)
+
+        if tier == "KT":
+            if b_kt == kt_sgt_id:
+                kt_brothers += 1
+            elif b_co == company_id:
+                co_brothers += 1
+        elif tier == "Company":
+            if b_tier == "KT" and b_kt:
+                kt_formations[b_kt] = kt_formations.get(b_kt, 0) + 1
+        elif tier == "HC":
+            if b_tier == "KT" and b_kt:
+                kt_formations[b_kt] = kt_formations.get(b_kt, 0) + 1
+            elif b_tier == "Company" and b_co:
+                co_formations[b_co] = co_formations.get(b_co, 0) + 1
+
+    return {
+        "kt_brothers": kt_brothers,
+        "co_brothers": co_brothers,
+        "kt_formations": kt_formations,
+        "co_formations": co_formations,
+        "officer_tiers": officer_tiers,
+    }
 
 
 def generate_campaign_name(seed: Optional[int] = None) -> str:
@@ -357,11 +483,14 @@ def de_enlist_member(user_id: str) -> Tuple[bool, str]:
 
 def log_campaign_entry(
     user_id: str,
+    aar_link: str,
     terminus_killed: bool,
     strats_active: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[dict]]:
-    """Submit a campaign log entry linked to the member's most recent qualifying AAR.
+    """Submit a campaign log entry linked to a specific AAR by Discord message URL.
 
+    Also auto-credits all other enrolled members found in the AAR's brother_ids
+    that have not yet been credited for this op.
     Returns (success, message, entry_dict_or_None).
     """
     state = _load_campaign_state()
@@ -379,19 +508,33 @@ def log_campaign_entry(
     if closes_at and _utcnow() >= closes_at:
         return False, "The ops window has closed. Campaign log submissions are blocked during beat resolution.", None
 
-    # Find most recent qualifying AAR for this user
-    aar_record = _find_latest_qualifying_aar(user_id)
+    # Resolve AAR by link
+    aar_record = _resolve_aar_by_link(aar_link)
     if not aar_record:
-        return False, "No qualifying AAR found for your account in the current campaign window. Complete a hard stratagem or omega op first.", None
+        return False, "Could not find an AAR matching that link. Check the URL and try again.", None
 
-    campaign_log = state.setdefault("campaign_log", {})
-    # Check for duplicate submission against the same AAR
+    # Validate submitter participated
+    brother_ids: List[str] = [str(b) for b in aar_record.get("brother_ids", [])]
+    if user_id not in brother_ids:
+        return False, "You are not listed as a participant in that AAR.", None
+
+    # Validate difficulty class
+    difficulty_class = aar_record.get("difficulty_class", "")
+    if difficulty_class not in _QUALIFYING_DIFFICULTY_CLASSES:
+        return False, (
+            f"That AAR's difficulty class (`{difficulty_class}`) does not qualify for campaign prestige. "
+            f"Qualifying types: {', '.join(sorted(_QUALIFYING_DIFFICULTY_CLASSES))}."
+        ), None
+
     aar_id = str(aar_record.get("aar_id", ""))
-    for entry in campaign_log.values():
-        if isinstance(entry, dict) and entry.get("aar_id") == aar_id and entry.get("submitted_by") == user_id:
-            return False, "You have already submitted a campaign log for this AAR.", None
+    credited_aars = state.setdefault("credited_aars", {})
 
-    # Validate strats_active against locked pool (if pool is locked)
+    # Check whether this user has already been credited for this op
+    already_credited: List[str] = credited_aars.get(aar_id, [])
+    if user_id in already_credited:
+        return False, "You have already been credited for this op.", None
+
+    # Validate strats_active against locked pool
     strat_pool = state.get("strat_pool", {})
     if strats_active and strat_pool.get("locked"):
         valid_pool: List[str] = strat_pool.get("pool", [])
@@ -403,83 +546,88 @@ def log_campaign_entry(
                 f"Valid pool: {pool_list}"
             ), None
 
-    # Infer beat from campaign state
     beat = state.get("campaign", {}).get("beat")
+    waves = aar_record.get("waves", 0) or 0
+    base_prestige = _compute_base_prestige(difficulty_class, strats_active or [], waves)
+    campaign_log = state.setdefault("campaign_log", {})
 
-    # Build entry
-    entry_id = _entry_id()
+    # Determine the full list of co-runners (enrolled members in this AAR beyond the submitter)
+    co_runner_ids = [
+        bid for bid in brother_ids
+        if bid != user_id and enlistment.get(bid, {}).get("active")
+    ]
+
+    # Classify co-runners for the submitter (for Iron Compact tracking on the entry)
+    co_run_info = _classify_co_runners(user_id, record, brother_ids, enlistment)
+    officer_tiers = co_run_info["officer_tiers"]
+
     mission_name = _parse_mission_name(aar_record.get("mission", ""))
-    difficulty_class = aar_record.get("difficulty_class", "")
-    is_omega = difficulty_class == "omega_ops"
 
-    entry = {
-        "entry_id": entry_id,
-        "submitted_by": user_id,
-        "submitted_at": _iso_now(),
-        "aar_id": aar_id,
-        "aar_timestamp": aar_record.get("timestamp"),
-        "mission_name": mission_name,
-        "difficulty_class": difficulty_class,
-        "beat": beat,
-        "terminus_killed": terminus_killed,
-        "is_omega": is_omega,
-        "strats_active": strats_active or [],
-    }
-    campaign_log[entry_id] = entry
+    def _make_entry(for_user_id: str) -> dict:
+        return {
+            "entry_id": _entry_id(),
+            "submitted_by": for_user_id,
+            "submitted_at": _iso_now(),
+            "aar_id": aar_id,
+            "aar_link": aar_link,
+            "aar_timestamp": aar_record.get("timestamp"),
+            "mission_name": mission_name,
+            "difficulty_class": difficulty_class,
+            "beat": beat,
+            "terminus_killed": terminus_killed,
+            "is_omega": difficulty_class == "omega_ops",
+            "strats_active": strats_active or [],
+            "co_runner_ids": co_runner_ids,
+            "officer_tiers": list(officer_tiers),
+        }
 
-    # Update last_aar_timestamp
+    # Build and record the submitter's entry
+    entry = _make_entry(user_id)
+    campaign_log[entry["entry_id"]] = entry
+    newly_credited = [user_id]
+
+    # Update submitter metadata
     record["last_aar_timestamp"] = aar_record.get("timestamp")
 
-    # Award prestige to the member's KT
-    _credit_prestige_for_entry(state, user_id, record, entry, aar_record)
-
-    # Update milestone progress
+    # Credit prestige and update milestones for the submitter
+    _credit_prestige_for_entry(state, user_id, record, entry, aar_record, brother_ids, base_prestige)
     _update_milestone_progress(state, user_id, record, entry, aar_record)
+
+    # Auto-credit enrolled co-runners not yet credited for this AAR
+    for co_id in co_runner_ids:
+        if co_id in already_credited:
+            continue
+        co_record = enlistment.get(co_id)
+        if not co_record or not co_record.get("active"):
+            continue
+        co_entry = _make_entry(co_id)
+        co_entry["entry_id"] = _entry_id()
+        campaign_log[co_entry["entry_id"]] = co_entry
+        newly_credited.append(co_id)
+        co_record["last_aar_timestamp"] = aar_record.get("timestamp")
+        _credit_prestige_for_entry(state, co_id, co_record, co_entry, aar_record, brother_ids, base_prestige)
+        _update_milestone_progress(state, co_id, co_record, co_entry, aar_record)
+
+    # Record all newly credited members against this AAR
+    credited_aars[aar_id] = list(set(already_credited + newly_credited))
 
     # If terminus killed, record it
     if terminus_killed:
         ops_window.setdefault("terminus_calls", [])
         ops_window["terminus_calls"].append({
             "user_id": user_id,
-            "entry_id": entry_id,
+            "entry_id": entry["entry_id"],
             "reported_at": _iso_now(),
         })
 
     _save_campaign_state(state)
+    co_count = len(newly_credited) - 1
+    co_note = f" ({co_count} co-runner{'s' if co_count != 1 else ''} also credited)" if co_count else ""
     return True, (
-        f"Campaign log submitted.\n"
+        f"Campaign log submitted{co_note}.\n"
         f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Beat:** {beat or 'unknown'}"
         + (" | Terminus kill recorded." if terminus_killed else "")
     ), entry
-
-
-def _find_latest_qualifying_aar(user_id: str) -> Optional[dict]:
-    """Find the most recent hard_stratagem or omega_ops AAR involving user_id."""
-    try:
-        with open(AAR_RECORDS_PATH, "r") as f:
-            records = json.load(f)
-    except Exception:
-        return None
-
-    state = _load_campaign_state()
-    campaign = state.get("campaign", {})
-    started_at = _parse_iso(campaign.get("started_at"))
-    window_cutoff = started_at or (_utcnow() - timedelta(days=_PRESTIGE_WINDOW_DAYS))
-
-    qualifying = []
-    for rec in records.values():
-        if rec.get("difficulty_class") not in _QUALIFYING_DIFFICULTY_CLASSES:
-            continue
-        if user_id not in rec.get("brother_ids", []):
-            continue
-        ts = _parse_iso(rec.get("timestamp"))
-        if ts and ts >= window_cutoff:
-            qualifying.append(rec)
-
-    if not qualifying:
-        return None
-    qualifying.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
-    return qualifying[0]
 
 
 def _parse_mission_name(raw: str) -> str:
@@ -494,59 +642,84 @@ def _credit_prestige_for_entry(
     enlistment_record: dict,
     entry: dict,
     aar_record: dict,
+    brother_ids: List[str],
+    base_prestige: float,
 ):
-    """Credit prestige to the appropriate kill team for this log entry."""
-    is_omega = entry.get("is_omega")
-    base_amount = _PRESTIGE_OMEGA if is_omega else _PRESTIGE_HARD_STRAT
-
+    """Credit prestige to the appropriate kill team or company for this log entry."""
     tier = enlistment_record.get("tier")
     kt_sgt_id = enlistment_record.get("kt_sgt_id")
-    member_company = enlistment_record.get("company_id")
-
-    # Determine which KT receives prestige and at what multiplier
-    target_kt = None
-    multiplier = _MULTIPLIER_OWN_KT
-
-    if tier == "KT" and kt_sgt_id:
-        target_kt = kt_sgt_id
-        multiplier = _MULTIPLIER_OWN_KT
-    elif tier in ("Company", "HC"):
-        # Derive operational attachment from most common co-runner in last 28 days
-        attachment = enlistment_record.get("operational_attachment") or {}
-        attached_sgt = attachment.get("attached_kt_sgt_id")
-        if attached_sgt:
-            # Is the attached KT in the same company?
-            kill_teams = state.get("kill_teams", {})
-            kt_data = kill_teams.get(attached_sgt, {})
-            kt_company = kt_data.get("company_id")
-            if member_company and kt_company == member_company:
-                multiplier = _MULTIPLIER_WITHIN_COMPANY
-            else:
-                multiplier = _MULTIPLIER_OUTSIDE_COMPANY
-            target_kt = attached_sgt
-        else:
-            # No attachment found — no KT prestige credited
-            return
-
-    if not target_kt:
-        return
 
     kill_teams = state.setdefault("kill_teams", {})
-    kt = kill_teams.get(target_kt)
-    if not kt:
-        return
+    companies = state.setdefault("companies", {})
+    enlistment = state.get("enlistment", {})
 
-    credited = round(base_amount * multiplier)
+    co_run_info = _classify_co_runners(user_id, enlistment_record, brother_ids, enlistment)
 
-    prestige_entry = {
-        "earned_at": entry.get("aar_timestamp") or entry.get("submitted_at"),
-        "member_id": user_id,
-        "base_amount": base_amount,
-        "multiplier": multiplier,
-        "credited_amount": credited,
-        "campaign_log_entry_id": entry["entry_id"],
-    }
-    kt.setdefault("prestige_log", []).append(prestige_entry)
+    def _write_kt_prestige(sgt_id: str, amount: float, multiplier: float):
+        kt = kill_teams.get(sgt_id)
+        if not kt:
+            return
+        kt.setdefault("prestige_log", []).append({
+            "earned_at": entry.get("aar_timestamp") or entry.get("submitted_at"),
+            "member_id": user_id,
+            "base_amount": round(base_prestige, 4),
+            "multiplier": round(multiplier, 4),
+            "credited_amount": round(amount, 4),
+            "campaign_log_entry_id": entry["entry_id"],
+        })
+
+    def _write_company_prestige(co_id: str, amount: float, multiplier: float):
+        co = companies.get(co_id)
+        if not co:
+            return
+        co.setdefault("prestige_log", []).append({
+            "earned_at": entry.get("aar_timestamp") or entry.get("submitted_at"),
+            "member_id": user_id,
+            "base_amount": round(base_prestige, 4),
+            "multiplier": round(multiplier, 4),
+            "credited_amount": round(amount, 4),
+            "campaign_log_entry_id": entry["entry_id"],
+        })
+
+    if tier == "KT":
+        if not kt_sgt_id:
+            return
+        kt_brothers = co_run_info["kt_brothers"]
+        co_brothers = co_run_info["co_brothers"]
+        multiplier = _RATE_KT + kt_brothers * _KT_BROTHER_STEP + co_brothers * _CO_BROTHER_STEP
+        _write_kt_prestige(kt_sgt_id, base_prestige * multiplier, multiplier)
+
+    elif tier == "Company":
+        kt_formations = co_run_info["kt_formations"]
+        company_id = enlistment_record.get("company_id")
+        if kt_formations:
+            # Credit the own-company KT with the most members present
+            best_kt = max(kt_formations, key=lambda k: kt_formations[k])
+            count = kt_formations[best_kt]
+            multiplier = _RATE_COMPANY + count * _OWN_KT_STEP_COMPANY
+            _write_kt_prestige(best_kt, base_prestige * multiplier, multiplier)
+        else:
+            # No enrolled KT members — credit directly to the company pool
+            if company_id:
+                multiplier = _RATE_COMPANY
+                _write_company_prestige(company_id, base_prestige * multiplier, multiplier)
+
+    elif tier == "HC":
+        kt_formations = co_run_info["kt_formations"]
+        co_formations = co_run_info["co_formations"]
+        all_formation_ids = list(kt_formations.keys()) + list(co_formations.keys())
+        n = max(1, len(set(all_formation_ids)))
+
+        for sgt_id, count in kt_formations.items():
+            multiplier = (_RATE_HC / n) + count * _KT_STEP_HC
+            _write_kt_prestige(sgt_id, base_prestige * multiplier, multiplier)
+
+        for co_id, count in co_formations.items():
+            multiplier = (_RATE_HC / n) + count * _CO_CMD_STEP_HC
+            _write_company_prestige(co_id, base_prestige * multiplier, multiplier)
+
+        # If no enrolled formations found, fall through without crediting
+
 
 
 # ---------------------------------------------------------------------------
@@ -577,19 +750,31 @@ def compute_kt_prestige(kt_sgt_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS
 def compute_company_prestige(company_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS, state: Optional[dict] = None) -> int:
     """Return rolling window prestige for a company.
 
-    Sum of each KT's prestige (capped at 25% per KT) for KTs belonging to this company.
+    Sums:
+    - Each KT's prestige (capped at 25% per KT) for KTs belonging to this company.
+    - Direct prestige credits written to the company's own prestige_log.
     """
     if state is None:
         state = _load_campaign_state()
+
+    cutoff = _utcnow() - timedelta(days=window_days)
     kill_teams = state.get("kill_teams", {})
     total = 0
+
+    # KT rollup with per-KT 25% cap
     for sgt_id, kt in kill_teams.items():
         if kt.get("company_id") != company_id:
             continue
         kt_total = compute_kt_prestige(sgt_id, window_days, state=state)
-        # Cap KT contribution at 25% of their rolling total
-        company_contribution = round(kt_total * 0.25)
-        total += company_contribution
+        total += round(kt_total * 0.25)
+
+    # Direct credits on the company record (Company cmd / HC submissions)
+    company = state.get("companies", {}).get(company_id, {})
+    for entry in company.get("prestige_log", []):
+        earned = _parse_iso(entry.get("earned_at"))
+        if earned and earned >= cutoff:
+            total += entry.get("credited_amount", 0)
+
     return total
 
 
@@ -620,24 +805,24 @@ def refresh_prestige_cache(state: Optional[dict] = None) -> dict:
 # ---------------------------------------------------------------------------
 
 # KT numeric thresholds
-_KT_RIBBON_ACTIVE_ACQUIRE = 100
-_KT_RIBBON_ACTIVE_RETAIN = 60
-_KT_TITLE_ACQUIRE = 250
-_KT_TITLE_RETAIN = 150
-_KT_HONOUR_STALWART_ACQUIRE = 550
-_KT_HONOUR_STALWART_RETAIN = 350
-_KT_LORE_FLOOR = 180
-_KT_LORE_RETAIN = 100
+_KT_RIBBON_ACTIVE_ACQUIRE = 150
+_KT_RIBBON_ACTIVE_RETAIN = 90
+_KT_TITLE_ACQUIRE = 450
+_KT_TITLE_RETAIN = 270
+_KT_HONOUR_STALWART_ACQUIRE = 1000
+_KT_HONOUR_STALWART_RETAIN = 650
+_KT_LORE_FLOOR = 250
+_KT_LORE_RETAIN = 140
 
 # Company numeric thresholds
-_CO_RIBBON_ACTIVE_ACQUIRE = 200
-_CO_RIBBON_ACTIVE_RETAIN = 120
-_CO_TITLE_ACQUIRE = 500
-_CO_TITLE_RETAIN = 300
-_CO_HONOUR_STALWART_ACQUIRE = 1000
-_CO_HONOUR_STALWART_RETAIN = 650
-_CO_LORE_FLOOR = 350
-_CO_LORE_RETAIN = 200
+_CO_RIBBON_ACTIVE_ACQUIRE = 250
+_CO_RIBBON_ACTIVE_RETAIN = 150
+_CO_TITLE_ACQUIRE = 700
+_CO_TITLE_RETAIN = 420
+_CO_HONOUR_STALWART_ACQUIRE = 1600
+_CO_HONOUR_STALWART_RETAIN = 1000
+_CO_LORE_FLOOR = 400
+_CO_LORE_RETAIN = 220
 
 
 def check_kt_ribbon_active(kt_sgt_id: str, state: dict) -> bool:
@@ -762,7 +947,81 @@ def check_reward_thresholds(state: dict) -> dict:
         elif not qualifies and current:
             company["honour"] = None
 
+    # --- Iron Compact ribbons and honours ---
+    current_beat = state.get("campaign", {}).get("beat")
+    total_beats = state.get("total_beats") or state.get("campaign", {}).get("total_beats") or 3
+    if current_beat is not None:
+        # KT Iron Compact: unique ops per beat where a Company/HC co-runner was present
+        kt_ic_ops = _count_kt_iron_compact_ops(state, current_beat)
+        for sgt_id, kt in state.get("kill_teams", {}).items():
+            count = kt_ic_ops.get(sgt_id, 0)
+            ic_beats = kt.setdefault("iron_compact_beats", [])
+            if count >= _KT_IRON_COMPACT_RIBBON_OPS and current_beat not in ic_beats:
+                ic_beats.append(current_beat)
+            honours = kt.setdefault("honour", [])
+            if (
+                len(ic_beats) >= total_beats
+                and "kt_honour_iron_compact" not in honours
+            ):
+                honours.append("kt_honour_iron_compact")
+
+        # Company Iron Compact: unique ops per beat where an HC co-runner was present
+        co_ic_ops = _count_company_iron_compact_ops(state, current_beat)
+        for co_id, company in state.get("companies", {}).items():
+            count = co_ic_ops.get(co_id, 0)
+            ic_beats = company.setdefault("iron_compact_beats", [])
+            if count >= _CO_IRON_COMPACT_RIBBON_OPS and current_beat not in ic_beats:
+                ic_beats.append(current_beat)
+            if (
+                len(ic_beats) >= total_beats
+                and not company.get("honour_iron_compact")
+            ):
+                company["honour_iron_compact"] = True
+
     return state
+
+
+def _count_kt_iron_compact_ops(state: dict, beat) -> Dict[str, int]:
+    """Count unique op (AAR) appearances per KT for a given beat where a Command/HC
+    co-runner was present.  Returns {sgt_id: unique_aar_count}."""
+    enlistment = state.get("enlistment", {})
+    # {sgt_id: set of aar_ids}
+    seen: Dict[str, set] = {}
+    for entry in state.get("campaign_log", {}).values():
+        if not isinstance(entry, dict) or entry.get("beat") != beat:
+            continue
+        officer_tiers = entry.get("officer_tiers", [])
+        if not any(t in ("Company", "HC") for t in officer_tiers):
+            continue
+        submitter = entry.get("submitted_by")
+        rec = enlistment.get(submitter)
+        if not rec or rec.get("tier") != "KT":
+            continue
+        sgt = rec.get("kt_sgt_id")
+        if sgt:
+            seen.setdefault(sgt, set()).add(entry.get("aar_id"))
+    return {sgt: len(aars) for sgt, aars in seen.items()}
+
+
+def _count_company_iron_compact_ops(state: dict, beat) -> Dict[str, int]:
+    """Count unique op (AAR) appearances per company for a given beat where an HC
+    co-runner was present.  Returns {company_id: unique_aar_count}."""
+    enlistment = state.get("enlistment", {})
+    seen: Dict[str, set] = {}
+    for entry in state.get("campaign_log", {}).values():
+        if not isinstance(entry, dict) or entry.get("beat") != beat:
+            continue
+        officer_tiers = entry.get("officer_tiers", [])
+        if "HC" not in officer_tiers:
+            continue
+        submitter = entry.get("submitted_by")
+        rec = enlistment.get(submitter)
+        if not rec or rec.get("tier") != "Company":
+            continue
+        co_id = rec.get("company_id")
+        if co_id:
+            seen.setdefault(co_id, set()).add(entry.get("aar_id"))
+    return {co_id: len(aars) for co_id, aars in seen.items()}
 
 
 def _count_kt_omega_ops(state: dict) -> Dict[str, int]:
@@ -1330,7 +1589,7 @@ async def sweep_auto_de_enlist():
                 user = await bot.fetch_user(int(user_id))
                 await user.send(
                     "**Campaign De-enlistment Notice**\n"
-                    "You have been automatically de-enlisted from the current campaign due to 28 days without a qualifying op (hard stratagem or omega).\n"
+                    "You have been automatically de-enlisted from the current campaign due to 28 days without a qualifying op (absolute, hard siege, omega, or hard stratagem).\n"
                     "Your milestone progress has been preserved. You may re-enlist at any time before campaign end."
                 )
             except Exception:
@@ -1344,7 +1603,7 @@ async def sweep_auto_de_enlist():
                 await user.send(
                     f"**Campaign Activity Warning**\n"
                     f"You have been inactive in the campaign for {inactive_duration.days} days. "
-                    f"If you do not complete a qualifying op (hard stratagem or omega) within {days_left} days, "
+                    f"If you do not complete a qualifying op (absolute, hard siege, omega, or hard stratagem) within {days_left} days, "
                     f"you will be automatically de-enlisted."
                 )
             except Exception:
@@ -1816,11 +2075,13 @@ async def _campaign_de_enlist(interaction: discord.Interaction):
     description="Submit a campaign log entry for an op you completed.",
 )
 @app_commands.describe(
+    aar_link="Discord message URL of the AAR post for this op.",
     terminus_killed="Was any terminus target killed during this op?",
     strats_active="Comma-separated list of active strats you ran (e.g. 'Unleashed Fury, Extreme Challenge')",
 )
 async def _campaign_log(
     interaction: discord.Interaction,
+    aar_link: str,
     terminus_killed: bool,
     strats_active: Optional[str] = None,
 ):
@@ -1834,6 +2095,7 @@ async def _campaign_log(
     strats_list = [s.strip() for s in strats_active.split(",") if s.strip()] if strats_active else []
     success, msg, entry = log_campaign_entry(
         user_id=str(interaction.user.id),
+        aar_link=aar_link,
         terminus_killed=terminus_killed,
         strats_active=strats_list,
     )
@@ -2472,8 +2734,20 @@ async def _campaign_init(
     if closes_dt is None:
         closes_dt = _utcnow() + timedelta(days=max(1, beat_duration_days))
 
-    # Build fresh state seeded from config companies
-    state = _blank_campaign_state()
+    # Preserve existing formation state; reset only campaign-level fields
+    state = _load_campaign_state()
+    blank = _blank_campaign_state()
+    for key in (
+        "campaign", "ops_window", "strat_pool", "campaign_log", "credited_aars",
+        "beat_scenarios", "pressure", "cascade", "lore_priority", "beat_record",
+    ):
+        state[key] = blank[key]
+    state.setdefault("kill_teams", {})
+    state.setdefault("companies", {})
+    state.setdefault("enlistment", {})
+    state["_schema_version"] = 1
+    state["total_beats"] = 3  # will be overwritten below
+
     now_iso = _iso_now()
     state["campaign"].update({
         "id": campaign_id,
@@ -2486,28 +2760,38 @@ async def _campaign_init(
         "total_beats": total_beats,
         "length_label": length_label,
     })
+    state["total_beats"] = total_beats
     state["ops_window"] = {
         "opened_at": now_iso,
         "closes_at": closes_dt.isoformat(),
         "terminus_calls": [],
     }
 
-    # Seed companies from config (bot module carries CONFIG)
+    # Seed companies from config — only add companies not already present
     CONFIG = _b("CONFIG") or {}
     cfg_companies = CONFIG.get("companies", {})
     for co_id, co_cfg in cfg_companies.items():
-        co_name = co_cfg.get("name") or co_id.capitalize()
-        state["companies"][co_id] = {
-            "display_name": f"Watch Company {co_name}",
-            "prestige_window_total": 0,
-            "ribbon": None,
-            "honour": None,
-            "lore_priority": False,
-            "last_prestige_check": None,
-            "title": None,
-            "title_granted_by": None,
-            "title_granted_at": None,
-        }
+        if co_id not in state["companies"]:
+            co_name = co_cfg.get("name") or co_id.capitalize()
+            state["companies"][co_id] = {
+                "display_name": f"Watch Company {co_name}",
+                "prestige_window_total": 0,
+                "prestige_log": [],
+                "ribbon": None,
+                "honour": None,
+                "honour_iron_compact": False,
+                "iron_compact_beats": [],
+                "lore_priority": False,
+                "last_prestige_check": None,
+                "title": None,
+                "title_granted_by": None,
+                "title_granted_at": None,
+            }
+        else:
+            # Ensure new fields exist on legacy company records
+            state["companies"][co_id].setdefault("prestige_log", [])
+            state["companies"][co_id].setdefault("honour_iron_compact", False)
+            state["companies"][co_id].setdefault("iron_compact_beats", [])
 
     # Persist
     os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
@@ -2699,10 +2983,26 @@ async def _campaign_reset(
         return
 
     os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
+    # Preserve formation records (kill_teams, companies); reset campaign progress only
+    state = _load_campaign_state()
     blank = _blank_campaign_state()
-    _save_campaign_state(blank)
+    for key in (
+        "campaign", "ops_window", "strat_pool", "campaign_log", "credited_aars",
+        "beat_scenarios", "pressure", "cascade", "lore_priority", "beat_record",
+    ):
+        state[key] = blank[key]
+    state["_schema_version"] = 1
+    state["total_beats"] = blank["total_beats"]
+
+    # Reset campaign-specific fields on every enlistment record, keep formation assignments
+    for rec in state.get("enlistment", {}).values():
+        rec.pop("last_aar_timestamp", None)
+        rec.pop("auto_de_enlist_warning_sent", None)
+        rec.pop("milestone_progress", None)
+
+    _save_campaign_state(state)
 
     await interaction.response.send_message(
-        "🗑️ Campaign data wiped. All prestige, enlistment, strats, and standings have been reset. "
+        "🗑️ Campaign progress wiped. Formation assignments and prestige history are preserved. "
         "Run `/campaign-init` to start a new campaign.",
     )
