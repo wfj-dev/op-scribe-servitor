@@ -3410,7 +3410,7 @@ async def _campaign_milestone(interaction: discord.Interaction):
     beat_number="Starting beat number (default: 1).",
     beat_duration_days="Days each ops window stays open (default: 7). Ops open after cascade resolves.",
     doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
-    starting_node="Starting planet/node from the Jericho Reach graph (default: Hethgard).",
+    starting_node="Starting planet/node from the Jericho Reach graph (default: random from Kadaku/Avarax/Demerium).",
 )
 async def _campaign_init(
     interaction: discord.Interaction,
@@ -3473,7 +3473,8 @@ async def _campaign_init(
     state["total_beats"] = 3  # will be overwritten below
 
     # Validate / default starting node
-    node_id = (starting_node or "Hethgard").strip()
+    _DEFAULT_NODES = ["Kadaku", "Avarax", "Demerium"]
+    node_id = (starting_node or random.Random(seed).choice(_DEFAULT_NODES)).strip()
     node_data = _graph_node(node_id)
     if not node_data:
         # Try case-insensitive match
