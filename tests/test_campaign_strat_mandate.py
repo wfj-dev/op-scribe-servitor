@@ -198,7 +198,9 @@ class TestDeriveStratMandate:
         pool = [name for name, _, _ in scored[:5]]
         state = self._base_state()
         mandate = c.derive_strat_mandate(agg, pool, state)
-        assert mandate["theatre_mandate"] == pool[0]
+        assert isinstance(mandate["theatre_mandate"], list)
+        assert len(mandate["theatre_mandate"]) >= 1
+        assert mandate["theatre_mandate"][0] == pool[0]
 
     def test_company_mandate_differs_from_theatre(self):
         from opscribe import campaign_ops as c
@@ -207,9 +209,11 @@ class TestDeriveStratMandate:
         pool = [name for name, _, _ in scored[:5]]
         state = self._base_state()
         mandate = c.derive_strat_mandate(agg, pool, state)
-        theatre = mandate["theatre_mandate"]
-        for co_id, co_strat in mandate["company_mandates"].items():
-            assert co_strat != theatre or co_strat is None
+        theatre_set = set(mandate["theatre_mandate"])
+        for co_id, co_strats in mandate["company_mandates"].items():
+            assert isinstance(co_strats, list)
+            for s in co_strats:
+                assert s not in theatre_set, f"company strat {s!r} duplicates theatre"
 
     def test_mandate_strats_are_from_pool(self):
         from opscribe import campaign_ops as c
@@ -219,11 +223,11 @@ class TestDeriveStratMandate:
         pool_set = set(pool)
         state = self._base_state()
         mandate = c.derive_strat_mandate(agg, pool, state)
-        if mandate["theatre_mandate"]:
-            assert mandate["theatre_mandate"] in pool_set
-        for co_strat in mandate["company_mandates"].values():
-            if co_strat:
-                assert co_strat in pool_set
+        for s in mandate["theatre_mandate"]:
+            assert s in pool_set
+        for co_strats in mandate["company_mandates"].values():
+            for s in co_strats:
+                assert s in pool_set
 
     def test_no_conflicting_mandates(self):
         from opscribe import campaign_ops as c
@@ -233,9 +237,10 @@ class TestDeriveStratMandate:
         state = self._base_state()
         mandate = c.derive_strat_mandate(agg, pool, state)
         conflicts = c._build_conflict_set(pool)
-        mandated = [m for m in [
-            mandate.get("theatre_mandate"),
-        ] + list(mandate.get("company_mandates", {}).values()) if m]
+        mandated = (
+            list(mandate.get("theatre_mandate") or []) +
+            [s for strats in mandate.get("company_mandates", {}).values() for s in strats]
+        )
 
         for i, a in enumerate(mandated):
             for b in mandated[i + 1:]:
@@ -248,4 +253,4 @@ class TestDeriveStratMandate:
         agg = {"aggressive": 5.0}
         state = self._base_state()
         mandate = c.derive_strat_mandate(agg, [], state)
-        assert mandate["theatre_mandate"] is None
+        assert mandate["theatre_mandate"] == []

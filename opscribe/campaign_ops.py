@@ -12,7 +12,7 @@ import sys as _sys
 import discord
 from discord import app_commands
 
-from .constants import CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH
+from .constants import CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH, CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID
 from . import _bot_globals as _g
 
 # ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ def _blank_campaign_state() -> dict:
             "started_at": None,
             "ended_at": None,
             "outcome": None,
+            "beat_duration_days": 7,
             "current_node": None,
             "visited_nodes": [],
             "beat_history": [],
@@ -91,7 +92,8 @@ def _blank_campaign_state() -> dict:
             "company": {"company_id": None, "display_name": None, "prestige": None, "held_since": None},
         },
         "ops_window": {},
-        "strat_pool": {"locked": False, "pool": [], "theatre_mandate": None, "company_mandates": {}, "kt_mandates": {}},
+        "strat_pool": {"locked": False, "pool": [], "theatre_mandate": [], "company_mandates": {}, "kt_mandates": {}},
+        "total_beats": 3,
         "campaign_log": {},
         "beat_scenarios": {},
         "pressure": {},
@@ -979,73 +981,91 @@ def _build_conflict_set(pool: List[str]) -> Dict[str, set]:
     return blocked
 
 
+def _tier_mandate_count(n_distinct_roles: int, tier: str) -> int:
+    """Return how many mandate strats to pick for a tier, based on participation.
+
+    KT tier caps at 2 (only 2 eligible roles exist).
+    HC and Company tiers: 1-2 roles → 1, 3-4 → 2, 5+ → 3.
+    """
+    if tier == "KT":
+        return min(2, max(1, n_distinct_roles))
+    if n_distinct_roles <= 2:
+        return 1
+    if n_distinct_roles <= 4:
+        return 2
+    return 3
+
+
 def derive_strat_mandate(
     doctrine_aggregate: Dict[str, float],
     confirmed_pool: List[str],
     state: Optional[dict] = None,
+    tier_counts: Optional[Dict[str, int]] = None,
 ) -> dict:
     """Derive theatre, company, and KT mandates from the confirmed strat pool.
 
+    Each tier gets 1-3 mandates depending on cascade participation (tier_counts).
     Returns:
       {
-        'theatre_mandate': str,
-        'company_mandates': {company_id: str},
-        'kt_mandates': {sgt_user_id: str},
+        'theatre_mandate': [str, ...],       # 1-3 strats
+        'company_mandates': {company_id: [str, ...]},
+        'kt_mandates': {sgt_user_id: [str, ...]},
       }
     """
     _ensure_refs_loaded()
     if state is None:
         state = _load_campaign_state()
+    if tier_counts is None:
+        tier_counts = {"theatre": 1, "company": 1, "kt": 1}
 
     scored = score_strats_against_aggregate(doctrine_aggregate)
-    # Filter to confirmed pool only
     pool_set = set(confirmed_pool)
     scored = [(name, score, strat) for name, score, strat in scored if name in pool_set]
 
     conflict_set = _build_conflict_set(confirmed_pool)
-    mandated: List[str] = []
+    # Global used set — prevents same strat appearing twice across all mandates
+    used: List[str] = []
 
-    def _pick_next(exclude: set) -> Optional[str]:
-        """Pick highest-scoring strat not in exclude and not conflicting with mandated."""
+    def _pick_next(local_exclude: set) -> Optional[str]:
+        exclude = local_exclude | set(used)
         for name, _score, _strat in scored:
             if name in exclude:
                 continue
-            # Check no conflict with already-mandated strats
-            conflicts_with_mandated = any(
-                name in conflict_set.get(m, set()) for m in mandated
-            )
-            if conflicts_with_mandated:
+            if any(name in conflict_set.get(m, set()) for m in used):
                 continue
             return name
         return None
 
-    # Theatre mandate: driven by HC aggregate
-    theatre_strat = _pick_next(set())
-    if theatre_strat:
-        mandated.append(theatre_strat)
+    def _pick_n(n: int, extra_exclude: Optional[set] = None) -> List[str]:
+        picks: List[str] = []
+        ex = set(extra_exclude or [])
+        for _ in range(n):
+            s = _pick_next(ex)
+            if s:
+                used.append(s)
+                picks.append(s)
+                ex.add(s)
+        return picks
 
-    # Company mandates: one per active company (excluding theatre strat)
-    company_mandates = {}
+    # Theatre mandates
+    theatre_mandates = _pick_n(tier_counts.get("theatre", 1))
+
+    # Company mandates — each company picks independently after theatre
+    company_mandates: Dict[str, List[str]] = {}
+    co_n = tier_counts.get("company", 1)
     for company_id in state.get("companies", {}).keys():
-        exclude = set(mandated)
-        company_strat = _pick_next(exclude)
-        if company_strat and company_strat not in mandated:
-            mandated.append(company_strat)
-            company_mandates[company_id] = company_strat
-        elif company_strat:
-            company_mandates[company_id] = company_strat
+        co_picks = _pick_n(co_n)
+        company_mandates[company_id] = co_picks
 
-    # KT mandates: one per active KT
-    kt_mandates = {}
+    # KT mandates — each KT picks independently after theatre + company
+    kt_mandates: Dict[str, List[str]] = {}
+    kt_n = tier_counts.get("kt", 1)
     for sgt_id in state.get("kill_teams", {}).keys():
-        exclude = set(mandated)
-        kt_strat = _pick_next(exclude)
-        if kt_strat:
-            mandated.append(kt_strat)
-            kt_mandates[sgt_id] = kt_strat
+        kt_picks = _pick_n(kt_n)
+        kt_mandates[sgt_id] = kt_picks
 
     return {
-        "theatre_mandate": theatre_strat,
+        "theatre_mandate": theatre_mandates,
         "company_mandates": company_mandates,
         "kt_mandates": kt_mandates,
     }
@@ -1329,6 +1349,348 @@ async def sweep_auto_de_enlist():
 
 
 # ---------------------------------------------------------------------------
+# Cascade role mapping + beat lifecycle helpers
+# ---------------------------------------------------------------------------
+
+# Maps Discord role display name → cascade_options.json key
+_ROLE_TO_CASCADE_KEY: Dict[str, str] = {
+    "Watch Master": "watch_master",
+    "Lord Executioner": "lord_executioner",
+    "Forgemaster": "forgemaster",
+    "Chief Apothecary": "chief_apothecary",
+    "High Chaplain": "high_chaplain",
+    "Huntmaster": "huntmaster",
+    "Void Warden": "void_warden",
+    "Castellan": "castellan",
+    "Watch Captain": "watch_captain",
+    "Watch Lieutenant": "watch_lieutenant",
+    "Company Champion": "company_champion",
+    "Watch Techmarine": "watch_techmarine",
+    "Watch Apothecary": "watch_apothecary",
+    "Watch Chaplain": "watch_chaplain",
+    "Watch Librarian": "watch_librarian",
+    "Watch Keeper": "watch_keeper",
+    "Watch Sergeant": "watch_sergeant",
+    "Judiciar": "judiciar",
+}
+
+# Which cascade keys are eligible per phase
+_CASCADE_PHASE_ROLES: Dict[str, frozenset] = {
+    "cascade_HC": frozenset({
+        "watch_master", "lord_executioner", "forgemaster", "chief_apothecary",
+        "high_chaplain", "huntmaster", "void_warden", "castellan",
+    }),
+    "cascade_Company": frozenset({
+        "watch_captain", "watch_lieutenant", "company_champion", "watch_techmarine",
+        "watch_apothecary", "watch_chaplain", "watch_librarian", "watch_keeper",
+    }),
+    "cascade_KT": frozenset({"watch_sergeant", "judiciar"}),
+}
+
+# Highest-authority order for role disambiguation
+_CASCADE_ROLE_PRIORITY = [
+    "watch_master", "lord_executioner", "forgemaster", "chief_apothecary",
+    "high_chaplain", "huntmaster", "void_warden", "castellan",
+    "watch_captain", "watch_lieutenant", "company_champion", "watch_techmarine",
+    "watch_apothecary", "watch_chaplain", "watch_librarian", "watch_keeper",
+    "watch_sergeant", "judiciar",
+]
+
+# Cascade window durations per phase
+_CASCADE_DEADLINE_HOURS: Dict[str, int] = {
+    "cascade_HC": 48,
+    "cascade_Company": 48,
+    "cascade_KT": 24,
+}
+
+_STRAT_POOL_SIZE = 12  # Target conflict-free pool size for beat resolution
+
+
+def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
+    """Return the user's highest-priority cascade role key valid for *phase*."""
+    if not hasattr(user, "roles"):
+        return None
+    valid_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
+    user_role_names = {r.name for r in user.roles}
+    user_keys = {
+        cascade_key
+        for role_name, cascade_key in _ROLE_TO_CASCADE_KEY.items()
+        if role_name in user_role_names and cascade_key in valid_keys
+    }
+    for key in _CASCADE_ROLE_PRIORITY:
+        if key in user_keys:
+            return key
+    return None
+
+
+def _enter_cascade_phase(state: dict, phase: str) -> None:
+    """Set the campaign phase to a cascade phase and record its deadline."""
+    deadline_hours = _CASCADE_DEADLINE_HOURS.get(phase, 48)
+    state["campaign"]["phase"] = phase
+    cascade = state.setdefault("cascade", {})
+    cascade.setdefault("submissions", {})
+    now = _utcnow()
+    deadline = now + timedelta(hours=deadline_hours)
+    cascade[f"{phase}_started_at"] = now.isoformat()
+    cascade[f"{phase}_deadline"] = deadline.isoformat()
+
+
+def _aggregate_cascade_doctrine(state: dict) -> Dict[str, float]:
+    """Sum doctrine tags from all cascade submissions into a doctrine aggregate."""
+    aggregate: Dict[str, float] = {}
+    for sub in state.get("cascade", {}).get("submissions", {}).values():
+        for tag in sub.get("tags", []):
+            aggregate[tag] = aggregate.get(tag, 0.0) + 1.0
+    return aggregate
+
+
+def _build_conflict_free_pool(
+    scored: List[Tuple[str, float, dict]], pool_size: int = _STRAT_POOL_SIZE
+) -> List[str]:
+    """Greedy conflict-free pool selection from a pre-scored strat list."""
+    _ensure_refs_loaded()
+    ref_strats = _load_ref("stratagems.json")
+    cat_groups = ref_strats.get("conflict_map", {}).get("category_groups", {})
+    specific = ref_strats.get("conflict_map", {}).get("specific_conflicts", {})
+
+    all_conflicts: Dict[str, set] = {}
+    for group in cat_groups.values():
+        members = group.get("members", [])
+        for a in members:
+            for b in members:
+                if a != b:
+                    all_conflicts.setdefault(a, set()).add(b)
+    for strat_name, info in specific.items():
+        if strat_name.startswith("_"):
+            continue
+        for blocked in info.get("blocks", []):
+            all_conflicts.setdefault(strat_name, set()).add(blocked)
+            all_conflicts.setdefault(blocked, set()).add(strat_name)
+
+    pool: List[str] = []
+    for name, _score, _strat in scored:
+        if len(pool) >= pool_size:
+            break
+        if not any(name in all_conflicts.get(p, set()) for p in pool):
+            pool.append(name)
+    return pool
+
+
+def _resolve_beat_and_open_next(
+    state: dict, ops_closes_at: Optional[str] = None
+) -> dict:
+    """Aggregate cascade doctrine → derive strat pool → advance beat → open next ops window.
+
+    Modifies *state* in-place. Does NOT save to disk.
+    Returns a summary dict suitable for announcement text.
+    """
+    _ensure_refs_loaded()
+
+    campaign = state.get("campaign", {})
+    old_beat = campaign.get("beat") or 0
+    old_beat_name = campaign.get("beat_name")
+    new_beat = old_beat + 1
+    total_beats = campaign.get("total_beats") or 3
+
+    # 1. Aggregate doctrine from all cascade submissions across all tiers
+    doctrine_aggregate = _aggregate_cascade_doctrine(state)
+
+    # 2. Score strats and build conflict-free pool
+    scored = score_strats_against_aggregate(doctrine_aggregate)
+    pool = _build_conflict_free_pool(scored, pool_size=_STRAT_POOL_SIZE)
+
+    # 3. Compute per-tier mandate counts from cascade participation
+    submissions = state.get("cascade", {}).get("submissions", {})
+    hc_roles = _CASCADE_PHASE_ROLES["cascade_HC"]
+    co_roles = _CASCADE_PHASE_ROLES["cascade_Company"]
+    kt_roles_set = _CASCADE_PHASE_ROLES["cascade_KT"]
+    hc_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in hc_roles})
+    co_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in co_roles})
+    kt_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in kt_roles_set})
+    tier_counts = {
+        "theatre": _tier_mandate_count(hc_distinct, "HC"),
+        "company": _tier_mandate_count(co_distinct, "Company"),
+        "kt": _tier_mandate_count(kt_distinct, "KT"),
+    }
+
+    # 4. Derive mandates — refresh prestige first so company/KT records are current
+    state = refresh_prestige_cache(state)
+    mandate_result = derive_strat_mandate(doctrine_aggregate, pool, state, tier_counts)
+
+    # 5. Update strat pool
+    beat_doctrine_tags = sorted(
+        doctrine_aggregate.keys(), key=lambda k: -doctrine_aggregate[k]
+    )
+    state["strat_pool"] = {
+        "locked": True,
+        "pool": pool,
+        "theatre_mandate": mandate_result.get("theatre_mandate", []),
+        "company_mandates": mandate_result.get("company_mandates", {}),
+        "kt_mandates": mandate_result.get("kt_mandates", {}),
+        "tier_counts": tier_counts,
+        "derived_at": _iso_now(),
+        "doctrine_aggregate": doctrine_aggregate,
+    }
+
+    # 6. Archive the completed beat
+    campaign.setdefault("beat_history", []).append({
+        "beat": old_beat,
+        "beat_name": old_beat_name,
+        "resolved_at": _iso_now(),
+        "doctrine_aggregate": doctrine_aggregate,
+        "pool": pool,
+        "theatre_mandate": mandate_result.get("theatre_mandate", []),
+        "tier_counts": tier_counts,
+    })
+
+    # 7. Advance beat counter and generate new beat name
+    campaign["beat"] = new_beat
+    new_beat_name = generate_beat_name(new_beat, beat_doctrine_tags[:3], seed=new_beat)
+    campaign["beat_name"] = new_beat_name
+
+    # 8. Clear cascade submissions
+    state.setdefault("cascade", {})["submissions"] = {}
+
+    theatre_strats = mandate_result.get("theatre_mandate", [])
+    summary = {
+        "new_beat": new_beat,
+        "new_beat_name": new_beat_name,
+        "theatre_mandate": theatre_strats[0] if theatre_strats else None,
+        "theatre_mandates": theatre_strats,
+        "top_tags": beat_doctrine_tags[:3],
+        "tier_counts": tier_counts,
+        "campaign_complete": new_beat > total_beats,
+    }
+
+    # 9. If campaign is over, close it; otherwise open the next ops window
+    if summary["campaign_complete"]:
+        campaign["phase"] = "complete"
+        campaign["ended_at"] = _iso_now()
+        campaign["outcome"] = f"Campaign concluded after {total_beats} beats."
+    else:
+        if ops_closes_at is None:
+            duration_days = campaign.get("beat_duration_days") or 7
+            auto_close = _utcnow() + timedelta(days=duration_days)
+            ops_closes_at = auto_close.isoformat()
+        state["ops_window"] = {
+            "opened_at": _iso_now(),
+            "closes_at": ops_closes_at,
+            "terminus_calls": [],
+        }
+        campaign["phase"] = "ops"
+        summary["ops_closes_at"] = ops_closes_at
+
+    return summary
+
+
+async def _post_campaign_announcement(bot, text: str) -> None:
+    """Post *text* to the configured campaign announcement channel, if set."""
+    channel_id = CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID
+    if not channel_id:
+        return
+    try:
+        channel = bot.get_channel(channel_id)
+        if channel:
+            await channel.send(text)
+    except Exception:
+        pass
+
+
+async def sweep_campaign_beat_clock() -> None:
+    """Auto-advance campaign beat lifecycle: ops window expiry and cascade deadlines.
+
+    Called every 15 minutes by the beat clock loop in bot.py.
+    Transitions: ops → cascade_HC → cascade_Company → cascade_KT → ops (next beat).
+    """
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+
+    if phase not in ("ops", "cascade_HC", "cascade_Company", "cascade_KT"):
+        return
+
+    bot = _b("bot")
+    if not bot:
+        return
+
+    now = _utcnow()
+    changed = False
+    announcement: Optional[str] = None
+
+    camp_name = state["campaign"].get("name") or "Campaign"
+    beat = state["campaign"].get("beat") or "?"
+
+    # ops → cascade_HC when the ops window closes
+    if phase == "ops":
+        closes_at = _parse_iso(state.get("ops_window", {}).get("closes_at"))
+        if closes_at and now >= closes_at:
+            _enter_cascade_phase(state, "cascade_HC")
+            deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
+            announcement = (
+                f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                f"The Cascade of Orders begins. **High Command**, submit your doctrine orders via `/campaign-cascade-submit`.\n"
+                f"HC cascade window closes: `{deadline_ts}Z`"
+            )
+            changed = True
+
+    # cascade_HC → cascade_Company on deadline
+    elif phase == "cascade_HC":
+        deadline = _parse_iso(state.get("cascade", {}).get("cascade_HC_deadline"))
+        if deadline and now >= deadline:
+            _enter_cascade_phase(state, "cascade_Company")
+            deadline_ts = state["cascade"].get("cascade_Company_deadline", "")[:19]
+            announcement = (
+                f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Company Command.**\n"
+                f"HC orders have been logged. **Captains and Company officers**, submit your orders via `/campaign-cascade-submit`.\n"
+                f"Company cascade window closes: `{deadline_ts}Z`"
+            )
+            changed = True
+
+    # cascade_Company → cascade_KT on deadline
+    elif phase == "cascade_Company":
+        deadline = _parse_iso(state.get("cascade", {}).get("cascade_Company_deadline"))
+        if deadline and now >= deadline:
+            _enter_cascade_phase(state, "cascade_KT")
+            deadline_ts = state["cascade"].get("cascade_KT_deadline", "")[:19]
+            announcement = (
+                f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Kill Teams.**\n"
+                f"Company orders logged. **Watch Sergeants**, submit your kill team doctrine via `/campaign-cascade-submit`.\n"
+                f"KT cascade window closes: `{deadline_ts}Z`"
+            )
+            changed = True
+
+    # cascade_KT → beat resolution on deadline
+    elif phase == "cascade_KT":
+        deadline = _parse_iso(state.get("cascade", {}).get("cascade_KT_deadline"))
+        if deadline and now >= deadline:
+            summary = _resolve_beat_and_open_next(state, ops_closes_at=None)
+            new_beat_name = summary["new_beat_name"]
+            new_beat = summary["new_beat"]
+            theatre_strats = summary.get("theatre_mandates") or []
+            theatre_display = ", ".join(f"`{s}`" for s in theatre_strats) if theatre_strats else "—"
+            top_tags = ", ".join(summary.get("top_tags", [])) or "—"
+            if summary.get("campaign_complete"):
+                total_b = state["campaign"].get("total_beats", 3)
+                length_lbl = state["campaign"].get("length_label") or {3: "Short", 4: "Medium", 5: "Long"}.get(total_b, "")
+                announcement = (
+                    f"⚔️ **{camp_name} — Campaign Concluded.**\n"
+                    f"The {length_lbl.lower()} campaign ({total_b} beats) is complete.\n"
+                    f"Final Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}"
+                )
+            else:
+                announcement = (
+                    f"⚔️ **{camp_name} — {new_beat_name} begins.**\n"
+                    f"Cascade resolved. Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}\n"
+                    f"Ops window is **open** and will close automatically based on beat duration."
+                )
+            changed = True
+
+    if changed:
+        _save_campaign_state(state)
+        if announcement:
+            await _post_campaign_announcement(bot, announcement)
+
+
+# ---------------------------------------------------------------------------
 # Slash commands
 # ---------------------------------------------------------------------------
 
@@ -1469,6 +1831,73 @@ async def _campaign_log(
     await interaction.response.send_message(msg, ephemeral=True)
 
 
+# ---------------------------------------------------------------------------
+# Cascade choice UI (buttons on /campaign-orders)
+# ---------------------------------------------------------------------------
+
+
+class _CascadeButton(discord.ui.Button):
+    """A button representing one cascade doctrine choice."""
+
+    def __init__(self, opt_key: str, opt_val: dict, role_key: str, phase: str, owner_id: str):
+        super().__init__(label=opt_val.get("name", opt_key)[:80], style=discord.ButtonStyle.primary)
+        self._opt_key = opt_key
+        self._opt_val = opt_val
+        self._role_key = role_key
+        self._phase = phase
+        self._owner_id = owner_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self._owner_id:
+            await interaction.response.send_message("These orders are not yours.", ephemeral=True)
+            return
+        _ensure_refs_loaded()
+        state = _load_campaign_state()
+        phase = state.get("campaign", {}).get("phase", "inactive")
+        if phase != self._phase:
+            await interaction.response.edit_message(
+                content=f"The cascade phase has advanced ({phase}). Run `/campaign-orders` again.",
+                embed=None,
+                view=None,
+            )
+            return
+        tags = self._opt_val.get("tags", [])
+        opt_name = self._opt_val.get("name", self._opt_key)
+        role_data = _CASCADE_OPTIONS.get(self._role_key, {})
+        decision_key = role_data.get("_decision", self._role_key)
+        cascade = state.setdefault("cascade", {})
+        cascade.setdefault("submissions", {})
+        cascade["submissions"][self._owner_id] = {
+            "role_key": self._role_key,
+            "phase": phase,
+            "decision": decision_key,
+            "choice_key": self._opt_key,
+            "choice_name": opt_name,
+            "tags": tags,
+            "submitted_at": _iso_now(),
+        }
+        _save_campaign_state(state)
+        beat = state["campaign"].get("beat") or "?"
+        await interaction.response.edit_message(
+            content=f"\u2705 **{opt_name}** submitted for Beat {beat}.",
+            embed=None,
+            view=None,
+        )
+
+
+class _CascadeChoiceView(discord.ui.View):
+    """Ephemeral view that renders cascade doctrine buttons for /campaign-orders."""
+
+    def __init__(self, user_id: str, role_key: str, phase: str):
+        super().__init__(timeout=300)
+        _ensure_refs_loaded()
+        role_data = _CASCADE_OPTIONS.get(role_key, {})
+        for opt_key, opt_val in role_data.items():
+            if opt_key.startswith("_"):
+                continue
+            self.add_item(_CascadeButton(opt_key, opt_val, role_key, phase, user_id))
+
+
 # --- /campaign-orders ---
 
 @_g.bot.tree.command(
@@ -1510,14 +1939,23 @@ async def _campaign_orders(interaction: discord.Interaction):
 
     # Strat mandate
     if strat_pool.get("locked"):
-        theatre = strat_pool.get("theatre_mandate") or "None"
+        theatre_list = strat_pool.get("theatre_mandate") or []
+        if isinstance(theatre_list, str):
+            theatre_list = [theatre_list]  # backwards compat
+        theatre_display = ", ".join(f"`{s}`" for s in theatre_list) or "None"
         company_id = record.get("company_id")
-        company_strat = strat_pool.get("company_mandates", {}).get(company_id, "None") if company_id else "N/A"
+        co_strats = strat_pool.get("company_mandates", {}).get(company_id, []) if company_id else []
+        if isinstance(co_strats, str):
+            co_strats = [co_strats]
+        co_display = ", ".join(f"`{s}`" for s in co_strats) or "N/A"
         kt_sgt = record.get("kt_sgt_id")
-        kt_strat = strat_pool.get("kt_mandates", {}).get(kt_sgt, "None") if kt_sgt else "N/A"
-        embed.add_field(name="Theatre Strat", value=f"`{theatre}`", inline=True)
-        embed.add_field(name="Company Strat", value=f"`{company_strat}`", inline=True)
-        embed.add_field(name="KT Strat", value=f"`{kt_strat}`", inline=True)
+        kt_strats = strat_pool.get("kt_mandates", {}).get(kt_sgt, []) if kt_sgt else []
+        if isinstance(kt_strats, str):
+            kt_strats = [kt_strats]
+        kt_display = ", ".join(f"`{s}`" for s in kt_strats) or "N/A"
+        embed.add_field(name="Theatre Strats", value=theatre_display, inline=False)
+        embed.add_field(name="Company Strats", value=co_display, inline=True)
+        embed.add_field(name="KT Strats", value=kt_display, inline=True)
     else:
         embed.add_field(name="Strat Mandate", value="Not yet published.", inline=False)
 
@@ -1526,6 +1964,29 @@ async def _campaign_orders(interaction: discord.Interaction):
         terminus_flag = ops_window.get("terminus_flag")
         if terminus_flag:
             embed.add_field(name="Terminus Flag", value=terminus_flag, inline=False)
+
+    # Cascade phase: show doctrine choice buttons if user has an eligible role
+    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
+        role_key = _get_user_cascade_role_key(interaction.user, phase)
+        if role_key:
+            _ensure_refs_loaded()
+            existing_sub = state.get("cascade", {}).get("submissions", {}).get(user_id)
+            phase_label = phase.replace("cascade_", "")
+            if existing_sub:
+                embed.add_field(
+                    name=f"Cascade Orders — {phase_label}",
+                    value=f"\u2705 You submitted **{existing_sub.get('choice_name', existing_sub.get('choice_key'))}**. Select a button to change your choice.",
+                    inline=False,
+                )
+            else:
+                embed.add_field(
+                    name=f"Cascade Orders — {phase_label}",
+                    value="Select your doctrine order below:",
+                    inline=False,
+                )
+            view = _CascadeChoiceView(user_id, role_key, phase)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            return
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -1614,20 +2075,34 @@ async def _campaign_mandate(interaction: discord.Interaction):
     enlistment = state.get("enlistment", {})
     record = enlistment.get(user_id)
 
-    theatre = strat_pool.get("theatre_mandate") or "None"
     company_id = record.get("company_id") if record else None
     kt_sgt = record.get("kt_sgt_id") if record else None
-    company_strat = strat_pool.get("company_mandates", {}).get(company_id, "None") if company_id else "N/A"
-    kt_strat = strat_pool.get("kt_mandates", {}).get(kt_sgt, "None") if kt_sgt else "N/A"
+
+    def _fmt_strats(val) -> str:
+        if not val:
+            return "None"
+        if isinstance(val, str):
+            return f"`{val}`"
+        return ", ".join(f"`{s}`" for s in val) if val else "None"
+
+    theatre_display = _fmt_strats(strat_pool.get("theatre_mandate"))
+    co_display = _fmt_strats(strat_pool.get("company_mandates", {}).get(company_id)) if company_id else "N/A"
+    kt_display = _fmt_strats(strat_pool.get("kt_mandates", {}).get(kt_sgt)) if kt_sgt else "N/A"
+    tier_counts = strat_pool.get("tier_counts", {})
+    total_mandates = (
+        len(strat_pool.get("theatre_mandate") or []) +
+        len(strat_pool.get("company_mandates", {}).get(company_id) or []) +
+        len(strat_pool.get("kt_mandates", {}).get(kt_sgt) or [])
+    )
 
     embed = discord.Embed(
         title="Strat Mandate — Current Beat",
-        description="All enlisted brothers run **3 required strats** minimum. Optional pool strats may be added.",
+        description=f"**{total_mandates} required strat(s)** this beat. Optional pool strats may be added.",
         color=0x8B0000,
     )
-    embed.add_field(name="Theatre Strat (all)", value=f"`{theatre}`", inline=False)
-    embed.add_field(name="Company Strat", value=f"`{company_strat}`", inline=True)
-    embed.add_field(name="Kill Team Strat", value=f"`{kt_strat}`", inline=True)
+    embed.add_field(name="Theatre Strats (all)", value=theatre_display, inline=False)
+    embed.add_field(name="Company Strats", value=co_display, inline=True)
+    embed.add_field(name="Kill Team Strats", value=kt_display, inline=True)
 
     strat_pool_list = strat_pool.get("pool", [])
     if strat_pool_list:
@@ -1933,13 +2408,15 @@ async def _campaign_milestone(interaction: discord.Interaction):
 @app_commands.describe(
     campaign_id="Optional manual campaign ID slug (e.g. 'campaign_002'). Auto-generated if omitted.",
     beat_number="Starting beat number (default: 1).",
-    ops_closes_at="When this beat's ops window closes (ISO format: 2026-07-01T20:00:00). UTC assumed.",
+    beat_duration_days="Days each ops window stays open before cascade begins (default: 7).",
+    ops_closes_at="Override: exact ISO timestamp for this first beat's close (e.g. 2026-07-01T20:00:00). Overrides beat_duration_days.",
     doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
 )
 async def _campaign_init(
     interaction: discord.Interaction,
     campaign_id: Optional[str] = None,
     beat_number: int = 1,
+    beat_duration_days: int = 7,
     ops_closes_at: Optional[str] = None,
     doctrine_tags: Optional[str] = None,
 ):
@@ -1971,13 +2448,20 @@ async def _campaign_init(
     camp_name = generate_campaign_name(seed=seed)
     beat_name = generate_beat_name(beat_number, doctrine_tags=tags, seed=seed + 1)
 
+    # Randomly determine campaign length (short=3, medium=4, long=5 beats)
+    _CAMPAIGN_LENGTH = {3: "Short", 4: "Medium", 5: "Long"}
+    total_beats = random.Random(seed + 2).choice([3, 4, 5])
+    length_label = _CAMPAIGN_LENGTH[total_beats]
+
     # Generate campaign ID if not provided
     if not campaign_id:
         ts_slug = _utcnow().strftime("%Y%m%d")
         campaign_id = f"campaign_{ts_slug}"
 
-    # Parse ops window close time
+    # Parse ops window close time; fall back to beat_duration_days
     closes_dt = _parse_iso(ops_closes_at) if ops_closes_at else None
+    if closes_dt is None:
+        closes_dt = _utcnow() + timedelta(days=max(1, beat_duration_days))
 
     # Build fresh state seeded from config companies
     state = _blank_campaign_state()
@@ -1989,10 +2473,13 @@ async def _campaign_init(
         "beat_name": beat_name,
         "phase": "ops",
         "started_at": now_iso,
+        "beat_duration_days": max(1, beat_duration_days),
+        "total_beats": total_beats,
+        "length_label": length_label,
     })
     state["ops_window"] = {
         "opened_at": now_iso,
-        "closes_at": closes_dt.isoformat() if closes_dt else None,
+        "closes_at": closes_dt.isoformat(),
         "terminus_calls": [],
     }
 
@@ -2025,7 +2512,9 @@ async def _campaign_init(
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
     embed.add_field(name="Phase", value="ops", inline=True)
-    embed.add_field(name="Ops Window Closes", value=closes_dt.strftime("%Y-%m-%d %H:%M UTC") if closes_dt else "Not set", inline=False)
+    embed.add_field(name="Ops Window Closes", value=closes_dt.strftime("%Y-%m-%d %H:%M UTC"), inline=False)
+    embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
+    embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
@@ -2208,3 +2697,4 @@ async def _campaign_reset(
         "🗑️ Campaign data wiped. All prestige, enlistment, strats, and standings have been reset. "
         "Run `/campaign-init` to start a new campaign.",
     )
+

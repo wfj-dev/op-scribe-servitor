@@ -634,6 +634,22 @@ async def _campaign_de_enlist_sweep_loop():
 @_campaign_de_enlist_sweep_loop.before_loop
 async def _before_campaign_de_enlist_sweep_loop():
     await bot.wait_until_ready()
+
+
+@tasks.loop(minutes=15)
+async def _campaign_beat_clock_loop():
+    """Every 15 minutes: check ops window expiry and cascade deadlines, auto-advance beat lifecycle."""
+    try:
+        logger.info("campaign beat clock loop: tick")
+        await _campaign_ops.sweep_campaign_beat_clock()
+        logger.info("campaign beat clock loop: complete")
+    except Exception:
+        logger.exception("Campaign beat clock loop failed")
+
+
+@_campaign_beat_clock_loop.before_loop
+async def _before_campaign_beat_clock_loop():
+    await bot.wait_until_ready()
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
@@ -1697,6 +1713,14 @@ async def on_ready():
             logger.info("Campaign de-enlist sweep loop started (12h interval).")
     except Exception:
         logger.exception("Failed to start campaign de-enlist sweep loop")
+
+    # Start campaign beat clock loop
+    try:
+        if not _campaign_beat_clock_loop.is_running():
+            _campaign_beat_clock_loop.start()
+            logger.info("Campaign beat clock loop started (15min interval).")
+    except Exception:
+        logger.exception("Failed to start campaign beat clock loop")
 
     # Register persistent views for Terminus kill log entries
     try:
