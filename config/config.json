@@ -342,7 +342,7 @@
     "cascade_Company": 0.1,
     "cascade_KT": 0.1
   },
-  "cascade_warning_minutes": 15,
+  "cascade_warning_minutes": 1,
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,
