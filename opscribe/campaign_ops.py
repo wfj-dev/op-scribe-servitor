@@ -3856,21 +3856,28 @@ async def _campaign_init(
 
     _save_campaign_state(state)
 
-    wm_deadline_ts = state["cascade"].get("cascade_WM_deadline", "")
+    _actual_phase_for_desc = state["campaign"].get("phase", "cascade_WM")
+    _wm_is_open = _actual_phase_for_desc == "cascade_WM"
     embed = discord.Embed(
         title=f"⚔️ {camp_name}",
         description=(
             "Campaign initialised. **Watch Master**, set your theatre positioning order first.\n"
             "Once the Watch Master submits, beat scenarios generate and High Command cascade opens."
+            if _wm_is_open else
+            "Campaign initialised. No Watch Master enlisted — warband holds position.\n"
+            "**High Command**, cascade is open for doctrine orders."
         ),
         color=0xC4A030,
     )
     # Note: beat_scenarios are empty until WM submits (scenarios generate on cascade_WM resolve)
+    actual_phase = state["campaign"].get("phase", "cascade_WM")
+    cascade_data = state.get("cascade", {})
+    opening_deadline_ts = cascade_data.get(f"{actual_phase}_deadline", "")
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
-    embed.add_field(name="Phase", value="cascade_WM", inline=True)
+    embed.add_field(name="Phase", value=actual_phase, inline=True)
     embed.add_field(name="Starting Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
-    embed.add_field(name="WM Positioning Window Closes", value=_fmt_ts(wm_deadline_ts), inline=False)
+    embed.add_field(name="Opening Window Closes", value=_fmt_ts(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
