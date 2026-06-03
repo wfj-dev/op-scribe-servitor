@@ -240,6 +240,11 @@
     "_default": {
       "min_rank": "Watch Sergeant"
     },
+    "campaign-init": {
+      "roles": [
+        "Forgemaster"
+      ]
+    },
     "campaign-enlist": {
       "min_rank": "Watch Brother"
     },
