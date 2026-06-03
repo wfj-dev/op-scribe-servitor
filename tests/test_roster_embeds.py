@@ -31,7 +31,7 @@ def test_clean_roster_name_strips_markup_and_truncates():
     assert "⚬" not in cleaned
     assert "▬" not in cleaned
     assert "  " not in cleaned
-    assert cleaned.startswith("WATCH BROTHER NAME")
+    assert cleaned.startswith("NAME")
     assert len(cleaned) == 38
     assert cleaned.endswith("…")
 
@@ -60,12 +60,14 @@ def test_load_roster_state_returns_defaults_when_file_missing():
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
+            "campaign_accolades_message_id": None,
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
+            "campaign_accolades_message_id": None,
         },
     }
 
@@ -90,12 +92,14 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
             "hc_message_id": 101,
             "command_message_id": None,
             "killteam_message_ids": {"Kill Team Alpha": 202},
+            "campaign_accolades_message_id": None,
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
+            "campaign_accolades_message_id": None,
         },
     }
 
@@ -114,5 +118,5 @@ def test_sort_key_for_member_uses_rank_priority_then_clean_name():
         captain_key = roster_embeds._sort_key_for_member(captain)
         sergeant_key = roster_embeds._sort_key_for_member(sergeant)
 
-    assert captain_key == (0, "watch captain zephon")
-    assert sergeant_key == (1, "watch sergeant alecto")
+    assert captain_key == (0, "zephon")
+    assert sergeant_key == (1, "alecto")

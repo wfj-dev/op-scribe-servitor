@@ -5443,7 +5443,11 @@ async def _attest(
     # Always use the full embed format
     display_embed = embed
 
-    # Create the view with Log to Forge button
+    # Attach the approval stamp image
+    armor_approved_file = _get_award_image("Armor_Approved.png")
+    if armor_approved_file:
+        display_embed.set_image(url="attachment://Armor_Approved.png")
+
     log_view = LogToForgeView(
         embed=display_embed,
         member_id=int(member.id),
@@ -5458,12 +5462,15 @@ async def _attest(
     # Send ephemeral blessing with button and mention
     send_succeeded = False
     try:
-        await interaction.response.send_message(
-            content=member.mention,
-            embed=display_embed,
-            view=log_view,
-            ephemeral=True,
-        )
+        _send_kwargs: dict = {
+            "content": member.mention,
+            "embed": display_embed,
+            "view": log_view,
+            "ephemeral": True,
+        }
+        if armor_approved_file:
+            _send_kwargs["file"] = armor_approved_file
+        await interaction.response.send_message(**_send_kwargs)
         send_succeeded = True
     except Exception:
         try:

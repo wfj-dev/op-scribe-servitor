@@ -3865,29 +3865,20 @@ async def tally_deeds(
         except Exception:
             embed = _embed_from_ansi("Deeds Ledger", reply_text)
 
-        # Huntmaster Jack easter egg — portrait thumbnail for a specific brother
+        # Huntmaster Jack portrait
         _HUNTMASTER_JACK_ID = 1444810056821637133
-        if len(members) == 1 and int(members[0].id) == _HUNTMASTER_JACK_ID:
-            _jack_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "..", "assets",
-                f"{_HUNTMASTER_JACK_ID}-Huntmaster Jack.jpg",
-            )
+        _jack_file = None
+        if len(members) == 1 and int(target.id) == _HUNTMASTER_JACK_ID:
+            _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster Jack.png")
             if os.path.exists(_jack_path):
-                _jack_file = discord.File(_jack_path, filename="Huntmaster Jack.jpg")
-                embed.set_thumbnail(url="attachment://Huntmaster Jack.jpg")
-            else:
-                _jack_file = None
-        else:
-            _jack_file = None
+                _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster Jack.png")
+                embed.set_thumbnail(url="attachment://1444810056821637133_Huntmaster Jack.png")
 
         # Send embed only (clean output like forge_rite/stud announcement)
         if send_to_channel:
-            await send_to_channel.send(embed=embed)
+            await send_to_channel.send(embed=embed, **({"file": _jack_file} if _jack_file else {}))
         else:
-            _send_kwargs = {"embed": embed, "ephemeral": True}
-            if _jack_file:
-                _send_kwargs["file"] = _jack_file
-            await interaction.followup.send(**_send_kwargs)
+            await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _jack_file} if _jack_file else {}))
 
         # Send Monthly Honours as a separate additional message
         if len(members) == 1:
@@ -4665,27 +4656,16 @@ async def my_deeds(interaction: discord.Interaction):
 
     embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
 
-    # Huntmaster Jack easter egg
+    # Huntmaster Jack portrait
     _HUNTMASTER_JACK_ID = 1444810056821637133
+    _jack_file = None
     if int(target.id) == _HUNTMASTER_JACK_ID:
-        _jack_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "assets",
-            f"{_HUNTMASTER_JACK_ID}-Huntmaster Jack.jpg",
-        )
+        _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster Jack.png")
         if os.path.exists(_jack_path):
-            _jack_file = discord.File(_jack_path, filename="Huntmaster Jack.jpg")
-            embed.set_thumbnail(url="attachment://Huntmaster Jack.jpg")
-        else:
-            _jack_file = None
-    else:
-        _jack_file = None
+            _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster Jack.png")
+            embed.set_thumbnail(url="attachment://1444810056821637133_Huntmaster Jack.png")
 
-    _send_kwargs = {"embed": embed, "ephemeral": True}
-    if _jack_file:
-        _send_kwargs["file"] = _jack_file
-    await interaction.followup.send(**_send_kwargs)
-
-    # --- Monthly Honours (same as tally_deeds) ---
+    await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _jack_file} if _jack_file else {}))
     now_mtd = datetime.utcnow()
     first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
     mtd_span_days = max(1, (now_mtd - first_of_month).days)

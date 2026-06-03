@@ -618,6 +618,38 @@ async def _before_challenge_sweep_loop():
     # Short delay on first run to let member cache fully populate.
     logger.info("challenge sweep loop: waiting 60s for member cache before first run")
     await asyncio.sleep(60)
+
+
+@tasks.loop(hours=12)
+async def _campaign_de_enlist_sweep_loop():
+    """Every 12 hours: warn or auto-de-enlist inactive campaign members."""
+    try:
+        logger.info("campaign de-enlist sweep loop: tick")
+        await _campaign_ops.sweep_auto_de_enlist()
+        logger.info("campaign de-enlist sweep loop: complete")
+    except Exception:
+        logger.exception("Campaign de-enlist sweep loop failed")
+
+
+@_campaign_de_enlist_sweep_loop.before_loop
+async def _before_campaign_de_enlist_sweep_loop():
+    await bot.wait_until_ready()
+
+
+@tasks.loop(minutes=15)
+async def _campaign_beat_clock_loop():
+    """Every 15 minutes: check ops window expiry and cascade deadlines, auto-advance beat lifecycle."""
+    try:
+        logger.info("campaign beat clock loop: tick")
+        await _campaign_ops.sweep_campaign_beat_clock()
+        logger.info("campaign beat clock loop: complete")
+    except Exception:
+        logger.exception("Campaign beat clock loop failed")
+
+
+@_campaign_beat_clock_loop.before_loop
+async def _before_campaign_beat_clock_loop():
+    await bot.wait_until_ready()
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
@@ -771,6 +803,7 @@ from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
+from . import campaign_ops as _campaign_ops  # noqa: E402,F401  # imported for slash command registration side effect
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1672,6 +1705,22 @@ async def on_ready():
             )
     except Exception:
         logger.exception("Failed to start LFG queue system")
+
+    # Start campaign inactivity sweep loop
+    try:
+        if not _campaign_de_enlist_sweep_loop.is_running():
+            _campaign_de_enlist_sweep_loop.start()
+            logger.info("Campaign de-enlist sweep loop started (12h interval).")
+    except Exception:
+        logger.exception("Failed to start campaign de-enlist sweep loop")
+
+    # Start campaign beat clock loop
+    try:
+        if not _campaign_beat_clock_loop.is_running():
+            _campaign_beat_clock_loop.start()
+            logger.info("Campaign beat clock loop started (15min interval).")
+    except Exception:
+        logger.exception("Failed to start campaign beat clock loop")
 
     # Register persistent views for Terminus kill log entries
     try:

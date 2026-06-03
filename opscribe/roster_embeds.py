@@ -61,6 +61,149 @@ def _b(name):
 # ---------------------------------------------------------------------------
 _CUSTOM_EMOJI_RE = re.compile(r"<a?:[A-Za-z0-9_]+:\d+>")
 
+# ---------------------------------------------------------------------------
+# Campaign accolades helpers
+# ---------------------------------------------------------------------------
+
+# Maps campaign company_id → Watch Company name prefix (matches ROSTER_COMPANY_CHANNELS keys)
+def _co_id_to_roster_name(company_id: str) -> str:
+    """Convert 'primus' → 'Watch Company Primus'."""
+    return f"Watch Company {company_id.capitalize()}"
+
+
+def _co_roster_name_to_id(roster_name: str) -> str:
+    """Convert 'Watch Company Primus' → 'primus'."""
+    return roster_name.replace("Watch Company", "").strip().lower()
+
+
+_RIBBON_LABELS = {
+    "kt_ribbon_active": "Active Ribbon",
+    "kt_ribbon_vanguard": "Vanguard Ribbon",
+    "co_ribbon_active": "Active Ribbon",
+    "co_ribbon_vanguard": "Vanguard Ribbon",
+}
+_HONOUR_LABELS = {
+    "kt_honour_stalwart": "Stalwart",
+    "co_honour_stalwart": "Stalwart",
+}
+
+
+def _load_campaign_state_for_roster() -> Optional[dict]:
+    """Load campaign state without crashing the roster update if absent."""
+    try:
+        from .campaign_ops import _load_campaign_state
+        state = _load_campaign_state()
+        phase = state.get("campaign", {}).get("phase", "inactive")
+        return state if phase != "inactive" else None
+    except Exception as exc:
+        _log().debug(f"Roster: could not load campaign state: {exc}")
+        return None
+
+
+def _build_campaign_accolades_embed(
+    company_name: str,
+    campaign_state: dict,
+    now: Optional[datetime] = None,
+) -> Optional[discord.Embed]:
+    """Build the Campaign Accolades embed for a company roster channel.
+
+    Returns None if the campaign is inactive or has no accolades data yet.
+    Shows company-level honours/ribbons/prestige, then each KT in the company.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    company_id = _co_roster_name_to_id(company_name)
+    campaign = campaign_state.get("campaign", {})
+    phase = campaign.get("phase", "inactive")
+
+    co_data = campaign_state.get("companies", {}).get(company_id)
+    if not co_data:
+        return None
+
+    camp_name = campaign.get("name") or campaign.get("id") or "Active Campaign"
+    beat = campaign.get("beat")
+    beat_name = campaign.get("beat_name")
+    beat_label = f"{beat_name}" if beat_name else (f"Beat {beat}" if beat else "")
+
+    embed = discord.Embed(
+        title=f"🏛 Campaign Accolades",
+        description=(
+            f"**{camp_name}**"
+            + (f" · {beat_label}" if beat_label else "")
+            + f" · Phase: {phase}"
+        ),
+        color=0xC4A030,
+    )
+
+    # ── Company section ──────────────────────────────────────────────────────
+    co_prestige = co_data.get("prestige_window_total", 0)
+    co_ribbon = co_data.get("ribbon")
+    co_honour = co_data.get("honour")
+    co_title = co_data.get("title")
+    co_lore = co_data.get("lore_priority", False)
+
+    co_badges: list[str] = []
+    if co_ribbon and co_ribbon in _RIBBON_LABELS:
+        co_badges.append(f"🎖️ {_RIBBON_LABELS[co_ribbon]}")
+    if co_honour and co_honour in _HONOUR_LABELS:
+        co_badges.append(f"⚜️ {_HONOUR_LABELS[co_honour]}")
+    if co_lore:
+        co_badges.append("✒️ Lore Priority")
+    if co_title:
+        co_badges.append(f"📜 *{co_title}*")
+
+    co_value = f"**Prestige:** {co_prestige}"
+    if co_badges:
+        co_value += "\n" + "  ·  ".join(co_badges)
+
+    embed.add_field(
+        name=f"🏛 {co_data.get('display_name', company_name)}",
+        value=co_value,
+        inline=False,
+    )
+
+    # ── Kill Teams in this company ───────────────────────────────────────────
+    kill_teams = campaign_state.get("kill_teams", {})
+    co_kts = [(sgt_id, kt) for sgt_id, kt in kill_teams.items() if kt.get("company_id") == company_id]
+    # Sort by prestige descending
+    co_kts.sort(key=lambda x: x[1].get("prestige_window_total", 0), reverse=True)
+
+    for sgt_id, kt in co_kts[:8]:  # cap at 8 to stay within embed limits
+        kt_prestige = kt.get("prestige_window_total", 0)
+        kt_ribbon = kt.get("ribbon")
+        kt_honour_list = kt.get("honour") or []
+        if isinstance(kt_honour_list, str):
+            kt_honour_list = [kt_honour_list]
+        kt_title = kt.get("title")
+        kt_lore = kt.get("lore_priority", False)
+        kt_name = kt.get("display_name") or f"KT {sgt_id}"
+        sgt_name = kt.get("sgt_discord_name") or ""
+
+        kt_badges: list[str] = []
+        if kt_ribbon and kt_ribbon in _RIBBON_LABELS:
+            kt_badges.append(f"🎖️ {_RIBBON_LABELS[kt_ribbon]}")
+        for hon in kt_honour_list:
+            if hon in _HONOUR_LABELS:
+                kt_badges.append(f"⚜️ {_HONOUR_LABELS[hon]}")
+        if kt_lore:
+            kt_badges.append("✒️ Lore Priority")
+        if kt_title:
+            kt_badges.append(f"📜 *{kt_title}*")
+
+        kt_value = f"**Prestige:** {kt_prestige}"
+        if sgt_name:
+            kt_value = f"Sgt: {sgt_name}\n" + kt_value
+        if kt_badges:
+            kt_value += "\n" + "  ·  ".join(kt_badges)
+
+        embed.add_field(name=f"⚔️ {kt_name}", value=kt_value, inline=True)
+
+    embed.set_footer(
+        text=f"⌾ Campaign: {campaign.get('id') or '—'} ⌾  ·  {now.strftime('%Y-%m-%d %H:%M UTC')}"
+    )
+    return embed
+
 
 def _clean_roster_name(member: discord.Member) -> str:
     """Return a clean display name suitable for the roster embed.
@@ -127,6 +270,7 @@ def _load_roster_state() -> dict:
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
+            "campaign_accolades_message_id": None,
         }
         for company, channel_id in ROSTER_COMPANY_CHANNELS.items()
     }
@@ -150,6 +294,7 @@ def _load_roster_state() -> dict:
                             if isinstance(existing_company_state.get("killteam_message_ids"), dict)
                             else {}
                         ),
+                        "campaign_accolades_message_id": existing_company_state.get("campaign_accolades_message_id"),
                     }
                 return merged_state
     except Exception as exc:
@@ -513,6 +658,19 @@ async def _update_company_roster(
         channel, company_state.get("hc_message_id"), hc_embed
     )
     company_state["hc_message_id"] = hc_msg_id
+
+    # ── Embed 1b: Campaign Accolades (only when campaign active) ─────────────
+    campaign_state = _load_campaign_state_for_roster()
+    accolades_embed = _build_campaign_accolades_embed(company_name, campaign_state, now=now) if campaign_state else None
+    if accolades_embed:
+        accolades_msg_id = await _upsert_message(
+            channel, company_state.get("campaign_accolades_message_id"), accolades_embed
+        )
+        company_state["campaign_accolades_message_id"] = accolades_msg_id
+    else:
+        # Campaign inactive: if we have a stale message ID, clear it (message won't be deleted,
+        # but we stop tracking it so a future init gets a fresh post in the right position).
+        company_state["campaign_accolades_message_id"] = None
 
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
