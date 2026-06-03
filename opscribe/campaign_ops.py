@@ -66,14 +66,52 @@ def _ensure_refs_loaded():
 # ---------------------------------------------------------------------------
 
 
+def _blank_campaign_state() -> dict:
+    """Return a fully-structured inactive campaign state (never persisted here)."""
+    return {
+        "_schema_version": 1,
+        "campaign": {
+            "id": None,
+            "name": None,
+            "beat": None,
+            "beat_name": None,
+            "phase": "inactive",
+            "started_at": None,
+            "ended_at": None,
+            "outcome": None,
+            "current_node": None,
+            "visited_nodes": [],
+            "beat_history": [],
+            "beat_schedule": [],
+        },
+        "enlistment": {},
+        "companies": {},
+        "kill_teams": {},
+        "lore_priority": {
+            "kill_team": {"sgt_user_id": None, "display_name": None, "prestige": None, "held_since": None},
+            "company": {"company_id": None, "display_name": None, "prestige": None, "held_since": None},
+        },
+        "ops_window": {},
+        "strat_pool": {"locked": False, "pool": [], "theatre_mandate": None, "company_mandates": {}, "kt_mandates": {}},
+        "campaign_log": {},
+        "beat_scenarios": {},
+        "pressure": {},
+        "cascade": {},
+        "beat_record": {},
+    }
+
+
 def _load_campaign_state() -> dict:
+    """Load campaign state from disk, seeding a blank inactive state if absent."""
     try:
         if os.path.exists(CAMPAIGN_STATE_PATH):
             with open(CAMPAIGN_STATE_PATH, "r") as f:
                 return json.load(f)
     except Exception:
         pass
-    return {}
+    # File missing or unreadable — seed a blank state (don't persist it here;
+    # the first write will create the file).
+    return _blank_campaign_state()
 
 
 def _save_campaign_state(state: dict):
@@ -145,6 +183,50 @@ def _entry_id() -> str:
     """Generate a unique log entry ID from current timestamp + randomness."""
     h = hashlib.sha1(f"{_utcnow().isoformat()}{random.random()}".encode()).hexdigest()
     return h[:12]
+
+
+def generate_campaign_name(seed: Optional[int] = None) -> str:
+    """Generate a lore-flavoured campaign codename: 'OPERATION ADJECTIVE NOUN'.
+
+    Draws from the _default codename pools so the name is always valid even
+    before a campaign node/doctrine is established.
+    """
+    _ensure_refs_loaded()
+    pools = _SCENARIO_GEN.get("codename_pools", {})
+    adj_pool = pools.get("adjectives", {}).get("_default", ["DARK", "GREY", "LONG", "DEEP", "COLD"])
+    noun_pool = pools.get("nouns", {}).get("_default", ["REACH", "WATCH", "VIGIL", "GATE", "FRONT"])
+    rng = random.Random(seed)
+    adj = rng.choice(adj_pool)
+    noun = rng.choice(noun_pool)
+    return f"OPERATION {adj} {noun}"
+
+
+def generate_beat_name(beat_num: int, doctrine_tags: Optional[List[str]] = None, seed: Optional[int] = None) -> str:
+    """Generate a lore-flavoured beat codename: 'BEAT N: ADJECTIVE NOUN'.
+
+    If doctrine_tags are supplied (e.g. ['aggressive', 'terminus']) the pools
+    for the first matching tag are used; otherwise falls back to _default.
+    """
+    _ensure_refs_loaded()
+    pools = _SCENARIO_GEN.get("codename_pools", {})
+    adj_pools = pools.get("adjectives", {})
+    noun_pools = pools.get("nouns", {})
+
+    adj_list = adj_pools.get("_default", ["DARK", "GREY", "LONG", "DEEP", "COLD"])
+    noun_list = noun_pools.get("_default", ["REACH", "WATCH", "VIGIL", "GATE", "FRONT"])
+    for tag in (doctrine_tags or []):
+        if tag in adj_pools:
+            adj_list = adj_pools[tag]
+            break
+    for tag in (doctrine_tags or []):
+        if tag in noun_pools:
+            noun_list = noun_pools[tag]
+            break
+
+    rng = random.Random(seed)
+    adj = rng.choice(adj_list)
+    noun = rng.choice(noun_list)
+    return f"BEAT {beat_num}: {adj} {noun}"
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +379,18 @@ def log_campaign_entry(
     for entry in campaign_log.values():
         if isinstance(entry, dict) and entry.get("aar_id") == aar_id and entry.get("submitted_by") == user_id:
             return False, "You have already submitted a campaign log for this AAR.", None
+
+    # Validate strats_active against locked pool (if pool is locked)
+    strat_pool = state.get("strat_pool", {})
+    if strats_active and strat_pool.get("locked"):
+        valid_pool: List[str] = strat_pool.get("pool", [])
+        invalid = [s for s in strats_active if s not in valid_pool]
+        if invalid:
+            pool_list = ", ".join(f"`{s}`" for s in sorted(valid_pool))
+            return False, (
+                f"The following strats are not in the locked pool: {', '.join(f'`{s}`' for s in invalid)}.\n"
+                f"Valid pool: {pool_list}"
+            ), None
 
     # Infer beat from campaign state
     beat = state.get("campaign", {}).get("beat")
@@ -1669,6 +1763,10 @@ async def _campaign_dashboard(interaction: discord.Interaction):
         return
 
     state = refresh_prestige_cache()
+    campaign_phase = state.get("campaign", {}).get("phase", "inactive")
+    if campaign_phase == "inactive":
+        await interaction.response.send_message("No campaign is currently active.", ephemeral=True)
+        return
     state = update_lore_priority(state, save=False)
     state = check_reward_thresholds(state)
     _save_campaign_state(state)
@@ -1830,3 +1928,110 @@ async def _campaign_milestone(interaction: discord.Interaction):
         )
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-init ---
+
+@_g.bot.tree.command(
+    name="campaign-init",
+    description="Initialise a new campaign. Seeds state and sets phase to 'ops'. (Forgemaster only)",
+)
+@app_commands.describe(
+    campaign_id="Optional manual campaign ID slug (e.g. 'campaign_002'). Auto-generated if omitted.",
+    beat_number="Starting beat number (default: 1).",
+    ops_closes_at="When this beat's ops window closes (ISO format: 2026-07-01T20:00:00). UTC assumed.",
+    doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
+)
+async def _campaign_init(
+    interaction: discord.Interaction,
+    campaign_id: Optional[str] = None,
+    beat_number: int = 1,
+    ops_closes_at: Optional[str] = None,
+    doctrine_tags: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-init"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    if "Forgemaster" not in user_roles:
+        await interaction.response.send_message("Only the Forgemaster may initialise a campaign.", ephemeral=True)
+        return
+
+    # Refuse if campaign already active
+    existing = _load_campaign_state()
+    current_phase = existing.get("campaign", {}).get("phase", "inactive")
+    if current_phase not in ("inactive", "complete"):
+        await interaction.response.send_message(
+            f"A campaign is already running (phase: **{current_phase}**). "
+            f"Use `/campaign-status` to view it. End the current campaign before initialising a new one.",
+            ephemeral=True,
+        )
+        return
+
+    # Parse doctrine tags for naming
+    tags = [t.strip() for t in doctrine_tags.split(",") if t.strip()] if doctrine_tags else []
+
+    # Generate names
+    seed = int(_utcnow().timestamp())
+    camp_name = generate_campaign_name(seed=seed)
+    beat_name = generate_beat_name(beat_number, doctrine_tags=tags, seed=seed + 1)
+
+    # Generate campaign ID if not provided
+    if not campaign_id:
+        ts_slug = _utcnow().strftime("%Y%m%d")
+        campaign_id = f"campaign_{ts_slug}"
+
+    # Parse ops window close time
+    closes_dt = _parse_iso(ops_closes_at) if ops_closes_at else None
+
+    # Build fresh state seeded from config companies
+    state = _blank_campaign_state()
+    now_iso = _iso_now()
+    state["campaign"].update({
+        "id": campaign_id,
+        "name": camp_name,
+        "beat": beat_number,
+        "beat_name": beat_name,
+        "phase": "ops",
+        "started_at": now_iso,
+    })
+    state["ops_window"] = {
+        "opened_at": now_iso,
+        "closes_at": closes_dt.isoformat() if closes_dt else None,
+        "terminus_calls": [],
+    }
+
+    # Seed companies from config (bot module carries CONFIG)
+    CONFIG = _b("CONFIG") or {}
+    cfg_companies = CONFIG.get("companies", {})
+    for co_id, co_cfg in cfg_companies.items():
+        co_name = co_cfg.get("name") or co_id.capitalize()
+        state["companies"][co_id] = {
+            "display_name": f"Watch Company {co_name}",
+            "prestige_window_total": 0,
+            "ribbon": None,
+            "honour": None,
+            "lore_priority": False,
+            "last_prestige_check": None,
+            "title": None,
+            "title_granted_by": None,
+            "title_granted_at": None,
+        }
+
+    # Persist
+    os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
+    _save_campaign_state(state)
+
+    embed = discord.Embed(
+        title=f"⚔️ {camp_name}",
+        description="Campaign initialised and set to **ops** phase.",
+        color=0xC4A030,
+    )
+    embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
+    embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
+    embed.add_field(name="Phase", value="ops", inline=True)
+    embed.add_field(name="Ops Window Closes", value=closes_dt.strftime("%Y-%m-%d %H:%M UTC") if closes_dt else "Not set", inline=False)
+    embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
+    embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed)
