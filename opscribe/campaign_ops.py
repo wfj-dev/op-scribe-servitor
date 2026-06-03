@@ -1427,7 +1427,7 @@ def generate_beat_scenario(
 
     # Step 1: Base dominant tags from node type
     nta = node_affinity.get(node_type, {})
-    base_tags = list(nta.get("dominant_tags", ["aggressive", "recovery"]))
+    base_tags = list(nta.get("base_tags", nta.get("dominant_tags", ["aggressive", "recovery"])))
     terminus_affinity = nta.get("terminus_affinity", "low")
 
     # Step 2: Region modifier — push secondary tag
