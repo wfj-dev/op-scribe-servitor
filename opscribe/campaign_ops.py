@@ -1618,16 +1618,21 @@ def _resolve_cascade_WM(state: dict) -> None:
 
 # Node type → tags contributed when WM moves to that node type
 _NODE_MOVE_TAGS: Dict[str, list] = {
-    "fortress_world": ["aggressive", "terminus", "advance"],
-    "hive_world": ["urban", "aggressive", "dominance"],
-    "agri_world": ["reclaim", "resupply", "defensive"],
-    "death_world": ["attrition", "elimination", "hunters"],
-    "daemon_world": ["purge", "terminus", "spiritual"],
-    "civilised_world": ["dominance", "intelligence", "reclaim"],
-    "feral_world": ["hunters", "elimination", "attrition"],
-    "mining_world": ["resupply", "fortify", "dominance"],
-    "void": ["void_interdiction", "advance", "aggressive"],
-    "dead_world": ["attrition", "fortify", "resilience"],
+    # Types present in the Jericho Reach graph
+    "fortress_world":  ["aggressive", "terminus", "advance"],
+    "hive_world":      ["urban", "aggressive", "dominance"],
+    "agri_world":      ["reclaim", "resupply", "defensive"],
+    "feral_world":     ["hunters", "elimination", "attrition"],
+    "mining_world":    ["resupply", "fortify", "dominance"],
+    "dead_world":      ["attrition", "fortify", "resilience"],
+    "war_world":       ["aggressive", "attrition", "terminus"],
+    "forge_world":     ["resupply", "dominance", "fortify"],
+    "frontier_world":  ["advance", "hunters", "reclaim"],
+    "penal_world":     ["attrition", "elimination", "reclaim"],
+    "pleasure_world":  ["dominance", "intelligence", "reclaim"],
+    "shrine_world":    ["defensive", "resilience", "reclaim"],
+    "watch_station":   ["defensive", "fortify", "intelligence"],
+    "special":         ["advance", "aggressive", "terminus"],
 }
 
 
@@ -1874,13 +1879,6 @@ _CASCADE_ROLE_PRIORITY = [
 ]
 
 # Cascade window durations per phase
-_CASCADE_DEADLINE_HOURS: Dict[str, int] = {
-    "cascade_WM": 24,
-    "cascade_HC": 48,
-    "cascade_Company": 48,
-    "cascade_KT": 24,
-}
-
 _STRAT_POOL_SIZE = 12  # Target conflict-free pool size for beat resolution
 
 
@@ -1912,14 +1910,24 @@ def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
     return None
 
 
+_CASCADE_DEADLINE_DEFAULTS: Dict[str, int] = {
+    "cascade_WM": 24,
+    "cascade_HC": 48,
+    "cascade_Company": 48,
+    "cascade_KT": 24,
+}
+
+
 def _enter_cascade_phase(state: dict, phase: str) -> None:
-    """Set the campaign phase to a cascade phase and record its deadline."""
+    """Set the campaign phase to a cascade phase and record its deadline.
+    Hours are read from config['cascade_deadline_hours']; falls back to _CASCADE_DEADLINE_DEFAULTS.
+    """
     CONFIG = _b("CONFIG")
     _hours_cfg = CONFIG.get("cascade_deadline_hours") if isinstance(CONFIG, dict) else None
     deadline_hours = (
-        _hours_cfg.get(phase, _CASCADE_DEADLINE_HOURS.get(phase, 48))
+        _hours_cfg.get(phase, _CASCADE_DEADLINE_DEFAULTS.get(phase, 48))
         if isinstance(_hours_cfg, dict)
-        else _CASCADE_DEADLINE_HOURS.get(phase, 48)
+        else _CASCADE_DEADLINE_DEFAULTS.get(phase, 48)
     )
     state["campaign"]["phase"] = phase
     cascade = state.setdefault("cascade", {})
@@ -3100,14 +3108,14 @@ async def _campaign_cascade(interaction: discord.Interaction):
         eligible_keys = _CASCADE_PHASE_ROLES[cp]
         label = phase_labels[cp]
 
-        # Map role_key → (display_name, user_id) for enrolled members eligible in this phase
-        role_entries: list[tuple[str, str, str]] = []  # (role_key, display_name, user_id)
+        # Map role_key → (display_name, discord_name, user_id) for enrolled members eligible in this phase
+        role_entries: list[tuple[str, str, str, str]] = []  # (role_key, role_display, discord_name, user_id)
         for uid, rec in enlistment.items():
             if not rec.get("active"):
                 continue
             rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
             if rk and rk in eligible_keys:
-                role_entries.append((rk, rec.get("role", rk), uid))
+                role_entries.append((rk, rec.get("role", rk), rec.get("discord_name", ""), uid))
 
         if not role_entries:
             embed.add_field(name=f"{label}", value="No eligible members enrolled.", inline=False)
@@ -3115,15 +3123,16 @@ async def _campaign_cascade(interaction: discord.Interaction):
 
         deadline = cascade.get(f"{cp}_deadline")
         lines: list[str] = []
-        for rk, role_display, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
+        for rk, role_display, discord_name, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
+            name_tag = f" ({discord_name})" if discord_name else ""
             sub = submissions.get(uid)
             if sub and sub.get("phase") == cp:
                 choice_name = sub.get("choice_name", sub.get("choice_key", "?"))
-                lines.append(f"✅ **{role_display}** — {choice_name}")
+                lines.append(f"✅ **{role_display}**{name_tag} — {choice_name}")
             elif i <= (phase_order.index(phase) if phase in phase_order else 3):
-                lines.append(f"⏳ **{role_display}** — pending")
+                lines.append(f"⏳ **{role_display}**{name_tag} — pending")
             else:
-                lines.append(f"🔒 **{role_display}** — window not yet open")
+                lines.append(f"🔒 **{role_display}**{name_tag} — window not yet open")
 
         if i == (phase_order.index(phase) if phase in phase_order else -1):
             header = f"🔰 {label} *(active)*"
