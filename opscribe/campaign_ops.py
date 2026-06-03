@@ -477,10 +477,9 @@ def enlist_member(
             }
 
     _save_campaign_state(state)
-    company_label = f" ({company_id.capitalize()})" if company_id else ""
     return True, (
         f"Enlisted successfully.\n"
-        f"**Chapter:** {chapter} | **Tier:** {tier} | **Company:** {company_id or 'N/A'}{company_label}"
+        f"**Chapter:** {chapter} | **Tier:** {tier} | **Company:** {company_id.capitalize() if company_id else 'N/A'}"
     )
 
 
