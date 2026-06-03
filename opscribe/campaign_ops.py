@@ -3875,9 +3875,13 @@ async def _campaign_init(
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
-    _wm_ping = _cascade_phase_ping(state, "cascade_WM")
+    wm_enlisted = any(
+        rec.get("active") and _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) == "watch_master"
+        for rec in state.get("enlistment", {}).values()
+    )
+    _phase_ping = _cascade_phase_ping(state, "cascade_WM" if wm_enlisted else "cascade_HC")
     await interaction.response.send_message(
-        content=f"<@&{WATCH_BROTHER_ROLE_ID}> {_wm_ping}",
+        content=f"<@&{WATCH_BROTHER_ROLE_ID}> {_phase_ping}",
         embed=embed,
     )
 
