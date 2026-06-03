@@ -461,6 +461,11 @@ CHALLENGE_ROLES = [
 # ---------------------------------------------------------------------------
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
 
+# Embed banner images (Discord attachment URLs — base URL without expiry params)
+ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1499152772225040544/1511519276169957448/High_Command_Footer.png"
+ROSTER_IMAGE_COMPANY_COMMAND = "https://cdn.discordapp.com/attachments/1499152772225040544/1511519262387474432/Company_Command_Footer.png"
+ROSTER_IMAGE_KILLTEAM = "https://cdn.discordapp.com/attachments/1499152772225040544/1511519246889386094/Kill_Team_Footer.png"
+
 # Maps configured Watch Company role name -> roster channel ID.
 # The bot posts and maintains embeds inside each configured company channel.
 ROSTER_COMPANY_CHANNELS: dict[str, int] = {

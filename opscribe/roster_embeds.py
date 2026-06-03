@@ -32,6 +32,9 @@ from .constants import (
     ROSTER_COMPANY_CHANNELS,
     ROSTER_COMPANY_COMMAND_RANKS,
     ROSTER_EMBED_DESC_LIMIT,
+    ROSTER_IMAGE_COMPANY_COMMAND,
+    ROSTER_IMAGE_HIGH_COMMAND,
+    ROSTER_IMAGE_KILLTEAM,
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
@@ -335,6 +338,7 @@ def _build_embed(
     members: List[discord.Member],
     guild: discord.Guild,
     last_updated: Optional[datetime] = None,
+    image_url: Optional[str] = None,
 ) -> discord.Embed:
     """Build a roster discord.Embed for a list of members.
 
@@ -348,6 +352,8 @@ def _build_embed(
     noun = "Brother" if count == 1 else "Brothers"
 
     embed = discord.Embed(color=_EMBED_COLOR)
+    if image_url:
+        embed.set_image(url=image_url)
 
     # Title goes into description so role mentions are rendered by Discord
     SEPARATOR = "\u2500" * 24  # ────────────────────────
@@ -501,6 +507,7 @@ async def _update_company_roster(
         hc_members,
         guild,
         last_updated=now,
+        image_url=ROSTER_IMAGE_HIGH_COMMAND,
     )
     hc_msg_id = await _upsert_message(
         channel, company_state.get("hc_message_id"), hc_embed
@@ -514,6 +521,7 @@ async def _update_company_roster(
         cmd_members,
         guild,
         last_updated=now,
+        image_url=ROSTER_IMAGE_COMPANY_COMMAND,
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
@@ -540,6 +548,7 @@ async def _update_company_roster(
             kt_members,
             guild,
             last_updated=now,
+            image_url=ROSTER_IMAGE_KILLTEAM,
         )
         kt_msg_id = await _upsert_message(
             channel, kt_message_ids.get(kt_name), kt_embed
