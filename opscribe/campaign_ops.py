@@ -459,6 +459,23 @@ def enlist_member(
             if role == "Watch Sergeant":
                 kill_teams[kt_sgt_id]["sgt_discord_name"] = discord_name
 
+    # Ensure company entry exists for Company-tier (and HC with a company) members
+    if company_id and tier in ("Company", "HC"):
+        companies = state.setdefault("companies", {})
+        if company_id not in companies:
+            companies[company_id] = {
+                "display_name": company_id.capitalize(),
+                "title": None,
+                "title_granted_by": None,
+                "title_granted_at": None,
+                "honour": [],
+                "ribbon": None,
+                "lore_priority": False,
+                "prestige_window_total": 0,
+                "last_prestige_check": None,
+                "prestige_log": [],
+            }
+
     _save_campaign_state(state)
     company_label = f" ({company_id.capitalize()})" if company_id else ""
     return True, (
