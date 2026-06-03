@@ -155,7 +155,7 @@ ROSTER_OPS_RANGES = [
     (828, 978),  # activity status loading/saving
     (1330, 2593),  # induction overrides, company functions, _check_promotion_milestones
     (6690, 7143),  # litany_of_function, home chapter rotation
-    (12439, 14867),  # _forum_post_autocomplete, tally_deeds, my_deeds
+    (12439, 14867),  # _forum_post_autocomplete, tally_deeds, submit_portrait
     (14868, 15016),  # combat_bonds command
     (16269, 17573),  # compute_stats, bond functions, ToggleFormatView, _embed_from_ansi
     (17605, 18064),  # BATTLE_LINE_ORDER etc., _compute_fortress_rankings
@@ -697,7 +697,7 @@ __all__ = [
     "litany_of_function",
     "pick_home_chapters",
     "tally_deeds",
-    "my_deeds",
+    "submit_portrait",
     "combat_bonds",
     "promotion_queue",
     "company_roster",

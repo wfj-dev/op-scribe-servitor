@@ -496,6 +496,68 @@ ROSTER_COMPANY_COMMAND_RANKS: set[str] = {
 ROSTER_EMBED_DESC_LIMIT = 3800
 
 # ---------------------------------------------------------------------------
+# Chapter embed accent colors
+# Used by tally_deeds to color the embed sidebar per-chapter.
+# Fallback: 0x2ECC71 (default green) for any chapter not listed here.
+# ---------------------------------------------------------------------------
+CHAPTER_EMBED_COLORS: dict = {
+    # --- Canon chapters ---
+    "Angels of Defiance":     0xE3DAC9,  # Quartered bone & black; bone used as accent
+    "Angels of Vengeance":    0x0B0B0B,  # Jet black (Dark Angels Legion black)
+    "Black Shield":           0x0A0A0A,  # Black armor, no chapter heraldry
+    "Black Templars":         0x100F0F,  # Black with white insets
+    "Blood Angels":           0xBA0C2F,  # Bright vibrant red
+    "Blood Ravens":           0x9E1B1B,  # Blood red with bone pauldrons
+    "Brazen Minotaurs":       0xB08D57,  # Bronze
+    "Carcharodons":           0x8A8F94,  # Grey ceramite
+    "Carmine Blades":         0xB31B1B,  # Carnelian red
+    "Celestial Lions":        0xD4AF37,  # Gold
+    "Crimson Fists":          0x1F3A5F,  # Dark blue
+    "Dark Angels":            0x14342B,  # Caliban green
+    "Exorcists":              0x7C1518,  # Deep red/black
+    "Flesh Tearers":          0x6E1414,  # Dark crimson
+    "Genesis Chapter":        0xB01B1B,  # Red
+    "Hawk Lords":             0x6E4B8B,  # Purple
+    "Imperial Fists":         0xF4C20D,  # Yellow
+    "Iron Hands":             0x0C0C0C,  # Black (bare-metal augmetics)
+    "Iron Lords":             0x0B0B0B,  # Black with red thigh plates
+    "Lamenters":              0xE3B505,  # Yellow/mustard
+    "Marines Errant":         0x1D4E89,  # Halved blue/white; blue used as accent
+    "Marines Malevolent":     0xF4C20D,  # Sunburst yellow
+    "Mentors":                0x1F6B3F,  # Dark green (white arms/legs)
+    "Minotaurs":              0xB08D57,  # Bronze
+    "Necropolis Hawks":       0x5F7480,  # Blue-grey (official Ultima Founding)
+    "Raptors":                0x4B5320,  # Dull olive/camo green
+    "Raven Guard":            0x0A0A0A,  # Black
+    "Red Scorpions":          0x3A3F44,  # Charcoal/dark grey
+    "Red Templars":           0xB01B1B,  # Red
+    "Salamanders":            0x0A6B3B,  # Bright dark green/emerald
+    "Scythes of the Emperor": 0xF2C200,  # Yellow
+    "Sons of Medusa":         0x1A7A4C,  # Emerald green
+    "Space Wolves":           0x6B8499,  # Blue-grey (The Fang)
+    "Storm Giants":           0xC8B584,  # Tan/pale-yellow (official Codex: Armageddon)
+    "Tome Keepers":           0xE6DBC0,  # Bone/page color
+    "Ultramarines":           0x21437F,  # Macragge blue
+    "White Scars":            0xEDEDED,  # White
+    "Wolfspear":              0x8A95A0,  # Pale slate grey
+    # --- Homebrew chapters (best-guess from name/lineage) ---
+    "Bleeding Hearts":        0x8B1A2F,  # Deep crimson (Blood Angels-style)
+    "Cowled Wardens":         0x5A6066,  # Slate/stone grey
+    "Dark Krakens":           0x16404D,  # Dark sea blue-teal
+    "Death Exorcists":        0x1C1C1C,  # Near-black dark grey
+    "Death Spectres":         0x2B2E33,  # Dark gunmetal (Raven Guard 13th Founding)
+    "Dragonspears":           0x154A3A,  # Dark jade green
+    "Epsilon Paladins":       0xB7BCC4,  # Steel silver-grey
+    "Hospitallers":           0xECECEC,  # White (medical)
+    "Imperius Reavers":       0xB8902F,  # Deep imperial gold
+    "Iron Hounds":            0x4A4E54,  # Gunmetal grey
+    "Iron Ravens":            0x2B2E33,  # Dark gunmetal/black
+    "Knights of the Raven":   0x14342B,  # Dark green (Dark Angels successor)
+    "Tempestuous Angels":     0x3A6EA5,  # Storm blue
+    "The Drakes":             0x1E5631,  # Dark green (fire/drake themed)
+}
+
+# ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
 # Control whether startup/shutdown status broadcasts are sent.

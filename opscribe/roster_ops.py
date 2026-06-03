@@ -2704,10 +2704,28 @@ async def tally_deeds(
             )
             return
 
-    # Permission check: requires Watch Command role and allowed channel
+    # Permission check: requires Watch Brother minimum and allowed channel
     if not (_b("check_command_permission")(interaction.user, "tally_deeds") and _b("is_allowed_channel")(interaction)):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
+
+    # Determine if user has Watch Command access (Sgt+, specialists, high command)
+    _user_roles = _b("_canonical_role_names")(interaction.user)
+    _is_admin = str(interaction.user.id) in {str(x) for x in (_g.CONFIG.get("admin_user_ids") or [])}
+    is_watch_command_user = _is_admin or bool(_user_roles & _b("WATCH_COMMAND_ROLES"))
+
+    # send_to requires Watch Command access (Sergeant or above)
+    if send_to is not None and not is_watch_command_user:
+        await interaction.response.send_message(
+            "The `send_to` parameter requires Watch Command access (Sergeant or above).",
+            ephemeral=True,
+        )
+        return
+
+    # Watch Brothers (not Watch Command) are restricted to self-lookup only
+    if not is_watch_command_user:
+        brother = interaction.user
+        killteam = None
 
     # Mutual exclusivity check BEFORE deferring - must provide one or the other, not both
     if brother and killteam:
@@ -3443,208 +3461,6 @@ async def tally_deeds(
             # Continue even if roster formatting fails
             pass
 
-        # Use month-to-date time period (month-to-date for rankings)
-        now_mtd = datetime.utcnow()
-        first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
-        span_days = max(1, (now_mtd - first_of_month).days)
-
-        # Check if the killteam role is actually a home chapter
-        kt_name_raw = getattr(killteam, "name", "Unknown")
-        kt_display = _b("_extract_killteam_name")(kt_name_raw)
-        is_chapter_role = kt_name_raw in _b("HOME_CHAPTERS")
-
-        # Compute fortress-wide rankings for kill team honours display
-        try:
-            rankings = await _compute_fortress_rankings(
-                interaction.guild,
-                span_days,
-                start_dt=first_of_month,
-                end_dt=now_mtd,
-            )
-        except Exception:
-            rankings = {
-                "teams": {},
-                "chapters": {},
-                "imperial_date": _format_imperial_date(datetime.utcnow()),
-                "span_days": span_days,
-            }
-
-        imperial_date = rankings.get("imperial_date", "")
-        team_rankings = rankings.get("teams", {})
-        chapter_rankings = rankings.get("chapters", {})
-
-        # If this is a chapter role, look up chapter stats; otherwise look up team stats
-        if is_chapter_role:
-            # Find the matching chapter key in rankings
-            queried_key = None
-            for ch in chapter_rankings.get("ops", {}).keys():
-                if ch.lower() == kt_name_raw.lower():
-                    queried_key = ch
-                    break
-            active_rankings = chapter_rankings
-            display_type = "CHAPTER"
-            display_label = kt_name_raw
-        else:
-            # Try to find the matching team key in rankings
-            queried_key = None
-            for possible_key in [kt_name_raw, kt_display, f"Kill Team {kt_display}"]:
-                for tk in team_rankings.get("ops", {}).keys():
-                    if (
-                        tk.lower() == possible_key.lower()
-                        or possible_key.lower() in tk.lower()
-                        or tk.lower() in possible_key.lower()
-                    ):
-                        queried_key = tk
-                        break
-                if queried_key:
-                    break
-            active_rankings = team_rankings
-            display_type = "KILL TEAM"
-            display_label = kt_display
-
-        # Helper to format rank display
-        def fmt_rank(metric_key: str, key: str) -> str:
-            try:
-                val, rank, total = active_rankings.get(metric_key, {}).get(key, (0, 0, 0))
-                return f"#{rank}/{total}"
-            except Exception:
-                return "—"
-
-        def fmt_val_rank(metric_key: str, key: str, val_fmt: str = "") -> str:
-            try:
-                val, rank, total = active_rankings.get(metric_key, {}).get(key, (0, 0, 0))
-                if val_fmt:
-                    return f"{val_fmt.format(val)} (#{rank}/{total})"
-                return f"{val} (#{rank}/{total})"
-            except Exception:
-                return "—"
-
-        # Build the new honours-style output for kill team or chapter
-        s_lines = []
-        s_lines.append("```ansi")
-        s_lines.append("\u001b[32m==============================================================================")
-        s_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
-        s_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
-        s_lines.append(f"  Date: {imperial_date}")
-        s_lines.append(f"  {display_type}: {display_label}")
-        s_lines.append("==============================================================================")
-        s_lines.append("")
-        s_lines.append(f"{display_type} DISTINCTIONS")
-
-        if queried_key:
-            # Get values and ranks for each metric
-            ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
-            avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
-            pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
-            armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
-            gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
-            risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
-            omega_kia_data = active_rankings.get("omega_kia", {}).get(queried_key, (0, 0, 0))
-            force_data = active_rankings.get("avg_aar_per_member", {}).get(queried_key, (0.0, 0, 0))
-            cohesion_data = active_rankings.get("cohesion", {}).get(queried_key, (0.0, 0, 0))
-
-            s_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-            s_lines.append(f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}")
-            s_lines.append(
-                f"Armory + Gene-seed       (ArmoryPts {armory_data[0]:.1f} | GenePts {gene_data[0]:.1f}) — Rank #{pres_data[1]}/{pres_data[2]}"
-            )
-            omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-            s_lines.append(
-                f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
-            )
-            s_lines.append(
-                f"AARs per Member          (Avg AAR/Member {force_data[0]:.1f}) — Rank #{force_data[1]}/{force_data[2]}"
-            )
-            s_lines.append(
-                f"Squad Cohesion           ({cohesion_data[0]:.1f}%) — Rank #{cohesion_data[1]}/{cohesion_data[2]}"
-            )
-        else:
-            s_lines.append("  No ranking data available")
-
-        s_lines.append("")
-        s_lines.append("==============================================================================")
-        s_lines.append("\u001b[0m```")
-        summary_text = "\n".join(s_lines)
-
-        try:
-            # Build a clean, mobile-friendly embed (Jericho embed style)
-            title_type = "Chapter" if is_chapter_role else "Kill Team"
-            embed = discord.Embed(
-                title=f"᛭⋅ {title_type.upper()} MONTHLY HONOURS ⋅᛭",
-                description=f"*⌾ {display_label} ⌾*\nMonth to Date ({span_days} Days)",
-                color=0x2ECC71,
-            )
-            if queried_key:
-                ops_data = active_rankings.get("ops", {}).get(queried_key, (0, 0, 0))
-                avg_data = active_rankings.get("avg", {}).get(queried_key, (0.0, 0, 0))
-                pres_data = active_rankings.get("pres", {}).get(queried_key, (0, 0, 0))
-                armory_data = active_rankings.get("armory", {}).get(queried_key, (0, 0, 0))
-                gene_data = active_rankings.get("gene_carried", {}).get(queried_key, (0, 0, 0))
-                risk_data = active_rankings.get("high_risk", {}).get(queried_key, (0, 0, 0))
-                omega_kia_data = active_rankings.get("omega_kia", {}).get(queried_key, (0, 0, 0))
-                force_data = active_rankings.get("avg_aar_per_member", {}).get(queried_key, (0.0, 0, 0))
-                cohesion_data = active_rankings.get("cohesion", {}).get(queried_key, (0.0, 0, 0))
-
-                # Compute overall rank as average of all metric rankings
-                kt_ranks = []
-                if ops_data[2] > 0:
-                    kt_ranks.append(ops_data[1])
-                if avg_data[2] > 0:
-                    kt_ranks.append(avg_data[1])
-                if pres_data[2] > 0:
-                    kt_ranks.append(pres_data[1])
-                if risk_data[2] > 0:
-                    kt_ranks.append(risk_data[1])
-                if force_data[2] > 0:
-                    kt_ranks.append(force_data[1])
-                if cohesion_data[2] > 0:
-                    kt_ranks.append(cohesion_data[1])
-                kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
-
-                # ▸ Distinctions field with consolidated stats
-                omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                distinctions = (
-                    f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
-                    f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-                    f"**Armory+Gene:** #({pres_data[1]}/{pres_data[2]})\n"
-                    f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
-                    f"**AARs/Member:** {force_data[0]:.1f} (#{force_data[1]}/{force_data[2]})\n"
-                    f"**Cohesion:** {cohesion_data[0]:.1f}% (#{cohesion_data[1]}/{cohesion_data[2]})"
-                )
-                if kt_overall_rank is not None:
-                    distinctions += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
-                embed.add_field(
-                    name=f"▸ {title_type} Distinctions",
-                    value=distinctions,
-                    inline=False,
-                )
-            else:
-                embed.add_field(
-                    name="▸ Distinctions",
-                    value="No ranking data available",
-                    inline=False,
-                )
-            embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
-
-            # Send embed only (clean output)
-            if send_to_channel:
-                await send_to_channel.send(embed=embed)
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
-            else:
-                await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception:
-            # Fallback to simple embed
-            try:
-                fallback_title = "Chapter Summary" if is_chapter_role else "Kill Team Summary"
-                embed = _embed_from_ansi(fallback_title, summary_text)
-                if send_to_channel:
-                    await send_to_channel.send(embed=embed)
-                    await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
-                else:
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-            except Exception:
-                pass
-
     # Only send the detailed per-brother ledger for single-brother queries
     if not killteam:
         # Build a clean, mobile-friendly embed (Jericho embed style)
@@ -3674,7 +3490,7 @@ async def tally_deeds(
                 embed = discord.Embed(
                     title="᛭⋅ DEEDS LEDGER ⋅᛭",
                     description="*⌾ Watch Fortress Jericho ⌾*",
-                    color=0x2ECC71,
+                    color=CHAPTER_EMBED_COLORS.get(home_ch, 0x2ECC71),
                 )
 
                 # ▸ Bearer field (exactly matching forge_rite format)
@@ -3726,100 +3542,6 @@ async def tally_deeds(
                     f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
                 )
                 embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
-
-                # ▸ Armor Integrity field
-                try:
-                    armor_state = await _b("_get_armor_state")(int(target.id))
-                    points_since_blessing = armor_state.get("points_since_blessing", 0)
-                    spirit_fractured = armor_state.get("spirit_fractured", False)
-                    armor_tier = _b("_get_member_damage_tier")(target)
-                    damage_probability = _b("_get_damage_probability")(points_since_blessing)
-                    _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
-                    machine_spirit = await _b("_get_machine_spirit")(int(target.id))
-
-                    # Roll scan detection (same as armor_status)
-                    scan_result = await _b("_get_or_roll_scan_result")(
-                        int(target.id), armor_tier, points_since_blessing, spirit_fractured
-                    )
-                    scan_missed = not scan_result["detected"]
-
-                    if scan_missed:
-                        # Undetected - mask armor data
-                        embed.add_field(
-                            name="▸ Armor Integrity",
-                            value="⚫ **UNDETECTED** | Spirit: ???\nPenalty Risk: ???",
-                            inline=False,
-                        )
-                    else:
-                        if spirit_fractured:
-                            armor_icon = "💀"
-                            armor_status = "FRACTURED"
-                            spirit_status = "SEVERED"
-                        elif armor_tier == "critical":
-                            armor_icon = "🔴"
-                            armor_status = "CRITICAL"
-                            spirit_status = "UNSTABLE"
-                        elif armor_tier == "compromised":
-                            armor_icon = "🟠"
-                            armor_status = "COMPROMISED"
-                            spirit_status = "AGITATED"
-                        elif armor_tier == "damaged":
-                            armor_icon = "🟡"
-                            armor_status = "DAMAGED"
-                            spirit_status = "STABLE"
-                        else:
-                            armor_icon = "🟢"
-                            armor_status = "NOMINAL"
-                            spirit_status = "STABLE"
-
-                        # Get MachineSpirit emoji
-                        machine_spirit_emoji = _b("_get_emoji_by_name")(guild, "MachineSpirit") or "⚙️"
-
-                        if spirit_fractured:
-                            spirit_display = f"{machine_spirit_emoji} SEVERED"
-                        elif machine_spirit:
-                            spirit_display = f"{machine_spirit_emoji} `{machine_spirit}` ({spirit_status})"
-                        else:
-                            spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
-
-                        armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-                        # Show penalty risk and cycles (hide cycles for nominal brothers)
-                        penalty_risk = _b("_get_tier_risk_display")(armor_tier, spirit_fractured)
-                        if armor_status == "NOMINAL":
-                            armor_lines.append(f"Penalty Risk: {penalty_risk}")
-                        else:
-                            armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
-
-                        embed.add_field(
-                            name="▸ Armor Integrity",
-                            value="\n".join(armor_lines),
-                            inline=False,
-                        )
-                except Exception:
-                    pass  # Skip armor field if data unavailable
-
-                # ▸ Warp Sanction field (status only; raw exposure hidden from brothers)
-                try:
-                    warp_state = await _get_warp_exposure_state(int(target.id))
-                    warp_points = int(warp_state.get("points_since_warding", 0) or 0)
-                    sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
-                    sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
-                        sanction_key,
-                        ("Cleansed", "Clear or minimal contamination detected."),
-                    )
-                    if warp_state.get("warp_corrupted"):
-                        sanction_label = f"{sanction_label} — CORRUPTED"
-                        sanction_desc = (
-                            "Warp corruption confirmed by repeated restricted-tier exposure. "
-                            "Void Warden intervention required."
-                        )
-                    embed.add_field(
-                        name="▸ Warp Sanction",
-                        value=f"🧿 **{sanction_label.upper()}**\n{sanction_desc}",
-                        inline=False,
-                    )
-                except Exception:
-                    pass
 
                 # ▸ Challenges field
                 target_role_ids_ch = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
@@ -3877,969 +3599,103 @@ async def tally_deeds(
         # Send embed only (clean output like forge_rite/stud announcement)
         if send_to_channel:
             await send_to_channel.send(embed=embed, **({"file": _jack_file} if _jack_file else {}))
+            await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
         else:
             await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _jack_file} if _jack_file else {}))
 
-        # Send Monthly Honours as a separate additional message
-        if len(members) == 1:
-            # Use month-to-date time period (month-to-date for rankings)
-            now_mtd = datetime.utcnow()
-            first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
-            mtd_span_days = max(1, (now_mtd - first_of_month).days)
-            try:
-                rankings = await _compute_fortress_rankings(
-                    interaction.guild,
-                    mtd_span_days,
-                    start_dt=first_of_month,
-                    end_dt=now_mtd,
-                )
-            except Exception:
-                rankings = {
-                    "individuals": {},
-                    "chapters": {},
-                    "teams": {},
-                    "chapters_map": {},
-                    "imperial_date": _format_imperial_date(datetime.utcnow()),
-                    "span_days": mtd_span_days,
-                }
 
-            imperial_date = rankings.get("imperial_date", "")
-            individual_rankings = rankings.get("individuals", {})
-            chapter_rankings = rankings.get("chapters", {})
-            team_rankings = rankings.get("teams", {})
-            resolved_chapters_map = rankings.get("chapters_map", {})
+_PORTRAIT_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "portrait_submissions.json")
 
-            target = members[0]
-            target_id = str(target.id)
-            target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
-            home_chapter = resolved_chapters_map.get(target_id, chapters_map.get(target_id, "Unknown"))
 
-            # Get individual ranking data
-            ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
-            avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
-            gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
-            armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
-            risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
-            omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
-            black_laurels_data = individual_rankings.get("black_laurels", {}).get(target_id, (0, 0, 0))
+def _load_portrait_submissions() -> dict:
+    try:
+        with open(_PORTRAIT_SUBMISSIONS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-            # Get chapter ranking data (matching kill team metrics)
-            ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
-            ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
-            ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
-            ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
-            ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
-            ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
-            ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(home_chapter, (0, 0, 0))
-            ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
 
-            # Get target's kill teams using _resolve_killteams_for_member
-            target_killteams = []
-            try:
-                target_killteams = _b("_resolve_killteams_for_member")(target)
-            except Exception:
-                pass
-
-            # Build honours ANSI block
-            h_lines = []
-            h_lines.append("```ansi")
-            h_lines.append("\u001b[32m==============================================================================")
-            h_lines.append("  WATCH FORTRESS JERICHO // LEDGER-CAST")
-            h_lines.append("  OPERATION-SCRIBE SERVITOR — MONTHLY HONOURS")
-            h_lines.append(f"  Date: {imperial_date}")
-            h_lines.append(f"  Brother: {target_name}")
-            h_lines.append(f"  Home Chapter: {home_chapter}")
-            h_lines.append("==============================================================================")
-            h_lines.append("")
-            h_lines.append("INDIVIDUAL DISTINCTIONS")
-
-            if ops_data[2] > 0:  # Has ranking data
-                h_lines.append(f"Total Operations         (Ops {int(ops_data[0])}) — Rank #{ops_data[1]}/{ops_data[2]}")
-                h_lines.append(
-                    f"Avg Points per Op        (Avg Op {avg_data[0]:.1f}) — Rank #{avg_data[1]}/{avg_data[2]}"
-                )
-                h_lines.append(
-                    f"Gene-seed Points         (GeneseedPts {int(gene_data[0])}) — Rank #{gene_data[1]}/{gene_data[2]}"
-                )
-                h_lines.append(
-                    f"Armory Points            (ArmoryPts {int(armory_data[0])}) — Rank #{armory_data[1]}/{armory_data[2]}"
-                )
-                omega_suffix = f" | Omega KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                h_lines.append(
-                    f"High-Risk Ops            (Hard-Strat+Omega {int(risk_data[0])}{omega_suffix}) — Rank #{risk_data[1]}/{risk_data[2]}"
-                )
-                h_lines.append(
-                    f"Black Laurels Missions   (BL Ops {int(black_laurels_data[0])}) — Rank #{black_laurels_data[1]}/{black_laurels_data[2]}"
-                )
-            else:
-                h_lines.append("  No ranking data available")
-
-            h_lines.append("")
-            h_lines.append("CHAPTER DISTINCTIONS")
-
-            if ch_ops_data[2] > 0:  # Has chapter ranking data
-                h_lines.append(
-                    f"Total Operations         (Ops {int(ch_ops_data[0])}) — Rank #{ch_ops_data[1]}/{ch_ops_data[2]}"
-                )
-                h_lines.append(
-                    f"Avg Points per Op        (Avg Op {ch_avg_data[0]:.1f}) — Rank #{ch_avg_data[1]}/{ch_avg_data[2]}"
-                )
-                h_lines.append(
-                    f"Armory + Gene-seed       (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}"
-                )
-                ch_omega_suffix = f" | Omega KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
-                h_lines.append(
-                    f"High-Risk Ops            (Hard-Strat+Omega {int(ch_risk_data[0])}{ch_omega_suffix}) — Rank #{ch_risk_data[1]}/{ch_risk_data[2]}"
-                )
-                h_lines.append(
-                    f"AARs per Member          (Avg AAR/Member {ch_aar_data[0]:.1f}) — Rank #{ch_aar_data[1]}/{ch_aar_data[2]}"
-                )
-            else:
-                h_lines.append("  Chapter does not meet minimum threshold for ranking")
-
-            # Kill Team Distinctions (for each team the member belongs to)
-            if target_killteams:
-                for kt_name in target_killteams:
-                    h_lines.append("")
-                    h_lines.append(f"KILL TEAM DISTINCTIONS: {kt_name}")
-                    kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
-                    kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
-                    kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_armory_val = team_rankings.get("armory", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_name, (0, 0, 0))[0]
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
-                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_name, (0, 0, 0))
-                    if kt_ops_data[2] > 0:
-                        h_lines.append(
-                            f"Total Operations         (Ops {int(kt_ops_data[0])}) — Rank #{kt_ops_data[1]}/{kt_ops_data[2]}"
-                        )
-                        h_lines.append(
-                            f"Avg Points per Op        (Avg Op {kt_avg_data[0]:.1f}) — Rank #{kt_avg_data[1]}/{kt_avg_data[2]}"
-                        )
-                        h_lines.append(
-                            f"Armory + Gene-seed       (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}"
-                        )
-                        kt_omega_suffix = (
-                            f" | Omega KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
-                        )
-                        h_lines.append(
-                            f"High-Risk Ops            (Hard-Strat+Omega {int(kt_risk_data[0])}{kt_omega_suffix}) — Rank #{kt_risk_data[1]}/{kt_risk_data[2]}"
-                        )
-                        h_lines.append(
-                            f"AARs per Member          (Avg AAR/Member {kt_aar_data[0]:.1f}) — Rank #{kt_aar_data[1]}/{kt_aar_data[2]}"
-                        )
-                        h_lines.append(
-                            f"Squad Cohesion           ({kt_cohesion_data[0]:.1f}%) — Rank #{kt_cohesion_data[1]}/{kt_cohesion_data[2]}"
-                        )
-                    else:
-                        h_lines.append("  No ranking data available")
-
-            h_lines.append("")
-            h_lines.append("==============================================================================")
-            h_lines.append("\u001b[0m```")
-            honours_text = "\n".join(h_lines)
-
-            # Build a clean, mobile-friendly embed (Jericho embed style)
-            try:
-                # Get chapter emoji for display
-                guild = interaction.guild
-                chapter_emoji = (
-                    _b("_get_emoji_by_name")(guild, home_chapter)
-                    if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
-                    else None
-                )
-                chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-
-                honours_embed = discord.Embed(
-                    title="᛭⋅ MONTHLY HONOURS ⋅᛭",
-                    description=f"*⌾ {target_name} ⌾*\nMonth to Date ({mtd_span_days} Days)",
-                    color=0x2ECC71,
-                )
-
-                # Compute median rank from individual metrics
-                individual_ranks = []
-                if ops_data[2] > 0:
-                    individual_ranks.append(ops_data[1])
-                if avg_data[2] > 0:
-                    individual_ranks.append(avg_data[1])
-                if gene_data[2] > 0:
-                    individual_ranks.append(gene_data[1])
-                if armory_data[2] > 0:
-                    individual_ranks.append(armory_data[1])
-                if risk_data[2] > 0:
-                    individual_ranks.append(risk_data[1])
-                if black_laurels_data[2] > 0:
-                    individual_ranks.append(black_laurels_data[1])
-
-                _median_rank = None  # Calculated below as overall_rank
-                if individual_ranks:
-                    _median_rank = statistics.median(individual_ranks)
-
-                # Compute overall rank as average of individual rankings
-                overall_rank = None
-                if individual_ranks:
-                    overall_rank = statistics.median(individual_ranks)
-
-                # ▸ Individual Distinctions field
-                if ops_data[2] > 0:
-                    omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-                    individual_value = (
-                        f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
-                        f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-                        f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
-                        f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
-                        f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
-                        f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
-                    )
-                    if overall_rank is not None:
-                        individual_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
-                else:
-                    individual_value = "No ranking data available"
-                honours_embed.add_field(
-                    name="▸ Individual Distinctions",
-                    value=individual_value,
-                    inline=False,
-                )
-
-                # ▸ Chapter Distinctions field
-                lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
-                # Compute chapter median rank
-                chapter_ranks = []
-                if ch_ops_data[2] > 0:
-                    chapter_ranks.append(ch_ops_data[1])
-                if ch_avg_data[2] > 0:
-                    chapter_ranks.append(ch_avg_data[1])
-                if ch_pres_data[2] > 0:
-                    chapter_ranks.append(ch_pres_data[1])
-                if ch_risk_data[2] > 0:
-                    chapter_ranks.append(ch_risk_data[1])
-                if ch_aar_data[2] > 0:
-                    chapter_ranks.append(ch_aar_data[1])
-
-                _ch_median_rank = None  # Calculated below as ch_overall_rank
-                if chapter_ranks:
-                    _ch_median_rank = statistics.median(chapter_ranks)
-
-                # Compute overall rank as median of chapter rankings
-                ch_overall_rank = None
-                if chapter_ranks:
-                    ch_overall_rank = statistics.median(chapter_ranks)
-
-                if ch_ops_data[2] > 0:
-                    ch_omega_suffix = f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
-                    chapter_value = (
-                        f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
-                        f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
-                        f"**Armory + Gene:** #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
-                        f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
-                        f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
-                    )
-                    if ch_overall_rank is not None:
-                        chapter_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
-                else:
-                    chapter_value = "Below minimum threshold"
-                honours_embed.add_field(
-                    name=f"▸ {chapter_prefix}{lineage_display} Chapter",
-                    value=chapter_value,
-                    inline=False,
-                )
-
-                # ▸ Kill Team Distinctions fields (one per team the member belongs to)
-                for kt_name in target_killteams:
-                    kt_ops_data = team_rankings.get("ops", {}).get(kt_name, (0, 0, 0))
-                    kt_avg_data = team_rankings.get("avg", {}).get(kt_name, (0.0, 0, 0))
-                    kt_pres_data = team_rankings.get("pres", {}).get(kt_name, (0, 0, 0))
-                    kt_risk_data = team_rankings.get("high_risk", {}).get(kt_name, (0, 0, 0))
-                    kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_name, (0.0, 0, 0))
-                    kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_name, (0.0, 0, 0))
-                    kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_name, (0, 0, 0))
-
-                    # Compute overall rank for kill team
-                    kt_ranks = []
-                    if kt_ops_data[2] > 0:
-                        kt_ranks.append(kt_ops_data[1])
-                    if kt_avg_data[2] > 0:
-                        kt_ranks.append(kt_avg_data[1])
-                    if kt_pres_data[2] > 0:
-                        kt_ranks.append(kt_pres_data[1])
-                    if kt_risk_data[2] > 0:
-                        kt_ranks.append(kt_risk_data[1])
-                    if kt_aar_data[2] > 0:
-                        kt_ranks.append(kt_aar_data[1])
-                    if kt_cohesion_data[2] > 0:
-                        kt_ranks.append(kt_cohesion_data[1])
-                    kt_overall_rank = statistics.median(kt_ranks) if kt_ranks else None
-
-                    if kt_ops_data[2] > 0:
-                        kt_omega_suffix = f" | KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
-                        kt_value = (
-                            f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
-                            f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
-                            f"**Armory+Gene:** #({kt_pres_data[1]}/{kt_pres_data[2]})\n"
-                            f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
-                            f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
-                            f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
-                        )
-                        if kt_overall_rank is not None:
-                            kt_value += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
-                    else:
-                        kt_value = "No ranking data available"
-                    honours_embed.add_field(
-                        name=f"▸ {kt_name}",
-                        value=kt_value,
-                        inline=False,
-                    )
-
-                honours_embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
-            except Exception:
-                honours_embed = _embed_from_ansi("Monthly Honours", honours_text)
-
-            # Send embed only (clean output like forge_rite/stud announcement)
-            if send_to_channel:
-                await send_to_channel.send(embed=honours_embed)
-                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
-            else:
-                await interaction.followup.send(embed=honours_embed, ephemeral=True)
+def _save_portrait_submissions(data: dict) -> None:
+    with open(_PORTRAIT_SUBMISSIONS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 @_g.bot.tree.command(
-    name="my_deeds",
-    description="View your own Deeds Ledger (Watch Brother only, in your KT channel).",
+    name="submit_portrait",
+    description="Submit a portrait image for use in your Deeds Ledger (1 submission per 4 weeks).",
 )
-async def my_deeds(interaction: discord.Interaction):
-    """Self-service deeds ledger for Watch Brothers in their Kill Team channels.
-
-    Permission requirements:
-    - Caller has the Watch Brother role
-    - Caller does NOT have Watch Command role
-    - Channel is a thread under a configured KT forum
-    - Caller's KT role name matches the thread name
-    """
-    caller = interaction.user
-    caller_role_names = _b("_canonical_role_names")(caller)
-
-    # Forgemaster bypass for testing
-    is_forgemaster = "Forgemaster" in caller_role_names
-
-    # Check caller has Watch Brother role (Forgemaster exempt)
-    if not is_forgemaster and ("Watch Brother" not in caller_role_names and "Watch Sister" not in caller_role_names):
-        await interaction.response.send_message("This command is for Watch Brothers only.", ephemeral=True)
+@app_commands.describe(
+    image="The portrait image to submit (will be reviewed before use).",
+)
+async def submit_portrait(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+):
+    if not _b("check_command_permission")(interaction.user, "submit_portrait"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
         return
 
-    # Deny if caller has Watch Command role (they should use /tally_deeds) - Forgemaster exempt
-    if not is_forgemaster and "Watch Command" in caller_role_names:
+    if not image.content_type or not image.content_type.startswith("image/"):
         await interaction.response.send_message(
-            "Watch Command members should use `/tally_deeds` instead.", ephemeral=True
-        )
-        return
-
-    # Check channel is a KT thread
-    ch = getattr(interaction, "channel", None)
-    if ch is None:
-        await interaction.response.send_message("Could not determine channel context.", ephemeral=True)
-        return
-
-    is_thread = (
-        isinstance(ch, discord.Thread)
-        if hasattr(discord, "Thread")
-        else getattr(ch, "type", None) == discord.ChannelType.public_thread
-    )
-    parent = getattr(ch, "parent", None)
-    parent_id = getattr(parent, "id", None) if parent else None
-
-    if not is_forgemaster and not (is_thread and parent_id and parent_id in _b("ALLOWED_KT_FORUM_PARENT_IDS")):
-        await interaction.response.send_message(
-            "This command can only be used in your Kill Team forum post.",
+            "Please attach an image file (PNG, JPG, etc.).",
             ephemeral=True,
         )
         return
 
-    # Get caller's Kill Team name using shared resolution logic
-    caller_kt_name = _b("_resolve_killteam_for_member")(caller)
-    if caller_kt_name:
-        caller_kt_name = caller_kt_name.lower()
-    if not is_forgemaster and not caller_kt_name:
-        await interaction.response.send_message("You must belong to a Kill Team to use this command.", ephemeral=True)
-        return
-
-    # Extract KT name from thread name and verify match (Forgemaster exempt)
-    thread_name = getattr(ch, "name", "") or ""
-    thread_kt = _b("_extract_killteam_name")(thread_name).lower() if thread_name else ""
-
-    if not is_forgemaster and (not thread_kt or not (thread_kt in caller_kt_name or caller_kt_name in thread_kt)):
-        await interaction.response.send_message(
-            "You can only view your deeds in your own Kill Team's forum post.",
-            ephemeral=True,
-        )
-        return
-
-    # Permission checks passed - defer and compute deeds
-    await interaction.response.defer(thinking=False, ephemeral=True)
-
-    target = caller
-    guild = interaction.guild
-
-    # Compute stats
-    stats = compute_stats_for_user(str(target.id))
-
-    # Determine rank
-    current_rank = "Watch Brother"
-    for rank in _b("RANK_ROLES_PRIORITY"):
-        for role in target.roles:
-            if role.name == rank:
-                current_rank = rank
-                break
-        if current_rank != "Watch Brother":
-            break
-
-    display_name = target.nick or target.display_name
-
-    # Induction date (custom override or server join time)
-    try:
-        joined_at = _get_effective_induction_date(target)
-        if joined_at:
-            if joined_at.tzinfo is None:
-                joined_at = joined_at.replace(tzinfo=timezone.utc)
-            ja_utc = joined_at.astimezone(timezone.utc)
-            days_since_join = (datetime.now(timezone.utc) - ja_utc).days
-            joined_str = f"{ja_utc.strftime('%Y-%m-%d %H:%M %Z')} ({days_since_join}d ago)"
-        else:
-            joined_str = "Unknown"
-    except Exception:
-        joined_str = "Unknown"
-
-    # Service studs (only for Watch Veteran+)
-    MAX_STUDS = 16
-    try:
-        studs_count = 0
-        idx_veteran = _b("_role_index")("Watch Veteran")
-        highest_idx = _b("get_highest_rank_index")(target)
-        if idx_veteran is not None and highest_idx is not None and highest_idx <= idx_veteran:
-            if joined_at:
-                now = datetime.utcnow()
-                ja = joined_at
-                if ja.tzinfo is not None:
-                    ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
-                weeks = max(0, (now - ja).days // 7)
-                studs_time = weeks // 4
-            else:
-                studs_time = 0
-            aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
-            studs_aar = aar_points_val // 400
-            studs_count = min(studs_time, studs_aar, MAX_STUDS)
-    except Exception:
-        studs_count = 0
-    studs_count = min(studs_count, MAX_STUDS)
-
-    # Build studs display
-    try:
-        if not studs_count:
-            studs_display = "— (0 Plasteel)"
-        else:
-            auramite_count = studs_count // 4
-            plasteel_count = studs_count % 4
-            studs_symbols = _studs_pips(studs_count)
-            # Once in auramite tier, only show Auramite count (ignore plasteel)
-            if auramite_count:
-                types_str = f"{auramite_count} Auramite"
-            else:
-                types_str = f"{plasteel_count} Plasteel" if plasteel_count else "0 Plasteel"
-            studs_display = f"{studs_symbols} ({types_str})"
-    except Exception:
-        studs_display = str(studs_count)
-
-    # Trials reported (inductions)
-    trials_reported = _count_inductions_from_records(str(target.id), _g.DATASTORE.iter_records())
-
-    # Home chapter
-    try:
-        chapters_map = await _resolve_home_chapters(guild, [str(target.id)])
-        home_chapter = chapters_map.get(str(target.id), "REDACTED")
-    except Exception:
-        home_chapter = "REDACTED"
-
-    # Active/Inactive status
-    try:
-        # Use cached last_aar_ts from user_stats_cache to avoid O(N) record scan
-        cached_ts = _g.DATASTORE.get_user_stats(str(target.id)).get("last_aar_ts")
-        status = "Inactive"
-        last_aar_date = None
-        days_since_aar = None
-        if cached_ts:
-            try:
-                last_aar_date = datetime.fromisoformat(cached_ts)
-            except Exception:
-                last_aar_date = None
-            if last_aar_date is not None:
-                if last_aar_date.tzinfo is not None:
-                    try:
-                        last_aar_date = last_aar_date.astimezone(timezone.utc).replace(tzinfo=None)
-                    except Exception:
-                        last_aar_date = last_aar_date.replace(tzinfo=None)
-                now = datetime.utcnow()
-                days_since_aar = (now - last_aar_date).days
-                cutoff = now - timedelta(days=28)
-                if last_aar_date >= cutoff:
-                    status = "Active"
-    except Exception:
-        status = "Inactive"
-        last_aar_date = None
-        days_since_aar = None
-
-    # Company/KT visibility
-    show_company = True
-    company = "Reserves" if status == "Inactive" else "Unknown"
-    kt_name = "Unknown"
-    try:
-        role_names = caller_role_names
-        roles = getattr(target, "roles", [])
-
-        high_command = {
-            "Watch Master",
-            "Lord Executioner",
-            "Huntmaster",
-            "Forgemaster",
-            "Void Warden",
-            "Chief Apothecary",
-            "High Chaplain",
-        }
-        show_company = not any(r in role_names for r in high_command)
-        if show_company:
-            for role in roles:
-                rn = getattr(role, "name", "") or ""
-                if "company" in rn.lower():
-                    company = rn
-                    break
-
-        for role in roles:
-            rn = getattr(role, "name", "") or ""
-            rn_l = rn.lower()
-            if ("kill" in rn_l and "team" in rn_l) and ("champion" not in rn_l):
-                kt_name = _b("_extract_killteam_name")(rn)
-                break
-    except Exception:
-        pass
-
-    # Format last AAR display
-    if last_aar_date is not None and days_since_aar is not None:
+    user_id = str(interaction.user.id)
+    submissions = _load_portrait_submissions()
+    last_submitted = submissions.get(user_id, {}).get("last_submitted")
+    if last_submitted:
         try:
-            if last_aar_date.tzinfo is None:
-                last_aar_date = last_aar_date.replace(tzinfo=timezone.utc)
-            aar_utc = last_aar_date.astimezone(timezone.utc)
-            aar_date_str = aar_utc.strftime("%Y-%m-%d")
+            last_dt = datetime.fromisoformat(last_submitted)
+            now = datetime.utcnow()
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.replace(tzinfo=None)
+            if (now - last_dt).days < 28:
+                next_eligible = last_dt + timedelta(days=28)
+                days_remaining = (next_eligible - now).days + 1
+                await interaction.response.send_message(
+                    f"Portrait submission cooldown active: **{days_remaining}** day(s) remaining before your next submission.",
+                    ephemeral=True,
+                )
+                return
         except Exception:
-            aar_date_str = last_aar_date.strftime("%Y-%m-%d")
-        last_aar_display = f"{aar_date_str} ({days_since_aar}d ago)"
-    else:
-        last_aar_display = "None on record"
+            pass
 
-    # Build stat_dict for embed
-    stat_dict = {
-        "Status": status,
-        "Last AAR": last_aar_display,
-        "Induction": joined_str,
-        "Service Studs": studs_display,
-        "Home Chapter": home_chapter,
-        "Total Operations": str(stats["ops"]),
-        "Total Siege Waves": str(stats["waves_participated"]),
-        "Brothers Sanctioned": str(trials_reported),
-        "AAR Commendations": str(stats["aar_points"]),
-        "Gene-seed Secured": str(stats["gene_seed_points"]),
-        "Armory Data Recovered": str(stats["armory_points"]),
+    await interaction.response.defer(ephemeral=True)
+
+    admin_ids = list(_g.CONFIG.get("admin_user_ids") or [])
+    if not admin_ids:
+        await interaction.followup.send(
+            "Portrait submission could not be routed — no admin configured.", ephemeral=True
+        )
+        return
+
+    try:
+        admin_user = await _g.bot.fetch_user(int(admin_ids[0]))
+        dm_channel = await admin_user.create_dm()
+        portrait_file = await image.to_file()
+        display_name = getattr(interaction.user, "display_name", None) or str(interaction.user)
+        await dm_channel.send(
+            f"**Portrait submission** from `{display_name}` (ID: `{user_id}`)\nFile: `{image.filename}`",
+            file=portrait_file,
+        )
+    except Exception:
+        await interaction.followup.send(
+            "Failed to route your submission. Please try again later.", ephemeral=True
+        )
+        return
+
+    submissions[user_id] = {
+        "last_submitted": datetime.utcnow().isoformat(),
+        "username": getattr(interaction.user, "display_name", str(interaction.user)),
     }
-    if show_company:
-        stat_dict["Company"] = company
-    if kt_name and kt_name != "Unknown":
-        stat_dict["Kill Team"] = kt_name
+    _save_portrait_submissions(submissions)
 
-    # Strip rank prefix from display name
-    name_val = display_name
-    for rp in _b("RANK_ROLES_PRIORITY"):
-        if name_val.lower().startswith(rp.lower()):
-            name_val = name_val[len(rp) :].lstrip()
-            break
-    name_val = re.sub(r"[●⚬]+", "", name_val).strip() or display_name
-
-    # Get rank emoji
-    rank_emoji = _b("_get_rank_emoji")(guild, current_rank) if guild else ""
-
-    # Get chapter emoji
-    chapter_emoji = (
-        _b("_get_emoji_by_name")(guild, home_chapter)
-        if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
-        else None
+    await interaction.followup.send(
+        "Your portrait has been submitted for review. You may submit again in 4 weeks.",
+        ephemeral=True,
     )
-
-    # Build embed
-    embed = discord.Embed(
-        title="᛭⋅ DEEDS LEDGER ⋅᛭",
-        description="*⌾ Watch Fortress Jericho ⌾*",
-        color=0x2ECC71,
-    )
-
-    # ▸ Bearer field (exactly matching forge_rite format)
-    bearer_honorific, bearer_name, bearer_title = _b("_get_bearer_rank_and_title")(target)
-    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
-    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    if ", " in bearer_honorific:
-        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
-        bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
-    else:
-        bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
-    if bearer_title:
-        bearer_value += f"\n*{bearer_title}*"
-    if home_chapter and home_chapter not in ("Unknown", "REDACTED"):
-        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-        lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
-        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    if studs_count > 0:
-        studs_pips_display = _studs_pips(studs_count)
-        bearer_value += f"\nService Studs: [{studs_pips_display}] ({studs_count})"
-    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
-
-    # ▸ Status field
-    status_val = stat_dict.get("Status", "Unknown")
-    last_aar_val = stat_dict.get("Last AAR", "—")
-    status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-    embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
-
-    # ▸ Service Record field
-    induction_val = stat_dict.get("Induction", "—")
-    embed.add_field(name="▸ Induction", value=f"{induction_val}", inline=False)
-
-    # ▸ Deeds Tallied field
-    ops_val = stat_dict.get("Total Operations", "0")
-    waves_val = stat_dict.get("Total Siege Waves", "0")
-    sanctioned_val = stat_dict.get("Brothers Sanctioned", "0")
-    aar_val = stat_dict.get("AAR Commendations", "0")
-    gene_val = stat_dict.get("Gene-seed Secured", "0")
-    armory_val = stat_dict.get("Armory Data Recovered", "0")
-
-    deeds_value = (
-        f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
-        f"Brothers Sanctioned: **{sanctioned_val}**\n"
-        f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
-    )
-    embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
-
-    # ▸ Armor Integrity field
-    try:
-        armor_state = await _b("_get_armor_state")(int(target.id))
-        points_since_blessing = armor_state.get("points_since_blessing", 0)
-        spirit_fractured = armor_state.get("spirit_fractured", False)
-        armor_tier = _b("_get_member_damage_tier")(target)
-        damage_probability = _b("_get_damage_probability")(points_since_blessing)
-        _prob_percent = damage_probability * 100  # Calculated but not displayed in this context
-        machine_spirit = await _b("_get_machine_spirit")(int(target.id))
-
-        # Roll scan detection (same as armor_status)
-        scan_result = await _b("_get_or_roll_scan_result")(
-            int(target.id), armor_tier, points_since_blessing, spirit_fractured
-        )
-        scan_missed = not scan_result["detected"]
-
-        if scan_missed:
-            # Undetected - mask armor data
-            embed.add_field(
-                name="▸ Armor Integrity",
-                value="⚫ **UNDETECTED** | Spirit: ???\nPenalty Risk: ???",
-                inline=False,
-            )
-        else:
-            if spirit_fractured:
-                armor_icon = "💀"
-                armor_status = "FRACTURED"
-                spirit_status = "SEVERED"
-            elif armor_tier == "critical":
-                armor_icon = "🔴"
-                armor_status = "CRITICAL"
-                spirit_status = "UNSTABLE"
-            elif armor_tier == "compromised":
-                armor_icon = "🟠"
-                armor_status = "COMPROMISED"
-                spirit_status = "AGITATED"
-            elif armor_tier == "damaged":
-                armor_icon = "🟡"
-                armor_status = "DAMAGED"
-                spirit_status = "STABLE"
-            else:
-                armor_icon = "🟢"
-                armor_status = "NOMINAL"
-                spirit_status = "STABLE"
-
-            # Get MachineSpirit emoji
-            machine_spirit_emoji = _b("_get_emoji_by_name")(guild, "MachineSpirit") or "⚙️"
-
-            if spirit_fractured:
-                spirit_display = f"{machine_spirit_emoji} SEVERED"
-            elif machine_spirit:
-                spirit_display = f"{machine_spirit_emoji} `{machine_spirit}` ({spirit_status})"
-            else:
-                spirit_display = f"{machine_spirit_emoji} *UNBOUND*"
-
-            armor_lines = [f"{armor_icon} **{armor_status}** | {spirit_display}"]
-            # Show penalty risk and cycles (hide cycles for nominal brothers)
-            penalty_risk = _b("_get_tier_risk_display")(armor_tier, spirit_fractured)
-            if armor_status == "NOMINAL":
-                armor_lines.append(f"Penalty Risk: {penalty_risk}")
-            else:
-                armor_lines.append(f"Penalty Risk: {penalty_risk} | Cycles: {points_since_blessing}c")
-
-            embed.add_field(
-                name="▸ Armor Integrity",
-                value="\n".join(armor_lines),
-                inline=False,
-            )
-    except Exception:
-        pass  # Skip armor field if data unavailable
-
-    # ▸ Warp Sanction field (status only; raw exposure hidden from brothers)
-    try:
-        warp_state = await _get_warp_exposure_state(int(target.id))
-        warp_points = int(warp_state.get("points_since_warding", 0) or 0)
-        sanction_key = await _get_warp_sanction_status(warp_points, int(target.id))
-        sanction_label, sanction_desc = WARP_SANCTION_STATUS.get(
-            sanction_key,
-            ("Cleansed", "Clear or minimal contamination detected."),
-        )
-        if warp_state.get("warp_corrupted"):
-            sanction_label = f"{sanction_label} — CORRUPTED"
-            sanction_desc = (
-                "Warp corruption confirmed by repeated restricted-tier exposure. Void Warden intervention required."
-            )
-        embed.add_field(
-            name="▸ Warp Sanction",
-            value=f"🧿 **{sanction_label.upper()}**\n{sanction_desc}",
-            inline=False,
-        )
-    except Exception:
-        pass
-
-    # ▸ Challenges field
-    target_role_ids = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
-    completed_challenges = []
-    for role_id, display_name_ch, emoji_hint in CHALLENGE_ROLES:
-        if role_id in target_role_ids:
-            emoji_str = ""
-            if emoji_hint:
-                if emoji_hint.startswith("unicode:"):
-                    emoji_str = f"{emoji_hint[8:]} "
-                else:
-                    emoji = _b("_get_emoji_by_name")(guild, emoji_hint)
-                    if emoji:
-                        emoji_str = f"{emoji} "
-            completed_challenges.append(f"{emoji_str}{display_name_ch}")
-
-    if completed_challenges:
-        challenge_lines = [f"✦ {c}" for c in completed_challenges]
-        base_field_name = f"▸ Challenges ({len(completed_challenges)})"
-        current_chunk = ""
-        field_index = 0
-
-        for line in challenge_lines:
-            prefix = "" if current_chunk == "" else "\n"
-            line_with_sep = prefix + line
-
-            if len(current_chunk) + len(line_with_sep) > 1024:
-                field_name = base_field_name if field_index == 0 else "\u200b"
-                embed.add_field(name=field_name, value=current_chunk, inline=False)
-                field_index += 1
-                current_chunk = line
-            else:
-                current_chunk += line_with_sep
-
-        if current_chunk:
-            field_name = base_field_name if field_index == 0 else "\u200b"
-            embed.add_field(name=field_name, value=current_chunk, inline=False)
-
-    embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
-
-    # Huntmaster Jack portrait
-    _HUNTMASTER_JACK_ID = 1444810056821637133
-    _jack_file = None
-    if int(target.id) == _HUNTMASTER_JACK_ID:
-        _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster_Jack.png")
-        if os.path.exists(_jack_path):
-            _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster_Jack.png")
-            embed.set_image(url="attachment://1444810056821637133_Huntmaster_Jack.png")
-
-    await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _jack_file} if _jack_file else {}))
-    now_mtd = datetime.utcnow()
-    first_of_month = datetime(now_mtd.year, now_mtd.month, 1)
-    mtd_span_days = max(1, (now_mtd - first_of_month).days)
-
-    try:
-        rankings = await _compute_fortress_rankings(guild, mtd_span_days, start_dt=first_of_month, end_dt=now_mtd)
-    except Exception:
-        rankings = {
-            "individuals": {},
-            "chapters": {},
-            "teams": {},
-            "chapters_map": {},
-            "imperial_date": _format_imperial_date(datetime.utcnow()),
-            "span_days": mtd_span_days,
-        }
-
-    imperial_date = rankings.get("imperial_date", "")
-    individual_rankings = rankings.get("individuals", {})
-    chapter_rankings = rankings.get("chapters", {})
-    team_rankings = rankings.get("teams", {})
-    resolved_chapters_map = rankings.get("chapters_map", {})
-
-    target_id = str(target.id)
-    target_name = getattr(target, "display_name", getattr(target, "name", "Unknown"))
-    home_chapter = resolved_chapters_map.get(target_id, home_chapter)
-
-    # Individual ranking data
-    ops_data = individual_rankings.get("ops", {}).get(target_id, (0, 0, 0))
-    avg_data = individual_rankings.get("avg", {}).get(target_id, (0.0, 0, 0))
-    gene_data = individual_rankings.get("gene_carried", {}).get(target_id, (0, 0, 0))
-    armory_data = individual_rankings.get("armory", {}).get(target_id, (0, 0, 0))
-    risk_data = individual_rankings.get("high_risk", {}).get(target_id, (0, 0, 0))
-    black_laurels_data = individual_rankings.get("black_laurels", {}).get(target_id, (0, 0, 0))
-    omega_kia_data = individual_rankings.get("omega_kia", {}).get(target_id, (0, 0, 0))
-
-    # Chapter ranking
-    ch_ops_data = chapter_rankings.get("ops", {}).get(home_chapter, (0, 0, 0))
-    ch_avg_data = chapter_rankings.get("avg", {}).get(home_chapter, (0.0, 0, 0))
-    ch_pres_data = chapter_rankings.get("pres", {}).get(home_chapter, (0, 0, 0))
-    ch_armory_val = chapter_rankings.get("armory", {}).get(home_chapter, (0, 0, 0))[0]
-    ch_gene_val = chapter_rankings.get("gene_carried", {}).get(home_chapter, (0, 0, 0))[0]
-    ch_risk_data = chapter_rankings.get("high_risk", {}).get(home_chapter, (0, 0, 0))
-    ch_aar_data = chapter_rankings.get("avg_aar_per_member", {}).get(home_chapter, (0.0, 0, 0))
-    ch_omega_kia_data = chapter_rankings.get("omega_kia", {}).get(home_chapter, (0, 0, 0))
-
-    # Kill team rankings
-    target_killteams = []
-    try:
-        target_killteams = _b("_resolve_killteams_for_member")(target)
-    except Exception:
-        pass
-
-    # Build Monthly Honours embed
-    honours_embed = discord.Embed(
-        title="᛭⋅ MONTHLY HONOURS ⋅᛭",
-        description=f"*⌾ {target_name} ⌾*\nMonth to Date ({mtd_span_days} Days)",
-        color=0x2ECC71,
-    )
-
-    # Individual distinctions
-    if ops_data[2] > 0:
-        omega_suffix = f" | KIA {int(omega_kia_data[0])}" if omega_kia_data[0] > 0 else ""
-        indiv_value = (
-            f"**Operations:** {int(ops_data[0])} (#{ops_data[1]}/{ops_data[2]})\n"
-            f"**Avg Pts/Op:** {avg_data[0]:.1f} (#{avg_data[1]}/{avg_data[2]})\n"
-            f"**Gene-seed:** {int(gene_data[0])} (#{gene_data[1]}/{gene_data[2]})\n"
-            f"**Armory:** {int(armory_data[0])} (#{armory_data[1]}/{armory_data[2]})\n"
-            f"**High-Risk:** {int(risk_data[0])}{omega_suffix} (#{risk_data[1]}/{risk_data[2]})\n"
-            f"**Black Laurels:** {int(black_laurels_data[0])} (#{black_laurels_data[1]}/{black_laurels_data[2]})"
-        )
-        # Compute overall rank as median of individual rankings
-        individual_ranks = []
-        if ops_data[2] > 0:
-            individual_ranks.append(ops_data[1])
-        if avg_data[2] > 0:
-            individual_ranks.append(avg_data[1])
-        if gene_data[2] > 0:
-            individual_ranks.append(gene_data[1])
-        if armory_data[2] > 0:
-            individual_ranks.append(armory_data[1])
-        if risk_data[2] > 0:
-            individual_ranks.append(risk_data[1])
-        if black_laurels_data[2] > 0:
-            individual_ranks.append(black_laurels_data[1])
-        if individual_ranks:
-            overall_rank = statistics.median(individual_ranks)
-            indiv_value += f"\n**Overall Rank:** #{overall_rank:.1f}"
-    else:
-        indiv_value = "No ranking data available"
-    honours_embed.add_field(name="▸ Individual Distinctions", value=indiv_value, inline=False)
-
-    # Chapter distinctions
-    chapter_emoji = (
-        _b("_get_emoji_by_name")(guild, home_chapter)
-        if guild and home_chapter and home_chapter not in ("Unknown", "REDACTED")
-        else None
-    )
-    chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
-    lineage_display = "REDACTED" if home_chapter == "Black Shield" else home_chapter
-
-    if ch_ops_data[2] > 0:
-        ch_omega_suffix = f" | KIA {int(ch_omega_kia_data[0])}" if ch_omega_kia_data[0] > 0 else ""
-        ch_value = (
-            f"**Operations:** {int(ch_ops_data[0])} (#{ch_ops_data[1]}/{ch_ops_data[2]})\n"
-            f"**Avg Pts/Op:** {ch_avg_data[0]:.1f} (#{ch_avg_data[1]}/{ch_avg_data[2]})\n"
-            f"**Armory + Gene:** (ArmoryPts {ch_armory_val:.1f} | GenePts {ch_gene_val:.1f}) — Rank #{ch_pres_data[1]}/{ch_pres_data[2]}\n"
-            f"**High-Risk:** {int(ch_risk_data[0])}{ch_omega_suffix} (#{ch_risk_data[1]}/{ch_risk_data[2]})\n"
-            f"**AARs/Member:** {ch_aar_data[0]:.1f} (#{ch_aar_data[1]}/{ch_aar_data[2]})"
-        )
-        # Compute overall rank as median of chapter rankings
-        chapter_ranks = []
-        if ch_ops_data[2] > 0:
-            chapter_ranks.append(ch_ops_data[1])
-        if ch_avg_data[2] > 0:
-            chapter_ranks.append(ch_avg_data[1])
-        if ch_pres_data[2] > 0:
-            chapter_ranks.append(ch_pres_data[1])
-        if ch_risk_data[2] > 0:
-            chapter_ranks.append(ch_risk_data[1])
-        if ch_aar_data[2] > 0:
-            chapter_ranks.append(ch_aar_data[1])
-        if chapter_ranks:
-            ch_overall_rank = statistics.median(chapter_ranks)
-            ch_value += f"\n**Overall Rank:** #{ch_overall_rank:.1f}"
-    else:
-        ch_value = "Below minimum threshold"
-    honours_embed.add_field(name=f"▸ {chapter_prefix}{lineage_display} Chapter", value=ch_value, inline=False)
-
-    # Kill Team distinctions
-    for kt_n in target_killteams:
-        kt_ops_data = team_rankings.get("ops", {}).get(kt_n, (0, 0, 0))
-        kt_avg_data = team_rankings.get("avg", {}).get(kt_n, (0.0, 0, 0))
-        kt_pres_data = team_rankings.get("pres", {}).get(kt_n, (0, 0, 0))
-        kt_armory_val = team_rankings.get("armory", {}).get(kt_n, (0, 0, 0))[0]
-        kt_gene_val = team_rankings.get("gene_carried", {}).get(kt_n, (0, 0, 0))[0]
-        kt_risk_data = team_rankings.get("high_risk", {}).get(kt_n, (0, 0, 0))
-        kt_aar_data = team_rankings.get("avg_aar_per_member", {}).get(kt_n, (0.0, 0, 0))
-        kt_cohesion_data = team_rankings.get("cohesion", {}).get(kt_n, (0.0, 0, 0))
-        kt_omega_kia_data = team_rankings.get("omega_kia", {}).get(kt_n, (0, 0, 0))
-
-        if kt_ops_data[2] > 0:
-            kt_omega_suffix = f" | KIA {int(kt_omega_kia_data[0])}" if kt_omega_kia_data[0] > 0 else ""
-            kt_value = (
-                f"**Operations:** {int(kt_ops_data[0])} (#{kt_ops_data[1]}/{kt_ops_data[2]})\n"
-                f"**Avg Pts/Op:** {kt_avg_data[0]:.1f} (#{kt_avg_data[1]}/{kt_avg_data[2]})\n"
-                f"**Armory + Gene:** (ArmoryPts {kt_armory_val:.1f} | GenePts {kt_gene_val:.1f}) — Rank #{kt_pres_data[1]}/{kt_pres_data[2]}\n"
-                f"**High-Risk:** {int(kt_risk_data[0])}{kt_omega_suffix} (#{kt_risk_data[1]}/{kt_risk_data[2]})\n"
-                f"**AARs/Member:** {kt_aar_data[0]:.1f} (#{kt_aar_data[1]}/{kt_aar_data[2]})\n"
-                f"**Cohesion:** {kt_cohesion_data[0]:.1f}% (#{kt_cohesion_data[1]}/{kt_cohesion_data[2]})"
-            )
-            # Compute overall rank as median of kill team rankings
-            kt_ranks = []
-            if kt_ops_data[2] > 0:
-                kt_ranks.append(kt_ops_data[1])
-            if kt_avg_data[2] > 0:
-                kt_ranks.append(kt_avg_data[1])
-            if kt_pres_data[2] > 0:
-                kt_ranks.append(kt_pres_data[1])
-            if kt_risk_data[2] > 0:
-                kt_ranks.append(kt_risk_data[1])
-            if kt_aar_data[2] > 0:
-                kt_ranks.append(kt_aar_data[1])
-            if kt_cohesion_data[2] > 0:
-                kt_ranks.append(kt_cohesion_data[1])
-            if kt_ranks:
-                kt_overall_rank = statistics.median(kt_ranks)
-                kt_value += f"\n**Overall Rank:** #{kt_overall_rank:.1f}"
-        else:
-            kt_value = "No ranking data available"
-        honours_embed.add_field(name=f"▸ {kt_n}", value=kt_value, inline=False)
-
-    honours_embed.set_footer(text=f"᛭⋅ Imperial Date: {imperial_date} ⋅᛭")
-
-    await interaction.followup.send(embed=honours_embed, ephemeral=True)
 
 
 @_g.bot.tree.command(name="combat_bonds", description="Show top Combat Bonds (global or for a Brother).")
@@ -8435,7 +7291,7 @@ __all__ = [
     "requeue_award",
     "pick_home_chapters",
     "tally_deeds",
-    "my_deeds",
+    "submit_portrait",
     "combat_bonds",
     "promotion_queue",
     "company_roster",
