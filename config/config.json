@@ -336,6 +336,11 @@
     "backup_count": 5
   },
   "debug": false,
+  "cascade_deadline_hours": {
+    "cascade_HC": 48,
+    "cascade_Company": 48,
+    "cascade_KT": 24
+  },
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,

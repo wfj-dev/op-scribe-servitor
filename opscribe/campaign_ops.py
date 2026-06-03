@@ -1745,7 +1745,13 @@ def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
 
 def _enter_cascade_phase(state: dict, phase: str) -> None:
     """Set the campaign phase to a cascade phase and record its deadline."""
-    deadline_hours = _CASCADE_DEADLINE_HOURS.get(phase, 48)
+    CONFIG = _b("CONFIG")
+    _hours_cfg = CONFIG.get("cascade_deadline_hours") if isinstance(CONFIG, dict) else None
+    deadline_hours = (
+        _hours_cfg.get(phase, _CASCADE_DEADLINE_HOURS.get(phase, 48))
+        if isinstance(_hours_cfg, dict)
+        else _CASCADE_DEADLINE_HOURS.get(phase, 48)
+    )
     state["campaign"]["phase"] = phase
     cascade = state.setdefault("cascade", {})
     cascade.setdefault("submissions", {})
@@ -2329,6 +2335,39 @@ class _CascadeChoiceView(discord.ui.View):
             self.add_item(_CascadeButton(opt_key, opt_val, role_key, phase, user_id))
 
 
+# Maps _decision key → readable in-universe phrase used in orders narrative
+_DECISION_PHRASES: Dict[str, str] = {
+    "theatre_order": "theatre posture",
+    "execution": "execution priority",
+    "company_order": "company mandate",
+    "directive": "field directive",
+    "doctrine": "chapter doctrine",
+    "sacred_directive": "sacred directive",
+    "sacred_mission": "sacred mission",
+    "medical_authority": "medicae authority",
+    "apothecary_purpose": "Apothecarion purpose",
+    "spiritual_decree": "spiritual decree",
+    "litany": "battle litany",
+    "hunt_priority": "hunt priority",
+    "psychic_decree": "psychic decree",
+    "psychic_angle": "angle of psychic engagement",
+    "strategic_intelligence": "strategic intelligence assessment",
+    "wardens_watch": "warden's watch designation",
+    "sentence": "sentence upon the enemy",
+    "ancients_will": "ancient's will",
+    "personal_focus": "personal focus",
+}
+
+# 5 opening lines — rotated by beat number so each beat has a consistent but distinct opener
+_ORDERS_OPENINGS = [
+    "Your orders arrive.",
+    "The cascade has reached you.",
+    "The chain of command delivers its word.",
+    "The cascade opens. Speak.",
+    "Mandate cut and sealed.",
+]
+
+
 def _compose_orders_narrative(
     state: dict,
     phase: str,
@@ -2338,19 +2377,29 @@ def _compose_orders_narrative(
 ) -> str:
     """Build contextual narrative for /campaign-orders based on campaign state.
 
-    Pulls upstream submission text, beat name, and the user's own role description
-    to compose a paragraph that reads like an in-universe situation report.
+    Pulls upstream submission text, campaign context, tag doctrine vocabulary,
+    and the user's own role description to compose an in-universe situation report.
     """
     _ensure_refs_loaded()
     cascade = state.get("cascade", {})
     submissions = cascade.get("submissions", {})
     enlistment = state.get("enlistment", {})
     campaign = state.get("campaign", {})
-    beat = campaign.get("beat", "?")
+    beat = campaign.get("beat") or "?"
+    campaign_name = campaign.get("name") or "The Campaign"
+    tag_vocab: Dict[str, str] = _CASCADE_OPTIONS.get("_tag_vocabulary", {})
 
     phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
     _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
     user_phase = _TIER_PHASE.get(tier)
+
+    # Beat-indexed opening
+    try:
+        beat_idx = int(beat)
+    except (ValueError, TypeError):
+        beat_idx = 0
+    opener = _ORDERS_OPENINGS[beat_idx % len(_ORDERS_OPENINGS)]
+    heading = f"**{campaign_name} — {beat_name}.** {opener}"
 
     # Collect upstream submissions visible to this user
     upstream: list[dict] = []
@@ -2372,77 +2421,144 @@ def _compose_orders_narrative(
                         "phase": cp,
                     })
 
-    # Role description for this user
+    # Role metadata
     rk_self = _ROLE_TO_CASCADE_KEY.get(role, "")
     role_meta = _CASCADE_OPTIONS.get(rk_self, {})
     role_desc = role_meta.get("_description", "")
+    role_decision_key = role_meta.get("_decision", "")
+    decision_phrase = _DECISION_PHRASES.get(
+        role_decision_key,
+        role_decision_key.replace("_", " ") if role_decision_key else "order",
+    )
+    role_desc_snip = role_desc.split(".")[0].strip() + "." if role_desc else ""
 
-    # Build upstream summary sentence
-    upstream_text = ""
-    if upstream:
-        parts = []
-        for u in upstream:
-            tier_label = u["phase"].replace("cascade_", "").upper()
-            desc_snip = u["description"].split(".")[0] if u["description"] else ""
-            if desc_snip:
-                parts.append(f"**{u['role']}** issued **{u['choice_name']}** — *{desc_snip}.*")
-            else:
-                parts.append(f"**{u['role']}** issued **{u['choice_name']}**.")
-        upstream_text = " ".join(parts) + " "
+    # Aggregate doctrine tags from upstream
+    tag_counts: Dict[str, int] = {}
+    for u in upstream:
+        for t in u["tags"]:
+            tag_counts[t] = tag_counts.get(t, 0) + 1
+    top_tags = sorted(tag_counts, key=lambda t: -tag_counts[t])[:3]
+    top_tag_bold = ", ".join(f"**{t}**" for t in top_tags)
 
-    # Determine if this is the user's active turn, waiting, or post-cascade
+    def _doctrine_summary(tags: list[str]) -> str:
+        """One-line doctrine direction from top tags using tag vocabulary."""
+        if not tags:
+            return ""
+        snippets = []
+        for t in tags[:2]:
+            entry = tag_vocab.get(t, "")
+            # Trim to the clause before a dash or period
+            short = entry.split("\u2014")[0].split(".")[0].strip().rstrip(",").lower()
+            if short:
+                snippets.append(short)
+        if not snippets:
+            return ""
+        if len(snippets) == 1:
+            return snippets[0]
+        return f"{snippets[0]}, with {snippets[1]}"
+
+    doctrine_line = _doctrine_summary(top_tags)
+
+    def _fmt_upstream_block(ups: list[dict]) -> str:
+        """Format upstream submissions as a labelled briefing block."""
+        lines = []
+        for u in ups:
+            desc_sentences = [s.strip() for s in u["description"].split(".") if s.strip()]
+            snip = desc_sentences[0] + "." if desc_sentences else ""
+            tag_str = ", ".join(u["tags"][:3])
+            line = f"\u2023 **{u['role']}** issued **{u['choice_name']}**"
+            if snip:
+                line += f" — *{snip}*"
+            if tag_str:
+                line += f" `[{tag_str}]`"
+            lines.append(line)
+        return "\n".join(lines)
+
+    # --- Branch: ops phase ---
     if phase == "ops":
-        dominant_tags = sorted(
-            set(t for sub in submissions.values() for t in sub.get("tags", [])),
-            key=lambda t: -sum(1 for s in submissions.values() if t in s.get("tags", []))
-        )
-        tag_str = ", ".join(dominant_tags[:3]) if dominant_tags else "mixed doctrine"
+        all_tags: list[str] = []
+        for sub in submissions.values():
+            all_tags.extend(sub.get("tags", []))
+        ops_counts: Dict[str, int] = {}
+        for t in all_tags:
+            ops_counts[t] = ops_counts.get(t, 0) + 1
+        ops_top = sorted(ops_counts, key=lambda t: -ops_counts[t])[:3]
+        ops_tag_bold = ", ".join(f"**{t}**" for t in ops_top) if ops_top else "mixed doctrine"
+        ops_doctrine = _doctrine_summary(ops_top)
+        doctrine_desc = f" — {ops_doctrine}" if ops_doctrine else ""
         return (
-            f"The cascade is sealed for **{beat_name}**. "
-            f"The combined doctrine points toward **{tag_str}** — your orders flow from the decisions made above. "
-            f"The ops window is open. Take the fight to the enemy."
+            f"{heading}\n\n"
+            f"The cascade is sealed. Doctrine for **{beat_name}**: {ops_tag_bold}{doctrine_desc}. "
+            f"The ops window is open. Your orders flow from the decisions above — take the fight to the enemy."
         )
 
     if not user_phase:
-        return f"Campaign is in **{phase}** phase — {beat_name}."
+        return f"**{campaign_name}** is in **{phase}** phase — {beat_name}."
 
     current_idx = phase_order.index(phase) if phase in phase_order else -1
     user_idx = phase_order.index(user_phase) if user_phase in phase_order else -1
 
+    # --- Branch: already submitted (tier above current phase) ---
     if user_idx < current_idx:
-        # This tier has already submitted
         own_sub = next(
             (s for s in submissions.values()
-             if s.get("phase") == user_phase and
-             _ROLE_TO_CASCADE_KEY.get(role, "") == s.get("role_key")),
+             if s.get("phase") == user_phase
+             and _ROLE_TO_CASCADE_KEY.get(role, "") == s.get("role_key")),
             None,
         )
         own_name = own_sub.get("choice_name", "your order") if own_sub else "your order"
+        doc_note = f" The cascade is trending {top_tag_bold} — {doctrine_line}." if doctrine_line else ""
         return (
-            f"{upstream_text}"
-            f"Your tier has spoken for **{beat_name}**. "
-            f"**{own_name}** has been committed to the cascade record. "
-            f"The orders now flow down to those below — your word stands."
+            f"{heading}\n\n"
+            f"Your tier has spoken. **{own_name}** is committed to the cascade record and cannot be withdrawn.{doc_note} "
+            f"The orders now flow to those below — your word stands."
         )
-    elif user_idx > current_idx:
-        # Waiting for tiers above to finish
+
+    # --- Branch: waiting (tier below current phase) ---
+    if user_idx > current_idx:
         above_label = phase.replace("cascade_", "").upper()
+        wait_line = (
+            "Brief your kill team. When Company speaks, your orders will follow."
+            if tier == "KT"
+            else "Read the situation. Prepare your formation."
+        )
+        if upstream:
+            upstream_section = (
+                f"**What has filtered down:**\n{_fmt_upstream_block(upstream)}\n\n"
+                f"Combined doctrine trends toward {top_tag_bold} — {doctrine_line}.\n\n"
+                if doctrine_line
+                else f"**What has filtered down:**\n{_fmt_upstream_block(upstream)}\n\n"
+            )
+        else:
+            upstream_section = "No orders have filtered down yet.\n\n"
         return (
-            f"{upstream_text}"
-            f"**{above_label}** is deliberating for **{beat_name}**. "
-            f"Your cascade window has not yet opened. "
-            f"{'Read the situation. Prepare your formation.' if tier == 'Company' else 'Brief your kill team. When Company speaks, your orders will follow.'}"
+            f"{heading}\n\n"
+            f"**{above_label}** is deliberating for **{beat_name}**. Your window has not yet opened.\n\n"
+            f"{upstream_section}"
+            f"{wait_line}"
+        )
+
+    # --- Branch: active — this tier's turn ---
+    if upstream:
+        upstream_section = (
+            f"**Orders received from above:**\n{_fmt_upstream_block(upstream)}\n\n"
+            f"Combined cascade doctrine: {top_tag_bold} — {doctrine_line}.\n\n"
+            if doctrine_line
+            else f"**Orders received from above:**\n{_fmt_upstream_block(upstream)}\n\n"
         )
     else:
-        # It's this tier's turn
-        role_blurb = role_desc.split(".")[0] if role_desc else ""
-        blurb_text = f" {role_blurb}." if role_blurb else ""
-        return (
-            f"{upstream_text}"
-            f"**{beat_name}** — your window is open.{blurb_text} "
-            f"Your doctrine choice enters the cascade record and shapes the ops pool for every brother below you. "
-            f"Choose deliberately."
+        upstream_section = (
+            "You are first in the cascade — no orders have filtered down. "
+            "The initiative rests with you.\n\n"
         )
+    mandate_line = (
+        f"Your mandate as **{role}**: {role_desc_snip}\n\n" if role_desc_snip else ""
+    )
+    close = (
+        f"Issue your **{decision_phrase}** — your choice enters the cascade record "
+        f"and shapes the ops pool for every brother below. Choose deliberately."
+    )
+    return f"{heading}\n\n{upstream_section}{mandate_line}{close}"
 
 
 def _cascade_peer_summary(state: dict, phase: str, enlistment: dict) -> str:
