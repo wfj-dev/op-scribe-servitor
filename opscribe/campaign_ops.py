@@ -1,0 +1,1832 @@
+"""Campaign system operations: enlistment, prestige, strat mandate, scenario
+generation, beat management, rewards, and slash commands."""
+
+import os
+import json
+import hashlib
+import random
+import asyncio
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Tuple
+import sys as _sys
+
+import discord
+from discord import app_commands
+
+from .constants import *  # noqa: F401,F403
+from . import _bot_globals as _g
+
+# ---------------------------------------------------------------------------
+# Reference data (loaded once at module import)
+# ---------------------------------------------------------------------------
+
+_REF_DIR = "reference"
+
+
+def _load_ref(filename: str) -> dict:
+    path = os.path.join(_REF_DIR, filename)
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+_STRATAGEMS: List[dict] = []
+_DOCTRINE_STRAT_MAP: dict = {}
+_SCENARIO_GEN: dict = {}
+_CASCADE_OPTIONS: dict = {}
+_REWARDS: dict = {}
+_MILESTONES: dict = {}
+_STRAT_MANDATE: dict = {}
+
+
+def _ensure_refs_loaded():
+    global _STRATAGEMS, _DOCTRINE_STRAT_MAP, _SCENARIO_GEN
+    global _CASCADE_OPTIONS, _REWARDS, _MILESTONES, _STRAT_MANDATE
+    if not _STRATAGEMS:
+        data = _load_ref("stratagems.json")
+        _STRATAGEMS = data.get("stratagems", [])
+    if not _DOCTRINE_STRAT_MAP:
+        _DOCTRINE_STRAT_MAP = _load_ref("doctrine_strat_map.json")
+    if not _SCENARIO_GEN:
+        _SCENARIO_GEN = _load_ref("scenario_generation.json")
+    if not _CASCADE_OPTIONS:
+        _CASCADE_OPTIONS = _load_ref("cascade_options.json")
+    if not _REWARDS:
+        _REWARDS = _load_ref("campaign_rewards.json")
+    if not _MILESTONES:
+        _MILESTONES = _load_ref("personal_milestones.json")
+    if not _STRAT_MANDATE:
+        _STRAT_MANDATE = _load_ref("strat_mandate.json")
+
+
+# ---------------------------------------------------------------------------
+# State load / save (atomic write with .bak)
+# ---------------------------------------------------------------------------
+
+
+def _load_campaign_state() -> dict:
+    try:
+        if os.path.exists(CAMPAIGN_STATE_PATH):
+            with open(CAMPAIGN_STATE_PATH, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_campaign_state(state: dict):
+    try:
+        tmp_path = CAMPAIGN_STATE_PATH + ".tmp"
+        bak_path = CAMPAIGN_STATE_PATH + ".bak"
+        with open(tmp_path, "w") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(CAMPAIGN_STATE_PATH):
+            try:
+                os.replace(CAMPAIGN_STATE_PATH, bak_path)
+            except Exception:
+                pass
+        os.replace(tmp_path, CAMPAIGN_STATE_PATH)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Bot module helper (test-mock compatible)
+# ---------------------------------------------------------------------------
+
+
+def _b(name):
+    """Resolve name via bot module for test-mock compatibility."""
+    m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
+    return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
+
+
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+
+_PRESTIGE_HARD_STRAT = 5
+_PRESTIGE_OMEGA = 20
+_PRESTIGE_WINDOW_DAYS = 28
+
+# difficulty_class values that qualify for campaign prestige
+_QUALIFYING_DIFFICULTY_CLASSES = {"hard_stratagem", "omega_ops"}
+
+# Prestige multipliers based on who the member ran with
+_MULTIPLIER_OWN_KT = 1.0
+_MULTIPLIER_WITHIN_COMPANY = 0.85
+_MULTIPLIER_OUTSIDE_COMPANY = 0.7
+
+_NOW = datetime.now
+
+
+def _utcnow() -> datetime:
+    return datetime.now(tz=timezone.utc)
+
+
+def _iso_now() -> str:
+    return _utcnow().isoformat()
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        return None
+
+
+def _entry_id() -> str:
+    """Generate a unique log entry ID from current timestamp + randomness."""
+    h = hashlib.sha1(f"{_utcnow().isoformat()}{random.random()}".encode()).hexdigest()
+    return h[:12]
+
+
+# ---------------------------------------------------------------------------
+# Enlistment
+# ---------------------------------------------------------------------------
+
+
+def _get_campaign_state_checked() -> Tuple[Optional[dict], Optional[str]]:
+    """Return (state, None) if campaign is active, else (None, error_msg)."""
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase == "inactive":
+        return None, "No campaign is currently active."
+    if phase in ("evaluating", "complete"):
+        return None, f"Campaign is in **{phase}** phase — enlistment is closed."
+    return state, None
+
+
+def enlist_member(
+    user_id: str,
+    discord_name: str,
+    chapter: str,
+    company_id: str,
+    tier: str,
+    role: str,
+    kt_sgt_id: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Enlist a member into the current campaign.
+
+    Returns (success, message).
+    """
+    state, err = _get_campaign_state_checked()
+    if err:
+        return False, err
+
+    enlistment = state.setdefault("enlistment", {})
+    existing = enlistment.get(user_id)
+    if existing and existing.get("active"):
+        return False, "You are already enlisted in the current campaign."
+
+    if tier == "KT" and not kt_sgt_id:
+        return False, "KT-tier members must provide their Sergeant's user ID."
+
+    if tier in ("Company", "HC") and not company_id:
+        return False, "Company and HC tier members must provide their company."
+
+    now = _iso_now()
+    enlistment[user_id] = {
+        "discord_name": discord_name,
+        "role": role,
+        "tier": tier,
+        "chapter": chapter,
+        "enlisted_at": now,
+        "active": True,
+        "last_aar_timestamp": None,
+        "auto_de_enlist_warning_sent": False,
+        "company_id": company_id if tier in ("Company", "KT") else None,
+        "kt_sgt_id": kt_sgt_id if tier == "KT" else None,
+        "operational_attachment": (
+            None
+            if tier == "KT"
+            else {
+                "attached_kt_sgt_id": None,
+                "attached_company_id": None,
+                "derived_at": None,
+                "shared_aars_with_kt": 0,
+            }
+        ),
+        "milestone_progress": {},
+    }
+
+    # Ensure kill_team entry exists for this member's KT if they are a KT-tier
+    if tier == "KT" and kt_sgt_id:
+        kill_teams = state.setdefault("kill_teams", {})
+        if kt_sgt_id not in kill_teams:
+            kill_teams[kt_sgt_id] = {
+                "sgt_discord_name": "",
+                "display_name": f"Sgt {discord_name}'s Kill Team" if role == "Watch Sergeant" else f"Kill Team",
+                "company_id": company_id,
+                "title": None,
+                "title_granted_by": None,
+                "title_granted_at": None,
+                "honour": [],
+                "ribbon": None,
+                "lore_priority": False,
+                "prestige_window_total": 0,
+                "last_prestige_check": None,
+                "prestige_log": [],
+            }
+            if role == "Watch Sergeant":
+                kill_teams[kt_sgt_id]["sgt_discord_name"] = discord_name
+
+    _save_campaign_state(state)
+    company_label = f" ({company_id.capitalize()})" if company_id else ""
+    return True, (
+        f"Enlisted successfully.\n"
+        f"**Chapter:** {chapter} | **Tier:** {tier} | **Company:** {company_id or 'N/A'}{company_label}"
+    )
+
+
+def de_enlist_member(user_id: str) -> Tuple[bool, str]:
+    """Voluntarily de-enlist a member. Milestone progress is preserved."""
+    state = _load_campaign_state()
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+    if not record or not record.get("active"):
+        return False, "You are not currently enlisted."
+    record["active"] = False
+    _save_campaign_state(state)
+    return True, "De-enlisted. Your milestone progress is saved and can be resumed if you re-enlist before campaign end."
+
+
+# ---------------------------------------------------------------------------
+# Campaign log
+# ---------------------------------------------------------------------------
+
+
+def log_campaign_entry(
+    user_id: str,
+    terminus_killed: bool,
+    strats_active: Optional[List[str]] = None,
+) -> Tuple[bool, str, Optional[dict]]:
+    """Submit a campaign log entry linked to the member's most recent qualifying AAR.
+
+    Returns (success, message, entry_dict_or_None).
+    """
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase not in ("ops",):
+        return False, f"Campaign log submissions are only accepted during the **ops** phase (current: {phase}).", None
+
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+    if not record or not record.get("active"):
+        return False, "You must be enlisted to submit a campaign log.", None
+
+    ops_window = state.get("ops_window", {})
+    closes_at = _parse_iso(ops_window.get("closes_at"))
+    if closes_at and _utcnow() >= closes_at:
+        return False, "The ops window has closed. Campaign log submissions are blocked during beat resolution.", None
+
+    # Find most recent qualifying AAR for this user
+    aar_record = _find_latest_qualifying_aar(user_id)
+    if not aar_record:
+        return False, "No qualifying AAR found for your account in the current campaign window. Complete a hard stratagem or omega op first.", None
+
+    campaign_log = state.setdefault("campaign_log", {})
+    # Check for duplicate submission against the same AAR
+    aar_id = str(aar_record.get("aar_id", ""))
+    for entry in campaign_log.values():
+        if isinstance(entry, dict) and entry.get("aar_id") == aar_id and entry.get("submitted_by") == user_id:
+            return False, "You have already submitted a campaign log for this AAR.", None
+
+    # Infer beat from campaign state
+    beat = state.get("campaign", {}).get("beat")
+
+    # Build entry
+    entry_id = _entry_id()
+    mission_name = _parse_mission_name(aar_record.get("mission", ""))
+    difficulty_class = aar_record.get("difficulty_class", "")
+    is_omega = difficulty_class == "omega_ops"
+
+    entry = {
+        "entry_id": entry_id,
+        "submitted_by": user_id,
+        "submitted_at": _iso_now(),
+        "aar_id": aar_id,
+        "aar_timestamp": aar_record.get("timestamp"),
+        "mission_name": mission_name,
+        "difficulty_class": difficulty_class,
+        "beat": beat,
+        "terminus_killed": terminus_killed,
+        "is_omega": is_omega,
+        "strats_active": strats_active or [],
+    }
+    campaign_log[entry_id] = entry
+
+    # Update last_aar_timestamp
+    record["last_aar_timestamp"] = aar_record.get("timestamp")
+
+    # Award prestige to the member's KT
+    _credit_prestige_for_entry(state, user_id, record, entry, aar_record)
+
+    # Update milestone progress
+    _update_milestone_progress(state, user_id, record, entry, aar_record)
+
+    # If terminus killed, record it
+    if terminus_killed:
+        ops_window.setdefault("terminus_calls", [])
+        ops_window["terminus_calls"].append({
+            "user_id": user_id,
+            "entry_id": entry_id,
+            "reported_at": _iso_now(),
+        })
+
+    _save_campaign_state(state)
+    return True, (
+        f"Campaign log submitted.\n"
+        f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Beat:** {beat or 'unknown'}"
+        + (" | Terminus kill recorded." if terminus_killed else "")
+    ), entry
+
+
+def _find_latest_qualifying_aar(user_id: str) -> Optional[dict]:
+    """Find the most recent hard_stratagem or omega_ops AAR involving user_id."""
+    try:
+        with open(AAR_RECORDS_PATH, "r") as f:
+            records = json.load(f)
+    except Exception:
+        return None
+
+    state = _load_campaign_state()
+    campaign = state.get("campaign", {})
+    started_at = _parse_iso(campaign.get("started_at"))
+    window_cutoff = started_at or (_utcnow() - timedelta(days=_PRESTIGE_WINDOW_DAYS))
+
+    qualifying = []
+    for rec in records.values():
+        if rec.get("difficulty_class") not in _QUALIFYING_DIFFICULTY_CLASSES:
+            continue
+        if user_id not in rec.get("brother_ids", []):
+            continue
+        ts = _parse_iso(rec.get("timestamp"))
+        if ts and ts >= window_cutoff:
+            qualifying.append(rec)
+
+    if not qualifying:
+        return None
+    qualifying.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    return qualifying[0]
+
+
+def _parse_mission_name(raw: str) -> str:
+    """Strip Discord role mentions from mission name."""
+    import re
+    return re.sub(r"<[^>]+>", "", raw).strip()
+
+
+def _credit_prestige_for_entry(
+    state: dict,
+    user_id: str,
+    enlistment_record: dict,
+    entry: dict,
+    aar_record: dict,
+):
+    """Credit prestige to the appropriate kill team for this log entry."""
+    is_omega = entry.get("is_omega")
+    base_amount = _PRESTIGE_OMEGA if is_omega else _PRESTIGE_HARD_STRAT
+
+    tier = enlistment_record.get("tier")
+    kt_sgt_id = enlistment_record.get("kt_sgt_id")
+    member_company = enlistment_record.get("company_id")
+
+    # Determine which KT receives prestige and at what multiplier
+    target_kt = None
+    multiplier = _MULTIPLIER_OWN_KT
+
+    if tier == "KT" and kt_sgt_id:
+        target_kt = kt_sgt_id
+        multiplier = _MULTIPLIER_OWN_KT
+    elif tier in ("Company", "HC"):
+        # Derive operational attachment from most common co-runner in last 28 days
+        attachment = enlistment_record.get("operational_attachment") or {}
+        attached_sgt = attachment.get("attached_kt_sgt_id")
+        attached_company = attachment.get("attached_company_id")
+        if attached_sgt:
+            # Is the attached KT in the same company?
+            kill_teams = state.get("kill_teams", {})
+            kt_data = kill_teams.get(attached_sgt, {})
+            kt_company = kt_data.get("company_id")
+            if member_company and kt_company == member_company:
+                multiplier = _MULTIPLIER_WITHIN_COMPANY
+            else:
+                multiplier = _MULTIPLIER_OUTSIDE_COMPANY
+            target_kt = attached_sgt
+        else:
+            # No attachment found — no KT prestige credited
+            return
+
+    if not target_kt:
+        return
+
+    kill_teams = state.setdefault("kill_teams", {})
+    kt = kill_teams.get(target_kt)
+    if not kt:
+        return
+
+    credited = round(base_amount * multiplier)
+
+    prestige_entry = {
+        "earned_at": entry.get("aar_timestamp") or entry.get("submitted_at"),
+        "member_id": user_id,
+        "base_amount": base_amount,
+        "multiplier": multiplier,
+        "credited_amount": credited,
+        "campaign_log_entry_id": entry["entry_id"],
+    }
+    kt.setdefault("prestige_log", []).append(prestige_entry)
+
+
+# ---------------------------------------------------------------------------
+# Prestige computation
+# ---------------------------------------------------------------------------
+
+
+def compute_kt_prestige(kt_sgt_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS) -> int:
+    """Return rolling window prestige total for a kill team.
+
+    Sums credited_amount for all prestige_log entries within the window.
+    """
+    state = _load_campaign_state()
+    kt = state.get("kill_teams", {}).get(kt_sgt_id)
+    if not kt:
+        return 0
+
+    cutoff = _utcnow() - timedelta(days=window_days)
+    total = 0
+    for entry in kt.get("prestige_log", []):
+        earned = _parse_iso(entry.get("earned_at"))
+        if earned and earned >= cutoff:
+            total += entry.get("credited_amount", 0)
+    return total
+
+
+def compute_company_prestige(company_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS) -> int:
+    """Return rolling window prestige for a company.
+
+    Sum of each KT's prestige (capped at 25% per KT) for KTs belonging to this company.
+    """
+    state = _load_campaign_state()
+    kill_teams = state.get("kill_teams", {})
+    total = 0
+    for sgt_id, kt in kill_teams.items():
+        if kt.get("company_id") != company_id:
+            continue
+        kt_total = compute_kt_prestige(sgt_id, window_days)
+        # Cap KT contribution at 25% of their rolling total
+        company_contribution = round(kt_total * 0.25)
+        total += company_contribution
+    return total
+
+
+def refresh_prestige_cache(state: Optional[dict] = None) -> dict:
+    """Recompute and cache prestige totals for all kill teams and companies.
+
+    Returns the updated state.
+    """
+    if state is None:
+        state = _load_campaign_state()
+    now_iso = _iso_now()
+
+    # KTs
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        kt["prestige_window_total"] = compute_kt_prestige(sgt_id)
+        kt["last_prestige_check"] = now_iso
+
+    # Companies
+    for company_id, company in state.get("companies", {}).items():
+        company["prestige_window_total"] = compute_company_prestige(company_id)
+        company["last_prestige_check"] = now_iso
+
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Reward checks (hysteresis: acquire > retain threshold)
+# ---------------------------------------------------------------------------
+
+# KT numeric thresholds
+_KT_RIBBON_ACTIVE_ACQUIRE = 100
+_KT_RIBBON_ACTIVE_RETAIN = 60
+_KT_TITLE_ACQUIRE = 250
+_KT_TITLE_RETAIN = 150
+_KT_HONOUR_STALWART_ACQUIRE = 550
+_KT_HONOUR_STALWART_RETAIN = 350
+_KT_LORE_FLOOR = 180
+_KT_LORE_RETAIN = 100
+
+# Company numeric thresholds
+_CO_RIBBON_ACTIVE_ACQUIRE = 200
+_CO_RIBBON_ACTIVE_RETAIN = 120
+_CO_TITLE_ACQUIRE = 500
+_CO_TITLE_RETAIN = 300
+_CO_HONOUR_STALWART_ACQUIRE = 1000
+_CO_HONOUR_STALWART_RETAIN = 650
+_CO_LORE_FLOOR = 350
+_CO_LORE_RETAIN = 200
+
+
+def check_kt_ribbon_active(kt_sgt_id: str, state: dict) -> bool:
+    """Return True if KT meets condition for kt_ribbon_active (hysteresis)."""
+    kt = state.get("kill_teams", {}).get(kt_sgt_id, {})
+    prestige = kt.get("prestige_window_total", 0)
+    current = kt.get("ribbon") == "kt_ribbon_active"
+    if current:
+        return prestige >= _KT_RIBBON_ACTIVE_RETAIN
+    return prestige >= _KT_RIBBON_ACTIVE_ACQUIRE
+
+
+def check_reward_thresholds(state: dict) -> dict:
+    """Check and update automatic ribbon and honour awards for all KTs and companies.
+
+    Mutates state in place. Returns state.
+    """
+    now_iso = _iso_now()
+
+    # --- Kill team ribbons (numeric threshold) ---
+    all_kt_prestige = {
+        sgt_id: kt.get("prestige_window_total", 0)
+        for sgt_id, kt in state.get("kill_teams", {}).items()
+    }
+
+    # kt_ribbon_active: numeric hysteresis
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        prestige = all_kt_prestige.get(sgt_id, 0)
+        current = kt.get("ribbon") == "kt_ribbon_active"
+        if current:
+            qualifies = prestige >= _KT_RIBBON_ACTIVE_RETAIN
+        else:
+            qualifies = prestige >= _KT_RIBBON_ACTIVE_ACQUIRE
+        if qualifies and not current:
+            kt["ribbon"] = "kt_ribbon_active"
+        elif not qualifies and current:
+            kt["ribbon"] = None
+
+    # kt_ribbon_omega: relative — KT with most omega ops (min 2)
+    kt_omega_counts = _count_kt_omega_ops(state)
+    top_omega = max(kt_omega_counts.values(), default=0)
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        current_is_omega = kt.get("ribbon") == "kt_ribbon_omega"
+        count = kt_omega_counts.get(sgt_id, 0)
+        qualifies = (count == top_omega and top_omega >= 2)
+        if qualifies and not current_is_omega:
+            if kt.get("ribbon") in (None, "kt_ribbon_active"):
+                kt["ribbon"] = "kt_ribbon_omega"
+        elif not qualifies and current_is_omega:
+            kt["ribbon"] = None
+
+    # kt_ribbon_vanguard: relative — KT with most total ops (min 5)
+    kt_op_counts = _count_kt_total_ops(state)
+    top_ops = max(kt_op_counts.values(), default=0)
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        current_is_vanguard = kt.get("ribbon") == "kt_ribbon_vanguard"
+        count = kt_op_counts.get(sgt_id, 0)
+        qualifies = (count == top_ops and top_ops >= 5)
+        if qualifies and not current_is_vanguard:
+            if kt.get("ribbon") in (None, "kt_ribbon_active"):
+                kt["ribbon"] = "kt_ribbon_vanguard"
+        elif not qualifies and current_is_vanguard:
+            kt["ribbon"] = None
+
+    # kt_honour_stalwart: numeric hysteresis
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        prestige = all_kt_prestige.get(sgt_id, 0)
+        current = "kt_honour_stalwart" in (kt.get("honour") or [])
+        if current:
+            qualifies = prestige >= _KT_HONOUR_STALWART_RETAIN
+        else:
+            qualifies = prestige >= _KT_HONOUR_STALWART_ACQUIRE
+        honours = kt.setdefault("honour", [])
+        if qualifies and not current:
+            honours.append("kt_honour_stalwart")
+        elif not qualifies and current:
+            try:
+                honours.remove("kt_honour_stalwart")
+            except ValueError:
+                pass
+
+    # --- Company ribbons ---
+    all_co_prestige = {
+        company_id: co.get("prestige_window_total", 0)
+        for company_id, co in state.get("companies", {}).items()
+    }
+
+    # co_ribbon_active: numeric hysteresis
+    for company_id, company in state.get("companies", {}).items():
+        prestige = all_co_prestige.get(company_id, 0)
+        current = company.get("ribbon") == "co_ribbon_active"
+        if current:
+            qualifies = prestige >= _CO_RIBBON_ACTIVE_RETAIN
+        else:
+            qualifies = prestige >= _CO_RIBBON_ACTIVE_ACQUIRE
+        if qualifies and not current:
+            company["ribbon"] = "co_ribbon_active"
+        elif not qualifies and current:
+            company["ribbon"] = None
+
+    # co_ribbon_vanguard: relative — most total ops (min 15)
+    co_op_counts = _count_company_total_ops(state)
+    top_co_ops = max(co_op_counts.values(), default=0)
+    for company_id, company in state.get("companies", {}).items():
+        current_is_vanguard = company.get("ribbon") == "co_ribbon_vanguard"
+        count = co_op_counts.get(company_id, 0)
+        qualifies = (count == top_co_ops and top_co_ops >= 15)
+        if qualifies and not current_is_vanguard:
+            if company.get("ribbon") in (None, "co_ribbon_active"):
+                company["ribbon"] = "co_ribbon_vanguard"
+        elif not qualifies and current_is_vanguard:
+            company["ribbon"] = None
+
+    # co_honour_stalwart: numeric hysteresis
+    for company_id, company in state.get("companies", {}).items():
+        prestige = all_co_prestige.get(company_id, 0)
+        current = company.get("honour") == "co_honour_stalwart"
+        if current:
+            qualifies = prestige >= _CO_HONOUR_STALWART_RETAIN
+        else:
+            qualifies = prestige >= _CO_HONOUR_STALWART_ACQUIRE
+        if qualifies and not current:
+            company["honour"] = "co_honour_stalwart"
+        elif not qualifies and current:
+            company["honour"] = None
+
+    return state
+
+
+def _count_kt_omega_ops(state: dict) -> Dict[str, int]:
+    """Return {sgt_id: omega_op_count} from campaign_log."""
+    counts: Dict[str, int] = {}
+    enlistment = state.get("enlistment", {})
+    for entry in state.get("campaign_log", {}).values():
+        if not isinstance(entry, dict) or not entry.get("is_omega"):
+            continue
+        submitter = entry.get("submitted_by")
+        rec = enlistment.get(submitter)
+        if rec:
+            sgt = rec.get("kt_sgt_id")
+            if sgt:
+                counts[sgt] = counts.get(sgt, 0) + 1
+    return counts
+
+
+def _count_kt_total_ops(state: dict) -> Dict[str, int]:
+    """Return {sgt_id: total_op_count} from campaign_log."""
+    counts: Dict[str, int] = {}
+    enlistment = state.get("enlistment", {})
+    for entry in state.get("campaign_log", {}).values():
+        if not isinstance(entry, dict):
+            continue
+        submitter = entry.get("submitted_by")
+        rec = enlistment.get(submitter)
+        if rec:
+            sgt = rec.get("kt_sgt_id")
+            if sgt:
+                counts[sgt] = counts.get(sgt, 0) + 1
+    return counts
+
+
+def _count_company_total_ops(state: dict) -> Dict[str, int]:
+    """Return {company_id: total_op_count} from campaign_log."""
+    counts: Dict[str, int] = {}
+    enlistment = state.get("enlistment", {})
+    for entry in state.get("campaign_log", {}).values():
+        if not isinstance(entry, dict):
+            continue
+        submitter = entry.get("submitted_by")
+        rec = enlistment.get(submitter)
+        if rec:
+            company_id = rec.get("company_id")
+            if company_id:
+                counts[company_id] = counts.get(company_id, 0) + 1
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Lore priority
+# ---------------------------------------------------------------------------
+
+
+def update_lore_priority(state: Optional[dict] = None, save: bool = True) -> dict:
+    """Recompute and update lore_priority for top KT and company.
+
+    Floors: KT >= 180 (retain 100), company >= 350 (retain 200).
+    """
+    if state is None:
+        state = _load_campaign_state()
+
+    now_iso = _iso_now()
+    lp = state.setdefault("lore_priority", {"kill_team": {}, "company": {}})
+
+    # --- Kill team ---
+    current_kt = lp.get("kill_team", {}).get("sgt_user_id")
+    best_sgt = None
+    best_sgt_prestige = 0
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        p = kt.get("prestige_window_total", 0)
+        if p > best_sgt_prestige:
+            best_sgt_prestige = p
+            best_sgt = sgt_id
+
+    # Hysteresis: if already held, retain floor; else acquire floor
+    if current_kt and current_kt == best_sgt:
+        kt_qualifies = best_sgt_prestige >= _KT_LORE_RETAIN
+    else:
+        kt_qualifies = best_sgt_prestige >= _KT_LORE_FLOOR
+
+    if kt_qualifies and best_sgt:
+        kt_data = state.get("kill_teams", {}).get(best_sgt, {})
+        if lp.get("kill_team", {}).get("sgt_user_id") != best_sgt:
+            lp["kill_team"] = {
+                "sgt_user_id": best_sgt,
+                "display_name": kt_data.get("display_name"),
+                "prestige": best_sgt_prestige,
+                "held_since": now_iso,
+            }
+        else:
+            lp["kill_team"]["prestige"] = best_sgt_prestige
+    else:
+        lp["kill_team"] = {"sgt_user_id": None, "display_name": None, "prestige": None, "held_since": None}
+
+    # Sync lore_priority flag on kill teams
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        kt["lore_priority"] = (lp["kill_team"].get("sgt_user_id") == sgt_id)
+
+    # --- Company ---
+    current_co = lp.get("company", {}).get("company_id")
+    best_co = None
+    best_co_prestige = 0
+    for company_id, company in state.get("companies", {}).items():
+        p = company.get("prestige_window_total", 0)
+        if p > best_co_prestige:
+            best_co_prestige = p
+            best_co = company_id
+
+    if current_co and current_co == best_co:
+        co_qualifies = best_co_prestige >= _CO_LORE_RETAIN
+    else:
+        co_qualifies = best_co_prestige >= _CO_LORE_FLOOR
+
+    if co_qualifies and best_co:
+        co_data = state.get("companies", {}).get(best_co, {})
+        if lp.get("company", {}).get("company_id") != best_co:
+            lp["company"] = {
+                "company_id": best_co,
+                "display_name": co_data.get("display_name"),
+                "prestige": best_co_prestige,
+                "held_since": now_iso,
+            }
+        else:
+            lp["company"]["prestige"] = best_co_prestige
+    else:
+        lp["company"] = {"company_id": None, "display_name": None, "prestige": None, "held_since": None}
+
+    # Sync lore_priority flag on companies
+    for company_id, company in state.get("companies", {}).items():
+        company["lore_priority"] = (lp["company"].get("company_id") == company_id)
+
+    if save:
+        _save_campaign_state(state)
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Strat mandate scoring (doctrine_strat_map.json algorithm)
+# ---------------------------------------------------------------------------
+
+
+def score_strats_against_aggregate(
+    doctrine_aggregate: Dict[str, float],
+    include_blacklisted: bool = False,
+) -> List[Tuple[str, float, dict]]:
+    """Score all eligible stratagems against a doctrine tag aggregate.
+
+    Returns list of (strat_name, score, strat_dict) sorted by score descending.
+
+    Algorithm:
+      1. Aggregate doctrine tags (provided as input).
+      2. For each non-excluded strat, look up its game_tags in doctrine_families.
+         For each game_tag, find all doctrine families that include that tag
+         and score: doctrine_value * tag_weight.
+         Terminus tags get 1.5x multiplier on the terminus doctrine score.
+      3. Sum scores across all tags.
+      4. Filter out blacklisted strats (unless include_blacklisted=True).
+      5. Return sorted list.
+    """
+    _ensure_refs_loaded()
+
+    blacklist = set(_DOCTRINE_STRAT_MAP.get("pool_blacklist", {}).get("entries", {}).keys())
+
+    # Build reverse map: game_tag -> [(doctrine_family, weight)]
+    tag_to_families: Dict[str, List[Tuple[str, float]]] = {}
+    for family, fdata in _DOCTRINE_STRAT_MAP.get("doctrine_families", {}).items():
+        if family.startswith("_"):
+            continue
+        for tag, weight in fdata.get("strat_game_tags", {}).items():
+            tag_to_families.setdefault(tag, []).append((family, weight))
+
+    # Score strats
+    results = []
+    for strat in _STRATAGEMS:
+        if strat.get("excluded"):
+            continue
+        name = strat.get("name", "")
+        if not include_blacklisted and name in blacklist:
+            continue
+        score = 0.0
+        for game_tag in strat.get("tags", []):
+            for (family, weight) in tag_to_families.get(game_tag, []):
+                doctrine_val = doctrine_aggregate.get(family, 0.0)
+                # terminus family gets 1.5x bonus when tag maps to terminus
+                effective_weight = weight * (1.5 if family == "terminus" else 1.0)
+                score += doctrine_val * effective_weight
+        results.append((name, score, strat))
+
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results
+
+
+def _build_conflict_set(pool: List[str]) -> Dict[str, set]:
+    """Return {strat_name: set_of_blocked_names} for all strats in pool."""
+    _ensure_refs_loaded()
+    s_data = {s["name"]: s for s in _STRATAGEMS}
+    conflict_map = {}
+    strat_ref_cm = {}
+    # Load conflict map from stratagems.json
+    for strat_record in _STRATAGEMS:
+        if strat_record.get("name"):
+            pass  # We'll pull from _DOCTRINE_STRAT_MAP indirectly
+
+    # Actually load from stratagems.json via the module-level load
+    ref_strats = _load_ref("stratagems.json")
+    cat_groups = ref_strats.get("conflict_map", {}).get("category_groups", {})
+    specific = ref_strats.get("conflict_map", {}).get("specific_conflicts", {})
+
+    blocked: Dict[str, set] = {name: set() for name in pool}
+
+    # Category groups: all pairs within a group block each other
+    for group in cat_groups.values():
+        members = [m for m in group.get("members", []) if m in blocked]
+        for i, a in enumerate(members):
+            for b in members[i + 1:]:
+                blocked[a].add(b)
+                blocked[b].add(a)
+
+    # Specific conflicts (bidirectional)
+    for strat_name, info in specific.items():
+        if strat_name.startswith("_"):
+            continue
+        for blocked_strat in info.get("blocks", []):
+            if strat_name in blocked:
+                blocked[strat_name].add(blocked_strat)
+            if blocked_strat in blocked:
+                blocked[blocked_strat].add(strat_name)
+
+    return blocked
+
+
+def derive_strat_mandate(
+    doctrine_aggregate: Dict[str, float],
+    confirmed_pool: List[str],
+    state: Optional[dict] = None,
+) -> dict:
+    """Derive theatre, company, and KT mandates from the confirmed strat pool.
+
+    Returns:
+      {
+        'theatre_mandate': str,
+        'company_mandates': {company_id: str},
+        'kt_mandates': {sgt_user_id: str},
+      }
+    """
+    _ensure_refs_loaded()
+    if state is None:
+        state = _load_campaign_state()
+
+    scored = score_strats_against_aggregate(doctrine_aggregate)
+    # Filter to confirmed pool only
+    pool_set = set(confirmed_pool)
+    scored = [(name, score, strat) for name, score, strat in scored if name in pool_set]
+
+    conflict_set = _build_conflict_set(confirmed_pool)
+    mandated: List[str] = []
+
+    def _pick_next(exclude: set) -> Optional[str]:
+        """Pick highest-scoring strat not in exclude and not conflicting with mandated."""
+        for name, score, strat in scored:
+            if name in exclude:
+                continue
+            # Check no conflict with already-mandated strats
+            conflicts_with_mandated = any(
+                name in conflict_set.get(m, set()) for m in mandated
+            )
+            if conflicts_with_mandated:
+                continue
+            return name
+        return None
+
+    # Theatre mandate: driven by HC aggregate
+    theatre_strat = _pick_next(set())
+    if theatre_strat:
+        mandated.append(theatre_strat)
+
+    # Company mandates: one per active company (excluding theatre strat)
+    company_mandates = {}
+    for company_id in state.get("companies", {}).keys():
+        exclude = set(mandated)
+        company_strat = _pick_next(exclude)
+        if company_strat and company_strat not in mandated:
+            mandated.append(company_strat)
+            company_mandates[company_id] = company_strat
+        elif company_strat:
+            company_mandates[company_id] = company_strat
+
+    # KT mandates: one per active KT
+    kt_mandates = {}
+    for sgt_id in state.get("kill_teams", {}).keys():
+        exclude = set(mandated)
+        kt_strat = _pick_next(exclude)
+        if kt_strat:
+            kt_mandates[sgt_id] = kt_strat
+
+    return {
+        "theatre_mandate": theatre_strat,
+        "company_mandates": company_mandates,
+        "kt_mandates": kt_mandates,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Scenario generation
+# ---------------------------------------------------------------------------
+
+
+def generate_beat_scenario(
+    node_id: str,
+    node_type: str,
+    region: Optional[str],
+    current_pressure: int,
+    beat_seed: Optional[int] = None,
+) -> dict:
+    """Generate a scenario for a node for the upcoming beat.
+
+    Returns a scenario dict matching the output_scenario schema in scenario_generation.json.
+    """
+    _ensure_refs_loaded()
+    sg = _SCENARIO_GEN
+
+    rng = random.Random(beat_seed) if beat_seed is not None else random.Random()
+
+    node_affinity = sg.get("node_type_affinity", {})
+    region_modifier = sg.get("region_modifier", {})
+    pressure_rules = sg.get("pressure_rules", {}).get("pressure_thresholds", {})
+    pressure_steps = sg.get("pressure_rules", {}).get("terminus_intel_steps", ["none", "suspected", "known"])
+    pmt = sg.get("pressure_modifier_table", {})
+    mission_bias = sg.get("mission_bias_table", {})
+    codename_pools = sg.get("codename_pools", {})
+    narrative_templates = sg.get("narrative_templates", {})
+
+    # Step 1: Base dominant tags from node type
+    nta = node_affinity.get(node_type, {})
+    base_tags = list(nta.get("dominant_tags", ["aggressive", "recovery"]))
+    terminus_affinity = nta.get("terminus_affinity", "low")
+
+    # Step 2: Region modifier — push secondary tag
+    if region:
+        rm = region_modifier.get(region, {})
+        pushed_tag = rm.get("push_tag")
+        if pushed_tag and len(base_tags) >= 2:
+            base_tags[1] = pushed_tag
+
+    # Step 3: Pressure modifier on tags and terminus_intel
+    pressure_key = "4+" if current_pressure >= 4 else str(current_pressure)
+    pr = pressure_rules.get(pressure_key, {})
+    pushed_by_pressure = pr.get("tag_push")
+    if pushed_by_pressure:
+        if len(base_tags) >= 2:
+            base_tags[1] = pushed_by_pressure
+        else:
+            base_tags.append(pushed_by_pressure)
+
+    # Step 4: Base terminus intel
+    affinity_map = {"low": 0.2, "medium": 0.5, "high": 0.8}
+    affinity_prob = affinity_map.get(terminus_affinity, 0.3)
+    roll = rng.random()
+    if roll < affinity_prob * 0.5:
+        base_terminus = "known"
+    elif roll < affinity_prob:
+        base_terminus = "suspected"
+    else:
+        base_terminus = "none"
+
+    # Apply pressure terminus modifier
+    intel_mod = pr.get("terminus_intel_modifier", "none")
+    terminus_intel = base_terminus
+    if intel_mod == "force_known":
+        terminus_intel = "known"
+    elif intel_mod == "+1_step":
+        idx = pressure_steps.index(base_terminus) if base_terminus in pressure_steps else 0
+        terminus_intel = pressure_steps[min(idx + 1, len(pressure_steps) - 1)]
+
+    # If terminus intel is suspected/known, push secondary tag to terminus
+    if terminus_intel in ("suspected", "known") and len(base_tags) >= 2:
+        base_tags[1] = "terminus"
+
+    # Step 5: Pressure modifier (what Watch presence achieves)
+    pressure_modifier = pmt.get(node_type, 0)
+
+    # Step 6: Mission bias
+    tag_key = f"{base_tags[0]}+{base_tags[1]}" if len(base_tags) >= 2 else base_tags[0]
+    bias = mission_bias.get(tag_key)
+    if not bias:
+        # Try reversed
+        if len(base_tags) >= 2:
+            bias = mission_bias.get(f"{base_tags[1]}+{base_tags[0]}")
+    if not bias:
+        bias = mission_bias.get("_fallback", [1, 7])
+
+    # Step 7: Codename
+    adjective_pool = codename_pools.get("adjectives", {})
+    noun_pool = codename_pools.get("nouns", {})
+    primary_tag = base_tags[0] if base_tags else "aggressive"
+    secondary_tag = base_tags[1] if len(base_tags) >= 2 else "recovery"
+    adj_list = adjective_pool.get(primary_tag) or adjective_pool.get("_default", ["DARK"])
+    noun_list = noun_pool.get(secondary_tag) or noun_pool.get("_default", ["VIGIL"])
+    adjective = rng.choice(adj_list)
+    noun = rng.choice(noun_list)
+    codename = f"{adjective} {noun}"
+
+    # Step 8: Narrative template
+    templates = narrative_templates.get(node_type, [])
+    if templates:
+        template_entry = rng.choice(templates)
+        narrative_raw = template_entry.get("text", "") if isinstance(template_entry, dict) else str(template_entry)
+        narrative = narrative_raw.replace("{node}", node_id)
+    else:
+        narrative = f"The Watch deploys to {node_id}."
+
+    # Build scenario_id
+    beat_num = _load_campaign_state().get("campaign", {}).get("beat") or 0
+    scenario_id = f"{node_id.lower().replace(' ', '_')}_b{beat_num}_a"
+
+    return {
+        "scenario_id": scenario_id,
+        "codename": codename,
+        "node_id": node_id,
+        "node_type": node_type,
+        "region": region,
+        "dominant_tags": base_tags[:2] if len(base_tags) >= 2 else base_tags,
+        "terminus_intel": terminus_intel,
+        "pressure_modifier": pressure_modifier,
+        "mission_bias": bias,
+        "narrative": narrative,
+        "generated_at": _iso_now(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Milestone progress
+# ---------------------------------------------------------------------------
+
+
+def _update_milestone_progress(
+    state: dict,
+    user_id: str,
+    enlistment_record: dict,
+    entry: dict,
+    aar_record: dict,
+):
+    """Update personal milestone progress for a member based on a new campaign log entry."""
+    _ensure_refs_loaded()
+    milestones_data = _MILESTONES
+
+    chapter = enlistment_record.get("chapter", "")
+    milestone_progress = enlistment_record.setdefault("milestone_progress", {})
+
+    # Get applicable milestones: universal + chapter-specific
+    applicable = list(milestones_data.get("universal", []))
+    for ca in milestones_data.get("chapter_affinity", []):
+        if ca.get("chapter") == chapter or ca.get("chapter") == "all":
+            applicable.extend(ca.get("milestones", []))
+
+    for milestone in applicable:
+        mid = milestone.get("id")
+        if not mid:
+            continue
+        mp = milestone_progress.setdefault(mid, {
+            "count": 0,
+            "threshold": milestone.get("threshold", 0),
+            "completed": False,
+            "completed_at": None,
+            "prestige_awarded": None,
+        })
+        if mp.get("completed"):
+            continue
+
+        # Evaluate tracking rule
+        incremented = False
+        rule = milestone.get("tracking_rule", "")
+        data_source = milestone.get("data_source", "")
+
+        if "data_source" in milestone and data_source == "campaign_log":
+            # terminus_killed type
+            if "terminus_killed == true" in rule and entry.get("terminus_killed"):
+                mp["count"] += 1
+                incremented = True
+        elif data_source == "aar_record":
+            # gene_seed_carrier, armory_data, op count, mission specialist
+            if "gene_seed_carrier_id == member_id" in rule:
+                if str(aar_record.get("gene_seed_carrier_id")) == user_id:
+                    mp["count"] += 1
+                    incremented = True
+            elif "armory_data > 0" in rule:
+                if aar_record.get("armory_data", 0) > 0 and user_id in aar_record.get("brother_ids", []):
+                    mp["count"] += 1
+                    incremented = True
+            elif "member_id in brother_ids" in rule:
+                if user_id in aar_record.get("brother_ids", []):
+                    mp["count"] += 1
+                    incremented = True
+
+        # Check completion
+        if not mp.get("completed") and mp["count"] >= mp["threshold"]:
+            mp["completed"] = True
+            mp["completed_at"] = _iso_now()
+            prestige_reward = milestone.get("prestige_reward", 0)
+            mp["prestige_awarded"] = prestige_reward
+            # Award prestige to KT if applicable
+            if prestige_reward and enlistment_record.get("kt_sgt_id"):
+                kt = state.get("kill_teams", {}).get(enlistment_record["kt_sgt_id"])
+                if kt:
+                    kt.setdefault("prestige_log", []).append({
+                        "earned_at": _iso_now(),
+                        "member_id": user_id,
+                        "base_amount": prestige_reward,
+                        "multiplier": 1.0,
+                        "credited_amount": prestige_reward,
+                        "campaign_log_entry_id": entry.get("entry_id", ""),
+                    })
+
+
+# ---------------------------------------------------------------------------
+# Auto de-enlist sweep
+# ---------------------------------------------------------------------------
+
+
+async def sweep_auto_de_enlist():
+    """Warn members at 21 days inactivity; de-enlist at 28 days.
+
+    Sends DMs via bot. Intended to run as a periodic task.
+    """
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase not in ("ops", "cascade_HC", "cascade_Company", "cascade_KT"):
+        return
+
+    bot = _b("bot")
+    if not bot:
+        return
+
+    now = _utcnow()
+    warn_threshold = timedelta(days=21)
+    de_enlist_threshold = timedelta(days=28)
+    changed = False
+
+    for user_id, record in state.get("enlistment", {}).items():
+        if not record.get("active"):
+            continue
+        last_aar_ts = _parse_iso(record.get("last_aar_timestamp"))
+        # If never posted qualifying AAR, use enlisted_at as reference
+        if not last_aar_ts:
+            last_aar_ts = _parse_iso(record.get("enlisted_at")) or now
+
+        inactive_duration = now - last_aar_ts
+
+        if inactive_duration >= de_enlist_threshold:
+            record["active"] = False
+            changed = True
+            try:
+                user = await bot.fetch_user(int(user_id))
+                await user.send(
+                    "**Campaign De-enlistment Notice**\n"
+                    "You have been automatically de-enlisted from the current campaign due to 28 days without a qualifying op (hard stratagem or omega).\n"
+                    "Your milestone progress has been preserved. You may re-enlist at any time before campaign end."
+                )
+            except Exception:
+                pass
+        elif inactive_duration >= warn_threshold and not record.get("auto_de_enlist_warning_sent"):
+            record["auto_de_enlist_warning_sent"] = True
+            changed = True
+            days_left = (de_enlist_threshold - inactive_duration).days
+            try:
+                user = await bot.fetch_user(int(user_id))
+                await user.send(
+                    f"**Campaign Activity Warning**\n"
+                    f"You have been inactive in the campaign for {inactive_duration.days} days. "
+                    f"If you do not complete a qualifying op (hard stratagem or omega) within {days_left} days, "
+                    f"you will be automatically de-enlisted."
+                )
+            except Exception:
+                pass
+
+    if changed:
+        _save_campaign_state(state)
+
+
+# ---------------------------------------------------------------------------
+# Slash commands
+# ---------------------------------------------------------------------------
+
+
+def _b_check_command_permission(user, cmd_name):
+    fn = _b("check_command_permission")
+    if fn:
+        return fn(user, cmd_name)
+    return True
+
+
+def _b_is_allowed_channel(interaction):
+    fn = _b("is_allowed_channel")
+    if fn:
+        return fn(interaction)
+    return True
+
+
+# --- /campaign-enlist ---
+
+@_g.bot.tree.command(
+    name="campaign-enlist",
+    description="Enlist yourself in the current campaign.",
+)
+@app_commands.describe(
+    chapter="Your Space Marine chapter (e.g. 'Blood Angels')",
+    company="Your company assignment: primus | secundus | tertius | quartus | quintus",
+    kt_sgt_id="[KT-tier] Discord user ID of your Kill Team Sergeant",
+)
+async def _campaign_enlist(
+    interaction: discord.Interaction,
+    chapter: str,
+    company: Optional[str] = None,
+    kt_sgt_id: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-enlist"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    # Determine tier from Discord roles
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    HC_ROLES = {
+        "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
+        "High Chaplain", "Huntmaster", "Void Warden", "Castellan", "Venerable Dreadnought",
+    }
+    COMPANY_ROLES = {
+        "Watch Captain", "Watch Lieutenant", "Company Champion", "Watch Techmarine",
+        "Watch Apothecary", "Watch Chaplain", "Watch Librarian", "Watch Keeper",
+        "Honored Dreadnought",
+    }
+    KT_ROLES = {
+        "Watch Sergeant", "Kill Team Champion", "Judiciar", "Oathsworn",
+        "Watch Veteran", "Watch Brother",
+    }
+
+    tier = "KT"
+    role_name = ""
+    if user_roles & HC_ROLES:
+        tier = "HC"
+        role_name = (user_roles & HC_ROLES).pop()
+    elif user_roles & COMPANY_ROLES:
+        tier = "Company"
+        role_name = (user_roles & COMPANY_ROLES).pop()
+    else:
+        tier = "KT"
+        role_name = (user_roles & KT_ROLES).pop() if user_roles & KT_ROLES else "Watch Brother"
+
+    company_id = (company or "").lower().strip() if company else None
+    valid_companies = {"primus", "secundus", "tertius", "quartus", "quintus"}
+    if company_id and company_id not in valid_companies:
+        await interaction.response.send_message(
+            f"Invalid company `{company}`. Choose from: {', '.join(sorted(valid_companies))}",
+            ephemeral=True,
+        )
+        return
+
+    success, msg = enlist_member(
+        user_id=str(interaction.user.id),
+        discord_name=str(interaction.user),
+        chapter=chapter,
+        company_id=company_id or "",
+        tier=tier,
+        role=role_name,
+        kt_sgt_id=kt_sgt_id,
+    )
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+# --- /campaign-de-enlist ---
+
+@_g.bot.tree.command(
+    name="campaign-de-enlist",
+    description="Voluntarily de-enlist from the current campaign.",
+)
+async def _campaign_de_enlist(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-de-enlist"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    success, msg = de_enlist_member(str(interaction.user.id))
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+# --- /campaign-log ---
+
+@_g.bot.tree.command(
+    name="campaign-log",
+    description="Submit a campaign log entry for an op you completed.",
+)
+@app_commands.describe(
+    terminus_killed="Was any terminus target killed during this op?",
+    strats_active="Comma-separated list of active strats you ran (e.g. 'Unleashed Fury, Extreme Challenge')",
+)
+async def _campaign_log(
+    interaction: discord.Interaction,
+    terminus_killed: bool,
+    strats_active: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-log"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    strats_list = [s.strip() for s in strats_active.split(",") if s.strip()] if strats_active else []
+    success, msg, entry = log_campaign_entry(
+        user_id=str(interaction.user.id),
+        terminus_killed=terminus_killed,
+        strats_active=strats_list,
+    )
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+# --- /campaign-orders ---
+
+@_g.bot.tree.command(
+    name="campaign-orders",
+    description="View your current orders for this beat.",
+)
+async def _campaign_orders(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-orders"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    user_id = str(interaction.user.id)
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+    if not record or not record.get("active"):
+        await interaction.response.send_message("You are not currently enlisted in the campaign.", ephemeral=True)
+        return
+
+    campaign = state.get("campaign", {})
+    phase = campaign.get("phase", "inactive")
+    beat = campaign.get("beat")
+    tier = record.get("tier", "KT")
+    ops_window = state.get("ops_window", {})
+    strat_pool = state.get("strat_pool", {})
+
+    embed = discord.Embed(
+        title=f"Campaign Orders — Beat {beat or '?'}",
+        description=f"Phase: **{phase}** | Your tier: **{tier}**",
+        color=0x4B0082,
+    )
+    embed.add_field(name="Ops Window", value=(
+        f"Opens: {ops_window.get('opened_at') or 'TBD'}\n"
+        f"Closes: {ops_window.get('closes_at') or 'TBD'}"
+    ), inline=False)
+
+    # Strat mandate
+    if strat_pool.get("locked"):
+        theatre = strat_pool.get("theatre_mandate") or "None"
+        company_id = record.get("company_id")
+        company_strat = strat_pool.get("company_mandates", {}).get(company_id, "None") if company_id else "N/A"
+        kt_sgt = record.get("kt_sgt_id")
+        kt_strat = strat_pool.get("kt_mandates", {}).get(kt_sgt, "None") if kt_sgt else "N/A"
+        embed.add_field(name="Theatre Strat", value=f"`{theatre}`", inline=True)
+        embed.add_field(name="Company Strat", value=f"`{company_strat}`", inline=True)
+        embed.add_field(name="KT Strat", value=f"`{kt_strat}`", inline=True)
+    else:
+        embed.add_field(name="Strat Mandate", value="Not yet published.", inline=False)
+
+    # Terminus flag (for appropriate tiers)
+    if tier in ("HC", "Company"):
+        terminus_flag = ops_window.get("terminus_flag")
+        if terminus_flag:
+            embed.add_field(name="Terminus Flag", value=terminus_flag, inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-prestige ---
+
+@_g.bot.tree.command(
+    name="campaign-prestige",
+    description="View the rolling 28-day prestige standings for kill teams and companies.",
+)
+@app_commands.describe(
+    scope="View kill_team or company standings (default: kill_team for KT-tier, company for Company/HC)",
+)
+async def _campaign_prestige(
+    interaction: discord.Interaction,
+    scope: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-prestige"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    state = refresh_prestige_cache()
+    user_id = str(interaction.user.id)
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+    tier = record.get("tier", "KT") if record else "KT"
+
+    if scope is None:
+        scope = "company" if tier in ("Company", "HC") else "kill_team"
+
+    if scope == "kill_team":
+        rows = []
+        for sgt_id, kt in state.get("kill_teams", {}).items():
+            rows.append((kt.get("prestige_window_total", 0), kt.get("display_name", sgt_id), kt))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        lines = []
+        for i, (prestige, name, kt) in enumerate(rows[:20], 1):
+            ribbon = f" [{kt.get('ribbon') or '—'}]" if kt.get("ribbon") else ""
+            lore = " ★" if kt.get("lore_priority") else ""
+            lines.append(f"{i}. **{name}** — {prestige} prestige{ribbon}{lore}")
+        embed = discord.Embed(title="Kill Team Prestige Standings (28-day)", description="\n".join(lines) or "No kill teams registered.", color=0x4B0082)
+    else:
+        rows = []
+        for company_id, company in state.get("companies", {}).items():
+            rows.append((company.get("prestige_window_total", 0), company.get("display_name", company_id), company))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        lines = []
+        for i, (prestige, name, co) in enumerate(rows, 1):
+            ribbon = f" [{co.get('ribbon') or '—'}]" if co.get("ribbon") else ""
+            lore = " ★" if co.get("lore_priority") else ""
+            lines.append(f"{i}. **{name}** — {prestige} prestige{ribbon}{lore}")
+        embed = discord.Embed(title="Company Prestige Standings (28-day)", description="\n".join(lines) or "No companies.", color=0x4B0082)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-mandate ---
+
+@_g.bot.tree.command(
+    name="campaign-mandate",
+    description="View the published strat mandate for the current beat.",
+)
+async def _campaign_mandate(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-mandate"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase != "ops":
+        await interaction.response.send_message(f"Strat mandate is only available during the **ops** phase (current: {phase}).", ephemeral=True)
+        return
+
+    strat_pool = state.get("strat_pool", {})
+    if not strat_pool.get("locked"):
+        await interaction.response.send_message("The strat pool has not been locked yet. Mandate is not available.", ephemeral=True)
+        return
+
+    user_id = str(interaction.user.id)
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+
+    theatre = strat_pool.get("theatre_mandate") or "None"
+    company_id = record.get("company_id") if record else None
+    kt_sgt = record.get("kt_sgt_id") if record else None
+    company_strat = strat_pool.get("company_mandates", {}).get(company_id, "None") if company_id else "N/A"
+    kt_strat = strat_pool.get("kt_mandates", {}).get(kt_sgt, "None") if kt_sgt else "N/A"
+
+    embed = discord.Embed(
+        title="Strat Mandate — Current Beat",
+        description="All enlisted brothers run **3 required strats** minimum. Optional pool strats may be added.",
+        color=0x8B0000,
+    )
+    embed.add_field(name="Theatre Strat (all)", value=f"`{theatre}`", inline=False)
+    embed.add_field(name="Company Strat", value=f"`{company_strat}`", inline=True)
+    embed.add_field(name="Kill Team Strat", value=f"`{kt_strat}`", inline=True)
+
+    strat_pool_list = strat_pool.get("pool", [])
+    if strat_pool_list:
+        embed.add_field(name="Full Pool", value=", ".join(f"`{s}`" for s in strat_pool_list[:20]), inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-title ---
+
+@_g.bot.tree.command(
+    name="campaign-title",
+    description="Grant or revoke a narrative title for a kill team or company.",
+)
+@app_commands.describe(
+    target_type="kill_team or company",
+    target="User ID of the KT Sergeant, or company name (primus/secundus/etc.)",
+    title="The narrative title to grant (empty to revoke)",
+    action="grant or revoke",
+)
+async def _campaign_title(
+    interaction: discord.Interaction,
+    target_type: str,
+    target: str,
+    title: Optional[str] = None,
+    action: str = "grant",
+):
+    if not _b_check_command_permission(interaction.user, "campaign-title"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    state = _load_campaign_state()
+
+    if target_type == "company":
+        if "Watch Master" not in user_roles:
+            await interaction.response.send_message("Only the Watch Master may grant company titles.", ephemeral=True)
+            return
+        company = state.get("companies", {}).get(target.lower())
+        if not company:
+            await interaction.response.send_message(f"Company `{target}` not found.", ephemeral=True)
+            return
+        if action == "revoke":
+            company["title"] = None
+            company["title_granted_by"] = None
+            company["title_granted_at"] = None
+        else:
+            if not title:
+                await interaction.response.send_message("Provide a title to grant.", ephemeral=True)
+                return
+            prestige = company.get("prestige_window_total", 0)
+            if prestige < _CO_TITLE_ACQUIRE:
+                await interaction.response.send_message(
+                    f"Company prestige ({prestige}) is below the grant floor ({_CO_TITLE_ACQUIRE}). Title cannot be granted.",
+                    ephemeral=True,
+                )
+                return
+            company["title"] = title
+            company["title_granted_by"] = str(interaction.user.id)
+            company["title_granted_at"] = _iso_now()
+        _save_campaign_state(state)
+        verb = "revoked" if action == "revoke" else f"granted: **{title}**"
+        await interaction.response.send_message(f"Company `{target.capitalize()}` title {verb}.", ephemeral=False)
+
+    elif target_type == "kill_team":
+        captain_roles = {"Watch Captain", "Watch Lieutenant"}
+        if not (user_roles & captain_roles):
+            await interaction.response.send_message("Only a Watch Captain or Watch Lieutenant may grant KT titles.", ephemeral=True)
+            return
+        kt = state.get("kill_teams", {}).get(target)
+        if not kt:
+            await interaction.response.send_message(f"Kill team with Sgt ID `{target}` not found.", ephemeral=True)
+            return
+        # Granter must be in the same company as the KT
+        user_id = str(interaction.user.id)
+        granter_record = state.get("enlistment", {}).get(user_id, {})
+        granter_company = granter_record.get("company_id")
+        kt_company = kt.get("company_id")
+        if granter_company != kt_company:
+            await interaction.response.send_message("You may only grant titles to kill teams within your own company.", ephemeral=True)
+            return
+        if action == "revoke":
+            kt["title"] = None
+            kt["title_granted_by"] = None
+            kt["title_granted_at"] = None
+        else:
+            if not title:
+                await interaction.response.send_message("Provide a title to grant.", ephemeral=True)
+                return
+            prestige = kt.get("prestige_window_total", 0)
+            if prestige < _KT_TITLE_ACQUIRE:
+                await interaction.response.send_message(
+                    f"Kill team prestige ({prestige}) is below the grant floor ({_KT_TITLE_ACQUIRE}). Title cannot be granted.",
+                    ephemeral=True,
+                )
+                return
+            kt["title"] = title
+            kt["title_granted_by"] = user_id
+            kt["title_granted_at"] = _iso_now()
+        _save_campaign_state(state)
+        verb = "revoked" if action == "revoke" else f"granted: **{title}**"
+        await interaction.response.send_message(f"Kill team `{target}` title {verb}.", ephemeral=False)
+    else:
+        await interaction.response.send_message("Invalid target_type. Choose `kill_team` or `company`.", ephemeral=True)
+
+
+# --- /campaign-dashboard ---
+
+@_g.bot.tree.command(
+    name="campaign-dashboard",
+    description="Post or refresh the campaign dashboard embed. (Forgemaster only)",
+)
+async def _campaign_dashboard(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-dashboard"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    if "Forgemaster" not in user_roles:
+        await interaction.response.send_message("Only the Forgemaster may post the campaign dashboard.", ephemeral=True)
+        return
+
+    state = refresh_prestige_cache()
+    state = update_lore_priority(state, save=False)
+    state = check_reward_thresholds(state)
+    _save_campaign_state(state)
+
+    campaign = state.get("campaign", {})
+    beat = campaign.get("beat")
+    phase = campaign.get("phase", "inactive")
+    ops_window = state.get("ops_window", {})
+
+    embed = discord.Embed(
+        title=f"Campaign Dashboard — Beat {beat or '?'}",
+        description=f"Phase: **{phase}**",
+        color=0x1C1C1C,
+    )
+    embed.add_field(name="Ops Window", value=(
+        f"Opens: {ops_window.get('opened_at') or 'TBD'}\n"
+        f"Closes: {ops_window.get('closes_at') or 'TBD'}"
+    ), inline=False)
+
+    # Lore priority
+    lp = state.get("lore_priority", {})
+    lp_kt = lp.get("kill_team", {})
+    lp_co = lp.get("company", {})
+    embed.add_field(
+        name="Lore Priority",
+        value=(
+            f"KT: {lp_kt.get('display_name') or 'Vacant'}\n"
+            f"Company: {lp_co.get('display_name') or 'Vacant'}"
+        ),
+        inline=False,
+    )
+
+    # Top 5 KTs by prestige
+    kt_rows = sorted(
+        [(kt.get("prestige_window_total", 0), kt.get("display_name", sgt_id))
+         for sgt_id, kt in state.get("kill_teams", {}).items()],
+        reverse=True,
+    )[:5]
+    if kt_rows:
+        embed.add_field(
+            name="Top Kill Teams",
+            value="\n".join(f"{i+1}. {name} — {p}" for i, (p, name) in enumerate(kt_rows)),
+            inline=True,
+        )
+
+    # Companies
+    co_rows = sorted(
+        [(co.get("prestige_window_total", 0), co.get("display_name", cid))
+         for cid, co in state.get("companies", {}).items()],
+        reverse=True,
+    )
+    if co_rows:
+        embed.add_field(
+            name="Company Prestige",
+            value="\n".join(f"{name}: {p}" for p, name in co_rows),
+            inline=True,
+        )
+
+    embed.set_footer(text=f"Refreshed: {_iso_now()[:19]}Z")
+    await interaction.response.send_message(embed=embed)
+
+
+# --- /campaign-status ---
+
+@_g.bot.tree.command(
+    name="campaign-status",
+    description="View campaign phase, beat schedule, and resolution state.",
+)
+async def _campaign_status(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-status"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    allowed_roles = {"Watch Master", "Forgemaster", "Castellan"}
+    if not (user_roles & allowed_roles):
+        await interaction.response.send_message("Access denied — Watch Master, Forgemaster, or Castellan only.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    campaign = state.get("campaign", {})
+    strat_pool = state.get("strat_pool", {})
+    ops_window = state.get("ops_window", {})
+
+    embed = discord.Embed(title="Campaign Status", color=0x333333)
+    embed.add_field(name="ID", value=campaign.get("id") or "Not started", inline=True)
+    embed.add_field(name="Phase", value=campaign.get("phase") or "inactive", inline=True)
+    embed.add_field(name="Beat", value=str(campaign.get("beat") or "—"), inline=True)
+    embed.add_field(name="Current Node", value=campaign.get("current_node") or "—", inline=True)
+    embed.add_field(name="Started", value=(campaign.get("started_at") or "—")[:19], inline=True)
+    embed.add_field(name="Strat Pool Locked", value="Yes" if strat_pool.get("locked") else "No", inline=True)
+    embed.add_field(name="Ops Closes", value=(ops_window.get("closes_at") or "—")[:19], inline=True)
+
+    # Enlistment count
+    active_count = sum(1 for r in state.get("enlistment", {}).values() if r.get("active"))
+    embed.add_field(name="Enlisted (active)", value=str(active_count), inline=True)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-milestone ---
+
+@_g.bot.tree.command(
+    name="campaign-milestone",
+    description="View your personal milestone progress for the current campaign.",
+)
+async def _campaign_milestone(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-milestone"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    _ensure_refs_loaded()
+    state = _load_campaign_state()
+    user_id = str(interaction.user.id)
+    enlistment = state.get("enlistment", {})
+    record = enlistment.get(user_id)
+    if not record or not record.get("active"):
+        await interaction.response.send_message("You are not currently enlisted in the campaign.", ephemeral=True)
+        return
+
+    milestone_progress = record.get("milestone_progress", {})
+    chapter = record.get("chapter", "")
+
+    # Get applicable milestones for this chapter
+    applicable = list(_MILESTONES.get("universal", []))
+    for ca in _MILESTONES.get("chapter_affinity", []):
+        if ca.get("chapter") == chapter or ca.get("chapter") == "all":
+            applicable.extend(ca.get("milestones", []))
+
+    if not applicable:
+        await interaction.response.send_message("No milestones found for your chapter.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="Personal Milestones",
+        description=f"Chapter: **{chapter}** | {len([m for m in milestone_progress.values() if m.get('completed')])} completed",
+        color=0x2F4F4F,
+    )
+
+    for milestone in applicable[:20]:
+        mid = milestone.get("id")
+        label = milestone.get("label", mid)
+        threshold = milestone.get("threshold", 0)
+        reward = milestone.get("prestige_reward", 0)
+        mp = milestone_progress.get(mid, {"count": 0, "completed": False})
+        count = mp.get("count", 0)
+        completed = mp.get("completed", False)
+        status = "✅" if completed else f"{count}/{threshold}"
+        embed.add_field(
+            name=f"{status} {label}",
+            value=f"{milestone.get('description', '')} (+{reward} prestige on completion)",
+            inline=False,
+        )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
