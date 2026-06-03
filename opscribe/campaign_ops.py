@@ -1080,7 +1080,7 @@ def _count_company_total_ops(state: dict) -> Dict[str, int]:
 def update_lore_priority(state: Optional[dict] = None, save: bool = True) -> dict:
     """Recompute and update lore_priority for top KT and company.
 
-    Floors: KT >= 180 (retain 100), company >= 350 (retain 200).
+    Floors: KT >= 250 (retain 140), company >= 400 (retain 220).
     """
     if state is None:
         state = _load_campaign_state()
@@ -1520,11 +1520,11 @@ def _update_milestone_progress(
                     mp["count"] += 1
                     incremented = True
             elif "armory_data > 0" in rule:
-                if aar_record.get("armory_data", 0) > 0 and user_id in aar_record.get("brother_ids", []):
+                if aar_record.get("armory_data", 0) > 0 and user_id in [str(b) for b in aar_record.get("brother_ids", [])]:
                     mp["count"] += 1
                     incremented = True
             elif "member_id in brother_ids" in rule:
-                if user_id in aar_record.get("brother_ids", []):
+                if user_id in [str(b) for b in aar_record.get("brother_ids", [])]:
                     mp["count"] += 1
                     incremented = True
 
@@ -2992,7 +2992,7 @@ async def _campaign_reset(
     ):
         state[key] = blank[key]
     state["_schema_version"] = 1
-    state["total_beats"] = blank["total_beats"]
+    state["total_beats"] = blank["campaign"]["total_beats"]
 
     # Reset campaign-specific fields on every enlistment record, keep formation assignments
     for rec in state.get("enlistment", {}).values():

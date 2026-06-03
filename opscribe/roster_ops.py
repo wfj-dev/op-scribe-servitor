@@ -3869,7 +3869,7 @@ async def tally_deeds(
         _HUNTMASTER_JACK_ID = 1444810056821637133
         _jack_file = None
         if len(members) == 1 and int(target.id) == _HUNTMASTER_JACK_ID:
-            _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "Huntmaster Jack.png")
+            _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster Jack.png")
             if os.path.exists(_jack_path):
                 _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster Jack.png")
                 embed.set_thumbnail(url="attachment://1444810056821637133_Huntmaster Jack.png")
@@ -4660,7 +4660,7 @@ async def my_deeds(interaction: discord.Interaction):
     _HUNTMASTER_JACK_ID = 1444810056821637133
     _jack_file = None
     if int(target.id) == _HUNTMASTER_JACK_ID:
-        _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "Huntmaster Jack.png")
+        _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster Jack.png")
         if os.path.exists(_jack_path):
             _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster Jack.png")
             embed.set_thumbnail(url="attachment://1444810056821637133_Huntmaster Jack.png")
