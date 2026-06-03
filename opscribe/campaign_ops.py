@@ -3231,6 +3231,15 @@ async def _campaign_cascade(interaction: discord.Interaction):
     submissions = cascade.get("submissions", {})
     _ensure_refs_loaded()
 
+    # Build a display-name resolver: prefer server nickname over stored discord_name
+    guild = interaction.guild
+    def _member_display(uid: str, fallback: str) -> str:
+        if guild:
+            m = guild.get_member(int(uid))
+            if m:
+                return m.display_name
+        return fallback
+
     # Build role → user_id map for all phases
     phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
     phase_labels = {
@@ -3259,14 +3268,15 @@ async def _campaign_cascade(interaction: discord.Interaction):
         eligible_keys = _CASCADE_PHASE_ROLES[cp]
         label = phase_labels[cp]
 
-        # Map role_key → (display_name, discord_name, user_id) for enrolled members eligible in this phase
-        role_entries: list[tuple[str, str, str, str]] = []  # (role_key, role_display, discord_name, user_id)
+        # Map role_key → (role_display, member_name, user_id) for enrolled members eligible in this phase
+        role_entries: list[tuple[str, str, str, str]] = []  # (role_key, role_display, member_name, user_id)
         for uid, rec in enlistment.items():
             if not rec.get("active"):
                 continue
             rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
             if rk and rk in eligible_keys:
-                role_entries.append((rk, rec.get("role", rk), rec.get("discord_name", ""), uid))
+                member_name = _member_display(uid, rec.get("discord_name", ""))
+                role_entries.append((rk, rec.get("role", rk), member_name, uid))
 
         if not role_entries:
             embed.add_field(name=f"{label}", value="No eligible members enrolled.", inline=False)
@@ -3274,8 +3284,8 @@ async def _campaign_cascade(interaction: discord.Interaction):
 
         deadline = cascade.get(f"{cp}_deadline")
         lines: list[str] = []
-        for rk, role_display, discord_name, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
-            name_tag = f" ({discord_name})" if discord_name else ""
+        for rk, role_display, member_name, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
+            name_tag = f" ({member_name})" if member_name else ""
             sub = submissions.get(uid)
             current_phase_idx = phase_order.index(phase) if phase in phase_order else len(phase_order)
             if sub and sub.get("phase") == cp:
