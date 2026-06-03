@@ -3894,7 +3894,20 @@ async def _campaign_init(
     embed.add_field(name="Opening Window Closes", value=_fmt_ts(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
-    embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
+    company_display = ", ".join(
+        co.get("display_name") or co_id.capitalize()
+        for co_id, co in state["companies"].items()
+    ) or "None"
+    kt_display = ", ".join(
+        kt.get("display_name") or sgt_id
+        for sgt_id, kt in state.get("kill_teams", {}).items()
+        if any(
+            rec.get("active") and rec.get("kt_sgt_id") == sgt_id
+            for rec in state.get("enlistment", {}).values()
+        )
+    ) or "None"
+    embed.add_field(name="Companies Seeded", value=company_display, inline=False)
+    embed.add_field(name="Kill Teams Enlisted", value=kt_display, inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
     wm_enlisted = any(
         rec.get("active") and _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) == "watch_master"
