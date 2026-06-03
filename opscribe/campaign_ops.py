@@ -407,8 +407,8 @@ def enlist_member(
     if tier == "KT" and not kt_sgt_id:
         return False, "KT-tier members must provide their Sergeant's user ID."
 
-    if tier in ("Company", "HC") and not company_id:
-        return False, "Company and HC tier members must provide their company."
+    if tier == "Company" and not company_id:
+        return False, "Company-tier members must provide their company."
 
     now = _iso_now()
     enlistment[user_id] = {
@@ -2040,7 +2040,7 @@ async def _campaign_enlist(
         if company_id:
             break
 
-    if tier in ("Company", "HC") and not company_id:
+    if tier == "Company" and not company_id:
         await interaction.response.send_message(
             "Could not resolve your company assignment — make sure you have a company role (Primus/Secundus/etc.) before enlisting.",
             ephemeral=True,

@@ -639,12 +639,22 @@ def test_campaign_enlist_defaults_watch_sergeant_kt_id_to_self(state_file):
     interaction.user.__str__.return_value = "Watch Sergeant"
     ws_role = MagicMock()
     ws_role.name = "Watch Sergeant"
-    interaction.user.roles = [ws_role]
+    chapter_role = MagicMock()
+    chapter_role.name = "Blood Angels"
+    company_role = MagicMock()
+    company_role.name = "Watch Company Primus"
+    interaction.user.roles = [ws_role, chapter_role, company_role]
     interaction.response = AsyncMock()
 
+    def _b_side_effect(name):
+        if name == "HOME_CHAPTERS":
+            return ["Blood Angels"]
+        return None
+
     with patch.object(c, "_b_check_command_permission", return_value=True), \
-         patch.object(c, "_b_is_allowed_channel", return_value=True):
-        _run_campaign_enlist(c, interaction, chapter="Blood Angels", company="primus")
+         patch.object(c, "_b_is_allowed_channel", return_value=True), \
+         patch.object(c, "_b", side_effect=_b_side_effect):
+        _run_campaign_enlist(c, interaction)
 
     saved = c._load_campaign_state()
     assert saved["enlistment"]["42"]["kt_sgt_id"] == "42"
