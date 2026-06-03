@@ -83,6 +83,7 @@ def _blank_campaign_state() -> dict:
             "visited_nodes": [],
             "beat_history": [],
             "beat_schedule": [],
+            "total_beats": 3,
         },
         "enlistment": {},
         "companies": {},
@@ -93,7 +94,6 @@ def _blank_campaign_state() -> dict:
         },
         "ops_window": {},
         "strat_pool": {"locked": False, "pool": [], "theatre_mandate": [], "company_mandates": {}, "kt_mandates": {}},
-        "total_beats": 3,
         "campaign_log": {},
         "beat_scenarios": {},
         "pressure": {},
@@ -117,6 +117,9 @@ def _load_campaign_state() -> dict:
 
 def _save_campaign_state(state: dict):
     try:
+        state_dir = os.path.dirname(CAMPAIGN_STATE_PATH)
+        if state_dir:
+            os.makedirs(state_dir, exist_ok=True)
         tmp_path = CAMPAIGN_STATE_PATH + ".tmp"
         bak_path = CAMPAIGN_STATE_PATH + ".bak"
         with open(tmp_path, "w") as f:
@@ -130,7 +133,10 @@ def _save_campaign_state(state: dict):
                 pass
         os.replace(tmp_path, CAMPAIGN_STATE_PATH)
     except Exception:
-        pass
+        logger = getattr(_g, "logger", None)
+        if logger is not None:
+            logger.exception("Failed to save campaign state to %s", CAMPAIGN_STATE_PATH)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +294,7 @@ def enlist_member(
         "active": True,
         "last_aar_timestamp": None,
         "auto_de_enlist_warning_sent": False,
-        "company_id": company_id if tier in ("Company", "KT") else None,
+        "company_id": company_id if tier in ("Company", "HC", "KT") else None,
         "kt_sgt_id": kt_sgt_id if tier == "KT" else None,
         "operational_attachment": (
             None
@@ -769,7 +775,7 @@ def _count_kt_omega_ops(state: dict) -> Dict[str, int]:
         submitter = entry.get("submitted_by")
         rec = enlistment.get(submitter)
         if rec:
-            sgt = rec.get("kt_sgt_id")
+            sgt = rec.get("kt_sgt_id") or (rec.get("operational_attachment") or {}).get("attached_kt_sgt_id")
             if sgt:
                 counts[sgt] = counts.get(sgt, 0) + 1
     return counts
@@ -785,7 +791,7 @@ def _count_kt_total_ops(state: dict) -> Dict[str, int]:
         submitter = entry.get("submitted_by")
         rec = enlistment.get(submitter)
         if rec:
-            sgt = rec.get("kt_sgt_id")
+            sgt = rec.get("kt_sgt_id") or (rec.get("operational_attachment") or {}).get("attached_kt_sgt_id")
             if sgt:
                 counts[sgt] = counts.get(sgt, 0) + 1
     return counts
@@ -1770,6 +1776,9 @@ async def _campaign_enlist(
         )
         return
 
+    if tier == "KT" and role_name == "Watch Sergeant" and not kt_sgt_id:
+        kt_sgt_id = str(interaction.user.id)
+
     success, msg = enlist_member(
         user_id=str(interaction.user.id),
         discord_name=str(interaction.user),
@@ -2697,4 +2706,3 @@ async def _campaign_reset(
         "🗑️ Campaign data wiped. All prestige, enlistment, strats, and standings have been reset. "
         "Run `/campaign-init` to start a new campaign.",
     )
-

@@ -564,6 +564,11 @@ def _run_campaign_init(c, interaction, **kwargs):
     asyncio.run(fn(interaction, **kwargs))
 
 
+def _run_campaign_enlist(c, interaction, **kwargs):
+    fn = getattr(c._campaign_enlist, "callback", c._campaign_enlist)
+    asyncio.run(fn(interaction, **kwargs))
+
+
 
 @pytest.mark.parametrize("phase", ["ops", "cascade_HC", "cascade_Company", "cascade_KT", "paused"])
 def test_campaign_init_rejected_when_active(state_file, phase):
@@ -621,6 +626,28 @@ def test_campaign_init_auto_closes_at_from_duration(state_file):
     saved = c._load_campaign_state()
     closes = datetime.fromisoformat(saved["ops_window"]["closes_at"])
     assert timedelta(days=4, hours=23) < (closes - before) < timedelta(days=5, hours=1)
+
+
+def test_campaign_enlist_defaults_watch_sergeant_kt_id_to_self(state_file):
+    _, c = state_file
+    state = _blank_ops_state()
+    with open(c.CAMPAIGN_STATE_PATH, "w") as f:
+        json.dump(state, f)
+
+    interaction = MagicMock()
+    interaction.user.id = 42
+    interaction.user.__str__.return_value = "Watch Sergeant"
+    ws_role = MagicMock()
+    ws_role.name = "Watch Sergeant"
+    interaction.user.roles = [ws_role]
+    interaction.response = AsyncMock()
+
+    with patch.object(c, "_b_check_command_permission", return_value=True), \
+         patch.object(c, "_b_is_allowed_channel", return_value=True):
+        _run_campaign_enlist(c, interaction, chapter="Blood Angels", company="primus")
+
+    saved = c._load_campaign_state()
+    assert saved["enlistment"]["42"]["kt_sgt_id"] == "42"
 
 
 def test_campaign_init_explicit_ops_closes_at_overrides_duration(state_file):
