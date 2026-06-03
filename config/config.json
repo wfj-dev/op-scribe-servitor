@@ -337,10 +337,10 @@
   },
   "debug": false,
   "cascade_deadline_hours": {
-    "cascade_WM": 24,
-    "cascade_HC": 48,
-    "cascade_Company": 48,
-    "cascade_KT": 24
+    "cascade_WM": 1,
+    "cascade_HC": 1,
+    "cascade_Company": 1,
+    "cascade_KT": 1
   },
   "schedules": {
     "daily_audit_enabled": false,
