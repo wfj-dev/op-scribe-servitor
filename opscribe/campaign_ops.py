@@ -3901,20 +3901,25 @@ async def _campaign_init(
     # For each active kill team, prefer the named Discord role (e.g. "Kill Team Raven") over display_name
     _kt_lines: list[str] = []
     for sgt_id, kt in state.get("kill_teams", {}).items():
-        if not any(
-            rec.get("active") and rec.get("kt_sgt_id") == sgt_id
-            for rec in state.get("enlistment", {}).values()
-        ):
+        active_member_ids = [
+            uid for uid, rec in state.get("enlistment", {}).items()
+            if rec.get("active") and rec.get("kt_sgt_id") == sgt_id
+        ]
+        if not active_member_ids:
             continue
         kt_role_name = None
         if interaction.guild:
-            sgt_member = interaction.guild.get_member(int(sgt_id))
-            if sgt_member:
-                for r in sgt_member.roles:
+            for uid in active_member_ids:
+                member = interaction.guild.get_member(int(uid))
+                if not member:
+                    continue
+                for r in member.roles:
                     rl = r.name.lower()
                     if "kill" in rl and "team" in rl and "champion" not in rl:
                         kt_role_name = r.name
                         break
+                if kt_role_name:
+                    break
         _kt_lines.append(kt_role_name or kt.get("display_name") or sgt_id)
     kt_display = ", ".join(_kt_lines) or "None"
     embed.add_field(name="Companies Enlisted", value=company_display, inline=False)
