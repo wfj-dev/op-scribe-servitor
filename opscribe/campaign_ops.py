@@ -3875,19 +3875,10 @@ async def _campaign_init(
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
-    await interaction.response.send_message(embed=embed)
-    # Ping Watch Brother in the announcement channel so the notification reaches the warband
     _wm_ping = _cascade_phase_ping(state, "cascade_WM")
-    wm_deadline_ts_raw = state.get("cascade", {}).get("cascade_WM_deadline", "")
-    camp_name = state["campaign"].get("name") or "Campaign"
-    await _post_campaign_announcement(
-        _b("bot"),
-        (
-            f"<@&{WATCH_BROTHER_ROLE_ID}>\n"
-            f"⚔️ **{camp_name} has begun — Beat {beat_number} cascade is open.**\n"
-            f"{_wm_ping} — set your theatre order via `/campaign-orders`.\n"
-            f"WM positioning window closes: {_fmt_ts(wm_deadline_ts_raw[:19])}"
-        ),
+    await interaction.response.send_message(
+        content=f"<@&{WATCH_BROTHER_ROLE_ID}> {_wm_ping}",
+        embed=embed,
     )
 
 
