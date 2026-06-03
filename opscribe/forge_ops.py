@@ -4677,13 +4677,6 @@ async def _attest(
 ):
     import random
 
-    if not await _is_forge_enabled():
-        await interaction.response.send_message(
-            "The Techmarine subsystem is currently disabled by Forgemaster decree.",
-            ephemeral=True,
-        )
-        return
-
     # Permission check: caller must be techmarine or forgemaster to run command
     allowed, _caller_role_key = _b("_is_techmarine_or_forgemaster")(interaction.user)
     if not allowed:

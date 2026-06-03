@@ -86,8 +86,11 @@ def reset_refs():
 def state_file(tmp_path, monkeypatch):
     """Redirect CAMPAIGN_STATE_PATH to a temp file; return (path, c)."""
     from opscribe import campaign_ops as c
+    import opscribe.bot as bot_mod
     path = str(tmp_path / "campaign_state.json")
     monkeypatch.setattr(c, "CAMPAIGN_STATE_PATH", path)
+    # Isolate from live config so _enter_cascade_phase uses _CASCADE_DEADLINE_HOURS fallback
+    monkeypatch.setattr(bot_mod, "CONFIG", {})
     return path, c
 
 
