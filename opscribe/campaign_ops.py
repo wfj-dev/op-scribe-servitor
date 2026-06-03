@@ -1827,23 +1827,14 @@ def _resolve_beat_and_open_next(
         "campaign_complete": new_beat > total_beats,
     }
 
-    # 9. If campaign is over, close it; otherwise open the next ops window
+    # 9. If campaign is over, close it; otherwise open cascade for the next beat
     if summary["campaign_complete"]:
         campaign["phase"] = "complete"
         campaign["ended_at"] = _iso_now()
         campaign["outcome"] = f"Campaign concluded after {total_beats} beats."
     else:
-        if ops_closes_at is None:
-            duration_days = campaign.get("beat_duration_days") or 7
-            auto_close = _utcnow() + timedelta(days=duration_days)
-            ops_closes_at = auto_close.isoformat()
-        state["ops_window"] = {
-            "opened_at": _iso_now(),
-            "closes_at": ops_closes_at,
-            "terminus_calls": [],
-        }
-        campaign["phase"] = "ops"
-        summary["ops_closes_at"] = ops_closes_at
+        _enter_cascade_phase(state, "cascade_HC")
+        summary["cascade_HC_deadline"] = state["cascade"].get("cascade_HC_deadline")
 
     return summary
 
@@ -1884,17 +1875,31 @@ async def sweep_campaign_beat_clock() -> None:
     camp_name = state["campaign"].get("name") or "Campaign"
     beat = state["campaign"].get("beat") or "?"
 
-    # ops → cascade_HC when the ops window closes
+    # ops → beat resolution when the ops window closes
     if phase == "ops":
         closes_at = _parse_iso(state.get("ops_window", {}).get("closes_at"))
         if closes_at and now >= closes_at:
-            _enter_cascade_phase(state, "cascade_HC")
-            deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
-            announcement = (
-                f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
-                f"The Cascade of Orders begins. **High Command**, submit your doctrine orders via `/campaign-cascade-submit`.\n"
-                f"HC cascade window closes: `{deadline_ts}Z`"
-            )
+            summary = _resolve_beat_and_open_next(state)
+            new_beat_name = summary["new_beat_name"]
+            new_beat = summary["new_beat"]
+            theatre_strats = summary.get("theatre_mandates") or []
+            theatre_display = ", ".join(f"`{s}`" for s in theatre_strats) if theatre_strats else "—"
+            top_tags = ", ".join(summary.get("top_tags", [])) or "—"
+            if summary.get("campaign_complete"):
+                total_b = state["campaign"].get("total_beats", 3)
+                length_lbl = state["campaign"].get("length_label") or {3: "Short", 4: "Medium", 5: "Long"}.get(total_b, "")
+                announcement = (
+                    f"⚔️ **{camp_name} — Campaign Concluded.**\n"
+                    f"The {length_lbl.lower()} campaign ({total_b} beats) is complete.\n"
+                    f"Final Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}"
+                )
+            else:
+                deadline_ts = summary.get("cascade_HC_deadline", "")[:19]
+                announcement = (
+                    f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                    f"The Cascade of Orders begins. **High Command**, submit your doctrine orders via `/campaign-cascade-submit`.\n"
+                    f"HC cascade window closes: `{deadline_ts}Z`"
+                )
             changed = True
 
     # cascade_HC → cascade_Company on deadline
@@ -1923,30 +1928,24 @@ async def sweep_campaign_beat_clock() -> None:
             )
             changed = True
 
-    # cascade_KT → beat resolution on deadline
+    # cascade_KT → open ops window for this beat
     elif phase == "cascade_KT":
         deadline = _parse_iso(state.get("cascade", {}).get("cascade_KT_deadline"))
         if deadline and now >= deadline:
-            summary = _resolve_beat_and_open_next(state, ops_closes_at=None)
-            new_beat_name = summary["new_beat_name"]
-            new_beat = summary["new_beat"]
-            theatre_strats = summary.get("theatre_mandates") or []
-            theatre_display = ", ".join(f"`{s}`" for s in theatre_strats) if theatre_strats else "—"
-            top_tags = ", ".join(summary.get("top_tags", [])) or "—"
-            if summary.get("campaign_complete"):
-                total_b = state["campaign"].get("total_beats", 3)
-                length_lbl = state["campaign"].get("length_label") or {3: "Short", 4: "Medium", 5: "Long"}.get(total_b, "")
-                announcement = (
-                    f"⚔️ **{camp_name} — Campaign Concluded.**\n"
-                    f"The {length_lbl.lower()} campaign ({total_b} beats) is complete.\n"
-                    f"Final Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}"
-                )
-            else:
-                announcement = (
-                    f"⚔️ **{camp_name} — {new_beat_name} begins.**\n"
-                    f"Cascade resolved. Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}\n"
-                    f"Ops window is **open** and will close automatically based on beat duration."
-                )
+            duration_days = state["campaign"].get("beat_duration_days") or 7
+            ops_close = _utcnow() + timedelta(days=duration_days)
+            state["ops_window"] = {
+                "opened_at": _iso_now(),
+                "closes_at": ops_close.isoformat(),
+                "terminus_calls": [],
+            }
+            state["campaign"]["phase"] = "ops"
+            ops_close_ts = ops_close.strftime("%Y-%m-%d %H:%M")
+            announcement = (
+                f"⚔️ **{camp_name} — Beat {beat} cascade resolved. Ops window open.**\n"
+                f"Strat mandates are locked. **All Brothers**, get your ops in via `/campaign-log`.\n"
+                f"Ops window closes: `{ops_close_ts}Z`"
+            )
             changed = True
 
     if changed:
@@ -2710,13 +2709,12 @@ async def _campaign_milestone(interaction: discord.Interaction):
 
 @_g.bot.tree.command(
     name="campaign-init",
-    description="Initialise a new campaign. Seeds state and sets phase to 'ops'. (Forgemaster only)",
+    description="Initialise a new campaign. Opens cascade immediately. (Forgemaster only)",
 )
 @app_commands.describe(
     campaign_id="Optional manual campaign ID slug (e.g. 'campaign_002'). Auto-generated if omitted.",
     beat_number="Starting beat number (default: 1).",
-    beat_duration_days="Days each ops window stays open before cascade begins (default: 7).",
-    ops_closes_at="Override: exact ISO timestamp for this first beat's close (e.g. 2026-07-01T20:00:00). Overrides beat_duration_days.",
+    beat_duration_days="Days each ops window stays open (default: 7). Ops open after cascade resolves.",
     doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
 )
 async def _campaign_init(
@@ -2724,7 +2722,6 @@ async def _campaign_init(
     campaign_id: Optional[str] = None,
     beat_number: int = 1,
     beat_duration_days: int = 7,
-    ops_closes_at: Optional[str] = None,
     doctrine_tags: Optional[str] = None,
 ):
     if not _b_check_command_permission(interaction.user, "campaign-init"):
@@ -2765,11 +2762,6 @@ async def _campaign_init(
         ts_slug = _utcnow().strftime("%Y%m%d")
         campaign_id = f"campaign_{ts_slug}"
 
-    # Parse ops window close time; fall back to beat_duration_days
-    closes_dt = _parse_iso(ops_closes_at) if ops_closes_at else None
-    if closes_dt is None:
-        closes_dt = _utcnow() + timedelta(days=max(1, beat_duration_days))
-
     # Preserve existing formation state; reset only campaign-level fields
     state = _load_campaign_state()
     blank = _blank_campaign_state()
@@ -2790,18 +2782,15 @@ async def _campaign_init(
         "name": camp_name,
         "beat": beat_number,
         "beat_name": beat_name,
-        "phase": "ops",
+        "phase": "cascade_HC",
         "started_at": now_iso,
         "beat_duration_days": max(1, beat_duration_days),
         "total_beats": total_beats,
         "length_label": length_label,
     })
     state["total_beats"] = total_beats
-    state["ops_window"] = {
-        "opened_at": now_iso,
-        "closes_at": closes_dt.isoformat(),
-        "terminus_calls": [],
-    }
+    # Open the cascade immediately; ops window opens after cascade_KT resolves
+    _enter_cascade_phase(state, "cascade_HC")
 
     # Seed companies from config — only add companies not already present
     CONFIG = _b("CONFIG") or {}
@@ -2833,15 +2822,16 @@ async def _campaign_init(
     os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
     _save_campaign_state(state)
 
+    hc_deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
     embed = discord.Embed(
         title=f"⚔️ {camp_name}",
-        description="Campaign initialised and set to **ops** phase.",
+        description="Campaign initialised. **Cascade of Orders** is open — High Command, submit your doctrine.",
         color=0xC4A030,
     )
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
-    embed.add_field(name="Phase", value="ops", inline=True)
-    embed.add_field(name="Ops Window Closes", value=closes_dt.strftime("%Y-%m-%d %H:%M UTC"), inline=False)
+    embed.add_field(name="Phase", value="cascade_HC", inline=True)
+    embed.add_field(name="HC Cascade Closes", value=f"{hc_deadline_ts}Z", inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
