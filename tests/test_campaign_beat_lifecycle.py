@@ -23,7 +23,7 @@ Covers:
 - sweep_campaign_beat_clock: cascade_KT deadline resolves beat and returns to ops
 - sweep_campaign_beat_clock: posts announcement when bot channel set
 - campaign-init rejected when campaign already active (phase=ops)
-- campaign-init rejected when campaign already active (phase=cascade_HC)
+- campaign-init rejected when campaign already active (phase=cascade_WM)
 - campaign-init accepted when phase is inactive
 - campaign-init accepted when phase is complete
 - campaign-init auto-calculates closes_at from beat_duration_days
@@ -150,7 +150,7 @@ def _cascade_state(phase, deadline_offset_seconds=-1, beat_duration_days=7):
     cascade["submissions"] = {
         "111": {
             "role_key": "watch_master",
-            "phase": "cascade_HC",
+            "phase": "cascade_WM",
             "decision": "theatre_order",
             "choice_key": "advance_the_spear",
             "choice_name": "Advance the Spear",
@@ -257,8 +257,8 @@ def test_resolve_beat_phase_returns_to_ops(state_file):
     _, c = state_file
     state = _cascade_state("cascade_KT")
     c._resolve_beat_and_open_next(state)
-    # After beat resolution, cascade opens for the next beat
-    assert state["campaign"]["phase"] == "cascade_HC"
+    # After beat resolution, cascade opens at WM tier for the next beat
+    assert state["campaign"]["phase"] == "cascade_WM"
 
 
 def test_resolve_beat_locks_strat_pool(state_file):
@@ -290,9 +290,9 @@ def test_resolve_beat_auto_calculates_closes_at(state_file):
     state = _cascade_state("cascade_KT")
     state["campaign"]["beat_duration_days"] = 5
     c._resolve_beat_and_open_next(state)
-    # Ops window is not created at resolve time; cascade_HC opens instead
-    assert state["campaign"]["phase"] == "cascade_HC"
-    assert "cascade_HC_deadline" in state["cascade"]
+    # Ops window is not created at resolve time; cascade_WM opens instead
+    assert state["campaign"]["phase"] == "cascade_WM"
+    assert "cascade_WM_deadline" in state["cascade"]
 
 
 def test_resolve_beat_explicit_closes_at_overrides_duration(state_file):
@@ -302,19 +302,19 @@ def test_resolve_beat_explicit_closes_at_overrides_duration(state_file):
     explicit = _iso(_now() + timedelta(days=3))
     # ops_closes_at param is now unused; beat_duration_days governs ops after cascade
     c._resolve_beat_and_open_next(state)
-    assert state["campaign"]["phase"] == "cascade_HC"
+    assert state["campaign"]["phase"] == "cascade_WM"
 
 
 def test_resolve_beat_campaign_continues_when_beat_le_total_beats(state_file):
-    """When resolved beat <= total_beats the campaign stays in cascade_HC (cascade-first flow)."""
+    """When resolved beat <= total_beats the campaign stays in cascade_WM (cascade-first flow)."""
     _, c = state_file
     state = _cascade_state("cascade_KT")
     state["campaign"]["beat"] = 2
     state["campaign"]["total_beats"] = 3
     summary = c._resolve_beat_and_open_next(state)
     assert summary["campaign_complete"] is False
-    assert state["campaign"]["phase"] == "cascade_HC"
-    assert "cascade_HC_deadline" in state["cascade"]
+    assert state["campaign"]["phase"] == "cascade_WM"
+    assert "cascade_WM_deadline" in state["cascade"]
 
 
 def test_resolve_beat_campaign_ends_when_beat_exceeds_total_beats(state_file):
@@ -332,14 +332,14 @@ def test_resolve_beat_campaign_ends_when_beat_exceeds_total_beats(state_file):
 
 
 def test_resolve_beat_total_beats_5_allows_5_beats(state_file):
-    """total_beats=5: beating beat 4 should keep campaign alive (in cascade_HC)."""
+    """total_beats=5: beating beat 4 should keep campaign alive (in cascade_WM)."""
     _, c = state_file
     state = _cascade_state("cascade_KT")
     state["campaign"]["beat"] = 4
     state["campaign"]["total_beats"] = 5
     summary = c._resolve_beat_and_open_next(state)
     assert summary["campaign_complete"] is False
-    assert state["campaign"]["phase"] == "cascade_HC"
+    assert state["campaign"]["phase"] == "cascade_WM"
 
 
 def test_resolve_beat_theatre_mandate_is_list(state_file):
@@ -368,9 +368,13 @@ def _make_user_with_roles(*role_names):
 
 def test_get_cascade_role_key_hc_phase(state_file):
     _, c = state_file
+    # Watch Master is now cascade_WM (not cascade_HC)
     user = _make_user_with_roles("Watch Master", "Watch Brother")
-    key = c._get_user_cascade_role_key(user, "cascade_HC")
+    key = c._get_user_cascade_role_key(user, "cascade_WM")
     assert key == "watch_master"
+    # WM should NOT appear in cascade_HC
+    key_hc = c._get_user_cascade_role_key(user, "cascade_HC")
+    assert key_hc is None
 
 
 def test_get_cascade_role_key_company_phase(state_file):
@@ -389,10 +393,12 @@ def test_get_cascade_role_key_kt_phase(state_file):
 
 def test_get_cascade_role_key_wrong_phase_returns_none(state_file):
     _, c = state_file
-    # Watch Master is HC, should not match during cascade_KT
+    # Watch Master is cascade_WM, should not match during cascade_KT or cascade_HC
     user = _make_user_with_roles("Watch Master")
     key = c._get_user_cascade_role_key(user, "cascade_KT")
     assert key is None
+    key_hc = c._get_user_cascade_role_key(user, "cascade_HC")
+    assert key_hc is None
 
 
 def test_get_cascade_role_key_no_matching_role_returns_none(state_file):
@@ -404,10 +410,13 @@ def test_get_cascade_role_key_no_matching_role_returns_none(state_file):
 
 def test_get_cascade_role_key_picks_highest_priority(state_file):
     _, c = state_file
-    # Watch Master outranks Forgemaster in _CASCADE_ROLE_PRIORITY
+    # Watch Master outranks Forgemaster in _CASCADE_ROLE_PRIORITY but is now cascade_WM
+    # In cascade_HC, WM's top role is watch_master (cascade_WM), so HC returns None for WM
     user = _make_user_with_roles("Forgemaster", "Watch Master")
     key = c._get_user_cascade_role_key(user, "cascade_HC")
-    assert key == "watch_master"
+    assert key is None  # WM's highest role is watch_master (cascade_WM), not eligible for HC
+    key_wm = c._get_user_cascade_role_key(user, "cascade_WM")
+    assert key_wm == "watch_master"
 
 
 def test_get_cascade_role_key_no_roles_attr_returns_none(state_file):
@@ -462,13 +471,13 @@ def test_sweep_ops_window_not_expired_stays_ops(state_file):
     assert result["campaign"]["phase"] == "ops"
 
 
-def test_sweep_ops_window_expired_transitions_to_cascade_hc(state_file):
+def test_sweep_ops_window_expired_transitions_to_cascade_wm(state_file):
     _, c = state_file
     state = _blank_ops_state(closes_offset_seconds=-1)  # already closed
     result = _run_sweep(c, state)
-    # ops expired → beat resolves → cascade_HC for next beat
-    assert result["campaign"]["phase"] == "cascade_HC"
-    assert "cascade_HC_deadline" in result["cascade"]
+    # ops expired → beat resolves → cascade_WM for next beat (WM sets theatre first)
+    assert result["campaign"]["phase"] == "cascade_WM"
+    assert "cascade_WM_deadline" in result["cascade"]
 
 
 def test_sweep_ops_no_closes_at_stays_ops(state_file):
@@ -537,7 +546,7 @@ def test_sweep_posts_announcement_when_channel_set(state_file):
     mock_bot.get_channel.assert_called_once_with(99999)
     mock_channel.send.assert_awaited_once()
     text = mock_channel.send.call_args[0][0]
-    assert "cascade" in text.lower() or "cascade" in text
+    assert "watch master" in text.lower() or "cascade" in text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -627,9 +636,9 @@ def test_campaign_init_auto_closes_at_from_duration(state_file):
         _run_campaign_init(c, interaction, beat_duration_days=5)
 
     saved = c._load_campaign_state()
-    # Init now opens cascade_HC, not an ops window
-    assert saved["campaign"]["phase"] == "cascade_HC"
-    assert "cascade_HC_deadline" in saved["cascade"]
+    # Init now opens cascade_WM (Watch Master sets theatre first)
+    assert saved["campaign"]["phase"] == "cascade_WM"
+    assert "cascade_WM_deadline" in saved["cascade"]
     assert saved["campaign"]["beat_duration_days"] == 5
 
 
@@ -686,7 +695,7 @@ def test_campaign_init_explicit_ops_closes_at_overrides_duration(state_file):
         _run_campaign_init(c, interaction, beat_duration_days=7)
 
     saved = c._load_campaign_state()
-    assert saved["campaign"]["phase"] == "cascade_HC"
+    assert saved["campaign"]["phase"] == "cascade_WM"
     assert saved["campaign"]["beat_duration_days"] == 7
 
 
@@ -712,7 +721,7 @@ def test_campaign_init_minimum_beat_duration_is_1(state_file):
 
     saved = c._load_campaign_state()
     assert saved["campaign"]["beat_duration_days"] == 1
-    assert saved["campaign"]["phase"] == "cascade_HC"
+    assert saved["campaign"]["phase"] == "cascade_WM"
 
 
 def test_campaign_init_total_beats_randomly_seeded(state_file):

@@ -337,6 +337,7 @@
   },
   "debug": false,
   "cascade_deadline_hours": {
+    "cascade_WM": 1,
     "cascade_HC": 1,
     "cascade_Company": 1,
     "cascade_KT": 1

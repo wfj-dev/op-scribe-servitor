@@ -1596,6 +1596,85 @@ def _generate_node_scenarios(state: dict) -> None:
         beat_scenarios[nid] = scenario
 
 
+def _resolve_cascade_WM(state: dict) -> None:
+    """Apply WM's movement decision, update current_node, generate scenarios, then open cascade_HC.
+
+    If no WM submission exists (WM not enlisted / window timed out), holds position.
+    Modifies *state* in-place.
+    """
+    submissions = state.get("cascade", {}).get("submissions", {})
+    wm_sub = next((s for s in submissions.values() if s.get("role_key") == "watch_master"), None)
+    if wm_sub:
+        target_node = wm_sub.get("target_node")
+        if target_node:
+            state["campaign"]["current_node"] = target_node
+            visited = state["campaign"].setdefault("visited_nodes", [])
+            if target_node not in visited:
+                visited.append(target_node)
+    # Generate scenarios for the (possibly new) current node
+    _generate_node_scenarios(state)
+    _enter_cascade_phase(state, "cascade_HC")
+
+
+# Node type → tags contributed when WM moves to that node type
+_NODE_MOVE_TAGS: Dict[str, list] = {
+    "fortress_world": ["aggressive", "terminus", "advance"],
+    "hive_world": ["urban", "aggressive", "dominance"],
+    "agri_world": ["reclaim", "resupply", "defensive"],
+    "death_world": ["attrition", "elimination", "hunters"],
+    "daemon_world": ["purge", "terminus", "spiritual"],
+    "civilised_world": ["dominance", "intelligence", "reclaim"],
+    "feral_world": ["hunters", "elimination", "attrition"],
+    "mining_world": ["resupply", "fortify", "dominance"],
+    "void": ["void_interdiction", "advance", "aggressive"],
+    "dead_world": ["attrition", "fortify", "resilience"],
+}
+
+
+def _build_wm_movement_options(state: dict) -> dict:
+    """Build dynamic WM cascade_WM options: hold current planet + advance to each adjacent node."""
+    current_node = state.get("campaign", {}).get("current_node")
+    opts: dict = {
+        "_decision": "movement_order",
+        "_description": (
+            "The Watch Master sets the warband's theatre — hold position or reposition to an "
+            "adjacent world. This choice determines the scenario intelligence for all cascade "
+            "tiers below."
+        ),
+    }
+    hold_name = f"Hold Position — {current_node}" if current_node else "Hold Position"
+    opts["hold"] = {
+        "name": hold_name,
+        "description": "Maintain current positioning. Doctrine is drawn from familiar ground.",
+        "tags": ["defensive", "fortify", "resilience"],
+        "target_node": None,
+    }
+    if current_node:
+        graph = _load_graph()
+        adjacent_ids: set = set()
+        for edge in graph.get("edges", []):
+            src, tgt = edge.get("source"), edge.get("target")
+            if src == current_node:
+                adjacent_ids.add(tgt)
+            elif tgt == current_node:
+                adjacent_ids.add(src)
+        for nid in sorted(adjacent_ids):
+            nd = _graph_node(nid)
+            if not nd:
+                continue
+            ntype = nd.get("type", "")
+            tags = _NODE_MOVE_TAGS.get(ntype, ["advance", "aggressive"])
+            # key must be a valid identifier-like string
+            safe_id = nid.lower().replace(" ", "_").replace("-", "_").replace("'", "")
+            opts[f"move_to_{safe_id}"] = {
+                "name": f"Advance to {nid}",
+                "description": f"{nid} — {ntype.replace('_', ' ').title()}. Reposition the warband.",
+                "tags": tags[:2],
+                "target_node": nid,
+            }
+    return opts
+
+
 # ---------------------------------------------------------------------------
 # Milestone progress
 # ---------------------------------------------------------------------------
@@ -1773,8 +1852,9 @@ _ROLE_TO_CASCADE_KEY: Dict[str, str] = {
 
 # Which cascade keys are eligible per phase
 _CASCADE_PHASE_ROLES: Dict[str, frozenset] = {
+    "cascade_WM": frozenset({"watch_master"}),
     "cascade_HC": frozenset({
-        "watch_master", "lord_executioner", "forgemaster", "chief_apothecary",
+        "lord_executioner", "forgemaster", "chief_apothecary",
         "high_chaplain", "huntmaster", "void_warden", "castellan",
     }),
     "cascade_Company": frozenset({
@@ -1795,6 +1875,7 @@ _CASCADE_ROLE_PRIORITY = [
 
 # Cascade window durations per phase
 _CASCADE_DEADLINE_HOURS: Dict[str, int] = {
+    "cascade_WM": 24,
     "cascade_HC": 48,
     "cascade_Company": 48,
     "cascade_KT": 24,
@@ -1847,9 +1928,6 @@ def _enter_cascade_phase(state: dict, phase: str) -> None:
     deadline = now + timedelta(hours=deadline_hours)
     cascade[f"{phase}_started_at"] = now.isoformat()
     cascade[f"{phase}_deadline"] = deadline.isoformat()
-    # Generate planet scenarios when HC cascade opens (start of each beat)
-    if phase == "cascade_HC":
-        _generate_node_scenarios(state)
 
 
 def _aggregate_cascade_doctrine(state: dict) -> Dict[str, float]:
@@ -1985,8 +2063,8 @@ def _resolve_beat_and_open_next(
         campaign["ended_at"] = _iso_now()
         campaign["outcome"] = f"Campaign concluded after {total_beats} beats."
     else:
-        _enter_cascade_phase(state, "cascade_HC")
-        summary["cascade_HC_deadline"] = state["cascade"].get("cascade_HC_deadline")
+        _enter_cascade_phase(state, "cascade_WM")
+        summary["cascade_WM_deadline"] = state["cascade"].get("cascade_WM_deadline")
 
     return summary
 
@@ -2008,12 +2086,12 @@ async def sweep_campaign_beat_clock() -> None:
     """Auto-advance campaign beat lifecycle: ops window expiry and cascade deadlines.
 
     Called every 15 minutes by the beat clock loop in bot.py.
-    Transitions: ops → cascade_HC → cascade_Company → cascade_KT → ops (next beat).
+    Transitions: ops → cascade_WM → cascade_HC → cascade_Company → cascade_KT → ops (next beat).
     """
     state = _load_campaign_state()
     phase = state.get("campaign", {}).get("phase", "inactive")
 
-    if phase not in ("ops", "cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase not in ("ops", "cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
         return
 
     bot = _b("bot")
@@ -2046,15 +2124,27 @@ async def sweep_campaign_beat_clock() -> None:
                     f"Final Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}"
                 )
             else:
-                deadline_ts = summary.get("cascade_HC_deadline", "")[:19]
+                deadline_ts = summary.get("cascade_WM_deadline", "")[:19]
                 announcement = (
                     f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
-                    f"The Cascade of Orders begins. **High Command**, submit your doctrine orders via `/campaign-cascade-submit`.\n"
-                    f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
+                    f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
+                    f"WM positioning window closes: {_fmt_ts(deadline_ts)}"
                 )
             changed = True
 
-    # cascade_HC → cascade_Company on deadline
+    # cascade_WM → cascade_HC when deadline expires (or auto if no WM enlisted)
+    elif phase == "cascade_WM":
+        deadline = _parse_iso(state.get("cascade", {}).get("cascade_WM_deadline"))
+        if deadline and now >= deadline:
+            _resolve_cascade_WM(state)
+            deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
+            current_node = state["campaign"].get("current_node") or "current position"
+            announcement = (
+                f"⚔️ **{camp_name} — Beat {beat}: Watch Master positioning window closed.**\n"
+                f"Warband holds at **{current_node}**. **High Command**, submit your doctrine orders via `/campaign-orders`.\n"
+                f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
+            )
+            changed = True
     elif phase == "cascade_HC":
         deadline = _parse_iso(state.get("cascade", {}).get("cascade_HC_deadline"))
         if deadline and now >= deadline:
@@ -2322,7 +2412,8 @@ class _CascadeButton(discord.ui.Button):
         tags = self._opt_val.get("tags", [])
         opt_name = self._opt_val.get("name", self._opt_key)
         role_data = _CASCADE_OPTIONS.get(self._role_key, {})
-        decision_key = role_data.get("_decision", self._role_key)
+        # For cascade_WM movement options, _decision lives in the dynamic opts dict
+        decision_key = role_data.get("_decision") or self._opt_val.get("_decision", self._role_key)
         cascade = state.setdefault("cascade", {})
         cascade.setdefault("submissions", {})
         cascade["submissions"][self._owner_id] = {
@@ -2332,6 +2423,7 @@ class _CascadeButton(discord.ui.Button):
             "choice_key": self._opt_key,
             "choice_name": opt_name,
             "tags": tags,
+            "target_node": self._opt_val.get("target_node"),  # WM movement
             "submitted_at": _iso_now(),
         }
         _save_campaign_state(state)
@@ -2376,7 +2468,18 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         "cascade_Company": "cascade_KT",
     }
 
-    if phase in _ADVANCE_MAP:
+    if phase == "cascade_WM":
+        # Apply movement, generate scenarios, open cascade_HC
+        _resolve_cascade_WM(state)
+        deadline_ts = state["cascade"].get("cascade_HC_deadline", "")
+        current_node = state["campaign"].get("current_node") or "current position"
+        announcement = (
+            f"⚔️ **{camp_name} — Beat {beat}: Watch Master has set the theatre.**\n"
+            f"Warband positioned at **{current_node}**. Scenario intelligence is now live.\n"
+            f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
+            f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
+        )
+    elif phase in _ADVANCE_MAP:
         next_phase = _ADVANCE_MAP[phase]
         _enter_cascade_phase(state, next_phase)
         deadline_ts = state["cascade"].get(f"{next_phase}_deadline", "")
@@ -2416,10 +2519,10 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
 class _CascadeChoiceView(discord.ui.View):
     """Ephemeral view that renders cascade doctrine buttons for /campaign-orders."""
 
-    def __init__(self, user_id: str, role_key: str, phase: str):
+    def __init__(self, user_id: str, role_key: str, phase: str, options_override: Optional[dict] = None):
         super().__init__(timeout=300)
         _ensure_refs_loaded()
-        role_data = _CASCADE_OPTIONS.get(role_key, {})
+        role_data = options_override if options_override is not None else _CASCADE_OPTIONS.get(role_key, {})
         for opt_key, opt_val in role_data.items():
             if opt_key.startswith("_"):
                 continue
@@ -2428,6 +2531,7 @@ class _CascadeChoiceView(discord.ui.View):
 
 # Maps _decision key → readable in-universe phrase used in orders narrative
 _DECISION_PHRASES: Dict[str, str] = {
+    "movement_order": "theatre positioning order",
     "theatre_order": "theatre posture",
     "execution": "execution priority",
     "company_order": "company mandate",
@@ -2480,9 +2584,14 @@ def _compose_orders_narrative(
     campaign_name = campaign.get("name") or "The Campaign"
     tag_vocab: Dict[str, str] = _CASCADE_OPTIONS.get("_tag_vocabulary", {})
 
-    phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
-    _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
-    user_phase = _TIER_PHASE.get(tier)
+    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    # Determine user's cascade phase from their role_key (handles cascade_WM correctly)
+    rk_self_pre = _ROLE_TO_CASCADE_KEY.get(role, "")
+    user_phase: Optional[str] = None
+    for cp in phase_order:
+        if rk_self_pre and rk_self_pre in _CASCADE_PHASE_ROLES.get(cp, frozenset()):
+            user_phase = cp
+            break
 
     # Beat-indexed opening
     try:
@@ -2503,20 +2612,34 @@ def _compose_orders_narrative(
             if rk and rk in eligible and uid in submissions:
                 sub = submissions[uid]
                 if sub.get("phase") == cp:
-                    opt_data = _CASCADE_OPTIONS.get(rk, {}).get(sub.get("choice_key", ""), {})
+                    # For cascade_WM movement submissions, description is in the submission itself
+                    if cp == "cascade_WM":
+                        desc = sub.get("choice_name", "?")
+                        opt_data = {}
+                    else:
+                        opt_data = _CASCADE_OPTIONS.get(rk, {}).get(sub.get("choice_key", ""), {})
+                        desc = opt_data.get("description", "")
                     upstream.append({
                         "role": rec.get("role", rk),
                         "choice_name": sub.get("choice_name", "?"),
-                        "description": opt_data.get("description", ""),
+                        "description": desc,
                         "tags": sub.get("tags", []),
                         "phase": cp,
                     })
 
     # Role metadata
-    rk_self = _ROLE_TO_CASCADE_KEY.get(role, "")
+    rk_self = rk_self_pre
     role_meta = _CASCADE_OPTIONS.get(rk_self, {})
     role_desc = role_meta.get("_description", "")
     role_decision_key = role_meta.get("_decision", "")
+    # For cascade_WM the decision is movement, not doctrine — override
+    if user_phase == "cascade_WM":
+        role_decision_key = "movement_order"
+        role_desc = (
+            "The Watch Master sets the warband's position for this beat — hold in place or "
+            "reposition to an adjacent world. This choice determines the scenario intelligence "
+            "every brother below will face when they open their orders."
+        )
     decision_phrase = _DECISION_PHRASES.get(
         role_decision_key,
         role_decision_key.replace("_", " ") if role_decision_key else "order",
@@ -2761,8 +2884,17 @@ async def _campaign_orders(interaction: discord.Interaction):
     _ensure_refs_loaded()
 
     # --- Narrative description ---
-    _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
-    user_cascade_phase = _TIER_PHASE.get(tier)
+    # Determine user_cascade_phase from role (handles cascade_WM correctly for Watch Master)
+    _all_phases = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    _role_key_self = _ROLE_TO_CASCADE_KEY.get(record.get("role", ""), "")
+    user_cascade_phase: Optional[str] = None
+    for _cp in _all_phases:
+        if _role_key_self and _role_key_self in _CASCADE_PHASE_ROLES.get(_cp, frozenset()):
+            user_cascade_phase = _cp
+            break
+    if user_cascade_phase is None:
+        # Fallback to tier-based mapping for non-cascade roles
+        user_cascade_phase = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}.get(tier)
 
     narr = _compose_orders_narrative(state, phase, tier, record.get("role", ""), beat_name)
 
@@ -2793,7 +2925,7 @@ async def _campaign_orders(interaction: discord.Interaction):
     embed.set_footer(text=f"Phase: {phase} · Your tier: {tier} · Planet: {current_node or '—'}")
 
     # --- Cascade status block ---
-    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
         deadline_key = f"{phase}_deadline"
         deadline = cascade.get(deadline_key, "Unknown")
         peer_summary = _cascade_peer_summary(state, phase, enlistment)
@@ -2807,14 +2939,19 @@ async def _campaign_orders(interaction: discord.Interaction):
         own_sub = submissions.get(user_id)
         if user_cascade_phase and user_cascade_phase != phase:
             # This member's cascade window has either passed or hasn't arrived
-            phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
-            if phase_order.index(user_cascade_phase) < phase_order.index(phase):
+            _full_phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+            ucpidx = _full_phase_order.index(user_cascade_phase) if user_cascade_phase in _full_phase_order else -1
+            cpidx = _full_phase_order.index(phase) if phase in _full_phase_order else -1
+            if ucpidx >= 0 and cpidx >= 0 and ucpidx < cpidx:
                 # Already submitted
                 if own_sub:
                     choice_name = own_sub.get("choice_name", own_sub.get("choice_key", "?"))
                     _ensure_refs_loaded()
-                    role_data = _CASCADE_OPTIONS.get(own_sub.get("role_key", ""), {})
-                    choice_desc = role_data.get(own_sub.get("choice_key", ""), {}).get("description", "")
+                    if user_cascade_phase == "cascade_WM":
+                        choice_desc = ""
+                    else:
+                        role_data = _CASCADE_OPTIONS.get(own_sub.get("role_key", ""), {})
+                        choice_desc = role_data.get(own_sub.get("choice_key", ""), {}).get("description", "")
                     val = f"✅ **{choice_name}**"
                     if choice_desc:
                         val += f"\n*{choice_desc[:200]}{'...' if len(choice_desc) > 200 else ''}*"
@@ -2866,26 +3003,38 @@ async def _campaign_orders(interaction: discord.Interaction):
             embed.add_field(name="Terminus Flag", value=terminus_flag, inline=False)
 
     # --- Cascade choice buttons (if it's this member's turn) ---
-    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
         role_key = _get_user_cascade_role_key(interaction.user, phase)
         if role_key:
             existing_sub = submissions.get(user_id)
             phase_label = phase.replace("cascade_", "").upper()
-            if existing_sub:
+            if existing_sub and existing_sub.get("phase") == phase:
                 choice_name = existing_sub.get("choice_name", existing_sub.get("choice_key", "?"))
-                role_data = _CASCADE_OPTIONS.get(existing_sub.get("role_key", ""), {})
-                choice_desc = role_data.get(existing_sub.get("choice_key", ""), {}).get("description", "")
+                if phase == "cascade_WM":
+                    choice_desc = existing_sub.get("choice_name", "")
+                else:
+                    role_data = _CASCADE_OPTIONS.get(existing_sub.get("role_key", ""), {})
+                    choice_desc = role_data.get(existing_sub.get("choice_key", ""), {}).get("description", "")
                 val = f"✅ **{choice_name}** — *select a button below to change.*"
-                if choice_desc:
+                if choice_desc and phase != "cascade_WM":
                     val += f"\n\n*{choice_desc[:300]}{'...' if len(choice_desc) > 300 else ''}*"
                 embed.add_field(name=f"Cascade Orders — {phase_label}", value=val, inline=False)
             else:
+                prompt = (
+                    "Set your positioning order — hold or advance to an adjacent world:"
+                    if phase == "cascade_WM"
+                    else "Your orders await your word. Select your doctrine below:"
+                )
                 embed.add_field(
                     name=f"Cascade Orders — {phase_label}",
-                    value="Your orders await your word. Select your doctrine below:",
+                    value=prompt,
                     inline=False,
                 )
-            view = _CascadeChoiceView(user_id, role_key, phase)
+            if phase == "cascade_WM":
+                wm_opts = _build_wm_movement_options(state)
+                view = _CascadeChoiceView(user_id, role_key, phase, options_override=wm_opts)
+            else:
+                view = _CascadeChoiceView(user_id, role_key, phase)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
@@ -2912,7 +3061,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
     beat = campaign.get("beat")
     beat_name = campaign.get("beat_name") or f"Beat {beat or '?'}"
 
-    if phase not in ("cascade_HC", "cascade_Company", "cascade_KT", "ops"):
+    if phase not in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "ops"):
         await interaction.response.send_message(
             f"No cascade is active (current phase: **{phase}**).", ephemeral=True
         )
@@ -2923,22 +3072,27 @@ async def _campaign_cascade(interaction: discord.Interaction):
     submissions = cascade.get("submissions", {})
     _ensure_refs_loaded()
 
-    # Build role → user_id map for all 3 phases
-    phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
-    phase_labels = {"cascade_HC": "High Command", "cascade_Company": "Company Command", "cascade_KT": "Kill Teams"}
+    # Build role → user_id map for all phases
+    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    phase_labels = {
+        "cascade_WM": "Watch Master",
+        "cascade_HC": "High Command",
+        "cascade_Company": "Company Command",
+        "cascade_KT": "Kill Teams",
+    }
 
     embed = discord.Embed(
         title=f"📜 Cascade of Orders — {beat_name}",
         description=(
-            "The cascade descends from High Command through Company to the Kill Teams. "
-            "Each tier's doctrine choices shape the strat pool for this beat."
+            "The Watch Master sets the theatre. High Command issues doctrine. "
+            "Company and Kill Teams follow. Each tier's choices shape the strat pool for this beat."
         ),
         color=0x2F3136,
     )
 
     phase_complete_idx = -1
     if phase == "ops":
-        phase_complete_idx = 2  # all done
+        phase_complete_idx = len(phase_order) - 1  # all done
     elif phase in phase_order:
         phase_complete_idx = phase_order.index(phase) - 1
 
@@ -2973,7 +3127,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
 
         if i == (phase_order.index(phase) if phase in phase_order else -1):
             header = f"🔰 {label} *(active)*"
-        elif i < (phase_order.index(phase) if phase in phase_order else 3) or phase == "ops":
+        elif i < (phase_order.index(phase) if phase in phase_order else len(phase_order)) or phase == "ops":
             header = f"✅ {label} *(closed)*"
         else:
             header = f"🔒 {label} *(pending)*"
@@ -3496,7 +3650,7 @@ async def _campaign_init(
         "name": camp_name,
         "beat": beat_number,
         "beat_name": beat_name,
-        "phase": "cascade_HC",
+        "phase": "cascade_WM",
         "started_at": now_iso,
         "beat_duration_days": max(1, beat_duration_days),
         "total_beats": total_beats,
@@ -3505,9 +3659,8 @@ async def _campaign_init(
         "visited_nodes": [node_id],
     })
     state["total_beats"] = total_beats
-    # Open the cascade immediately; ops window opens after cascade_KT resolves
-    # _enter_cascade_phase also calls _generate_node_scenarios when phase == cascade_HC
-    _enter_cascade_phase(state, "cascade_HC")
+    # Open cascade at WM tier first; WM positions the warband, then cascade_HC opens
+    _enter_cascade_phase(state, "cascade_WM")
 
     # Seed companies from config — only add companies not already present
     CONFIG = _b("CONFIG") or {}
@@ -3535,31 +3688,23 @@ async def _campaign_init(
             state["companies"][co_id].setdefault("honour_iron_compact", False)
             state["companies"][co_id].setdefault("iron_compact_beats", [])
 
-    # Persist
-    os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
     _save_campaign_state(state)
 
-    hc_deadline_ts = state["cascade"].get("cascade_HC_deadline", "")
+    wm_deadline_ts = state["cascade"].get("cascade_WM_deadline", "")
     embed = discord.Embed(
         title=f"⚔️ {camp_name}",
-        description="Campaign initialised. **Cascade of Orders** is open — High Command, submit your doctrine.",
+        description=(
+            "Campaign initialised. **Watch Master**, set your theatre positioning order first.\n"
+            "Once the Watch Master submits, beat scenarios generate and High Command cascade opens."
+        ),
         color=0xC4A030,
     )
-    # Surface the generated scenario for the starting node
-    node_scenario = state.get("beat_scenarios", {}).get(node_id, {})
-    scenario_summary = ""
-    if node_scenario:
-        codename = node_scenario.get("codename", "")
-        dominant = ", ".join(node_scenario.get("dominant_tags", []))
-        terminus = node_scenario.get("terminus_intel", "none")
-        scenario_summary = f"**{codename}** — `{dominant}` — Terminus: {terminus}"
-
+    # Note: beat_scenarios are empty until WM submits (scenarios generate on cascade_WM resolve)
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
-    embed.add_field(name="Phase", value="cascade_HC", inline=True)
-    embed.add_field(name="Current Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
-    embed.add_field(name="Beat Scenario", value=scenario_summary or "—", inline=False)
-    embed.add_field(name="HC Cascade Closes", value=_fmt_ts(hc_deadline_ts), inline=False)
+    embed.add_field(name="Phase", value="cascade_WM", inline=True)
+    embed.add_field(name="Starting Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
+    embed.add_field(name="WM Positioning Window Closes", value=_fmt_ts(wm_deadline_ts), inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
