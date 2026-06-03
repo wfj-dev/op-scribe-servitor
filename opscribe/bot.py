@@ -636,7 +636,7 @@ async def _before_campaign_de_enlist_sweep_loop():
     await bot.wait_until_ready()
 
 
-@tasks.loop(minutes=15)
+@tasks.loop(minutes=5)
 async def _campaign_beat_clock_loop():
     """Every 15 minutes: check ops window expiry and cascade deadlines, auto-advance beat lifecycle."""
     try:
