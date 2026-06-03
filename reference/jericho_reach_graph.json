@@ -618,7 +618,7 @@
     },
     {
       "id": "Avarax",
-      "type": "dead_world",
+      "type": "hive_world",
       "region": "acheros_salient",
       "game_planet": true,
       "chaos_tainted": true,
@@ -627,7 +627,7 @@
     },
     {
       "id": "Kadaku",
-      "type": "war_world",
+      "type": "feral_world",
       "region": "acheros_salient",
       "game_planet": true,
       "x": 305,
@@ -635,7 +635,7 @@
     },
     {
       "id": "Demerium",
-      "type": "shrine_world",
+      "type": "dead_world",
       "region": "acheros_salient",
       "game_planet": true,
       "x": 390,
