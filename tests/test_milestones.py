@@ -12,7 +12,7 @@ Covers:
 import json
 import os
 import asyncio
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -181,9 +181,9 @@ class TestScheduledMilestoneCheckGating:
 
             asyncio.run(_scheduled_milestone_check())
 
-        # Check ran — last_check_date should be updated to today
+        # Check ran — last_check_date should be updated to today (UTC)
         data = self._read_tracking()
-        assert data["last_check_date"] == str(date.today())
+        assert data["last_check_date"] == str(datetime.now(timezone.utc).date())
 
     def test_fallback_to_in_memory_when_no_persisted_date(self):
         """If persisted last_check_date is None, use in-memory value."""
@@ -232,4 +232,4 @@ class TestScheduledMilestoneCheckGating:
             asyncio.run(_scheduled_milestone_check())
 
         data = self._read_tracking()
-        assert data["last_check_date"] == str(date.today())
+        assert data["last_check_date"] == str(datetime.now(timezone.utc).date())
