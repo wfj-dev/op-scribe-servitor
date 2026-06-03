@@ -1727,19 +1727,30 @@ _STRAT_POOL_SIZE = 12  # Target conflict-free pool size for beat resolution
 
 
 def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
-    """Return the user's highest-priority cascade role key valid for *phase*."""
+    """Return the user's highest-priority cascade role key, but only if that role
+    is eligible for *phase*.
+
+    We find the user's globally highest-priority cascade role first (across all
+    phases). If that top role belongs to a different phase tier, they are not
+    eligible here — even if they hold a secondary role that would qualify. A
+    Forgemaster who also has Watch Techmarine should not receive Company cascade
+    options; their mandate was submitted at HC tier.
+    """
     if not hasattr(user, "roles"):
         return None
-    valid_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
     user_role_names = {r.name for r in user.roles}
-    user_keys = {
-        cascade_key
-        for role_name, cascade_key in _ROLE_TO_CASCADE_KEY.items()
-        if role_name in user_role_names and cascade_key in valid_keys
-    }
+    # Find the single highest-priority cascade role the user holds (globally)
+    top_key: Optional[str] = None
     for key in _CASCADE_ROLE_PRIORITY:
-        if key in user_keys:
-            return key
+        role_name = next((rn for rn, rk in _ROLE_TO_CASCADE_KEY.items() if rk == key), None)
+        if role_name and role_name in user_role_names:
+            top_key = key
+            break
+    if top_key is None:
+        return None
+    # Only return it if it is eligible for the requested phase
+    if top_key in _CASCADE_PHASE_ROLES.get(phase, frozenset()):
+        return top_key
     return None
 
 
