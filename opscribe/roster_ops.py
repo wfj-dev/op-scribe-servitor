@@ -3865,11 +3865,29 @@ async def tally_deeds(
         except Exception:
             embed = _embed_from_ansi("Deeds Ledger", reply_text)
 
+        # Huntmaster Jack easter egg — portrait thumbnail for a specific brother
+        _HUNTMASTER_JACK_ID = 1444810056821637133
+        if len(members) == 1 and int(members[0].id) == _HUNTMASTER_JACK_ID:
+            _jack_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "..", "assets",
+                f"{_HUNTMASTER_JACK_ID}-Huntmaster Jack.jpg",
+            )
+            if os.path.exists(_jack_path):
+                _jack_file = discord.File(_jack_path, filename="Huntmaster Jack.jpg")
+                embed.set_thumbnail(url="attachment://Huntmaster Jack.jpg")
+            else:
+                _jack_file = None
+        else:
+            _jack_file = None
+
         # Send embed only (clean output like forge_rite/stud announcement)
         if send_to_channel:
             await send_to_channel.send(embed=embed)
         else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            _send_kwargs = {"embed": embed, "ephemeral": True}
+            if _jack_file:
+                _send_kwargs["file"] = _jack_file
+            await interaction.followup.send(**_send_kwargs)
 
         # Send Monthly Honours as a separate additional message
         if len(members) == 1:
@@ -4647,7 +4665,25 @@ async def my_deeds(interaction: discord.Interaction):
 
     embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
 
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    # Huntmaster Jack easter egg
+    _HUNTMASTER_JACK_ID = 1444810056821637133
+    if int(target.id) == _HUNTMASTER_JACK_ID:
+        _jack_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "assets",
+            f"{_HUNTMASTER_JACK_ID}-Huntmaster Jack.jpg",
+        )
+        if os.path.exists(_jack_path):
+            _jack_file = discord.File(_jack_path, filename="Huntmaster Jack.jpg")
+            embed.set_thumbnail(url="attachment://Huntmaster Jack.jpg")
+        else:
+            _jack_file = None
+    else:
+        _jack_file = None
+
+    _send_kwargs = {"embed": embed, "ephemeral": True}
+    if _jack_file:
+        _send_kwargs["file"] = _jack_file
+    await interaction.followup.send(**_send_kwargs)
 
     # --- Monthly Honours (same as tally_deeds) ---
     now_mtd = datetime.utcnow()
