@@ -393,11 +393,14 @@ def enlist_member(
 ) -> Tuple[bool, str]:
     """Enlist a member into the current campaign.
 
+    Enlistment is allowed whether or not a campaign is currently active —
+    it records intent to participate so the member is ready when a campaign starts.
     Returns (success, message).
     """
-    state, err = _get_campaign_state_checked()
-    if err:
-        return False, err
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase in ("evaluating", "complete"):
+        return False, f"Campaign is in **{phase}** phase — enlistment is closed."
 
     enlistment = state.setdefault("enlistment", {})
     existing = enlistment.get(user_id)
