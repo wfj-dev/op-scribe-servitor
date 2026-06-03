@@ -1921,7 +1921,23 @@ _CASCADE_DEADLINE_DEFAULTS: Dict[str, int] = {
 def _enter_cascade_phase(state: dict, phase: str) -> None:
     """Set the campaign phase to a cascade phase and record its deadline.
     Hours are read from config['cascade_deadline_hours']; falls back to _CASCADE_DEADLINE_DEFAULTS.
+
+    For cascade_WM: if no Watch Master is enrolled, the phase is resolved immediately
+    (hold position, generate scenarios, open cascade_HC) rather than blocking the whole
+    cascade for the duration of the WM window.
     """
+    # Auto-skip cascade_WM if nobody eligible is enrolled
+    if phase == "cascade_WM":
+        eligible_keys = _CASCADE_PHASE_ROLES.get("cascade_WM", frozenset())
+        wm_enrolled = any(
+            _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) in eligible_keys
+            for rec in state.get("enlistment", {}).values()
+            if rec.get("active")
+        )
+        if not wm_enrolled:
+            _resolve_cascade_WM(state)
+            return
+
     CONFIG = _b("CONFIG")
     _hours_cfg = CONFIG.get("cascade_deadline_hours") if isinstance(CONFIG, dict) else None
     deadline_hours = (
@@ -2132,12 +2148,24 @@ async def sweep_campaign_beat_clock() -> None:
                     f"Final Theatre Mandates: {theatre_display} | Dominant doctrine: {top_tags}"
                 )
             else:
-                deadline_ts = summary.get("cascade_WM_deadline", "")[:19]
-                announcement = (
-                    f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
-                    f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
-                    f"WM positioning window closes: {_fmt_ts(deadline_ts)}"
-                )
+                wm_deadline = summary.get("cascade_WM_deadline") or ""
+                hc_deadline = state["cascade"].get("cascade_HC_deadline") or ""
+                current_node = state["campaign"].get("current_node") or "current position"
+                if wm_deadline:
+                    # cascade_WM is open (WM enrolled)
+                    announcement = (
+                        f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                        f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
+                        f"WM positioning window closes: {_fmt_ts(wm_deadline[:19])}"
+                    )
+                else:
+                    # No WM enrolled — cascade_WM was skipped; cascade_HC is now open
+                    announcement = (
+                        f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                        f"No Watch Master enlisted — warband holds at **{current_node}**. Scenario intelligence is live.\n"
+                        f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
+                        f"HC cascade window closes: {_fmt_ts(hc_deadline[:19])}"
+                    )
             changed = True
 
     # cascade_WM → cascade_HC when deadline expires (or auto if no WM enlisted)
