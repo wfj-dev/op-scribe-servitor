@@ -1520,6 +1520,83 @@ def generate_beat_scenario(
 
 
 # ---------------------------------------------------------------------------
+# Node/scenario helpers
+# ---------------------------------------------------------------------------
+
+_JERICHO_GRAPH: Optional[dict] = None
+
+
+def _load_graph() -> dict:
+    """Load jericho_reach_graph.json once and cache."""
+    global _JERICHO_GRAPH
+    if _JERICHO_GRAPH is None:
+        try:
+            _JERICHO_GRAPH = _load_ref("jericho_reach_graph.json")
+        except Exception:
+            _JERICHO_GRAPH = {"nodes": [], "edges": []}
+    return _JERICHO_GRAPH
+
+
+def _graph_node(node_id: str) -> Optional[dict]:
+    """Return the graph node dict for *node_id*, or None."""
+    for n in _load_graph().get("nodes", []):
+        if n.get("id") == node_id:
+            return n
+    return None
+
+
+def _generate_node_scenarios(state: dict) -> None:
+    """Generate beat scenarios for the current node (+ adjacent nodes for WM preview).
+
+    Stores results into state["beat_scenarios"][node_id]. Safe to call multiple
+    times — existing entries are overwritten to reflect current pressure.
+    """
+    current_node = state.get("campaign", {}).get("current_node")
+    if not current_node:
+        return
+
+    graph = _load_graph()
+    nodes_by_id = {n["id"]: n for n in graph.get("nodes", [])}
+    edges = graph.get("edges", [])
+
+    # Collect current node + adjacent nodes (bidirectional edges)
+    adjacent_ids: set = set()
+    for edge in edges:
+        src, tgt = edge.get("source"), edge.get("target")
+        if src == current_node:
+            adjacent_ids.add(tgt)
+        elif tgt == current_node:
+            adjacent_ids.add(src)
+
+    target_ids = [current_node] + sorted(adjacent_ids)
+
+    campaign = state.get("campaign", {})
+    beat = campaign.get("beat") or 1
+    campaign_id = campaign.get("id") or "campaign"
+    pressure_data = state.get("pressure", {})
+
+    beat_scenarios = state.setdefault("beat_scenarios", {})
+    for nid in target_ids:
+        node = nodes_by_id.get(nid)
+        if not node:
+            continue
+        node_type = node.get("type", "dead_world")
+        region = node.get("region")
+        pressure = int(pressure_data.get(nid, {}).get("level", 0) if isinstance(pressure_data.get(nid), dict) else pressure_data.get(nid, 0))
+        # Seed: deterministic per campaign/beat/node
+        seed_str = f"{campaign_id}:{beat}:{nid}"
+        beat_seed = hash(seed_str) & 0x7FFFFFFF
+        scenario = generate_beat_scenario(
+            node_id=nid,
+            node_type=node_type,
+            region=region,
+            current_pressure=pressure,
+            beat_seed=beat_seed,
+        )
+        beat_scenarios[nid] = scenario
+
+
+# ---------------------------------------------------------------------------
 # Milestone progress
 # ---------------------------------------------------------------------------
 
@@ -1770,6 +1847,9 @@ def _enter_cascade_phase(state: dict, phase: str) -> None:
     deadline = now + timedelta(hours=deadline_hours)
     cascade[f"{phase}_started_at"] = now.isoformat()
     cascade[f"{phase}_deadline"] = deadline.isoformat()
+    # Generate planet scenarios when HC cascade opens (start of each beat)
+    if phase == "cascade_HC":
+        _generate_node_scenarios(state)
 
 
 def _aggregate_cascade_doctrine(state: dict) -> Dict[str, float]:
@@ -2686,12 +2766,31 @@ async def _campaign_orders(interaction: discord.Interaction):
 
     narr = _compose_orders_narrative(state, phase, tier, record.get("role", ""), beat_name)
 
+    # --- Planet / scenario intel block ---
+    current_node = campaign.get("current_node")
+    node_scenario = state.get("beat_scenarios", {}).get(current_node) if current_node else None
+    if node_scenario:
+        codename = node_scenario.get("codename", "")
+        dominant = ", ".join(f"**{t}**" for t in node_scenario.get("dominant_tags", []))
+        terminus = node_scenario.get("terminus_intel", "none")
+        terminus_icon = {"known": "🔴", "suspected": "🟡", "none": "⬛"}.get(terminus, "⬛")
+        scenario_narrative = node_scenario.get("narrative", "")
+        # Prepend node intel to narrative
+        node_block = (
+            f"📍 **{current_node}** — Operation **{codename}**\n"
+            f"Doctrine: {dominant} · Terminus: {terminus_icon} {terminus.capitalize()}\n"
+            f"*{scenario_narrative}*\n\n"
+        )
+        full_narr = node_block + narr
+    else:
+        full_narr = narr
+
     embed = discord.Embed(
         title=f"⚔️ Campaign Orders — {beat_name}",
-        description=narr,
+        description=full_narr,
         color=0x4B0082,
     )
-    embed.set_footer(text=f"Phase: {phase} · Your tier: {tier}")
+    embed.set_footer(text=f"Phase: {phase} · Your tier: {tier} · Planet: {current_node or '—'}")
 
     # --- Cascade status block ---
     if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
@@ -3311,6 +3410,7 @@ async def _campaign_milestone(interaction: discord.Interaction):
     beat_number="Starting beat number (default: 1).",
     beat_duration_days="Days each ops window stays open (default: 7). Ops open after cascade resolves.",
     doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
+    starting_node="Starting planet/node from the Jericho Reach graph (default: Hethgard).",
 )
 async def _campaign_init(
     interaction: discord.Interaction,
@@ -3318,6 +3418,7 @@ async def _campaign_init(
     beat_number: int = 1,
     beat_duration_days: int = 7,
     doctrine_tags: Optional[str] = None,
+    starting_node: Optional[str] = None,
 ):
     if not _b_check_command_permission(interaction.user, "campaign-init"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
@@ -3371,6 +3472,23 @@ async def _campaign_init(
     state["_schema_version"] = 1
     state["total_beats"] = 3  # will be overwritten below
 
+    # Validate / default starting node
+    node_id = (starting_node or "Hethgard").strip()
+    node_data = _graph_node(node_id)
+    if not node_data:
+        # Try case-insensitive match
+        for n in _load_graph().get("nodes", []):
+            if n["id"].lower() == node_id.lower():
+                node_data = n
+                node_id = n["id"]
+                break
+    if not node_data:
+        await interaction.response.send_message(
+            f"Unknown node **{node_id}**. Check the Jericho Reach graph for valid planet names.",
+            ephemeral=True,
+        )
+        return
+
     now_iso = _iso_now()
     state["campaign"].update({
         "id": campaign_id,
@@ -3382,9 +3500,12 @@ async def _campaign_init(
         "beat_duration_days": max(1, beat_duration_days),
         "total_beats": total_beats,
         "length_label": length_label,
+        "current_node": node_id,
+        "visited_nodes": [node_id],
     })
     state["total_beats"] = total_beats
     # Open the cascade immediately; ops window opens after cascade_KT resolves
+    # _enter_cascade_phase also calls _generate_node_scenarios when phase == cascade_HC
     _enter_cascade_phase(state, "cascade_HC")
 
     # Seed companies from config — only add companies not already present
@@ -3423,9 +3544,20 @@ async def _campaign_init(
         description="Campaign initialised. **Cascade of Orders** is open — High Command, submit your doctrine.",
         color=0xC4A030,
     )
+    # Surface the generated scenario for the starting node
+    node_scenario = state.get("beat_scenarios", {}).get(node_id, {})
+    scenario_summary = ""
+    if node_scenario:
+        codename = node_scenario.get("codename", "")
+        dominant = ", ".join(node_scenario.get("dominant_tags", []))
+        terminus = node_scenario.get("terminus_intel", "none")
+        scenario_summary = f"**{codename}** — `{dominant}` — Terminus: {terminus}"
+
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
     embed.add_field(name="Phase", value="cascade_HC", inline=True)
+    embed.add_field(name="Current Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
+    embed.add_field(name="Beat Scenario", value=scenario_summary or "—", inline=False)
     embed.add_field(name="HC Cascade Closes", value=_fmt_ts(hc_deadline_ts), inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
