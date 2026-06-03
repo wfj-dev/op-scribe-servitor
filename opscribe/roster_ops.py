@@ -3587,21 +3587,29 @@ async def tally_deeds(
         except Exception:
             embed = _embed_from_ansi("Deeds Ledger", reply_text)
 
-        # Huntmaster Jack portrait
-        _HUNTMASTER_JACK_ID = 1444810056821637133
-        _jack_file = None
-        if len(members) == 1 and int(target.id) == _HUNTMASTER_JACK_ID:
-            _jack_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "1444810056821637133_Huntmaster_Jack.png")
-            if os.path.exists(_jack_path):
-                _jack_file = discord.File(_jack_path, filename="1444810056821637133_Huntmaster_Jack.png")
-                embed.set_image(url="attachment://1444810056821637133_Huntmaster_Jack.png")
+        # Per-user portrait: look for assets/{user_id}_*.{ext}
+        _portrait_file = None
+        if len(members) == 1:
+            _assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+            _uid_str = str(target.id)
+            try:
+                for _fname in os.listdir(_assets_dir):
+                    _base, _ext = os.path.splitext(_fname)
+                    if _base == _uid_str and _ext:
+                        _fpath = os.path.join(_assets_dir, _fname)
+                        if os.path.isfile(_fpath):
+                            _portrait_file = discord.File(_fpath, filename=_fname)
+                            embed.set_image(url=f"attachment://{_fname}")
+                            break
+            except Exception:
+                pass
 
         # Send embed only (clean output like forge_rite/stud announcement)
         if send_to_channel:
-            await send_to_channel.send(embed=embed, **({"file": _jack_file} if _jack_file else {}))
+            await send_to_channel.send(embed=embed, **({"file": _portrait_file} if _portrait_file else {}))
             await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
         else:
-            await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _jack_file} if _jack_file else {}))
+            await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _portrait_file} if _portrait_file else {}))
 
 
 _PORTRAIT_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "portrait_submissions.json")
