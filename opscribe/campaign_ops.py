@@ -2223,6 +2223,81 @@ class _CascadeChoiceView(discord.ui.View):
             self.add_item(_CascadeButton(opt_key, opt_val, role_key, phase, user_id))
 
 
+def _cascade_peer_summary(state: dict, phase: str, enlistment: dict) -> str:
+    """Return a short 'X of Y submitted' string for the given cascade phase."""
+    eligible_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
+    # Map each active enlisted member's role_key → user_id
+    role_to_user: dict = {}
+    for uid, rec in enlistment.items():
+        if not rec.get("active"):
+            continue
+        role_name = rec.get("role", "")
+        rk = _ROLE_TO_CASCADE_KEY.get(role_name)
+        if rk and rk in eligible_keys:
+            role_to_user[rk] = uid
+    total = len(role_to_user)
+    if total == 0:
+        return "No eligible members enrolled."
+    submissions = state.get("cascade", {}).get("submissions", {})
+    submitted = sum(
+        1 for rk, uid in role_to_user.items()
+        if uid in submissions and submissions[uid].get("phase") == phase
+    )
+    pending_roles = [
+        rk for rk, uid in role_to_user.items()
+        if uid not in submissions or submissions[uid].get("phase") != phase
+    ]
+    # Build display names for pending
+    _key_to_display = {v: k for k, v in _ROLE_TO_CASCADE_KEY.items()}
+    pending_str = ", ".join(_key_to_display.get(r, r).replace("_", " ").title() for r in pending_roles)
+    if submitted == total:
+        return f"✅ All {total} of {total} have submitted."
+    return f"**{submitted}/{total} submitted.** Awaiting: {pending_str}"
+
+
+_CASCADE_PHASE_NARRATIVE = {
+    "cascade_HC": {
+        "active": (
+            "High Command speaks first. The strategic posture for this beat is set from the top — "
+            "your doctrine choice shapes what orders flow down to Company and Kill Team. "
+            "Choose with the full weight of command behind you."
+        ),
+        "waiting_above": None,
+        "waiting_as_company": (
+            "High Command is deliberating. Company Command stands ready — "
+            "your orders will be issued once the strategic posture is set from above. Stand by."
+        ),
+        "waiting_as_kt": (
+            "High Command is deliberating. Your Sergeants will receive their cascade once "
+            "Company Command relays the strategic posture downward. Prepare your kill teams."
+        ),
+        "done_hc": "High Command has spoken. The strategic posture is set.",
+    },
+    "cascade_Company": {
+        "active": (
+            "High Command has issued the strategic posture. Company Command now translates those orders "
+            "into operational doctrine — your choice defines how your formation fights this beat. "
+            "The Kill Teams await your word."
+        ),
+        "waiting_as_kt": (
+            "Company Command is issuing operational doctrine. Your Sergeants will receive cascade orders "
+            "once the formation posture is confirmed. Hold ready."
+        ),
+        "done_company": "Company Command has issued operational doctrine. Kill Teams stand by for cascade.",
+    },
+    "cascade_KT": {
+        "active": (
+            "The orders have cascaded all the way down. Kill Team Sergeants and Judiciars now lock in "
+            "their tactical focus for the beat — your choice commits your kill team's doctrine "
+            "to the campaign record. The ops window opens when the cascade closes."
+        ),
+    },
+    "ops": {
+        "active": "The cascade is sealed. The ops window is open — take the fight to the enemy.",
+    },
+}
+
+
 # --- /campaign-orders ---
 
 @_g.bot.tree.command(
@@ -2248,25 +2323,98 @@ async def _campaign_orders(interaction: discord.Interaction):
     campaign = state.get("campaign", {})
     phase = campaign.get("phase", "inactive")
     beat = campaign.get("beat")
+    beat_name = campaign.get("beat_name") or f"Beat {beat or '?'}"
     tier = record.get("tier", "KT")
     ops_window = state.get("ops_window", {})
     strat_pool = state.get("strat_pool", {})
+    cascade = state.get("cascade", {})
+    submissions = cascade.get("submissions", {})
+    _ensure_refs_loaded()
+
+    # --- Narrative description ---
+    _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
+    user_cascade_phase = _TIER_PHASE.get(tier)
+
+    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
+        phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
+        current_idx = phase_order.index(phase)
+        user_idx = phase_order.index(user_cascade_phase) if user_cascade_phase in phase_order else -1
+
+        if user_cascade_phase == phase:
+            # It's this member's turn
+            narr = _CASCADE_PHASE_NARRATIVE.get(phase, {}).get("active", "")
+        elif user_idx < current_idx:
+            # This tier already submitted (e.g. HC looking at cascade_Company)
+            narr = _CASCADE_PHASE_NARRATIVE.get(user_cascade_phase, {}).get(
+                f"done_{user_cascade_phase.replace('cascade_', '')}", "Your tier has already submitted."
+            )
+        else:
+            # Waiting for a higher tier (KT waiting during cascade_HC)
+            if tier == "Company" and phase == "cascade_HC":
+                narr = _CASCADE_PHASE_NARRATIVE["cascade_HC"]["waiting_as_company"]
+            elif tier == "KT" and phase == "cascade_HC":
+                narr = _CASCADE_PHASE_NARRATIVE["cascade_HC"]["waiting_as_kt"]
+            elif tier == "KT" and phase == "cascade_Company":
+                narr = _CASCADE_PHASE_NARRATIVE["cascade_Company"]["waiting_as_kt"]
+            else:
+                narr = "Standing by for cascade orders."
+    elif phase == "ops":
+        narr = _CASCADE_PHASE_NARRATIVE["ops"]["active"]
+    elif phase == "inactive":
+        narr = "No campaign is currently active."
+    else:
+        narr = f"Campaign is in **{phase}** phase."
 
     embed = discord.Embed(
-        title=f"Campaign Orders — Beat {beat or '?'}",
-        description=f"Phase: **{phase}** | Your tier: **{tier}**",
+        title=f"⚔️ Campaign Orders — {beat_name}",
+        description=narr,
         color=0x4B0082,
     )
-    embed.add_field(name="Ops Window", value=(
-        f"Opens: {ops_window.get('opened_at') or 'TBD'}\n"
-        f"Closes: {ops_window.get('closes_at') or 'TBD'}"
-    ), inline=False)
+    embed.set_footer(text=f"Phase: {phase} · Your tier: {tier}")
 
-    # Strat mandate
+    # --- Cascade status block ---
+    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
+        deadline_key = f"{phase}_deadline"
+        deadline = cascade.get(deadline_key, "Unknown")
+        peer_summary = _cascade_peer_summary(state, phase, enlistment)
+        embed.add_field(
+            name=f"🔰 Active Cascade: {phase.replace('cascade_', '').upper()}",
+            value=f"Deadline: `{deadline}`\n{peer_summary}",
+            inline=False,
+        )
+
+        # Own submission status for earlier tiers
+        own_sub = submissions.get(user_id)
+        if user_cascade_phase and user_cascade_phase != phase:
+            # This member's cascade window has either passed or hasn't arrived
+            phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
+            if phase_order.index(user_cascade_phase) < phase_order.index(phase):
+                # Already submitted
+                if own_sub:
+                    choice_name = own_sub.get("choice_name", own_sub.get("choice_key", "?"))
+                    _ensure_refs_loaded()
+                    role_data = _CASCADE_OPTIONS.get(own_sub.get("role_key", ""), {})
+                    choice_desc = role_data.get(own_sub.get("choice_key", ""), {}).get("description", "")
+                    val = f"✅ **{choice_name}**"
+                    if choice_desc:
+                        val += f"\n*{choice_desc[:200]}{'...' if len(choice_desc) > 200 else ''}*"
+                    embed.add_field(
+                        name=f"Your {user_cascade_phase.replace('cascade_', '').upper()} Submission",
+                        value=val,
+                        inline=False,
+                    )
+                else:
+                    embed.add_field(
+                        name=f"Your {user_cascade_phase.replace('cascade_', '').upper()} Submission",
+                        value="⚠️ No submission recorded for your tier.",
+                        inline=False,
+                    )
+
+    # --- Strat mandate (if locked) ---
     if strat_pool.get("locked"):
         theatre_list = strat_pool.get("theatre_mandate") or []
         if isinstance(theatre_list, str):
-            theatre_list = [theatre_list]  # backwards compat
+            theatre_list = [theatre_list]
         theatre_display = ", ".join(f"`{s}`" for s in theatre_list) or "None"
         company_id = record.get("company_id")
         co_strats = strat_pool.get("company_mandates", {}).get(company_id, []) if company_id else []
@@ -2281,37 +2429,144 @@ async def _campaign_orders(interaction: discord.Interaction):
         embed.add_field(name="Theatre Strats", value=theatre_display, inline=False)
         embed.add_field(name="Company Strats", value=co_display, inline=True)
         embed.add_field(name="KT Strats", value=kt_display, inline=True)
-    else:
+    elif phase == "ops":
         embed.add_field(name="Strat Mandate", value="Not yet published.", inline=False)
 
-    # Terminus flag (for appropriate tiers)
+    # --- Ops window ---
+    if phase == "ops" or ops_window:
+        embed.add_field(name="Ops Window", value=(
+            f"Opens: `{ops_window.get('opened_at') or 'TBD'}`\n"
+            f"Closes: `{ops_window.get('closes_at') or 'TBD'}`"
+        ), inline=False)
+
+    # --- Terminus flag ---
     if tier in ("HC", "Company"):
         terminus_flag = ops_window.get("terminus_flag")
         if terminus_flag:
             embed.add_field(name="Terminus Flag", value=terminus_flag, inline=False)
 
-    # Cascade phase: show doctrine choice buttons if user has an eligible role
+    # --- Cascade choice buttons (if it's this member's turn) ---
     if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
         role_key = _get_user_cascade_role_key(interaction.user, phase)
         if role_key:
-            _ensure_refs_loaded()
-            existing_sub = state.get("cascade", {}).get("submissions", {}).get(user_id)
-            phase_label = phase.replace("cascade_", "")
+            existing_sub = submissions.get(user_id)
+            phase_label = phase.replace("cascade_", "").upper()
             if existing_sub:
-                embed.add_field(
-                    name=f"Cascade Orders — {phase_label}",
-                    value=f"\u2705 You submitted **{existing_sub.get('choice_name', existing_sub.get('choice_key'))}**. Select a button to change your choice.",
-                    inline=False,
-                )
+                choice_name = existing_sub.get("choice_name", existing_sub.get("choice_key", "?"))
+                role_data = _CASCADE_OPTIONS.get(existing_sub.get("role_key", ""), {})
+                choice_desc = role_data.get(existing_sub.get("choice_key", ""), {}).get("description", "")
+                val = f"✅ **{choice_name}** — *select a button below to change.*"
+                if choice_desc:
+                    val += f"\n\n*{choice_desc[:300]}{'...' if len(choice_desc) > 300 else ''}*"
+                embed.add_field(name=f"Cascade Orders — {phase_label}", value=val, inline=False)
             else:
                 embed.add_field(
                     name=f"Cascade Orders — {phase_label}",
-                    value="Select your doctrine order below:",
+                    value="Your orders await your word. Select your doctrine below:",
                     inline=False,
                 )
             view = _CascadeChoiceView(user_id, role_key, phase)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- /campaign-cascade ---
+
+@_g.bot.tree.command(
+    name="campaign-cascade",
+    description="View the full Cascade of Orders — who has submitted and who is pending.",
+)
+async def _campaign_cascade(interaction: discord.Interaction):
+    if not _b_check_command_permission(interaction.user, "campaign-cascade"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+    if not _b_is_allowed_channel(interaction):
+        await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    campaign = state.get("campaign", {})
+    phase = campaign.get("phase", "inactive")
+    beat = campaign.get("beat")
+    beat_name = campaign.get("beat_name") or f"Beat {beat or '?'}"
+
+    if phase not in ("cascade_HC", "cascade_Company", "cascade_KT", "ops"):
+        await interaction.response.send_message(
+            f"No cascade is active (current phase: **{phase}**).", ephemeral=True
+        )
+        return
+
+    enlistment = state.get("enlistment", {})
+    cascade = state.get("cascade", {})
+    submissions = cascade.get("submissions", {})
+    _ensure_refs_loaded()
+
+    # Build role → user_id map for all 3 phases
+    phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
+    phase_labels = {"cascade_HC": "High Command", "cascade_Company": "Company Command", "cascade_KT": "Kill Teams"}
+
+    embed = discord.Embed(
+        title=f"📜 Cascade of Orders — {beat_name}",
+        description=(
+            "The cascade descends from High Command through Company to the Kill Teams. "
+            "Each tier's doctrine choices shape the strat pool for this beat."
+        ),
+        color=0x2F3136,
+    )
+
+    phase_complete_idx = -1
+    if phase == "ops":
+        phase_complete_idx = 2  # all done
+    elif phase in phase_order:
+        phase_complete_idx = phase_order.index(phase) - 1
+
+    for i, cp in enumerate(phase_order):
+        eligible_keys = _CASCADE_PHASE_ROLES[cp]
+        label = phase_labels[cp]
+
+        # Map role_key → (display_name, user_id) for enrolled members eligible in this phase
+        role_entries: list[tuple[str, str, str]] = []  # (role_key, display_name, user_id)
+        for uid, rec in enlistment.items():
+            if not rec.get("active"):
+                continue
+            rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
+            if rk and rk in eligible_keys:
+                role_entries.append((rk, rec.get("role", rk), uid))
+
+        if not role_entries:
+            embed.add_field(name=f"{label}", value="No eligible members enrolled.", inline=False)
+            continue
+
+        deadline = cascade.get(f"{cp}_deadline")
+        lines: list[str] = []
+        for rk, role_display, uid in sorted(role_entries, key=lambda x: _CASCADE_ROLE_PRIORITY.index(x[0]) if x[0] in _CASCADE_ROLE_PRIORITY else 99):
+            sub = submissions.get(uid)
+            if sub and sub.get("phase") == cp:
+                choice_name = sub.get("choice_name", sub.get("choice_key", "?"))
+                lines.append(f"✅ **{role_display}** — {choice_name}")
+            elif i <= (phase_order.index(phase) if phase in phase_order else 3):
+                lines.append(f"⏳ **{role_display}** — pending")
+            else:
+                lines.append(f"🔒 **{role_display}** — window not yet open")
+
+        if i == (phase_order.index(phase) if phase in phase_order else -1):
+            header = f"🔰 {label} *(active)*"
+        elif i < (phase_order.index(phase) if phase in phase_order else 3) or phase == "ops":
+            header = f"✅ {label} *(closed)*"
+        else:
+            header = f"🔒 {label} *(pending)*"
+
+        field_val = "\n".join(lines)
+        if deadline and i == (phase_order.index(phase) if phase in phase_order else -1):
+            field_val += f"\n\nDeadline: `{deadline}`"
+        embed.add_field(name=header, value=field_val or "—", inline=False)
+
+    if phase == "ops":
+        embed.set_footer(text="Cascade closed — ops window is open.")
+    elif phase in phase_order:
+        embed.set_footer(text=f"Active phase: {phase_labels.get(phase, phase)}")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
