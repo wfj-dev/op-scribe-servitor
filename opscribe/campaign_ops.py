@@ -205,6 +205,42 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _fmt_ts(ts: Optional[str]) -> str:
+    """Format an ISO timestamp as a human-readable UTC string.
+
+    Returns e.g. 'Wednesday, 4 Jun at 18:30 UTC' or 'in 2 days, 4 hours'.
+    Falls back to the raw string if unparseable.
+    """
+    if not ts:
+        return "Unknown"
+    dt = _parse_iso(ts)
+    if dt is None:
+        return ts
+    now = _utcnow()
+    delta = dt - now
+    total_secs = delta.total_seconds()
+    day_name = dt.strftime("%A")
+    date_str = dt.strftime("%-d %b")
+    time_str = dt.strftime("%H:%M UTC")
+    abs_label = f"{day_name}, {date_str} at {time_str}"
+    if total_secs < 0:
+        return f"{abs_label} (passed)"
+    elif total_secs < 3600:
+        mins = int(total_secs // 60)
+        rel = f"in {mins}m"
+    elif total_secs < 86400:
+        hours = int(total_secs // 3600)
+        mins = int((total_secs % 3600) // 60)
+        rel = f"in {hours}h {mins}m" if mins else f"in {hours}h"
+    elif total_secs < 172800:
+        hours = int(total_secs // 3600)
+        rel = f"in ~{hours}h"
+    else:
+        days = int(total_secs // 86400)
+        rel = f"in {days} days"
+    return f"{abs_label} ({rel})"
+
+
 def _entry_id() -> str:
     """Generate a unique log entry ID from current timestamp + randomness."""
     h = hashlib.sha1(f"{_utcnow().isoformat()}{random.random()}".encode()).hexdigest()
@@ -1917,7 +1953,7 @@ async def sweep_campaign_beat_clock() -> None:
                 announcement = (
                     f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
                     f"The Cascade of Orders begins. **High Command**, submit your doctrine orders via `/campaign-cascade-submit`.\n"
-                    f"HC cascade window closes: `{deadline_ts}Z`"
+                    f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
                 )
             changed = True
 
@@ -1930,7 +1966,7 @@ async def sweep_campaign_beat_clock() -> None:
             announcement = (
                 f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Company Command.**\n"
                 f"HC orders have been logged. **Captains and Company officers**, submit your orders via `/campaign-cascade-submit`.\n"
-                f"Company cascade window closes: `{deadline_ts}Z`"
+                f"Company cascade window closes: {_fmt_ts(deadline_ts)}"
             )
             changed = True
 
@@ -1943,7 +1979,7 @@ async def sweep_campaign_beat_clock() -> None:
             announcement = (
                 f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Kill Teams.**\n"
                 f"Company orders logged. **Watch Sergeants**, submit your kill team doctrine via `/campaign-cascade-submit`.\n"
-                f"KT cascade window closes: `{deadline_ts}Z`"
+                f"KT cascade window closes: {_fmt_ts(deadline_ts)}"
             )
             changed = True
 
@@ -2202,12 +2238,82 @@ class _CascadeButton(discord.ui.Button):
             "submitted_at": _iso_now(),
         }
         _save_campaign_state(state)
+        # Early advance: if all eligible members in this phase have now submitted, move on
+        await _try_early_cascade_advance(state, self._phase)
         beat = state["campaign"].get("beat") or "?"
         await interaction.response.edit_message(
             content=f"\u2705 **{opt_name}** submitted for Beat {beat}.",
             embed=None,
             view=None,
         )
+
+
+def _all_phase_members_submitted(state: dict, phase: str) -> bool:
+    """Return True if every active enrolled member eligible for *phase* has submitted."""
+    eligible_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
+    submissions = state.get("cascade", {}).get("submissions", {})
+    for uid, rec in state.get("enlistment", {}).items():
+        if not rec.get("active"):
+            continue
+        rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
+        if rk and rk in eligible_keys:
+            sub = submissions.get(uid)
+            if not sub or sub.get("phase") != phase:
+                return False
+    return True
+
+
+async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
+    """If all eligible enrolled members have submitted for *phase*, advance immediately.
+
+    Modifies *state* in-place, saves, and posts announcement. Returns True if advanced.
+    """
+    if not _all_phase_members_submitted(state, phase):
+        return False
+
+    camp_name = state["campaign"].get("name") or "The campaign"
+    beat = state["campaign"].get("beat") or "?"
+
+    _ADVANCE_MAP = {
+        "cascade_HC": "cascade_Company",
+        "cascade_Company": "cascade_KT",
+    }
+
+    if phase in _ADVANCE_MAP:
+        next_phase = _ADVANCE_MAP[phase]
+        _enter_cascade_phase(state, next_phase)
+        deadline_ts = state["cascade"].get(f"{next_phase}_deadline", "")
+        phase_labels = {"cascade_Company": "Company Command", "cascade_KT": "Kill Teams"}
+        next_label = phase_labels.get(next_phase, next_phase)
+        cmd_mention = "/campaign-orders"
+        announcement = (
+            f"⚔️ **{camp_name} — Beat {beat} cascade advancing early: {next_label}.**\n"
+            f"All {phase.replace('cascade_', '').upper()} orders are in. "
+            f"**{next_label}**, submit your orders via `{cmd_mention}`.\n"
+            f"{next_phase.replace('cascade_', '').upper()} cascade closes: {_fmt_ts(deadline_ts)}"
+        )
+    elif phase == "cascade_KT":
+        # All KT submitted — open ops immediately
+        duration_days = state["campaign"].get("beat_duration_days") or 7
+        ops_close = _utcnow() + timedelta(days=duration_days)
+        state["ops_window"] = {
+            "opened_at": _iso_now(),
+            "closes_at": ops_close.isoformat(),
+            "terminus_calls": [],
+        }
+        state["campaign"]["phase"] = "ops"
+        announcement = (
+            f"⚔️ **{camp_name} — Beat {beat} cascade resolved early. Ops window open.**\n"
+            f"All Kill Team orders are in. Strat mandates are locked. "
+            f"**All Brothers**, get your ops in via `/campaign-log`.\n"
+            f"Ops window closes: {_fmt_ts(ops_close.isoformat())}"
+        )
+    else:
+        return False
+
+    _save_campaign_state(state)
+    await _post_campaign_announcement(_b("bot"), announcement)
+    return True
 
 
 class _CascadeChoiceView(discord.ui.View):
@@ -2221,6 +2327,122 @@ class _CascadeChoiceView(discord.ui.View):
             if opt_key.startswith("_"):
                 continue
             self.add_item(_CascadeButton(opt_key, opt_val, role_key, phase, user_id))
+
+
+def _compose_orders_narrative(
+    state: dict,
+    phase: str,
+    tier: str,
+    role: str,
+    beat_name: str,
+) -> str:
+    """Build contextual narrative for /campaign-orders based on campaign state.
+
+    Pulls upstream submission text, beat name, and the user's own role description
+    to compose a paragraph that reads like an in-universe situation report.
+    """
+    _ensure_refs_loaded()
+    cascade = state.get("cascade", {})
+    submissions = cascade.get("submissions", {})
+    enlistment = state.get("enlistment", {})
+    campaign = state.get("campaign", {})
+    beat = campaign.get("beat", "?")
+
+    phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
+    _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
+    user_phase = _TIER_PHASE.get(tier)
+
+    # Collect upstream submissions visible to this user
+    upstream: list[dict] = []
+    for cp in phase_order:
+        if cp == user_phase:
+            break
+        eligible = _CASCADE_PHASE_ROLES.get(cp, frozenset())
+        for uid, rec in enlistment.items():
+            rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
+            if rk and rk in eligible and uid in submissions:
+                sub = submissions[uid]
+                if sub.get("phase") == cp:
+                    opt_data = _CASCADE_OPTIONS.get(rk, {}).get(sub.get("choice_key", ""), {})
+                    upstream.append({
+                        "role": rec.get("role", rk),
+                        "choice_name": sub.get("choice_name", "?"),
+                        "description": opt_data.get("description", ""),
+                        "tags": sub.get("tags", []),
+                        "phase": cp,
+                    })
+
+    # Role description for this user
+    rk_self = _ROLE_TO_CASCADE_KEY.get(role, "")
+    role_meta = _CASCADE_OPTIONS.get(rk_self, {})
+    role_desc = role_meta.get("_description", "")
+
+    # Build upstream summary sentence
+    upstream_text = ""
+    if upstream:
+        parts = []
+        for u in upstream:
+            tier_label = u["phase"].replace("cascade_", "").upper()
+            desc_snip = u["description"].split(".")[0] if u["description"] else ""
+            if desc_snip:
+                parts.append(f"**{u['role']}** issued **{u['choice_name']}** — *{desc_snip}.*")
+            else:
+                parts.append(f"**{u['role']}** issued **{u['choice_name']}**.")
+        upstream_text = " ".join(parts) + " "
+
+    # Determine if this is the user's active turn, waiting, or post-cascade
+    if phase == "ops":
+        dominant_tags = sorted(
+            set(t for sub in submissions.values() for t in sub.get("tags", [])),
+            key=lambda t: -sum(1 for s in submissions.values() if t in s.get("tags", []))
+        )
+        tag_str = ", ".join(dominant_tags[:3]) if dominant_tags else "mixed doctrine"
+        return (
+            f"The cascade is sealed for **{beat_name}**. "
+            f"The combined doctrine points toward **{tag_str}** — your orders flow from the decisions made above. "
+            f"The ops window is open. Take the fight to the enemy."
+        )
+
+    if not user_phase:
+        return f"Campaign is in **{phase}** phase — {beat_name}."
+
+    current_idx = phase_order.index(phase) if phase in phase_order else -1
+    user_idx = phase_order.index(user_phase) if user_phase in phase_order else -1
+
+    if user_idx < current_idx:
+        # This tier has already submitted
+        own_sub = next(
+            (s for s in submissions.values()
+             if s.get("phase") == user_phase and
+             _ROLE_TO_CASCADE_KEY.get(role, "") == s.get("role_key")),
+            None,
+        )
+        own_name = own_sub.get("choice_name", "your order") if own_sub else "your order"
+        return (
+            f"{upstream_text}"
+            f"Your tier has spoken for **{beat_name}**. "
+            f"**{own_name}** has been committed to the cascade record. "
+            f"The orders now flow down to those below — your word stands."
+        )
+    elif user_idx > current_idx:
+        # Waiting for tiers above to finish
+        above_label = phase.replace("cascade_", "").upper()
+        return (
+            f"{upstream_text}"
+            f"**{above_label}** is deliberating for **{beat_name}**. "
+            f"Your cascade window has not yet opened. "
+            f"{'Read the situation. Prepare your formation.' if tier == 'Company' else 'Brief your kill team. When Company speaks, your orders will follow.'}"
+        )
+    else:
+        # It's this tier's turn
+        role_blurb = role_desc.split(".")[0] if role_desc else ""
+        blurb_text = f" {role_blurb}." if role_blurb else ""
+        return (
+            f"{upstream_text}"
+            f"**{beat_name}** — your window is open.{blurb_text} "
+            f"Your doctrine choice enters the cascade record and shapes the ops pool for every brother below you. "
+            f"Choose deliberately."
+        )
 
 
 def _cascade_peer_summary(state: dict, phase: str, enlistment: dict) -> str:
@@ -2335,35 +2557,7 @@ async def _campaign_orders(interaction: discord.Interaction):
     _TIER_PHASE = {"HC": "cascade_HC", "Company": "cascade_Company", "KT": "cascade_KT"}
     user_cascade_phase = _TIER_PHASE.get(tier)
 
-    if phase in ("cascade_HC", "cascade_Company", "cascade_KT"):
-        phase_order = ["cascade_HC", "cascade_Company", "cascade_KT"]
-        current_idx = phase_order.index(phase)
-        user_idx = phase_order.index(user_cascade_phase) if user_cascade_phase in phase_order else -1
-
-        if user_cascade_phase == phase:
-            # It's this member's turn
-            narr = _CASCADE_PHASE_NARRATIVE.get(phase, {}).get("active", "")
-        elif user_idx < current_idx:
-            # This tier already submitted (e.g. HC looking at cascade_Company)
-            narr = _CASCADE_PHASE_NARRATIVE.get(user_cascade_phase, {}).get(
-                f"done_{user_cascade_phase.replace('cascade_', '')}", "Your tier has already submitted."
-            )
-        else:
-            # Waiting for a higher tier (KT waiting during cascade_HC)
-            if tier == "Company" and phase == "cascade_HC":
-                narr = _CASCADE_PHASE_NARRATIVE["cascade_HC"]["waiting_as_company"]
-            elif tier == "KT" and phase == "cascade_HC":
-                narr = _CASCADE_PHASE_NARRATIVE["cascade_HC"]["waiting_as_kt"]
-            elif tier == "KT" and phase == "cascade_Company":
-                narr = _CASCADE_PHASE_NARRATIVE["cascade_Company"]["waiting_as_kt"]
-            else:
-                narr = "Standing by for cascade orders."
-    elif phase == "ops":
-        narr = _CASCADE_PHASE_NARRATIVE["ops"]["active"]
-    elif phase == "inactive":
-        narr = "No campaign is currently active."
-    else:
-        narr = f"Campaign is in **{phase}** phase."
+    narr = _compose_orders_narrative(state, phase, tier, record.get("role", ""), beat_name)
 
     embed = discord.Embed(
         title=f"⚔️ Campaign Orders — {beat_name}",
@@ -2379,7 +2573,7 @@ async def _campaign_orders(interaction: discord.Interaction):
         peer_summary = _cascade_peer_summary(state, phase, enlistment)
         embed.add_field(
             name=f"🔰 Active Cascade: {phase.replace('cascade_', '').upper()}",
-            value=f"Deadline: `{deadline}`\n{peer_summary}",
+            value=f"Deadline: {_fmt_ts(deadline)}\n{peer_summary}",
             inline=False,
         )
 
@@ -2435,8 +2629,8 @@ async def _campaign_orders(interaction: discord.Interaction):
     # --- Ops window ---
     if phase == "ops" or ops_window:
         embed.add_field(name="Ops Window", value=(
-            f"Opens: `{ops_window.get('opened_at') or 'TBD'}`\n"
-            f"Closes: `{ops_window.get('closes_at') or 'TBD'}`"
+            f"Opens: {_fmt_ts(ops_window.get('opened_at')) if ops_window.get('opened_at') else 'TBD'}\n"
+            f"Closes: {_fmt_ts(ops_window.get('closes_at')) if ops_window.get('closes_at') else 'TBD'}"
         ), inline=False)
 
     # --- Terminus flag ---
@@ -2560,7 +2754,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
 
         field_val = "\n".join(lines)
         if deadline and i == (phase_order.index(phase) if phase in phase_order else -1):
-            field_val += f"\n\nDeadline: `{deadline}`"
+            field_val += f"\n\nDeadline: {_fmt_ts(deadline)}"
         embed.add_field(name=header, value=field_val or "—", inline=False)
 
     if phase == "ops":
@@ -2831,8 +3025,8 @@ async def _campaign_dashboard(interaction: discord.Interaction):
         color=0x1C1C1C,
     )
     embed.add_field(name="Ops Window", value=(
-        f"Opens: {ops_window.get('opened_at') or 'TBD'}\n"
-        f"Closes: {ops_window.get('closes_at') or 'TBD'}"
+        f"Opens: {_fmt_ts(ops_window.get('opened_at')) if ops_window.get('opened_at') else 'TBD'}\n"
+        f"Closes: {_fmt_ts(ops_window.get('closes_at')) if ops_window.get('closes_at') else 'TBD'}"
     ), inline=False)
 
     # Lore priority
@@ -2908,9 +3102,9 @@ async def _campaign_status(interaction: discord.Interaction):
     embed.add_field(name="Phase", value=campaign.get("phase") or "inactive", inline=True)
     embed.add_field(name="Beat", value=str(campaign.get("beat") or "—"), inline=True)
     embed.add_field(name="Current Node", value=campaign.get("current_node") or "—", inline=True)
-    embed.add_field(name="Started", value=(campaign.get("started_at") or "—")[:19], inline=True)
+    embed.add_field(name="Started", value=_fmt_ts(campaign.get("started_at")), inline=True)
     embed.add_field(name="Strat Pool Locked", value="Yes" if strat_pool.get("locked") else "No", inline=True)
-    embed.add_field(name="Ops Closes", value=(ops_window.get("closes_at") or "—")[:19], inline=True)
+    embed.add_field(name="Ops Closes", value=_fmt_ts(ops_window.get("closes_at")), inline=True)
 
     # Enlistment count
     active_count = sum(1 for r in state.get("enlistment", {}).values() if r.get("active"))
@@ -3096,7 +3290,7 @@ async def _campaign_init(
     os.makedirs(os.path.dirname(CAMPAIGN_STATE_PATH) or ".", exist_ok=True)
     _save_campaign_state(state)
 
-    hc_deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
+    hc_deadline_ts = state["cascade"].get("cascade_HC_deadline", "")
     embed = discord.Embed(
         title=f"⚔️ {camp_name}",
         description="Campaign initialised. **Cascade of Orders** is open — High Command, submit your doctrine.",
@@ -3105,7 +3299,7 @@ async def _campaign_init(
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
     embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
     embed.add_field(name="Phase", value="cascade_HC", inline=True)
-    embed.add_field(name="HC Cascade Closes", value=f"{hc_deadline_ts}Z", inline=False)
+    embed.add_field(name="HC Cascade Closes", value=_fmt_ts(hc_deadline_ts), inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
     embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
