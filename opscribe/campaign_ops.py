@@ -3898,15 +3898,26 @@ async def _campaign_init(
         co.get("display_name") or co_id.capitalize()
         for co_id, co in state["companies"].items()
     ) or "None"
-    kt_display = ", ".join(
-        kt.get("display_name") or sgt_id
-        for sgt_id, kt in state.get("kill_teams", {}).items()
-        if any(
+    # For each active kill team, prefer the named Discord role (e.g. "Kill Team Raven") over display_name
+    _kt_lines: list[str] = []
+    for sgt_id, kt in state.get("kill_teams", {}).items():
+        if not any(
             rec.get("active") and rec.get("kt_sgt_id") == sgt_id
             for rec in state.get("enlistment", {}).values()
-        )
-    ) or "None"
-    embed.add_field(name="Companies Seeded", value=company_display, inline=False)
+        ):
+            continue
+        kt_role_name = None
+        if interaction.guild:
+            sgt_member = interaction.guild.get_member(int(sgt_id))
+            if sgt_member:
+                for r in sgt_member.roles:
+                    rl = r.name.lower()
+                    if "kill" in rl and "team" in rl and "champion" not in rl:
+                        kt_role_name = r.name
+                        break
+        _kt_lines.append(kt_role_name or kt.get("display_name") or sgt_id)
+    kt_display = ", ".join(_kt_lines) or "None"
+    embed.add_field(name="Companies Enlisted", value=company_display, inline=False)
     embed.add_field(name="Kill Teams Enlisted", value=kt_display, inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
     wm_enlisted = any(
