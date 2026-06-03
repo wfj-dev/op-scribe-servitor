@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 # Role IDs
 # ---------------------------------------------------------------------------
 WATCH_COMMAND_ROLE_ID = 1429281421931057283
+# Watch Master Role ID
+WATCH_MASTER_ROLE_ID = 1429281838794543167
+# Watch Brother Role ID (base role for all enlisted brothers)
+WATCH_BROTHER_ROLE_ID = 1429338953227440148
 # High Command role ID (members with this role appear in the HC roster embed)
 HIGH_COMMAND_ROLE_ID = 1452913063970865203
 # Watch Sergeant Role ID (for vet promotions)

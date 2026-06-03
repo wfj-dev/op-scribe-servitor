@@ -12,7 +12,11 @@ import sys as _sys
 import discord
 from discord import app_commands
 
-from .constants import CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH, CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID
+from .constants import (
+    CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH, CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID,
+    WATCH_MASTER_ROLE_ID, WATCH_BROTHER_ROLE_ID,
+    HIGH_COMMAND_ROLE_ID, WATCH_SERGEANT_ROLE_ID,
+)
 from . import _bot_globals as _g
 
 # ---------------------------------------------------------------------------
@@ -2093,6 +2097,52 @@ def _resolve_beat_and_open_next(
     return summary
 
 
+def _cascade_phase_ping(state: dict, phase: str) -> str:
+    """Return a Discord role mention string for the given cascade phase.
+
+    cascade_WM    → @Watch Master
+    cascade_HC    → @High Command
+    cascade_Company → all unique companyCommandRoleId values for active companies
+    cascade_KT    → @Watch Sergeant
+    """
+    if phase == "cascade_WM":
+        return f"<@&{WATCH_MASTER_ROLE_ID}>"
+    if phase == "cascade_HC":
+        return f"<@&{HIGH_COMMAND_ROLE_ID}>"
+    if phase == "cascade_Company":
+        CONFIG = _b("CONFIG") or {}
+        cfg_companies = CONFIG.get("companies", {})
+        active_cos = set(state.get("companies", {}).keys())
+        role_ids: list[str] = []
+        seen: set = set()
+        for co_id, co_cfg in cfg_companies.items():
+            if co_id in active_cos:
+                rid = str(co_cfg.get("companyCommandRoleId", "") or "")
+                if rid and rid not in seen:
+                    role_ids.append(f"<@&{rid}>")
+                    seen.add(rid)
+        return " ".join(role_ids) if role_ids else ""
+    if phase == "cascade_KT":
+        return f"<@&{WATCH_SERGEANT_ROLE_ID}>"
+    return ""
+
+
+def _pending_cascade_members(state: dict, phase: str) -> list[str]:
+    """Return list of user_id strings for active enrolled members in *phase* who haven't submitted."""
+    eligible_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
+    submissions = state.get("cascade", {}).get("submissions", {})
+    pending: list[str] = []
+    for uid, rec in state.get("enlistment", {}).items():
+        if not rec.get("active"):
+            continue
+        rk = _ROLE_TO_CASCADE_KEY.get(rec.get("role", ""))
+        if rk and rk in eligible_keys:
+            sub = submissions.get(uid)
+            if not sub or sub.get("phase") != phase:
+                pending.append(uid)
+    return pending
+
+
 async def _post_campaign_announcement(bot, text: str) -> None:
     """Post *text* to the configured campaign announcement channel, if set."""
     channel_id = CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID
@@ -2104,6 +2154,51 @@ async def _post_campaign_announcement(bot, text: str) -> None:
             await channel.send(text)
     except Exception:
         pass
+
+
+async def _maybe_send_cascade_warning(state: dict, phase: str, now, camp_name: str, beat) -> bool:
+    """If the cascade deadline for *phase* is within the warning window and no warning has been
+    sent yet, post a ping to the brothers who haven't submitted.
+
+    Returns True if a warning was sent (so the caller knows to save state).
+    Warning threshold is read from config['cascade_warning_minutes'] (default 15).
+    """
+    cascade = state.get("cascade", {})
+    warning_key = f"{phase}_warning_sent"
+    if cascade.get(warning_key):
+        return False
+    deadline = _parse_iso(cascade.get(f"{phase}_deadline"))
+    if not deadline:
+        return False
+    CONFIG = _b("CONFIG") or {}
+    warn_minutes = CONFIG.get("cascade_warning_minutes", 15) if isinstance(CONFIG, dict) else 15
+    remaining = (deadline - now).total_seconds() / 60
+    if remaining < 0 or remaining > warn_minutes:
+        return False
+
+    # Find pending members and build pings
+    pending_ids = _pending_cascade_members(state, phase)
+    if not pending_ids:
+        return False
+
+    pending_mentions = " ".join(f"<@{uid}>" for uid in pending_ids)
+    deadline_fmt = _fmt_ts(deadline.isoformat()[:19])
+    phase_labels = {
+        "cascade_WM": "Watch Master",
+        "cascade_HC": "High Command",
+        "cascade_Company": "Company Command",
+        "cascade_KT": "Kill Teams",
+    }
+    label = phase_labels.get(phase, phase)
+    warning_text = (
+        f"⏰ **{camp_name} — {label} cascade closing soon.**\n"
+        f"{pending_mentions} — you have not yet submitted your orders for Beat {beat}.\n"
+        f"Use `/campaign-orders` now. Window closes: {deadline_fmt}"
+    )
+
+    cascade[warning_key] = True
+    await _post_campaign_announcement(_b("bot"), warning_text)
+    return True
 
 
 async def sweep_campaign_beat_clock() -> None:
@@ -2153,14 +2248,18 @@ async def sweep_campaign_beat_clock() -> None:
                 current_node = state["campaign"].get("current_node") or "current position"
                 if wm_deadline:
                     # cascade_WM is open (WM enrolled)
+                    _wm_ping = _cascade_phase_ping(state, "cascade_WM")
                     announcement = (
+                        f"{_wm_ping}\n"
                         f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
                         f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
                         f"WM positioning window closes: {_fmt_ts(wm_deadline[:19])}"
                     )
                 else:
                     # No WM enrolled — cascade_WM was skipped; cascade_HC is now open
+                    _hc_ping = _cascade_phase_ping(state, "cascade_HC")
                     announcement = (
+                        f"{_hc_ping}\n"
                         f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
                         f"No Watch Master enlisted — warband holds at **{current_node}**. Scenario intelligence is live.\n"
                         f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
@@ -2175,23 +2274,32 @@ async def sweep_campaign_beat_clock() -> None:
             _resolve_cascade_WM(state)
             deadline_ts = state["cascade"].get("cascade_HC_deadline", "")[:19]
             current_node = state["campaign"].get("current_node") or "current position"
+            _hc_ping = _cascade_phase_ping(state, "cascade_HC")
             announcement = (
+                f"{_hc_ping}\n"
                 f"⚔️ **{camp_name} — Beat {beat}: Watch Master positioning window closed.**\n"
                 f"Warband holds at **{current_node}**. **High Command**, submit your doctrine orders via `/campaign-orders`.\n"
                 f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
             )
             changed = True
+        else:
+            # Closing-soon warning for cascade_WM
+            changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
     elif phase == "cascade_HC":
         deadline = _parse_iso(state.get("cascade", {}).get("cascade_HC_deadline"))
         if deadline and now >= deadline:
             _enter_cascade_phase(state, "cascade_Company")
             deadline_ts = state["cascade"].get("cascade_Company_deadline", "")[:19]
+            _co_ping = _cascade_phase_ping(state, "cascade_Company")
             announcement = (
+                f"{_co_ping}\n"
                 f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Company Command.**\n"
-                f"HC orders have been logged. **Captains and Company officers**, submit your orders via `/campaign-cascade-submit`.\n"
+                f"HC orders have been logged. **Captains and Company officers**, submit your orders via `/campaign-orders`.\n"
                 f"Company cascade window closes: {_fmt_ts(deadline_ts)}"
             )
             changed = True
+        else:
+            changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
 
     # cascade_Company → cascade_KT on deadline
     elif phase == "cascade_Company":
@@ -2199,12 +2307,16 @@ async def sweep_campaign_beat_clock() -> None:
         if deadline and now >= deadline:
             _enter_cascade_phase(state, "cascade_KT")
             deadline_ts = state["cascade"].get("cascade_KT_deadline", "")[:19]
+            _kt_ping = _cascade_phase_ping(state, "cascade_KT")
             announcement = (
+                f"{_kt_ping}\n"
                 f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Kill Teams.**\n"
-                f"Company orders logged. **Watch Sergeants**, submit your kill team doctrine via `/campaign-cascade-submit`.\n"
+                f"Company orders logged. **Watch Sergeants**, submit your kill team doctrine via `/campaign-orders`.\n"
                 f"KT cascade window closes: {_fmt_ts(deadline_ts)}"
             )
             changed = True
+        else:
+            changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
 
     # cascade_KT → open ops window for this beat
     elif phase == "cascade_KT":
@@ -2218,13 +2330,17 @@ async def sweep_campaign_beat_clock() -> None:
                 "terminus_calls": [],
             }
             state["campaign"]["phase"] = "ops"
+            _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
             ops_close_ts = ops_close.strftime("%Y-%m-%d %H:%M")
             announcement = (
+                f"{_wb_ping}\n"
                 f"⚔️ **{camp_name} — Beat {beat} cascade resolved. Ops window open.**\n"
                 f"Strat mandates are locked. **All Brothers**, get your ops in via `/campaign-log`.\n"
                 f"Ops window closes: `{ops_close_ts}Z`"
             )
             changed = True
+        else:
+            changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
 
     if changed:
         _save_campaign_state(state)
@@ -2509,7 +2625,9 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         _resolve_cascade_WM(state)
         deadline_ts = state["cascade"].get("cascade_HC_deadline", "")
         current_node = state["campaign"].get("current_node") or "current position"
+        _hc_ping = _cascade_phase_ping(state, "cascade_HC")
         announcement = (
+            f"{_hc_ping}\n"
             f"⚔️ **{camp_name} — Beat {beat}: Watch Master has set the theatre.**\n"
             f"Warband positioned at **{current_node}**. Scenario intelligence is now live.\n"
             f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
@@ -2522,7 +2640,9 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         phase_labels = {"cascade_Company": "Company Command", "cascade_KT": "Kill Teams"}
         next_label = phase_labels.get(next_phase, next_phase)
         cmd_mention = "/campaign-orders"
+        _next_ping = _cascade_phase_ping(state, next_phase)
         announcement = (
+            f"{_next_ping}\n"
             f"⚔️ **{camp_name} — Beat {beat} cascade advancing early: {next_label}.**\n"
             f"All {phase.replace('cascade_', '').upper()} orders are in. "
             f"**{next_label}**, submit your orders via `{cmd_mention}`.\n"
@@ -2538,7 +2658,9 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
             "terminus_calls": [],
         }
         state["campaign"]["phase"] = "ops"
+        _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
         announcement = (
+            f"{_wb_ping}\n"
             f"⚔️ **{camp_name} — Beat {beat} cascade resolved early. Ops window open.**\n"
             f"All Kill Team orders are in. Strat mandates are locked. "
             f"**All Brothers**, get your ops in via `/campaign-log`.\n"
@@ -3699,11 +3821,18 @@ async def _campaign_init(
     # Open cascade at WM tier first; WM positions the warband, then cascade_HC opens
     _enter_cascade_phase(state, "cascade_WM")
 
-    # Seed companies from config — only add companies not already present
+    # Seed companies from config — only add companies that have at least one active enlisted member
     CONFIG = _b("CONFIG") or {}
     cfg_companies = CONFIG.get("companies", {})
+    active_company_ids = {
+        rec.get("company_id")
+        for rec in state.get("enlistment", {}).values()
+        if rec.get("active") and rec.get("company_id")
+    }
     for co_id, co_cfg in cfg_companies.items():
         if co_id not in state["companies"]:
+            if co_id not in active_company_ids:
+                continue  # skip companies with no active members
             co_name = co_cfg.get("name") or co_id.capitalize()
             state["companies"][co_id] = {
                 "display_name": f"Watch Company {co_name}",
@@ -3747,6 +3876,19 @@ async def _campaign_init(
     embed.add_field(name="Companies Seeded", value=", ".join(state["companies"].keys()) or "None", inline=False)
     embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
+    # Ping Watch Brother in the announcement channel so the notification reaches the warband
+    _wm_ping = _cascade_phase_ping(state, "cascade_WM")
+    wm_deadline_ts_raw = state.get("cascade", {}).get("cascade_WM_deadline", "")
+    camp_name = state["campaign"].get("name") or "Campaign"
+    await _post_campaign_announcement(
+        _b("bot"),
+        (
+            f"<@&{WATCH_BROTHER_ROLE_ID}>\n"
+            f"⚔️ **{camp_name} has begun — Beat {beat_number} cascade is open.**\n"
+            f"{_wm_ping} — set your theatre order via `/campaign-orders`.\n"
+            f"WM positioning window closes: {_fmt_ts(wm_deadline_ts_raw[:19])}"
+        ),
+    )
 
 
 # --- /campaign-pause ---
