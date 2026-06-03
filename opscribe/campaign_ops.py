@@ -1980,16 +1980,8 @@ def _b_is_allowed_channel(interaction):
     name="campaign-enlist",
     description="Enlist yourself in the current campaign.",
 )
-@app_commands.describe(
-    chapter="Your Space Marine chapter (e.g. 'Blood Angels')",
-    company="Your company assignment: primus | secundus | tertius | quartus | quintus",
-    kt_sgt_id="[KT-tier] Discord user ID of your Kill Team Sergeant",
-)
 async def _campaign_enlist(
     interaction: discord.Interaction,
-    chapter: str,
-    company: Optional[str] = None,
-    kt_sgt_id: Optional[str] = None,
 ):
     if not _b_check_command_permission(interaction.user, "campaign-enlist"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
@@ -2026,17 +2018,61 @@ async def _campaign_enlist(
         tier = "KT"
         role_name = (user_roles & KT_ROLES).pop() if user_roles & KT_ROLES else "Watch Brother"
 
-    company_id = (company or "").lower().strip() if company else None
-    valid_companies = {"primus", "secundus", "tertius", "quartus", "quintus"}
-    if company_id and company_id not in valid_companies:
+    # Resolve chapter from Discord roles
+    home_chapters = _b("HOME_CHAPTERS") or []
+    chapter = next((hc for hc in home_chapters if hc in user_roles), "")
+    if not chapter:
         await interaction.response.send_message(
-            f"Invalid company `{company}`. Choose from: {', '.join(sorted(valid_companies))}",
+            "Could not resolve your chapter — make sure you have a chapter role assigned before enlisting.",
             ephemeral=True,
         )
         return
 
-    if tier == "KT" and role_name == "Watch Sergeant" and not kt_sgt_id:
-        kt_sgt_id = str(interaction.user.id)
+    # Resolve company from Discord roles (e.g. "Primus Company", "Secundus", etc.)
+    valid_companies = ("primus", "secundus", "tertius", "quartus", "quintus")
+    company_id = None
+    for rname in user_roles:
+        rl = rname.lower()
+        for cn in valid_companies:
+            if cn in rl:
+                company_id = cn
+                break
+        if company_id:
+            break
+
+    if tier in ("Company", "HC") and not company_id:
+        await interaction.response.send_message(
+            "Could not resolve your company assignment — make sure you have a company role (Primus/Secundus/etc.) before enlisting.",
+            ephemeral=True,
+        )
+        return
+
+    # Resolve KT sergeant ID from Discord roles
+    kt_sgt_id = None
+    if tier == "KT":
+        if role_name == "Watch Sergeant":
+            kt_sgt_id = str(interaction.user.id)
+        else:
+            # Find the Kill Team role the user belongs to
+            kt_role_name = None
+            for rname in user_roles:
+                rl = rname.lower()
+                if "kill" in rl and "team" in rl and "champion" not in rl:
+                    kt_role_name = rname
+                    break
+            if kt_role_name and interaction.guild:
+                # Find a Watch Sergeant in the same Kill Team
+                for m in interaction.guild.members:
+                    m_roles = {r.name for r in getattr(m, "roles", [])}
+                    if kt_role_name in m_roles and "Watch Sergeant" in m_roles:
+                        kt_sgt_id = str(m.id)
+                        break
+            if not kt_sgt_id:
+                await interaction.response.send_message(
+                    "Could not resolve your Kill Team Sergeant — make sure you share a Kill Team role with your Sergeant.",
+                    ephemeral=True,
+                )
+                return
 
     success, msg = enlist_member(
         user_id=str(interaction.user.id),

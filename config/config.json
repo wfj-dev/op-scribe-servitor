@@ -26,9 +26,7 @@
       ]
     },
     "tally_deeds": {
-      "roles": [
-        "Watch Command"
-      ]
+      "min_rank": "Watch Brother"
     },
     "combat_bonds": {
       "roles": [
@@ -222,7 +220,7 @@
     "challenge-progress": {
       "min_rank": "Watch Brother"
     },
-    "my_deeds": {
+    "submit_portrait": {
       "min_rank": "Watch Brother"
     },
     "lfg_queue": {
