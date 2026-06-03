@@ -125,7 +125,7 @@ class TestComputeKtPrestige:
         result = c.compute_kt_prestige("sgt1", window_days=28)
         assert result == 5
 
-    def test_boundary_exactly_28_days_is_excluded(self, campaign_state_file):
+    def test_boundary_older_than_28_days_is_excluded(self, campaign_state_file):
         path, c = campaign_state_file
         now = _now()
         entries = [

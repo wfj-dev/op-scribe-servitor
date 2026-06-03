@@ -117,7 +117,6 @@ def _build_campaign_accolades_embed(
     campaign = campaign_state.get("campaign", {})
     phase = campaign.get("phase", "inactive")
 
-    companies = campaign_state.get("campaign", {})  # noqa — accessed via state below
     co_data = campaign_state.get("companies", {}).get(company_id)
     if not co_data:
         return None

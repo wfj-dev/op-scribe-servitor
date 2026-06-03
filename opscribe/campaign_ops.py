@@ -5,7 +5,6 @@ import os
 import json
 import hashlib
 import random
-import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 import sys as _sys
@@ -13,7 +12,7 @@ import sys as _sys
 import discord
 from discord import app_commands
 
-from .constants import *  # noqa: F401,F403
+from .constants import CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH
 from . import _bot_globals as _g
 
 # ---------------------------------------------------------------------------
@@ -159,8 +158,6 @@ _MULTIPLIER_OWN_KT = 1.0
 _MULTIPLIER_WITHIN_COMPANY = 0.85
 _MULTIPLIER_OUTSIDE_COMPANY = 0.7
 
-_NOW = datetime.now
-
 
 def _utcnow() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -174,7 +171,10 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
     if not ts:
         return None
     try:
-        return datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         return None
 
@@ -506,7 +506,6 @@ def _credit_prestige_for_entry(
         # Derive operational attachment from most common co-runner in last 28 days
         attachment = enlistment_record.get("operational_attachment") or {}
         attached_sgt = attachment.get("attached_kt_sgt_id")
-        attached_company = attachment.get("attached_company_id")
         if attached_sgt:
             # Is the attached KT in the same company?
             kill_teams = state.get("kill_teams", {})
@@ -547,12 +546,13 @@ def _credit_prestige_for_entry(
 # ---------------------------------------------------------------------------
 
 
-def compute_kt_prestige(kt_sgt_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS) -> int:
+def compute_kt_prestige(kt_sgt_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS, state: Optional[dict] = None) -> int:
     """Return rolling window prestige total for a kill team.
 
     Sums credited_amount for all prestige_log entries within the window.
     """
-    state = _load_campaign_state()
+    if state is None:
+        state = _load_campaign_state()
     kt = state.get("kill_teams", {}).get(kt_sgt_id)
     if not kt:
         return 0
@@ -566,18 +566,19 @@ def compute_kt_prestige(kt_sgt_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS
     return total
 
 
-def compute_company_prestige(company_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS) -> int:
+def compute_company_prestige(company_id: str, window_days: int = _PRESTIGE_WINDOW_DAYS, state: Optional[dict] = None) -> int:
     """Return rolling window prestige for a company.
 
     Sum of each KT's prestige (capped at 25% per KT) for KTs belonging to this company.
     """
-    state = _load_campaign_state()
+    if state is None:
+        state = _load_campaign_state()
     kill_teams = state.get("kill_teams", {})
     total = 0
     for sgt_id, kt in kill_teams.items():
         if kt.get("company_id") != company_id:
             continue
-        kt_total = compute_kt_prestige(sgt_id, window_days)
+        kt_total = compute_kt_prestige(sgt_id, window_days, state=state)
         # Cap KT contribution at 25% of their rolling total
         company_contribution = round(kt_total * 0.25)
         total += company_contribution
@@ -595,12 +596,12 @@ def refresh_prestige_cache(state: Optional[dict] = None) -> dict:
 
     # KTs
     for sgt_id, kt in state.get("kill_teams", {}).items():
-        kt["prestige_window_total"] = compute_kt_prestige(sgt_id)
+        kt["prestige_window_total"] = compute_kt_prestige(sgt_id, state=state)
         kt["last_prestige_check"] = now_iso
 
     # Companies
     for company_id, company in state.get("companies", {}).items():
-        company["prestige_window_total"] = compute_company_prestige(company_id)
+        company["prestige_window_total"] = compute_company_prestige(company_id, state=state)
         company["last_prestige_check"] = now_iso
 
     return state
@@ -646,8 +647,6 @@ def check_reward_thresholds(state: dict) -> dict:
 
     Mutates state in place. Returns state.
     """
-    now_iso = _iso_now()
-
     # --- Kill team ribbons (numeric threshold) ---
     all_kt_prestige = {
         sgt_id: kt.get("prestige_window_total", 0)
@@ -953,15 +952,6 @@ def score_strats_against_aggregate(
 def _build_conflict_set(pool: List[str]) -> Dict[str, set]:
     """Return {strat_name: set_of_blocked_names} for all strats in pool."""
     _ensure_refs_loaded()
-    s_data = {s["name"]: s for s in _STRATAGEMS}
-    conflict_map = {}
-    strat_ref_cm = {}
-    # Load conflict map from stratagems.json
-    for strat_record in _STRATAGEMS:
-        if strat_record.get("name"):
-            pass  # We'll pull from _DOCTRINE_STRAT_MAP indirectly
-
-    # Actually load from stratagems.json via the module-level load
     ref_strats = _load_ref("stratagems.json")
     cat_groups = ref_strats.get("conflict_map", {}).get("category_groups", {})
     specific = ref_strats.get("conflict_map", {}).get("specific_conflicts", {})
@@ -1017,7 +1007,7 @@ def derive_strat_mandate(
 
     def _pick_next(exclude: set) -> Optional[str]:
         """Pick highest-scoring strat not in exclude and not conflicting with mandated."""
-        for name, score, strat in scored:
+        for name, _score, _strat in scored:
             if name in exclude:
                 continue
             # Check no conflict with already-mandated strats
@@ -1051,6 +1041,7 @@ def derive_strat_mandate(
         exclude = set(mandated)
         kt_strat = _pick_next(exclude)
         if kt_strat:
+            mandated.append(kt_strat)
             kt_mandates[sgt_id] = kt_strat
 
     return {
