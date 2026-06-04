@@ -3769,7 +3769,9 @@ async def _campaign_milestone(interaction: discord.Interaction):
 )
 @app_commands.describe(
     campaign_id="Optional manual campaign ID slug (e.g. 'campaign_002'). Auto-generated if omitted.",
+    campaign_name="Optional name for the campaign. Auto-generated if omitted.",
     beat_number="Starting beat number (default: 1).",
+    cycle_name="Optional name for the first cycle. Auto-generated if omitted.",
     beat_duration_days="Days each ops window stays open (default: 7). Ops open after cascade resolves.",
     doctrine_tags="Optional comma-separated doctrine tags to influence the campaign name (e.g. 'aggressive,terminus').",
     starting_node="Starting planet/node from the Jericho Reach graph (default: random from Kadaku/Avarax/Demerium).",
@@ -3777,7 +3779,9 @@ async def _campaign_milestone(interaction: discord.Interaction):
 async def _campaign_init(
     interaction: discord.Interaction,
     campaign_id: Optional[str] = None,
+    campaign_name: Optional[str] = None,
     beat_number: int = 1,
+    cycle_name: Optional[str] = None,
     beat_duration_days: int = 7,
     doctrine_tags: Optional[str] = None,
     starting_node: Optional[str] = None,
@@ -3807,8 +3811,8 @@ async def _campaign_init(
 
     # Generate names
     seed = int(_utcnow().timestamp())
-    camp_name = generate_campaign_name(seed=seed)
-    beat_name = generate_beat_name(beat_number, doctrine_tags=tags, seed=seed + 1)
+    camp_name = campaign_name.strip() if campaign_name and campaign_name.strip() else generate_campaign_name(seed=seed)
+    beat_name = cycle_name.strip() if cycle_name and cycle_name.strip() else generate_beat_name(beat_number, doctrine_tags=tags, seed=seed + 1)
 
     # Randomly determine campaign length (short=3, medium=4, long=5 beats)
     _CAMPAIGN_LENGTH = {3: "Short", 4: "Medium", 5: "Long"}
@@ -3923,12 +3927,12 @@ async def _campaign_init(
     cascade_data = state.get("cascade", {})
     opening_deadline_ts = cascade_data.get(f"{actual_phase}_deadline", "")
     embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
-    embed.add_field(name="Beat", value=f"{beat_number} — {beat_name}", inline=True)
+    embed.add_field(name="Cycle", value=f"{beat_number} — {beat_name}", inline=True)
     embed.add_field(name="Phase", value=actual_phase, inline=True)
     embed.add_field(name="Starting Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
     embed.add_field(name="Opening Window Closes", value=_fmt_ts(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
-    embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} beats)", inline=True)
-    embed.add_field(name="Beat Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
+    embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} cycles)", inline=True)
+    embed.add_field(name="Cycle Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     company_display = ", ".join(
         co.get("display_name") or co_id.capitalize()
         for co_id, co in state["companies"].items()
@@ -3969,6 +3973,52 @@ async def _campaign_init(
         content=f"<@&{WATCH_BROTHER_ROLE_ID}> {_phase_ping}",
         embed=embed,
     )
+
+
+# --- /campaign-rename ---
+
+@_g.bot.tree.command(
+    name="campaign-rename",
+    description="Rename the active campaign or the current cycle. (Forgemaster only)",
+)
+@app_commands.describe(
+    campaign_name="New name for the campaign (leave blank to keep current).",
+    cycle_name="New name for the current cycle (leave blank to keep current).",
+)
+async def _campaign_rename(
+    interaction: discord.Interaction,
+    campaign_name: Optional[str] = None,
+    cycle_name: Optional[str] = None,
+):
+    if not _b_check_command_permission(interaction.user, "campaign-rename"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    user_roles = {r.name for r in getattr(interaction.user, "roles", [])}
+    if "Forgemaster" not in user_roles:
+        await interaction.response.send_message("Only the Forgemaster may rename the campaign or cycle.", ephemeral=True)
+        return
+
+    if not campaign_name and not cycle_name:
+        await interaction.response.send_message("Provide at least one of `campaign_name` or `cycle_name`.", ephemeral=True)
+        return
+
+    state = _load_campaign_state()
+    phase = state.get("campaign", {}).get("phase", "inactive")
+    if phase == "inactive":
+        await interaction.response.send_message("No active campaign to rename.", ephemeral=True)
+        return
+
+    changed: list[str] = []
+    if campaign_name and campaign_name.strip():
+        state["campaign"]["name"] = campaign_name.strip()
+        changed.append(f"Campaign renamed to **{campaign_name.strip()}**")
+    if cycle_name and cycle_name.strip():
+        state["campaign"]["beat_name"] = cycle_name.strip()
+        changed.append(f"Cycle renamed to **{cycle_name.strip()}**")
+
+    _save_campaign_state(state)
+    await interaction.response.send_message("\n".join(changed), ephemeral=False)
 
 
 # --- /campaign-pause ---

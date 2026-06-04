@@ -244,6 +244,12 @@
         "Forgemaster"
       ]
     },
+    "campaign-rename": {
+      "roles": [
+        "Forgemaster",
+        "Watch Master"
+      ]
+    },
     "campaign-pause": {
       "roles": [
         "Forgemaster"
@@ -337,12 +343,12 @@
   },
   "debug": false,
   "cascade_deadline_hours": {
-    "cascade_WM": 0.1,
-    "cascade_HC": 0.1,
-    "cascade_Company": 0.1,
-    "cascade_KT": 0.1
+    "cascade_WM": 0.5,
+    "cascade_HC": 0.5,
+    "cascade_Company": 0.5,
+    "cascade_KT": 0.5
   },
-  "cascade_warning_minutes": 1,
+  "cascade_warning_minutes": 5,
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,
