@@ -1306,6 +1306,164 @@ def _build_conflict_set(pool: List[str]) -> Dict[str, set]:
     return blocked
 
 
+def _derive_ops_mandate(state: dict) -> dict:
+    """Derive the eligible mission pool for the current cycle.
+
+    Returns:
+        {
+            'committed_node': str,          # planet name
+            'eligible_mission_ids': [int],  # union of planet + enrolled role affinities
+            'eligible_missions': [{'id': int, 'name': str, 'terminus_boss': str|None}],
+        }
+    """
+    _ensure_refs_loaded()
+    try:
+        with open(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "operations.json")
+        ) as _f:
+            ops_ref = json.load(_f)
+    except Exception:
+        return {"committed_node": None, "eligible_mission_ids": [], "eligible_missions": []}
+
+    try:
+        with open(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "rank_mappings.json")
+        ) as _f:
+            rank_ref = json.load(_f)
+    except Exception:
+        rank_ref = {}
+
+    all_ops = ops_ref.get("operations", [])
+    op_by_id: Dict[int, dict] = {op["id"]: op for op in all_ops}
+
+    current_node = (state.get("campaign", {}).get("current_node") or "").lower()
+    # Planet-based eligibility
+    planet_eligible: set = {
+        op["id"] for op in all_ops
+        if (op.get("planet") or "").lower() == current_node
+        or op.get("planet") == "wrath_of_espandor"  # always eligible
+    }
+
+    # Role affinity missions from enrolled active members
+    enlistment = state.get("enlistment", {})
+    submissions = state.get("cascade", {}).get("submissions", {})
+    submitted_roles: set = {s.get("role_key", "") for s in submissions.values() if s.get("role_key")}
+    affinity_eligible: set = set()
+    for tier_key in ("HC", "Company", "KT"):
+        for rank_name, rank_data in rank_ref.get(tier_key, {}).items():
+            if rank_name.startswith("_"):
+                continue
+            role_key = rank_name.lower().replace(" ", "_")
+            # Include if any enlisted active member has this role (via their enlistment record role field)
+            role_present = any(
+                rec.get("role", "") == rank_name and rec.get("active")
+                for rec in enlistment.values()
+            )
+            if role_present or role_key in submitted_roles:
+                for mid in rank_data.get("ops", {}).get("mission_ids", []):
+                    affinity_eligible.add(mid)
+
+    eligible_ids = sorted(planet_eligible | affinity_eligible)
+    eligible_missions = [
+        {
+            "id": mid,
+            "name": op_by_id[mid]["name"],
+            "terminus_boss": op_by_id[mid].get("terminus_boss"),
+        }
+        for mid in eligible_ids
+        if mid in op_by_id
+    ]
+
+    return {
+        "committed_node": state.get("campaign", {}).get("current_node"),
+        "eligible_mission_ids": eligible_ids,
+        "eligible_missions": eligible_missions,
+    }
+
+
+def _derive_terminus_directive(state: dict) -> dict:
+    """Derive the terminus directive for the current cycle.
+
+    Huntmaster (if enlisted) sets the flag. Champions/domain Specialists
+    provide call_engagement. sentence_mark (Judiciar) is a KT-level call.
+
+    Returns:
+        {
+            'huntmaster_active': bool,
+            'flagged_targets': [str],   # roaming + boss names eligible this cycle
+            'callers': [str],           # display names of call_engagement roles enlisted
+            'prestige_terminus_live': bool,  # True if Huntmaster active (gates omega prestige)
+        }
+    """
+    try:
+        with open(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "rank_mappings.json")
+        ) as _f:
+            rank_ref = json.load(_f)
+    except Exception:
+        rank_ref = {}
+
+    try:
+        with open(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "operations.json")
+        ) as _f:
+            ops_ref = json.load(_f)
+    except Exception:
+        ops_ref = {}
+
+    enlistment = state.get("enlistment", {})
+    active_roles: set = {
+        rec.get("role", "")
+        for rec in enlistment.values()
+        if rec.get("active") and rec.get("role")
+    }
+
+    huntmaster_active = "Huntmaster" in active_roles
+    callers: List[str] = []
+    for tier_key in ("HC", "Company", "KT"):
+        for rank_name, rank_data in rank_ref.get(tier_key, {}).items():
+            if rank_name.startswith("_"):
+                continue
+            term = rank_data.get("terminus", {})
+            if not isinstance(term, dict):
+                continue
+            if term.get("mode") in ("call_engagement", "sentence_mark") and rank_name in active_roles:
+                callers.append(rank_name)
+
+    # Eligible terminus targets: roaming + fixed boss missions in eligible pool
+    ops_mandate = state.get("strat_pool", {}).get("ops_mandate", {})
+    eligible_missions = ops_mandate.get("eligible_missions", [])
+    boss_targets: List[str] = [
+        m["terminus_boss"] for m in eligible_missions if m.get("terminus_boss")
+    ]
+    roaming = [t["name"] for t in ops_ref.get("roaming_terminus", [])]
+    # Only include roaming if node has tyranid/chaos-appropriate missions
+    eligible_ids = ops_mandate.get("eligible_mission_ids", [])
+    all_ops = {op["id"]: op for op in ops_ref.get("operations", [])}
+    has_tyranid = any(
+        "tyranid" in (all_ops.get(mid, {}).get("faction_effective", "") or "")
+        for mid in eligible_ids
+    )
+    has_mixed = any(
+        "mixed" in (all_ops.get(mid, {}).get("faction_effective", "") or "")
+        for mid in eligible_ids
+    )
+    flagged: List[str] = list(boss_targets)
+    for t in ops_ref.get("roaming_terminus", []):
+        faction = t.get("faction", "")
+        if faction == "tyranid" and (has_tyranid or has_mixed):
+            flagged.append(t["name"])
+        elif faction == "chaos" and has_mixed:
+            flagged.append(t["name"])
+
+    return {
+        "huntmaster_active": huntmaster_active,
+        "flagged_targets": flagged,
+        "callers": callers,
+        "prestige_terminus_live": huntmaster_active,
+    }
+
+
 def _tier_mandate_count(n_distinct_roles: int, tier: str) -> int:
     """Return how many mandate strats to pick for a tier, based on participation.
 
@@ -2043,6 +2201,12 @@ def _lock_strat_pool(state: dict) -> None:
         "derived_at": _iso_now(),
         "doctrine_aggregate": doctrine_aggregate,
     }
+
+    # Derive ops and terminus mandates and store alongside strat pool
+    ops_mandate = _derive_ops_mandate(state)
+    state["strat_pool"]["ops_mandate"] = ops_mandate
+    terminus_directive = _derive_terminus_directive(state)
+    state["strat_pool"]["terminus_directive"] = terminus_directive
 
 
 def _resolve_beat_and_open_next(
@@ -3172,7 +3336,7 @@ async def _campaign_orders(interaction: discord.Interaction):
         embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
         embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
     elif phase == "ops":
-        embed.add_field(name="▸ Stratagem Mandate", value="Not yet published.", inline=False)
+        embed.add_field(name="▸ Cycle Mandate", value="Not yet published — use `/campaign-mandate`.", inline=False)
 
     # --- Ops window ---
     if phase == "ops" or ops_window:
@@ -3449,24 +3613,52 @@ async def _campaign_mandate(interaction: discord.Interaction):
     theatre_display = _fmt_strats(strat_pool.get("theatre_mandate"))
     co_display = _fmt_strats(strat_pool.get("company_mandates", {}).get(company_id)) if company_id else "N/A"
     kt_display = _fmt_strats(strat_pool.get("kt_mandates", {}).get(kt_sgt)) if kt_sgt else "N/A"
-    tier_counts = strat_pool.get("tier_counts", {})
     total_mandates = (
         len(strat_pool.get("theatre_mandate") or []) +
         len(strat_pool.get("company_mandates", {}).get(company_id) or []) +
         len(strat_pool.get("kt_mandates", {}).get(kt_sgt) or [])
     )
 
-    embed = discord.Embed(
-        title="Stratagem Mandate",
-        description=f"**{total_mandates} required strat(s)** this cycle. Optional pool strats may be added.",
-        color=0x8B0000,
-    )
-    embed.add_field(name="▸ Theatre Mandate", value=theatre_display, inline=False)
-    embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
-    embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
+    # Ops mandate
+    ops_mandate = strat_pool.get("ops_mandate", {})
+    eligible_missions = ops_mandate.get("eligible_missions", [])
+    committed_node = ops_mandate.get("committed_node") or campaign.get("current_node") or "Unknown"
+    if eligible_missions:
+        ops_lines = [
+            f"`{m['name']}`" + (f"  ★ {m['terminus_boss']}" if m.get("terminus_boss") else "")
+            for m in eligible_missions
+        ]
+        ops_display = "\n".join(ops_lines)
+    else:
+        ops_display = "All missions eligible (no node committed)"
+
+    # Terminus directive
+    terminus_directive = strat_pool.get("terminus_directive", {})
+    huntmaster_active = terminus_directive.get("huntmaster_active", False)
+    flagged_targets = terminus_directive.get("flagged_targets", [])
+    callers = terminus_directive.get("callers", [])
+    if huntmaster_active:
+        terminus_display = (
+            f"**Huntmaster active** — prestige terminus kills enabled.\n"
+            + (f"Targets: {', '.join(f'`{t}`' for t in flagged_targets)}\n" if flagged_targets else "")
+            + (f"Callers: {', '.join(callers)}" if callers else "No engagement callers enlisted.")
+        )
+    else:
+        terminus_display = "Huntmaster not enlisted — no prestige terminus kills this cycle."
 
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
     beat_label = f"Cycle {beat}" if beat else "—"
+
+    embed = discord.Embed(
+        title="Cycle Mandate",
+        description=f"**{total_mandates} required strat(s)** this cycle. Operations: **{committed_node}**.",
+        color=0x8B0000,
+    )
+    embed.add_field(name="▸ Operations", value=ops_display, inline=False)
+    embed.add_field(name="▸ Theatre Stratagem", value=theatre_display, inline=False)
+    embed.add_field(name="▸ Company Stratagem", value=co_display, inline=True)
+    embed.add_field(name="▸ Kill Team Stratagem", value=kt_display, inline=True)
+    embed.add_field(name="▸ Terminus Directive", value=terminus_display, inline=False)
     embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
