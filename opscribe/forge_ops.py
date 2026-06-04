@@ -2753,6 +2753,7 @@ class LogToForgeView(discord.ui.View):
         spirit_event: str,
         is_intensive: bool,
         is_significant: bool,
+        image_filename: Optional[str] = None,
     ):
         super().__init__(timeout=300)  # 5 minute timeout
         self.embed = embed
@@ -2763,6 +2764,7 @@ class LogToForgeView(discord.ui.View):
         self.spirit_event = spirit_event
         self.is_intensive = is_intensive
         self.is_significant = is_significant
+        self.image_filename = image_filename
         self.logged = False
 
     @discord.ui.button(
@@ -2797,12 +2799,17 @@ class LogToForgeView(discord.ui.View):
             return
 
         # Post the blessing - always mention the blessed brother before embed
+        # Re-load the image file so the attachment:// URL resolves in the public post
+        public_file = _get_award_image(self.image_filename) if self.image_filename else None
         try:
-            await channel.send(
-                content=self.member_mention,
-                embed=self.embed,
-                allowed_mentions=discord.AllowedMentions(users=True),
-            )
+            send_kwargs: dict = {
+                "content": self.member_mention,
+                "embed": self.embed,
+                "allowed_mentions": discord.AllowedMentions(users=True),
+            }
+            if public_file:
+                send_kwargs["file"] = public_file
+            await channel.send(**send_kwargs)
         except Exception as e:
             _g.logger.warning(f"Failed to log blessing to forge: {e}")
             return
@@ -5450,6 +5457,7 @@ async def _attest(
         spirit_event=spirit_event,
         is_intensive=is_intensive,
         is_significant=is_significant_event,
+        image_filename="Armor_Approved.png" if armor_approved_file else None,
     )
 
     # Send ephemeral blessing with button and mention

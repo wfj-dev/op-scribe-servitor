@@ -469,9 +469,9 @@ CHALLENGE_ROLES = [
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
 
 # Embed banner images (Discord attachment URLs — base URL without expiry params)
-ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1499152772225040544/1511577906587893831/roster_high_command.png?ex=6a219ee0&is=6a204d60&hm=8cea6ac18e4033253f9528e03446dec8d6b663b55c7a1382adcf0a2427fd95a1&"
-ROSTER_IMAGE_COMPANY_COMMAND = "https://cdn.discordapp.com/attachments/1499152772225040544/1511577892570660994/roster_company_command.png?ex=6a219edd&is=6a204d5d&hm=7b1d5385c34b9aed5578771f6022c58d0c405d34de810ef6f37018a8afbccdb5&"
-ROSTER_IMAGE_KILLTEAM = "https://cdn.discordapp.com/attachments/1499152772225040544/1511577880105189416/roster_killteam.png?ex=6a219eda&is=6a204d5a&hm=0384549d694ac2510b3b1f7378d25ca7694933946a6bdb576c54c6c22960911b&"
+ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919151302705203/High_Command.png?ex=6a2233ef&is=6a20e26f&hm=c88ba02f3f4046ddb5acbb3cf6bb5e404b3f112dddf295cfd0b4ebc4436fda40&"
+ROSTER_IMAGE_COMPANY_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919134290481213/Command.png?ex=6a2233eb&is=6a20e26b&hm=d0b8e09712f34e4527a62b17bf1e2380851f37970e0f6fe951f15f3a1042389e&"
+ROSTER_IMAGE_KILLTEAM = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&"
 
 # Maps configured Watch Company role name -> roster channel ID.
 # The bot posts and maintains embeds inside each configured company channel.
