@@ -4835,36 +4835,45 @@ async def _campaign_init(
 
     _save_campaign_state(state)
 
-    _actual_phase_for_desc = state["campaign"].get("phase", "cascade_WM")
-    _wm_is_open = _actual_phase_for_desc == "cascade_WM"
-    embed = discord.Embed(
-        title=f"⚔️ {camp_name}",
-        description=(
-            "Campaign initialised. **Watch Master**, set your theatre positioning order first.\n"
-            "Once the Watch Master submits, cycle scenarios generate and High Command orders phase opens."
-            if _wm_is_open else
-            "Campaign initialised. No Watch Master enlisted — Watch holds position.\n"
-            "**High Command**, cascade is open for doctrine orders."
-        ),
-        color=0xC4A030,
-    )
-    # Note: beat_scenarios are empty until WM submits (scenarios generate on cascade_WM resolve)
+    _wm_is_open = state["campaign"].get("phase", "cascade_WM") == "cascade_WM"
     actual_phase = state["campaign"].get("phase", "cascade_WM")
     cascade_data = state.get("cascade", {})
     opening_deadline_ts = cascade_data.get(f"{actual_phase}_deadline", "")
-    embed.add_field(name="Campaign ID", value=campaign_id, inline=True)
-    embed.add_field(name="Cycle", value=f"{beat_number} — {beat_name}", inline=True)
-    embed.add_field(name="Phase", value=actual_phase, inline=True)
-    embed.add_field(name="Starting Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
-    _cascade_deadline_label = "Watch Master Orders Due" if actual_phase == "cascade_WM" else "High Command Orders Due"
-    embed.add_field(name=_cascade_deadline_label, value=_fmt_ts_abs(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
-    embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} cycles)", inline=True)
-    embed.add_field(name="Cycle Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
+
+    wm_enlisted = any(
+        rec.get("active") and _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) == "watch_master"
+        for rec in state.get("enlistment", {}).values()
+    )
+
+    if _wm_is_open:
+        desc = (
+            f"The Jericho Watch deploys to **{node_id}**. "
+            f"The {length_label.lower()} campaign begins.\n\n"
+            f"**Watch Master** — set your theatre positioning order. "
+            f"Your choice opens the cascade for High Command."
+        )
+    else:
+        desc = (
+            f"The Jericho Watch deploys to **{node_id}**. "
+            f"The {length_label.lower()} campaign begins.\n\n"
+            f"**High Command** — no Watch Master is present. "
+            f"The Watch holds position. Issue your doctrine orders."
+        )
+
+    embed = discord.Embed(
+        title=f"⚔️ {camp_name}",
+        description=desc,
+        color=0xC4A030,
+    )
+
+    _cascade_deadline_label = "Watch Master orders due" if _wm_is_open else "High Command orders due"
+    deadline_val = _fmt_ts_abs(opening_deadline_ts[:19]) if opening_deadline_ts else "—"
+
+    # Compact force summary
     company_display = ", ".join(
         co.get("display_name") or co_id.capitalize()
         for co_id, co in state["companies"].items()
     ) or "None"
-    # For each active kill team, prefer the named Discord role (e.g. "Kill Team Raven") over display_name
     _kt_lines: list[str] = []
     for sgt_id, kt in state.get("kill_teams", {}).items():
         active_member_ids = [
@@ -4888,13 +4897,17 @@ async def _campaign_init(
                     break
         _kt_lines.append(kt_role_name or kt.get("display_name") or sgt_id)
     kt_display = ", ".join(_kt_lines) or "None"
-    embed.add_field(name="Companies Enlisted", value=company_display, inline=False)
-    embed.add_field(name="Kill Teams Enlisted", value=kt_display, inline=False)
-    embed.set_footer(text=f"Initialised by {interaction.user.display_name}")
-    wm_enlisted = any(
-        rec.get("active") and _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) == "watch_master"
-        for rec in state.get("enlistment", {}).values()
+
+    embed.add_field(name="Cycle", value=beat_name, inline=True)
+    embed.add_field(name="Length", value=f"{length_label} · {total_beats} cycles", inline=True)
+    embed.add_field(name=_cascade_deadline_label, value=deadline_val, inline=False)
+    embed.add_field(
+        name="Force",
+        value=f"{company_display}\n{kt_display}",
+        inline=False,
     )
+    embed.set_footer(text=f"Initialised by {interaction.user.display_name}  ·  use /campaign-orders when your phase opens")
+
     _phase_ping = _cascade_phase_ping(state, "cascade_WM" if wm_enlisted else "cascade_HC")
     await interaction.response.send_message(
         content=f"<@&{WATCH_BROTHER_ROLE_ID}> {_phase_ping}",
