@@ -1439,25 +1439,32 @@ def _derive_ops_mandate(state: dict) -> dict:
     }
 
     # Role affinity missions from enrolled active members
+    # Vote each non-planet op by how many enrolled roles unlock it; cap extras at 3.
     enlistment = state.get("enlistment", {})
     submissions = state.get("cascade", {}).get("submissions", {})
     submitted_roles: set = {s.get("role_key", "") for s in submissions.values() if s.get("role_key")}
-    affinity_eligible: set = set()
+    affinity_votes: Dict[int, int] = {}
     for tier_key in ("HC", "Company", "KT"):
         for rank_name, rank_data in rank_ref.get(tier_key, {}).items():
             if rank_name.startswith("_"):
                 continue
             role_key = rank_name.lower().replace(" ", "_")
-            # Include if any enlisted active member has this role (via their enlistment record role field)
             role_present = any(
                 rec.get("role", "") == rank_name and rec.get("active")
                 for rec in enlistment.values()
             )
             if role_present or role_key in submitted_roles:
                 for mid in rank_data.get("ops", {}).get("mission_ids", []):
-                    affinity_eligible.add(mid)
+                    if mid not in planet_eligible:
+                        affinity_votes[mid] = affinity_votes.get(mid, 0) + 1
 
-    eligible_ids = sorted(planet_eligible | affinity_eligible)
+    # Take top-3 non-planet affinity ops by vote count (capped so pool stays ≤8)
+    _MAX_AFFINITY_EXTRA = 3
+    top_affinity: set = set(
+        sorted(affinity_votes, key=lambda m: -affinity_votes[m])[:_MAX_AFFINITY_EXTRA]
+    )
+
+    eligible_ids = sorted(planet_eligible | top_affinity)
     eligible_missions = [
         {
             "id": mid,
