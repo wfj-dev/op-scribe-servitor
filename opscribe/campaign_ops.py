@@ -4856,8 +4856,8 @@ async def _campaign_init(
         desc = (
             f"The Jericho Watch deploys to **{node_id}**. "
             f"The {length_label.lower()} campaign begins.\n\n"
-            f"**High Command** — no Watch Master is present. "
-            f"The Watch holds position. Issue your doctrine orders."
+            f"No Watch Master stands at the helm. The Watch holds its ground. "
+            f"**High Command** — the cascade is yours. Issue your doctrine orders."
         )
 
     embed = discord.Embed(
@@ -4906,7 +4906,7 @@ async def _campaign_init(
         value=f"{company_display}\n{kt_display}",
         inline=False,
     )
-    embed.set_footer(text=f"Initialised by {interaction.user.display_name}  ·  use /campaign-orders when your phase opens")
+    embed.set_footer(text="use /campaign-orders when your phase opens")
 
     _phase_ping = _cascade_phase_ping(state, "cascade_WM" if wm_enlisted else "cascade_HC")
     await interaction.response.send_message(
