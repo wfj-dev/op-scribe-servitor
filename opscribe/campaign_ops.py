@@ -160,12 +160,17 @@ def _b(name):
 # Utility helpers
 # ---------------------------------------------------------------------------
 
-# Base prestige values per difficulty class
-_PRESTIGE_ABSOLUTE = 1
-_PRESTIGE_HARD_SIEGE_PER_5_WAVES = 0.5
-_PRESTIGE_OMEGA = 2
-_PRESTIGE_HARD_STRAT = 3
-_PRESTIGE_OMEGA_STRAT = 4
+# Base prestige values per difficulty class (halved from original; mandate bonuses layer on top)
+_PRESTIGE_ABSOLUTE = 0.5
+_PRESTIGE_HARD_SIEGE_PER_5_WAVES = 0.25
+_PRESTIGE_OMEGA = 1.0
+_PRESTIGE_HARD_STRAT = 1.5
+_PRESTIGE_OMEGA_STRAT = 2.0
+
+# Mandate adherence prestige bonuses (flat, before formation multiplier)
+_PRESTIGE_BONUS_OPS_MANDATE = 0.25       # mission matches active ops mandate
+_PRESTIGE_BONUS_STRAT_MANDATE = 0.25     # per mandated strat run (theatre/company/kt)
+_PRESTIGE_BONUS_TERMINUS_MANDATE = 0.25  # terminus kill when Huntmaster mandate active
 
 _PRESTIGE_WINDOW_DAYS = 28
 
@@ -279,6 +284,67 @@ def _compute_base_prestige(
     if difficulty_class == "omega_stratagem":
         return float(_PRESTIGE_OMEGA_STRAT)
     return 0.0
+
+
+def _compute_mandate_bonus(
+    state: dict,
+    mission_name: str,
+    strats_active: List[str],
+    terminus_killed: bool,
+) -> Tuple[float, List[str]]:
+    """Return (mandate_bonus, list_of_bonus_reason_strings).
+
+    Bonuses are flat values added to base prestige before formation multiplier.
+    - Ops mandate: +0.25 if mission matches an active ops mandate eligible mission.
+    - Strat mandate: +0.25 per mandated strat run (across all mandate tiers).
+    - Terminus mandate: +0.25 if terminus killed while Huntmaster mandate is active.
+    """
+    strat_pool = state.get("strat_pool", {})
+    if not strat_pool.get("locked"):
+        return 0.0, []
+
+    bonus = 0.0
+    reasons: List[str] = []
+
+    # Ops mandate bonus
+    ops_mandate = strat_pool.get("ops_mandate", {})
+    eligible_missions = ops_mandate.get("eligible_missions", [])
+    if eligible_missions and mission_name in eligible_missions:
+        bonus += _PRESTIGE_BONUS_OPS_MANDATE
+        reasons.append("ops mandate ✓")
+
+    # Strat mandate bonus: collect all mandated strats across all tiers
+    all_mandated: set = set()
+    theatre_strats = strat_pool.get("theatre_mandate") or []
+    if isinstance(theatre_strats, str):
+        theatre_strats = [theatre_strats]
+    all_mandated.update(theatre_strats)
+    for co_strats in (strat_pool.get("company_mandates") or {}).values():
+        if isinstance(co_strats, list):
+            all_mandated.update(co_strats)
+        elif isinstance(co_strats, str):
+            all_mandated.add(co_strats)
+    for kt_strats in (strat_pool.get("kt_mandates") or {}).values():
+        if isinstance(kt_strats, list):
+            all_mandated.update(kt_strats)
+        elif isinstance(kt_strats, str):
+            all_mandated.add(kt_strats)
+
+    matched_mandated = all_mandated & set(strats_active)
+    if matched_mandated:
+        strat_bonus = len(matched_mandated) * _PRESTIGE_BONUS_STRAT_MANDATE
+        bonus += strat_bonus
+        count = len(matched_mandated)
+        reasons.append(f"strat mandate ✓ ×{count}" if count > 1 else "strat mandate ✓")
+
+    # Terminus mandate bonus
+    terminus_directive = strat_pool.get("terminus_directive", {})
+    huntmaster_active = terminus_directive.get("huntmaster_active", False)
+    if terminus_killed and huntmaster_active:
+        bonus += _PRESTIGE_BONUS_TERMINUS_MANDATE
+        reasons.append("terminus mandate ✓")
+
+    return bonus, reasons
 
 
 def _resolve_aar_by_link(aar_link: str) -> Optional[dict]:
@@ -554,11 +620,12 @@ def de_enlist_member(user_id: str) -> Tuple[bool, str]:
 def log_campaign_entry(
     user_id: str,
     aar_link: str,
-    terminus_killed: bool,
+    terminus_slain: Optional[Dict[str, int]] = None,
     strats_active: Optional[List[str]] = None,
 ) -> Tuple[bool, str, Optional[dict]]:
     """Submit a campaign log entry linked to a specific AAR by Discord message URL.
 
+    terminus_slain: dict of {terminus_type: count} for terminus kills this run.
     Also auto-credits all other enrolled members found in the AAR's brother_ids
     that have not yet been credited for this op.
     Returns (success, message, entry_dict_or_None).
@@ -616,9 +683,14 @@ def log_campaign_entry(
                 f"Valid pool: {pool_list}"
             ), None
 
+    terminus_killed = bool(terminus_slain)
     beat = state.get("campaign", {}).get("beat")
     waves = aar_record.get("waves", 0) or 0
     base_prestige = _compute_base_prestige(difficulty_class, strats_active or [], waves)
+    mandate_bonus, bonus_reasons = _compute_mandate_bonus(
+        state, mission_name, strats_active or [], terminus_killed
+    )
+    effective_base = base_prestige + mandate_bonus
     campaign_log = state.setdefault("campaign_log", {})
 
     # Determine the full list of co-runners (enrolled members in this AAR beyond the submitter)
@@ -644,7 +716,8 @@ def log_campaign_entry(
             "mission_name": mission_name,
             "difficulty_class": difficulty_class,
             "beat": beat,
-            "terminus_killed": terminus_killed,
+            "terminus_slain": terminus_slain or {},
+            "terminus_killed": terminus_killed,  # derived bool for backward compat
             "is_omega": difficulty_class == "omega_ops",
             "strats_active": strats_active or [],
             "co_runner_ids": co_runner_ids,
@@ -660,7 +733,7 @@ def log_campaign_entry(
     record["last_aar_timestamp"] = aar_record.get("timestamp")
 
     # Credit prestige and update milestones for the submitter
-    _credit_prestige_for_entry(state, user_id, record, entry, aar_record, brother_ids, base_prestige)
+    _credit_prestige_for_entry(state, user_id, record, entry, aar_record, brother_ids, effective_base)
     _update_milestone_progress(state, user_id, record, entry, aar_record)
 
     # Auto-credit enrolled co-runners not yet credited for this AAR
@@ -675,28 +748,39 @@ def log_campaign_entry(
         campaign_log[co_entry["entry_id"]] = co_entry
         newly_credited.append(co_id)
         co_record["last_aar_timestamp"] = aar_record.get("timestamp")
-        _credit_prestige_for_entry(state, co_id, co_record, co_entry, aar_record, brother_ids, base_prestige)
+        _credit_prestige_for_entry(state, co_id, co_record, co_entry, aar_record, brother_ids, effective_base)
         _update_milestone_progress(state, co_id, co_record, co_entry, aar_record)
 
     # Record all newly credited members against this AAR
     credited_aars[aar_id] = list(set(already_credited + newly_credited))
 
-    # If terminus killed, record it
+    # If terminus killed, record it with type/count detail
     if terminus_killed:
         ops_window.setdefault("terminus_calls", [])
         ops_window["terminus_calls"].append({
             "user_id": user_id,
             "entry_id": entry["entry_id"],
             "reported_at": _iso_now(),
+            "terminus_slain": terminus_slain or {},
         })
 
     _save_campaign_state(state)
     co_count = len(newly_credited) - 1
     co_note = f" ({co_count} co-runner{'s' if co_count != 1 else ''} also credited)" if co_count else ""
+
+    prestige_str = f"+{effective_base:.2g}"
+    if bonus_reasons:
+        prestige_str += f" ({' · '.join(bonus_reasons)})"
+    terminus_note = ""
+    if terminus_slain:
+        kills = ", ".join(f"{v}× {k}" for k, v in terminus_slain.items())
+        terminus_note = f"\nTerminus slain: {kills}"
+
     return True, (
         f"Campaign log submitted{co_note}.\n"
-        f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Cycle:** {beat or 'unknown'}"
-        + (" | Terminus kill recorded." if terminus_killed else "")
+        f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Cycle:** {beat or 'unknown'}\n"
+        f"**Prestige:** {prestige_str} base (× formation multiplier)"
+        + terminus_note
     ), entry
 
 
@@ -1718,6 +1802,47 @@ def _graph_node(node_id: str) -> Optional[dict]:
     return None
 
 
+def _fmt_strategic_position(current_node: str) -> str:
+    """Return a formatted string showing the current node and its warp approaches.
+
+    Format:
+        Hethgard · Fortress World · Iron Collar
+        Warp approaches:
+          ├ Eleusis [close] · Shrine World
+          └ Alphos [medium] · Dead World
+    """
+    graph = _load_graph()
+    nodes_by_id = {n["id"]: n for n in graph.get("nodes", [])}
+    edges = graph.get("edges", [])
+
+    node_data = nodes_by_id.get(current_node, {})
+    world_type = node_data.get("type", "unknown").replace("_", " ").title()
+    region = node_data.get("region", "unknown").replace("_", " ").title()
+
+    # Build proximity lookup from edges (bidirectional)
+    prox_lookup: Dict[tuple, str] = {}
+    for e in edges:
+        src, tgt = e.get("source"), e.get("target")
+        prx = e.get("proximity", "unknown")
+        if src and tgt:
+            prox_lookup[(src, tgt)] = prx
+            prox_lookup[(tgt, src)] = prx
+
+    adj = graph.get("adjacency", {}).get(current_node, [])
+    header = f"**{current_node}** · {world_type} · {region}"
+    if not adj:
+        return header
+
+    lines = [header, "Warp approaches:"]
+    for i, neighbor in enumerate(sorted(adj)):
+        prox = prox_lookup.get((current_node, neighbor), "unknown")
+        n_data = nodes_by_id.get(neighbor, {})
+        n_type = n_data.get("type", "unknown").replace("_", " ").title()
+        connector = "└" if i == len(adj) - 1 else "├"
+        lines.append(f"  {connector} {neighbor} [{prox}] · {n_type}")
+    return "\n".join(lines)
+
+
 def _generate_node_scenarios(state: dict) -> None:
     """Generate beat scenarios for the current node (+ adjacent nodes for WM preview).
 
@@ -2027,6 +2152,10 @@ _ROLE_TO_CASCADE_KEY: Dict[str, str] = {
     "Watch Keeper": "watch_keeper",
     "Watch Sergeant": "watch_sergeant",
     "Judiciar": "judiciar",
+    # Battle-line — personal focus phase
+    "Oathsworn": "personal_focus",
+    "Watch Veteran": "personal_focus",
+    "Watch Brother": "personal_focus",
 }
 
 # Which cascade keys are eligible per phase
@@ -2041,6 +2170,7 @@ _CASCADE_PHASE_ROLES: Dict[str, frozenset] = {
         "watch_apothecary", "watch_chaplain", "watch_librarian", "watch_keeper",
     }),
     "cascade_KT": frozenset({"watch_sergeant", "judiciar"}),
+    "cascade_personal": frozenset({"personal_focus"}),
 }
 
 # Highest-authority order for role disambiguation
@@ -2050,6 +2180,7 @@ _CASCADE_ROLE_PRIORITY = [
     "watch_captain", "watch_lieutenant", "company_champion", "watch_techmarine",
     "watch_apothecary", "watch_chaplain", "watch_librarian", "watch_keeper",
     "watch_sergeant", "judiciar",
+    "personal_focus",  # battle-line: Oathsworn, Watch Veteran, Watch Brother
 ]
 
 # Cascade window durations per phase
@@ -2069,11 +2200,13 @@ def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
     if not hasattr(user, "roles"):
         return None
     user_role_names = {r.name for r in user.roles}
-    # Find the single highest-priority cascade role the user holds (globally)
+    # Find the single highest-priority cascade role the user holds (globally).
+    # A key may map from multiple role names (e.g. "personal_focus" covers
+    # Oathsworn, Watch Veteran, and Watch Brother), so check all names for it.
     top_key: Optional[str] = None
     for key in _CASCADE_ROLE_PRIORITY:
-        role_name = next((rn for rn, rk in _ROLE_TO_CASCADE_KEY.items() if rk == key), None)
-        if role_name and role_name in user_role_names:
+        role_names_for_key = {rn for rn, rk in _ROLE_TO_CASCADE_KEY.items() if rk == key}
+        if role_names_for_key & user_role_names:
             top_key = key
             break
     if top_key is None:
@@ -2085,11 +2218,29 @@ def _get_user_cascade_role_key(user, phase: str) -> Optional[str]:
 
 
 _CASCADE_DEADLINE_DEFAULTS: Dict[str, int] = {
-    "cascade_WM": 24,
+    "cascade_WM": 12,
     "cascade_HC": 48,
-    "cascade_Company": 48,
+    "cascade_Company": 24,
     "cascade_KT": 24,
+    "cascade_personal": 12,  # battle-line personal focus — shorter window
 }
+
+
+def _open_ops_window(state: dict) -> None:
+    """Lock the strat pool and open the ops window for the current beat.
+
+    Called when all cascade phases complete (cascade_personal resolves or is
+    skipped). Idempotent: _lock_strat_pool is a no-op if already locked.
+    """
+    _lock_strat_pool(state)
+    duration_days = state["campaign"].get("beat_duration_days") or 7
+    ops_close = _utcnow() + timedelta(days=duration_days)
+    state["ops_window"] = {
+        "opened_at": _iso_now(),
+        "closes_at": ops_close.isoformat(),
+        "terminus_calls": [],
+    }
+    state["campaign"]["phase"] = "ops"
 
 
 def _enter_cascade_phase(state: dict, phase: str) -> None:
@@ -2099,6 +2250,8 @@ def _enter_cascade_phase(state: dict, phase: str) -> None:
     For cascade_WM: if no Watch Master is enrolled, the phase is resolved immediately
     (hold position, generate scenarios, open cascade_HC) rather than blocking the whole
     cascade for the duration of the WM window.
+
+    For cascade_personal: if no battle-line members are enrolled, skip directly to ops.
     """
     # Auto-skip cascade_WM if nobody eligible is enrolled
     if phase == "cascade_WM":
@@ -2111,6 +2264,20 @@ def _enter_cascade_phase(state: dict, phase: str) -> None:
         if not wm_enrolled:
             _resolve_cascade_WM(state)
             return
+
+    # Auto-skip cascade_personal if no battle-line enrolled
+    if phase == "cascade_personal":
+        eligible_keys = _CASCADE_PHASE_ROLES.get("cascade_personal", frozenset())
+        bl_enrolled = any(
+            _ROLE_TO_CASCADE_KEY.get(rec.get("role", "")) in eligible_keys
+            for rec in state.get("enlistment", {}).values()
+            if rec.get("active")
+        )
+        if not bl_enrolled:
+            _open_ops_window(state)
+            return
+        # Lock strat pool now so mandate is immediately visible during personal focus window
+        _lock_strat_pool(state)
 
     CONFIG = _b("CONFIG")
     _hours_cfg = CONFIG.get("cascade_deadline_hours") if isinstance(CONFIG, dict) else None
@@ -2317,6 +2484,8 @@ def _cascade_phase_ping(state: dict, phase: str) -> str:
         return " ".join(role_ids) if role_ids else ""
     if phase == "cascade_KT":
         return f"<@&{WATCH_SERGEANT_ROLE_ID}>"
+    if phase == "cascade_personal":
+        return f"<@&{WATCH_BROTHER_ROLE_ID}>"
     return ""
 
 
@@ -2403,7 +2572,7 @@ async def sweep_campaign_beat_clock() -> None:
     state = _load_campaign_state()
     phase = state.get("campaign", {}).get("phase", "inactive")
 
-    if phase not in ("ops", "cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase not in ("ops", "cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"):
         return
 
     bot = _b("bot")
@@ -2511,26 +2680,47 @@ async def sweep_campaign_beat_clock() -> None:
         else:
             changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
 
-    # cascade_KT → open ops window for this beat
+    # cascade_KT → enter personal focus or skip to ops
     elif phase == "cascade_KT":
         deadline = _parse_iso(state.get("cascade", {}).get("cascade_KT_deadline"))
         if deadline and now >= deadline:
-            _lock_strat_pool(state)
-            duration_days = state["campaign"].get("beat_duration_days") or 7
-            ops_close = _utcnow() + timedelta(days=duration_days)
-            state["ops_window"] = {
-                "opened_at": _iso_now(),
-                "closes_at": ops_close.isoformat(),
-                "terminus_calls": [],
-            }
-            state["campaign"]["phase"] = "ops"
+            _enter_cascade_phase(state, "cascade_personal")
+            if state["campaign"]["phase"] == "ops":
+                # No battle-line enrolled — ops opened directly
+                ops_close_ts = state["ops_window"]["closes_at"]
+                _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
+                announcement = (
+                    f"{_wb_ping}\n"
+                    f"⚔️ **{camp_name} — Cycle {beat} orders resolved. Operations window open.**\n"
+                    f"Strat mandates are locked. **All Brothers**, get your ops in via `/campaign-log`.\n"
+                    f"Ops window closes: {_fmt_ts(ops_close_ts)}"
+                )
+            else:
+                # cascade_personal opened
+                deadline_ts = state["cascade"].get("cascade_personal_deadline", "")
+                _bl_ping = _cascade_phase_ping(state, "cascade_personal")
+                announcement = (
+                    f"{_bl_ping}\n"
+                    f"⚔️ **{camp_name} — Cycle {beat} Kill Team doctrine locked. Personal focus cascade open.**\n"
+                    f"**Battle-line**, choose your personal focus via `/campaign-orders`.\n"
+                    f"Personal focus closes: {_fmt_ts(deadline_ts)}"
+                )
+            changed = True
+        else:
+            changed = await _maybe_send_cascade_warning(state, phase, now, camp_name, beat) or changed
+
+    # cascade_personal → open ops window
+    elif phase == "cascade_personal":
+        deadline = _parse_iso(state.get("cascade", {}).get("cascade_personal_deadline"))
+        if deadline and now >= deadline:
+            _open_ops_window(state)
+            ops_close_ts = state["ops_window"]["closes_at"]
             _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
-            ops_close_ts = ops_close.strftime("%Y-%m-%d %H:%M")
             announcement = (
                 f"{_wb_ping}\n"
                 f"⚔️ **{camp_name} — Cycle {beat} orders resolved. Operations window open.**\n"
                 f"Strat mandates are locked. **All Brothers**, get your ops in via `/campaign-log`.\n"
-                f"Ops window closes: `{ops_close_ts}Z`"
+                f"Ops window closes: {_fmt_ts(ops_close_ts)}"
             )
             changed = True
         else:
@@ -2693,20 +2883,82 @@ async def _campaign_de_enlist(interaction: discord.Interaction):
 
 # --- /campaign-log ---
 
+# All non-excluded stratagem names (sorted, for autocomplete)
+_ALL_STRAT_NAMES: list[str] = [
+    "Aggravated Assault", "Astra Militarum", "Atrophy", "Avenger", "Backup Plan",
+    "Battlefield Instincts", "Beset", "Bleary Sniper", "Broken Bulwark", "Buffed Enemies",
+    "Butcher's Gifts", "Camaraderie", "Close In", "Combat Mastery", "Come Prepared",
+    "Coordinated Calls", "Corrupted Relic", "Deep Pockets", "Detonation Risk",
+    "Doomed Offensive", "Effective Taunt", "Enduring Foes", "Enemy Sighted",
+    "Extreme Challenge", "Fallen Vanguard", "Fatality", "Great Responsibility",
+    "Hallowed Relic", "Hardened Skins", "Harvest of Vitae", "Heavy Burden",
+    "Heavy Calibre", "Hyperopia", "Imperial Fervour", "Intelligence Lapse",
+    "Killer Instinct", "Larraman Cells", "Maintain Distance", "Major Challenge",
+    "Measured Mercy", "Meat for the Slaughter", "Microreactor Breach", "Migraine",
+    "Myopia", "No Delays", "Point Blank", "Pointed Attack", "Rationing",
+    "Reinforced Cranium", "Rhythm of Carnage", "Scavenger", "Sharpshooter",
+    "Shockwave Plating", "Spoils of War", "Strike Out", "Summoner",
+    "Supremacy of the Strong", "Surgical Strike", "Surplus", "Tactical Weakness",
+    "Technological Revolution", "Temporal Boosts", "The Emperor Protects", "Tsunami",
+    "Twice the Foe", "Unleashed Fury", "Unshaken", "We Stand as One", "You Only Live Once",
+]
+
+# All terminus types (roaming + boss), for autocomplete
+_ALL_TERMINUS_NAMES: list[str] = [
+    "Carnifex", "Helbrute", "Hierophant Bio-Titan",
+    "Mutalith Vortex Beast", "Neurothrope", "Trygon", "Tyranid Prime",
+]
+
+
+async def _strat_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    return [
+        app_commands.Choice(name=s, value=s)
+        for s in _ALL_STRAT_NAMES
+        if current.lower() in s.lower()
+    ][:25]
+
+
+async def _terminus_type_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    return [
+        app_commands.Choice(name=t, value=t)
+        for t in _ALL_TERMINUS_NAMES
+        if current.lower() in t.lower()
+    ][:25]
+
+
 @_g.bot.tree.command(
     name="campaign-log",
     description="Submit a campaign log entry for an op you completed.",
 )
 @app_commands.describe(
     aar_link="Discord message URL of the AAR post for this op.",
-    terminus_killed="Was any terminus target killed during this op?",
-    strats_active="Comma-separated list of active strats you ran (e.g. 'Unleashed Fury, Extreme Challenge')",
+    terminus_type="Terminus target killed (leave blank if none).",
+    terminus_count="How many of that terminus were slain (default 1).",
+    strat_1="First active stratagem you ran.",
+    strat_2="Second active stratagem (optional).",
+    strat_3="Third active stratagem (optional).",
+    strat_4="Fourth active stratagem (optional).",
+)
+@app_commands.autocomplete(
+    terminus_type=_terminus_type_autocomplete,
+    strat_1=_strat_autocomplete,
+    strat_2=_strat_autocomplete,
+    strat_3=_strat_autocomplete,
+    strat_4=_strat_autocomplete,
 )
 async def _campaign_log(
     interaction: discord.Interaction,
     aar_link: str,
-    terminus_killed: bool,
-    strats_active: Optional[str] = None,
+    terminus_type: Optional[str] = None,
+    terminus_count: Optional[int] = None,
+    strat_1: Optional[str] = None,
+    strat_2: Optional[str] = None,
+    strat_3: Optional[str] = None,
+    strat_4: Optional[str] = None,
 ):
     if not _b_check_command_permission(interaction.user, "campaign-log"):
         await interaction.response.send_message("Access denied.", ephemeral=True)
@@ -2715,11 +2967,16 @@ async def _campaign_log(
         await interaction.response.send_message("This command is not available in this channel.", ephemeral=True)
         return
 
-    strats_list = [s.strip() for s in strats_active.split(",") if s.strip()] if strats_active else []
+    terminus_slain: Optional[Dict[str, int]] = None
+    if terminus_type:
+        count = max(1, terminus_count or 1)
+        terminus_slain = {terminus_type: count}
+
+    strats_list: List[str] = [s for s in [strat_1, strat_2, strat_3, strat_4] if s]
     success, msg, entry = log_campaign_entry(
         user_id=str(interaction.user.id),
         aar_link=aar_link,
-        terminus_killed=terminus_killed,
+        terminus_slain=terminus_slain,
         strats_active=strats_list,
     )
     await interaction.response.send_message(msg, ephemeral=True)
@@ -2843,23 +3100,40 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
             f"{next_phase.replace('cascade_', '').upper()} cascade closes: {_fmt_ts(deadline_ts)}"
         )
     elif phase == "cascade_KT":
-        # All KT submitted — open ops immediately
-        _lock_strat_pool(state)
-        duration_days = state["campaign"].get("beat_duration_days") or 7
-        ops_close = _utcnow() + timedelta(days=duration_days)
-        state["ops_window"] = {
-            "opened_at": _iso_now(),
-            "closes_at": ops_close.isoformat(),
-            "terminus_calls": [],
-        }
-        state["campaign"]["phase"] = "ops"
+        # All KT submitted — enter personal focus or skip to ops
+        _enter_cascade_phase(state, "cascade_personal")
+        if state["campaign"]["phase"] == "ops":
+            # No battle-line enrolled — ops opened directly
+            ops_close_ts = state["ops_window"]["closes_at"]
+            _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
+            announcement = (
+                f"{_wb_ping}\n"
+                f"⚔️ **{camp_name} — Cycle {beat} orders resolved early. Operations window open.**\n"
+                f"All Kill Team orders are in. Strat mandates are locked. "
+                f"**All Brothers**, get your ops in via `/campaign-log`.\n"
+                f"Ops window closes: {_fmt_ts(ops_close_ts)}"
+            )
+        else:
+            # cascade_personal opened
+            deadline_ts = state["cascade"].get("cascade_personal_deadline", "")
+            _bl_ping = _cascade_phase_ping(state, "cascade_personal")
+            announcement = (
+                f"{_bl_ping}\n"
+                f"⚔️ **{camp_name} — Cycle {beat} Kill Team doctrine locked early. Personal focus cascade open.**\n"
+                f"All Kill Team orders are in. **Battle-line**, choose your personal focus via `/campaign-orders`.\n"
+                f"Personal focus closes: {_fmt_ts(deadline_ts)}"
+            )
+    elif phase == "cascade_personal":
+        # All battle-line submitted — open ops
+        _open_ops_window(state)
+        ops_close_ts = state["ops_window"]["closes_at"]
         _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
         announcement = (
             f"{_wb_ping}\n"
             f"⚔️ **{camp_name} — Cycle {beat} orders resolved early. Operations window open.**\n"
-            f"All Kill Team orders are in. Strat mandates are locked. "
+            f"All battle-line focus submitted. Strat mandates are locked. "
             f"**All Brothers**, get your ops in via `/campaign-log`.\n"
-            f"Ops window closes: {_fmt_ts(ops_close.isoformat())}"
+            f"Ops window closes: {_fmt_ts(ops_close_ts)}"
         )
     else:
         return False
@@ -2937,7 +3211,7 @@ def _compose_orders_narrative(
     campaign_name = campaign.get("name") or "The Campaign"
     tag_vocab: Dict[str, str] = _CASCADE_OPTIONS.get("_tag_vocabulary", {})
 
-    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"]
     # Determine user's cascade phase from their role_key (handles cascade_WM correctly)
     rk_self_pre = _ROLE_TO_CASCADE_KEY.get(role, "")
     user_phase: Optional[str] = None
@@ -3059,6 +3333,37 @@ def _compose_orders_narrative(
             f"The ops window is open. Your orders flow from the decisions above — take the fight to the enemy."
         )
 
+    # --- Branch: cascade_personal phase ---
+    if phase == "cascade_personal":
+        user_rk = _ROLE_TO_CASCADE_KEY.get(role, "")
+        is_battle_line = user_rk == "personal_focus"
+        if is_battle_line:
+            pf_meta = _CASCADE_OPTIONS.get("personal_focus", {})
+            pf_desc = pf_meta.get("_description", "")
+            pf_desc_snip = pf_desc.split(".")[0].strip() + "." if pf_desc else ""
+            upstream_section = (
+                f"**Orders received from above:**\n{_fmt_upstream_block(upstream)}\n\n"
+                f"Combined cascade doctrine: {top_tag_bold} — {doctrine_line}.\n\n"
+                if upstream and doctrine_line
+                else (
+                    f"**Orders received from above:**\n{_fmt_upstream_block(upstream)}\n\n"
+                    if upstream else ""
+                )
+            )
+            return (
+                f"{heading}\n\n"
+                f"{upstream_section}"
+                f"Kill Team doctrine is set. Now choose your **personal focus** for **{beat_name}**. "
+                f"Where do you direct your oath? Select below."
+            )
+        else:
+            # Spectator: not eligible for personal focus (HC/Company/KT tier)
+            return (
+                f"{heading}\n\n"
+                f"Kill Team doctrine is locked. Battle-line are choosing their personal focus for **{beat_name}**. "
+                f"Your orders are set — the cascade is in its final stage."
+            )
+
     if not user_phase:
         return f"**{campaign_name}** is in **{phase}** phase — {beat_name}."
 
@@ -3131,32 +3436,31 @@ def _compose_orders_narrative(
 def _cascade_peer_summary(state: dict, phase: str, enlistment: dict) -> str:
     """Return a short 'X of Y submitted' string for the given cascade phase."""
     eligible_keys = _CASCADE_PHASE_ROLES.get(phase, frozenset())
-    # Map each active enlisted member's role_key → user_id
-    role_to_user: dict = {}
+    # Collect all active enrolled members eligible for this phase (uid, role_name, rk)
+    eligible_members: list[tuple[str, str, str]] = []
     for uid, rec in enlistment.items():
         if not rec.get("active"):
             continue
         role_name = rec.get("role", "")
         rk = _ROLE_TO_CASCADE_KEY.get(role_name)
         if rk and rk in eligible_keys:
-            role_to_user[rk] = uid
-    total = len(role_to_user)
+            eligible_members.append((uid, role_name, rk))
+
+    total = len(eligible_members)
     if total == 0:
         return "No eligible members enrolled."
     submissions = state.get("cascade", {}).get("submissions", {})
     submitted = sum(
-        1 for rk, uid in role_to_user.items()
+        1 for uid, _, _ in eligible_members
         if uid in submissions and submissions[uid].get("phase") == phase
     )
     pending_roles = [
-        rk for rk, uid in role_to_user.items()
+        role_name for uid, role_name, _ in eligible_members
         if uid not in submissions or submissions[uid].get("phase") != phase
     ]
-    # Build display names for pending
-    _key_to_display = {v: k for k, v in _ROLE_TO_CASCADE_KEY.items()}
-    pending_str = ", ".join(_key_to_display.get(r, r).replace("_", " ").title() for r in pending_roles)
+    pending_str = ", ".join(pending_roles)
     if submitted == total:
-        return f"✅ All {total} of {total} have submitted."
+        return f"\u2705 All {total} of {total} have submitted."
     return f"**{submitted}/{total} submitted.** Awaiting: {pending_str}"
 
 
@@ -3238,7 +3542,7 @@ async def _campaign_orders(interaction: discord.Interaction):
 
     # --- Narrative description ---
     # Determine user_cascade_phase from role (handles cascade_WM correctly for Watch Master)
-    _all_phases = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    _all_phases = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"]
     _role_key_self = _ROLE_TO_CASCADE_KEY.get(record.get("role", ""), "")
     user_cascade_phase: Optional[str] = None
     for _cp in _all_phases:
@@ -3283,8 +3587,13 @@ async def _campaign_orders(interaction: discord.Interaction):
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
     embed.set_footer(text=f"{camp_name}  ·  {PHASE_DISPLAY.get(phase, phase)}  ·  {current_node or '—'}")
 
+    # --- Strategic position ---
+    if current_node:
+        pos_text = _fmt_strategic_position(current_node)
+        embed.add_field(name="▸ Strategic Position", value=pos_text, inline=False)
+
     # --- Cascade status block ---
-    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"):
         deadline_key = f"{phase}_deadline"
         deadline = cascade.get(deadline_key, "Unknown")
         peer_summary = _cascade_peer_summary(state, phase, enlistment)
@@ -3362,7 +3671,7 @@ async def _campaign_orders(interaction: discord.Interaction):
             embed.add_field(name="▸ Terminus Flag", value=terminus_flag, inline=False)
 
     # --- Cascade choice buttons (if it's this member's turn) ---
-    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
+    if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"):
         role_key = _get_user_cascade_role_key(interaction.user, phase)
         if role_key:
             existing_sub = submissions.get(user_id)
@@ -3613,12 +3922,35 @@ async def _campaign_mandate(interaction: discord.Interaction):
     company_id = record.get("company_id") if record else None
     kt_sgt = record.get("kt_sgt_id") if record else None
 
+    _strat_descs: Optional[dict] = None
+
+    def _get_strat_desc(name: str) -> str:
+        """Look up a strat description from stratagems.json (cached)."""
+        nonlocal _strat_descs
+        if _strat_descs is None:
+            _ensure_refs_loaded()
+            ref = _load_ref("stratagems.json")
+            _strat_descs = {
+                s["name"]: s.get("description", "")
+                for s in ref.get("stratagems", [])
+            }
+        return _strat_descs.get(name, "")
+
     def _fmt_strats(val) -> str:
         if not val:
             return "None"
         if isinstance(val, str):
-            return f"`{val}`"
-        return ", ".join(f"`{s}`" for s in val) if val else "None"
+            val = [val]
+        if not val:
+            return "None"
+        lines = []
+        for s in val:
+            desc = _get_strat_desc(s)
+            line = f"**{s}**"
+            if desc:
+                line += f" — *{desc}*"
+            lines.append(line)
+        return "\n".join(lines)
 
     theatre_display = _fmt_strats(strat_pool.get("theatre_mandate"))
     co_display = _fmt_strats(strat_pool.get("company_mandates", {}).get(company_id)) if company_id else "N/A"
