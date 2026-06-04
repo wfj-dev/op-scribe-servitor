@@ -246,6 +246,16 @@ def _fmt_ts(ts: Optional[str]) -> str:
     return f"{abs_label} ({rel})"
 
 
+def _fmt_ts_abs(ts: Optional[str]) -> str:
+    """Format an ISO timestamp as absolute UTC string only — no relative suffix."""
+    if not ts:
+        return "Unknown"
+    dt = _parse_iso(ts)
+    if dt is None:
+        return ts
+    return f"{dt.strftime('%A')}, {dt.strftime('%-d %b')} at {dt.strftime('%H:%M UTC')}"
+
+
 def _entry_id() -> str:
     """Generate a unique log entry ID from current timestamp + randomness."""
     h = hashlib.sha1(f"{_utcnow().isoformat()}{random.random()}".encode()).hexdigest()
@@ -1806,7 +1816,7 @@ def _build_wm_movement_options(state: dict) -> dict:
     opts: dict = {
         "_decision": "movement_order",
         "_description": (
-            "The Watch Master sets the warband's theatre — hold position or reposition to an "
+            "The Watch Master sets the Watch's theatre — hold position or reposition to an "
             "adjacent world. This choice determines the scenario intelligence for all cascade "
             "tiers below."
         ),
@@ -1837,7 +1847,7 @@ def _build_wm_movement_options(state: dict) -> dict:
             safe_id = nid.lower().replace(" ", "_").replace("-", "_").replace("'", "")
             opts[f"move_to_{safe_id}"] = {
                 "name": f"Advance to {nid}",
-                "description": f"{nid} — {ntype.replace('_', ' ').title()}. Reposition the warband.",
+                "description": f"{nid} — {ntype.replace('_', ' ').title()}. Reposition the strike force.",
                 "tags": tags[:2],
                 "target_node": nid,
             }
@@ -2435,7 +2445,7 @@ async def sweep_campaign_beat_clock() -> None:
                     announcement = (
                         f"{_wm_ping}\n"
                         f"⚔️ **{camp_name} — Cycle {beat} ops window closed.**\n"
-                        f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
+                        f"The Watch Master must set the Watch's position. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
                         f"WM positioning window closes: {_fmt_ts(wm_deadline[:19])}"
                     )
                 else:
@@ -2444,7 +2454,7 @@ async def sweep_campaign_beat_clock() -> None:
                     announcement = (
                         f"{_hc_ping}\n"
                         f"⚔️ **{camp_name} — Cycle {beat} ops window closed.**\n"
-                        f"No Watch Master enlisted — warband holds at **{current_node}**. Scenario intelligence is live.\n"
+                        f"No Watch Master enlisted — Watch holds at **{current_node}**. Scenario intelligence is live.\n"
                         f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
                         f"HC cascade window closes: {_fmt_ts(hc_deadline[:19])}"
                     )
@@ -2979,7 +2989,7 @@ def _compose_orders_narrative(
     if user_phase == "cascade_WM":
         role_decision_key = "movement_order"
         role_desc = (
-            "The Watch Master sets the warband's position for this cycle — hold in place or "
+            "The Watch Master sets the Watch's position for this cycle — hold in place or "
             "reposition to an adjacent world. This choice determines the scenario intelligence "
             "every brother below will face when they open their orders."
         )
@@ -4063,7 +4073,7 @@ async def _campaign_init(
         "visited_nodes": [node_id],
     })
     state["total_beats"] = total_beats
-    # Open cascade at WM tier first; WM positions the warband, then cascade_HC opens
+    # Open cascade at WM tier first; WM sets the Watch's position, then cascade_HC opens
     _enter_cascade_phase(state, "cascade_WM")
 
     # Seed companies from config — only add companies that have at least one active enlisted member
@@ -4109,7 +4119,7 @@ async def _campaign_init(
             "Campaign initialised. **Watch Master**, set your theatre positioning order first.\n"
             "Once the Watch Master submits, cycle scenarios generate and High Command orders phase opens."
             if _wm_is_open else
-            "Campaign initialised. No Watch Master enlisted — warband holds position.\n"
+            "Campaign initialised. No Watch Master enlisted — Watch holds position.\n"
             "**High Command**, cascade is open for doctrine orders."
         ),
         color=0xC4A030,
@@ -4122,7 +4132,8 @@ async def _campaign_init(
     embed.add_field(name="Cycle", value=f"{beat_number} — {beat_name}", inline=True)
     embed.add_field(name="Phase", value=actual_phase, inline=True)
     embed.add_field(name="Starting Planet", value=f"{node_id} ({node_data.get('type', '?').replace('_', ' ').title()})", inline=True)
-    embed.add_field(name="Opening Window Closes", value=_fmt_ts(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
+    _cascade_deadline_label = "Watch Master Orders Due" if actual_phase == "cascade_WM" else "High Command Orders Due"
+    embed.add_field(name=_cascade_deadline_label, value=_fmt_ts_abs(opening_deadline_ts[:19]) if opening_deadline_ts else "—", inline=False)
     embed.add_field(name="Campaign Length", value=f"{length_label} ({total_beats} cycles)", inline=True)
     embed.add_field(name="Cycle Duration", value=f"{max(1, beat_duration_days)} days", inline=True)
     company_display = ", ".join(
