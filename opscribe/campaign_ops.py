@@ -561,7 +561,7 @@ def enlist_member(
         if kt_sgt_id not in kill_teams:
             kill_teams[kt_sgt_id] = {
                 "sgt_discord_name": "",
-                "display_name": f"Sgt {discord_name}'s Kill Team" if role == "Watch Sergeant" else f"Kill Team",
+                "display_name": f"Sgt {discord_name}'s Kill Team" if role == "Watch Sergeant" else "Kill Team",
                 "company_id": company_id,
                 "title": None,
                 "title_granted_by": None,
@@ -686,6 +686,7 @@ def log_campaign_entry(
     terminus_killed = bool(terminus_slain)
     beat = state.get("campaign", {}).get("beat")
     waves = aar_record.get("waves", 0) or 0
+    mission_name = _parse_mission_name(aar_record.get("mission", ""))
     base_prestige = _compute_base_prestige(difficulty_class, strats_active or [], waves)
     mandate_bonus, bonus_reasons = _compute_mandate_bonus(
         state, mission_name, strats_active or [], terminus_killed
@@ -702,8 +703,6 @@ def log_campaign_entry(
     # Classify co-runners for the submitter (for Iron Compact tracking on the entry)
     co_run_info = _classify_co_runners(user_id, record, brother_ids, enlistment)
     officer_tiers = co_run_info["officer_tiers"]
-
-    mission_name = _parse_mission_name(aar_record.get("mission", ""))
 
     def _make_entry(for_user_id: str) -> dict:
         return {
@@ -2040,7 +2039,6 @@ def _update_milestone_progress(
             continue
 
         # Evaluate tracking rule
-        incremented = False
         rule = milestone.get("tracking_rule", "")
         data_source = milestone.get("data_source", "")
 
@@ -2048,21 +2046,17 @@ def _update_milestone_progress(
             # terminus_killed type
             if "terminus_killed == true" in rule and entry.get("terminus_killed"):
                 mp["count"] += 1
-                incremented = True
         elif data_source == "aar_record":
             # gene_seed_carrier, armory_data, op count, mission specialist
             if "gene_seed_carrier_id == member_id" in rule:
                 if str(aar_record.get("gene_seed_carrier_id")) == user_id:
                     mp["count"] += 1
-                    incremented = True
             elif "armory_data > 0" in rule:
                 if aar_record.get("armory_data", 0) > 0 and user_id in [str(b) for b in aar_record.get("brother_ids", [])]:
                     mp["count"] += 1
-                    incremented = True
             elif "member_id in brother_ids" in rule:
                 if user_id in [str(b) for b in aar_record.get("brother_ids", [])]:
                     mp["count"] += 1
-                    incremented = True
 
         # Check completion
         if not mp.get("completed") and mp["count"] >= mp["threshold"]:
@@ -2641,8 +2635,6 @@ async def sweep_campaign_beat_clock() -> None:
         closes_at = _parse_iso(state.get("ops_window", {}).get("closes_at"))
         if closes_at and now >= closes_at:
             summary = _resolve_beat_and_open_next(state)
-            new_beat_name = summary["new_beat_name"]
-            new_beat = summary["new_beat"]
             theatre_strats = summary.get("theatre_mandates") or []
             theatre_display = ", ".join(f"`{s}`" for s in theatre_strats) if theatre_strats else "—"
             top_tags = ", ".join(summary.get("top_tags", [])) or "—"
@@ -3489,9 +3481,6 @@ def _compose_orders_narrative(
         user_rk = _ROLE_TO_CASCADE_KEY.get(role, "")
         is_battle_line = user_rk == "personal_focus"
         if is_battle_line:
-            pf_meta = _CASCADE_OPTIONS.get("personal_focus", {})
-            pf_desc = pf_meta.get("_description", "")
-            pf_desc_snip = pf_desc.split(".")[0].strip() + "." if pf_desc else ""
             upstream_section = (
                 f"**Orders received from above:**\n{_fmt_upstream_block(upstream)}\n\n"
                 f"Combined cascade doctrine: {top_tag_bold} — {doctrine_line}.\n\n"
@@ -3826,7 +3815,6 @@ async def _campaign_orders(interaction: discord.Interaction):
         role_key = _get_user_cascade_role_key(interaction.user, phase)
         if role_key:
             existing_sub = submissions.get(user_id)
-            phase_label = phase.replace("cascade_", "").upper()
             # pre-compute filtered options for non-WM phases (used in both branches)
             filtered_opts: Optional[dict] = None
             if phase != "cascade_WM":
@@ -3934,12 +3922,6 @@ async def _campaign_cascade(interaction: discord.Interaction):
         color=0x2F3136,
     )
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
-
-    phase_complete_idx = -1
-    if phase == "ops":
-        phase_complete_idx = len(phase_order) - 1  # all done
-    elif phase in phase_order:
-        phase_complete_idx = phase_order.index(phase) - 1
 
     for i, cp in enumerate(phase_order):
         eligible_keys = _CASCADE_PHASE_ROLES[cp]
@@ -4081,9 +4063,6 @@ async def _campaign_mandate(interaction: discord.Interaction):
     if not strat_pool.get("locked"):
         await interaction.response.send_message("The strat pool has not been locked yet. Mandate is not available.", ephemeral=True)
         return
-
-    user_id = str(interaction.user.id)
-    enlistment = state.get("enlistment", {})
 
     _strat_descs: Optional[dict] = None
 
