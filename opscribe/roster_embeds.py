@@ -226,7 +226,7 @@ def _build_campaign_accolades_embed(
 
         embed.add_field(name=f"▸ {kt_name}", value="\n".join(kt_lines), inline=True)
 
-    embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1499152772225040544/1511884332908941432/Honor_of_the_Watch.png?ex=6a221382&is=6a20c202&hm=827b132ad5ae8a794d09aa6503eab5a9ba0c592105609f2efe09284b955d781e&")
+    embed.set_image(url="https://cdn.discordapp.com/attachments/1499152772225040544/1511884332908941432/Honor_of_the_Watch.png?ex=6a221382&is=6a20c202&hm=827b132ad5ae8a794d09aa6503eab5a9ba0c592105609f2efe09284b955d781e&")
     embed.set_footer(
         text=f"Campaign: {campaign.get('id') or '—'}  ·  {now.strftime('%Y-%m-%d %H:%M UTC')}"
     )
