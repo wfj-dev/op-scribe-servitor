@@ -3891,7 +3891,17 @@ async def _campaign_orders(interaction: discord.Interaction):
 
     # --- Planet / scenario intel block ---
     current_node = campaign.get("current_node")
-    node_scenario = state.get("beat_scenarios", {}).get(current_node) if current_node else None
+    raw_scenario = state.get("beat_scenarios", {}).get(current_node) if current_node else None
+    # beat_scenarios[node_id] is now a list of 3 vectors; use committed_scenario if set,
+    # otherwise fall back to slot 0 of the list (or the dict itself for legacy data)
+    committed_sc = state.get("cascade", {}).get("committed_scenario")
+    if committed_sc:
+        node_scenario = committed_sc
+    elif isinstance(raw_scenario, list):
+        node_scenario = raw_scenario[0] if raw_scenario else None
+    else:
+        node_scenario = raw_scenario  # legacy single-dict fallback
+
     if node_scenario:
         codename = node_scenario.get("codename", "")
         dominant = ", ".join(f"**{t}**" for t in node_scenario.get("dominant_tags", []))
