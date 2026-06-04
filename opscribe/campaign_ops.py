@@ -1813,6 +1813,22 @@ def generate_beat_scenario(
 
 
 # ---------------------------------------------------------------------------
+# Discord embed character-limit helpers
+# ---------------------------------------------------------------------------
+
+_EMBED_DESC_MAX = 4096
+_EMBED_FIELD_MAX = 1024
+_EMBED_TOTAL_MAX = 6000
+
+
+def _trunc(text: str, limit: int, suffix: str = "…") -> str:
+    """Truncate *text* to *limit* characters, appending *suffix* if cut."""
+    if len(text) <= limit:
+        return text
+    return text[: limit - len(suffix)] + suffix
+
+
+# ---------------------------------------------------------------------------
 # Node/scenario helpers
 # ---------------------------------------------------------------------------
 
@@ -1870,12 +1886,15 @@ def _fmt_strategic_position(current_node: str) -> str:
         return header
 
     lines = [header, "Warp approaches:"]
-    for i, neighbor in enumerate(sorted(adj)):
+    adj_sorted = sorted(adj)[:12]  # cap at 12 to stay within field limit
+    for i, neighbor in enumerate(adj_sorted):
         prox = prox_lookup.get((current_node, neighbor), "unknown")
         n_data = nodes_by_id.get(neighbor, {})
         n_type = n_data.get("type", "unknown").replace("_", " ").title()
-        connector = "└" if i == len(adj) - 1 else "├"
-        lines.append(f"  {connector} {neighbor} [{prox}] · {n_type}")
+        connector = "└" if i == len(adj_sorted) - 1 else "├"
+        lines.append(f"  {connector} {neighbor} [{prox}] · {n_type}")
+    if len(adj) > 12:
+        lines.append(f"  … +{len(adj) - 12} more")
     return "\n".join(lines)
 
 
@@ -3891,7 +3910,7 @@ async def _campaign_orders(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title=f"⚔️ Campaign Orders — {beat_name}",
-        description=full_narr,
+        description=_trunc(full_narr, _EMBED_DESC_MAX),
         color=0x4B0082,
     )
     _orders_img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "campaign_orders.jpg")
@@ -3905,7 +3924,7 @@ async def _campaign_orders(interaction: discord.Interaction):
     # --- Strategic position ---
     if current_node:
         pos_text = _fmt_strategic_position(current_node)
-        embed.add_field(name="▸ Strategic Position", value=pos_text, inline=False)
+        embed.add_field(name="▸ Strategic Position", value=_trunc(pos_text, _EMBED_FIELD_MAX), inline=False)
 
     # --- Cascade status block ---
     if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"):
@@ -3914,7 +3933,7 @@ async def _campaign_orders(interaction: discord.Interaction):
         peer_summary = _cascade_peer_summary(state, phase, enlistment)
         embed.add_field(
             name=f"▸ Orders Phase — {PHASE_DISPLAY.get(phase, phase)}",
-            value=f"Deadline: {_fmt_ts(deadline)}\n{peer_summary}",
+            value=_trunc(f"Deadline: {_fmt_ts(deadline)}\n{peer_summary}", _EMBED_FIELD_MAX),
             inline=False,
         )
 
@@ -4145,7 +4164,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
         field_val = "\n".join(lines)
         if deadline and i == (phase_order.index(phase) if phase in phase_order else -1):
             field_val += f"\n\nDeadline: {_fmt_ts(deadline)}"
-        embed.add_field(name=header, value=field_val or "—", inline=False)
+        embed.add_field(name=header, value=_trunc(field_val, _EMBED_FIELD_MAX) or "—", inline=False)
 
     if phase == "ops":
         embed.set_footer(text=f"{camp_name}  ·  Orders resolved — Operations Window is open")
@@ -4194,7 +4213,7 @@ async def _campaign_prestige(
             ribbon = f" [{kt.get('ribbon') or '—'}]" if kt.get("ribbon") else ""
             lore = " ★" if kt.get("lore_priority") else ""
             lines.append(f"{i}. **{name}** — {prestige} prestige{ribbon}{lore}")
-        embed = discord.Embed(title="Kill Team Prestige Standings (28-day)", description="\n".join(lines) or "No kill teams registered.", color=0x4B0082)
+        embed = discord.Embed(title="Kill Team Prestige Standings (28-day)", description=_trunc("\n".join(lines), _EMBED_DESC_MAX) or "No kill teams registered.", color=0x4B0082)
     else:
         rows = []
         for company_id, company in state.get("companies", {}).items():
@@ -4205,7 +4224,7 @@ async def _campaign_prestige(
             ribbon = f" [{co.get('ribbon') or '—'}]" if co.get("ribbon") else ""
             lore = " ★" if co.get("lore_priority") else ""
             lines.append(f"{i}. **{name}** — {prestige} prestige{ribbon}{lore}")
-        embed = discord.Embed(title="Company Prestige Standings (28-day)", description="\n".join(lines) or "No companies.", color=0x4B0082)
+        embed = discord.Embed(title="Company Prestige Standings (28-day)", description=_trunc("\n".join(lines), _EMBED_DESC_MAX) or "No companies.", color=0x4B0082)
 
     camp_name = state.get("campaign", {}).get("name") or "Jericho Watch Campaign"
     embed.set_footer(text=f"{camp_name}  ·  Rolling 28-day window")
@@ -4359,11 +4378,11 @@ async def _campaign_mandate(interaction: discord.Interaction):
         description=f"**{total_mandates} required strat(s)** this cycle. Operations: **{committed_node}**.",
         color=0x8B0000,
     )
-    embed.add_field(name="▸ Operations", value=ops_display, inline=False)
-    embed.add_field(name="▸ Theatre Stratagem (Watch-wide)", value=theatre_display, inline=False)
-    embed.add_field(name="▸ Company Stratagems", value=all_co_display, inline=False)
-    embed.add_field(name="▸ Kill Team Stratagems", value=all_kt_display, inline=False)
-    embed.add_field(name="▸ Prestige Kill Targets", value=terminus_display, inline=False)
+    embed.add_field(name="▸ Operations", value=_trunc(ops_display, _EMBED_FIELD_MAX), inline=False)
+    embed.add_field(name="▸ Theatre Stratagem (Watch-wide)", value=_trunc(theatre_display, _EMBED_FIELD_MAX), inline=False)
+    embed.add_field(name="▸ Company Stratagems", value=_trunc(all_co_display, _EMBED_FIELD_MAX), inline=False)
+    embed.add_field(name="▸ Kill Team Stratagems", value=_trunc(all_kt_display, _EMBED_FIELD_MAX), inline=False)
+    embed.add_field(name="▸ Prestige Kill Targets", value=_trunc(terminus_display, _EMBED_FIELD_MAX), inline=False)
     embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
