@@ -65,7 +65,7 @@ LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
 # Campaign subsystem
 CAMPAIGN_STATE_PATH = os.path.join(DATA_DIR, "campaign_state.json")
-CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID: int = 1511441138165485798  # Set to campaign announcement channel ID
+CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID: int = 1512146866165383410  # Set to campaign announcement channel ID
 
 # ---------------------------------------------------------------------------
 # Channel IDs
