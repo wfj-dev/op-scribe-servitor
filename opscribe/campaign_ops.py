@@ -3143,6 +3143,107 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
     return True
 
 
+def _select_cascade_options(
+    state: dict,
+    user_record: dict,
+    role_key: str,
+    max_options: int = 4,
+) -> dict:
+    """Return a scored, filtered subset of cascade options to present to this player.
+
+    Scoring per option:
+      base                   = option.get("weight", 1.0)
+      +1.5 per scenario dominant_tag matching option["tags"]
+      +1.0 if player's home chapter in option["chapter_affinity"]
+      +1.0 per matching node_affinity type (current node type)
+      +0.5 per upstream cascade tag matching option["requires_upstream_tags"]
+      Hard suppress: suppress_if_previous=True AND player chose this key last beat → score 0
+      Soft gate: requires_upstream_tags non-empty AND gate not met → score * 0.5
+                 (gate entirely skipped if fewer than 2 ungated options would remain)
+
+    Returns top max_options entries as a dict {opt_key: opt_val}.
+    Falls back to the full role pool if the filtered set is empty.
+    """
+    _ensure_refs_loaded()
+    pool: dict = _CASCADE_OPTIONS.get(role_key, {})
+
+    # --- context gathering -------------------------------------------------------
+    campaign = state.get("campaign", {})
+    current_node = campaign.get("current_node", "")
+
+    node_data = _graph_node(current_node) if current_node else {}
+    node_type: str = (node_data or {}).get("type", "")
+
+    chapter: str = user_record.get("chapter", "")
+
+    scenario = state.get("beat_scenarios", {}).get(current_node, {})
+    scenario_tags: set = set(scenario.get("dominant_tags", []))
+
+    cascade_block = state.get("cascade", {})
+    submissions = cascade_block.get("submissions", {})
+    upstream_tags: set = set()
+    for sub in submissions.values():
+        upstream_tags.update(sub.get("tags", []))
+
+    user_id_str = str(user_record.get("discord_id", ""))
+    prev_choices = cascade_block.get("previous_choices", {})
+    prev_key: Optional[str] = prev_choices.get(user_id_str, {}).get(role_key)
+
+    # --- score each option -------------------------------------------------------
+    scored: list[tuple[float, str, dict]] = []  # (score, opt_key, opt_val)
+    for opt_key, opt_val in pool.items():
+        if opt_key.startswith("_"):
+            continue
+
+        # hard suppress: player chose this exact option last beat
+        if opt_val.get("suppress_if_previous") and opt_key == prev_key:
+            continue
+
+        score = float(opt_val.get("weight", 1.0))
+
+        # scenario dominant tags
+        for tag in opt_val.get("tags", []):
+            if tag in scenario_tags:
+                score += 1.5
+
+        # chapter affinity
+        if chapter and chapter in opt_val.get("chapter_affinity", []):
+            score += 1.0
+
+        # node affinity
+        if node_type and node_type in opt_val.get("node_affinity", []):
+            score += 1.0
+
+        # upstream tag bonus / soft gate
+        req_tags = opt_val.get("requires_upstream_tags", [])
+        if req_tags:
+            matched = [t for t in req_tags if t in upstream_tags]
+            if matched:
+                score += 0.5 * len(matched)
+            # soft gate applied after we know total pool; mark for second pass
+            scored.append((score, opt_key, opt_val, bool(matched), req_tags))
+            continue
+
+        scored.append((score, opt_key, opt_val, True, []))
+
+    # resolve soft gates: if fewer than 2 ungated options would remain, lift gates
+    ungated = [t for t in scored if t[3]]
+    if len(ungated) < 2:
+        # lift all gates — keep everything with any score
+        final_scored = [(s, k, v) for s, k, v, _met, _req in scored]
+    else:
+        # drop gated options that did not meet their upstream tag requirement
+        final_scored = [(s, k, v) for s, k, v, met, req in scored if met or not req]
+
+    if not final_scored:
+        # fallback: return full pool (no filtering applied)
+        return {k: v for k, v in pool.items() if not k.startswith("_")}
+
+    final_scored.sort(key=lambda t: t[0], reverse=True)
+    top = final_scored[:max_options]
+    return {k: v for _, k, v in top}
+
+
 class _CascadeChoiceView(discord.ui.View):
     """Ephemeral view that renders cascade doctrine buttons for /campaign-orders."""
 
@@ -3676,6 +3777,10 @@ async def _campaign_orders(interaction: discord.Interaction):
         if role_key:
             existing_sub = submissions.get(user_id)
             phase_label = phase.replace("cascade_", "").upper()
+            # pre-compute filtered options for non-WM phases (used in both branches)
+            filtered_opts: Optional[dict] = None
+            if phase != "cascade_WM":
+                filtered_opts = _select_cascade_options(state, record, role_key)
             if existing_sub and existing_sub.get("phase") == phase:
                 choice_name = existing_sub.get("choice_name", existing_sub.get("choice_key", "?"))
                 if phase == "cascade_WM":
@@ -3698,11 +3803,23 @@ async def _campaign_orders(interaction: discord.Interaction):
                     value=prompt,
                     inline=False,
                 )
+                if filtered_opts:
+                    options_lines = []
+                    for _ok, _ov in filtered_opts.items():
+                        _desc = _ov.get("description", "")
+                        _line = f"**{_ov.get('name', _ok)}** — *{_desc[:160]}{'...' if len(_desc) > 160 else ''}*"
+                        options_lines.append(_line)
+                    if options_lines:
+                        embed.add_field(
+                            name="▸ Available Doctrines",
+                            value="\n".join(options_lines),
+                            inline=False,
+                        )
             if phase == "cascade_WM":
                 wm_opts = _build_wm_movement_options(state)
                 view = _CascadeChoiceView(user_id, role_key, phase, options_override=wm_opts)
             else:
-                view = _CascadeChoiceView(user_id, role_key, phase)
+                view = _CascadeChoiceView(user_id, role_key, phase, options_override=filtered_opts)
             await interaction.response.send_message(embed=embed, view=view, **({"file": _orders_file} if _orders_file else {}), ephemeral=True)
             return
 
