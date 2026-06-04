@@ -1435,7 +1435,6 @@ def _derive_ops_mandate(state: dict) -> dict:
     planet_eligible: set = {
         op["id"] for op in all_ops
         if (op.get("planet") or "").lower() == current_node
-        or op.get("planet") == "wrath_of_espandor"  # always eligible
     }
 
     # Role affinity missions from enrolled active members
@@ -1585,10 +1584,19 @@ def derive_strat_mandate(
     confirmed_pool: List[str],
     state: Optional[dict] = None,
     tier_counts: Optional[Dict[str, int]] = None,
+    theatre_aggregate: Optional[Dict[str, float]] = None,
+    company_aggregate: Optional[Dict[str, float]] = None,
 ) -> dict:
     """Derive theatre, company, and KT mandates from the confirmed strat pool.
 
     Each tier gets 1-3 mandates depending on cascade participation (tier_counts).
+    When *theatre_aggregate* and *company_aggregate* are supplied, each tier's
+    mandate is scored against its own aggregate (tiered doctrine authority):
+      - Theatre: WM + HC submissions only
+      - Company: WM + HC + Company submissions
+      - KT: full aggregate (all tiers)
+    Falls back to *doctrine_aggregate* for any tier whose aggregate is absent.
+
     Returns:
       {
         'theatre_mandate': [str, ...],       # 1-3 strats
@@ -1602,17 +1610,23 @@ def derive_strat_mandate(
     if tier_counts is None:
         tier_counts = {"theatre": 1, "company": 1, "kt": 1}
 
-    scored = score_strats_against_aggregate(doctrine_aggregate)
     pool_set = set(confirmed_pool)
-    scored = [(name, score, strat) for name, score, strat in scored if name in pool_set]
-
     conflict_set = _build_conflict_set(confirmed_pool)
+
+    def _scored_for(agg: Dict[str, float]) -> List[Tuple[str, float, dict]]:
+        result = score_strats_against_aggregate(agg)
+        return [(name, score, strat) for name, score, strat in result if name in pool_set]
+
+    t_scored = _scored_for(theatre_aggregate if theatre_aggregate else doctrine_aggregate)
+    c_scored = _scored_for(company_aggregate if company_aggregate else doctrine_aggregate)
+    kt_scored = _scored_for(doctrine_aggregate)
+
     # Global used set — prevents same strat appearing twice across all mandates
     used: List[str] = []
 
-    def _pick_next(local_exclude: set) -> Optional[str]:
+    def _pick_next(scored_list: List[Tuple], local_exclude: set) -> Optional[str]:
         exclude = local_exclude | set(used)
-        for name, _score, _strat in scored:
+        for name, _score, _strat in scored_list:
             if name in exclude:
                 continue
             if any(name in conflict_set.get(m, set()) for m in used):
@@ -1620,32 +1634,32 @@ def derive_strat_mandate(
             return name
         return None
 
-    def _pick_n(n: int, extra_exclude: Optional[set] = None) -> List[str]:
+    def _pick_n(n: int, scored_list: List[Tuple], extra_exclude: Optional[set] = None) -> List[str]:
         picks: List[str] = []
         ex = set(extra_exclude or [])
         for _ in range(n):
-            s = _pick_next(ex)
+            s = _pick_next(scored_list, ex)
             if s:
                 used.append(s)
                 picks.append(s)
                 ex.add(s)
         return picks
 
-    # Theatre mandates
-    theatre_mandates = _pick_n(tier_counts.get("theatre", 1))
+    # Theatre mandates — driven by WM + HC doctrine only
+    theatre_mandates = _pick_n(tier_counts.get("theatre", 1), t_scored)
 
-    # Company mandates — each company picks independently after theatre
+    # Company mandates — driven by WM + HC + Company doctrine
     company_mandates: Dict[str, List[str]] = {}
     co_n = tier_counts.get("company", 1)
     for company_id in state.get("companies", {}).keys():
-        co_picks = _pick_n(co_n)
+        co_picks = _pick_n(co_n, c_scored)
         company_mandates[company_id] = co_picks
 
-    # KT mandates — each KT picks independently after theatre + company
+    # KT mandates — driven by full doctrine (all tiers)
     kt_mandates: Dict[str, List[str]] = {}
     kt_n = tier_counts.get("kt", 1)
     for sgt_id in state.get("kill_teams", {}).keys():
-        kt_picks = _pick_n(kt_n)
+        kt_picks = _pick_n(kt_n, kt_scored)
         kt_mandates[sgt_id] = kt_picks
 
     return {
@@ -2302,10 +2316,19 @@ def _enter_cascade_phase(state: dict, phase: str) -> None:
     cascade[f"{phase}_deadline"] = deadline.isoformat()
 
 
-def _aggregate_cascade_doctrine(state: dict) -> Dict[str, float]:
-    """Sum doctrine tags from all cascade submissions into a doctrine aggregate."""
+def _aggregate_cascade_doctrine(
+    state: dict,
+    role_keys: Optional[frozenset] = None,
+) -> Dict[str, float]:
+    """Sum doctrine tags from cascade submissions into a doctrine aggregate.
+
+    If *role_keys* is provided, only submissions whose ``role_key`` is in
+    that set are counted (used for tiered mandate derivation).
+    """
     aggregate: Dict[str, float] = {}
     for sub in state.get("cascade", {}).get("submissions", {}).values():
+        if role_keys is not None and sub.get("role_key") not in role_keys:
+            continue
         for tag in sub.get("tags", []):
             aggregate[tag] = aggregate.get(tag, 0.0) + 1.0
     return aggregate
@@ -2355,17 +2378,33 @@ def _lock_strat_pool(state: dict) -> None:
         return  # already locked (e.g. called again at ops-close)
 
     _ensure_refs_loaded()
-    doctrine_aggregate = _aggregate_cascade_doctrine(state)
-    scored = score_strats_against_aggregate(doctrine_aggregate)
+
+    wm_keys = _CASCADE_PHASE_ROLES["cascade_WM"]
+    hc_keys = _CASCADE_PHASE_ROLES["cascade_HC"]
+    co_keys = _CASCADE_PHASE_ROLES["cascade_Company"]
+    kt_keys = _CASCADE_PHASE_ROLES["cascade_KT"]
+    wm_hc_keys = wm_keys | hc_keys
+
+    # Full aggregate drives the shared conflict-free strat pool
+    full_aggregate = _aggregate_cascade_doctrine(state)
+    scored = score_strats_against_aggregate(full_aggregate)
     pool = _build_conflict_free_pool(scored, pool_size=_STRAT_POOL_SIZE)
 
-    submissions = state.get("cascade", {}).get("submissions", {})
-    hc_roles = _CASCADE_PHASE_ROLES["cascade_HC"]
-    co_roles = _CASCADE_PHASE_ROLES["cascade_Company"]
-    kt_roles_set = _CASCADE_PHASE_ROLES["cascade_KT"]
-    hc_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in hc_roles})
-    co_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in co_roles})
-    kt_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in kt_roles_set})
+    # Tiered aggregates: each tier's mandate is shaped by submissions at or above it
+    theatre_aggregate = _aggregate_cascade_doctrine(state, role_keys=wm_hc_keys)
+    company_aggregate = _aggregate_cascade_doctrine(state, role_keys=wm_hc_keys | co_keys)
+    # KT uses full_aggregate (all tiers contribute to ground-truth doctrine)
+
+    # Mandate counts based on enrolled active roles (not just submitters)
+    enlistment = state.get("enlistment", {})
+    enrolled_keys: set = {
+        rec.get("role", "").lower().replace(" ", "_")
+        for rec in enlistment.values()
+        if rec.get("active") and rec.get("role")
+    }
+    hc_distinct = len(enrolled_keys & wm_hc_keys)  # WM counts toward theatre
+    co_distinct = len(enrolled_keys & co_keys)
+    kt_distinct = len(enrolled_keys & kt_keys)
     tier_counts = {
         "theatre": _tier_mandate_count(hc_distinct, "HC"),
         "company": _tier_mandate_count(co_distinct, "Company"),
@@ -2373,7 +2412,11 @@ def _lock_strat_pool(state: dict) -> None:
     }
 
     state_ref = refresh_prestige_cache(state)
-    mandate_result = derive_strat_mandate(doctrine_aggregate, pool, state_ref, tier_counts)
+    mandate_result = derive_strat_mandate(
+        full_aggregate, pool, state_ref, tier_counts,
+        theatre_aggregate=theatre_aggregate,
+        company_aggregate=company_aggregate,
+    )
 
     state["strat_pool"] = {
         "locked": True,
@@ -2383,7 +2426,7 @@ def _lock_strat_pool(state: dict) -> None:
         "kt_mandates": mandate_result.get("kt_mandates", {}),
         "tier_counts": tier_counts,
         "derived_at": _iso_now(),
-        "doctrine_aggregate": doctrine_aggregate,
+        "doctrine_aggregate": full_aggregate,
     }
 
     # Derive ops and terminus mandates and store alongside strat pool
