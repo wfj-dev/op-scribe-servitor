@@ -44,7 +44,23 @@
         "aggressive",
         "terminus",
         "elimination"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Space Wolves",
+        "Black Templars",
+        "Tempestuous Angels",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "iron_vigil": {
       "name": "Iron Vigil",
@@ -54,7 +70,22 @@
         "fortify",
         "resilience",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Hounds",
+        "Minotaurs",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "scour_the_reach": {
       "name": "Scour the Reach",
@@ -64,7 +95,22 @@
         "void",
         "stealth",
         "recovery"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Raven Guard",
+        "Raptors",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "sanctify_the_ground": {
       "name": "Sanctify the Ground",
@@ -74,7 +120,21 @@
         "resilience",
         "defensive",
         "fortify"
-      ]
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "sever_the_cord": {
       "name": "Sever the Cord",
@@ -84,7 +144,21 @@
         "stealth",
         "terminus",
         "intel"
-      ]
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "penal_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "deny_the_tide": {
       "name": "Deny the Tide",
@@ -94,7 +168,21 @@
         "resilience",
         "defensive",
         "fortify"
-      ]
+      ],
+      "chapter_affinity": [
+        "Minotaurs",
+        "Marines Malevolent",
+        "Iron Hands",
+        "Crimson Fists"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "void_interdiction": {
       "name": "Void Interdiction",
@@ -104,7 +192,20 @@
         "terminus",
         "intel",
         "stealth"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "reclaim_the_reach": {
       "name": "Reclaim the Reach",
@@ -114,7 +215,146 @@
         "resilience",
         "aggressive",
         "faith"
-      ]
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Celestial Lions",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "frontier_world",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "burn_the_ground": {
+      "name": "Burn the Ground",
+      "description": "Deny the enemy any advantage from held terrain. What cannot be claimed by the Watch is destroyed — the Huntmaster does not permit the enemy to inherit a useful battlefield.",
+      "tags": [
+        "suppression",
+        "aggressive",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Minotaurs",
+        "Marines Malevolent",
+        "Black Templars",
+        "Flesh Tearers",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "strike_and_withdraw": {
+      "name": "Strike and Withdraw",
+      "description": "Hit fast, extract before commitment, strike again from a different angle. Tempo is the weapon — kill teams never become the fixed point the enemy can mass against.",
+      "tags": [
+        "aggressive",
+        "stealth",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Celestial Lions",
+        "Carmine Blades",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "hive_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "lay_the_ambush": {
+      "name": "Lay the Ambush",
+      "description": "The Watch does not reveal itself until the moment is perfect. Intelligence gathers, positions are set, kill teams wait — the enemy walks into ground that has already been prepared for their death.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "mining_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "claim_the_high_ground": {
+      "name": "Claim the High Ground",
+      "description": "Strategic position secured before operations begin. The Watch chooses the terrain and the enemy must come to it — position is force, and the Watch will not give it up once taken.",
+      "tags": [
+        "fortify",
+        "defensive",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Hounds",
+        "Minotaurs",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "the_long_campaign": {
+      "name": "The Long Campaign",
+      "description": "Not this battle — the war. Every engagement this beat feeds intelligence, every kill team preserves strength, every position taken with an eye to what comes next cycle. Strategic patience is the posture.",
+      "tags": [
+        "intel",
+        "resilience",
+        "recovery",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Raptors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "lord_executioner": {
@@ -127,7 +367,22 @@
         "terminus",
         "elimination",
         "aggressive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Minotaurs",
+        "Marines Malevolent",
+        "Blood Angels",
+        "Angels of Vengeance",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "no_quarter_given": {
       "name": "No Quarter Given",
@@ -136,7 +391,24 @@
         "aggressive",
         "suppression",
         "terminus"
-      ]
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Black Templars",
+        "Flesh Tearers",
+        "Bleeding Hearts",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
     },
     "righteous_severance": {
       "name": "Righteous Severance",
@@ -145,7 +417,283 @@
         "elimination",
         "stealth",
         "intel"
-      ]
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Dark Angels",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "death_by_degrees": {
+      "name": "Death by Degrees",
+      "description": "Attrition before the kill. The Lord Executioner prescribes systematic degradation — degrade across multiple ops, deny the enemy the ability to regenerate, then execute cleanly when nothing remains to resist.",
+      "tags": [
+        "suppression",
+        "resilience",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Minotaurs",
+        "Iron Hands",
+        "Marines Malevolent",
+        "Iron Hounds",
+        "Crimson Fists"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "scorched_execution": {
+      "name": "Scorched Execution",
+      "description": "Not one target — one capability. The Lord Executioner removes the enemy's means entirely: logistics, command infrastructure, ritual nodes, breeding chambers. The killing is systemic.",
+      "tags": [
+        "suppression",
+        "elimination",
+        "tech",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Dragonspears",
+        "Blood Ravens",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "hive_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "champion_killer": {
+      "name": "Champion Killer",
+      "description": "The Lord Executioner marks the enemy's finest warrior for immediate destruction. Champions draw attention — kill teams are vectored accordingly, and the enemy loses its warrior-elite in a single focused beat.",
+      "tags": [
+        "elimination",
+        "terminus",
+        "aggressive",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Blood Angels",
+        "Flesh Tearers",
+        "Tempestuous Angels",
+        "Dragonspears",
+        "Minotaurs",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "vanishing_blade": {
+      "name": "Vanishing Blade",
+      "description": "Kill clean. Leave nothing. The Lord Executioner's doctrine: the Watch's presence is felt only in the enemy's absence — stealth, precision, silence. No declaration. Just the dead.",
+      "tags": [
+        "stealth",
+        "elimination",
+        "intel",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "dead_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_binding_sentence": {
+      "name": "The Binding Sentence",
+      "description": "Warp-touched, daemonically influenced, Chaos-tainted — the Lord Executioner issues formal condemning sentence against a designated abomination. Kill teams carry both Imperial authority and the precise methodology to carry it out.",
+      "tags": [
+        "void",
+        "terminus",
+        "faith",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "overkill_mandate": {
+      "name": "Overkill Mandate",
+      "description": "Sufficiency is insufficient. The Lord Executioner prescribes excess — every asset committed to every target, every strat employed, every kill team that can reach an objective does. Nothing confirmed alive.",
+      "tags": [
+        "aggressive",
+        "terminus",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Minotaurs",
+        "Bleeding Hearts",
+        "Angels of Vengeance",
+        "Angels of Defiance",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "patience_before_the_strike": {
+      "name": "Patience Before the Strike",
+      "description": "The Lord Executioner issues a stay of execution — intel runs first, every kill team confirms before committing. The killing doctrine: know everything, then strike once, with everything. No wasted blade.",
+      "tags": [
+        "intel",
+        "stealth",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Raptors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "tear_the_throat": {
+      "name": "Tear the Throat",
+      "description": "Brutal. Immediate. The Lord Executioner identifies the most exposed point and prescribes direct assault without hesitation. Wherever the enemy is weakest, the killing begins there and does not stop.",
+      "tags": [
+        "aggressive",
+        "elimination",
+        "resilience",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Flesh Tearers",
+        "Tempestuous Angels",
+        "Blood Angels",
+        "Bleeding Hearts",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "war_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "the_emperors_sentence": {
+      "name": "The Emperor's Sentence",
+      "description": "Holy authority carried in the blade. The Lord Executioner invokes Imperial sanction — every kill this beat is a formal execution, absolute and righteous. The killing doctrine elevates beyond tactic into theology.",
+      "tags": [
+        "faith",
+        "elimination",
+        "terminus",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Tempestuous Angels",
+        "Cowled Wardens",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "surgical_priority": {
+      "name": "Surgical Priority",
+      "description": "Minimum expenditure, maximum result. The Lord Executioner names the single kill that changes everything else — one target, precisely identified, precisely removed. The rest of the battlefield resolves by consequence.",
+      "tags": [
+        "elimination",
+        "stealth",
+        "intel",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Necropolis Hawks",
+        "Dark Angels",
+        "Mentors",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_captain": {
@@ -158,7 +706,24 @@
         "aggressive",
         "terminus",
         "elimination"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Black Templars",
+        "Marines Malevolent",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.2
     },
     "calculated_advance": {
       "name": "Calculated Advance",
@@ -168,7 +733,22 @@
         "resilience",
         "fortify",
         "intel"
-      ]
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Dark Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "hold_and_endure": {
       "name": "Hold and Endure",
@@ -178,7 +758,288 @@
         "fortify",
         "suppression",
         "resilience"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Lords",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "forward_without_pause": {
+      "name": "Forward Without Pause",
+      "description": "No hesitation, no consolidation between objectives. The company drives through, takes each gain as a staging point for the next push, and denies the enemy any moment to regroup.",
+      "tags": [
+        "aggressive",
+        "terminus",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Black Templars",
+        "Tempestuous Angels",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "command_the_flanks": {
+      "name": "Command the Flanks",
+      "description": "The Captain opens secondary approaches. Kill teams operate on vectors the enemy cannot defend simultaneously — not a frontal assault, but a company-wide pressure that comes from every direction at once.",
+      "tags": [
+        "stealth",
+        "intel",
+        "aggressive",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Celestial Lions",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "iron_line": {
+      "name": "Iron Line",
+      "description": "The company holds. The Captain establishes a defensible perimeter and refuses to yield it — every kill team anchored to defined positions, the line maintained regardless of pressure.",
+      "tags": [
+        "defensive",
+        "fortify",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Lords",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "coordinated_strike": {
+      "name": "Coordinated Strike",
+      "description": "Every kill team in the company hits simultaneously. The Captain synchronises operations so the enemy cannot respond to one threat without exposing themselves to another — pressure is total, response is impossible.",
+      "tags": [
+        "aggressive",
+        "elimination",
+        "intel",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Blood Ravens",
+        "Raptors",
+        "Dark Angels",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "preserve_combat_power": {
+      "name": "Preserve Combat Power",
+      "description": "The Captain prioritises the company's longevity over short-term gains. Kill teams take objectives with minimal exposure, avoid attritional engagements, and return stronger than they left. Efficiency is the mandate.",
+      "tags": [
+        "defensive",
+        "resilience",
+        "recovery",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Celestial Lions",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "faith_and_steel": {
+      "name": "Faith and Steel",
+      "description": "The Captain declares the company's purpose in the Emperor's name. Tactical objectives become sacred duty — every kill team fights with the combined weight of doctrine and devotion.",
+      "tags": [
+        "faith",
+        "aggressive",
+        "resilience",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Blood Angels",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "punish_overextension": {
+      "name": "Punish Overextension",
+      "description": "The Captain watches for the enemy to commit too far and hits them in the moment of their extension. Every kill team ready to respond when the enemy shows their flank — reactive aggression at company scale.",
+      "tags": [
+        "defensive",
+        "elimination",
+        "intel",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_company_endures": {
+      "name": "The Company Endures",
+      "description": "Whatever this beat costs, the company will be stronger at the end of it. Recovery, sustainability, maintaining the force — the Captain's mandate is not the kill, but the company's operational continuity.",
+      "tags": [
+        "resilience",
+        "recovery",
+        "defensive",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Celestial Lions",
+        "Iron Hands",
+        "Crimson Fists"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "fortress_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "machine_supported_advance": {
+      "name": "Machine-Supported Advance",
+      "description": "The Captain incorporates the company's technological assets as the advance's backbone. Techmarine support, auspex coverage, pre-cleared kill zones — the company advances behind an intelligence and mechanical superiority the enemy cannot match.",
+      "tags": [
+        "tech",
+        "aggressive",
+        "intel",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Dragonspears",
+        "Mentors",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "tech"
+      ],
+      "weight": 1.0
+    },
+    "silent_dominion": {
+      "name": "Silent Dominion",
+      "description": "The company operates without announcement. Objectives taken, threats neutralised, positions secured — all without the enemy knowing who is responsible or where the Watch will strike next.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
     }
   },
   "watch_lieutenant": {
@@ -191,7 +1052,22 @@
         "stealth",
         "intel",
         "aggressive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Blood Angels",
+        "Carmine Blades",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "hive_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "fire_and_advance": {
       "name": "Fire and Advance",
@@ -200,7 +1076,24 @@
         "aggressive",
         "suppression",
         "resilience"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Crimson Fists",
+        "Marines Malevolent",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
     },
     "consolidate_gains": {
       "name": "Consolidate Gains",
@@ -210,7 +1103,291 @@
         "fortify",
         "resilience",
         "recovery"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Crimson Fists",
+        "Mentors",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "find_the_seam": {
+      "name": "Find the Seam",
+      "description": "The Lieutenant hunts the gap between the enemy's defensive sectors — the point where two units' responsibilities meet and neither owns. Kill teams are pushed through it before it closes.",
+      "tags": [
+        "stealth",
+        "intel",
+        "aggressive",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Necropolis Hawks",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "maximum_pressure": {
+      "name": "Maximum Pressure",
+      "description": "The Lieutenant pushes every kill team to their operational limit simultaneously. No rotation, no reserve — maximum output for the entire ops window. The enemy runs dry before the Watch does.",
+      "tags": [
+        "aggressive",
+        "suppression",
+        "terminus",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Minotaurs",
+        "Black Templars",
+        "Bleeding Hearts",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "anchor_and_exploit": {
+      "name": "Anchor and Exploit",
+      "description": "One kill team holds the enemy's attention; the others exploit what that engagement opens. The Lieutenant uses the Captain's line as a lever — holding and striking simultaneously from positions the enemy cannot address at once.",
+      "tags": [
+        "defensive",
+        "aggressive",
+        "intel",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Space Wolves",
+        "Blood Angels",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "hardened_advance": {
+      "name": "Hardened Advance",
+      "description": "The Lieutenant's kill teams advance with armour rites fresh and positions covered. Every gain is secured before the next movement. Slow, methodical, and absolutely impossible to roll back.",
+      "tags": [
+        "defensive",
+        "fortify",
+        "resilience",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "lightning_exploitation": {
+      "name": "Lightning Exploitation",
+      "description": "When the Captain's assault creates a breach, the Lieutenant drives kill teams through it before the enemy can seal it. Speed is everything — the exploitation is faster than the enemy's reaction time.",
+      "tags": [
+        "aggressive",
+        "stealth",
+        "elimination",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Raven Guard",
+        "Flesh Tearers",
+        "Carmine Blades",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "watch_the_voids": {
+      "name": "Watch the Voids",
+      "description": "The Lieutenant assigns kill teams to the sectors the Captain's main directive does not fully cover. Every gap is closed, every approach denied, every blind spot covered. The Captain attacks; the Lieutenant ensures nothing attacks back.",
+      "tags": [
+        "defensive",
+        "intel",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Raptors",
+        "Mentors",
+        "Celestial Lions",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "bleed_them_white": {
+      "name": "Bleed Them White",
+      "description": "The Lieutenant directs a sustained attrition campaign on the enemy's secondary elements. Not the decisive kill — the slow drain. Every op this beat degrades the enemy's reinforcement pool and its ability to sustain the fight.",
+      "tags": [
+        "suppression",
+        "resilience",
+        "terminus",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Minotaurs",
+        "Iron Hands",
+        "Marines Malevolent",
+        "Crimson Fists",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_killing_tempo": {
+      "name": "The Killing Tempo",
+      "description": "The Lieutenant sets an operational rhythm the enemy cannot match. Kill teams cycle in and out at a pace that denies the enemy any window to respond, reorganise, or recover. Tempo is the weapon.",
+      "tags": [
+        "aggressive",
+        "suppression",
+        "resilience",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Blood Angels",
+        "Mentors",
+        "Space Wolves",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_dark_work": {
+      "name": "The Dark Work",
+      "description": "Secondary objectives that the official record does not acknowledge. The Lieutenant ensures certain targets are addressed quietly — evidence secured, witnesses removed, assets recovered — without the Captain's broader mandate needing to account for them.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "penal_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "sacred_deployment": {
+      "name": "Sacred Deployment",
+      "description": "The Lieutenant places kill teams with chaplaincy blessing before commitment — each team consecrated for the specific threat they face. Faith becomes tactical doctrine: the right brothers, prepared in the right way, for the right enemy.",
+      "tags": [
+        "faith",
+        "resilience",
+        "aggressive",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Blood Angels",
+        "Cowled Wardens",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
     }
   },
   "company_champion": {
@@ -223,7 +1400,22 @@
         "elimination",
         "terminus",
         "aggressive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Dragonspears",
+        "Blood Angels",
+        "Tempestuous Angels",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "break_the_shield": {
       "name": "Break the Shield",
@@ -232,7 +1424,25 @@
         "aggressive",
         "suppression",
         "elimination"
-      ]
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Minotaurs",
+        "Crimson Fists",
+        "Angels of Vengeance",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive",
+        "suppression"
+      ],
+      "weight": 1.0
     },
     "blade_consecrated": {
       "name": "Blade Consecrated",
@@ -241,7 +1451,284 @@
         "elimination",
         "faith",
         "stealth"
-      ]
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "the_open_challenge": {
+      "name": "The Open Challenge",
+      "description": "The Champion steps forward — the enemy's finest is identified and challenged before the kill teams engage. Draw out the apex threat, force the enemy to commit their strongest, then remove it. The rest is cleanup.",
+      "tags": [
+        "elimination",
+        "terminus",
+        "aggressive",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Blood Angels",
+        "Dragonspears",
+        "Tempestuous Angels",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "shatter_the_spine": {
+      "name": "Shatter the Spine",
+      "description": "The Champion targets the command structure directly. Not the warriors — the officers, the leaders, the communications nodes. Remove what coordinates the enemy and the body falls apart.",
+      "tags": [
+        "elimination",
+        "intel",
+        "stealth",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raven Guard",
+        "Raptors",
+        "Necropolis Hawks",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_rite_of_killing": {
+      "name": "The Rite of Killing",
+      "description": "Every death is a rite performed correctly. The Champion prescribes a killing doctrine built on precision and ceremony — each kill made in the manner that honours the Chapter's traditions and demonstrates the Watch's authority over this battlefield.",
+      "tags": [
+        "elimination",
+        "faith",
+        "stealth",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "force_the_error": {
+      "name": "Force the Error",
+      "description": "Patience. The Champion applies calculated pressure until the enemy makes a mistake — overcommits, exposes a flank, breaks formation. When the error comes, the killing stroke is already in motion.",
+      "tags": [
+        "intel",
+        "elimination",
+        "suppression",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Blood Ravens",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_red_work": {
+      "name": "The Red Work",
+      "description": "No elegance, no doctrine, no pretension. The Champion sets a killing mandate of pure, sustained violence — maximise enemy dead, minimise Watch casualties, by any means required. The field is cleared.",
+      "tags": [
+        "aggressive",
+        "terminus",
+        "suppression",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Marines Malevolent",
+        "Bleeding Hearts",
+        "Minotaurs",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "witness_and_record": {
+      "name": "Witness and Record",
+      "description": "The Champion ensures every kill made by this company is acknowledged, documented, and reported. Excellence is not merely achieved — it is proven. The company's kills become the campaign record.",
+      "tags": [
+        "elimination",
+        "intel",
+        "faith",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Celestial Lions",
+        "Tome Keepers",
+        "Salamanders",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "void_touched_quarry": {
+      "name": "Void-Touched Quarry",
+      "description": "The Champion designates a warp-corrupted or daemon-possessed target as the company's primary kill. Fighting the warp requires different methodology — the Champion provides the execution doctrine for what cannot be killed by ordinary means.",
+      "tags": [
+        "void",
+        "terminus",
+        "faith",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "blademaster_doctrine": {
+      "name": "Blademaster Doctrine",
+      "description": "The Champion introduces a formal melee-excellence mandate for the company. Kill teams are evaluated on close-quarters performance — those who meet the Champion's standard receive his personal commendation and the doctrine intensifies around their example.",
+      "tags": [
+        "elimination",
+        "aggressive",
+        "faith",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Dragonspears",
+        "Blood Angels",
+        "Space Wolves",
+        "Black Templars",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "cut_the_sinew": {
+      "name": "Cut the Sinew",
+      "description": "The Champion targets the connections that make the enemy dangerous — the bonds between units, the supply links, the communication threads. Remove the sinew and the musculature of the enemy force tears itself apart.",
+      "tags": [
+        "suppression",
+        "elimination",
+        "intel",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Iron Hands",
+        "Dark Angels",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "unbreakable_execution": {
+      "name": "Unbreakable Execution",
+      "description": "The Champion holds the company's killing doctrine immovable in the face of whatever the enemy brings. Casualties do not alter the mandate. Setbacks do not change the method. The company kills the same way, regardless of cost.",
+      "tags": [
+        "elimination",
+        "resilience",
+        "faith",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Crimson Fists",
+        "Iron Hands",
+        "Angels of Defiance",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "resilience"
+      ],
+      "weight": 1.0
     }
   },
   "watch_sergeant": {
@@ -254,7 +1741,24 @@
         "elimination",
         "terminus",
         "aggressive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Space Wolves",
+        "Blood Angels",
+        "Cowled Wardens",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.2
     },
     "combined_arms": {
       "name": "Combined Arms",
@@ -274,7 +1778,286 @@
         "defensive",
         "resilience",
         "faith"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Salamanders",
+        "Crimson Fists",
+        "Blood Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "the_killing_oath": {
+      "name": "The Killing Oath",
+      "description": "The Sergeant names a target and binds the kill team to its destruction by personal oath. Not a tactical objective — a sworn promise made before the team commits. The kill team does not return until the oath is fulfilled.",
+      "tags": [
+        "faith",
+        "terminus",
+        "elimination",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Space Wolves",
+        "Blood Angels",
+        "Cowled Wardens",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "ghost_advance": {
+      "name": "Ghost Advance",
+      "description": "The Sergeant leads the kill team through without contact until the optimal moment — patience, concealment, and absolute noise discipline until the killing ground is set. The enemy never sees them coming.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "hive_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "line_unbroken": {
+      "name": "Line Unbroken",
+      "description": "The Sergeant establishes a holding position and refuses to yield it. The kill team does not advance and does not fall back — they hold, they endure, they make the enemy pay for every attempt to move them.",
+      "tags": [
+        "defensive",
+        "fortify",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Lords",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "coordinated_volley": {
+      "name": "Coordinated Volley",
+      "description": "Every weapon fires together — the Sergeant coordinates timing so the kill team's fire output is a single combined event rather than individual shots. No target survives a focused volley from a Deathwatch kill team acting as one.",
+      "tags": [
+        "aggressive",
+        "suppression",
+        "terminus",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Blood Ravens",
+        "Crimson Fists",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "brothers_covered": {
+      "name": "Brothers Covered",
+      "description": "No one goes unsupported. The Sergeant ensures every movement has cover, every advance is screened, every brother who is out in the open has eyes and weapons on the angles that could threaten them. The kill team fights as one organism.",
+      "tags": [
+        "defensive",
+        "resilience",
+        "recovery",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Iron Hands",
+        "Raptors",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "contact_imminent": {
+      "name": "Contact Imminent",
+      "description": "The Sergeant reads the intelligence picture and prepares the kill team for an engagement that is already in motion. No approach phase — straight to the confrontation, from the first moment of deployment. Reaction speed and aggression are the doctrine.",
+      "tags": [
+        "aggressive",
+        "terminus",
+        "suppression",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Space Wolves",
+        "Marines Malevolent",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "by_the_numbers": {
+      "name": "By the Numbers",
+      "description": "The Sergeant executes the assigned doctrine with textbook precision. No improvisation, no deviation from the plan — every battle-drill executed correctly, every contingency covered. The kill team performs exactly as trained.",
+      "tags": [
+        "intel",
+        "resilience",
+        "defensive",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Blood Ravens",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_target_marked": {
+      "name": "The Target Marked",
+      "description": "The Sergeant designates the kill team's primary target before deployment and builds the entire engagement plan around its elimination. Everything else is secondary. The target is the operation.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "intel",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raven Guard",
+        "Necropolis Hawks",
+        "Raptors",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "dead_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "void_trained": {
+      "name": "Void-Trained",
+      "description": "The Sergeant adapts the kill team's doctrine to the specific characteristics of a warp-touched or daemonically influenced environment. Standard engagement protocols modified for what can only be killed by specific means — the kill team is prepared for what standard doctrine cannot address.",
+      "tags": [
+        "void",
+        "terminus",
+        "intel",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "make_every_shot_count": {
+      "name": "Make Every Shot Count",
+      "description": "The Sergeant enforces a doctrine of absolute precision — no ammunition expended without a confirmed target, no kill without maximum effectiveness. The kill team achieves its objectives with fewer shots and more kills.",
+      "tags": [
+        "elimination",
+        "intel",
+        "terminus",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Iron Hands",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "forgemaster": {
@@ -288,7 +2071,22 @@
         "tech",
         "faith",
         "resilience"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Iron Ravens",
+        "Dragonspears",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "hostile_acquisition": {
       "name": "Hostile Acquisition",
@@ -298,7 +2096,26 @@
         "recovery",
         "intel",
         "stealth"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Iron Ravens",
+        "Dragonspears",
+        "Mentors",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "forge_world",
+        "mining_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "recovery"
+      ],
+      "weight": 1.0
     },
     "iron_resupply": {
       "name": "Iron Resupply",
@@ -308,7 +2125,296 @@
         "resilience",
         "defensive",
         "recovery"
-      ]
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Hounds",
+        "Crimson Fists",
+        "Iron Lords",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "resilience",
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "weapon_litany_invoked": {
+      "name": "Weapon Litany Invoked",
+      "description": "The Forgemaster consecrates the armament of every kill team in the theatre. Weapon spirits stirred, machine souls aligned — this beat, the Watch's weapons are blessed before they fire. More than maintenance; this is preparation as doctrine.",
+      "tags": [
+        "tech",
+        "faith",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Iron Hounds",
+        "Blood Angels",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "forge_the_breach": {
+      "name": "Forge the Breach",
+      "description": "Technical doctrine of assault. The Forgemaster prepares equipment specifically for breaking fortified positions — melta charges, breaching frames, void-seal cutters. Walls do not stop the Watch.",
+      "tags": [
+        "tech",
+        "aggressive",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Crimson Fists",
+        "Iron Hands",
+        "Dragonspears",
+        "Marines Malevolent",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "relic_reclamation_protocol": {
+      "name": "Relic Reclamation Protocol",
+      "description": "The Forgemaster activates theatre-wide relic-detection doctrine. Every op this beat prioritises recovery of Adeptus Mechanicus artefacts, lost STCs, corrupted machine spirits, and Watch Station legacies.",
+      "tags": [
+        "tech",
+        "recovery",
+        "intel",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dragonspears",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "forge_world",
+        "watch_station",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "null_the_machines": {
+      "name": "Null the Machines",
+      "description": "Enemy technological capabilities targeted. Void shields mapped and jammed, Daemon engines identified for priority kill, automata command links disrupted. The Forgemaster turns machine-war doctrine against the enemy's own systems.",
+      "tags": [
+        "tech",
+        "suppression",
+        "void",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Blood Ravens",
+        "Dark Angels",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "tech"
+      ],
+      "weight": 1.0
+    },
+    "adaptive_logistics": {
+      "name": "Adaptive Logistics",
+      "description": "The Forgemaster restructures the theatre's supply architecture on the fly. Kill teams in the field receive technical support tailored to the specific threat encountered — the machine doctrine bends to serve the mission.",
+      "tags": [
+        "tech",
+        "resilience",
+        "intel",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Celestial Lions",
+        "Dragonspears",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "watch_station",
+        "mining_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_iron_covenant": {
+      "name": "The Iron Covenant",
+      "description": "The Forgemaster declares a covenant with the machine spirits of the entire theatre: weapons will not fail, armour will not break, vehicles will not die until the mission is complete. He backs it with ritual and labour alike.",
+      "tags": [
+        "tech",
+        "faith",
+        "resilience",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Iron Hounds",
+        "Iron Ravens",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "forge_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "field_auspex_augmentation": {
+      "name": "Field Auspex Augmentation",
+      "description": "Theatre-wide auspex enhancement. The Forgemaster upgrades every kill team's scanning and detection capability — nothing hides, no signature is too faint, no threat goes unlocated before kill teams close.",
+      "tags": [
+        "tech",
+        "intel",
+        "stealth",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Iron Ravens",
+        "Tome Keepers",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "hive_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "armour_rites_supreme": {
+      "name": "Armour Rites Supreme",
+      "description": "Total focus on protection. The Forgemaster prescribes augmented armour rites across the theatre — ceramite blessed, ablative layers reinforced, auto-sanguine systems primed. Kill teams take hits that would shatter lesser warriors.",
+      "tags": [
+        "tech",
+        "defensive",
+        "resilience",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Lords",
+        "Iron Hounds",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "corrosive_countermeasures": {
+      "name": "Corrosive Countermeasures",
+      "description": "The Forgemaster prepares counter-tech specifically for the identified enemy: xenos bio-technology, Heretek corruption, warp-machine hybrids. Kill teams carry specialised weapons and protocols the enemy cannot anticipate.",
+      "tags": [
+        "tech",
+        "void",
+        "terminus",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "forge_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "zero_failure_tolerance": {
+      "name": "Zero Failure Tolerance",
+      "description": "The Forgemaster implements a theatre-wide equipment audit under war conditions. No degraded weapon, no compromised system goes to the field. The cost is time and labour; the benefit is that nothing breaks at the critical moment.",
+      "tags": [
+        "tech",
+        "resilience",
+        "fortify",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Hounds",
+        "Iron Lords",
+        "Crimson Fists",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_techmarine": {
@@ -341,6 +2447,271 @@
         "recovery",
         "intel"
       ]
+    },
+    "machine_spirit_alignment": {
+      "name": "Machine Spirit Alignment",
+      "description": "The Techmarine binds the kill teams' wargear to the specific character of this world's machine spirits. Weapons that understand where they are perform better — the Techmarine ensures every piece of equipment is attuned.",
+      "tags": [
+        "tech",
+        "resilience",
+        "recovery",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Dragonspears",
+        "Mentors",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "tech"
+      ],
+      "weight": 1.2
+    },
+    "field_fabrication": {
+      "name": "Field Fabrication",
+      "description": "The Techmarine works without the Manufactorum. Salvage, captured materials, and improvised forging extend the company's operational endurance beyond what the supply chain can sustain. Necessity breeds innovation.",
+      "tags": [
+        "tech",
+        "recovery",
+        "resilience",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Mentors",
+        "Iron Lords",
+        "Crimson Fists",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "auspex_saturation": {
+      "name": "Auspex Saturation",
+      "description": "Every kill team carries Techmarine-calibrated auspex units. The Techmarine processes the data feeds in real-time and routes targeting intelligence to where it can be actioned. Blind spots become kill zones.",
+      "tags": [
+        "tech",
+        "intel",
+        "suppression",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Iron Ravens",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "denial_rites": {
+      "name": "Denial Rites",
+      "description": "The Techmarine applies active countermeasures against enemy technology. Disruption patterns, anti-signal rites, precision jamming — the enemy's war machines and communications are denied to them. What the machine gives, the Techmarine can take away.",
+      "tags": [
+        "tech",
+        "suppression",
+        "intel",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Mentors",
+        "Blood Ravens",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "tech"
+      ],
+      "weight": 1.0
+    },
+    "armour_rites_intensive": {
+      "name": "Armour Rites Intensive",
+      "description": "The Techmarine sacrifices offensive output to maintain every suit of power armour at its operational peak. Ceramite integrity, void shield ratings, system redundancies — the company's armour becomes its primary weapon this beat.",
+      "tags": [
+        "tech",
+        "resilience",
+        "defensive",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Lords",
+        "Minotaurs",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "scavenge_and_adapt": {
+      "name": "Scavenge and Adapt",
+      "description": "The Techmarine catalogues enemy technology and recovers whatever can be reconditioned. Not simply trophies — functional enhancements, counter-measures, and analytical data that give the company an edge in the next engagement.",
+      "tags": [
+        "tech",
+        "intel",
+        "recovery",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Iron Ravens",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "frontier_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "warp_shielding_protocols": {
+      "name": "Warp-Shielding Protocols",
+      "description": "The Techmarine implements machine-based defences against psychic and warp interference. Not the Librarian's path — iron and circuitry, null-field generators, mechanically enforced barriers. The machine pushes the warp back.",
+      "tags": [
+        "tech",
+        "void",
+        "fortify",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Dragonspears",
+        "Blood Ravens",
+        "Iron Ravens",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "blessed_ammunition_rites": {
+      "name": "Blessed Ammunition Rites",
+      "description": "Every bolt, every shell, every plasma charge is consecrated at the Techmarine's forge station. The blessing is technical as much as spiritual — quality control, sacred geometry, optimal charge state. These rounds do not miss their purpose.",
+      "tags": [
+        "tech",
+        "faith",
+        "aggressive",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Blood Angels",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "forge_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "infrastructure_seizure": {
+      "name": "Infrastructure Seizure",
+      "description": "The Techmarine leads the operation to capture and activate enemy technology in place. Power plants, vox networks, defensive systems — turned over to the Watch's use before the enemy can deny them. Technology becomes a strategic trophy.",
+      "tags": [
+        "tech",
+        "fortify",
+        "intel",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Mentors",
+        "Blood Ravens",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "hive_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_living_fortress": {
+      "name": "The Living Fortress",
+      "description": "Every position the company holds becomes a fortified strongpoint under the Techmarine's direction. Defensive constructions, automated sentinels, layered sensors — each Watch position becomes harder to assault than it was to take.",
+      "tags": [
+        "tech",
+        "fortify",
+        "defensive",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Lords",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
     }
   },
   "chief_apothecary": {
@@ -354,7 +2725,23 @@
         "recovery",
         "resilience",
         "faith"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Salamanders",
+        "Celestial Lions",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "battlefield_augmentation": {
       "name": "Battlefield Augmentation",
@@ -363,7 +2750,25 @@
         "aggressive",
         "resilience",
         "terminus"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Marines Malevolent",
+        "Minotaurs",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive",
+        "terminus"
+      ],
+      "weight": 1.0
     },
     "quarantine_authority": {
       "name": "Quarantine Authority",
@@ -373,7 +2778,298 @@
         "void",
         "resilience",
         "faith"
-      ]
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Iron Hands"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "agri_world",
+        "watch_station",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "apothecarion_field_forward": {
+      "name": "Apothecarion Field Forward",
+      "description": "The Chief Apothecary moves theatre medical capability to the front. Apothecaries operate in the kill team's operational zone — gene-seed recovered in the field, not after the fact.",
+      "tags": [
+        "recovery",
+        "aggressive",
+        "resilience",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Salamanders",
+        "Celestial Lions",
+        "Raptors",
+        "Flesh Tearers"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "iron_constitution": {
+      "name": "Iron Constitution",
+      "description": "Theatre-wide physiological hardening protocol. Stress-inoculation, environmental resistance, fatigue countermeasures — kill teams are prepared for prolonged operations in conditions that would break baseline forces.",
+      "tags": [
+        "resilience",
+        "defensive",
+        "recovery",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Hounds",
+        "Minotaurs",
+        "Marines Malevolent"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "agri_world",
+        "mining_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_chapter_endures": {
+      "name": "The Chapter Endures",
+      "description": "The Chief Apothecary declares the Chapter's continuation the absolute priority. Every progenoid recovered, every fallen brother witnessed, regardless of cost to tactical outcomes. The Chapter is the mission.",
+      "tags": [
+        "recovery",
+        "faith",
+        "resilience",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Salamanders",
+        "Bleeding Hearts",
+        "Tempestuous Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith",
+        "recovery"
+      ],
+      "weight": 1.0
+    },
+    "black_carapace_interrogation": {
+      "name": "Black Carapace Interrogation",
+      "description": "The Chief Apothecary extracts intelligence from the fallen — enemy and Watch alike. Neurological traces, pheromone identification, combat bio-signature analysis. What the dead experienced informs what the living must do.",
+      "tags": [
+        "intel",
+        "recovery",
+        "void",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Mentors",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "combat_augmentation_protocol": {
+      "name": "Combat Augmentation Protocol",
+      "description": "Full pre-battle physiological optimisation. Stimm cocktails, organ-priming, threshold-expansion — the Chief Apothecary signs off on a biological doctrine that pushes kill teams beyond their limits before the first shot.",
+      "tags": [
+        "aggressive",
+        "terminus",
+        "resilience",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Marines Malevolent",
+        "Minotaurs",
+        "Bleeding Hearts",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive",
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "toxin_countermeasure": {
+      "name": "Toxin Countermeasure",
+      "description": "The Chief Apothecary prepares specific counter-biological protocols for the identified threat vector. Tyranid bio-toxins, Chaos corruption, xeno-spore environments — kill teams operate clean where others would be incapacitated.",
+      "tags": [
+        "defensive",
+        "void",
+        "tech",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Raptors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "agri_world",
+        "feral_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "witness_every_fall": {
+      "name": "Witness Every Fall",
+      "description": "The Chief Apothecary mandates that no battle-brother falls without confirmation, harvest, and witness. This beat, every op carries formal Apothecarion oversight. The dead are not abandoned — they are received.",
+      "tags": [
+        "faith",
+        "recovery",
+        "resilience",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Celestial Lions",
+        "Cowled Wardens",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "sustained_operations_doctrine": {
+      "name": "Sustained Operations Doctrine",
+      "description": "The Chief Apothecary extends the operational window. Fatigue compressed, damage managed in the field, stimms controlled for sustained output. Kill teams operate for longer than the enemy can plan for.",
+      "tags": [
+        "resilience",
+        "recovery",
+        "aggressive",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Iron Hands",
+        "Mentors",
+        "Crimson Fists",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "psychofortification_rites": {
+      "name": "Psychofortification Rites",
+      "description": "The Chief Apothecary reinforces mental and neurological resilience across the theatre. Against psychic intrusion, warp-madness, and terror-weapon effects — the mind-resilience of the force is hardened by Apothecarion decree.",
+      "tags": [
+        "void",
+        "defensive",
+        "resilience",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "accelerated_recovery": {
+      "name": "Accelerated Recovery",
+      "description": "Reduced downtime between ops. The Chief Apothecary implements fast-return medical protocols — wounds stabilised and cleared in minimum time. Kill teams return to operational status faster than the enemy's reinforcement cycle.",
+      "tags": [
+        "recovery",
+        "resilience",
+        "tech",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Raptors",
+        "Mentors",
+        "Celestial Lions",
+        "Crimson Fists"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_apothecary": {
@@ -407,6 +3103,266 @@
         "resilience",
         "faith"
       ]
+    },
+    "combat_extraction": {
+      "name": "Combat Extraction",
+      "description": "The Apothecary builds extraction protocols into every kill team's engagement plan. No brother is abandoned — planned withdrawal routes, prioritised targets, coordinated collapse into defended positions. The Apothecary does not wait to be called.",
+      "tags": [
+        "recovery",
+        "resilience",
+        "defensive",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Salamanders",
+        "Celestial Lions",
+        "Iron Hands",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
+    },
+    "gene_seed_integrity": {
+      "name": "Gene-Seed Integrity",
+      "description": "The Apothecary prioritises the biological continuity of the Watch above tactical considerations. Progenoids are secured, gene-seed recovered, the biological chain of the Adeptus Astartes maintained even at cost to the mission. Some things matter more than the operation.",
+      "tags": [
+        "recovery",
+        "faith",
+        "resilience",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Salamanders",
+        "Space Wolves",
+        "Iron Hands"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "stimm_doctrine": {
+      "name": "Stimm Doctrine",
+      "description": "The Apothecary administers combat stimulants with calculated precision before operations begin. Enhanced reaction time, pain suppression, physical output at the edge of tolerance — the kill teams perform at maximum capacity for a defined window.",
+      "tags": [
+        "recovery",
+        "aggressive",
+        "resilience",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Marines Malevolent",
+        "Raptors",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "the_living_defiance": {
+      "name": "The Living Defiance",
+      "description": "Brothers who would otherwise fall are kept in the fight. The Apothecary moves through the engagement, maintaining wounded brothers at combat effectiveness, refusing to allow the enemy the satisfaction of the kill. The Watch fights until it chooses not to.",
+      "tags": [
+        "recovery",
+        "resilience",
+        "faith",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Iron Hands",
+        "Crimson Fists",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "toxin_analysis": {
+      "name": "Toxin Analysis",
+      "description": "The Apothecary catalogues xenos biological weapons encountered this beat — toxins, pathogens, biological agents — and develops countermeasures in the field. Current threat neutralised; future threats anticipated. The company does not die to the same poison twice.",
+      "tags": [
+        "recovery",
+        "intel",
+        "void",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Blood Ravens",
+        "Mentors",
+        "Celestial Lions",
+        "Raven Guard"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "frontier_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "field_surgery_bay": {
+      "name": "Field Surgery Bay",
+      "description": "The Apothecary establishes a forward surgical position within the operational area. Brothers cycle through between engagements — wounds treated, armour patched, combat effectiveness restored before the next op begins. The company's attrition rate drops dramatically.",
+      "tags": [
+        "recovery",
+        "resilience",
+        "fortify",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Celestial Lions",
+        "Blood Angels",
+        "Iron Hands",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "frontier_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "the_martyred_record": {
+      "name": "The Martyred Record",
+      "description": "Every brother who falls this beat is acknowledged by name, their manner of death recorded, their gene-seed secured or their sacrifice documented. The Apothecary carries the company's losses as a sacred obligation — none fall without witness.",
+      "tags": [
+        "recovery",
+        "faith",
+        "resilience",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Celestial Lions",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Salamanders",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "pre_deployment_assessment": {
+      "name": "Pre-Deployment Assessment",
+      "description": "The Apothecary evaluates every brother before they are committed. Combat-effective, reserve, or medically withdrawn — the Apothecary makes the call and the company deploys only those who are ready. Better to fight with fewer brothers at full capability.",
+      "tags": [
+        "recovery",
+        "intel",
+        "defensive",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Iron Hands",
+        "Raptors",
+        "Celestial Lions",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_red_tithe": {
+      "name": "The Red Tithe",
+      "description": "The Apothecary accounts for the blood spent this beat against the blood available. Calculated expenditure — no brother is committed without analysis, no casualty without tactical value. The Apothecary holds the company's biological budget.",
+      "tags": [
+        "recovery",
+        "intel",
+        "resilience",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Blood Angels",
+        "Marines Malevolent",
+        "Carmine Blades",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "war_world",
+        "agri_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "warp_exposure_triage": {
+      "name": "Warp Exposure Triage",
+      "description": "The Apothecary performs psychic contamination assessments and administers counteracting treatments. Brothers exposed to warp influence are evaluated, quarantined if necessary, treated with the full spectrum of the Apothecary's art. The warp does not claim them if the Apothecary can prevent it.",
+      "tags": [
+        "recovery",
+        "void",
+        "faith",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
     }
   },
   "high_chaplain": {
@@ -421,7 +3377,22 @@
         "resilience",
         "defensive",
         "fortify"
-      ]
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Iron Hands",
+        "Salamanders",
+        "Crimson Fists",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "crusade_sanction": {
       "name": "Crusade Sanction",
@@ -431,7 +3402,24 @@
         "aggressive",
         "terminus",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Tempestuous Angels",
+        "Angels of Defiance",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "war_world",
+        "shrine_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
     },
     "rites_of_absolution": {
       "name": "Rites of Absolution",
@@ -441,7 +3429,298 @@
         "defensive",
         "void",
         "resilience"
-      ]
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Cowled Wardens",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "the_litany_of_hate": {
+      "name": "The Litany of Hate",
+      "description": "The High Chaplain delivers theatre-wide war-litanies that strip fear and hesitation from every brother in the Watch. This beat, kill teams fight without restraint — the enemy is granted no mercy and no quarter.",
+      "tags": [
+        "faith",
+        "aggressive",
+        "terminus",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Flesh Tearers",
+        "Tempestuous Angels",
+        "Angels of Vengeance",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive",
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "oath_of_iron": {
+      "name": "Oath of Iron",
+      "description": "Every active brother in the theatre swears an iron oath before the ops window opens — an oath of endurance, not achievement. Whatever the battlefield demands, the Watch will still be standing at the end.",
+      "tags": [
+        "faith",
+        "resilience",
+        "fortify",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Crimson Fists",
+        "Iron Hounds",
+        "Minotaurs",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "the_speaking_of_names": {
+      "name": "The Speaking of Names",
+      "description": "The High Chaplain names the fallen of the Reach — dead Watch brothers whose sacrifice consecrates this theatre. The living fight knowing those names stand behind them. Every advance is for the dead.",
+      "tags": [
+        "faith",
+        "resilience",
+        "recovery",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Celestial Lions",
+        "Tome Keepers",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "condemn_the_heretic": {
+      "name": "Condemn the Heretic",
+      "description": "Formal theological condemnation issued against an identified traitor, xenos collaborator, or Chaos affiliate on the committed node. The High Chaplain's word is now the Watch's mandate. No mercy, no negotiation.",
+      "tags": [
+        "faith",
+        "elimination",
+        "terminus",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Angels of Defiance",
+        "Angels of Vengeance",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "shrine_world",
+        "fortress_world",
+        "penal_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "the_fire_unquenched": {
+      "name": "The Fire Unquenched",
+      "description": "Theatre-wide spiritual fortification against despair. The High Chaplain addresses the force directly — whatever has happened, whatever will happen, the Watch does not break. The fire does not go out.",
+      "tags": [
+        "faith",
+        "resilience",
+        "fortify",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Black Templars",
+        "Blood Angels",
+        "Crimson Fists",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "purgation_rites": {
+      "name": "Purgation Rites",
+      "description": "Theatre-wide spiritual cleansing declared before the ops window. Chaplains attend every kill team at formation — doubts, Chaos taints, warp-corruptions, broken oaths are purged. The Watch goes in clean.",
+      "tags": [
+        "faith",
+        "defensive",
+        "void",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Tome Keepers",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "sanctioned_fury": {
+      "name": "Sanctioned Fury",
+      "description": "The High Chaplain releases the Watch from its restraint. Controlled aggression is dispensed with — sanctioned rage is the doctrine. The enemy will know what it means to face warriors who fight with spiritual fire and no leash.",
+      "tags": [
+        "faith",
+        "aggressive",
+        "elimination",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Blood Angels",
+        "Tempestuous Angels",
+        "Bleeding Hearts",
+        "Carmine Blades",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "vigil_unyielding": {
+      "name": "Vigil Unyielding",
+      "description": "The High Chaplain's declaration for the beat: not one position, not one gain, not one brother will be surrendered. Spiritual tenacity is the doctrine — the Watch holds everything it has. Nothing yields.",
+      "tags": [
+        "faith",
+        "defensive",
+        "fortify",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Iron Hands",
+        "Minotaurs",
+        "Crimson Fists",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "litany_of_revelation": {
+      "name": "Litany of Revelation",
+      "description": "The High Chaplain speaks to the hidden enemy. Spiritual doctrine of exposure — what conceals itself, what lies, what operates in shadow is condemned and revealed. The Watch sees what hides.",
+      "tags": [
+        "faith",
+        "intel",
+        "void",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Tome Keepers",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "hive_world",
+        "watch_station",
+        "pleasure_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "bond_of_brotherhood": {
+      "name": "Bond of Brotherhood",
+      "description": "The High Chaplain orders every kill team in the theatre to formally witness each other's oaths before the ops window. Brotherhood is combat doctrine — no brother fights alone, and no achievement goes unshared.",
+      "tags": [
+        "faith",
+        "resilience",
+        "recovery",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Space Wolves",
+        "Blood Angels",
+        "Celestial Lions",
+        "Tome Keepers",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_chaplain": {
@@ -477,6 +3756,274 @@
         "intel",
         "resilience"
       ]
+    },
+    "the_rite_of_battle": {
+      "name": "The Rite of Battle",
+      "description": "The Chaplain performs the formal battle-rites before every kill team commits. Purpose clarified, oaths renewed, hatred consecrated. The kill teams leave the briefing knowing exactly what is required of them and exactly why it matters.",
+      "tags": [
+        "faith",
+        "aggressive",
+        "terminus",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Salamanders",
+        "Cowled Wardens",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.2
+    },
+    "the_litany_of_hatred": {
+      "name": "The Litany of Hatred",
+      "description": "The Chaplain names the enemy with precision — their nature, their heresy, their threat to the Imperium. The kill teams do not fight abstractions; they fight specific, named evil. Hatred made concrete becomes the most reliable weapon.",
+      "tags": [
+        "faith",
+        "elimination",
+        "terminus",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Angels of Vengeance",
+        "Dark Angels",
+        "Flesh Tearers",
+        "Marines Malevolent"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "the_burden_carried": {
+      "name": "The Burden Carried",
+      "description": "The Chaplain tends to those who struggle beneath the weight of what they have seen and done. Warp exposure, terrible kills, the accumulation of the campaign's costs — the Chaplain ensures the brothers remain themselves through it all.",
+      "tags": [
+        "faith",
+        "recovery",
+        "resilience",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Blood Angels",
+        "Space Wolves",
+        "Celestial Lions",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "oath_renewed": {
+      "name": "Oath Renewed",
+      "description": "In a formal ceremony before the company, the Chaplain leads the renewal of battle-oaths. Brothers whose commitments have grown stale or wavered under attrition find purpose re-instilled. The oath is the chain that holds — the Chaplain ensures it holds fast.",
+      "tags": [
+        "faith",
+        "resilience",
+        "recovery",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Space Wolves",
+        "Salamanders",
+        "Cowled Wardens",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "suffer_not_the_heretic": {
+      "name": "Suffer Not the Heretic",
+      "description": "The Chaplain provides formal doctrinal clarity on exactly what must be destroyed without mercy or negotiation. No ambiguity about where mercy ends and duty begins — the Chaplain draws the line in fire and the kill teams know exactly which side everything falls on.",
+      "tags": [
+        "faith",
+        "elimination",
+        "terminus",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Blood Angels",
+        "Angels of Vengeance",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "dead_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_martyr_doctrine": {
+      "name": "The Martyr Doctrine",
+      "description": "The Chaplain consecrates the cost — every brother who falls does so in full knowledge of what their sacrifice advances. Purpose transforms death. The kill teams fight harder because they know the Chaplain has already consecrated the worst outcome.",
+      "tags": [
+        "faith",
+        "resilience",
+        "terminus",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Celestial Lions",
+        "Blood Angels",
+        "Salamanders",
+        "Tempestuous Angels",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "war_world",
+        "dead_world",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "the_darkness_named": {
+      "name": "The Darkness Named",
+      "description": "The Chaplain delivers a formal accounting of the warp's specific expression on this world — its source, its nature, the name of what has invited it. Knowledge of the enemy's spiritual architecture is the first step in its dismantling.",
+      "tags": [
+        "faith",
+        "void",
+        "intel",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "sanctify_the_fallen": {
+      "name": "Sanctify the Fallen",
+      "description": "The Chaplain moves through the aftermath and performs rites over those lost this beat. The fallen are not forgotten — they are formally received into the company's memory. The living fight harder when they know the dead will be honoured.",
+      "tags": [
+        "faith",
+        "recovery",
+        "resilience",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Celestial Lions",
+        "Blood Angels",
+        "Tome Keepers",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_wrath_channelled": {
+      "name": "The Wrath Channelled",
+      "description": "The Chaplain converts grief and rage into precision. The company has suffered — the Chaplain ensures that suffering becomes directed violence rather than disorganised fury. Anger made doctrine is the most effective anger.",
+      "tags": [
+        "faith",
+        "aggressive",
+        "terminus",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Blood Angels",
+        "Marines Malevolent",
+        "Bleeding Hearts",
+        "Carmine Blades"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "the_covenant_held": {
+      "name": "The Covenant Held",
+      "description": "The Chaplain draws explicit line of continuity from the founding oaths of the Deathwatch to the current operation. Every kill team is part of something centuries old and worth every cost demanded. The covenant holds — it has always held.",
+      "tags": [
+        "faith",
+        "resilience",
+        "recovery",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Tome Keepers",
+        "Blood Ravens",
+        "Dark Angels",
+        "Celestial Lions",
+        "Space Wolves"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
     }
   },
   "huntmaster": {
@@ -490,7 +4037,22 @@
         "terminus",
         "elimination",
         "aggressive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Dark Angels",
+        "Minotaurs",
+        "Blood Angels",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "hunt_in_packs": {
       "name": "Hunt in Packs",
@@ -500,7 +4062,22 @@
         "aggressive",
         "intel",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Flesh Tearers",
+        "Blood Angels",
+        "Raptors",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "war_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     },
     "bleed_the_beast": {
       "name": "Bleed the Beast",
@@ -510,7 +4087,289 @@
         "terminus",
         "resilience",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Iron Hands",
+        "Mentors",
+        "Marines Malevolent"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "suppression",
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "corner_the_prey": {
+      "name": "Corner the Prey",
+      "description": "Multiple kill teams converge from every available approach, denying the prey any route of withdrawal. The Huntmaster doesn't chase — he closes every exit and waits for the inevitable.",
+      "tags": [
+        "terminus",
+        "suppression",
+        "intel",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Blood Angels",
+        "Flesh Tearers",
+        "Raptors",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "read_the_spoor": {
+      "name": "Read the Spoor",
+      "description": "Intelligence phase runs before the hunt begins. The Huntmaster maps the prey's movement patterns, feeding routes, and lair locations — kill teams deploy knowing exactly where the kill will happen.",
+      "tags": [
+        "terminus",
+        "intel",
+        "stealth",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Raven Guard",
+        "Raptors",
+        "Blood Ravens",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "frontier_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "running_the_beast_to_ground": {
+      "name": "Running the Beast to Ground",
+      "description": "Relentless pursuit doctrine. The Huntmaster will not let the prey rest, resupply, or regenerate. Kill teams rotate, maintain constant pressure, and drive the terminus quarry past the point of recovery.",
+      "tags": [
+        "terminus",
+        "aggressive",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Flesh Tearers",
+        "Blood Angels",
+        "Carmine Blades",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "war_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "the_killing_ground": {
+      "name": "The Killing Ground",
+      "description": "The Huntmaster prepares the terrain before the prey arrives. Kill zones established, approach vectors seeded with covered positions — the terminus target walks into a battlefield already set for its death.",
+      "tags": [
+        "terminus",
+        "stealth",
+        "intel",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth",
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "feast_on_the_worthy": {
+      "name": "Feast on the Worthy",
+      "description": "The Huntmaster opens the hunt to all kill teams. No single designated quarry — whatever terminus-class threat presents, it dies. The watch-list is the whole battlefield.",
+      "tags": [
+        "terminus",
+        "aggressive",
+        "elimination",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Blood Angels",
+        "Black Templars",
+        "Minotaurs",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "war_world",
+        "dead_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "deny_the_warlord": {
+      "name": "Deny the Warlord",
+      "description": "The Huntmaster's priority: command decapitation. Remove the entity that commands, coordinates, or empowers the enemy force. The kill is not the terminus creature — it is the leadership that makes the enemy coherent.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "intel",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raven Guard",
+        "Raptors",
+        "Necropolis Hawks",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "void_hunt": {
+      "name": "Void Hunt",
+      "description": "The prey is not physical. The Huntmaster turns his doctrine toward warp-entities, psyker-constructs, and void-beasts that register on the terminus threat scale. Hunting doctrine adapted for prey that bleeds warp-fire.",
+      "tags": [
+        "terminus",
+        "void",
+        "elimination",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "the_long_hunt": {
+      "name": "The Long Hunt",
+      "description": "The Huntmaster extends the hunt beyond this beat. Terminus prey marked this cycle, intelligence gathered, approach angles confirmed — even if it escapes now, the next beat the Watch knows exactly where it will be.",
+      "tags": [
+        "terminus",
+        "intel",
+        "resilience",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Raptors",
+        "Mentors",
+        "Celestial Lions",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "sanctified_kill": {
+      "name": "Sanctified Kill",
+      "description": "The Huntmaster declares the terminus prey a spiritual abomination and consecrates the kill in advance. Kill teams carry both tactical doctrine and chaplaincy authority. The target is hunted for the Watch's soul as much as its mission.",
+      "tags": [
+        "terminus",
+        "faith",
+        "elimination",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Cowled Wardens",
+        "Space Wolves",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "dead_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "maximum_yield": {
+      "name": "Maximum Yield",
+      "description": "Every kill team capable of engaging a terminus target this beat is cleared to do so. The Huntmaster abandons exclusivity — this is not a precision hunt. It is a coordinated annihilation.",
+      "tags": [
+        "terminus",
+        "aggressive",
+        "suppression",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Minotaurs",
+        "Bleeding Hearts",
+        "Angels of Vengeance",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
     }
   },
   "void_warden": {
@@ -525,7 +4384,22 @@
         "defensive",
         "suppression",
         "resilience"
-      ]
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Iron Hands"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "prescient_command": {
       "name": "Prescient Command",
@@ -535,7 +4409,24 @@
         "intel",
         "stealth",
         "defensive"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Mentors",
+        "Raptors",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "watch_station",
+        "fortress_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
     },
     "void_condemnation": {
       "name": "Void Condemnation",
@@ -545,7 +4436,298 @@
         "aggressive",
         "terminus",
         "elimination"
-      ]
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Tempestuous Angels",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus",
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "silence_the_choir": {
+      "name": "Silence the Choir",
+      "description": "Enemy psyker networks identified and targeted for suppression. The Void Warden coordinates theatre-wide psychic denial operations — no enemy choir sings in concert this beat, every summoning disrupted before it manifests.",
+      "tags": [
+        "void",
+        "suppression",
+        "elimination",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "warp_cartography": {
+      "name": "Warp Cartography",
+      "description": "The Void Warden maps the warp-topology of the committed node. Rift locations, psychic resonance points, intrusion vectors — kill teams move with full awareness of where the immaterium bleeds into real-space.",
+      "tags": [
+        "void",
+        "intel",
+        "stealth",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Iron Ravens",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "the_emperors_shield": {
+      "name": "The Emperor's Shield",
+      "description": "The Void Warden raises a psychic fortress across the theatre. Daemons find no purchase, summoning rituals collapse before completion, the warp's influence on this operation is reduced to near-nothing. Absolute psychic defence.",
+      "tags": [
+        "void",
+        "defensive",
+        "faith",
+        "fortify"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Blood Ravens",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive",
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "forge_a_weapon": {
+      "name": "Forge a Weapon",
+      "description": "The Void Warden identifies a psyker of value among the Watch and focuses theatre-level resources on one combined strike through the warp. The enemy's psychic strength becomes the kill team's targeting solution.",
+      "tags": [
+        "void",
+        "aggressive",
+        "terminus",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Tempestuous Angels",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive",
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "deep_warp_surveillance": {
+      "name": "Deep Warp Surveillance",
+      "description": "The Void Warden extends psychic intelligence assets into the deep warp. Enemy reinforcement vectors, daemon-world coordinates, immaterial staging points — the Watch knows what is coming before it arrives in real-space.",
+      "tags": [
+        "void",
+        "intel",
+        "stealth",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Iron Ravens",
+        "Mentors",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "watch_station",
+        "dead_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "the_veil_holds": {
+      "name": "The Veil Holds",
+      "description": "The Void Warden commits every psychic asset to maintaining the integrity of real-space on the committed node. No rift, no summoning, no warp-intrusion succeeds while the Chief Librarian stands the watch.",
+      "tags": [
+        "void",
+        "defensive",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Cowled Wardens",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Iron Hands"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "psychic_decapitation": {
+      "name": "Psychic Decapitation",
+      "description": "One psychic threat of command-class magnitude identified and targeted for elimination. The Void Warden directs all theatre psychic assets toward a single entity — remove the mind that directs the enemy's warp capability.",
+      "tags": [
+        "void",
+        "elimination",
+        "terminus",
+        "intel"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "resonance_reading": {
+      "name": "Resonance Reading",
+      "description": "The Void Warden reads the psychic resonance of the committed node's recent history. Atrocities, rites, mass deaths — all leave warp-signatures the Chief Librarian translates into tactical intelligence for the kill teams.",
+      "tags": [
+        "void",
+        "intel",
+        "recovery",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Celestial Lions",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "warp_weaponisation": {
+      "name": "Warp Weaponisation",
+      "description": "The Void Warden turns the enemy's own warp signature against it. Psychic doctrine of aggression — every rift, every daemonic presence, every warp-taint on the node is identified and weaponised by the Watch's Librarians.",
+      "tags": [
+        "void",
+        "aggressive",
+        "suppression",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Tempestuous Angels",
+        "Dark Angels",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "null_the_prophet": {
+      "name": "Null the Prophet",
+      "description": "Enemy morale relies on their warp-seer, daemon-speaker, or prophet-demagogue. The Void Warden designates that individual for psychic nullification — silence the voice, and the enemy's certainty collapses with it.",
+      "tags": [
+        "void",
+        "suppression",
+        "elimination",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raven Guard",
+        "Raptors",
+        "Blood Ravens",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "hive_world",
+        "penal_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_librarian": {
@@ -581,6 +4763,271 @@
         "terminus",
         "elimination"
       ]
+    },
+    "the_sight_maintained": {
+      "name": "The Sight Maintained",
+      "description": "The Librarian anchors psykanic perception across the operational area — eyes that do not blink, awareness that does not drift. What moves in the shadows, what hides in the warp-touched ruins, what the enemy thinks it conceals: the Librarian sees it and routes intelligence to where it is needed.",
+      "tags": [
+        "void",
+        "intel",
+        "stealth",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.2
+    },
+    "the_warding_field": {
+      "name": "The Warding Field",
+      "description": "The Librarian establishes a psykanic barrier around the company's positions. Not offensive capability — pure denial. What the warp sends, the Librarian turns away. The kill teams operate behind a barrier their enemy cannot understand how to breach.",
+      "tags": [
+        "void",
+        "defensive",
+        "fortify",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "the_breaking_word": {
+      "name": "The Breaking Word",
+      "description": "A single concentrated psychic utterance that severs the command-link in the enemy's structure. Not individual combat — targeted disruption of the psychic or electromagnetic bonds that make the enemy a coherent force. They fragment; the Watch harvests the pieces.",
+      "tags": [
+        "void",
+        "elimination",
+        "suppression",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Iron Ravens",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "fortress_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "deep_reading": {
+      "name": "Deep Reading",
+      "description": "The Librarian dedicates this beat to thorough analysis of the psychic currents surrounding the current node. What has happened here, what is happening, what the warp intends — a comprehensive intelligence picture that supplements everything the Kill Team can observe directly.",
+      "tags": [
+        "void",
+        "intel",
+        "recovery",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Raven Guard",
+        "Dark Angels",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_psychic_lance": {
+      "name": "The Psychic Lance",
+      "description": "The Librarian identifies a single significant threat and prepares a focused psychic elimination. All psykanic resource is conserved and channelled to this one execution — singular, devastating, and absolute.",
+      "tags": [
+        "void",
+        "terminus",
+        "elimination",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Iron Ravens",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "the_veil_pierced": {
+      "name": "The Veil Pierced",
+      "description": "The Librarian reaches through the warp's membrane and extracts specific knowledge — what lies at the node's heart, what the enemy intends at the strategic level, what the campaign's true shape is. Intelligence that no conventional means could reach.",
+      "tags": [
+        "void",
+        "intel",
+        "recovery",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Raptors",
+        "Dark Angels",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "special"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "the_memoria_bound": {
+      "name": "The Memoria Bound",
+      "description": "The Librarian inscribes this beat's significant events into the psychic chronicle — the immutable record maintained in the warp's own substrate. What is written here cannot be altered, cannot be suppressed. The truth is preserved regardless of what the campaign's record otherwise claims.",
+      "tags": [
+        "void",
+        "intel",
+        "faith",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Dark Angels",
+        "Celestial Lions",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "shatter_the_working": {
+      "name": "Shatter the Working",
+      "description": "A specific enemy psychic operation has been identified — ritual, warding, compulsion, or presence. The Librarian dedicates everything to dismantling it. No other contribution this beat; the working is ended.",
+      "tags": [
+        "void",
+        "fortify",
+        "elimination",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "the_quiet_channel": {
+      "name": "The Quiet Channel",
+      "description": "The Librarian maintains a psychic communication network between kill teams that no signal-jam or vox disruption can interfere with. Whatever the electromagnetic environment does to conventional communications, the kill teams remain coordinated.",
+      "tags": [
+        "void",
+        "intel",
+        "resilience",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Tome Keepers",
+        "Raven Guard"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_daemon_unmasked": {
+      "name": "The Daemon Unmasked",
+      "description": "The Librarian strips the glamours and concealment from warp-entities on this world, forcing their true nature into observable reality. What was hidden becomes visible; what was deniable becomes undeniable. The kill teams can now kill what they could previously only suspect.",
+      "tags": [
+        "void",
+        "terminus",
+        "intel",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
     }
   },
   "castellan": {
@@ -595,7 +5042,22 @@
         "stealth",
         "void",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Raptors",
+        "Blood Ravens",
+        "Celestial Lions",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.2
     },
     "black_operations": {
       "name": "Black Operations",
@@ -605,7 +5067,25 @@
         "intel",
         "aggressive",
         "recovery"
-      ]
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth",
+        "intel"
+      ],
+      "weight": 1.0
     },
     "seal_the_reach": {
       "name": "Seal the Reach",
@@ -615,7 +5095,292 @@
         "defensive",
         "fortify",
         "suppression"
-      ]
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Cowled Wardens",
+        "Iron Hands",
+        "Crimson Fists",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "mining_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "defensive"
+      ],
+      "weight": 1.0
+    },
+    "eyes_everywhere": {
+      "name": "Eyes Everywhere",
+      "description": "The Castellan deploys a network of surveillance assets across the committed node before the ops window opens. No enemy movement, no reinforcement, no retreat goes unobserved by the Watch's intelligence infrastructure.",
+      "tags": [
+        "intel",
+        "stealth",
+        "void",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Blood Ravens",
+        "Celestial Lions",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "cut_the_signal": {
+      "name": "Cut the Signal",
+      "description": "Enemy communications and command-net targeted for systematic disruption. The Castellan's doctrine: before the kill teams move, the enemy cannot coordinate, cannot reinforce, cannot even confirm to their commanders that the Watch has arrived.",
+      "tags": [
+        "intel",
+        "suppression",
+        "stealth",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Iron Ravens",
+        "Mentors",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "forge_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "the_prepared_ground": {
+      "name": "The Prepared Ground",
+      "description": "Intelligence gathered. Contingencies placed. The Castellan has pre-positioned assets on the committed node before the cascade began — safe houses, observation points, cached equipment. The Watch arrives to a battlefield it already understands.",
+      "tags": [
+        "intel",
+        "stealth",
+        "aggressive",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Mentors",
+        "Cowled Wardens",
+        "Necrophos Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "frontier_world",
+        "pleasure_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "dossier_protocol": {
+      "name": "Dossier Protocol",
+      "description": "Every identified hostile of interest receives a full threat dossier before kill teams deploy. Command structures, movement patterns, personal vulnerabilities — the Watch goes in with knowledge that should be impossible to have.",
+      "tags": [
+        "intel",
+        "elimination",
+        "stealth",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Raptors",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "counterintelligence_lockdown": {
+      "name": "Counterintelligence Lockdown",
+      "description": "The Castellan declares total information denial across the theatre. Enemy intelligence assets are identified, traced, and neutralised. The Watch operates in total secrecy — the enemy fights blind while the Watch sees everything.",
+      "tags": [
+        "intel",
+        "defensive",
+        "stealth",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "first_light_analysis": {
+      "name": "First Light Analysis",
+      "description": "The Castellan compiles a full strategic assessment of the committed node — pressure vectors, population centres of interest, terrain exploitation opportunities, enemy order-of-battle. Kill teams receive it before first contact.",
+      "tags": [
+        "intel",
+        "defensive",
+        "resilience",
+        "tech"
+      ],
+      "chapter_affinity": [
+        "Mentors",
+        "Blood Ravens",
+        "Celestial Lions",
+        "Tome Keepers",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "ghost_protocol": {
+      "name": "Ghost Protocol",
+      "description": "The Castellan erases the Watch's operational signature entirely. No record of deployment, no confirmed presence, no intelligence trail. What happened on this node this beat will never be attributable to the Watch.",
+      "tags": [
+        "stealth",
+        "intel",
+        "void",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Cowled Wardens",
+        "Necropolis Hawks",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "pleasure_world",
+        "hive_world",
+        "penal_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "threat_escalation_report": {
+      "name": "Threat Escalation Report",
+      "description": "The Castellan compiles and disseminates intelligence confirming this node's threat has escalated beyond previous assessments. Kill teams go in with accurate expectations — no false confidence, no operational shocks.",
+      "tags": [
+        "intel",
+        "resilience",
+        "terminus",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Tome Keepers",
+        "Celestial Lions",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "fortress_world",
+        "war_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "asset_recovery_mandate": {
+      "name": "Asset Recovery Mandate",
+      "description": "The Castellan identifies intelligence assets — agents, vaults, cogitator networks — on the committed node that must be recovered or destroyed before the enemy can exploit them. Kill teams operate with a dual mission.",
+      "tags": [
+        "intel",
+        "recovery",
+        "stealth",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Blood Ravens",
+        "Mentors",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "watch_station",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "recovery"
+      ],
+      "weight": 1.0
+    },
+    "know_your_enemy": {
+      "name": "Know Your Enemy",
+      "description": "The Castellan prepares a complete xenological or tactical brief on the identified enemy — biology, psychology, command doctrine, known weaknesses. Kill teams fight what they understand, and understanding is the first step to killing.",
+      "tags": [
+        "intel",
+        "void",
+        "tech",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Tome Keepers",
+        "Iron Ravens",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "watch_keeper": {
@@ -651,6 +5416,266 @@
         "aggressive",
         "recovery"
       ]
+    },
+    "the_record_unsealed": {
+      "name": "The Record Unsealed",
+      "description": "The Watch Keeper opens relevant xenos intelligence files to the kill teams — encounters, behavioural patterns, weaknesses confirmed by previous Watch operations. Brothers who know what they face kill it more efficiently.",
+      "tags": [
+        "intel",
+        "terminus",
+        "elimination",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Mentors",
+        "Raptors",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.2
+    },
+    "the_silence_maintained": {
+      "name": "The Silence Maintained",
+      "description": "The Watch Keeper ensures operational security is absolute this beat — no intelligence leaks, no communications compromise, no indication to the enemy that the Watch is aware of their disposition. Information advantage is only valuable when the enemy does not know you have it.",
+      "tags": [
+        "intel",
+        "stealth",
+        "defensive",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Cowled Wardens",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "cross_reference_active": {
+      "name": "Cross-Reference Active",
+      "description": "The Watch Keeper analyses this beat's operational data against the Librarium's holdings — identifying patterns the kill teams may not see themselves. Tactical anomalies, strategic deceptions, threat signatures that match historical encounters. Nothing about this enemy is truly new.",
+      "tags": [
+        "intel",
+        "recovery",
+        "void",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Mentors",
+        "Raptors",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_sealed_account": {
+      "name": "The Sealed Account",
+      "description": "The Watch Keeper creates a classified record of this beat's most sensitive intelligence — sealed, compartmentalised, accessible only to those with need and authorisation. Some truths are too dangerous to circulate freely.",
+      "tags": [
+        "intel",
+        "void",
+        "stealth",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Cowled Wardens",
+        "Raven Guard",
+        "Tome Keepers",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "watch_station",
+        "dead_world",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "identify_the_apex": {
+      "name": "Identify the Apex",
+      "description": "The Watch Keeper directs intelligence efforts to profiling the enemy's most dangerous element — its leadership structure, its most capable warrior, its strategic centre of gravity. Intelligence precedes the blade; the Watch Keeper ensures the blade is aimed correctly.",
+      "tags": [
+        "intel",
+        "terminus",
+        "elimination",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Mentors",
+        "Blood Ravens",
+        "Dark Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "dead_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "the_cartographic_update": {
+      "name": "The Cartographic Update",
+      "description": "The Watch Keeper integrates this beat's reconnaissance into the operational map — confirmed routes, denied zones, objective locations updated, enemy dispositions refined. The map the kill teams use next beat will be better because of what was learned this one.",
+      "tags": [
+        "intel",
+        "fortify",
+        "defensive",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Mentors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "frontier_world",
+        "agri_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_cipher_broken": {
+      "name": "The Cipher Broken",
+      "description": "Enemy communications captured this beat are fed through the Watch Keeper's analytical processes. The cipher broken, the signal traffic read, the enemy's plan understood before it is fully executed. The Watch Keeper's quiet work has wider consequences than most will know.",
+      "tags": [
+        "intel",
+        "suppression",
+        "stealth",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Raven Guard",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "historical_precedent": {
+      "name": "Historical Precedent",
+      "description": "The Watch Keeper locates records of a previous Watch operation on this world or against this specific enemy configuration. Lessons from that campaign — what worked, what failed, what was learned at terrible cost — are shared with the company in time to be actionable.",
+      "tags": [
+        "intel",
+        "recovery",
+        "resilience",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Tome Keepers",
+        "Mentors",
+        "Dark Angels",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_tally_updated": {
+      "name": "The Tally Updated",
+      "description": "Every kill confirmed, every objective secured, every intelligence asset recovered — the Watch Keeper maintains the operational accounting. This beat's tally matters because it feeds into the campaign's strategic assessment. Precision in record-keeping is its own form of mission-critical work.",
+      "tags": [
+        "intel",
+        "recovery",
+        "faith",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Celestial Lions",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Mentors",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "agri_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "threat_reclassification": {
+      "name": "Threat Reclassification",
+      "description": "Based on evidence gathered this beat, the Watch Keeper formally revises the threat classification of the enemy force. Resources are reallocated, priorities are updated, the campaign's response is calibrated to what is actually present rather than what was assumed at the outset.",
+      "tags": [
+        "intel",
+        "void",
+        "defensive",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Mentors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
     }
   },
   "judiciar": {
@@ -688,6 +5713,270 @@
         "resilience",
         "fortify"
       ]
+    },
+    "the_sentence_pronounced": {
+      "name": "The Sentence Pronounced",
+      "description": "The Judiciar formally pronounces the kill team's mandate as irrevocable judgement — not an operation, not a mission, but a sentence already passed. The kill team executes what has already been decided in the Emperor's name.",
+      "tags": [
+        "faith",
+        "terminus",
+        "elimination",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Blood Angels",
+        "Cowled Wardens",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.2
+    },
+    "no_appeal": {
+      "name": "No Appeal",
+      "description": "The Judiciar removes the possibility of mercy from the kill team's doctrine. This target cannot be spared, cannot be captured, cannot be permitted to survive. The sentence is death and the Judiciar ensures every brother understands there are no alternatives.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "faith",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dark Angels",
+        "Angels of Vengeance",
+        "Marines Malevolent",
+        "Flesh Tearers"
+      ],
+      "node_affinity": [
+        "war_world",
+        "dead_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "the_law_applied": {
+      "name": "The Law Applied",
+      "description": "The Judiciar invokes the specific doctrinal framework — Codex clause, Chapter edict, or Deathwatch standing order — that governs this engagement's permissible methods. Clarity of mandate is the Judiciar's gift; the kill team knows exactly what the law requires.",
+      "tags": [
+        "faith",
+        "intel",
+        "defensive",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Black Templars",
+        "Crimson Fists",
+        "Celestial Lions",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "guilt_confirmed": {
+      "name": "Guilt Confirmed",
+      "description": "The Judiciar has assessed the intelligence and confirmed the target's nature beyond dispute. No wasted operations against misidentified threats — the Judiciar's assessment gives the kill team absolute certainty about what they are killing and why.",
+      "tags": [
+        "intel",
+        "terminus",
+        "void",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Raptors",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "dead_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "tempus_mortis": {
+      "name": "Tempus Mortis",
+      "description": "The Judiciar's temporal judgement weapon extends its influence — the kill team operates in the shadow of slowed time, striking with certainty while the enemy's reactions drag. The Judiciar manages the field's temporal character to ensure kills land before defences rise.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "aggressive",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Angels",
+        "Tome Keepers",
+        "Dragonspears",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "accountability_rendered": {
+      "name": "Accountability Rendered",
+      "description": "The Judiciar ensures the company's own conduct is beyond reproach. Civilian protocols, rules of engagement, collateral assessment — the kill team operates within the law because the Judiciar holds them to it. The Watch does not become what it fights.",
+      "tags": [
+        "intel",
+        "faith",
+        "recovery",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Salamanders",
+        "Celestial Lions",
+        "Tome Keepers",
+        "Blood Angels",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "agri_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_old_sentence": {
+      "name": "The Old Sentence",
+      "description": "The Judiciar invokes a sentence passed long before this beat — an ancient mandate, a founding judgement, a standing order from decades prior that has never been rescinded. Whatever was decreed then governs now, and the Judiciar ensures it is honoured.",
+      "tags": [
+        "faith",
+        "terminus",
+        "void",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Black Templars",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "the_blade_consecrated": {
+      "name": "The Blade Consecrated",
+      "description": "The Judiciar performs rites over the kill team's close-quarters weapons before deployment. Every blade is consecrated to specific use this beat — the kill that the Judiciar has ordained. The weapons are prepared for the work they were made for.",
+      "tags": [
+        "faith",
+        "elimination",
+        "aggressive",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Salamanders",
+        "Dragonspears",
+        "Blood Angels",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "zero_clemency": {
+      "name": "Zero Clemency",
+      "description": "The Judiciar has reviewed the files and found no grounds for anything except total elimination. This is not aggression — it is adjudicated certainty. The kill team carries out what the evidence demands with complete moral clarity.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "void",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Marines Malevolent",
+        "Minotaurs",
+        "Dark Angels",
+        "Angels of Vengeance",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "war_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "the_witness_stands": {
+      "name": "The Witness Stands",
+      "description": "The Judiciar ensures this beat's most significant actions are formally witnessed and entered into the record. Whatever the kill team achieves or fails to achieve, it is attested — the Judiciar's testimony cannot be disputed.",
+      "tags": [
+        "faith",
+        "intel",
+        "recovery",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Celestial Lions",
+        "Tome Keepers",
+        "Dark Angels",
+        "Blood Ravens",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
     }
   },
   "dread_angle": {
@@ -726,6 +6015,276 @@
         "suppression",
         "resilience"
       ]
+    },
+    "the_silence_before": {
+      "name": "The Silence Before",
+      "description": "The Dread Angel operates in total quiet before the strike. No contact, no communications, no announcement — and then complete violence from no direction the enemy could identify as the threat's origin. The kill is everything; the approach is nothing.",
+      "tags": [
+        "stealth",
+        "elimination",
+        "terminus",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Necropolis Hawks",
+        "Dark Angels",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "dead_world",
+        "hive_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.2
+    },
+    "the_angle_known": {
+      "name": "The Angle Known",
+      "description": "The Dread Angel scouts the target's position, identifies the approach that no defender is watching, and commits to it at the moment the enemy's attention is elsewhere. Intelligence-driven assassination — not speed, but placement.",
+      "tags": [
+        "intel",
+        "stealth",
+        "elimination",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "hive_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel",
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "the_target_alone": {
+      "name": "The Target Alone",
+      "description": "The Dread Angel isolates the primary kill from the protective structure around it. Draw the guards away, collapse their cohesion, create the window — and in that window, the kill. Clean, certain, and impossible to defend against.",
+      "tags": [
+        "stealth",
+        "elimination",
+        "intel",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Dark Angels",
+        "Raptors",
+        "Blood Ravens",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "pleasure_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "void_touched_hunt": {
+      "name": "Void-Touched Hunt",
+      "description": "The target is not entirely material. The Dread Angel adapts their approach for a quarry that exists partially in the warp — psyker, daemonhost, or entity that cannot be killed by standard means. The hunt is modified to address what the target actually is.",
+      "tags": [
+        "void",
+        "terminus",
+        "elimination",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raven Guard",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Tome Keepers"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "void",
+        "terminus"
+      ],
+      "weight": 1.0
+    },
+    "the_distance_closed": {
+      "name": "The Distance Closed",
+      "description": "The Dread Angel accepts that the target is defended and plans for the closing movement regardless. Not stealth — direct approach under fire, movement too fast and too controlled for the defenders to effectively engage. The distance closes; the target dies.",
+      "tags": [
+        "aggressive",
+        "elimination",
+        "terminus",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Raven Guard",
+        "Raptors",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "aggressive"
+      ],
+      "weight": 1.0
+    },
+    "the_faith_of_execution": {
+      "name": "The Faith of Execution",
+      "description": "The kill is a sacred act. The Dread Angel approaches the target as a rite — preparation, consecration, execution performed in the correct sequence for a correct result. Faith informs technique; the Emperor's will guides the blade.",
+      "tags": [
+        "faith",
+        "terminus",
+        "elimination",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Cowled Wardens",
+        "Salamanders",
+        "Dark Angels",
+        "Blood Angels"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "dead_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "witnessed_only_in_death": {
+      "name": "Witnessed Only in Death",
+      "description": "The Dread Angel ensures the kill team has no observable presence until the moment of the strike. Every approach angle screened, every signature suppressed, every contingency planned so that the first the enemy knows of the kill team is the last thing they know at all.",
+      "tags": [
+        "stealth",
+        "elimination",
+        "intel",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Cowled Wardens",
+        "Necropolis Hawks",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "frontier_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "the_blade_sufficient": {
+      "name": "The Blade Sufficient",
+      "description": "The Dread Angel strips back the kill team's doctrine to a single focused question: is the blade sufficient? Everything reduced to the minimum required to make the kill — no excess, no distraction, no consideration beyond the act and its immediate requirements.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "aggressive",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Dragonspears",
+        "Space Wolves",
+        "Blood Angels",
+        "Iron Hands",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "war_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_pattern_broken": {
+      "name": "The Pattern Broken",
+      "description": "The Dread Angel identifies the defensive routine around the target and acts in the gap between cycles — the moment the guards have just checked a position and won't check it again for a predictable interval. The window exists; the Dread Angel knows its length.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination",
+        "terminus"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Raven Guard",
+        "Mentors",
+        "Necropolis Hawks",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "intel"
+      ],
+      "weight": 1.0
+    },
+    "the_xenos_specifics": {
+      "name": "The Xenos Specifics",
+      "description": "The Dread Angel researches the specific physiological vulnerabilities of the target species. Where it can be killed, how it can be killed, what it cannot survive — the hunt is built around eliminating exactly what the enemy is rather than applying generic doctrine to a specific threat.",
+      "tags": [
+        "intel",
+        "terminus",
+        "elimination",
+        "void"
+      ],
+      "chapter_affinity": [
+        "Raptors",
+        "Mentors",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "feral_world",
+        "frontier_world"
+      ],
+      "suppress_if_previous": false,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
     }
   },
   "personal_focus": {
@@ -792,6 +6351,241 @@
         "recovery",
         "attrition"
       ]
+    },
+    "the_enemy_studied": {
+      "name": "The Enemy Studied",
+      "description": "Before deployment this cycle, dedicate personal study to the specific enemy configuration faced at the current node. Kill zone preference, response patterns, command signals — knowledge that translates directly into kills.",
+      "tags": [
+        "intel",
+        "terminus",
+        "void",
+        "elimination"
+      ],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Tome Keepers",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "frontier_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_armour_maintained": {
+      "name": "The Armour Maintained",
+      "description": "Perform the full armour rite cycle yourself rather than relying on Techmarine resources. Your ceramite is your responsibility and your investment — maximum integrity going into the cycle's operations.",
+      "tags": [
+        "tech",
+        "resilience",
+        "defensive",
+        "recovery"
+      ],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Lords",
+        "Crimson Fists",
+        "Minotaurs",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "forge_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [
+        "resilience"
+      ],
+      "weight": 1.0
+    },
+    "the_blade_honed": {
+      "name": "The Blade Honed",
+      "description": "Every weapon in your wargear brought to optimal condition by your own hand. Not maintenance — preparation with intent. The blade knows the work it is being prepared for.",
+      "tags": [
+        "aggressive",
+        "elimination",
+        "terminus",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Dragonspears",
+        "Blood Angels",
+        "Black Templars",
+        "Salamanders"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "witness_carried": {
+      "name": "Witness Carried",
+      "description": "You volunteer to carry the kill team's documentation obligation personally this cycle — every confirmed kill, every significant event, every brother lost. The tally is yours to keep and the record will be accurate.",
+      "tags": [
+        "intel",
+        "faith",
+        "recovery",
+        "resilience"
+      ],
+      "chapter_affinity": [
+        "Celestial Lions",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Salamanders",
+        "Mentors"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "agri_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_oath_specific": {
+      "name": "The Oath Specific",
+      "description": "You swear a personal oath tied to this cycle's specific objective — not general excellence, but a precise commitment with a concrete success condition. The oath creates accountability; accountability creates performance.",
+      "tags": [
+        "faith",
+        "terminus",
+        "resilience",
+        "aggressive"
+      ],
+      "chapter_affinity": [
+        "Black Templars",
+        "Space Wolves",
+        "Salamanders",
+        "Cowled Wardens",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [
+        "faith"
+      ],
+      "weight": 1.0
+    },
+    "fire_discipline_perfect": {
+      "name": "Fire Discipline Perfect",
+      "description": "You hold your own fire until the moment is certain — no wasted ammunition, no suppression that achieves nothing, no engagement without a kill. Your personal output this cycle is entirely composed of kills.",
+      "tags": [
+        "elimination",
+        "intel",
+        "terminus",
+        "suppression"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Mentors",
+        "Iron Hands",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "frontier_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [],
+      "weight": 1.0
+    },
+    "the_void_endured": {
+      "name": "The Void Endured",
+      "description": "Exposure to warp influence is acknowledged rather than suppressed. You do not fight what you have absorbed — you hold it, understand it, and ensure it serves the mission rather than compromising you. The void is your territory, not your enemy.",
+      "tags": [
+        "void",
+        "resilience",
+        "recovery",
+        "faith"
+      ],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Blood Ravens",
+        "Tome Keepers",
+        "Cowled Wardens",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [
+        "void"
+      ],
+      "weight": 1.0
+    },
+    "silence_as_doctrine": {
+      "name": "Silence as Doctrine",
+      "description": "You commit to maintaining absolute operational quiet this cycle — no unnecessary transmissions, no announced positions, no communications that do not directly serve the mission. Your personal signature in this operation is zero.",
+      "tags": [
+        "stealth",
+        "intel",
+        "elimination",
+        "defensive"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Cowled Wardens",
+        "Necropolis Hawks",
+        "Dark Angels"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "frontier_world",
+        "feral_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [
+        "stealth"
+      ],
+      "weight": 1.0
+    },
+    "the_kill_clean": {
+      "name": "The Kill Clean",
+      "description": "Your focus is singular: one primary target, engaged and eliminated with minimum time and maximum certainty. No secondary engagements distract from the kill. You are the blade for one specific purpose this cycle.",
+      "tags": [
+        "terminus",
+        "elimination",
+        "aggressive",
+        "stealth"
+      ],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Dark Angels",
+        "Raptors",
+        "Necropolis Hawks",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "feral_world",
+        "dead_world",
+        "fortress_world"
+      ],
+      "suppress_if_previous": true,
+      "requires_upstream_tags": [
+        "terminus"
+      ],
+      "weight": 1.0
     }
   },
   "_track_map": {
