@@ -685,7 +685,7 @@ def log_campaign_entry(
     co_note = f" ({co_count} co-runner{'s' if co_count != 1 else ''} also credited)" if co_count else ""
     return True, (
         f"Campaign log submitted{co_note}.\n"
-        f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Beat:** {beat or 'unknown'}"
+        f"**Mission:** {mission_name} | **Difficulty:** {difficulty_class} | **Cycle:** {beat or 'unknown'}"
         + (" | Terminus kill recorded." if terminus_killed else "")
     ), entry
 
@@ -3054,7 +3054,7 @@ async def _campaign_orders(interaction: discord.Interaction):
     campaign = state.get("campaign", {})
     phase = campaign.get("phase", "inactive")
     beat = campaign.get("beat")
-    beat_name = campaign.get("beat_name") or f"Beat {beat or '?'}"
+    beat_name = campaign.get("beat_name") or f"Cycle {beat or '?'}"
     tier = record.get("tier", "KT")
     ops_window = state.get("ops_window", {})
     strat_pool = state.get("strat_pool", {})
@@ -3101,6 +3101,11 @@ async def _campaign_orders(interaction: discord.Interaction):
         description=full_narr,
         color=0x4B0082,
     )
+    _orders_img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "campaign_orders.jpg")
+    _orders_file: Optional[discord.File] = None
+    if os.path.isfile(_orders_img_path):
+        _orders_file = discord.File(_orders_img_path, filename="campaign_orders.jpg")
+        embed.set_image(url="attachment://campaign_orders.jpg")
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
     embed.set_footer(text=f"{camp_name}  ·  {PHASE_DISPLAY.get(phase, phase)}  ·  {current_node or '—'}")
 
@@ -3215,10 +3220,10 @@ async def _campaign_orders(interaction: discord.Interaction):
                 view = _CascadeChoiceView(user_id, role_key, phase, options_override=wm_opts)
             else:
                 view = _CascadeChoiceView(user_id, role_key, phase)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.response.send_message(embed=embed, view=view, **({"file": _orders_file} if _orders_file else {}), ephemeral=True)
             return
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, **({"file": _orders_file} if _orders_file else {}), ephemeral=True)
 
 
 # --- /campaign-cascade ---
@@ -3239,7 +3244,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
     campaign = state.get("campaign", {})
     phase = campaign.get("phase", "inactive")
     beat = campaign.get("beat")
-    beat_name = campaign.get("beat_name") or f"Beat {beat or '?'}"
+    beat_name = campaign.get("beat_name") or f"Cycle {beat or '?'}"
 
     if phase not in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "ops"):
         await interaction.response.send_message(
