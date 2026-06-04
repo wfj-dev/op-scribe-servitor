@@ -14,7 +14,8 @@
     1430203472669835415,
     1499152772225040544,
     1509598835599610029,
-    1511441138165485798
+    1511441138165485798,
+    1459606044509606032
   ],
   "admin_user_ids": [
     281651485782310914
@@ -343,12 +344,13 @@
   },
   "debug": false,
   "cascade_deadline_hours": {
-    "cascade_WM": 0.5,
-    "cascade_HC": 0.5,
-    "cascade_Company": 0.5,
-    "cascade_KT": 0.5
+    "cascade_WM": 12,
+    "cascade_HC": 12,
+    "cascade_Company": 12,
+    "cascade_KT": 12,
+    "cascade_personal": 12
   },
-  "cascade_warning_minutes": 5,
+  "cascade_warning_minutes": 30,
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,
