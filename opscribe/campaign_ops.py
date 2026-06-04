@@ -3282,7 +3282,21 @@ def _select_cascade_options(
         return {k: v for k, v in pool.items() if not k.startswith("_")}
 
     final_scored.sort(key=lambda t: t[0], reverse=True)
-    top = final_scored[:max_options]
+
+    # Dynamic count: show 2-max_options based on score gaps.
+    # A gap of >= 1.5 between consecutive options indicates a natural cut point —
+    # the options below it are significantly less relevant than those above.
+    # Always show at least 2; stop early when a cliff appears.
+    _GAP_THRESHOLD = 1.5
+    count = min(2, len(final_scored))  # floor
+    for i in range(2, min(max_options, len(final_scored))):
+        if final_scored[i - 1][0] - final_scored[i][0] >= _GAP_THRESHOLD:
+            break  # significant drop — cut here
+        count = i + 1
+    else:
+        count = min(max_options, len(final_scored))
+
+    top = final_scored[:count]
     return {k: v for _, k, v in top}
 
 
@@ -3818,7 +3832,10 @@ async def _campaign_orders(interaction: discord.Interaction):
             # pre-compute filtered options for non-WM phases (used in both branches)
             filtered_opts: Optional[dict] = None
             if phase != "cascade_WM":
-                filtered_opts = _select_cascade_options(state, record, role_key)
+                # Rank-based ceiling for battle-line: Oathsworn≤4, Veteran≤3, Brother≤2
+                _bl_max = {"Oathsworn": 4, "Watch Veteran": 3, "Watch Brother": 2}
+                _max_opts = _bl_max.get(record.get("role", ""), 4) if phase == "cascade_personal" and record else 4
+                filtered_opts = _select_cascade_options(state, record, role_key, max_options=_max_opts)
             if existing_sub and existing_sub.get("phase") == phase:
                 choice_name = existing_sub.get("choice_name", existing_sub.get("choice_key", "?"))
                 if phase == "cascade_WM":
