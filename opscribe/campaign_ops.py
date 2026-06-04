@@ -4856,8 +4856,8 @@ async def _campaign_init(
         desc = (
             f"The Jericho Watch deploys to **{node_id}**. "
             f"The {length_label.lower()} campaign begins.\n\n"
-            f"No Watch Master stands at the helm. The Watch holds its ground. "
-            f"**High Command** — the cascade is yours. Issue your doctrine orders."
+            f"The Watch Master is occupied with other duties. The Watch holds its position. "
+            f"**High Command** — the cascade falls to you. Issue your doctrine orders."
         )
 
     embed = discord.Embed(
