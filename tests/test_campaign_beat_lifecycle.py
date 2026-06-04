@@ -533,10 +533,10 @@ def test_sweep_cascade_kt_deadline_expired_resolves_beat(state_file):
     state = _cascade_state("cascade_KT", deadline_offset_seconds=-1)
     state["campaign"]["beat"] = 1
     result = _run_sweep(c, state)
-    # cascade_KT expired → ops window opens for this beat
+    # cascade_KT expired → ops window opens and strat pool is locked immediately
     assert result["campaign"]["phase"] == "ops"
-    assert result["campaign"]["beat"] == 1  # beat unchanged; resolve happens when ops closes
-    assert result["strat_pool"]["locked"] is False  # strat pool not locked until beat resolves
+    assert result["campaign"]["beat"] == 1  # beat unchanged; beat advances when ops closes
+    assert result["strat_pool"]["locked"] is True  # strat pool locked when cascade resolves
 
 
 def test_sweep_cascade_kt_deadline_not_expired_stays_kt(state_file):

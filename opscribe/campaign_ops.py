@@ -2000,6 +2000,50 @@ def _build_conflict_free_pool(
     return pool
 
 
+def _lock_strat_pool(state: dict) -> None:
+    """Build and lock the strat pool from current cascade submissions.
+
+    Called when cascade_KT resolves and ops opens, so /campaign-mandate is
+    available immediately when the ops window begins. Also called from
+    _resolve_beat_and_open_next (which archives and advances the beat) to
+    avoid rebuilding if already locked.
+    """
+    if state.get("strat_pool", {}).get("locked"):
+        return  # already locked (e.g. called again at ops-close)
+
+    _ensure_refs_loaded()
+    doctrine_aggregate = _aggregate_cascade_doctrine(state)
+    scored = score_strats_against_aggregate(doctrine_aggregate)
+    pool = _build_conflict_free_pool(scored, pool_size=_STRAT_POOL_SIZE)
+
+    submissions = state.get("cascade", {}).get("submissions", {})
+    hc_roles = _CASCADE_PHASE_ROLES["cascade_HC"]
+    co_roles = _CASCADE_PHASE_ROLES["cascade_Company"]
+    kt_roles_set = _CASCADE_PHASE_ROLES["cascade_KT"]
+    hc_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in hc_roles})
+    co_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in co_roles})
+    kt_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in kt_roles_set})
+    tier_counts = {
+        "theatre": _tier_mandate_count(hc_distinct, "HC"),
+        "company": _tier_mandate_count(co_distinct, "Company"),
+        "kt": _tier_mandate_count(kt_distinct, "KT"),
+    }
+
+    state_ref = refresh_prestige_cache(state)
+    mandate_result = derive_strat_mandate(doctrine_aggregate, pool, state_ref, tier_counts)
+
+    state["strat_pool"] = {
+        "locked": True,
+        "pool": pool,
+        "theatre_mandate": mandate_result.get("theatre_mandate", []),
+        "company_mandates": mandate_result.get("company_mandates", {}),
+        "kt_mandates": mandate_result.get("kt_mandates", {}),
+        "tier_counts": tier_counts,
+        "derived_at": _iso_now(),
+        "doctrine_aggregate": doctrine_aggregate,
+    }
+
+
 def _resolve_beat_and_open_next(
     state: dict, ops_closes_at: Optional[str] = None
 ) -> dict:
@@ -2016,45 +2060,17 @@ def _resolve_beat_and_open_next(
     new_beat = old_beat + 1
     total_beats = campaign.get("total_beats") or 3
 
-    # 1. Aggregate doctrine from all cascade submissions across all tiers
-    doctrine_aggregate = _aggregate_cascade_doctrine(state)
-
-    # 2. Score strats and build conflict-free pool
-    scored = score_strats_against_aggregate(doctrine_aggregate)
-    pool = _build_conflict_free_pool(scored, pool_size=_STRAT_POOL_SIZE)
-
-    # 3. Compute per-tier mandate counts from cascade participation
-    submissions = state.get("cascade", {}).get("submissions", {})
-    hc_roles = _CASCADE_PHASE_ROLES["cascade_HC"]
-    co_roles = _CASCADE_PHASE_ROLES["cascade_Company"]
-    kt_roles_set = _CASCADE_PHASE_ROLES["cascade_KT"]
-    hc_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in hc_roles})
-    co_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in co_roles})
-    kt_distinct = len({s["role_key"] for s in submissions.values() if s.get("role_key") in kt_roles_set})
-    tier_counts = {
-        "theatre": _tier_mandate_count(hc_distinct, "HC"),
-        "company": _tier_mandate_count(co_distinct, "Company"),
-        "kt": _tier_mandate_count(kt_distinct, "KT"),
+    # 1–5. Build and lock the strat pool (no-op if already locked from cascade_KT→ops)
+    _lock_strat_pool(state)
+    strat_pool = state["strat_pool"]
+    doctrine_aggregate = strat_pool.get("doctrine_aggregate", {})
+    pool = strat_pool.get("pool", [])
+    mandate_result = {
+        "theatre_mandate": strat_pool.get("theatre_mandate", []),
+        "company_mandates": strat_pool.get("company_mandates", {}),
+        "kt_mandates": strat_pool.get("kt_mandates", {}),
     }
-
-    # 4. Derive mandates — refresh prestige first so company/KT records are current
-    state = refresh_prestige_cache(state)
-    mandate_result = derive_strat_mandate(doctrine_aggregate, pool, state, tier_counts)
-
-    # 5. Update strat pool
-    beat_doctrine_tags = sorted(
-        doctrine_aggregate.keys(), key=lambda k: -doctrine_aggregate[k]
-    )
-    state["strat_pool"] = {
-        "locked": True,
-        "pool": pool,
-        "theatre_mandate": mandate_result.get("theatre_mandate", []),
-        "company_mandates": mandate_result.get("company_mandates", {}),
-        "kt_mandates": mandate_result.get("kt_mandates", {}),
-        "tier_counts": tier_counts,
-        "derived_at": _iso_now(),
-        "doctrine_aggregate": doctrine_aggregate,
-    }
+    tier_counts = strat_pool.get("tier_counts", {})
 
     # 6. Archive the completed beat
     campaign.setdefault("beat_history", []).append({
@@ -2068,6 +2084,7 @@ def _resolve_beat_and_open_next(
     })
 
     # 7. Advance beat counter and generate new beat name
+    beat_doctrine_tags = sorted(doctrine_aggregate.keys(), key=lambda k: -doctrine_aggregate[k])
     campaign["beat"] = new_beat
     new_beat_name = generate_beat_name(new_beat, beat_doctrine_tags[:3], seed=new_beat)
     campaign["beat_name"] = new_beat_name
@@ -2323,6 +2340,7 @@ async def sweep_campaign_beat_clock() -> None:
     elif phase == "cascade_KT":
         deadline = _parse_iso(state.get("cascade", {}).get("cascade_KT_deadline"))
         if deadline and now >= deadline:
+            _lock_strat_pool(state)
             duration_days = state["campaign"].get("beat_duration_days") or 7
             ops_close = _utcnow() + timedelta(days=duration_days)
             state["ops_window"] = {
@@ -2651,6 +2669,7 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         )
     elif phase == "cascade_KT":
         # All KT submitted — open ops immediately
+        _lock_strat_pool(state)
         duration_days = state["campaign"].get("beat_duration_days") or 7
         ops_close = _utcnow() + timedelta(days=duration_days)
         state["ops_window"] = {
