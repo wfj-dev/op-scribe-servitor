@@ -118,6 +118,22 @@ class TestGenerateBeatScenario:
         assert isinstance(sc["dominant_tags"], list)
         assert len(sc["dominant_tags"]) == 2
 
+    def test_slot_field_in_output(self, campaign_state_file):
+        c = campaign_state_file
+        for slot in range(3):
+            sc = c.generate_beat_scenario("Aurum", "agri_world", None, 0, beat_seed=42, slot=slot)
+            assert sc["slot"] == slot
+
+    def test_slots_produce_distinct_scenarios(self, campaign_state_file):
+        c = campaign_state_file
+        scenarios = [
+            c.generate_beat_scenario("Aurum", "agri_world", None, 0, beat_seed=42, slot=s)
+            for s in range(3)
+        ]
+        tag_pairs = [tuple(sc["dominant_tags"]) for sc in scenarios]
+        # At least two of the three scenarios should have different tag pairs
+        assert len(set(tag_pairs)) >= 2, f"All three slots produced the same tags: {tag_pairs}"
+
     def test_region_modifier_pushes_secondary_tag(self, campaign_state_file):
         c = campaign_state_file
         # orpheus_salient pushes resilience
@@ -131,12 +147,13 @@ class TestGenerateBeatScenario:
     def test_pressure_0_no_tag_push(self, campaign_state_file):
         c = campaign_state_file
         sc = _gen(c, node_type="war_world", pressure=0)
-        # war_world base tags should remain unchanged at pressure 0
+        # war_world slot-0 vector: [aggressive, terminus] — pressure 0 = no push
+        # primary tag should stay as the vector's first tag
         c._ensure_refs_loaded()
-        base = c._SCENARIO_GEN.get("node_type_affinity", {}).get("war_world", {}).get("dominant_tags", [])
-        # At pressure 0, no push — first tag should be the base primary
-        if base:
-            assert sc["dominant_tags"][0] == base[0]
+        vectors = c._SCENARIO_GEN.get("node_type_affinity", {}).get("war_world", {}).get("threat_vectors", [])
+        if vectors:
+            expected_primary = vectors[0]["tags"][0]
+            assert sc["dominant_tags"][0] == expected_primary
 
     def test_pressure_2_pushes_suppression_or_terminus_to_secondary(self, campaign_state_file):
         c = campaign_state_file

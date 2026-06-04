@@ -20,21 +20,133 @@
   },
 
   "node_type_affinity": {
-    "_note": "Base doctrine tag pair for each node type. These are the dominant_tags before pressure and region modifiers. Both tags are always included; the first is the primary tag (higher cascade weight contribution), the second is secondary.",
-    "war_world":      { "base_tags": ["aggressive", "suppression"],  "terminus_affinity": "high",   "narrative_tone": "attrition, contested ground, no respite" },
-    "dead_world":     { "base_tags": ["elimination", "stealth"],      "terminus_affinity": "medium", "narrative_tone": "silence, hidden threats, ruins, isolation" },
-    "shrine_world":   { "base_tags": ["faith", "defensive"],          "terminus_affinity": "low",    "narrative_tone": "sacred ground under threat, pilgrim roads gone quiet, the holy desecrated" },
-    "fortress_world": { "base_tags": ["defensive", "fortify"],        "terminus_affinity": "low",    "narrative_tone": "walls holding, garrison bleeding, the line must not move" },
-    "hive_world":     { "base_tags": ["suppression", "resilience"],   "terminus_affinity": "medium", "narrative_tone": "endless corridors, population as pressure, infiltration, hab-block warfare" },
-    "agri_world":     { "base_tags": ["aggressive", "recovery"],      "terminus_affinity": "medium", "narrative_tone": "harvest plains, supply lines threatened, what feeds the sector is at risk" },
-    "forge_world":    { "base_tags": ["tech", "fortify"],             "terminus_affinity": "medium", "narrative_tone": "machine spirits hostile, manufactoria compromised, iron silence" },
-    "feral_world":    { "base_tags": ["stealth", "elimination"],      "terminus_affinity": "high",   "narrative_tone": "hunt in darkness, primitive and dangerous, the apex is here" },
-    "mining_world":   { "base_tags": ["recovery", "suppression"],     "terminus_affinity": "medium", "narrative_tone": "deep tunnels, collapsing infrastructure, asset denial, enemy entrenched" },
-    "frontier_world": { "base_tags": ["intel", "aggressive"],         "terminus_affinity": "low",    "narrative_tone": "first contact, unknown threat profile, no established intelligence" },
-    "pleasure_world": { "base_tags": ["void", "intel"],               "terminus_affinity": "medium", "narrative_tone": "corruption runs deep, the luxuries are a mask for something wrong" },
-    "penal_world":    { "base_tags": ["suppression", "resilience"],   "terminus_affinity": "low",    "narrative_tone": "controlled chaos, populations weaponised, containment failing" },
-    "watch_station":  { "base_tags": ["defensive", "intel"],          "terminus_affinity": "low",    "narrative_tone": "our own ground, but compromised — something got inside" },
-    "special":        { "base_tags": ["void", "terminus"],            "terminus_affinity": "known",  "narrative_tone": "beyond classification, the Reach's wounds, warp-adjacent" }
+    "_note": "Three threat vectors per node type. Each vector is a distinct doctrinal angle the WM can commit to. The bot generates all three per node at beat open; the WM picks one, locking that vector's tags as the beat's dominant_tags. base_tags is kept for backward-compat fallback (= vector A tags).",
+    "war_world": {
+      "base_tags": ["aggressive", "suppression"],
+      "terminus_affinity": "high",
+      "threat_vectors": [
+        { "tags": ["aggressive", "terminus"],    "terminus_affinity": "high",   "narrative_tone": "full assault — a named threat anchors the line, kill it or the front breaks" },
+        { "tags": ["suppression", "resilience"], "terminus_affinity": "medium", "narrative_tone": "war of attrition — grind and endure, no ground given, no respite offered" },
+        { "tags": ["aggressive", "elimination"], "terminus_affinity": "medium", "narrative_tone": "decapitation strike — the enemy command is exposed, one decisive blow ends this" }
+      ]
+    },
+    "dead_world": {
+      "base_tags": ["elimination", "stealth"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["stealth", "terminus"],    "terminus_affinity": "high",   "narrative_tone": "an apex lurks in the ruins — covert approach, hunt before you are hunted" },
+        { "tags": ["elimination", "void"],    "terminus_affinity": "medium", "narrative_tone": "warp-taint seeps through the dead rock — find the ritual site and destroy it" },
+        { "tags": ["elimination", "intel"],   "terminus_affinity": "low",    "narrative_tone": "the ruins hold secrets and survivors — clear them, extract what matters" }
+      ]
+    },
+    "shrine_world": {
+      "base_tags": ["faith", "defensive"],
+      "terminus_affinity": "low",
+      "threat_vectors": [
+        { "tags": ["faith", "defensive"],    "terminus_affinity": "low",    "narrative_tone": "sacred ground under siege — hold the reliquary, let nothing profane pass the threshold" },
+        { "tags": ["faith", "resilience"],   "terminus_affinity": "low",    "narrative_tone": "the pilgrims are still here — sustain and endure, evacuate the faithful under fire" },
+        { "tags": ["faith", "terminus"],     "terminus_affinity": "medium", "narrative_tone": "a named beast has desecrated the shrine — the Emperor's sentence: execute it here" }
+      ]
+    },
+    "fortress_world": {
+      "base_tags": ["defensive", "fortify"],
+      "terminus_affinity": "low",
+      "threat_vectors": [
+        { "tags": ["defensive", "fortify"],    "terminus_affinity": "low",    "narrative_tone": "the walls hold but the garrison bleeds — reinforce, seal the breach, let nothing in" },
+        { "tags": ["defensive", "resilience"], "terminus_affinity": "low",    "narrative_tone": "relief operation — the defenders cannot last; the Watch relieves pressure and sustains them" },
+        { "tags": ["fortify", "terminus"],     "terminus_affinity": "medium", "narrative_tone": "something breached the inner keep — hunt it through corridors it was never meant to enter" }
+      ]
+    },
+    "hive_world": {
+      "base_tags": ["suppression", "resilience"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["suppression", "resilience"], "terminus_affinity": "medium", "narrative_tone": "endless corridors, endless pressure — break the tide or be ground down by it" },
+        { "tags": ["suppression", "elimination"],"terminus_affinity": "medium", "narrative_tone": "the command node is somewhere in the hive — cut the head, the body collapses" },
+        { "tags": ["resilience", "intel"],       "terminus_affinity": "low",    "narrative_tone": "the infestation is spreading in ways that make no sense — map it before you fight it" }
+      ]
+    },
+    "agri_world": {
+      "base_tags": ["aggressive", "recovery"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["aggressive", "recovery"],  "terminus_affinity": "low",    "narrative_tone": "reclaim the harvest zones — push the enemy back, extract what the sector needs to survive" },
+        { "tags": ["recovery", "intel"],       "terminus_affinity": "low",    "narrative_tone": "asset denial — the enemy is burning what it cannot hold, find and secure what remains" },
+        { "tags": ["aggressive", "terminus"],  "terminus_affinity": "high",   "narrative_tone": "an apex predator has claimed the plains as territory — kill it before it breeds here" }
+      ]
+    },
+    "forge_world": {
+      "base_tags": ["tech", "fortify"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["tech", "fortify"],      "terminus_affinity": "low",    "narrative_tone": "the machine spirits are hostile — secure the manufactoria before the iron silence becomes permanent" },
+        { "tags": ["tech", "elimination"],  "terminus_affinity": "medium", "narrative_tone": "heretek presence confirmed — the corruption spreads through the forge network, find and destroy it" },
+        { "tags": ["tech", "recovery"],     "terminus_affinity": "medium", "narrative_tone": "STC fragments and archeotech intact but under threat — extract under fire before the forges are lost" }
+      ]
+    },
+    "feral_world": {
+      "base_tags": ["stealth", "elimination"],
+      "terminus_affinity": "high",
+      "threat_vectors": [
+        { "tags": ["stealth", "terminus"],    "terminus_affinity": "high",   "narrative_tone": "the apex hunts these jungles — move covertly, find it before it finds you" },
+        { "tags": ["elimination", "aggressive"],"terminus_affinity": "medium","narrative_tone": "the swarms are massing in the open — destroy them before they can coordinate" },
+        { "tags": ["stealth", "resilience"],  "terminus_affinity": "medium", "narrative_tone": "extended insertion — survive in enemy terrain, observe, and return with intelligence" }
+      ]
+    },
+    "mining_world": {
+      "base_tags": ["recovery", "suppression"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["recovery", "suppression"], "terminus_affinity": "low",    "narrative_tone": "the deep tunnels are contested — hold extraction routes while salvage teams work" },
+        { "tags": ["suppression", "fortify"],  "terminus_affinity": "medium", "narrative_tone": "the enemy has entrenched in the lower shafts — deny, suppress, collapse their position" },
+        { "tags": ["recovery", "intel"],       "terminus_affinity": "low",    "narrative_tone": "the seismic data doesn't match the tactical picture — find what's buried here and assess" }
+      ]
+    },
+    "frontier_world": {
+      "base_tags": ["intel", "aggressive"],
+      "terminus_affinity": "low",
+      "threat_vectors": [
+        { "tags": ["intel", "aggressive"],  "terminus_affinity": "low",    "narrative_tone": "first contact — probe forward, establish threat profile, engage on contact" },
+        { "tags": ["intel", "stealth"],     "terminus_affinity": "low",    "narrative_tone": "unknown profile — observe without committing, build the picture before the Watch moves" },
+        { "tags": ["aggressive", "terminus"],"terminus_affinity": "medium","narrative_tone": "an apex was sighted on approach — it does not wait; neither does the Watch" }
+      ]
+    },
+    "pleasure_world": {
+      "base_tags": ["void", "intel"],
+      "terminus_affinity": "medium",
+      "threat_vectors": [
+        { "tags": ["void", "intel"],        "terminus_affinity": "medium", "narrative_tone": "corruption runs deep through the estates — map the network of taint before the purge begins" },
+        { "tags": ["void", "terminus"],     "terminus_affinity": "high",   "narrative_tone": "a warp entity holds court in the spires — something wearing a face is being worshipped here" },
+        { "tags": ["intel", "elimination"], "terminus_affinity": "medium", "narrative_tone": "a network of corrupted operatives extends across the world — cut every thread, trust nothing" }
+      ]
+    },
+    "penal_world": {
+      "base_tags": ["suppression", "resilience"],
+      "terminus_affinity": "low",
+      "threat_vectors": [
+        { "tags": ["suppression", "resilience"], "terminus_affinity": "low",    "narrative_tone": "the population has been weaponised — contain the mass and endure what they throw" },
+        { "tags": ["suppression", "elimination"],"terminus_affinity": "low",    "narrative_tone": "the uprising has a command chain — decapitate it before the world becomes a warzone" },
+        { "tags": ["resilience", "recovery"],    "terminus_affinity": "low",    "narrative_tone": "Watch assets are trapped inside the prison complex — reach them and get them out alive" }
+      ]
+    },
+    "watch_station": {
+      "base_tags": ["defensive", "intel"],
+      "terminus_affinity": "low",
+      "threat_vectors": [
+        { "tags": ["defensive", "intel"],    "terminus_affinity": "low",    "narrative_tone": "something got inside — identify the breach, repel the incursion, restore the station" },
+        { "tags": ["defensive", "void"],     "terminus_affinity": "medium", "narrative_tone": "warp-adjacent compromise — the station's seals are failing, cleanse before it spreads" },
+        { "tags": ["intel", "recovery"],     "terminus_affinity": "low",    "narrative_tone": "the archive is intact but under threat — extract the records before the station falls" }
+      ]
+    },
+    "special": {
+      "base_tags": ["void", "terminus"],
+      "terminus_affinity": "known",
+      "threat_vectors": [
+        { "tags": ["void", "terminus"],     "terminus_affinity": "known",  "narrative_tone": "the anomaly has birthed something — kill it before it establishes itself in reality" },
+        { "tags": ["void", "elimination"],  "terminus_affinity": "high",   "narrative_tone": "reality fractures are spreading — close them by force, the old way, the only way" },
+        { "tags": ["terminus", "aggressive"],"terminus_affinity": "known", "narrative_tone": "a warp entity has fully manifested — overwhelming force, immediate assault, no hesitation" }
+      ]
+    }
   },
 
   "region_modifier": {
