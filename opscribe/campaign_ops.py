@@ -1533,11 +1533,6 @@ def _derive_terminus_directive(state: dict) -> dict:
     # Eligible terminus targets: roaming + fixed boss missions in eligible pool
     ops_mandate = state.get("strat_pool", {}).get("ops_mandate", {})
     eligible_missions = ops_mandate.get("eligible_missions", [])
-    boss_targets: List[str] = [
-        m["terminus_boss"] for m in eligible_missions if m.get("terminus_boss")
-    ]
-    roaming = [t["name"] for t in ops_ref.get("roaming_terminus", [])]
-    # Only include roaming if node has tyranid/chaos-appropriate missions
     eligible_ids = ops_mandate.get("eligible_mission_ids", [])
     all_ops = {op["id"]: op for op in ops_ref.get("operations", [])}
     has_tyranid = any(
@@ -1548,13 +1543,18 @@ def _derive_terminus_directive(state: dict) -> dict:
         "mixed" in (all_ops.get(mid, {}).get("faction_effective", "") or "")
         for mid in eligible_ids
     )
-    flagged: List[str] = list(boss_targets)
+
+    # flagged_targets: list of dicts with name, source_op, type (fixed/roaming)
+    flagged: List[dict] = []
+    for m in eligible_missions:
+        if m.get("terminus_boss"):
+            flagged.append({"name": m["terminus_boss"], "source_op": m["name"], "type": "fixed"})
     for t in ops_ref.get("roaming_terminus", []):
         faction = t.get("faction", "")
         if faction == "tyranid" and (has_tyranid or has_mixed):
-            flagged.append(t["name"])
+            flagged.append({"name": t["name"], "source_op": None, "type": "roaming"})
         elif faction == "chaos" and has_mixed:
-            flagged.append(t["name"])
+            flagged.append({"name": t["name"], "source_op": None, "type": "roaming"})
 
     return {
         "huntmaster_active": huntmaster_active,
@@ -4084,10 +4084,6 @@ async def _campaign_mandate(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
     enlistment = state.get("enlistment", {})
-    record = enlistment.get(user_id)
-
-    company_id = record.get("company_id") if record else None
-    kt_sgt = record.get("kt_sgt_id") if record else None
 
     _strat_descs: Optional[dict] = None
 
@@ -4120,12 +4116,45 @@ async def _campaign_mandate(interaction: discord.Interaction):
         return "\n".join(lines)
 
     theatre_display = _fmt_strats(strat_pool.get("theatre_mandate"))
-    co_display = _fmt_strats(strat_pool.get("company_mandates", {}).get(company_id)) if company_id else "N/A"
-    kt_display = _fmt_strats(strat_pool.get("kt_mandates", {}).get(kt_sgt)) if kt_sgt else "N/A"
+
+    # All company mandates, each labelled by display_name
+    company_mandates_map = strat_pool.get("company_mandates", {})
+    companies_state = state.get("companies", {})
+    if company_mandates_map:
+        co_lines = []
+        for co_id, strats in sorted(company_mandates_map.items()):
+            co_name = companies_state.get(co_id, {}).get("display_name") or co_id.capitalize()
+            strat_text = ", ".join(f"**{s}**" for s in strats) if strats else "None"
+            co_lines.append(f"*{co_name}*: {strat_text}")
+        all_co_display = "\n".join(co_lines)
+    else:
+        all_co_display = "No company mandates derived."
+
+    # All KT mandates, each labelled by KT display_name, grouped under company
+    kt_mandates_map = strat_pool.get("kt_mandates", {})
+    kill_teams_state = state.get("kill_teams", {})
+    if kt_mandates_map:
+        # Group KTs by company_id for display
+        by_company: Dict[str, List[str]] = {}
+        for sgt_id, strats in kt_mandates_map.items():
+            kt_info = kill_teams_state.get(sgt_id, {})
+            kt_name = kt_info.get("display_name") or f"KT ({sgt_id})"
+            co = kt_info.get("company_id") or "unattached"
+            co_label = companies_state.get(co, {}).get("display_name") or co.capitalize()
+            strat_text = ", ".join(f"**{s}**" for s in strats) if strats else "None"
+            by_company.setdefault(co_label, []).append(f"*{kt_name}*: {strat_text}")
+        kt_lines = []
+        for co_label in sorted(by_company):
+            kt_lines.append(f"__*{co_label}*__")
+            kt_lines.extend(f"\u00a0\u00a0{line}" for line in by_company[co_label])
+        all_kt_display = "\n".join(kt_lines)
+    else:
+        all_kt_display = "No kill team mandates derived."
+
     total_mandates = (
         len(strat_pool.get("theatre_mandate") or []) +
-        len(strat_pool.get("company_mandates", {}).get(company_id) or []) +
-        len(strat_pool.get("kt_mandates", {}).get(kt_sgt) or [])
+        sum(len(v) for v in company_mandates_map.values()) +
+        sum(len(v) for v in kt_mandates_map.values())
     )
 
     # Ops mandate
@@ -4133,10 +4162,12 @@ async def _campaign_mandate(interaction: discord.Interaction):
     eligible_missions = ops_mandate.get("eligible_missions", [])
     committed_node = ops_mandate.get("committed_node") or campaign.get("current_node") or "Unknown"
     if eligible_missions:
-        ops_lines = [
-            f"`{m['name']}`" + (f"  ★ {m['terminus_boss']}" if m.get("terminus_boss") else "")
-            for m in eligible_missions
-        ]
+        ops_lines = []
+        for m in eligible_missions:
+            line = f"`{m['name']}`"
+            if m.get("terminus_boss"):
+                line += f"  ★ *{m['terminus_boss']}*"
+            ops_lines.append(line)
         ops_display = "\n".join(ops_lines)
     else:
         ops_display = "All missions eligible (no node committed)"
@@ -4147,11 +4178,19 @@ async def _campaign_mandate(interaction: discord.Interaction):
     flagged_targets = terminus_directive.get("flagged_targets", [])
     callers = terminus_directive.get("callers", [])
     if huntmaster_active:
-        terminus_display = (
-            f"**Huntmaster active** — prestige terminus kills enabled.\n"
-            + (f"Targets: {', '.join(f'`{t}`' for t in flagged_targets)}\n" if flagged_targets else "")
-            + (f"Callers: {', '.join(callers)}" if callers else "No engagement callers enlisted.")
-        )
+        target_lines = []
+        for t in flagged_targets:
+            if isinstance(t, dict):
+                if t.get("source_op"):
+                    target_lines.append(f"`{t['name']}` *({t['source_op']})*")
+                else:
+                    target_lines.append(f"`{t['name']}` *(roaming)*")
+            else:
+                target_lines.append(f"`{t}`")
+        terminus_display = "**Huntmaster active** — prestige terminus kills enabled."
+        if target_lines:
+            terminus_display += "\n" + "  ".join(target_lines)
+        terminus_display += "\n" + (f"Callers: {', '.join(callers)}" if callers else "No engagement callers enlisted.")
     else:
         terminus_display = "Huntmaster not enlisted — no prestige terminus kills this cycle."
 
@@ -4165,8 +4204,8 @@ async def _campaign_mandate(interaction: discord.Interaction):
     )
     embed.add_field(name="▸ Operations", value=ops_display, inline=False)
     embed.add_field(name="▸ Theatre Stratagem", value=theatre_display, inline=False)
-    embed.add_field(name="▸ Company Stratagem", value=co_display, inline=True)
-    embed.add_field(name="▸ Kill Team Stratagem", value=kt_display, inline=True)
+    embed.add_field(name="▸ Company Stratagems", value=all_co_display, inline=False)
+    embed.add_field(name="▸ Kill Team Stratagems", value=all_kt_display, inline=False)
     embed.add_field(name="▸ Terminus Directive", value=terminus_display, inline=False)
     embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
