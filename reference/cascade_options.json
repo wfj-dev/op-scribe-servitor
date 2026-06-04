@@ -1769,8 +1769,18 @@
         "suppression",
         "intel"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Crimson Fists",
+        "Iron Hounds",
+        "Space Wolves",
+        "Minotaurs",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "war_world",
+        "fortress_world",
+        "feral_world"
+      ],
       "weight": 1.0
     },
     "duty_unto_death": {
@@ -2432,8 +2442,18 @@
         "resilience",
         "faith"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Salamanders",
+        "Iron Ravens",
+        "Dragonspears",
+        "Cowled Wardens"
+      ],
+      "node_affinity": [
+        "forge_world",
+        "fortress_world",
+        "watch_station"
+      ],
       "weight": 1.0
     },
     "field_strip_and_repair": {
@@ -2444,8 +2464,18 @@
         "resilience",
         "defensive"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Lords",
+        "Mentors",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "war_world",
+        "frontier_world",
+        "mining_world"
+      ],
       "weight": 1.0
     },
     "scavenge_and_salvage": {
@@ -2456,8 +2486,18 @@
         "recovery",
         "intel"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Raptors",
+        "Tome Keepers",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "frontier_world",
+        "agri_world"
+      ],
       "weight": 1.0
     },
     "machine_spirit_alignment": {
@@ -3096,8 +3136,18 @@
         "resilience",
         "faith"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Blood Angels",
+        "Flesh Tearers",
+        "Space Wolves",
+        "Salamanders",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
       "weight": 1.0
     },
     "combat_stimms": {
@@ -3108,8 +3158,18 @@
         "resilience",
         "terminus"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Blood Angels",
+        "Minotaurs",
+        "Marines Malevolent",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "war_world",
+        "dead_world",
+        "hive_world"
+      ],
       "weight": 1.0
     },
     "purge_the_corruption": {
@@ -3121,8 +3181,18 @@
         "resilience",
         "faith"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Cowled Wardens",
+        "Black Templars",
+        "Dark Angels",
+        "Dragonspears",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "shrine_world",
+        "watch_station"
+      ],
       "weight": 1.0
     },
     "combat_extraction": {
@@ -3757,8 +3827,18 @@
         "defensive",
         "fortify"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Dragonspears",
+        "Cowled Wardens",
+        "Angels of Vengeance"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "war_world"
+      ],
       "weight": 1.0
     },
     "litany_of_wrath": {
@@ -3770,8 +3850,18 @@
         "terminus",
         "suppression"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Blood Angels",
+        "Black Templars",
+        "Bleeding Hearts",
+        "Marines Malevolent"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
       "weight": 1.0
     },
     "rites_of_witness": {
@@ -3783,8 +3873,18 @@
         "intel",
         "resilience"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Tome Keepers",
+        "Blood Ravens",
+        "Cowled Wardens",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "watch_station",
+        "agri_world"
+      ],
       "weight": 1.0
     },
     "the_rite_of_battle": {
@@ -4773,8 +4873,18 @@
         "suppression",
         "resilience"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Cowled Wardens",
+        "Dark Angels",
+        "Dragonspears",
+        "Iron Ravens",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "shrine_world"
+      ],
       "weight": 1.0
     },
     "the_long_dark": {
@@ -4786,8 +4896,18 @@
         "stealth",
         "defensive"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Cowled Wardens",
+        "Dark Angels",
+        "Necropolis Hawks"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "frontier_world",
+        "watch_station"
+      ],
       "weight": 1.0
     },
     "pierce_the_veil": {
@@ -4799,8 +4919,18 @@
         "terminus",
         "elimination"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Cowled Wardens",
+        "Blood Ravens",
+        "Dragonspears",
+        "Dark Angels",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "hive_world"
+      ],
       "weight": 1.0
     },
     "the_sight_maintained": {
@@ -5435,8 +5565,18 @@
         "void",
         "suppression"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Raptors",
+        "Raven Guard",
+        "Necropolis Hawks",
+        "Blood Ravens"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "fortress_world",
+        "watch_station"
+      ],
       "weight": 1.0
     },
     "close_the_gates": {
@@ -5448,8 +5588,18 @@
         "fortify",
         "suppression"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Dark Angels",
+        "Angels of Defiance",
+        "Cowled Wardens",
+        "Iron Ravens",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "watch_station",
+        "shrine_world"
+      ],
       "weight": 1.0
     },
     "the_shadow_war": {
@@ -5461,8 +5611,18 @@
         "aggressive",
         "recovery"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Raven Guard",
+        "Raptors",
+        "Dark Angels",
+        "Necropolis Hawks",
+        "Celestial Lions"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "frontier_world",
+        "dead_world"
+      ],
       "weight": 1.0
     },
     "the_record_unsealed": {
@@ -5741,8 +5901,18 @@
         "void",
         "terminus"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Angels of Vengeance",
+        "Dark Angels",
+        "Angels of Defiance",
+        "Cowled Wardens",
+        "Iron Ravens"
+      ],
+      "node_affinity": [
+        "dead_world",
+        "watch_station",
+        "fortress_world"
+      ],
       "weight": 1.0
     },
     "sentence_passed": {
@@ -5754,8 +5924,18 @@
         "faith",
         "aggressive"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Angels of Vengeance",
+        "Marines Malevolent",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
       "weight": 1.0
     },
     "none_shall_pass": {
@@ -5767,8 +5947,18 @@
         "resilience",
         "fortify"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hounds",
+        "Minotaurs",
+        "Crimson Fists",
+        "Iron Lords",
+        "Black Templars"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "war_world"
+      ],
       "weight": 1.0
     },
     "the_sentence_pronounced": {
@@ -6052,8 +6242,18 @@
         "elimination",
         "suppression"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Space Wolves",
+        "Flesh Tearers",
+        "Blood Angels",
+        "Bleeding Hearts",
+        "Tempestuous Angels"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
       "weight": 1.0
     },
     "iron_remembrance": {
@@ -6065,8 +6265,18 @@
         "resilience",
         "defensive"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Ravens",
+        "Dark Angels",
+        "Tome Keepers",
+        "Dragonspears"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "shrine_world",
+        "watch_station"
+      ],
       "weight": 1.0
     },
     "the_last_wall": {
@@ -6078,8 +6288,18 @@
         "suppression",
         "resilience"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Iron Hounds",
+        "Minotaurs",
+        "Crimson Fists",
+        "Iron Lords"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "war_world"
+      ],
       "weight": 1.0
     },
     "the_silence_before": {
@@ -6370,8 +6590,18 @@
         "elimination",
         "faith"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Black Templars",
+        "Blood Angels",
+        "Flesh Tearers",
+        "Space Wolves",
+        "Bleeding Hearts"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "fortress_world"
+      ],
       "weight": 1.0
     },
     "brothers_keeper": {
@@ -6383,8 +6613,18 @@
         "recovery",
         "faith"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Salamanders",
+        "Celestial Lions",
+        "Blood Angels",
+        "Cowled Wardens",
+        "Iron Hounds"
+      ],
+      "node_affinity": [
+        "agri_world",
+        "frontier_world",
+        "war_world"
+      ],
       "weight": 1.0
     },
     "blood_and_thunder": {
@@ -6395,8 +6635,18 @@
         "elimination",
         "attrition"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Flesh Tearers",
+        "Marines Malevolent",
+        "Space Wolves",
+        "Bleeding Hearts",
+        "Minotaurs"
+      ],
+      "node_affinity": [
+        "war_world",
+        "feral_world",
+        "dead_world"
+      ],
       "weight": 1.0
     },
     "patience_of_stone": {
@@ -6407,8 +6657,18 @@
         "fortify",
         "resilience"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Iron Hands",
+        "Crimson Fists",
+        "Iron Hounds",
+        "Raptors",
+        "Raven Guard"
+      ],
+      "node_affinity": [
+        "fortress_world",
+        "mining_world",
+        "agri_world"
+      ],
       "weight": 1.0
     },
     "emperors_sight": {
@@ -6419,8 +6679,18 @@
         "support",
         "doctrine"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Blood Ravens",
+        "Mentors",
+        "Dark Angels",
+        "Tome Keepers",
+        "Raptors"
+      ],
+      "node_affinity": [
+        "hive_world",
+        "watch_station",
+        "fortress_world"
+      ],
       "weight": 1.0
     },
     "unbroken_oath": {
@@ -6432,8 +6702,18 @@
         "recovery",
         "attrition"
       ],
-      "chapter_affinity": [],
-      "node_affinity": [],
+      "chapter_affinity": [
+        "Black Templars",
+        "Dragonspears",
+        "Cowled Wardens",
+        "Celestial Lions",
+        "Angels of Defiance"
+      ],
+      "node_affinity": [
+        "shrine_world",
+        "fortress_world",
+        "war_world"
+      ],
       "weight": 1.0
     },
     "the_enemy_studied": {
