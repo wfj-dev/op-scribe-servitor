@@ -1680,15 +1680,19 @@ def generate_beat_scenario(
     current_pressure: int,
     beat_seed: Optional[int] = None,
     beat_num: int = 0,
+    slot: int = 0,
 ) -> dict:
     """Generate a scenario for a node for the upcoming beat.
+
+    *slot* selects which of the three threat_vectors to use (0-2). Each vector
+    is a distinct doctrinal angle; region/pressure modifiers are applied on top.
 
     Returns a scenario dict matching the output_scenario schema in scenario_generation.json.
     """
     _ensure_refs_loaded()
     sg = _SCENARIO_GEN
 
-    rng = random.Random(beat_seed) if beat_seed is not None else random.Random()
+    rng = random.Random(beat_seed ^ (slot * 0xDEAD)) if beat_seed is not None else random.Random()
 
     node_affinity = sg.get("node_type_affinity", {})
     region_modifier = sg.get("region_modifier", {})
@@ -1699,15 +1703,22 @@ def generate_beat_scenario(
     codename_pools = sg.get("codename_pools", {})
     narrative_templates = sg.get("narrative_templates", {})
 
-    # Step 1: Base dominant tags from node type
+    # Step 1: Base dominant tags from node type — use threat_vectors[slot] if available
     nta = node_affinity.get(node_type, {})
-    base_tags = list(nta.get("base_tags", nta.get("dominant_tags", ["aggressive", "recovery"])))
-    terminus_affinity = nta.get("terminus_affinity", "low")
+    vectors = nta.get("threat_vectors", [])
+    if vectors:
+        vector = vectors[slot % len(vectors)]
+        base_tags = list(vector.get("tags", ["aggressive", "recovery"]))
+        terminus_affinity = vector.get("terminus_affinity") or nta.get("terminus_affinity", "low")
+    else:
+        # Fallback for node types without threat_vectors
+        base_tags = list(nta.get("base_tags", nta.get("dominant_tags", ["aggressive", "recovery"])))
+        terminus_affinity = nta.get("terminus_affinity", "low")
 
     # Step 2: Region modifier — push secondary tag
     if region:
         rm = region_modifier.get(region, {})
-        pushed_tag = rm.get("push_tag")
+        pushed_tag = rm.get("push_tag") or rm.get("push")
         if pushed_tag and len(base_tags) >= 2:
             base_tags[1] = pushed_tag
 
@@ -1722,15 +1733,18 @@ def generate_beat_scenario(
             base_tags.append(pushed_by_pressure)
 
     # Step 4: Base terminus intel
-    affinity_map = {"low": 0.2, "medium": 0.5, "high": 0.8}
+    affinity_map = {"low": 0.2, "medium": 0.5, "high": 0.8, "known": 1.0}
     affinity_prob = affinity_map.get(terminus_affinity, 0.3)
-    roll = rng.random()
-    if roll < affinity_prob * 0.5:
+    if terminus_affinity == "known":
         base_terminus = "known"
-    elif roll < affinity_prob:
-        base_terminus = "suspected"
     else:
-        base_terminus = "none"
+        roll = rng.random()
+        if roll < affinity_prob * 0.5:
+            base_terminus = "known"
+        elif roll < affinity_prob:
+            base_terminus = "suspected"
+        else:
+            base_terminus = "none"
 
     # Apply pressure terminus modifier
     intel_mod = pr.get("terminus_intel_modifier", "none")
@@ -1779,10 +1793,12 @@ def generate_beat_scenario(
         narrative = f"The Watch deploys to {node_id}."
 
     # Build scenario_id
-    scenario_id = f"{node_id.lower().replace(' ', '_')}_b{beat_num}_a"
+    slot_label = chr(ord('a') + slot)  # 0→a, 1→b, 2→c
+    scenario_id = f"{node_id.lower().replace(' ', '_')}_b{beat_num}_{slot_label}"
 
     return {
         "scenario_id": scenario_id,
+        "slot": slot,
         "codename": codename,
         "node_id": node_id,
         "node_type": node_type,
@@ -1901,18 +1917,23 @@ def _generate_node_scenarios(state: dict) -> None:
         node_type = node.get("type", "dead_world")
         region = node.get("region")
         pressure = int(pressure_data.get(nid, {}).get("level", 0) if isinstance(pressure_data.get(nid), dict) else pressure_data.get(nid, 0))
-        # Seed: deterministic per campaign/beat/node
+        # Seed: deterministic per campaign/beat/node; slot XOR'd in generate_beat_scenario
         seed_str = f"{campaign_id}:{beat}:{nid}"
         beat_seed = hash(seed_str) & 0x7FFFFFFF
-        scenario = generate_beat_scenario(
-            node_id=nid,
-            node_type=node_type,
-            region=region,
-            current_pressure=pressure,
-            beat_seed=beat_seed,
-            beat_num=beat,
-        )
-        beat_scenarios[nid] = scenario
+        # Generate 3 scenario variants (one per threat_vector slot)
+        scenarios = [
+            generate_beat_scenario(
+                node_id=nid,
+                node_type=node_type,
+                region=region,
+                current_pressure=pressure,
+                beat_seed=beat_seed,
+                beat_num=beat,
+                slot=s,
+            )
+            for s in range(3)
+        ]
+        beat_scenarios[nid] = scenarios
 
 
 def _resolve_cascade_WM(state: dict) -> None:
@@ -1930,6 +1951,17 @@ def _resolve_cascade_WM(state: dict) -> None:
             visited = state["campaign"].setdefault("visited_nodes", [])
             if target_node not in visited:
                 visited.append(target_node)
+        # Commit the chosen scenario (slot picked by WM in two-step UI)
+        committed_node = target_node or state["campaign"].get("current_node")
+        scenario_slot = wm_sub.get("scenario_slot", 0)
+        scenarios = state.get("beat_scenarios", {}).get(committed_node, [])
+        if isinstance(scenarios, list) and scenarios:
+            committed_scenario = scenarios[scenario_slot % len(scenarios)]
+        elif isinstance(scenarios, dict):
+            committed_scenario = scenarios  # legacy single-scenario fallback
+        else:
+            committed_scenario = {}
+        state.setdefault("cascade", {})["committed_scenario"] = committed_scenario
     # Generate scenarios for the (possibly new) current node
     _generate_node_scenarios(state)
     _enter_cascade_phase(state, "cascade_HC")
@@ -3059,6 +3091,37 @@ class _CascadeButton(discord.ui.Button):
         role_data = _CASCADE_OPTIONS.get(self._role_key, {})
         # For cascade_WM movement options, _decision lives in the dynamic opts dict
         decision_key = role_data.get("_decision") or self._opt_val.get("_decision", self._role_key)
+
+        # cascade_WM is two-step: first pick node, then pick scenario
+        if self._phase == "cascade_WM":
+            target_node = self._opt_val.get("target_node")
+            committed_node = target_node or state["campaign"].get("current_node")
+            scenarios = state.get("beat_scenarios", {}).get(committed_node, [])
+            if not isinstance(scenarios, list):
+                scenarios = [scenarios] if scenarios else []
+            if not scenarios:
+                await interaction.response.edit_message(
+                    content="No scenarios available for this node. Contact a Marshal.",
+                    embed=None, view=None,
+                )
+                return
+            scenario_view = _WMScenarioView(
+                owner_id=self._owner_id,
+                target_node=target_node,
+                node_name=committed_node or "Unknown",
+                movement_name=opt_name,
+                movement_tags=tags,
+                scenarios=scenarios,
+                phase=self._phase,
+                decision_key=decision_key,
+            )
+            node_label = f"**Advance to {committed_node}**" if target_node else f"**Hold at {committed_node}**"
+            await interaction.response.edit_message(
+                content=f"{node_label} — Choose your doctrine angle for this cycle:",
+                embed=None,
+                view=scenario_view,
+            )
+            return
         cascade = state.setdefault("cascade", {})
         cascade.setdefault("submissions", {})
         cascade["submissions"][self._owner_id] = {
@@ -3218,10 +3281,20 @@ def _select_cascade_options(
 
     chapter: str = user_record.get("chapter", "")
 
-    scenario = state.get("beat_scenarios", {}).get(current_node, {})
-    scenario_tags: set = set(scenario.get("dominant_tags", []))
-
+    # Scenario tags: use committed_scenario if WM has already picked one,
+    # otherwise fall back to slot 0 of the current node's scenarios
     cascade_block = state.get("cascade", {})
+    committed_scenario = cascade_block.get("committed_scenario")
+    if not committed_scenario:
+        raw = state.get("beat_scenarios", {}).get(current_node)
+        if isinstance(raw, list):
+            committed_scenario = raw[0] if raw else {}
+        elif isinstance(raw, dict):
+            committed_scenario = raw
+        else:
+            committed_scenario = {}
+    scenario_tags: set = set((committed_scenario or {}).get("dominant_tags", []))
+
     submissions = cascade_block.get("submissions", {})
     upstream_tags: set = set()
     for sub in submissions.values():
@@ -3311,6 +3384,94 @@ class _CascadeChoiceView(discord.ui.View):
             if opt_key.startswith("_"):
                 continue
             self.add_item(_CascadeButton(opt_key, opt_val, role_key, phase, user_id))
+
+
+class _WMScenarioButton(discord.ui.Button):
+    """Second-step button: WM selects one of 3 scenario angles for a committed node."""
+
+    def __init__(
+        self,
+        scenario: dict,
+        owner_id: str,
+        target_node: Optional[str],
+        movement_name: str,
+        movement_tags: list,
+        phase: str,
+        decision_key: str,
+    ):
+        slot = scenario.get("slot", 0)
+        tags = scenario.get("dominant_tags", [])
+        terminus = scenario.get("terminus_intel", "none")
+        terminus_marker = " ⚠" if terminus == "known" else (" ~" if terminus == "suspected" else "")
+        label = f"{scenario.get('codename', f'Vector {slot+1}')}  [{'/'.join(tags)}]{terminus_marker}"
+        super().__init__(label=label[:80], style=discord.ButtonStyle.secondary)
+        self._scenario = scenario
+        self._owner_id = owner_id
+        self._target_node = target_node
+        self._movement_name = movement_name
+        self._movement_tags = movement_tags
+        self._phase = phase
+        self._decision_key = decision_key
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self._owner_id:
+            await interaction.response.send_message("These orders are not yours.", ephemeral=True)
+            return
+        state = _load_campaign_state()
+        phase = state.get("campaign", {}).get("phase", "inactive")
+        if phase != self._phase:
+            await interaction.response.edit_message(
+                content=f"The cascade phase has advanced ({phase}). Run `/campaign-orders` again.",
+                embed=None, view=None,
+            )
+            return
+        tags = self._movement_tags + [t for t in self._scenario.get("dominant_tags", []) if t not in self._movement_tags]
+        state.setdefault("cascade", {}).setdefault("submissions", {})[self._owner_id] = {
+            "role_key": "watch_master",
+            "phase": phase,
+            "decision": self._decision_key,
+            "choice_key": f"move_{self._scenario.get('node_id', 'unknown')}_s{self._scenario.get('slot', 0)}",
+            "choice_name": self._movement_name,
+            "tags": tags[:4],
+            "target_node": self._target_node,
+            "scenario_slot": self._scenario.get("slot", 0),
+            "submitted_at": _iso_now(),
+        }
+        _save_campaign_state(state)
+        await _try_early_cascade_advance(state, self._phase)
+        beat = state["campaign"].get("beat") or "?"
+        codename = self._scenario.get("codename", "—")
+        await interaction.response.edit_message(
+            content=f"✅ **{self._movement_name}** — *{codename}* submitted for Cycle {beat}.",
+            embed=None, view=None,
+        )
+
+
+class _WMScenarioView(discord.ui.View):
+    """Second-step view: WM picks one of 3 scenario angles after choosing a node."""
+
+    def __init__(
+        self,
+        owner_id: str,
+        target_node: Optional[str],
+        node_name: str,
+        movement_name: str,
+        movement_tags: list,
+        scenarios: list,
+        phase: str,
+        decision_key: str,
+    ):
+        super().__init__(timeout=300)
+        for sc in scenarios[:3]:
+            self.add_item(_WMScenarioButton(
+                scenario=sc,
+                owner_id=owner_id,
+                target_node=target_node,
+                movement_name=movement_name,
+                movement_tags=movement_tags,
+                phase=phase,
+                decision_key=decision_key,
+            ))
 
 
 # Maps _decision key → readable in-universe phrase used in orders narrative
