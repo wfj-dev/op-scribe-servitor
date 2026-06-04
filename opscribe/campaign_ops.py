@@ -3979,40 +3979,48 @@ async def _campaign_orders(interaction: discord.Interaction):
                         inline=False,
                     )
 
-    # --- Strat mandate (if locked) ---
-    if strat_pool.get("locked"):
-        theatre_list = strat_pool.get("theatre_mandate") or []
-        if isinstance(theatre_list, str):
-            theatre_list = [theatre_list]
-        theatre_display = ", ".join(f"`{s}`" for s in theatre_list) or "None"
+    # --- Ops phase: show personal strats only + redirect to /campaign-mandate ---
+    if phase == "ops" and strat_pool.get("locked"):
         company_id = record.get("company_id")
         co_strats = strat_pool.get("company_mandates", {}).get(company_id, []) if company_id else []
         if isinstance(co_strats, str):
             co_strats = [co_strats]
-        co_display = ", ".join(f"`{s}`" for s in co_strats) or "N/A"
         kt_sgt = record.get("kt_sgt_id")
         kt_strats = strat_pool.get("kt_mandates", {}).get(kt_sgt, []) if kt_sgt else []
         if isinstance(kt_strats, str):
             kt_strats = [kt_strats]
-        kt_display = ", ".join(f"`{s}`" for s in kt_strats) or "N/A"
-        embed.add_field(name="▸ Theatre Mandate", value=theatre_display, inline=False)
-        embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
-        embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
-    elif phase == "ops":
-        embed.add_field(name="▸ Cycle Mandate", value="Not yet published — use `/campaign-mandate`.", inline=False)
+        theatre_list = strat_pool.get("theatre_mandate") or []
+        if isinstance(theatre_list, str):
+            theatre_list = [theatre_list]
 
-    # --- Ops window ---
-    if phase == "ops" or ops_window:
+        personal_lines = []
+        if theatre_list:
+            personal_lines.append(f"**Watch-wide:** {', '.join(f'`{s}`' for s in theatre_list)}")
+        if co_strats:
+            personal_lines.append(f"**Your company:** {', '.join(f'`{s}`' for s in co_strats)}")
+        if kt_strats:
+            personal_lines.append(f"**Your kill team:** {', '.join(f'`{s}`' for s in kt_strats)}")
+        if not personal_lines:
+            personal_lines.append("No mandate strats assigned to your unit.")
+        personal_lines.append("\nFor operations, terminus targets, and the full Watch brief — `/campaign-mandate`.")
+
+        ops_close = ops_window.get("closes_at")
+        if ops_close:
+            personal_lines.append(f"Ops window closes: {_fmt_ts(ops_close)}")
+
+        embed.add_field(name="▸ Your Mandate This Cycle", value="\n".join(personal_lines), inline=False)
+        await interaction.response.send_message(embed=embed, **({"file": _orders_file} if _orders_file else {}), ephemeral=True)
+        return
+
+    elif phase == "ops":
+        embed.add_field(name="▸ Cycle Mandate", value="Mandate not yet published — use `/campaign-mandate`.", inline=False)
+
+    # --- Ops window timing (cascade phases only) ---
+    if phase not in ("ops",) and ops_window:
         embed.add_field(name="▸ Ops Window", value=(
             f"Opens: {_fmt_ts(ops_window.get('opened_at')) if ops_window.get('opened_at') else 'TBD'}\n"
             f"Closes: {_fmt_ts(ops_window.get('closes_at')) if ops_window.get('closes_at') else 'TBD'}"
         ), inline=False)
-
-    # --- Terminus flag ---
-    if tier in ("HC", "Company"):
-        terminus_flag = ops_window.get("terminus_flag")
-        if terminus_flag:
-            embed.add_field(name="▸ Terminus Flag", value=terminus_flag, inline=False)
 
     # --- Cascade choice buttons (if it's this member's turn) ---
     if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"):
