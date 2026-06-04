@@ -4099,7 +4099,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
     beat = campaign.get("beat")
     beat_name = campaign.get("beat_name") or f"Cycle {beat or '?'}"
 
-    if phase not in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "ops"):
+    if phase not in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal", "ops"):
         await interaction.response.send_message(
             f"No cascade is active (current phase: **{phase}**).", ephemeral=True
         )
@@ -4120,12 +4120,13 @@ async def _campaign_cascade(interaction: discord.Interaction):
         return fallback
 
     # Build role → user_id map for all phases
-    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"]
+    phase_order = ["cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT", "cascade_personal"]
     phase_labels = {
         "cascade_WM": "Watch Master",
         "cascade_HC": "High Command",
         "cascade_Company": "Company Command",
         "cascade_KT": "Kill Teams",
+        "cascade_personal": "Battle-line",
     }
 
     embed = discord.Embed(
