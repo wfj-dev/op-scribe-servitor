@@ -143,7 +143,7 @@ def _build_campaign_accolades_embed(
     camp_name = campaign.get("name") or campaign.get("id") or "Active Campaign"
     beat = campaign.get("beat")
     beat_name = campaign.get("beat_name")
-    beat_label = f"{beat_name}" if beat_name else (f"Beat {beat}" if beat else "")
+    beat_label = f"{beat_name}" if beat_name else (f"Cycle {beat}" if beat else "")
 
     # Build active enlistment lookup: sgt_id → [uid, ...]
     enlistment = campaign_state.get("enlistment", {})
@@ -227,8 +227,9 @@ def _build_campaign_accolades_embed(
         embed.add_field(name=f"▸ {kt_name}", value="\n".join(kt_lines), inline=True)
 
     embed.set_image(url="https://cdn.discordapp.com/attachments/1499152772225040544/1511884332908941432/Honor_of_the_Watch.png?ex=6a221382&is=6a20c202&hm=827b132ad5ae8a794d09aa6503eab5a9ba0c592105609f2efe09284b955d781e&")
+    camp_name = campaign.get("name") or "Jericho Watch Campaign"
     embed.set_footer(
-        text=f"Campaign: {campaign.get('id') or '—'}  ·  {now.strftime('%Y-%m-%d %H:%M UTC')}"
+        text=f"{camp_name}  ·  {now.strftime('%Y-%m-%d %H:%M UTC')}"
     )
     return embed
 
@@ -567,7 +568,7 @@ def _build_embed(
         embed.description = description
 
     embed.set_footer(
-        text=f"⌾ Recorded by decree of Watch Command ⌾  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
+        text=f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
     )
     return embed
 

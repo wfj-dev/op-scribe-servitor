@@ -111,7 +111,7 @@ def _blank_ops_state(beat=1, phase="ops", beat_duration_days=7, closes_offset_se
             "id": "test_campaign",
             "name": "OPERATION TEST ALPHA",
             "beat": beat,
-            "beat_name": f"BEAT {beat}: TEST ADVANCE",
+            "beat_name": f"CYCLE {beat}: TEST ADVANCE",
             "phase": phase,
             "started_at": _iso(_now() - timedelta(days=1)),
             "ended_at": None,

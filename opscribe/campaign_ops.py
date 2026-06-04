@@ -16,6 +16,7 @@ from .constants import (
     CAMPAIGN_STATE_PATH, AAR_RECORDS_PATH, CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID,
     WATCH_MASTER_ROLE_ID, WATCH_BROTHER_ROLE_ID,
     HIGH_COMMAND_ROLE_ID, WATCH_SERGEANT_ROLE_ID,
+    PHASE_DISPLAY,
 )
 from . import _bot_globals as _g
 
@@ -376,7 +377,7 @@ def generate_campaign_name(seed: Optional[int] = None) -> str:
 
 
 def generate_beat_name(beat_num: int, doctrine_tags: Optional[List[str]] = None, seed: Optional[int] = None) -> str:
-    """Generate a lore-flavoured beat codename: 'BEAT N: ADJECTIVE NOUN'.
+    """Generate a lore-flavoured cycle codename: 'CYCLE N: ADJECTIVE NOUN'.
 
     If doctrine_tags are supplied (e.g. ['aggressive', 'terminus']) the pools
     for the first matching tag are used; otherwise falls back to _default.
@@ -400,7 +401,7 @@ def generate_beat_name(beat_num: int, doctrine_tags: Optional[List[str]] = None,
     rng = random.Random(seed)
     adj = rng.choice(adj_list)
     noun = rng.choice(noun_list)
-    return f"BEAT {beat_num}: {adj} {noun}"
+    return f"CYCLE {beat_num}: {adj} {noun}"
 
 
 # ---------------------------------------------------------------------------
@@ -2210,7 +2211,7 @@ async def _maybe_send_cascade_warning(state: dict, phase: str, now, camp_name: s
     label = phase_labels.get(phase, phase)
     warning_text = (
         f"⏰ **{camp_name} — {label} cascade closing soon.**\n"
-        f"{pending_mentions} — you have not yet submitted your orders for Beat {beat}.\n"
+        f"{pending_mentions} — you have not yet submitted your orders for Cycle {beat}.\n"
         f"Use `/campaign-orders` now. Window closes: {deadline_fmt}"
     )
 
@@ -2269,7 +2270,7 @@ async def sweep_campaign_beat_clock() -> None:
                     _wm_ping = _cascade_phase_ping(state, "cascade_WM")
                     announcement = (
                         f"{_wm_ping}\n"
-                        f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                        f"⚔️ **{camp_name} — Cycle {beat} ops window closed.**\n"
                         f"The Watch Master must position the warband. **Watch Master**, set your theatre order via `/campaign-orders`.\n"
                         f"WM positioning window closes: {_fmt_ts(wm_deadline[:19])}"
                     )
@@ -2278,7 +2279,7 @@ async def sweep_campaign_beat_clock() -> None:
                     _hc_ping = _cascade_phase_ping(state, "cascade_HC")
                     announcement = (
                         f"{_hc_ping}\n"
-                        f"⚔️ **{camp_name} — Beat {beat} ops window closed.**\n"
+                        f"⚔️ **{camp_name} — Cycle {beat} ops window closed.**\n"
                         f"No Watch Master enlisted — warband holds at **{current_node}**. Scenario intelligence is live.\n"
                         f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
                         f"HC cascade window closes: {_fmt_ts(hc_deadline[:19])}"
@@ -2295,7 +2296,7 @@ async def sweep_campaign_beat_clock() -> None:
             _hc_ping = _cascade_phase_ping(state, "cascade_HC")
             announcement = (
                 f"{_hc_ping}\n"
-                f"⚔️ **{camp_name} — Beat {beat}: Watch Master positioning window closed.**\n"
+                f"⚔️ **{camp_name} — Cycle {beat}: Watch Master positioning window closed.**\n"
                 f"Warband holds at **{current_node}**. **High Command**, submit your doctrine orders via `/campaign-orders`.\n"
                 f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
             )
@@ -2311,7 +2312,7 @@ async def sweep_campaign_beat_clock() -> None:
             _co_ping = _cascade_phase_ping(state, "cascade_Company")
             announcement = (
                 f"{_co_ping}\n"
-                f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Company Command.**\n"
+                f"⚔️ **{camp_name} — Cycle {beat} orders advancing: Company Command.**\n"
                 f"HC orders have been logged. **Captains and Company officers**, submit your orders via `/campaign-orders`.\n"
                 f"Company cascade window closes: {_fmt_ts(deadline_ts)}"
             )
@@ -2328,7 +2329,7 @@ async def sweep_campaign_beat_clock() -> None:
             _kt_ping = _cascade_phase_ping(state, "cascade_KT")
             announcement = (
                 f"{_kt_ping}\n"
-                f"⚔️ **{camp_name} — Beat {beat} cascade advancing: Kill Teams.**\n"
+                f"⚔️ **{camp_name} — Cycle {beat} orders advancing: Kill Teams.**\n"
                 f"Company orders logged. **Watch Sergeants**, submit your kill team doctrine via `/campaign-orders`.\n"
                 f"KT cascade window closes: {_fmt_ts(deadline_ts)}"
             )
@@ -2353,7 +2354,7 @@ async def sweep_campaign_beat_clock() -> None:
             ops_close_ts = ops_close.strftime("%Y-%m-%d %H:%M")
             announcement = (
                 f"{_wb_ping}\n"
-                f"⚔️ **{camp_name} — Beat {beat} cascade resolved. Ops window open.**\n"
+                f"⚔️ **{camp_name} — Cycle {beat} orders resolved. Operations window open.**\n"
                 f"Strat mandates are locked. **All Brothers**, get your ops in via `/campaign-log`.\n"
                 f"Ops window closes: `{ops_close_ts}Z`"
             )
@@ -2602,7 +2603,7 @@ class _CascadeButton(discord.ui.Button):
         await _try_early_cascade_advance(state, self._phase)
         beat = state["campaign"].get("beat") or "?"
         await interaction.response.edit_message(
-            content=f"\u2705 **{opt_name}** submitted for Beat {beat}.",
+            content=f"\u2705 **{opt_name}** submitted for Cycle {beat}.",
             embed=None,
             view=None,
         )
@@ -2647,7 +2648,7 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         _hc_ping = _cascade_phase_ping(state, "cascade_HC")
         announcement = (
             f"{_hc_ping}\n"
-            f"⚔️ **{camp_name} — Beat {beat}: Watch Master has set the theatre.**\n"
+            f"⚔️ **{camp_name} — Cycle {beat}: Watch Master has set the theatre.**\n"
             f"Warband positioned at **{current_node}**. Scenario intelligence is now live.\n"
             f"**High Command**, submit your doctrine orders via `/campaign-orders`.\n"
             f"HC cascade window closes: {_fmt_ts(deadline_ts)}"
@@ -2662,7 +2663,7 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         _next_ping = _cascade_phase_ping(state, next_phase)
         announcement = (
             f"{_next_ping}\n"
-            f"⚔️ **{camp_name} — Beat {beat} cascade advancing early: {next_label}.**\n"
+            f"⚔️ **{camp_name} — Cycle {beat} orders advancing early: {next_label}.**\n"
             f"All {phase.replace('cascade_', '').upper()} orders are in. "
             f"**{next_label}**, submit your orders via `{cmd_mention}`.\n"
             f"{next_phase.replace('cascade_', '').upper()} cascade closes: {_fmt_ts(deadline_ts)}"
@@ -2681,7 +2682,7 @@ async def _try_early_cascade_advance(state: dict, phase: str) -> bool:
         _wb_ping = f"<@&{WATCH_BROTHER_ROLE_ID}>"
         announcement = (
             f"{_wb_ping}\n"
-            f"⚔️ **{camp_name} — Beat {beat} cascade resolved early. Ops window open.**\n"
+            f"⚔️ **{camp_name} — Cycle {beat} orders resolved early. Operations window open.**\n"
             f"All Kill Team orders are in. Strat mandates are locked. "
             f"**All Brothers**, get your ops in via `/campaign-log`.\n"
             f"Ops window closes: {_fmt_ts(ops_close.isoformat())}"
@@ -2814,7 +2815,7 @@ def _compose_orders_narrative(
     if user_phase == "cascade_WM":
         role_decision_key = "movement_order"
         role_desc = (
-            "The Watch Master sets the warband's position for this beat — hold in place or "
+            "The Watch Master sets the warband's position for this cycle — hold in place or "
             "reposition to an adjacent world. This choice determines the scenario intelligence "
             "every brother below will face when they open their orders."
         )
@@ -2988,7 +2989,7 @@ def _cascade_peer_summary(state: dict, phase: str, enlistment: dict) -> str:
 _CASCADE_PHASE_NARRATIVE = {
     "cascade_HC": {
         "active": (
-            "High Command speaks first. The strategic posture for this beat is set from the top — "
+            "High Command speaks first. The strategic posture for this cycle is set from the top — "
             "your doctrine choice shapes what orders flow down to Company and Kill Team. "
             "Choose with the full weight of command behind you."
         ),
@@ -3018,7 +3019,7 @@ _CASCADE_PHASE_NARRATIVE = {
     "cascade_KT": {
         "active": (
             "The orders have cascaded all the way down. Kill Team Sergeants and Judiciars now lock in "
-            "their tactical focus for the beat — your choice commits your kill team's doctrine "
+            "their tactical focus for the cycle — your choice commits your kill team's doctrine "
             "to the campaign record. The ops window opens when the cascade closes."
         ),
     },
@@ -3100,7 +3101,8 @@ async def _campaign_orders(interaction: discord.Interaction):
         description=full_narr,
         color=0x4B0082,
     )
-    embed.set_footer(text=f"Phase: {phase} · Your tier: {tier} · Planet: {current_node or '—'}")
+    camp_name = campaign.get("name") or "Jericho Watch Campaign"
+    embed.set_footer(text=f"{camp_name}  ·  {PHASE_DISPLAY.get(phase, phase)}  ·  {current_node or '—'}")
 
     # --- Cascade status block ---
     if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
@@ -3108,7 +3110,7 @@ async def _campaign_orders(interaction: discord.Interaction):
         deadline = cascade.get(deadline_key, "Unknown")
         peer_summary = _cascade_peer_summary(state, phase, enlistment)
         embed.add_field(
-            name=f"🔰 Active Cascade: {phase.replace('cascade_', '').upper()}",
+            name=f"▸ Orders Phase — {PHASE_DISPLAY.get(phase, phase)}",
             value=f"Deadline: {_fmt_ts(deadline)}\n{peer_summary}",
             inline=False,
         )
@@ -3134,13 +3136,13 @@ async def _campaign_orders(interaction: discord.Interaction):
                     if choice_desc:
                         val += f"\n*{choice_desc[:200]}{'...' if len(choice_desc) > 200 else ''}*"
                     embed.add_field(
-                        name=f"Your {user_cascade_phase.replace('cascade_', '').upper()} Submission",
+                        name=f"▸ Your Submission — {PHASE_DISPLAY.get(user_cascade_phase, user_cascade_phase)}",
                         value=val,
                         inline=False,
                     )
                 else:
                     embed.add_field(
-                        name=f"Your {user_cascade_phase.replace('cascade_', '').upper()} Submission",
+                        name=f"▸ Your Submission — {PHASE_DISPLAY.get(user_cascade_phase, user_cascade_phase)}",
                         value="⚠️ No submission recorded for your tier.",
                         inline=False,
                     )
@@ -3161,15 +3163,15 @@ async def _campaign_orders(interaction: discord.Interaction):
         if isinstance(kt_strats, str):
             kt_strats = [kt_strats]
         kt_display = ", ".join(f"`{s}`" for s in kt_strats) or "N/A"
-        embed.add_field(name="Theatre Strats", value=theatre_display, inline=False)
-        embed.add_field(name="Company Strats", value=co_display, inline=True)
-        embed.add_field(name="KT Strats", value=kt_display, inline=True)
+        embed.add_field(name="▸ Theatre Mandate", value=theatre_display, inline=False)
+        embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
+        embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
     elif phase == "ops":
-        embed.add_field(name="Strat Mandate", value="Not yet published.", inline=False)
+        embed.add_field(name="▸ Strat Mandate", value="Not yet published.", inline=False)
 
     # --- Ops window ---
     if phase == "ops" or ops_window:
-        embed.add_field(name="Ops Window", value=(
+        embed.add_field(name="▸ Ops Window", value=(
             f"Opens: {_fmt_ts(ops_window.get('opened_at')) if ops_window.get('opened_at') else 'TBD'}\n"
             f"Closes: {_fmt_ts(ops_window.get('closes_at')) if ops_window.get('closes_at') else 'TBD'}"
         ), inline=False)
@@ -3178,7 +3180,7 @@ async def _campaign_orders(interaction: discord.Interaction):
     if tier in ("HC", "Company"):
         terminus_flag = ops_window.get("terminus_flag")
         if terminus_flag:
-            embed.add_field(name="Terminus Flag", value=terminus_flag, inline=False)
+            embed.add_field(name="▸ Terminus Flag", value=terminus_flag, inline=False)
 
     # --- Cascade choice buttons (if it's this member's turn) ---
     if phase in ("cascade_WM", "cascade_HC", "cascade_Company", "cascade_KT"):
@@ -3196,7 +3198,7 @@ async def _campaign_orders(interaction: discord.Interaction):
                 val = f"✅ **{choice_name}** — *select a button below to change.*"
                 if choice_desc and phase != "cascade_WM":
                     val += f"\n\n*{choice_desc[:300]}{'...' if len(choice_desc) > 300 else ''}*"
-                embed.add_field(name=f"Cascade Orders — {phase_label}", value=val, inline=False)
+                embed.add_field(name=f"▸ Your Orders — {PHASE_DISPLAY.get(phase, phase)}", value=val, inline=False)
             else:
                 prompt = (
                     "Set your positioning order — hold or advance to an adjacent world:"
@@ -3204,7 +3206,7 @@ async def _campaign_orders(interaction: discord.Interaction):
                     else "Your orders await your word. Select your doctrine below:"
                 )
                 embed.add_field(
-                    name=f"Cascade Orders — {phase_label}",
+                    name=f"▸ Your Orders — {PHASE_DISPLAY.get(phase, phase)}",
                     value=prompt,
                     inline=False,
                 )
@@ -3269,13 +3271,14 @@ async def _campaign_cascade(interaction: discord.Interaction):
     }
 
     embed = discord.Embed(
-        title=f"📜 Cascade of Orders — {beat_name}",
+        title=f"📜 Orders Phase — {beat_name}",
         description=(
             "The Watch Master sets the theatre. High Command issues doctrine. "
-            "Company and Kill Teams follow. Each tier's choices shape the strat pool for this beat."
+            "Company Command and Kill Teams follow. Each tier's choices shape the strat pool for this beat."
         ),
         color=0x2F3136,
     )
+    camp_name = campaign.get("name") or "Jericho Watch Campaign"
 
     phase_complete_idx = -1
     if phase == "ops":
@@ -3298,7 +3301,7 @@ async def _campaign_cascade(interaction: discord.Interaction):
                 role_entries.append((rk, rec.get("role", rk), member_name, uid))
 
         if not role_entries:
-            embed.add_field(name=f"{label}", value="No eligible members enrolled.", inline=False)
+            embed.add_field(name=f"▸ {label}", value="No eligible members enrolled.", inline=False)
             continue
 
         deadline = cascade.get(f"{cp}_deadline")
@@ -3318,11 +3321,11 @@ async def _campaign_cascade(interaction: discord.Interaction):
                 lines.append(f"🔒 **{role_display}**{name_tag} — window not yet open")
 
         if i == (phase_order.index(phase) if phase in phase_order else -1):
-            header = f"🔰 {label} *(active)*"
+            header = f"▸ {label}  —  accepting orders"
         elif i < (phase_order.index(phase) if phase in phase_order else len(phase_order)) or phase == "ops":
-            header = f"✅ {label} *(closed)*"
+            header = f"▸ {label}  —  orders received"
         else:
-            header = f"🔒 {label} *(pending)*"
+            header = f"▸ {label}  —  standing by"
 
         field_val = "\n".join(lines)
         if deadline and i == (phase_order.index(phase) if phase in phase_order else -1):
@@ -3330,9 +3333,9 @@ async def _campaign_cascade(interaction: discord.Interaction):
         embed.add_field(name=header, value=field_val or "—", inline=False)
 
     if phase == "ops":
-        embed.set_footer(text="Cascade closed — ops window is open.")
+        embed.set_footer(text=f"{camp_name}  ·  Orders resolved — Operations Window is open")
     elif phase in phase_order:
-        embed.set_footer(text=f"Active phase: {phase_labels.get(phase, phase)}")
+        embed.set_footer(text=f"{camp_name}  ·  {PHASE_DISPLAY.get(phase, phase)}")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3389,6 +3392,8 @@ async def _campaign_prestige(
             lines.append(f"{i}. **{name}** — {prestige} prestige{ribbon}{lore}")
         embed = discord.Embed(title="Company Prestige Standings (28-day)", description="\n".join(lines) or "No companies.", color=0x4B0082)
 
+    camp_name = state.get("campaign", {}).get("name") or "Jericho Watch Campaign"
+    embed.set_footer(text=f"{camp_name}  ·  Rolling 28-day window")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3407,9 +3412,14 @@ async def _campaign_mandate(interaction: discord.Interaction):
         return
 
     state = _load_campaign_state()
-    phase = state.get("campaign", {}).get("phase", "inactive")
+    campaign = state.get("campaign", {})
+    phase = campaign.get("phase", "inactive")
+    beat = campaign.get("beat")
     if phase != "ops":
-        await interaction.response.send_message(f"Strat mandate is only available during the **ops** phase (current: {phase}).", ephemeral=True)
+        await interaction.response.send_message(
+            f"Strat mandate is only available during the Operations Window (current phase: **{PHASE_DISPLAY.get(phase, phase)}**).",
+            ephemeral=True,
+        )
         return
 
     strat_pool = state.get("strat_pool", {})
@@ -3446,14 +3456,17 @@ async def _campaign_mandate(interaction: discord.Interaction):
         description=f"**{total_mandates} required strat(s)** this beat. Optional pool strats may be added.",
         color=0x8B0000,
     )
-    embed.add_field(name="Theatre Strats (all)", value=theatre_display, inline=False)
-    embed.add_field(name="Company Strats", value=co_display, inline=True)
-    embed.add_field(name="Kill Team Strats", value=kt_display, inline=True)
+    embed.add_field(name="▸ Theatre Mandate", value=theatre_display, inline=False)
+    embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
+    embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
 
     strat_pool_list = strat_pool.get("pool", [])
     if strat_pool_list:
-        embed.add_field(name="Full Pool", value=", ".join(f"`{s}`" for s in strat_pool_list[:20]), inline=False)
+        embed.add_field(name="▸ Full Pool", value=", ".join(f"`{s}`" for s in strat_pool_list[:20]), inline=False)
 
+    camp_name = campaign.get("name") or "Jericho Watch Campaign"
+    beat_label = f"Cycle {beat}" if beat else "Current Cycle"
+    embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3592,7 +3605,7 @@ async def _campaign_dashboard(interaction: discord.Interaction):
     ops_window = state.get("ops_window", {})
 
     embed = discord.Embed(
-        title=f"Campaign Dashboard — Beat {beat or '?'}",
+        title=f"Campaign Dashboard — Cycle {beat or '?'}",
         description=f"Phase: **{phase}**",
         color=0x1C1C1C,
     )
@@ -3672,7 +3685,7 @@ async def _campaign_status(interaction: discord.Interaction):
     embed = discord.Embed(title="Campaign Status", color=0x333333)
     embed.add_field(name="ID", value=campaign.get("id") or "Not started", inline=True)
     embed.add_field(name="Phase", value=campaign.get("phase") or "inactive", inline=True)
-    embed.add_field(name="Beat", value=str(campaign.get("beat") or "—"), inline=True)
+    embed.add_field(name="Cycle", value=str(campaign.get("beat") or "—"), inline=True)
     embed.add_field(name="Current Node", value=campaign.get("current_node") or "—", inline=True)
     embed.add_field(name="Started", value=_fmt_ts(campaign.get("started_at")), inline=True)
     embed.add_field(name="Strat Pool Locked", value="Yes" if strat_pool.get("locked") else "No", inline=True)
@@ -3742,6 +3755,8 @@ async def _campaign_milestone(interaction: discord.Interaction):
             inline=False,
         )
 
+    camp_name = state.get("campaign", {}).get("name") or "Jericho Watch Campaign"
+    embed.set_footer(text=f"{camp_name}  ·  Personal milestones")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3895,7 +3910,7 @@ async def _campaign_init(
         title=f"⚔️ {camp_name}",
         description=(
             "Campaign initialised. **Watch Master**, set your theatre positioning order first.\n"
-            "Once the Watch Master submits, beat scenarios generate and High Command cascade opens."
+            "Once the Watch Master submits, cycle scenarios generate and High Command orders phase opens."
             if _wm_is_open else
             "Campaign initialised. No Watch Master enlisted — warband holds position.\n"
             "**High Command**, cascade is open for doctrine orders."
