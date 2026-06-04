@@ -3167,7 +3167,7 @@ async def _campaign_orders(interaction: discord.Interaction):
         embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
         embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
     elif phase == "ops":
-        embed.add_field(name="▸ Strat Mandate", value="Not yet published.", inline=False)
+        embed.add_field(name="▸ Stratagem Mandate", value="Not yet published.", inline=False)
 
     # --- Ops window ---
     if phase == "ops" or ops_window:
@@ -3452,20 +3452,16 @@ async def _campaign_mandate(interaction: discord.Interaction):
     )
 
     embed = discord.Embed(
-        title="Strat Mandate — Current Beat",
-        description=f"**{total_mandates} required strat(s)** this beat. Optional pool strats may be added.",
+        title="Stratagem Mandate",
+        description=f"**{total_mandates} required strat(s)** this cycle. Optional pool strats may be added.",
         color=0x8B0000,
     )
     embed.add_field(name="▸ Theatre Mandate", value=theatre_display, inline=False)
     embed.add_field(name="▸ Company Mandate", value=co_display, inline=True)
     embed.add_field(name="▸ Kill Team Mandate", value=kt_display, inline=True)
 
-    strat_pool_list = strat_pool.get("pool", [])
-    if strat_pool_list:
-        embed.add_field(name="▸ Full Pool", value=", ".join(f"`{s}`" for s in strat_pool_list[:20]), inline=False)
-
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
-    beat_label = f"Cycle {beat}" if beat else "Current Cycle"
+    beat_label = f"Cycle {beat}" if beat else "—"
     embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
