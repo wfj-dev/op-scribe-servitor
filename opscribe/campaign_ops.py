@@ -4060,7 +4060,8 @@ async def _campaign_orders(interaction: discord.Interaction):
                     options_lines = []
                     for _ok, _ov in filtered_opts.items():
                         _desc = _ov.get("description", "")
-                        _line = f"**{_ov.get('name', _ok)}** — *{_desc[:160]}{'...' if len(_desc) > 160 else ''}*"
+                        _short = _desc.split(".")[0].strip() + "." if _desc else ""
+                        _line = f"**{_ov.get('name', _ok)}** — *{_short}*" if _short else f"**{_ov.get('name', _ok)}**"
                         options_lines.append(_line)
                     if options_lines:
                         embed.add_field(
