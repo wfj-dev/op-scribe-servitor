@@ -4166,13 +4166,13 @@ async def _campaign_mandate(interaction: discord.Interaction):
         for m in eligible_missions:
             line = f"`{m['name']}`"
             if m.get("terminus_boss"):
-                line += f"  ★ *{m['terminus_boss']}*"
+                line += f" — *boss: {m['terminus_boss']}*"
             ops_lines.append(line)
         ops_display = "\n".join(ops_lines)
     else:
         ops_display = "All missions eligible (no node committed)"
 
-    # Terminus directive
+    # Prestige kill targets
     terminus_directive = strat_pool.get("terminus_directive", {})
     huntmaster_active = terminus_directive.get("huntmaster_active", False)
     flagged_targets = terminus_directive.get("flagged_targets", [])
@@ -4187,12 +4187,12 @@ async def _campaign_mandate(interaction: discord.Interaction):
                     target_lines.append(f"`{t['name']}` *(roaming)*")
             else:
                 target_lines.append(f"`{t}`")
-        terminus_display = "**Huntmaster active** — prestige terminus kills enabled."
+        terminus_display = "**Huntmaster active** — high-value kills earn prestige this cycle."
         if target_lines:
-            terminus_display += "\n" + "  ".join(target_lines)
-        terminus_display += "\n" + (f"Callers: {', '.join(callers)}" if callers else "No engagement callers enlisted.")
+            terminus_display += "\nTargets: " + ",  ".join(target_lines)
+        terminus_display += "\n" + (f"Engagement callers: {', '.join(callers)}" if callers else "No engagement callers enlisted.")
     else:
-        terminus_display = "Huntmaster not enlisted — no prestige terminus kills this cycle."
+        terminus_display = "Huntmaster not enlisted — no prestige kill targets this cycle."
 
     camp_name = campaign.get("name") or "Jericho Watch Campaign"
     beat_label = f"Cycle {beat}" if beat else "—"
@@ -4203,10 +4203,10 @@ async def _campaign_mandate(interaction: discord.Interaction):
         color=0x8B0000,
     )
     embed.add_field(name="▸ Operations", value=ops_display, inline=False)
-    embed.add_field(name="▸ Theatre Stratagem", value=theatre_display, inline=False)
+    embed.add_field(name="▸ Theatre Stratagem (Watch-wide)", value=theatre_display, inline=False)
     embed.add_field(name="▸ Company Stratagems", value=all_co_display, inline=False)
     embed.add_field(name="▸ Kill Team Stratagems", value=all_kt_display, inline=False)
-    embed.add_field(name="▸ Terminus Directive", value=terminus_display, inline=False)
+    embed.add_field(name="▸ Prestige Kill Targets", value=terminus_display, inline=False)
     embed.set_footer(text=f"{camp_name}  ·  {beat_label}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
