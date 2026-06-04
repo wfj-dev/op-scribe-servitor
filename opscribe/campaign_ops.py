@@ -871,7 +871,20 @@ def _credit_prestige_for_entry(
             multiplier = (_RATE_HC / n) + count * _CO_CMD_STEP_HC
             _write_company_prestige(co_id, base_prestige * multiplier, multiplier)
 
-        # If no enrolled formations found, fall through without crediting
+        # Pure HC run — no line formations present.
+        # Broadcast a small fixed rate to all enrolled companies and KTs.
+        # Represents the Watch's general command activity benefiting the whole force.
+        if not kt_formations and not co_formations:
+            _HC_BROADCAST_RATE = 0.10
+            all_kts = list(kill_teams.keys())
+            all_cos = list(companies.keys())
+            recipients = len(all_kts) + len(all_cos)
+            if recipients:
+                share = (_HC_BROADCAST_RATE * base_prestige) / recipients
+                for sgt_id in all_kts:
+                    _write_kt_prestige(sgt_id, share, _HC_BROADCAST_RATE / recipients)
+                for co_id in all_cos:
+                    _write_company_prestige(co_id, share, _HC_BROADCAST_RATE / recipients)
 
 
 
