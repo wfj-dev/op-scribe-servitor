@@ -35,6 +35,7 @@ from .constants import (
     ROSTER_IMAGE_COMPANY_COMMAND,
     ROSTER_IMAGE_HIGH_COMMAND,
     ROSTER_IMAGE_KILLTEAM,
+    ROSTER_IMAGE_KILLTEAM_BY_COMPANY,
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
@@ -729,13 +730,14 @@ async def _update_company_roster(
             )
             del kt_message_ids[stale_kt]
 
+    kt_image = ROSTER_IMAGE_KILLTEAM_BY_COMPANY.get(company_name, ROSTER_IMAGE_KILLTEAM)
     for kt_name, kt_role_id, kt_members in kill_teams:
         kt_embed = _build_embed(
             _fmt_title(f"<@&{kt_role_id}>", company_emoji),
             kt_members,
             guild,
             last_updated=now,
-            image_url=ROSTER_IMAGE_KILLTEAM,
+            image_url=kt_image,
         )
         kt_msg_id = await _upsert_message(
             channel, kt_message_ids.get(kt_name), kt_embed
