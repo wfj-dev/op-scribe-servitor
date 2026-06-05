@@ -1,7 +1,17 @@
 {
   "_notes": {
     "pools": "Each stratagem lists which specialist role contributes it to the cycle pool. A stratagem only enters the cycle pool if at least one of its pool roles is active that phase.",
-    "pool_roles": ["command", "champion", "techmarine", "apothecary", "chaplain", "librarian", "huntmaster", "dreadnought", "keeper"],
+    "pool_roles": [
+      "command",
+      "champion",
+      "techmarine",
+      "apothecary",
+      "chaplain",
+      "librarian",
+      "huntmaster",
+      "dreadnought",
+      "keeper"
+    ],
     "excluded": "Stratagems marked excluded: true are removed from the system entirely per community agreement. They cannot appear in any pool.",
     "intel_lapse_rule": "Intelligence Lapse is ALWAYS forced on Chaos-only missions (Vox Liberatis, Reliquary, Obelisk, Disruption, Vortex wave faction). This is a system rule, not a cascade pool draw.",
     "faction_rule": "Deployment is always Tyranid or Mixed. Never pure Chaos. Chaos-only maps convert faction via forced Intelligence Lapse."
@@ -11,9 +21,14 @@
       "name": "Aggravated Assault",
       "description": "Assault class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["champion"],
-      "tags": ["class_penalty", "assault"]
+      "excluded": true,
+      "pools": [
+        "champion"
+      ],
+      "tags": [
+        "class_penalty",
+        "assault"
+      ]
     },
     {
       "name": "Armour Malfunction",
@@ -21,63 +36,125 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["armor", "dodge"]
+      "tags": [
+        "armor",
+        "dodge"
+      ]
     },
     {
       "name": "Astra Militarum",
       "description": "Imperial Troopers spawn alongside you.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "dreadnought"],
-      "tags": ["team", "npc_allies"]
+      "pools": [
+        "command",
+        "dreadnought"
+      ],
+      "tags": [
+        "team",
+        "npc_allies"
+      ]
     },
     {
       "name": "Atrophy",
       "description": "Incapacitation reduces max Health by 25% (floor: 10% of base) instead of killing.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["apothecary"],
-      "tags": ["health", "incapacitation", "max_hp_reduction"]
+      "pools": [
+        "apothecary"
+      ],
+      "tags": [
+        "health",
+        "incapacitation",
+        "max_hp_reduction"
+      ],
+      "restriction_categories": [
+        "health"
+      ],
+      "specific_conflicts": [
+        "Measured Mercy"
+      ]
     },
     {
       "name": "Avenger",
       "description": "Last brother standing gains a significant temp boost to attack and defense.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "champion"],
-      "tags": ["solo", "last_stand", "temp_boost", "defense", "damage"]
+      "pools": [
+        "command",
+        "champion"
+      ],
+      "tags": [
+        "solo",
+        "last_stand",
+        "temp_boost",
+        "defense",
+        "damage"
+      ],
+      "restriction_categories": [
+        "health"
+      ]
     },
     {
       "name": "Backup Plan",
       "description": "Primary Weapon Damage greatly reduced; Secondary increased.",
       "type": "special",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["weapon", "secondary", "tradeoff"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "weapon",
+        "secondary",
+        "tradeoff"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Battlefield Instincts",
       "description": "The entire user interface is disabled.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["command", "techmarine", "keeper"],
-      "tags": ["ui_disabled", "extreme_challenge"]
+      "pools": [
+        "command",
+        "techmarine",
+        "keeper"
+      ],
+      "tags": [
+        "ui_disabled",
+        "extreme_challenge"
+      ]
     },
     {
       "name": "Beset",
       "description": "Both enemy factions spawn.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["command", "librarian", "keeper"],
-      "tags": ["faction", "both_factions", "wave_composition"]
+      "pools": [
+        "command",
+        "librarian",
+        "keeper"
+      ],
+      "tags": [
+        "faction",
+        "both_factions",
+        "wave_composition"
+      ]
     },
     {
       "name": "Bleary Sniper",
       "description": "Sniper class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["chaplain"],
-      "tags": ["class_penalty", "sniper"]
+      "excluded": true,
+      "pools": [
+        "chaplain"
+      ],
+      "tags": [
+        "class_penalty",
+        "sniper"
+      ]
     },
     {
       "name": "Booby Trap",
@@ -85,39 +162,82 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["explosion", "majoris", "team_damage"]
+      "tags": [
+        "explosion",
+        "majoris",
+        "team_damage"
+      ]
     },
     {
       "name": "Broken Bulwark",
       "description": "Bulwark class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["apothecary"],
-      "tags": ["class_penalty", "bulwark"]
+      "excluded": true,
+      "pools": [
+        "apothecary"
+      ],
+      "tags": [
+        "class_penalty",
+        "bulwark"
+      ]
     },
     {
       "name": "Buffed Enemies",
       "description": "Enemies have increased Health and Damage.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "huntmaster", "dreadnought"],
-      "tags": ["enemy_hp", "enemy_damage"]
+      "pools": [
+        "champion",
+        "huntmaster",
+        "dreadnought"
+      ],
+      "tags": [
+        "enemy_hp",
+        "enemy_damage"
+      ]
     },
     {
       "name": "Butcher's Gifts",
-      "description": "Executions heal nearby allies for 20% HP — but not you.",
+      "description": "Executions heal nearby allies for 20% HP \u2014 but not you.",
       "type": "special",
       "excluded": false,
-      "pools": ["chaplain", "apothecary"],
-      "tags": ["team", "healing", "execution", "self_excluded"]
+      "pools": [
+        "chaplain",
+        "apothecary"
+      ],
+      "tags": [
+        "team",
+        "healing",
+        "execution",
+        "self_excluded"
+      ],
+      "restriction_categories": [
+        "healing",
+        "close_distance_healing"
+      ],
+      "specific_conflicts": [
+        "Enduring Foes"
+      ]
     },
     {
       "name": "Camaraderie",
       "description": "Handshake restores all Health and Armour.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "chaplain", "apothecary"],
-      "tags": ["team", "health", "armor", "revive"]
+      "pools": [
+        "command",
+        "chaplain",
+        "apothecary"
+      ],
+      "tags": [
+        "team",
+        "health",
+        "armor",
+        "revive"
+      ],
+      "restriction_categories": [
+        "close_distance_healing"
+      ]
     },
     {
       "name": "Clever Foe",
@@ -125,39 +245,80 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["immunity", "majoris"]
+      "tags": [
+        "immunity",
+        "majoris"
+      ]
     },
     {
       "name": "Close In",
       "description": "Ranged Damage greatly reduced; Melee Damage increased.",
       "type": "special",
       "excluded": false,
-      "pools": ["champion"],
-      "tags": ["ranged_penalty", "melee_boost", "tradeoff"]
+      "pools": [
+        "champion"
+      ],
+      "tags": [
+        "ranged_penalty",
+        "melee_boost",
+        "tradeoff"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Combat Mastery",
       "description": "Melee or Ranged Damage increases by 100%, switching every 15 seconds.",
       "type": "buff",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["melee", "ranged", "switching", "damage_boost"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "melee",
+        "ranged",
+        "switching",
+        "damage_boost"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Come Prepared",
       "description": "No Stimms on map, but every Marine starts with 10.",
       "type": "special",
       "excluded": false,
-      "pools": ["apothecary"],
-      "tags": ["health", "stimms", "no_map_stimms", "resource"]
+      "pools": [
+        "apothecary"
+      ],
+      "tags": [
+        "health",
+        "stimms",
+        "no_map_stimms",
+        "resource"
+      ],
+      "restriction_categories": [
+        "healing"
+      ]
     },
     {
       "name": "Coordinated Calls",
       "description": "Several enemies call Reinforcements simultaneously.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["command", "huntmaster", "dreadnought"],
-      "tags": ["reinforcements", "simultaneous", "wave_composition"]
+      "pools": [
+        "command",
+        "huntmaster",
+        "dreadnought"
+      ],
+      "tags": [
+        "reinforcements",
+        "simultaneous",
+        "wave_composition"
+      ]
     },
     {
       "name": "Coordinated Elimination",
@@ -165,7 +326,10 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["focused_fire", "enhanced_enemies"]
+      "tags": [
+        "focused_fire",
+        "enhanced_enemies"
+      ]
     },
     {
       "name": "Corrosion",
@@ -173,23 +337,44 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["damage_ramp", "time_pressure"]
+      "tags": [
+        "damage_ramp",
+        "time_pressure"
+      ]
     },
     {
       "name": "Corrupted Relic",
       "description": "A random player carries the Cursed Relic; enemies prioritize them and they deal 25% less damage.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["chaplain", "librarian", "keeper"],
-      "tags": ["cursed_relic", "damage_penalty", "enemy_focus", "rotating"]
+      "pools": [
+        "chaplain",
+        "librarian",
+        "keeper"
+      ],
+      "tags": [
+        "cursed_relic",
+        "damage_penalty",
+        "enemy_focus",
+        "rotating"
+      ],
+      "restriction_categories": [
+        "relics"
+      ]
     },
     {
       "name": "Deep Pockets",
       "description": "Ammo Reserve is doubled.",
       "type": "buff",
       "excluded": false,
-      "pools": ["techmarine", "dreadnought"],
-      "tags": ["ammo", "resource"]
+      "pools": [
+        "techmarine",
+        "dreadnought"
+      ],
+      "tags": [
+        "ammo",
+        "resource"
+      ]
     },
     {
       "name": "Depleted Armour",
@@ -197,31 +382,60 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["armor", "one_segment"]
+      "tags": [
+        "armor",
+        "one_segment"
+      ]
     },
     {
       "name": "Detonation Risk",
       "description": "Exploding objects are far more common and far more deadly.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["techmarine", "chaplain"],
-      "tags": ["explosions", "environmental", "deadly"]
+      "pools": [
+        "techmarine",
+        "chaplain"
+      ],
+      "tags": [
+        "explosions",
+        "environmental",
+        "deadly"
+      ]
     },
     {
       "name": "Doomed Offensive",
       "description": "The lower your Health, the more damage you deal.",
       "type": "special",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["damage", "low_health", "risk", "scaling"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "damage",
+        "low_health",
+        "risk",
+        "scaling"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Effective Taunt",
       "description": "Every wave contains enraged Majoris enemies.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["command", "huntmaster", "dreadnought"],
-      "tags": ["majoris", "enraged", "wave_composition"]
+      "pools": [
+        "command",
+        "huntmaster",
+        "dreadnought"
+      ],
+      "tags": [
+        "majoris",
+        "enraged",
+        "wave_composition"
+      ]
     },
     {
       "name": "Empathy",
@@ -229,23 +443,48 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["shared_damage", "team"]
+      "tags": [
+        "shared_damage",
+        "team"
+      ]
     },
     {
       "name": "Enduring Foes",
       "description": "Enemies can't enter Incapacitation or be Executed; all enemy Health -35%.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "chaplain", "huntmaster"],
-      "tags": ["no_execution", "enemy_hp_reduction", "enemy_resilience"]
+      "pools": [
+        "champion",
+        "chaplain",
+        "huntmaster"
+      ],
+      "tags": [
+        "no_execution",
+        "enemy_hp_reduction",
+        "enemy_resilience"
+      ],
+      "specific_conflicts": [
+        "Harvest of Vitae",
+        "Unleashed Fury",
+        "Butcher's Gifts"
+      ]
     },
     {
       "name": "Enemy Sighted",
       "description": "Ranged kills restore Armour based on enemy threat level.",
       "type": "buff",
       "excluded": false,
-      "pools": ["champion", "huntmaster", "keeper"],
-      "tags": ["ranged", "armor", "kills", "threat_level"]
+      "pools": [
+        "champion",
+        "huntmaster",
+        "keeper"
+      ],
+      "tags": [
+        "ranged",
+        "armor",
+        "kills",
+        "threat_level"
+      ]
     },
     {
       "name": "Equipment Malfunction",
@@ -253,15 +492,28 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["equipment"]
+      "tags": [
+        "equipment"
+      ]
     },
     {
       "name": "Extreme Challenge",
       "description": "Extremis enemy count and frequency heavily increased.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "huntmaster", "dreadnought"],
-      "tags": ["extremis", "frequency", "wave_composition"]
+      "pools": [
+        "champion",
+        "huntmaster",
+        "dreadnought"
+      ],
+      "tags": [
+        "extremis",
+        "frequency",
+        "wave_composition"
+      ],
+      "restriction_categories": [
+        "enemy_spawn_distribution"
+      ]
     },
     {
       "name": "Fatal Contamination",
@@ -269,55 +521,125 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["corruption", "incapacitation", "status"]
+      "tags": [
+        "corruption",
+        "incapacitation",
+        "status"
+      ]
     },
     {
       "name": "Fatality",
       "description": "Full Health depletion always triggers respawn countdown, never Incapacitation.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["command", "champion"],
-      "tags": ["risk", "no_incapacitation", "death_mechanic"]
+      "pools": [
+        "command",
+        "champion"
+      ],
+      "tags": [
+        "risk",
+        "no_incapacitation",
+        "death_mechanic"
+      ],
+      "restriction_categories": [
+        "respawn"
+      ],
+      "specific_conflicts": [
+        "Measured Mercy"
+      ]
     },
     {
       "name": "Fallen Vanguard",
       "description": "Vanguard class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["champion"],
-      "tags": ["class_penalty", "vanguard"]
+      "excluded": true,
+      "pools": [
+        "champion"
+      ],
+      "tags": [
+        "class_penalty",
+        "vanguard"
+      ]
     },
     {
       "name": "Great Responsibility",
       "description": "One random player gets 150% more Health but absorbs all team damage; mission fails if they die.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["command", "apothecary"],
-      "tags": ["team", "shared_damage", "risk", "rotating", "mission_fail_condition"]
+      "pools": [
+        "command",
+        "apothecary"
+      ],
+      "tags": [
+        "team",
+        "shared_damage",
+        "risk",
+        "rotating",
+        "mission_fail_condition"
+      ],
+      "restriction_categories": [
+        "health",
+        "damage_redirection"
+      ],
+      "specific_conflicts": [
+        "Measured Mercy"
+      ]
     },
     {
       "name": "Hallowed Relic",
       "description": "A random player carries a relic that heals nearby allies and boosts their damage by 50%.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "librarian"],
-      "tags": ["team", "rotating_relic", "damage_boost", "healing", "aura"]
+      "pools": [
+        "command",
+        "librarian"
+      ],
+      "tags": [
+        "team",
+        "rotating_relic",
+        "damage_boost",
+        "healing",
+        "aura"
+      ],
+      "restriction_categories": [
+        "relics"
+      ]
     },
     {
       "name": "Hardened Skins",
       "description": "Enemies not staggered by first 3 hits; damage is still applied.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["huntmaster", "dreadnought"],
-      "tags": ["enemy_stagger", "enemy_resilience"]
+      "pools": [
+        "huntmaster",
+        "dreadnought"
+      ],
+      "tags": [
+        "enemy_stagger",
+        "enemy_resilience"
+      ]
     },
     {
       "name": "Harvest of Vitae",
       "description": "No contested Health; Executions restore a fixed amount of Health.",
       "type": "special",
       "excluded": false,
-      "pools": ["apothecary", "chaplain"],
-      "tags": ["health", "execution", "no_contested_health", "healing"]
+      "pools": [
+        "apothecary",
+        "chaplain"
+      ],
+      "tags": [
+        "health",
+        "execution",
+        "no_contested_health",
+        "healing"
+      ],
+      "restriction_categories": [
+        "contested_health"
+      ],
+      "specific_conflicts": [
+        "Enduring Foes"
+      ]
     },
     {
       "name": "Hazardous Environment",
@@ -325,23 +647,41 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["toxic", "corruption", "environmental"]
+      "tags": [
+        "toxic",
+        "corruption",
+        "environmental"
+      ]
     },
     {
       "name": "Heavy Burden",
       "description": "Heavy class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["dreadnought"],
-      "tags": ["class_penalty", "heavy"]
+      "excluded": true,
+      "pools": [
+        "dreadnought"
+      ],
+      "tags": [
+        "class_penalty",
+        "heavy"
+      ]
     },
     {
       "name": "Heavy Calibre",
       "description": "Secondary Weapon Damage greatly reduced; Primary increased.",
       "type": "special",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["weapon", "primary", "tradeoff"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "weapon",
+        "primary",
+        "tradeoff"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Hunted",
@@ -349,31 +689,57 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["lictor", "unkillable", "pursuit"]
+      "tags": [
+        "lictor",
+        "unkillable",
+        "pursuit"
+      ]
     },
     {
       "name": "Hyperopia",
       "description": "Ranged Damage at less than 10 metres reduced by 75%.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["huntmaster"],
-      "tags": ["ranged", "close_range_penalty"]
+      "pools": [
+        "huntmaster"
+      ],
+      "tags": [
+        "ranged",
+        "close_range_penalty"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Imperial Fervour",
       "description": "\"For the Emperor!\" shout temporarily increases damage.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "chaplain"],
-      "tags": ["team", "temp_boost", "shout", "damage"]
+      "pools": [
+        "command",
+        "chaplain"
+      ],
+      "tags": [
+        "team",
+        "temp_boost",
+        "shout",
+        "damage"
+      ]
     },
     {
       "name": "Intelligence Lapse",
       "description": "The faction that normally doesn't appear spawns instead.",
       "type": "special",
       "excluded": false,
-      "pools": ["librarian", "keeper"],
-      "tags": ["faction_swap", "wave_composition"],
+      "pools": [
+        "librarian",
+        "keeper"
+      ],
+      "tags": [
+        "faction_swap",
+        "wave_composition"
+      ],
       "system_note": "ALWAYS forced on Chaos-only missions regardless of pool. See operations.json intel_lapse_forced field."
     },
     {
@@ -381,64 +747,144 @@
       "description": "Ability Charge only restored by kills.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["champion", "chaplain"],
-      "tags": ["ability", "kills_required", "charge"]
+      "pools": [
+        "champion",
+        "chaplain"
+      ],
+      "tags": [
+        "ability",
+        "kills_required",
+        "charge"
+      ],
+      "restriction_categories": [
+        "abilities"
+      ]
     },
     {
       "name": "Larraman Cells",
       "description": "Health passively restored at a slow rate.",
       "type": "buff",
       "excluded": false,
-      "pools": ["apothecary", "dreadnought"],
-      "tags": ["health", "passive_regen", "healing"]
+      "pools": [
+        "apothecary",
+        "dreadnought"
+      ],
+      "tags": [
+        "health",
+        "passive_regen",
+        "healing"
+      ],
+      "restriction_categories": [
+        "health_regeneration"
+      ]
     },
     {
       "name": "Maintain Distance",
       "description": "Melee Damage greatly reduced; Ranged Damage increased.",
       "type": "special",
       "excluded": false,
-      "pools": ["huntmaster"],
-      "tags": ["melee_penalty", "ranged_boost", "tradeoff"]
+      "pools": [
+        "huntmaster"
+      ],
+      "tags": [
+        "melee_penalty",
+        "ranged_boost",
+        "tradeoff"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Major Challenge",
       "description": "Majoris count heavily increased; Minoris count heavily reduced.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["majoris", "wave_composition"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "majoris",
+        "wave_composition"
+      ],
+      "restriction_categories": [
+        "enemy_spawn_distribution"
+      ]
     },
     {
       "name": "Meat for the Slaughter",
       "description": "Minoris count heavily increased; Majoris count reduced.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["dreadnought"],
-      "tags": ["minoris", "wave_composition", "horde"]
+      "pools": [
+        "dreadnought"
+      ],
+      "tags": [
+        "minoris",
+        "wave_composition",
+        "horde"
+      ],
+      "restriction_categories": [
+        "enemy_spawn_distribution"
+      ]
     },
     {
       "name": "Measured Mercy",
       "description": "Start with 5 relics; allies can't be revived; mission fails if anyone dies.",
       "type": "special",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["extreme_risk", "no_revive", "relic", "mission_fail_condition"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "extreme_risk",
+        "no_revive",
+        "relic",
+        "mission_fail_condition"
+      ],
+      "specific_conflicts": [
+        "You Only Live Once",
+        "Fatality",
+        "Great Responsibility",
+        "Atrophy"
+      ]
     },
     {
       "name": "Microreactor Breach",
       "description": "Dying players deal significant damage to nearby squadmates.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["command", "chaplain", "apothecary"],
-      "tags": ["death", "team_damage", "risk"]
+      "pools": [
+        "command",
+        "chaplain",
+        "apothecary"
+      ],
+      "tags": [
+        "death",
+        "team_damage",
+        "risk"
+      ]
     },
     {
       "name": "Migraine",
       "description": "Headshot kills explode the enemy, damaging nearby foes.",
       "type": "buff",
       "excluded": false,
-      "pools": ["huntmaster", "librarian"],
-      "tags": ["ranged", "headshot", "aoe", "explosion"]
+      "pools": [
+        "huntmaster",
+        "librarian"
+      ],
+      "tags": [
+        "ranged",
+        "headshot",
+        "aoe",
+        "explosion"
+      ],
+      "restriction_categories": [
+        "headshot"
+      ]
     },
     {
       "name": "Mine Field",
@@ -446,15 +892,26 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["spore_mines", "periodic"]
+      "tags": [
+        "spore_mines",
+        "periodic"
+      ]
     },
     {
       "name": "Myopia",
       "description": "Ranged Damage at greater than 10 metres reduced by 75%.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["chaplain"],
-      "tags": ["ranged", "long_range_penalty"]
+      "pools": [
+        "chaplain"
+      ],
+      "tags": [
+        "ranged",
+        "long_range_penalty"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "No Apothecaries",
@@ -462,15 +919,25 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["stimms", "healing"]
+      "tags": [
+        "stimms",
+        "healing"
+      ]
     },
     {
       "name": "No Delays",
       "description": "Enemy Health increases continuously with mission duration.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["techmarine", "dreadnought"],
-      "tags": ["enemy_hp", "scaling", "time_pressure"]
+      "pools": [
+        "techmarine",
+        "dreadnought"
+      ],
+      "tags": [
+        "enemy_hp",
+        "scaling",
+        "time_pressure"
+      ]
     },
     {
       "name": "On the Clock",
@@ -478,7 +945,10 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["timer", "time_pressure"]
+      "tags": [
+        "timer",
+        "time_pressure"
+      ]
     },
     {
       "name": "Personal Quarry",
@@ -486,23 +956,40 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["assigned_target", "solo_damage"]
+      "tags": [
+        "assigned_target",
+        "solo_damage"
+      ]
     },
     {
       "name": "Point Blank",
       "description": "Ranged Damage at less than 10 metres increased by 75%.",
       "type": "buff",
       "excluded": false,
-      "pools": ["huntmaster"],
-      "tags": ["ranged", "close_range"]
+      "pools": [
+        "huntmaster"
+      ],
+      "tags": [
+        "ranged",
+        "close_range"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Pointed Attack",
       "description": "Pointing at an enemy deals significant Damage to them.",
       "type": "special",
       "excluded": false,
-      "pools": ["chaplain"],
-      "tags": ["ranged", "team_mechanic", "mark_target"]
+      "pools": [
+        "chaplain"
+      ],
+      "tags": [
+        "ranged",
+        "team_mechanic",
+        "mark_target"
+      ]
     },
     {
       "name": "Posthumous Proliferation",
@@ -510,7 +997,10 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["spawns_on_death", "faction_dependent"]
+      "tags": [
+        "spawns_on_death",
+        "faction_dependent"
+      ]
     },
     {
       "name": "Press the Attack",
@@ -518,39 +1008,85 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["execution_required", "health_drain"]
+      "tags": [
+        "execution_required",
+        "health_drain"
+      ]
     },
     {
       "name": "Rationing",
       "description": "No Ammo Caches; Ammo Boxes drop more frequently.",
       "type": "special",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["ammo", "no_caches", "resource_management"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "ammo",
+        "no_caches",
+        "resource_management"
+      ],
+      "restriction_categories": [
+        "ammo"
+      ],
+      "specific_conflicts": [
+        "Spoils of War"
+      ]
     },
     {
       "name": "Reinforced Cranium",
       "description": "Headshots deal no bonus damage; all enemy Health reduced by 35%.",
       "type": "special",
       "excluded": false,
-      "pools": ["librarian"],
-      "tags": ["headshot", "enemy_hp_reduction", "tradeoff"]
+      "pools": [
+        "librarian"
+      ],
+      "tags": [
+        "headshot",
+        "enemy_hp_reduction",
+        "tradeoff"
+      ],
+      "restriction_categories": [
+        "headshot"
+      ]
     },
     {
       "name": "Rhythm of Carnage",
       "description": "Melee Damage -70% but consecutive melee attacks scale up to 300%; resets after 4s without hitting.",
       "type": "special",
       "excluded": false,
-      "pools": ["champion", "chaplain", "dreadnought"],
-      "tags": ["melee", "scaling", "consecutive", "risk"]
+      "pools": [
+        "champion",
+        "chaplain",
+        "dreadnought"
+      ],
+      "tags": [
+        "melee",
+        "scaling",
+        "consecutive",
+        "risk"
+      ]
     },
     {
       "name": "Scavenger",
       "description": "No Ammo Caches or Boxes; each melee kill restores 2% ammo to both weapons.",
       "type": "special",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["ammo", "no_caches", "melee_ammo", "resource_management"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "ammo",
+        "no_caches",
+        "melee_ammo",
+        "resource_management"
+      ],
+      "restriction_categories": [
+        "ammo"
+      ],
+      "specific_conflicts": [
+        "Spoils of War"
+      ]
     },
     {
       "name": "Shadow of the Warp",
@@ -558,23 +1094,41 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["vision", "darkness"]
+      "tags": [
+        "vision",
+        "darkness"
+      ]
     },
     {
       "name": "Sharpshooter",
       "description": "Ranged Damage at greater than 10 metres increased by 75%.",
       "type": "buff",
       "excluded": false,
-      "pools": ["huntmaster"],
-      "tags": ["ranged", "long_range"]
+      "pools": [
+        "huntmaster"
+      ],
+      "tags": [
+        "ranged",
+        "long_range"
+      ],
+      "restriction_categories": [
+        "damage"
+      ]
     },
     {
       "name": "Shockwave Plating",
       "description": "Nearby explosions restore Armour.",
       "type": "buff",
       "excluded": false,
-      "pools": ["techmarine", "dreadnought"],
-      "tags": ["armor", "explosive", "restoration"]
+      "pools": [
+        "techmarine",
+        "dreadnought"
+      ],
+      "tags": [
+        "armor",
+        "explosive",
+        "restoration"
+      ]
     },
     {
       "name": "Split Up",
@@ -582,15 +1136,32 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["proximity", "recovery", "armor", "contested_health"]
+      "tags": [
+        "proximity",
+        "recovery",
+        "armor",
+        "contested_health"
+      ]
     },
     {
       "name": "Spoils of War",
       "description": "No pickups on the map; kill enemies to acquire them.",
       "type": "special",
       "excluded": false,
-      "pools": ["techmarine", "dreadnought", "keeper"],
-      "tags": ["no_pickups", "kill_to_acquire", "resource_management"]
+      "pools": [
+        "techmarine",
+        "dreadnought",
+        "keeper"
+      ],
+      "tags": [
+        "no_pickups",
+        "kill_to_acquire",
+        "resource_management"
+      ],
+      "specific_conflicts": [
+        "Scavenger",
+        "Rationing"
+      ]
     },
     {
       "name": "Squad Unity",
@@ -598,15 +1169,25 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["proximity", "recovery", "armor", "contested_health"]
+      "tags": [
+        "proximity",
+        "recovery",
+        "armor",
+        "contested_health"
+      ]
     },
     {
       "name": "Strike Out",
       "description": "Gun Strike cannot be used.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["champion"],
-      "tags": ["gun_strike", "ability"]
+      "pools": [
+        "champion"
+      ],
+      "tags": [
+        "gun_strike",
+        "ability"
+      ]
     },
     {
       "name": "Suboptimal State",
@@ -614,39 +1195,74 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["health", "max_hp"]
+      "tags": [
+        "health",
+        "max_hp"
+      ]
     },
     {
       "name": "Summoner",
       "description": "Every uninterrupted Call for Reinforcements summons an Extremis enemy.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["command", "librarian", "dreadnought"],
-      "tags": ["extremis", "reinforcements", "wave_modifier"]
+      "pools": [
+        "command",
+        "librarian",
+        "dreadnought"
+      ],
+      "tags": [
+        "extremis",
+        "reinforcements",
+        "wave_modifier"
+      ]
     },
     {
       "name": "Supremacy of the Strong",
       "description": "Terminus-level enemies are stronger.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["terminus_buff", "terminus"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "terminus_buff",
+        "terminus"
+      ]
     },
     {
       "name": "Surplus",
       "description": "Carry twice as much Equipment; Equipment spawns doubled.",
       "type": "buff",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["resource", "equipment", "carry_capacity"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "resource",
+        "equipment",
+        "carry_capacity"
+      ],
+      "restriction_categories": [
+        "equipment"
+      ]
     },
     {
       "name": "Surgical Strike",
       "description": "Perfect Parry/Block deals heavy damage but the window is smaller.",
       "type": "special",
       "excluded": false,
-      "pools": ["champion", "librarian"],
-      "tags": ["parry", "melee", "precision", "risk", "damage_burst"]
+      "pools": [
+        "champion",
+        "librarian"
+      ],
+      "tags": [
+        "parry",
+        "melee",
+        "precision",
+        "risk",
+        "damage_burst"
+      ]
     },
     {
       "name": "Survival Training",
@@ -654,7 +1270,10 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["contested_health", "health"]
+      "tags": [
+        "contested_health",
+        "health"
+      ]
     },
     {
       "name": "Suspicious Behaviour",
@@ -662,71 +1281,137 @@
       "type": "debuff",
       "excluded": true,
       "pools": [],
-      "tags": ["friendly_fire"]
+      "tags": [
+        "friendly_fire"
+      ]
     },
     {
       "name": "Tactical Weakness",
       "description": "Tactical class: -50% Health, -50% Damage, can't parry.",
       "type": "debuff",
-      "excluded": false,
-      "pools": ["command"],
-      "tags": ["class_penalty", "tactical"]
+      "excluded": true,
+      "pools": [
+        "command"
+      ],
+      "tags": [
+        "class_penalty",
+        "tactical"
+      ]
     },
     {
       "name": "Technological Revolution",
       "description": "Ability Charge restoration significantly faster.",
       "type": "buff",
       "excluded": false,
-      "pools": ["techmarine"],
-      "tags": ["ability", "charge", "restoration"]
+      "pools": [
+        "techmarine"
+      ],
+      "tags": [
+        "ability",
+        "charge",
+        "restoration"
+      ],
+      "restriction_categories": [
+        "abilities"
+      ]
     },
     {
       "name": "Temporal Boosts",
       "description": "Collectible spheres appear on the map; grant a 15s power-up.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "techmarine", "librarian"],
-      "tags": ["collectible", "temp_boost", "power_up"]
+      "pools": [
+        "command",
+        "techmarine",
+        "librarian"
+      ],
+      "tags": [
+        "collectible",
+        "temp_boost",
+        "power_up"
+      ]
     },
     {
       "name": "The Emperor Protects",
       "description": "One player gets a buff that heals 75% HP and knocks back enemies every 90s; passes on death.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "apothecary"],
-      "tags": ["team", "health", "rotating", "knockback", "periodic"]
+      "pools": [
+        "command",
+        "apothecary"
+      ],
+      "tags": [
+        "team",
+        "health",
+        "rotating",
+        "knockback",
+        "periodic"
+      ]
     },
     {
       "name": "Tsunami",
       "description": "All waves are massive but less frequent.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["dreadnought"],
-      "tags": ["waves", "large_waves", "infrequent", "wave_composition"]
+      "pools": [
+        "dreadnought"
+      ],
+      "tags": [
+        "waves",
+        "large_waves",
+        "infrequent",
+        "wave_composition"
+      ]
     },
     {
       "name": "Twice the Foe",
       "description": "Twice as many Terminus-level enemies.",
       "type": "enemy_modifier",
       "excluded": false,
-      "pools": ["champion", "huntmaster"],
-      "tags": ["terminus", "doubled", "wave_composition"]
+      "pools": [
+        "champion",
+        "huntmaster"
+      ],
+      "tags": [
+        "terminus",
+        "doubled",
+        "wave_composition"
+      ]
     },
     {
       "name": "Unshaken",
       "description": "You do not lose control on Heavy Hits and cannot be knocked back.",
       "type": "buff",
       "excluded": false,
-      "pools": ["command", "dreadnought"],
-      "tags": ["defense", "knockback", "heavy_hits", "control"]
+      "pools": [
+        "command",
+        "dreadnought"
+      ],
+      "tags": [
+        "defense",
+        "knockback",
+        "heavy_hits",
+        "control"
+      ]
     },
     {
       "name": "Unleashed Fury",
       "description": "Executing an enemy boosts damage dealt by 200% for 8 seconds.",
       "type": "buff",
       "excluded": false,
-      "pools": ["champion", "chaplain"],
-      "tags": ["melee", "execution", "temp_boost", "damage"]
+      "pools": [
+        "champion",
+        "chaplain"
+      ],
+      "tags": [
+        "melee",
+        "execution",
+        "temp_boost",
+        "damage"
+      ],
+      "specific_conflicts": [
+        "Enduring Foes"
+      ]
     },
     {
       "name": "Warp Storm",
@@ -734,97 +1419,174 @@
       "type": "enemy_modifier",
       "excluded": true,
       "pools": [],
-      "tags": ["psychic", "periodic", "environmental"]
+      "tags": [
+        "psychic",
+        "periodic",
+        "environmental"
+      ]
     },
     {
       "name": "We Stand as One",
       "description": "Medicae Stimms also heal Squad Members within 5 metres.",
       "type": "buff",
       "excluded": false,
-      "pools": ["apothecary"],
-      "tags": ["team", "healing", "stimms", "aura"]
+      "pools": [
+        "apothecary"
+      ],
+      "tags": [
+        "team",
+        "healing",
+        "stimms",
+        "aura"
+      ],
+      "restriction_categories": [
+        "healing",
+        "close_distance_healing"
+      ]
     },
     {
       "name": "You Only Live Once",
       "description": "You do not respawn after death.",
       "type": "debuff",
       "excluded": false,
-      "pools": ["command", "champion"],
-      "tags": ["extreme_risk", "no_respawn", "death_mechanic"]
+      "pools": [
+        "command",
+        "champion"
+      ],
+      "tags": [
+        "extreme_risk",
+        "no_respawn",
+        "death_mechanic"
+      ],
+      "restriction_categories": [
+        "respawn"
+      ],
+      "specific_conflicts": [
+        "Measured Mercy"
+      ]
     }
   ],
-
   "conflict_map": {
     "_notes": "Defines stratagem mutual exclusions enforced at pool-generation time. category_groups: picking any member of a group blocks all others in that group from entering the same pool. specific_conflicts: named strats that block specific others regardless of category. All conflicts are bidirectional. The bot resolves conflicts before presenting the pool to the WM for confirmation.",
-
     "category_groups": {
       "contested_health": {
         "_note": "Both strats modify or remove contested Health. Pick at most one.",
-        "members": ["Survival Training", "Harvest of Vitae"]
+        "members": [
+          "Survival Training",
+          "Harvest of Vitae"
+        ]
       },
       "respawn_consequence": {
         "_note": "Both override the base incapacitation/respawn mechanic. Stacking produces undefined death behavior.",
-        "members": ["Fatality", "You Only Live Once"]
+        "members": [
+          "Fatality",
+          "You Only Live Once"
+        ]
       },
       "mission_fail_condition": {
         "_note": "Both add a secondary mission-fail state. Two simultaneous fail conditions are unresolvable.",
-        "members": ["Measured Mercy", "Great Responsibility"]
+        "members": [
+          "Measured Mercy",
+          "Great Responsibility"
+        ]
       },
       "ammo_cache_system": {
         "_note": "All three remove or fundamentally replace the standard ammo cache system. Pick at most one.",
-        "members": ["Rationing", "Scavenger", "Spoils of War"]
+        "members": [
+          "Rationing",
+          "Scavenger",
+          "Spoils of War"
+        ]
       },
       "relic": {
-        "_note": "Relic slot — only one relic type can be active per op.",
-        "members": ["Corrupted Relic", "Hallowed Relic"]
+        "_note": "Relic slot \u2014 only one relic type can be active per op.",
+        "members": [
+          "Corrupted Relic",
+          "Hallowed Relic"
+        ]
       },
       "headshot_modifier": {
         "_note": "Both modify headshot mechanics in directly contradictory ways.",
-        "members": ["Reinforced Cranium", "Migraine"]
+        "members": [
+          "Reinforced Cranium",
+          "Migraine"
+        ]
       },
       "ranged_distance_bias": {
         "_note": "Both impose ranged damage penalties at opposite distances. Stacking neutralizes all ranged damage.",
-        "members": ["Myopia", "Hyperopia"]
+        "members": [
+          "Myopia",
+          "Hyperopia"
+        ]
       },
       "melee_ranged_swap": {
         "_note": "Both fundamentally reweight melee vs. ranged damage in opposite directions.",
-        "members": ["Close In", "Maintain Distance"]
+        "members": [
+          "Close In",
+          "Maintain Distance"
+        ]
       },
       "close_distance_healing": {
         "_note": "Both provide healing to nearby allies via proximity-triggered effects. Redundant when stacked.",
-        "members": ["Butcher's Gifts", "We Stand as One"]
+        "members": [
+          "Butcher's Gifts",
+          "We Stand as One"
+        ]
       }
     },
-
     "specific_conflicts": {
-      "_note": "Cross-category conflicts. All are bidirectional — if A blocks B, B blocks A.",
+      "_note": "Cross-category conflicts. All are bidirectional \u2014 if A blocks B, B blocks A.",
       "Enduring Foes": {
-        "blocks": ["Harvest of Vitae", "Press the Attack", "Unleashed Fury", "Butcher's Gifts"],
+        "blocks": [
+          "Harvest of Vitae",
+          "Press the Attack",
+          "Unleashed Fury",
+          "Butcher's Gifts"
+        ],
         "reason": "Enduring Foes removes enemy incapacitation and executions entirely. All four blocked strats require executions or finishers to trigger their effects."
       },
       "Measured Mercy": {
-        "blocks": ["Survival Training", "You Only Live Once", "Fatality", "Great Responsibility", "Atrophy"],
+        "blocks": [
+          "Survival Training",
+          "You Only Live Once",
+          "Fatality",
+          "Great Responsibility",
+          "Atrophy"
+        ],
         "reason": "Measured Mercy makes any death an immediate mission fail. Blocked strats either impose additional death penalties, reduce max HP in ways that guarantee deaths, or add a second conflicting mission-fail condition."
       },
       "Spoils of War": {
-        "blocks": ["Scavenger", "Rationing", "Equipment Malfunction", "No Apothecaries"],
-        "reason": "Spoils of War replaces the entire pickup system — resources must be earned via kills. Blocked strats either alter the same system redundantly (Scavenger, Rationing) or remove resources that Spoils of War is meant to make acquirable (Equipment Malfunction, No Apothecaries)."
+        "blocks": [
+          "Scavenger",
+          "Rationing",
+          "Equipment Malfunction",
+          "No Apothecaries"
+        ],
+        "reason": "Spoils of War replaces the entire pickup system \u2014 resources must be earned via kills. Blocked strats either alter the same system redundantly (Scavenger, Rationing) or remove resources that Spoils of War is meant to make acquirable (Equipment Malfunction, No Apothecaries)."
       },
       "Survival Training": {
-        "blocks": ["Larraman Cells"],
+        "blocks": [
+          "Larraman Cells"
+        ],
         "reason": "Survival Training blocks all health restoration. Larraman Cells provides passive health regen. The passive regen is nullified entirely, making the strat inert."
       },
       "Point Blank": {
-        "blocks": ["Hyperopia"],
-        "reason": "Point Blank boosts close-range damage by 75%. Hyperopia reduces close-range damage by 75%. Net effect is zero — both strats are rendered meaningless."
+        "blocks": [
+          "Hyperopia"
+        ],
+        "reason": "Point Blank boosts close-range damage by 75%. Hyperopia reduces close-range damage by 75%. Net effect is zero \u2014 both strats are rendered meaningless."
       },
       "Maintain Distance": {
-        "blocks": ["Myopia"],
+        "blocks": [
+          "Myopia"
+        ],
         "reason": "Maintain Distance reduces melee damage and rewards ranged play. Myopia reduces long-range damage by 75%. Together they penalize both melee and long-range simultaneously with no compensating benefit."
       },
       "Corrupted Relic": {
-        "blocks": ["You Only Live Once"],
-        "reason": "Corrupted Relic prevents wound accumulation entirely. You Only Live Once triggers perma-death on incapacitation. With Corrupted Relic active, incapacitation cannot occur, making YOLO a dead strat — it contributes nothing and misleads the team about their death risk."
+        "blocks": [
+          "You Only Live Once"
+        ],
+        "reason": "Corrupted Relic prevents wound accumulation entirely. You Only Live Once triggers perma-death on incapacitation. With Corrupted Relic active, incapacitation cannot occur, making YOLO a dead strat \u2014 it contributes nothing and misleads the team about their death risk."
       }
     }
   }

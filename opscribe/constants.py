@@ -63,9 +63,6 @@ LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
 LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
-# Campaign subsystem
-CAMPAIGN_STATE_PATH = os.path.join(DATA_DIR, "campaign_state.json")
-CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID: int = 1512146866165383410  # Set to campaign announcement channel ID
 
 # ---------------------------------------------------------------------------
 # Channel IDs
@@ -467,19 +464,6 @@ CHALLENGE_ROLES = [
 # Auto-roster embed configuration
 # ---------------------------------------------------------------------------
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
-
-# Human-readable display names for campaign phase keys.
-# Used in all user-facing embeds and footers so raw internal keys never appear.
-PHASE_DISPLAY: dict[str, str] = {
-    "inactive": "Inactive",
-    "cascade_WM": "Watch Master Orders",
-    "cascade_HC": "High Command Orders",
-    "cascade_Company": "Company Command Orders",
-    "cascade_KT": "Kill Team Orders",
-    "ops": "Operations Window",
-    "paused": "Paused",
-    "complete": "Campaign Complete",
-}
 
 # Embed banner images (Discord attachment URLs — base URL without expiry params)
 ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919151302705203/High_Command.png?ex=6a2233ef&is=6a20e26f&hm=c88ba02f3f4046ddb5acbb3cf6bb5e404b3f112dddf295cfd0b4ebc4436fda40&"
