@@ -3654,12 +3654,8 @@ def _compose_orders_narrative(
         """Format upstream submissions as a labelled briefing block."""
         lines = []
         for u in ups:
-            desc_sentences = [s.strip() for s in u["description"].split(".") if s.strip()]
-            snip = desc_sentences[0] + "." if desc_sentences else ""
             tag_str = ", ".join(u["tags"][:3])
-            line = f"\u2023 **{u['role']}** issued **{u['choice_name']}**"
-            if snip:
-                line += f" — *{snip}*"
+            line = f"▸ **{u['role']}** — {u['choice_name']}"
             if tag_str:
                 line += f" `[{tag_str}]`"
             lines.append(line)
