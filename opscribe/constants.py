@@ -485,6 +485,11 @@ PHASE_DISPLAY: dict[str, str] = {
 ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919151302705203/High_Command.png?ex=6a2233ef&is=6a20e26f&hm=c88ba02f3f4046ddb5acbb3cf6bb5e404b3f112dddf295cfd0b4ebc4436fda40&"
 ROSTER_IMAGE_COMPANY_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919134290481213/Command.png?ex=6a2233eb&is=6a20e26b&hm=d0b8e09712f34e4527a62b17bf1e2380851f37970e0f6fe951f15f3a1042389e&"
 ROSTER_IMAGE_KILLTEAM = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&"
+# Per-company KT embed banner images.  Falls back to ROSTER_IMAGE_KILLTEAM if a company is absent.
+ROSTER_IMAGE_KILLTEAM_BY_COMPANY: dict[str, str] = {
+    "Watch Company Primus": "https://cdn.discordapp.com/attachments/1444855164023472192/1512256170079948970/Primus_KT_Art.png?ex=6a236dcf&is=6a221c4f&hm=022125bbbc00a25f6ed194b79ec9a84185f7e3f6c1182de4d3626d3bd0fc2602&",
+    "Watch Company Secundus": "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&",
+}
 
 # Maps configured Watch Company role name -> roster channel ID.
 # The bot posts and maintains embeds inside each configured company channel.
