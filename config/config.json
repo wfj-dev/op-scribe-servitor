@@ -670,5 +670,9 @@
     "dual_vigil": "2026-06-18",
     "order_omega": "2026-06-18",
     "crux_terminatus": "2026-06-18"
+  },
+  "target_packages": {
+    "highcom_channel_id": 1499152772225040544,
+    "ox_rep_channel_id": null
   }
 }

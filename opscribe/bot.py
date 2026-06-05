@@ -620,36 +620,6 @@ async def _before_challenge_sweep_loop():
     await asyncio.sleep(60)
 
 
-@tasks.loop(hours=12)
-async def _campaign_de_enlist_sweep_loop():
-    """Every 12 hours: warn or auto-de-enlist inactive campaign members."""
-    try:
-        logger.info("campaign de-enlist sweep loop: tick")
-        await _campaign_ops.sweep_auto_de_enlist()
-        logger.info("campaign de-enlist sweep loop: complete")
-    except Exception:
-        logger.exception("Campaign de-enlist sweep loop failed")
-
-
-@_campaign_de_enlist_sweep_loop.before_loop
-async def _before_campaign_de_enlist_sweep_loop():
-    await bot.wait_until_ready()
-
-
-@tasks.loop(minutes=5)
-async def _campaign_beat_clock_loop():
-    """Every 15 minutes: check ops window expiry and cascade deadlines, auto-advance beat lifecycle."""
-    try:
-        logger.info("campaign beat clock loop: tick")
-        await _campaign_ops.sweep_campaign_beat_clock()
-        logger.info("campaign beat clock loop: complete")
-    except Exception:
-        logger.exception("Campaign beat clock loop failed")
-
-
-@_campaign_beat_clock_loop.before_loop
-async def _before_campaign_beat_clock_loop():
-    await bot.wait_until_ready()
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
@@ -803,7 +773,7 @@ from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
-from . import campaign_ops as _campaign_ops  # noqa: E402,F401  # imported for slash command registration side effect
+from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1396,14 +1366,10 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     if uid in admin_ids:
         return True
 
-    # Debug mode: only Forgemaster (or admins, handled above) can use commands.
-    # Forgemaster can use ALL commands when debug is active.
+    # Debug mode: only admin users can run commands (handled by admin override above).
+    # Non-admins are blocked from everything.
     if globals().get("DEBUG_MODE"):
-        try:
-            user_roles_dbg = _canonical_role_names(user)
-        except Exception:
-            user_roles_dbg = set()
-        return "Forgemaster" in user_roles_dbg
+        return False
 
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
@@ -1515,6 +1481,11 @@ async def on_ready():
         except Exception as e:
             logger.exception(f"Failed to initialize DataStore on ready: {e}")
     # sync app_commands (slash commands)
+    try:
+        # Register target packages commands
+        _target_packages_ops._register_commands(bot.tree)
+    except Exception:
+        logger.exception("Failed to register target packages commands")
     try:
         guild_id = CONFIG.get("guild_id")
         if guild_id:
@@ -1706,21 +1677,13 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start LFG queue system")
 
-    # Start campaign inactivity sweep loop
+    # Start target packages expiry loop
     try:
-        if not _campaign_de_enlist_sweep_loop.is_running():
-            _campaign_de_enlist_sweep_loop.start()
-            logger.info("Campaign de-enlist sweep loop started (12h interval).")
+        if not _target_packages_ops._tp_expiry_loop.is_running():
+            _target_packages_ops._tp_expiry_loop.start()
+            logger.info("Target packages expiry loop started (30min interval).")
     except Exception:
-        logger.exception("Failed to start campaign de-enlist sweep loop")
-
-    # Start campaign beat clock loop
-    try:
-        if not _campaign_beat_clock_loop.is_running():
-            _campaign_beat_clock_loop.start()
-            logger.info("Campaign beat clock loop started (15min interval).")
-    except Exception:
-        logger.exception("Failed to start campaign beat clock loop")
+        logger.exception("Failed to start target packages expiry loop")
 
     # Register persistent views for Terminus kill log entries
     try:
