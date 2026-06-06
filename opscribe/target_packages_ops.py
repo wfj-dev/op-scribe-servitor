@@ -53,7 +53,7 @@ _REQ_TIER_NO_REQ = "no_req"
 # Role name sets per requirement tier
 _TIER_ROLES = {
     _REQ_TIER_VETERAN_OATHSWORN: ["Watch Veteran", "Oathsworn"],
-    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Kill Team Champion", "Judiciar"],
+    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Kill Team Champion"],
     _REQ_TIER_COMPANY_COMMAND: [
         "Watch Captain", "Watch Lieutenant", "Company Champion",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
@@ -91,20 +91,20 @@ _STRAT_TABLE = {
 
 # Package classification by mission objective type
 _OBJECTIVE_CLASSIFICATION: dict[str, str] = {
-    "demolition_trap":      "STRIKE",
-    "destroy_beacon":       "STRIKE",
-    "destroy_artifact":     "STRIKE",
-    "assassination":        "PURGE",
-    "cleanse_comms":        "PURGE",
-    "cleanse_corruption":   "PURGE",
+    "demolition_trap":      "TARGET STRIKE",
+    "destroy_beacon":       "TARGET STRIKE",
+    "destroy_artifact":     "TARGET STRIKE",
+    "assassination":        "BREACH",
+    "cleanse_comms":        "PURIFICATION",
+    "cleanse_corruption":   "PURIFICATION",
     "rescue_extraction":    "EXTRACTION",
     "recover_launch_asset": "EXTRACTION",
     "sabotage_reactor":     "SABOTAGE",
     "reclaim_secure":       "SABOTAGE",
-    "weapons_delivery":     "SIEGE SUPPORT",
-    "reactivate_defences":  "SIEGE SUPPORT",
-    "defend_secure":        "DEFENCE",
-    "defend_waves":         "DEFENCE",
+    "reactivate_defences":  "SABOTAGE",
+    "weapons_delivery":     "AREA DENIAL",
+    "defend_secure":        "AREA DENIAL",
+    "defend_waves":         "AREA DENIAL",
 }
 
 # Package statuses
@@ -116,6 +116,40 @@ STATUS_DEPLOYED = "deployed"              # Min brothers signed up + all reqs fi
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"                  # Assigned, deadline passed without submission
 STATUS_LAPSED = "lapsed"                  # Distributed, never fully assigned, deadline passed
+
+
+async def _notify_send(
+    channel,
+    guild: discord.Guild,
+    *args,
+    **kwargs,
+):
+    """Send a notification. In debug mode, redirects all channel posts to admin DM."""
+    if _is_debug_mode():
+        admin_ids = list(str(x) for x in ((_b("CONFIG") or {}).get("admin_user_ids") or []))
+        bot_obj = getattr(_g, "bot", None) or _b("bot")
+        ch_name = getattr(channel, "name", str(getattr(channel, "id", "?")))
+        _g.logger.info(f"[TP DEBUG] _notify_send to #{ch_name}, admin_ids={admin_ids}, bot={bot_obj is not None}")
+        for aid in admin_ids:
+            try:
+                user = await bot_obj.fetch_user(int(aid)) if bot_obj else None
+                _g.logger.info(f"[TP DEBUG] fetched user {aid}: {user}")
+                if user:
+                    if "content" in kwargs:
+                        kwargs["content"] = f"[DEBUG → #{ch_name}]\n{kwargs['content']}"
+                    elif args and isinstance(args[0], str):
+                        args = (f"[DEBUG → #{ch_name}]\n{args[0]}",) + args[1:]
+                    else:
+                        kwargs.setdefault("content", f"[DEBUG → #{ch_name}]")
+                    result = await user.send(*args, **kwargs)
+                    _g.logger.info(f"[TP DEBUG] DM sent to {aid} successfully")
+                    return result
+            except Exception as e:
+                _g.logger.warning(f"[TP] Debug DM failed for {aid}: {e}")
+        _g.logger.warning(f"[TP DEBUG] No admin DM sent — admin_ids={admin_ids}")
+        return None
+    return await channel.send(*args, **kwargs)
+
 
 # ---------------------------------------------------------------------------
 # Data I/O
@@ -221,7 +255,7 @@ def _active_members(guild: discord.Guild) -> list:
 def _count_active_kts(guild: discord.Guild) -> int:
     """Count distinct Kill Teams with at least one active non-reserves member holding a KT role (excl. champion)."""
     kt_role_names = {
-        "Watch Sergeant", "Judiciar", "Oathsworn", "Watch Veteran", "Watch Brother",
+        "Watch Sergeant", "Oathsworn", "Watch Veteran", "Watch Brother",
     }
     occupied: set = set()
     kill_teams = _b("KILL_TEAMS") or []
@@ -533,14 +567,24 @@ async def generate_packages(guild: discord.Guild) -> list:
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
     general_channel_id = config_tp.get("general_channel_id")
     if general_channel_id:
-        general_channel = guild.get_channel(int(general_channel_id))
-        if general_channel:
-            _WM_REQUEST_FLAVOR = [
-                f"<@&{WATCH_BROTHER_ROLE_ID}> The Watch Master has received intelligence packets from Ordo Xenos. Await your orders — prepare for deployment.",
-                f"<@&{WATCH_BROTHER_ROLE_ID}> Astropathic relay inbound. Ordo Xenos has transmitted new target packages to Watch Fortress Jericho. Stand ready, brothers.",
-                f"<@&{WATCH_BROTHER_ROLE_ID}> Orders inbound from Ordo Xenos. The Watch Master is reviewing strike packages. Deployment briefings to follow.",
+        general_channel = guild.get_channel(int(general_channel_id)) if guild else None
+        if general_channel or _is_debug_mode():
+            count = len(new_packages)
+            wm_flavor = [
+                "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.",
+                "Astropathic relay inbound. Ordo Xenos has transmitted new target packages to Watch Fortress Jericho. Stand ready, brothers.",
+                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike packages. Deployment briefings to follow.",
             ]
-            await general_channel.send(random.choice(_WM_REQUEST_FLAVOR))
+            wm_embed = discord.Embed(
+                title=f"{_DW_EMOJI} ORDO XENOS TRANSMISSION {_DW_EMOJI}",
+                description=f"<@&{WATCH_BROTHER_ROLE_ID}>\n{random.choice(wm_flavor)}",
+                color=0xC4A030,
+            )
+            wm_embed.set_footer(
+                text=f"{count} target package{'s' if count != 1 else ''} received  ·  CLEARANCE: SANCTIONED",
+                icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+            )
+            await _notify_send(general_channel, guild, embed=wm_embed)
 
     return new_packages
 
@@ -550,7 +594,7 @@ async def distribute_packages(package_ids: list, guild: discord.Guild) -> None:
     async with _TP_LOCK:
         data = _load_tp()
         config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-        highcom_channel_id = config_tp.get("highcom_channel_id")
+        highcom_channel_id = config_tp.get("highcom_strategium_channel_id")
 
         for pid in package_ids:
             if pid in data["packages"]:
@@ -560,13 +604,22 @@ async def distribute_packages(package_ids: list, guild: discord.Guild) -> None:
 
     # Notify highcom channel
     if highcom_channel_id:
-        channel = guild.get_channel(int(highcom_channel_id))
-        if channel:
+        channel = guild.get_channel(int(highcom_channel_id)) if guild else None
+        if channel or _is_debug_mode():
             mention_str = f"<@&{WATCH_CAPTAIN_ROLE_ID}> <@&{WATCH_LIEUTENANT_ROLE_ID}>"
             count = len(package_ids)
             s = "s" if count != 1 else ""
             flavor = random.choice(_DISTRIBUTE_FLAVOR).format(count=count, s=s)
-            await channel.send(f"{mention_str}\n{flavor}")
+            dist_embed = discord.Embed(
+                title=f"{_DW_EMOJI} TARGET PACKAGES DISTRIBUTED {_DW_EMOJI}",
+                description=flavor,
+                color=0xC4A030,
+            )
+            dist_embed.set_footer(
+                text=f"{count} package{s} awaiting assignment  ·  CLEARANCE: SANCTIONED",
+                icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+            )
+            await _notify_send(channel, guild, content=mention_str, embed=dist_embed)
 
 
 async def assign_package_to_kt(
@@ -591,11 +644,11 @@ async def assign_package_to_kt(
             if p.get("assigned_kt") == kt_name
             and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
         ]
-        if len(kt_active) >= 2:
-            return False, f"{kt_name} already has 2 active packages. Cannot assign more until one is completed."
+        if len(kt_active) >= 3:
+            return False, f"{kt_name} already has 3 active packages. Cannot assign more until one is completed."
 
         # Determine if a cadre specialist needs formal attachment
-        # Line ranks (Veteran, Oathsworn, Sgt, KT Champion, Judiciar) are validated
+        # Line ranks (Veteran, Oathsworn, Sgt, KT Champion) are validated
         # at submission from KT membership — no formal attach needed.
         req_roles = pkg.get("required_roles", [])
         needs_specialist_attach = any(r in _CADRE_SPECIALIST_ROLES for r in req_roles)
@@ -937,7 +990,7 @@ _CADRE_FLAVOR = {
         "Chief Apothecary, the field requires your cadre's hand. Package `{pid}` awaits specialist attachment.",
     ],
     "High Chaplain": [
-        "Reclusiam requisition raised. Package `{pid}` requires a Chaplain or Judiciar. High Chaplain — assign from your cadre.",
+        "Reclusiam requisition raised. Package `{pid}` requires a Chaplain. High Chaplain — assign from your cadre.",
         "High Chaplain, spiritual authority is required in the field. Package `{pid}` awaits your designation.",
     ],
     "Void Warden": [
@@ -952,6 +1005,10 @@ _CADRE_FLAVOR = {
         "Champion requisition raised. Package `{pid}` requires a Champion attached. Lord Executioner — designate as required.",
         "Lord Executioner, martial authority is required on the ground. Package `{pid}` awaits Champion assignment.",
     ],
+    "Huntmaster": [
+        "Huntmaster, your personal engagement is required. Package `{pid}` demands your direct participation.",
+        "Huntmaster — you are called to the field. Package `{pid}` awaits your compliance.",
+    ],
 }
 
 _CADRE_DEFAULT_FLAVOR = [
@@ -964,33 +1021,17 @@ async def _notify_kt_assigned(
 ) -> None:
     """Post persistent Sgt accept embed in the watch command strategium channel."""
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-    strategium_channel_id = (
-        config_tp.get("watch_command_strategium_channel_id")
-        or config_tp.get("highcom_strategium_channel_id")
-        or config_tp.get("highcom_channel_id")
-    )
+    strategium_channel_id = config_tp.get("watch_command_deployment_channel_id")
     if not strategium_channel_id:
         return
 
-    channel = guild.get_channel(int(strategium_channel_id))
-    if not channel:
+    channel = guild.get_channel(int(strategium_channel_id)) if guild else None
+    if not channel and not _is_debug_mode():
         return
-
-    mode = pkg.get("mode", "")
-    mission_id = pkg.get("mission_id")
-    classification = pkg.get("classification", "STRIKE")
-    try:
-        ops = _load_operations()
-        op_name = next((o["name"] for o in ops if o["id"] == mission_id), str(mission_id))
-    except Exception:
-        op_name = str(mission_id)
-
-    req_roles = pkg.get("required_roles", [])
-    req_line = f"\n**Required:** {', '.join(req_roles)}" if req_roles else ""
 
     # Find and ping the Sgt
     sgt_mention = ""
-    for m in guild.members:
+    for m in guild.members if guild else []:
         if m.bot or not _is_active(m):
             continue
         from .forge_ops import _resolve_killteam_for_member
@@ -998,80 +1039,96 @@ async def _notify_kt_assigned(
             sgt_mention = m.mention
             break
 
-    flavor = random.choice(_KT_ASSIGN_FLAVOR).format(pid=package_id, kt=kt_name)
-
-    embed = discord.Embed(
-        title=f"{_DW_EMOJI} ORDERS ISSUED — {package_id} {_DW_EMOJI}",
-        description=(
-            f"{flavor}\n\n"
-            f"**Kill Team:** {kt_name}\n"
-            f"**Operation:** {op_name} · {classification}\n"
-            f"**Mode:** {'HARD-STRAT' if 'Hard' in mode else 'OMEGA-STRAT'}"
-            f"{req_line}"
-        ),
-        color=0xE67E22,
+    data = _load_tp()
+    rep = data.get("rep", 0.0)
+    embed = _build_package_embed(pkg, rep)
+    embed.add_field(
+        name="▸ Orders",
+        value="Watch Sergeant — press **⚔ Comply** to accept these orders.",
+        inline=False,
     )
-    embed.set_footer(text="Watch Sergeant — press Accept to comply with orders.")
 
     view = SgtAcceptView(package_id=package_id, kt_name=kt_name)
-    msg = await channel.send(content=sgt_mention, embed=embed, view=view)
+    _cls_file = _classification_file(pkg)
+    msg = await _notify_send(channel, guild, content=sgt_mention, embed=embed, view=view, **_file_kwarg(_cls_file))
 
     # Store message ID for later editing
-    async with _TP_LOCK:
-        data = _load_tp()
-        if package_id in data["packages"]:
-            data["packages"][package_id]["sgt_accept_message_id"] = msg.id
-            data["packages"][package_id]["sgt_accept_channel_id"] = channel.id
-            _save_tp(data)
+    if msg:
+        async with _TP_LOCK:
+            data = _load_tp()
+            if package_id in data["packages"]:
+                data["packages"][package_id]["sgt_accept_message_id"] = msg.id
+                data["packages"][package_id]["sgt_accept_channel_id"] = getattr(channel, "id", None)
+                _save_tp(data)
 
 
-# Cadre staff channel map — role → channel ID
-_CADRE_STAFF_CHANNELS: dict[str, int] = {
-    "Watch Techmarine": TECHMARINE_STAFF_CHANNEL_ID,
-    "Forgemaster": TECHMARINE_STAFF_CHANNEL_ID,
-    "Honored Dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
-    "Venerable Dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
-    "Watch Librarian": LIBRARIUS_STAFF_CHANNEL_ID,
-    "Void Warden": LIBRARIUS_STAFF_CHANNEL_ID,
-    "Watch Apothecary": APOTHECARY_STAFF_CHANNEL_ID,
-    "Chief Apothecary": APOTHECARY_STAFF_CHANNEL_ID,
-    "Watch Chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
-    "Judiciar": CHAPLAIN_STAFF_CHANNEL_ID,
-    "High Chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
+# Cadre role → config key mapping
+_ROLE_TO_CADRE_KEY: dict[str, str] = {
+    "Watch Techmarine": "techmarine",
+    "Forgemaster": "techmarine",
+    "Honored Dreadnought": "dreadnought",
+    "Venerable Dreadnought": "dreadnought",
+    "Watch Librarian": "librarian",
+    "Void Warden": "librarian",
+    "Watch Apothecary": "apothecary",
+    "Chief Apothecary": "apothecary",
+    "Watch Chaplain": "chaplain",
+    "High Chaplain": "chaplain",
 }
+
+# Fallback constants if not set in config
+_CADRE_CHANNEL_FALLBACKS: dict[str, int] = {
+    "techmarine": TECHMARINE_STAFF_CHANNEL_ID,
+    "librarian": LIBRARIUS_STAFF_CHANNEL_ID,
+    "apothecary": APOTHECARY_STAFF_CHANNEL_ID,
+    "chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
+    "dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
+}
+
+
+def _get_cadre_channel_id(role: str) -> int | None:
+    """Return cadre staff channel ID for a role. Config takes precedence over constants."""
+    cadre_key = _ROLE_TO_CADRE_KEY.get(role)
+    if not cadre_key:
+        return None
+    config_ch = (((_b("CONFIG") or {}).get("target_packages") or {}).get("cadre_channels") or {}).get(cadre_key)
+    if config_ch:
+        return int(config_ch)
+    return _CADRE_CHANNEL_FALLBACKS.get(cadre_key)
 
 
 async def _notify_specialist_assigned(
     specialist_member: discord.Member, package_id: str, pkg: dict, guild: discord.Guild
 ) -> None:
-    """Ping the specialist in their cadre channel about their assignment (Gap 2).
-    Also updates the KT sign-up embed to show attached specialists (Gap 3)."""
-    # Find the cadre channel based on specialist's roles
+    """Ping the specialist in their cadre channel about their assignment with a full package embed."""
     specialist_roles = _member_role_names(specialist_member)
+
+    # Determine the right channel for this specialist
     cadre_channel_id = None
     for role in specialist_roles:
-        ch_id = _CADRE_STAFF_CHANNELS.get(role)
+        ch_id = _get_cadre_channel_id(role)
         if ch_id:
             cadre_channel_id = ch_id
             break
 
+    # KTC fallback: ping in KT signup channel
+    if not cadre_channel_id and "Kill Team Champion" in specialist_roles:
+        cadre_channel_id = pkg.get("signup_channel_id")
+
+    data = _load_tp()
+    rep = data.get("rep", 0.0)
+    embed = _build_package_embed(pkg, rep)
+    embed.add_field(
+        name="▸ Assignment",
+        value=f"{specialist_member.mention} — you have been attached to this package. You are locked until completion or expiry.",
+        inline=False,
+    )
+
     if cadre_channel_id:
-        cadre_channel = guild.get_channel(cadre_channel_id)
-        if cadre_channel:
-            kt_name = pkg.get("assigned_kt", "your assigned Kill Team")
-            mode = pkg.get("mode", "")
-            mission_id = pkg.get("mission_id")
-            try:
-                ops = _load_operations()
-                op_name = next((o["name"] for o in ops if o["id"] == mission_id), str(mission_id))
-            except Exception:
-                op_name = str(mission_id)
-            await cadre_channel.send(
-                f"{specialist_member.mention} — you have been assigned to Target Package `{package_id}` "
-                f"with {kt_name}.\n"
-                f"**Operation:** {op_name}  |  **Mode:** {'HARD-STRAT' if 'Hard' in mode else 'OMEGA-STRAT'}\n"
-                f"You are locked to this package until completion or expiry."
-            )
+        cadre_channel = guild.get_channel(int(cadre_channel_id)) if guild else None
+        if cadre_channel or _is_debug_mode():
+            _cls_file = _classification_file(pkg)
+            await _notify_send(cadre_channel, guild, content=specialist_member.mention, embed=embed, **_file_kwarg(_cls_file))
 
     # Gap 3 — Update KT sign-up embed to show attached specialists
     signup_channel_id = pkg.get("signup_channel_id")
@@ -1111,12 +1168,12 @@ async def _notify_cadre_leaders_needed(
 ) -> None:
     """Ping relevant cadre leaders in highcom that their specialist is needed."""
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-    highcom_channel_id = config_tp.get("highcom_channel_id")
+    highcom_channel_id = config_tp.get("highcom_strategium_channel_id")
     if not highcom_channel_id:
         return
 
-    channel = guild.get_channel(int(highcom_channel_id))
-    if not channel:
+    channel = guild.get_channel(int(highcom_channel_id)) if guild else None
+    if not channel and not _is_debug_mode():
         return
 
     cadre_map = {
@@ -1125,11 +1182,11 @@ async def _notify_cadre_leaders_needed(
         "Venerable Dreadnought": "Forgemaster",
         "Watch Apothecary": "Chief Apothecary",
         "Watch Chaplain": "High Chaplain",
-        "Judiciar": "High Chaplain",
         "Watch Librarian": "Void Warden",
         "Watch Keeper": "Castellan",
         "Kill Team Champion": "Lord Executioner",
         "Company Champion": "Lord Executioner",
+        "Huntmaster": "Huntmaster",
     }
 
     needed: dict[str, list] = {}  # cadre_leader_role -> [required roles it owns]
@@ -1154,7 +1211,7 @@ async def _notify_cadre_leaders_needed(
         flavor = random.choice(flavor_pool).format(pid=package_id, roles=", ".join(owned_roles))
 
         if mentions:
-            await channel.send(f"{' '.join(mentions)}\n{flavor}")
+            await _notify_send(channel, guild, f"{' '.join(mentions)}\n{flavor}")
 
 
 # ---------------------------------------------------------------------------
@@ -1286,7 +1343,10 @@ def _build_package_embed(
     ]
     if req_roles:
         intel_lines.append(f"**Required:** {', '.join(req_roles)}")
-    embed.add_field(name="▸ Intel Dossier", value="\n".join(intel_lines), inline=False)
+    intel_value = "\n".join(intel_lines)
+    if len(intel_value) > 1024:
+        intel_value = intel_value[:1020] + "\n…"
+    embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
 
     # ▸ Briefing
     if briefing:
@@ -1309,7 +1369,51 @@ def _build_package_embed(
         text=f"CLEARANCE: {clearance}  ·  {_REP_TIER_LABELS[max(-3, min(3, round(rep)))]} {rep:+.2f}",
         icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
     )
+
+    _CLASSIFICATION_IMAGES = {
+        "TARGET STRIKE": "attachment://Target_Strike.png",
+        "BREACH":        "attachment://Breach.png",
+        "PURIFICATION":  "attachment://Purification.png",
+        "EXTRACTION":    "attachment://Extraction.png",
+        "SABOTAGE":      "attachment://Sabotage.png",
+        "AREA DENIAL":   "attachment://Area_Denial.png",
+    }
+    cls_img = _CLASSIFICATION_IMAGES.get(pkg.get("classification", ""))
+    if cls_img:
+        embed.set_image(url=cls_img)
+
     return embed
+
+
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+
+_CLASSIFICATION_IMAGE_FILES = {
+    "TARGET STRIKE": "Target_Strike.png",
+    "BREACH":        "Breach.png",
+    "PURIFICATION":  "Purification.png",
+    "EXTRACTION":    "Extraction.png",
+    "SABOTAGE":      "Sabotage.png",
+    "AREA DENIAL":   "Area_Denial.png",
+}
+
+
+def _classification_file(pkg: dict) -> "discord.File | None":
+    """Return a discord.File for the package classification image, or None."""
+    filename = _CLASSIFICATION_IMAGE_FILES.get(pkg.get("classification", ""))
+    if not filename:
+        return None
+    path = os.path.join(_ASSETS_DIR, filename)
+    if not os.path.exists(path):
+        return None
+    try:
+        return discord.File(path, filename=filename)
+    except Exception:
+        return None
+
+
+def _file_kwarg(f: "discord.File | None") -> dict:
+    """Return {'file': f} if f is not None, else empty dict. Prevents passing file=None."""
+    return {"file": f} if f is not None else {}
 
 
 def _build_status_board_embed(data: dict, viewer: Optional[discord.Member] = None) -> discord.Embed:
@@ -1387,9 +1491,12 @@ def _build_status_board_embed(data: dict, viewer: Optional[discord.Member] = Non
                 lines.append(f"`{p['id']}` · {mode_short}{cls_suffix}{kt_suffix}{spc_suffix}")
             if len(grp) > 10:
                 lines.append(f"*…and {len(grp) - 10} more*")
+            field_value = "\n".join(lines)
+            if len(field_value) > 1024:
+                field_value = field_value[:1020] + "\n…"
             embed.add_field(
                 name=f"▸ {status_labels[s]} ({len(grp)})",
-                value="\n".join(lines),
+                value=field_value,
                 inline=False,
             )
 
@@ -1411,7 +1518,6 @@ _RANK_SENIORITY: list[str] = [
     "Oathsworn",
     "Watch Sergeant",
     "Kill Team Champion",
-    "Judiciar",
     "Watch Lieutenant",
     "Watch Captain",
     "Company Champion",
@@ -1450,7 +1556,7 @@ def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dic
     is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
 
     # Line ranks and KT command: same KT only
-    if required_role in ("Watch Veteran", "Oathsworn", "Watch Sergeant", "Kill Team Champion", "Judiciar"):
+    if required_role in ("Watch Veteran", "Oathsworn", "Watch Sergeant", "Kill Team Champion"):
         return member_kt == assigned_kt or is_hc
 
     # Company command / specialists: same company or HC
@@ -1494,6 +1600,15 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
         return False, f"You are not part of {assigned_kt or assigned_company}."
 
+    # Must not already be signed up on another active package
+    data = _load_tp()
+    for p in data.get("packages", {}).values():
+        if p["id"] == pkg.get("id"):
+            continue
+        if (member.id in p.get("signed_up", [])
+                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)):
+            return False, f"You are already committed to package `{p['id']}`. Complete that operation first."
+
     return True, ""
 
 
@@ -1508,49 +1623,46 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild) -> None:
 
     kt_name = pkg.get("assigned_kt", "")
     mode = pkg.get("mode", "")
-    mission_id = pkg.get("mission_id")
     req_roles = pkg.get("required_roles", [])
     min_players = 2 if "Hard" in mode else 3
 
-    try:
-        ops = _load_operations()
-        op_name = next((o["name"] for o in ops if o["id"] == mission_id), str(mission_id))
-    except Exception:
-        op_name = str(mission_id)
-
-    req_line = f"\n**Required Ranks:** {', '.join(req_roles)}" if req_roles else ""
-    flavor = random.choice(_KT_ASSIGN_FLAVOR).format(pid=package_id, kt=kt_name)
-
-    embed = discord.Embed(
-        title=f"{_DW_EMOJI} TARGET PACKAGE {package_id} — SIGN-UP OPEN {_DW_EMOJI}",
-        description=(
-            f"🟡 **RECRUITING**\n{flavor}\n\n"
-            f"**Operation:** {op_name}\n"
-            f"**Mode:** {'HARD-STRAT' if 'Hard' in mode else 'OMEGA-STRAT'}\n"
-            f"**Minimum Brothers:** {min_players}"
-            f"{req_line}\n\n"
-            f"Press **Sign Up** to register for this operation."
+    data_rep = data.get("rep", 0.0)
+    embed = _build_package_embed(pkg, data_rep)
+    embed.add_field(
+        name="▸ Deployment Requirements",
+        value=(
+            f"**Minimum Brothers:** {min_players}\n"
+            + (f"**Required Specialists:** {', '.join(req_roles)}\n" if req_roles else "")
+            + "\nPress **⚔ Comply** to register for this operation."
         ),
-        color=0xF39C12,
+        inline=False,
     )
 
     view = SignUpView(package_id=package_id)
 
     # Find KT channel via any KT member
-    for m in guild.members:
+    sent = False
+    for m in guild.members if guild else []:
         if m.bot or not _is_active(m):
             continue
         if _resolve_killteam_for_member(m) == kt_name:
             channel = await _get_award_announcement_channel(m, guild)
             if channel:
-                msg = await channel.send(embed=embed, view=view)
+                _cls_file = _classification_file(pkg)
+                msg = await channel.send(embed=embed, view=view, **_file_kwarg(_cls_file))
                 async with _TP_LOCK:
                     data2 = _load_tp()
                     if package_id in data2["packages"]:
                         data2["packages"][package_id]["signup_message_id"] = msg.id
                         data2["packages"][package_id]["signup_channel_id"] = channel.id
                         _save_tp(data2)
+                sent = True
             return
+
+    # Debug fallback — DM admin if no KT channel found
+    if not sent and _is_debug_mode():
+        _cls_file = _classification_file(pkg)
+        await _notify_send(None, guild, embed=embed, view=view, **_file_kwarg(_cls_file))
 
 
 def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
@@ -1590,7 +1702,7 @@ class SgtAcceptView(discord.ui.View):
         self.package_id = package_id
         self.kt_name = kt_name
 
-    @discord.ui.button(label="⚔ Accept Orders", style=discord.ButtonStyle.success, custom_id="tp_sgt_accept")
+    @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_sgt_accept")
     async def accept_orders(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
         # Must be Sgt of the assigned KT (or admin)
@@ -1638,7 +1750,7 @@ class SignUpView(discord.ui.View):
         super().__init__(timeout=None)
         self.package_id = package_id
 
-    @discord.ui.button(label="⚔ Sign Up", style=discord.ButtonStyle.primary, custom_id="tp_signup")
+    @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_signup")
     async def sign_up(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
         guild = interaction.guild
@@ -1689,64 +1801,72 @@ class SignUpView(discord.ui.View):
 
         status_indicator = "🟢 **DEPLOYED**" if pkg2["status"] == STATUS_DEPLOYED else f"🟡 **RECRUITING** ({count}/{min_players} minimum)"
         await interaction.response.send_message(
-            f"{status_indicator}\n{member.display_name} signed up for `{self.package_id}`.",
+            f"{status_indicator}\n{member.display_name} complied with orders for `{self.package_id}`.",
             ephemeral=False,
-        )
-
-    @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
-    async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
-        member = interaction.user
-
-        async with _TP_LOCK:
-            data = _load_tp()
-            pkg = data["packages"].get(self.package_id)
-            if not pkg:
-                await interaction.response.send_message("Package not found.", ephemeral=True)
-                return
-            if member.id not in pkg.get("signed_up", []):
-                await interaction.response.send_message("You are not signed up for this package.", ephemeral=True)
-                return
-            pkg["signed_up"].remove(member.id)
-            # Recheck deployed status
-            if pkg["status"] == STATUS_DEPLOYED and not _check_deployed(pkg, interaction.guild):
-                pkg["status"] = STATUS_RECRUITING
-            _save_tp(data)
-
-        await interaction.response.send_message(
-            f"{member.display_name} stood down from `{self.package_id}`.", ephemeral=False
         )
 
 
 class SpecialistAssignView(discord.ui.View):
     """View for cadre leaders to assign a specialist to a package."""
 
-    def __init__(self, package_id: str, required_roles: list):
+    def __init__(self, package_id: str, required_roles: list, guild: discord.Guild):
         super().__init__(timeout=600)
         self.package_id = package_id
         self.required_roles = required_roles
 
-        select = discord.ui.UserSelect(
-            placeholder="Select specialist to attach…",
-            custom_id="tp_specialist_select",
-        )
-        select.callback = self.on_select
-        self.add_item(select)
+        # Build filtered member list: only members who hold one of the required roles
+        options = []
+        seen = set()
+        for role_name in required_roles:
+            for m in (guild.members if guild else []):
+                if m.bot or m.id in seen:
+                    continue
+                if any((getattr(r, "name", "") or "").strip() == role_name for r in getattr(m, "roles", [])):
+                    options.append(discord.SelectOption(
+                        label=m.display_name[:100],
+                        value=str(m.id),
+                        description=role_name[:100],
+                    ))
+                    seen.add(m.id)
+
+        if options:
+            select = discord.ui.Select(
+                placeholder="Select specialist to attach…",
+                options=options[:25],
+                custom_id="tp_specialist_select",
+            )
+            select.callback = self.on_select
+            self.add_item(select)
+        else:
+            # Fallback if no members found with the required role
+            select = discord.ui.UserSelect(
+                placeholder="Select specialist to attach…",
+                custom_id="tp_specialist_select",
+            )
+            select.callback = self.on_select_user
+            self.add_item(select)
 
     async def on_select(self, interaction: discord.Interaction):
+        cadre_leader = interaction.user
+        member_id = int(interaction.data["values"][0])
+        specialist_member = interaction.guild.get_member(member_id)
+        if not specialist_member:
+            await interaction.response.send_message("Could not resolve member.", ephemeral=True)
+            return
+        success, msg = await assign_specialist(self.package_id, specialist_member, cadre_leader, interaction.guild)
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    async def on_select_user(self, interaction: discord.Interaction):
         cadre_leader = interaction.user
         specialist = interaction.data.get("resolved", {}).get("members", {})
         if not specialist:
             await interaction.response.send_message("No member selected.", ephemeral=True)
             return
-
-        # Get the first selected member
         member_id = next(iter(specialist))
         specialist_member = interaction.guild.get_member(int(member_id))
         if not specialist_member:
             await interaction.response.send_message("Could not resolve member.", ephemeral=True)
             return
-
-        # Validate cadre ownership
         specialist_roles = _member_role_names(specialist_member)
         owned = any(_cadre_leader_owns(cadre_leader, r) for r in specialist_roles)
         if not owned and not _is_admin(cadre_leader):
@@ -1754,7 +1874,6 @@ class SpecialistAssignView(discord.ui.View):
                 f"{specialist_member.display_name} is not in your cadre.", ephemeral=True
             )
             return
-
         success, msg = await assign_specialist(self.package_id, specialist_member, cadre_leader, interaction.guild)
         await interaction.response.send_message(msg, ephemeral=True)
 
@@ -1764,33 +1883,55 @@ class SpecialistAssignView(discord.ui.View):
 # ---------------------------------------------------------------------------
 
 class AssignToKTView(discord.ui.View):
-    """View shown after captain clicks Assign to KT — role select."""
+    """View shown after captain clicks Assign to KT — select from known KT list."""
 
     def __init__(self, package_id: str):
         super().__init__(timeout=300)
         self.package_id = package_id
 
-        # Role select for KT
-        select = discord.ui.RoleSelect(
-            placeholder="Select Kill Team role…",
-            custom_id="tp_kt_role_select",
-        )
-        select.callback = self.on_select
-        self.add_item(select)
+        kill_teams = list(_b("KILL_TEAMS") or [])
+        if kill_teams:
+            options = [
+                discord.SelectOption(label=kt, value=kt)
+                for kt in kill_teams[:25]
+            ]
+            select = discord.ui.Select(
+                placeholder="Select Kill Team…",
+                options=options,
+                custom_id="tp_kt_role_select",
+            )
+            select.callback = self.on_select
+            self.add_item(select)
+        else:
+            # Fallback: free role select if KILL_TEAMS not populated
+            select = discord.ui.RoleSelect(
+                placeholder="Select Kill Team role…",
+                custom_id="tp_kt_role_select",
+            )
+            select.callback = self.on_select_role
+            self.add_item(select)
 
     async def on_select(self, interaction: discord.Interaction):
+        kt_name = interaction.data["values"][0]
+        member = interaction.user
+        from .roster_ops import _get_member_company_name
+        company = _get_member_company_name(member)
+        success, msg = await assign_package_to_kt(
+            self.package_id, kt_name, company, member, interaction.guild
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    async def on_select_role(self, interaction: discord.Interaction):
         member = interaction.user
         role = interaction.data.get("resolved", {}).get("roles", {})
         if not role:
             await interaction.response.send_message("No role selected.", ephemeral=True)
             return
-
         role_id = next(iter(role))
         kt_role = interaction.guild.get_role(int(role_id))
         if not kt_role:
             await interaction.response.send_message("Could not resolve role.", ephemeral=True)
             return
-
         from .roster_ops import _get_member_company_name
         company = _get_member_company_name(member)
         success, msg = await assign_package_to_kt(
@@ -1846,7 +1987,7 @@ class StatusBoardView(discord.ui.View):
                 m = interaction.guild.get_member(sid)
                 names.append(m.display_name if m else str(sid))
             embed.add_field(name="Attached Specialists", value=", ".join(names), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, **_file_kwarg(_classification_file(pkg)), ephemeral=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1882,7 +2023,7 @@ class PackagePaginatorView(discord.ui.View):
             self.add_item(assign_btn)
 
         # Cadre leader: "Assign Specialist" button — only on cadre views, not the WM request board
-        if not show_distribute and viewer and (_member_role_names(viewer) & _CADRE_LEADER_ROLES or _is_admin(viewer)):
+        if not show_distribute and viewer and (_member_role_names(viewer) & _CADRE_LEADER_ROLES):
             spec_btn = discord.ui.Button(
                 label="Assign Specialist",
                 style=discord.ButtonStyle.secondary,
@@ -1908,10 +2049,20 @@ class PackagePaginatorView(discord.ui.View):
             select.callback = self.on_select
             self.add_item(select)
 
+        # Set initial disabled state for specialist button
+        if not show_distribute:
+            self._refresh_specialist_btn()
+
     async def on_select(self, interaction: discord.Interaction):
         pid = interaction.data["values"][0]
         self.index = next((i for i, p in enumerate(self.packages) if p["id"] == pid), self.index)
-        await interaction.response.edit_message(embed=self.current_embed(), view=self)
+        self._refresh_specialist_btn()
+        await interaction.response.defer()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(), view=self,
+            attachments=[f] if f else [],
+        )
 
     async def assign_to_kt(self, interaction: discord.Interaction):
         pkg = self.packages[self.index]
@@ -1933,7 +2084,7 @@ class PackagePaginatorView(discord.ui.View):
             )
             return
         req_roles = pkg.get("required_roles", [])
-        view = SpecialistAssignView(package_id=pkg["id"], required_roles=req_roles)
+        view = SpecialistAssignView(package_id=pkg["id"], required_roles=req_roles, guild=interaction.guild)
         await interaction.response.send_message(
             f"Select the specialist to attach to `{pkg['id']}`:", view=view, ephemeral=True
         )
@@ -1947,15 +2098,42 @@ class PackagePaginatorView(discord.ui.View):
             viewer=self.viewer,
         )
 
+    def current_file(self) -> "discord.File | None":
+        return _classification_file(self.packages[self.index])
+
+    def _refresh_specialist_btn(self) -> None:
+        """Disable Assign Specialist button if current package has no required specialist roles or wrong status."""
+        pkg = self.packages[self.index]
+        needs = (
+            bool(set(pkg.get("required_roles", [])) & _CADRE_SPECIALIST_ROLES)
+            and pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
+        )
+        for item in self.children:
+            if getattr(item, "custom_id", None) == "tp_assign_specialist":
+                item.disabled = not needs
+                break
+
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
     async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.index = (self.index - 1) % len(self.packages)
-        await interaction.response.edit_message(embed=self.current_embed(), view=self)
+        self._refresh_specialist_btn()
+        await interaction.response.defer()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(), view=self,
+            attachments=[f] if f else [],
+        )
 
     @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
     async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.index = (self.index + 1) % len(self.packages)
-        await interaction.response.edit_message(embed=self.current_embed(), view=self)
+        self._refresh_specialist_btn()
+        await interaction.response.defer()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(), view=self,
+            attachments=[f] if f else [],
+        )
 
     async def distribute_all(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -2020,7 +2198,7 @@ _HC_ROLES = {
     "Venerable Dreadnought",
 }
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"} | _CADRE_LEADER_ROLES
-_KT_COMMAND_ROLES = {"Watch Sergeant", "Kill Team Champion", "Judiciar"}
+_KT_COMMAND_ROLES = {"Watch Sergeant", "Kill Team Champion"}
 
 
 def _is_cadre_leader(member: discord.Member) -> bool:
@@ -2040,9 +2218,10 @@ def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bo
     """
     _CADRE_OWNERSHIP = {
         "Lord Executioner": {"Kill Team Champion", "Company Champion"},
+        "Huntmaster": {"Huntmaster"},
         "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
         "Chief Apothecary": {"Watch Apothecary"},
-        "High Chaplain": {"Watch Chaplain", "Judiciar"},
+        "High Chaplain": {"Watch Chaplain"},
         "Void Warden": {"Watch Librarian"},
         "Castellan": {"Watch Keeper"},
         "Venerable Dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
@@ -2090,6 +2269,7 @@ async def request_target_packages(interaction: discord.Interaction):
     ]
     if pending:
         view = PackagePaginatorView(pending, rep, show_distribute=True, viewer=interaction.user)
+        _pf = view.current_file()
         await interaction.followup.send(
             content=f"**{len(pending)} unassigned package{'s' if len(pending) != 1 else ''} already pending distribution.** "
                     f"Review and press **Distribute All** when ready. "
@@ -2097,6 +2277,7 @@ async def request_target_packages(interaction: discord.Interaction):
             embed=view.current_embed(),
             view=view,
             ephemeral=True,
+            **_file_kwarg(_pf),
         )
         return
 
@@ -2109,12 +2290,14 @@ async def request_target_packages(interaction: discord.Interaction):
         return
 
     view = PackagePaginatorView(packages, rep, show_distribute=True, viewer=interaction.user)
+    _pf = view.current_file()
     await interaction.followup.send(
         content=f"**{len(packages)} target package{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
                 f"Review below and press **Distribute All** when ready.",
         embed=view.current_embed(),
         view=view,
         ephemeral=True,
+        **_file_kwarg(_pf),
     )
 
 
@@ -2129,7 +2312,7 @@ async def view_target_packages(interaction: discord.Interaction):
     rep = data.get("rep", 0.0)
     packages = data.get("packages", {})
 
-    if _is_watch_master(member):
+    if _is_watch_master(member) and not _is_debug_mode():
         embed = _build_status_board_embed(data, viewer=member)
         active_pkgs = [
             p for p in packages.values()
@@ -2151,7 +2334,7 @@ async def view_target_packages(interaction: discord.Interaction):
             await interaction.response.send_message("No active packages for your company.", ephemeral=True)
             return
         view = PackagePaginatorView(company_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
         return
 
     if _is_cadre_leader(member):
@@ -2165,7 +2348,7 @@ async def view_target_packages(interaction: discord.Interaction):
             await interaction.response.send_message("No packages currently awaiting your cadre's specialists.", ephemeral=True)
             return
         view = PackagePaginatorView(cadre_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
         return
 
     # Default: show packages assigned to member's KT
@@ -2181,7 +2364,7 @@ async def view_target_packages(interaction: discord.Interaction):
             await interaction.response.send_message("No active packages assigned to your Kill Team.", ephemeral=True)
             return
         view = PackagePaginatorView(kt_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
         return
 
     await interaction.response.send_message("No packages found for your current role.", ephemeral=True)
@@ -2252,7 +2435,7 @@ async def target_package_status(
             names.append(m.display_name if m else str(sid))
         embed.add_field(name="Attached Specialists", value=", ".join(names), inline=False)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, **_file_kwarg(_classification_file(pkg)), ephemeral=True)
 
 
 # ---------------------------------------------------------------------------
