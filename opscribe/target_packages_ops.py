@@ -1663,6 +1663,13 @@ class SignUpView(discord.ui.View):
             if not pkg2:
                 await interaction.response.send_message("Package not found.", ephemeral=True)
                 return
+            if pkg2.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+                await interaction.response.send_message("This package is no longer accepting sign-ups.", ephemeral=True)
+                return
+            eligible2, reason2 = _is_eligible_to_sign_up(member, pkg2, guild)
+            if not eligible2:
+                await interaction.response.send_message(reason2, ephemeral=True)
+                return
             pkg2.setdefault("signed_up", [])
             if member.id in pkg2["signed_up"]:
                 await interaction.response.send_message("Already signed up.", ephemeral=True)
