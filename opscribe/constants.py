@@ -377,6 +377,10 @@ ROSTER_IMAGE_KILLTEAM_BY_COMPANY: dict[str, str] = {
     "Watch Company Primus": "https://cdn.discordapp.com/attachments/1444855164023472192/1512256170079948970/Primus_KT_Art.png?ex=6a236dcf&is=6a221c4f&hm=022125bbbc00a25f6ed194b79ec9a84185f7e3f6c1182de4d3626d3bd0fc2602&",
     "Watch Company Secundus": "https://cdn.discordapp.com/attachments/1444855164023472192/1511919121988845670/Kill_Team.png?ex=6a2233e8&is=6a20e268&hm=925e89a9452defdc158150856e6da4939c15235bf448df84f26c477d93cf66eb&",
 }
+# Per-company Command embed banner images.  Falls back to ROSTER_IMAGE_COMPANY_COMMAND if a company is absent.
+ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY: dict[str, str] = {
+    "Watch Company Primus": "https://cdn.discordapp.com/attachments/1444066753427800165/1512655809669234918/image.png?ex=6a24e200&is=6a239080&hm=b7c19784cb8af6f88bf99361ed5e9efb6c0200736d73d1da074e7c41375731c4&"
+}
 
 # Maps configured Watch Company role name -> roster channel ID.
 # The bot posts and maintains embeds inside each configured company channel.

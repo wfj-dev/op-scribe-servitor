@@ -106,118 +106,6 @@ def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional
                 return r.name
     return None
 
-
-def _clean_roster_name(member: discord.Member) -> str:
-    """Build the Campaign Accolades embed for a company roster channel.
-
-    Returns None if the campaign is inactive or has no accolades data yet.
-    Shows company-level honours/ribbons/prestige, then each KT in the company.
-    """
-    if now is None:
-        now = datetime.now(timezone.utc)
-
-    company_id = _co_roster_name_to_id(company_name)
-    campaign = campaign_state.get("campaign", {})
-    phase = campaign.get("phase", "inactive")
-
-    co_data = campaign_state.get("companies", {}).get(company_id)
-    if not co_data:
-        return None
-
-    camp_name = campaign.get("name") or campaign.get("id") or "Active Campaign"
-    beat = campaign.get("beat")
-    beat_name = campaign.get("beat_name")
-    beat_label = f"{beat_name}" if beat_name else (f"Cycle {beat}" if beat else "")
-
-    # Build active enlistment lookup: sgt_id → [uid, ...]
-    enlistment = campaign_state.get("enlistment", {})
-    kt_members_by_sgt: dict[str, list[str]] = {}
-    for uid, rec in enlistment.items():
-        if not rec.get("active"):
-            continue
-        sgt_id = rec.get("kt_sgt_id")
-        if sgt_id:
-            kt_members_by_sgt.setdefault(sgt_id, []).append(uid)
-
-    embed = discord.Embed(
-        title="Campaign Accolades",
-        description=(
-            f"**{camp_name}**"
-            + (f"  ·  {beat_label}" if beat_label else "")
-            + f"\nPhase: {phase}"
-        ),
-        color=0xC4A030,
-    )
-
-    # ── Company section ──────────────────────────────────────────────────────
-    co_prestige = co_data.get("prestige_window_total", 0)
-    co_ribbon = co_data.get("ribbon")
-    co_honour = co_data.get("honour")
-    co_title = co_data.get("title")
-    co_lore = co_data.get("lore_priority", False)
-
-    co_lines: list[str] = [f"Prestige: **{co_prestige}**"]
-    if co_title:
-        co_lines.append(f"Title: *{co_title}*")
-    if co_ribbon and co_ribbon in _RIBBON_LABELS:
-        co_lines.append(f"Ribbon: {_RIBBON_LABELS[co_ribbon]}")
-    if co_honour and co_honour in _HONOUR_LABELS:
-        co_lines.append(f"Honour: {_HONOUR_LABELS[co_honour]}")
-    if co_lore:
-        co_lines.append("Lore Priority: Yes")
-
-    embed.add_field(
-        name=f"▸ {co_data.get('display_name', company_name)}",
-        value="\n".join(co_lines),
-        inline=False,
-    )
-
-    # ── Kill Teams in this company ───────────────────────────────────────────
-    kill_teams = campaign_state.get("kill_teams", {})
-    co_kts = [
-        (sgt_id, kt) for sgt_id, kt in kill_teams.items()
-        if kt.get("company_id") == company_id
-    ]
-    co_kts.sort(key=lambda x: x[1].get("prestige_window_total", 0), reverse=True)
-
-    for sgt_id, kt in co_kts[:8]:
-        kt_prestige = kt.get("prestige_window_total", 0)
-        kt_ribbon = kt.get("ribbon")
-        kt_honour_list = kt.get("honour") or []
-        if isinstance(kt_honour_list, str):
-            kt_honour_list = [kt_honour_list]
-        kt_title = kt.get("title")
-        kt_lore = kt.get("lore_priority", False)
-
-        # Resolve name from Discord role; fallback to stored display_name
-        member_ids = kt_members_by_sgt.get(sgt_id, [sgt_id])
-        kt_name = (
-            _resolve_kt_role_name(sgt_id, member_ids, guild)
-            or kt.get("display_name")
-            or f"KT {sgt_id}"
-        )
-
-        kt_lines: list[str] = [f"Prestige: **{kt_prestige}**"]
-        if kt_title:
-            kt_lines.append(f"Title: *{kt_title}*")
-        if kt_ribbon and kt_ribbon in _RIBBON_LABELS:
-            kt_lines.append(f"Ribbon: {_RIBBON_LABELS[kt_ribbon]}")
-        for hon in kt_honour_list:
-            if hon in _HONOUR_LABELS:
-                kt_lines.append(f"Honour: {_HONOUR_LABELS[hon]}")
-        if kt_lore:
-            kt_lines.append("Lore Priority: Yes")
-
-        embed.add_field(name=f"▸ {kt_name}", value="\n".join(kt_lines), inline=True)
-
-    embed.set_image(url="https://cdn.discordapp.com/attachments/1499152772225040544/1511884332908941432/Honor_of_the_Watch.png?ex=6a221382&is=6a20c202&hm=827b132ad5ae8a794d09aa6503eab5a9ba0c592105609f2efe09284b955d781e&")
-    camp_name = campaign.get("name") or "Jericho Watch Campaign"
-    embed.set_footer(
-        text=f"{camp_name}  ·  {now.strftime('%Y-%m-%d %H:%M UTC')}"
-    )
-    return embed
-
-
 def _clean_roster_name(member: discord.Member) -> str:
     """Return a clean display name suitable for the roster embed.
 
@@ -489,12 +377,37 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     return f"{left} | {mention}"
 
 
+def _tp_status_for_kt(kt_name: str) -> str:
+    """Return a TP deployment status line for a KT. Empty string if no data."""
+    try:
+        import os, json
+        path = os.path.join("data", "target_packages.json")
+        if not os.path.exists(path):
+            return ""
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        packages = data.get("packages", {})
+        active_statuses = {"pending_sgt", "recruiting", "deployed"}
+        kt_pkgs = [
+            p for p in packages.values()
+            if p.get("assigned_kt") == kt_name and p["status"] in active_statuses
+        ]
+        if not kt_pkgs:
+            return "🟢 Ready for Deployment"
+        if any(p["status"] == "deployed" for p in kt_pkgs):
+            return f"🔴 Deployed ({len(kt_pkgs)} pkg{'s' if len(kt_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(kt_pkgs)} pkg{'s' if len(kt_pkgs) > 1 else ''})"
+    except Exception:
+        return ""
+
+
 def _build_embed(
     title: str,
     members: List[discord.Member],
     guild: discord.Guild,
     last_updated: Optional[datetime] = None,
     image_url: Optional[str] = None,
+    tp_status: Optional[str] = None,
 ) -> discord.Embed:
     """Build a roster discord.Embed for a list of members.
 
@@ -513,7 +426,11 @@ def _build_embed(
 
     # Title goes into description so role mentions are rendered by Discord
     SEPARATOR = "\u2500" * 24  # ────────────────────────
-    header = f"{title}\n**{count} {noun} Assigned**\n{SEPARATOR}"
+    header_parts = [title, f"**{count} {noun} Assigned**"]
+    if tp_status:
+        header_parts.append(tp_status)
+    header_parts.append(SEPARATOR)
+    header = "\n".join(header_parts)
 
     if not members:
         embed.description = f"{header}\n*No members currently assigned.*"
@@ -700,12 +617,14 @@ async def _update_company_roster(
 
     kt_image = ROSTER_IMAGE_KILLTEAM_BY_COMPANY.get(company_name, ROSTER_IMAGE_KILLTEAM)
     for kt_name, kt_role_id, kt_members in kill_teams:
+        tp_status_line = _tp_status_for_kt(kt_name)
         kt_embed = _build_embed(
             _fmt_title(f"<@&{kt_role_id}>", company_emoji),
             kt_members,
             guild,
             last_updated=now,
             image_url=kt_image,
+            tp_status=tp_status_line,
         )
         kt_msg_id = await _upsert_message(
             channel, kt_message_ids.get(kt_name), kt_embed

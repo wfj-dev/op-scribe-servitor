@@ -16,18 +16,29 @@
     1509598835599610029,
     1511441138165485798,
     1459606044509606032,
-    1512146866165383410
+    1512146866165383410,
+    1512819170025410621,
+    1429318686447108300
   ],
   "admin_user_ids": [
     281651485782310914
   ],
   "role_aliases": {},
   "permissions": {
-    "request_target_packages": { "roles": ["Watch Master"] },
-    "view_target_packages": { "min_rank": "Watch Brother" },
-    "assign_package": { "roles": ["Watch Captain", "Watch Lieutenant", "Lord Executioner", "Forgemaster", "Chief Apothecary", "High Chaplain", "Void Warden", "Castellan"] },
-    "submit_target_package": { "min_rank": "Watch Brother" },
-    "target_package_status": { "min_rank": "Watch Brother" },
+    "request_target_packages": {
+      "roles": [
+        "Watch Master"
+      ]
+    },
+    "view_target_packages": {
+      "min_rank": "Watch Sergeant+"
+    },
+    "submit_target_package": {
+      "min_rank": "Watch Brother"
+    },
+    "target_package_status": {
+      "min_rank": "Watch Sergeant+"
+    },
     "litany_of_function": {
       "roles": [
         "Watch Command"
@@ -388,6 +399,8 @@
   },
   "target_packages": {
     "highcom_channel_id": 1499152772225040544,
+    "highcom_strategium_channel_id": null,
+    "watch_command_strategium_channel_id": null,
     "ox_rep_channel_id": null
   }
 }
