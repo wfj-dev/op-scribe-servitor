@@ -385,7 +385,6 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
     """
     try:
         if packages is None:
-            import os, json
             path = os.path.join("data", "target_packages.json")
             if not os.path.exists(path):
                 return ""
@@ -625,11 +624,10 @@ async def _update_company_roster(
     # Load TP package data once so _tp_status_for_kt avoids repeated disk I/O per KT
     _tp_packages: dict | None = None
     try:
-        import json as _json
         _tp_path = os.path.join("data", "target_packages.json")
         if os.path.exists(_tp_path):
             with open(_tp_path, "r", encoding="utf-8") as _f:
-                _tp_packages = _json.load(_f).get("packages", {})
+                _tp_packages = json.load(_f).get("packages", {})
     except Exception:
         pass
     for kt_name, kt_role_id, kt_members in kill_teams:
