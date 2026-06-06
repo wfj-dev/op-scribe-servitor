@@ -31,13 +31,13 @@
       ]
     },
     "view_target_packages": {
-      "min_rank": "Watch Sergeant+"
+      "min_rank": "Watch Sergeant"
     },
     "submit_target_package": {
       "min_rank": "Watch Brother"
     },
     "target_package_status": {
-      "min_rank": "Watch Sergeant+"
+      "min_rank": "Watch Sergeant"
     },
     "litany_of_function": {
       "roles": [

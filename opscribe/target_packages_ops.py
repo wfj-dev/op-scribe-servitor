@@ -723,7 +723,9 @@ async def submit_package(
 
         if not (is_signed_up or is_command or submitter_company == assigned_company or is_hc):
             return False, (
-                f"You must be signed up for package `{package_id}` to submit it."
+                f"You do not have permission to submit package `{package_id}`. "
+                f"Submission requires: being signed up, KT command (Sergeant/Champion), "
+                f"same-company membership, or High Command."
             )
 
         # Package must be DEPLOYED (all reqs met)
@@ -879,14 +881,11 @@ async def expire_packages(guild: discord.Guild) -> None:
             _save_tp(data)
 
     if changed:
-        # Fire rep embed update on next guild
+        # Fire rep embed update
         try:
-            m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
-            bot_obj = getattr(m, "bot", None) if m else None
-            if bot_obj:
-                await _update_ox_rep_embed(guild)
-        except Exception:
-            pass
+            await _update_ox_rep_embed(guild)
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Rep embed update failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -2179,6 +2178,50 @@ async def _tp_expiry_loop():
         _g.logger.error(f"[TP] Expiry loop error: {e}")
 
 
+
+async def register_persistent_views() -> None:
+    """Call from on_ready to restore TP persistent views after a bot restart.
+
+    Each active package's SgtAcceptView and SignUpView are re-registered scoped
+    to their original message IDs so instance state (package_id / kt_name) is
+    correctly restored.
+    """
+    try:
+        data = _load_tp()
+        sgt_count = 0
+        signup_count = 0
+        for package_id, pkg in data.get("packages", {}).items():
+            status = pkg.get("status")
+            kt_name = pkg.get("assigned_kt", "")
+
+            if status == STATUS_PENDING_SGT:
+                msg_id = pkg.get("sgt_accept_message_id")
+                if msg_id:
+                    _g.bot.add_view(
+                        SgtAcceptView(package_id=package_id, kt_name=kt_name),
+                        message_id=msg_id,
+                    )
+                    sgt_count += 1
+
+            if status in (STATUS_RECRUITING, STATUS_DEPLOYED):
+                msg_id = pkg.get("signup_message_id")
+                if msg_id:
+                    _g.bot.add_view(
+                        SignUpView(package_id=package_id),
+                        message_id=msg_id,
+                    )
+                    signup_count += 1
+
+        if _g.logger:
+            _g.logger.info(
+                f"target_packages_ops: registered {sgt_count} SgtAccept + "
+                f"{signup_count} SignUp persistent views"
+            )
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.warning(f"target_packages_ops: register_persistent_views failed: {exc}")
+
+
 # Public exports
 __all__ = [
     "request_target_packages",
@@ -2190,4 +2233,5 @@ __all__ = [
     "generate_packages",
     "distribute_packages",
     "expire_packages",
+    "register_persistent_views",
 ]

@@ -3329,8 +3329,8 @@ async def save_aar_record(record: dict):
         if increment_forge_pool_balance is not None:
             try:
                 await increment_forge_pool_balance(armory_pts)
-            except Exception:
-                pass
+            except Exception as exc:
+                _g.logger.debug(f"[AAR] Failed to increment forge pool by {armory_pts}: {exc}")
 
 
 # Use DataStore for processed IDs
