@@ -98,7 +98,7 @@
     {
       "name": "Backup Plan",
       "description": "Primary Weapon Damage greatly reduced; Secondary increased.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine"
@@ -130,7 +130,7 @@
     {
       "name": "Beset",
       "description": "Both enemy factions spawn.",
-      "type": "enemy_modifier",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "command",
@@ -184,7 +184,7 @@
     {
       "name": "Buffed Enemies",
       "description": "Enemies have increased Health and Damage.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
@@ -199,7 +199,7 @@
     {
       "name": "Butcher's Gifts",
       "description": "Executions heal nearby allies for 20% HP \u2014 but not you.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "chaplain",
@@ -253,7 +253,7 @@
     {
       "name": "Close In",
       "description": "Ranged Damage greatly reduced; Melee Damage increased.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion"
@@ -289,7 +289,7 @@
     {
       "name": "Come Prepared",
       "description": "No Stimms on map, but every Marine starts with 10.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "apothecary"
@@ -307,7 +307,7 @@
     {
       "name": "Coordinated Calls",
       "description": "Several enemies call Reinforcements simultaneously.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "command",
@@ -390,7 +390,7 @@
     {
       "name": "Detonation Risk",
       "description": "Exploding objects are far more common and far more deadly.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine",
@@ -405,7 +405,7 @@
     {
       "name": "Doomed Offensive",
       "description": "The lower your Health, the more damage you deal.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "champion",
@@ -424,7 +424,7 @@
     {
       "name": "Effective Taunt",
       "description": "Every wave contains enraged Majoris enemies.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "command",
@@ -451,7 +451,7 @@
     {
       "name": "Enduring Foes",
       "description": "Enemies can't enter Incapacitation or be Executed; all enemy Health -35%.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
@@ -499,7 +499,7 @@
     {
       "name": "Extreme Challenge",
       "description": "Extremis enemy count and frequency heavily increased.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
@@ -608,7 +608,7 @@
     {
       "name": "Hardened Skins",
       "description": "Enemies not staggered by first 3 hits; damage is still applied.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "huntmaster",
@@ -622,7 +622,7 @@
     {
       "name": "Harvest of Vitae",
       "description": "No contested Health; Executions restore a fixed amount of Health.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "apothecary",
@@ -669,7 +669,7 @@
     {
       "name": "Heavy Calibre",
       "description": "Secondary Weapon Damage greatly reduced; Primary increased.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine"
@@ -781,7 +781,7 @@
     {
       "name": "Maintain Distance",
       "description": "Melee Damage greatly reduced; Ranged Damage increased.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "huntmaster"
@@ -798,7 +798,7 @@
     {
       "name": "Major Challenge",
       "description": "Majoris count heavily increased; Minoris count heavily reduced.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
@@ -815,7 +815,7 @@
     {
       "name": "Meat for the Slaughter",
       "description": "Minoris count heavily increased; Majoris count reduced.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "dreadnought"
@@ -832,7 +832,7 @@
     {
       "name": "Measured Mercy",
       "description": "Start with 5 relics; allies can't be revived; mission fails if anyone dies.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "champion",
@@ -927,7 +927,7 @@
     {
       "name": "No Delays",
       "description": "Enemy Health increases continuously with mission duration.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine",
@@ -980,7 +980,7 @@
     {
       "name": "Pointed Attack",
       "description": "Pointing at an enemy deals significant Damage to them.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "chaplain"
@@ -1016,7 +1016,7 @@
     {
       "name": "Rationing",
       "description": "No Ammo Caches; Ammo Boxes drop more frequently.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine"
@@ -1036,7 +1036,7 @@
     {
       "name": "Reinforced Cranium",
       "description": "Headshots deal no bonus damage; all enemy Health reduced by 35%.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "librarian"
@@ -1053,7 +1053,7 @@
     {
       "name": "Rhythm of Carnage",
       "description": "Melee Damage -70% but consecutive melee attacks scale up to 300%; resets after 4s without hitting.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "champion",
@@ -1070,7 +1070,7 @@
     {
       "name": "Scavenger",
       "description": "No Ammo Caches or Boxes; each melee kill restores 2% ammo to both weapons.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine"
@@ -1146,7 +1146,7 @@
     {
       "name": "Spoils of War",
       "description": "No pickups on the map; kill enemies to acquire them.",
-      "type": "special",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "techmarine",
@@ -1203,7 +1203,7 @@
     {
       "name": "Summoner",
       "description": "Every uninterrupted Call for Reinforcements summons an Extremis enemy.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "command",
@@ -1219,7 +1219,7 @@
     {
       "name": "Supremacy of the Strong",
       "description": "Terminus-level enemies are stronger.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
@@ -1250,7 +1250,7 @@
     {
       "name": "Surgical Strike",
       "description": "Perfect Parry/Block deals heavy damage but the window is smaller.",
-      "type": "special",
+      "type": "buff",
       "excluded": false,
       "pools": [
         "champion",
@@ -1351,7 +1351,7 @@
     {
       "name": "Tsunami",
       "description": "All waves are massive but less frequent.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "dreadnought"
@@ -1366,7 +1366,7 @@
     {
       "name": "Twice the Foe",
       "description": "Twice as many Terminus-level enemies.",
-      "type": "enemy_modifier",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "champion",
