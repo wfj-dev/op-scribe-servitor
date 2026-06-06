@@ -1414,16 +1414,17 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                     await save_aar_record(record)
 
                     # --- Challenge Tracking: Process AAR for challenge eligibility ---
-                    if guild:
+                    _guild = getattr(aar_channel, "guild", None)
+                    if _guild:
                         try:
-                            challenge_notifications = await _process_challenge_tracking(record, guild)
+                            challenge_notifications = await _process_challenge_tracking(record, _guild)
                             if challenge_notifications:
-                                await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+                                await _send_challenge_eligibility_notifications(challenge_notifications, _guild)
                         except Exception as e:
                             _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
                         try:
                             await _b("_check_award_milestones_for_members")(
-                                [str(uid) for uid in record.get("brother_ids", [])], guild
+                                [str(uid) for uid in record.get("brother_ids", [])], _guild
                             )
                         except Exception as e:
                             _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
@@ -1543,16 +1544,17 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         await save_aar_record(record)
 
         # --- Challenge Tracking: Process AAR for challenge eligibility ---
-        if guild:
+        _guild = getattr(aar_channel, "guild", None)
+        if _guild:
             try:
-                challenge_notifications = await _process_challenge_tracking(record, guild)
+                challenge_notifications = await _process_challenge_tracking(record, _guild)
                 if challenge_notifications:
-                    await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+                    await _send_challenge_eligibility_notifications(challenge_notifications, _guild)
             except Exception as e:
                 _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
             try:
                 await _b("_check_award_milestones_for_members")(
-                    [str(uid) for uid in record.get("brother_ids", [])], guild
+                    [str(uid) for uid in record.get("brother_ids", [])], _guild
                 )
             except Exception as e:
                 _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
