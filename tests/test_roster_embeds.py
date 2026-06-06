@@ -60,14 +60,12 @@ def test_load_roster_state_returns_defaults_when_file_missing():
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
-            "campaign_accolades_message_id": None,
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
-            "campaign_accolades_message_id": None,
         },
     }
 
@@ -92,14 +90,12 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
             "hc_message_id": 101,
             "command_message_id": None,
             "killteam_message_ids": {"Kill Team Alpha": 202},
-            "campaign_accolades_message_id": None,
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
-            "campaign_accolades_message_id": None,
         },
     }
 

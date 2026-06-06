@@ -34,13 +34,6 @@ from discord.ext import tasks
 
 from . import _bot_globals as _g
 from .constants import AAR_CHANNEL_ID, DATA_DIR
-from .pressure_registry import (
-    CadrePressure,
-    PressureSnapshot,
-    READY_THRESHOLD,
-    HARD_BLOCK_THRESHOLD,
-    evaluate_all,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -214,17 +207,6 @@ async def _count_backlog(aar_channel: discord.TextChannel) -> int:
         return 0
 
 
-def _score_str(s: float) -> str:
-    return "∞" if s == float("inf") else f"{s:.2f}"
-
-
-def _format_cadre_line(c: CadrePressure) -> str:
-    role_mention = f"<@&{c.notify_role_id}>" if c.notify_role_id else c.display_name
-    return (
-        f"• {role_mention} — score **{_score_str(c.score)}** "
-        f"({c.demand} demand / {c.supply} supply)"
-    )
-
 
 # ---------------------------------------------------------------------------
 # Decision engine
@@ -255,7 +237,7 @@ def _in_cooldown(state: AutoIngestState) -> bool:
 # ---------------------------------------------------------------------------
 
 async def _run_ingest(
-    aar_channel: discord.TextChannel, mode: str, snapshot: PressureSnapshot, backlog: int
+    aar_channel: discord.TextChannel, mode: str, backlog: int
 ) -> str:
     """Invoke the existing ingest pipeline and return a one-line summary."""
     from .aar_ops import _run_ingest_new
@@ -268,31 +250,22 @@ async def _run_ingest(
         ingested, rejected = await _run_ingest_new(aar_channel, span)
     summary = (
         f"mode={mode} ingested={ingested} rejected={rejected} "
-        f"backlog≈{backlog} mean={_score_str(snapshot.mean_score)} "
-        f"max={_score_str(snapshot.max_score)}"
+        f"backlog≈{backlog}"
     )
     _g.logger.info(f"auto_ingest: {summary}")
 
-    # Private report — DM to Forgemaster (was posted in AAR channel previously).
+    # Private report — DM to Forgemaster.
     flavor = "Ready" if mode == "ready" else "Forced (backlog/staleness override)"
     color = 0x2ECC71 if mode == "ready" else 0xE67E22
     embed = discord.Embed(
-        title="᛭⋅ AUTOMATED INGESTION RITE ⋅᛭",
+        title="ᛙ⋅ AUTOMATED INGESTION RITE ⋅ᛙ",
         color=color,
         description=f"_Trigger: **{flavor}**_",
     )
     embed.add_field(name="▸ Chronicled", value=str(ingested), inline=True)
     embed.add_field(name="▸ Rejected", value=str(rejected), inline=True)
     embed.add_field(name="▸ Scan Window", value=f"Last {span} day(s)", inline=True)
-    embed.add_field(
-        name="▸ Pressure",
-        value=(
-            f"mean **{_score_str(snapshot.mean_score)}** / "
-            f"max **{_score_str(snapshot.max_score)}**\n"
-            f"backlog ≈ **{backlog}**"
-        ),
-        inline=False,
-    )
+    embed.add_field(name="▸ Backlog", value=f"backlog ≈ **{backlog}**", inline=False)
     embed.set_footer(text="Operation-Scribe Servitor · automated rite")
     user_id = _forgemaster_user_id()
     if user_id:
@@ -310,99 +283,11 @@ async def _run_ingest(
         except Exception:
             _g.logger.exception("auto_ingest: failed to DM Forgemaster ingest report")
     else:
-        _g.logger.warning(
+        _g.logger.debug(
             "auto_ingest: forgemaster_user_id not configured; skipping ingest report"
         )
     return summary
 
-
-async def _post_tier1_blocker_notice(
-    snapshot: PressureSnapshot, state: AutoIngestState, guild: discord.Guild
-) -> None:
-    """Post a tier-1 notice in each blocking cadre's own channel.
-
-    Each blocker is routed to its own ``notify_channel_id`` (e.g. Techmarines
-    post to the arming-chamber, Librarians post to the librarium watch). When
-    a blocker has no channel configured we fall back to the global
-    ``notification_channel_id`` (or AAR_CHANNEL_ID). Multiple cadres sharing
-    one channel are coalesced into a single message there.
-    """
-    blockers = snapshot.blockers() or snapshot.cadres
-    fallback_channel_id = _notification_channel_id()
-
-    # Group blockers by destination channel id so each channel receives a
-    # single message naming only the cadres that belong there.
-    groups: Dict[int, List[CadrePressure]] = {}
-    for c in blockers:
-        cid = c.notify_channel_id or fallback_channel_id
-        groups.setdefault(cid, []).append(c)
-
-    posted_any = False
-    for channel_id, group in groups.items():
-        channel = guild.get_channel(channel_id) or _g.bot.get_channel(channel_id)
-        if channel is None:
-            try:
-                channel = await _g.bot.fetch_channel(channel_id)
-            except Exception:
-                _g.logger.warning("auto_ingest: tier-1 channel %s not accessible", channel_id)
-                continue
-
-        body = "\n".join(_format_cadre_line(c) for c in group)
-        pings = " ".join(
-            f"<@&{c.notify_role_id}>" for c in group if c.notify_role_id
-        )
-        msg = (
-            f"⚠️ **The Servitor stalls.** The pressure of un-chronicled records mounts, "
-            f"yet the specialists are not ready to bear it.\n"
-            f"{pings}\n"
-            f"{body}\n"
-            f"_Auto-ingest will resume when mean pressure falls below "
-            f"{READY_THRESHOLD:.1f} and no cadre exceeds {HARD_BLOCK_THRESHOLD:.1f}._"
-        )
-        try:
-            await channel.send(msg)
-            posted_any = True
-        except Exception:
-            _g.logger.exception("auto_ingest: failed to post tier-1 notice to %s", channel_id)
-
-    if posted_any:
-        state.last_blocker_notice_at = _now_iso()
-        state.last_blocker_set = sorted(c.cadre_id for c in blockers)
-
-
-async def _dm_forgemaster_tier2(
-    snapshot: PressureSnapshot, state: AutoIngestState, backlog: int
-) -> None:
-    user_id = _forgemaster_user_id()
-    if not user_id:
-        _g.logger.warning("auto_ingest: forgemaster_user_id not configured; skipping DM")
-        return
-    try:
-        user = _g.bot.get_user(user_id) or await _g.bot.fetch_user(user_id)
-    except Exception:
-        _g.logger.exception("auto_ingest: failed to fetch Forgemaster user")
-        return
-
-    hours_blocked = _hours_since(state.blocked_since) or 0.0
-    lines = [_format_cadre_line(c) for c in snapshot.cadres]
-    body = (
-        f"**Auto-ingest has been blocked for {hours_blocked:.1f}h.**\n"
-        f"Backlog ≈ {backlog} unchronicled record(s).\n"
-        f"Mean cadre pressure: **{_score_str(snapshot.mean_score)}** "
-        f"(needs < {READY_THRESHOLD:.1f})\n"
-        f"Max cadre pressure: **{_score_str(snapshot.max_score)}** "
-        f"(needs < {HARD_BLOCK_THRESHOLD:.1f})\n\n"
-        + "\n".join(lines)
-        + "\n\nRecommendation: nudge the specialists in the listed cadres to "
-        "perform their rites, or use `/auto_ingest_set state:off` to pause "
-        "auto-ingest entirely."
-    )
-    try:
-        await user.send(body)
-        state.forgemaster_dm_at = _now_iso()
-        _g.logger.info("auto_ingest: DM'd Forgemaster (tier 2)")
-    except Exception:
-        _g.logger.exception("auto_ingest: failed to DM Forgemaster")
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +297,10 @@ async def _dm_forgemaster_tier2(
 async def _tick() -> None:
     """One iteration of the auto-ingest decision loop."""
     if not _enabled_in_config():
+        return
+
+    # Skip in debug mode — avoid unintended production writes during local testing.
+    if getattr(_g, 'DEBUG_MODE', False):
         return
 
     state = AutoIngestState.load()
@@ -428,16 +317,11 @@ async def _tick() -> None:
         _g.logger.debug("auto_ingest: AAR channel not found")
         return
 
-    snapshot = await evaluate_all(guild)
     backlog = await _count_backlog(aar_channel)
 
     state.last_check_at = _now_iso()
-    state.last_check_mean = (
-        None if snapshot.mean_score == float("inf") else snapshot.mean_score
-    )
-    state.last_check_max = (
-        None if snapshot.max_score == float("inf") else snapshot.max_score
-    )
+    state.last_check_mean = None
+    state.last_check_max = None
     state.last_check_backlog = backlog
 
     if _in_cooldown(state):
@@ -449,7 +333,7 @@ async def _tick() -> None:
 
     if forced:
         state.last_check_outcome = "FORCED"
-        summary = await _run_ingest(aar_channel, "forced", snapshot, backlog)
+        summary = await _run_ingest(aar_channel, "forced", backlog)
         state.last_ingest_at = _now_iso()
         state.last_ingest_mode = "forced"
         state.last_ingest_summary = summary
@@ -460,47 +344,19 @@ async def _tick() -> None:
         state.save()
         return
 
-    if snapshot.is_ready:
-        state.last_check_outcome = "READY"
-        # Skip ingest if there's literally nothing to do.
-        if backlog == 0:
-            state.save()
-            return
-        summary = await _run_ingest(aar_channel, "ready", snapshot, backlog)
-        state.last_ingest_at = _now_iso()
-        state.last_ingest_mode = "ready"
-        state.last_ingest_summary = summary
-        state.blocked_since = None
-        state.last_blocker_notice_at = None
-        state.last_blocker_set = []
-        state.forgemaster_dm_at = None
+    # READY — no cadre pressure system; ingest whenever not in cooldown and backlog exists.
+    state.last_check_outcome = "READY"
+    if backlog == 0:
         state.save()
         return
-
-    # BLOCKED
-    state.last_check_outcome = "BLOCKED"
-    if state.blocked_since is None:
-        state.blocked_since = _now_iso()
-
-    blockers = snapshot.blockers()
-    blocker_set = sorted(c.cadre_id for c in blockers)
-    # Post Tier 1 if it's the first block OR the blocker set has changed.
-    if state.last_blocker_notice_at is None or blocker_set != state.last_blocker_set:
-        await _post_tier1_blocker_notice(snapshot, state, guild)
-
-    # Tier 2: DM Forgemaster after escalation_hours of continuous block.
-    hours_blocked = _hours_since(state.blocked_since) or 0.0
-    esc = _escalation_hours()
-    should_dm = (
-        hours_blocked >= esc
-        and (
-            state.forgemaster_dm_at is None
-            or (_hours_since(state.forgemaster_dm_at) or 0.0) >= esc
-        )
-    )
-    if should_dm:
-        await _dm_forgemaster_tier2(snapshot, state, backlog)
-
+    summary = await _run_ingest(aar_channel, "ready", backlog)
+    state.last_ingest_at = _now_iso()
+    state.last_ingest_mode = "ready"
+    state.last_ingest_summary = summary
+    state.blocked_since = None
+    state.last_blocker_notice_at = None
+    state.last_blocker_set = []
+    state.forgemaster_dm_at = None
     state.save()
 
 
@@ -557,28 +413,21 @@ async def auto_ingest_status(interaction: discord.Interaction):
 
     state = AutoIngestState.load()
     guild = interaction.guild
-    snapshot: Optional[PressureSnapshot] = None
     backlog: Optional[int] = None
     if guild is not None:
         try:
-            snapshot = await evaluate_all(guild)
             ch = guild.get_channel(AAR_CHANNEL_ID)
             if ch is not None:
                 backlog = await _count_backlog(ch)
         except Exception:
-            _g.logger.exception("auto_ingest_status: live evaluation failed")
+            _g.logger.exception("auto_ingest_status: backlog count failed")
 
-    # Fetch subsystem enabled states (late imports to avoid circular deps).
+    # Fetch forge subsystem enabled state.
     try:
         from .forge_ops import _is_forge_enabled
         forge_enabled: Optional[bool] = await _is_forge_enabled()
     except Exception:
         forge_enabled = None
-    try:
-        from .librarius_ops import _is_librarius_enabled
-        librarius_enabled: Optional[bool] = await _is_librarius_enabled()
-    except Exception:
-        librarius_enabled = None
 
     # Pick an embed color from current state: blocked=red, cooldown=blue,
     # ready/forced=green, otherwise neutral.
@@ -607,14 +456,10 @@ async def auto_ingest_status(interaction: discord.Interaction):
 
     if cooldown_remaining is not None:
         verdict = f"⏳ **COOLDOWN** — {cooldown_remaining:.1f}h until next eligible ingest"
-    elif snapshot is not None and snapshot.is_ready and (backlog or 0) > 0:
+    elif (backlog or 0) > 0:
         verdict = "✅ **READY** — will ingest on next tick"
-    elif snapshot is not None and snapshot.is_ready:
+    elif backlog == 0:
         verdict = "✅ **READY** — no backlog to chronicle"
-    elif snapshot is not None:
-        blockers = snapshot.blockers()
-        names = ", ".join(b.display_name for b in blockers) or "unknown"
-        verdict = f"⚠️ **BLOCKED** — {names}"
     else:
         verdict = f"_{outcome or '—'}_"
 
@@ -633,36 +478,20 @@ async def auto_ingest_status(interaction: discord.Interaction):
     enabled_str = (
         f"**Runtime:** {'on' if state.runtime_enabled else 'off'}\n"
         f"**Config:** {'on' if _enabled_in_config() else 'off'}\n"
-        f"**Interval:** {iv_min} min · **Cooldown:** {cd_h:.1f}h · "
+        f"**Interval:** {iv_min} min \u00b7 **Cooldown:** {cd_h:.1f}h \u00b7 "
         f"**Span:** {_span_days()}d\n"
-        f"**Forced if:** backlog ≥ {_forced_max_backlog()} OR "
-        f"stale ≥ {_forced_max_stale_days()}d\n"
-        f"**Librarium system:** {_on_off(librarius_enabled)} · "
+        f"**Forced if:** backlog \u2265 {_forced_max_backlog()} OR "
+        f"stale \u2265 {_forced_max_stale_days()}d\n"
         f"**Forge system:** {_on_off(forge_enabled)}"
     )
-    embed.add_field(name="▸ Configuration", value=enabled_str, inline=False)
+    embed.add_field(name="\u25b8 Configuration", value=enabled_str, inline=False)
 
-    # ─── Live pressure field ──────────────────────────────────────────────
-    if snapshot is not None:
-        live_lines = [
-            f"mean **{_score_str(snapshot.mean_score)}** "
-            f"(needs < {READY_THRESHOLD:.1f})",
-            f"max **{_score_str(snapshot.max_score)}** "
-            f"(needs < {HARD_BLOCK_THRESHOLD:.1f})",
-            f"backlog **{backlog if backlog is not None else '?'}**",
-        ]
-        for c in snapshot.cadres:
-            live_lines.append(
-                f"  • {c.display_name}: score **{_score_str(c.score)}** "
-                f"(demand {c.demand} / supply {c.supply})"
-            )
-        embed.add_field(name="▸ Live Pressure", value="\n".join(live_lines), inline=False)
-    else:
-        embed.add_field(
-            name="▸ Live Pressure",
-            value="_unavailable (no guild context)_",
-            inline=False,
-        )
+    # \u2500\u2500\u2500 Backlog field \u2500\u2500\u2500
+    embed.add_field(
+        name="\u25b8 Backlog",
+        value=f"**{backlog if backlog is not None else '?'}** unprocessed AARs",
+        inline=False,
+    )
 
     # ─── History field ────────────────────────────────────────────────────
     next_check_str = (

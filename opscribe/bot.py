@@ -57,38 +57,14 @@ ACTIVITY_STATUS_LOCK = asyncio.Lock()
 # _check_promotion_milestones to prevent concurrent read-modify-write races)
 PROMOTION_TRACKING_LOCK = asyncio.Lock()
 
-# Lock for armor integrity operations
-ARMOR_INTEGRITY_LOCK = asyncio.Lock()
-
-# Lock for armor scan state (detection caching per AAR cycle)
-ARMOR_SCAN_STATE_LOCK = asyncio.Lock()
-
 # Lock for induction date overrides
 INDUCTION_OVERRIDES_LOCK = asyncio.Lock()
 
 # Lock for challenge progress tracking
 CHALLENGE_PROGRESS_LOCK = asyncio.Lock()
 
-# Lock for blessing pool operations (Techmarine daily blessing limits)
-BLESSING_POOL_LOCK = asyncio.Lock()
-
-# Lock for forge requisition pool (community armory -> blessing charges)
-FORGE_POOL_LOCK = asyncio.Lock()
-
-# Lock for forge chronicle (immersive armor channel data)
-FORGE_CHRONICLE_LOCK = asyncio.Lock()
-
-# Lock for forge / armor subsystem kill switch
-FORGE_OVERRIDE_LOCK = asyncio.Lock()
-
 # Lock for LFG queue operations
 LFG_QUEUE_LOCK = asyncio.Lock()
-
-# Locks for Librarian / Warp Corruption subsystem
-WARP_EXPOSURE_LOCK = asyncio.Lock()
-WARDING_POOL_LOCK = asyncio.Lock()
-LIBRARIUM_CHRONICLE_LOCK = asyncio.Lock()
-LIBRARIUM_OVERRIDE_LOCK = asyncio.Lock()
 
 # Lock for Terminus Kill Log subsystem
 TERMINUS_SLAYER_LOCK = asyncio.Lock()
@@ -620,36 +596,6 @@ async def _before_challenge_sweep_loop():
     await asyncio.sleep(60)
 
 
-@tasks.loop(hours=12)
-async def _campaign_de_enlist_sweep_loop():
-    """Every 12 hours: warn or auto-de-enlist inactive campaign members."""
-    try:
-        logger.info("campaign de-enlist sweep loop: tick")
-        await _campaign_ops.sweep_auto_de_enlist()
-        logger.info("campaign de-enlist sweep loop: complete")
-    except Exception:
-        logger.exception("Campaign de-enlist sweep loop failed")
-
-
-@_campaign_de_enlist_sweep_loop.before_loop
-async def _before_campaign_de_enlist_sweep_loop():
-    await bot.wait_until_ready()
-
-
-@tasks.loop(minutes=5)
-async def _campaign_beat_clock_loop():
-    """Every 15 minutes: check ops window expiry and cascade deadlines, auto-advance beat lifecycle."""
-    try:
-        logger.info("campaign beat clock loop: tick")
-        await _campaign_ops.sweep_campaign_beat_clock()
-        logger.info("campaign beat clock loop: complete")
-    except Exception:
-        logger.exception("Campaign beat clock loop failed")
-
-
-@_campaign_beat_clock_loop.before_loop
-async def _before_campaign_beat_clock_loop():
-    await bot.wait_until_ready()
 CONFIG_PATH = os.path.join("config", "config.json")
 CONFIG: dict = {}
 if os.path.exists(CONFIG_PATH):
@@ -775,35 +721,25 @@ _g.MACHINE_SPIRITS_LOCK = MACHINE_SPIRITS_LOCK
 _g.ROTATION_LOCK = ROTATION_LOCK
 _g.ACTIVITY_STATUS_LOCK = ACTIVITY_STATUS_LOCK
 _g.PROMOTION_TRACKING_LOCK = PROMOTION_TRACKING_LOCK
-_g.ARMOR_INTEGRITY_LOCK = ARMOR_INTEGRITY_LOCK
-_g.ARMOR_SCAN_STATE_LOCK = ARMOR_SCAN_STATE_LOCK
 _g.INDUCTION_OVERRIDES_LOCK = INDUCTION_OVERRIDES_LOCK
 _g.CHALLENGE_PROGRESS_LOCK = CHALLENGE_PROGRESS_LOCK
-_g.BLESSING_POOL_LOCK = BLESSING_POOL_LOCK
-_g.FORGE_POOL_LOCK = FORGE_POOL_LOCK
-_g.FORGE_CHRONICLE_LOCK = FORGE_CHRONICLE_LOCK
-_g.FORGE_OVERRIDE_LOCK = FORGE_OVERRIDE_LOCK
 _g.LFG_QUEUE_LOCK = LFG_QUEUE_LOCK
 _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
 _g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
-_g.WARP_EXPOSURE_LOCK = WARP_EXPOSURE_LOCK
-_g.WARDING_POOL_LOCK = WARDING_POOL_LOCK
-_g.LIBRARIUM_CHRONICLE_LOCK = LIBRARIUM_CHRONICLE_LOCK
-_g.LIBRARIUM_OVERRIDE_LOCK = LIBRARIUM_OVERRIDE_LOCK
 _g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
 _g.ROSTER_STATE_LOCK = ROSTER_STATE_LOCK
+_g.DEBUG_MODE = DEBUG_MODE
 
 
 from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
 from .roster_ops import _award_announcement_dispatch_loop  # noqa: E402 - underscore prefix excluded from import *
-from . import librarius_ops as _librarius_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
-from . import campaign_ops as _campaign_ops  # noqa: E402,F401  # imported for slash command registration side effect
+from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -847,6 +783,7 @@ HOME_CHAPTERS = [
     "Carcharodons",
     "Carmine Blades",
     "Celestial Lions",
+    "Consecrators",
     "Cowled Wardens",
     "Crimson Fists",
     "Dark Angels",
@@ -1396,14 +1333,10 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     if uid in admin_ids:
         return True
 
-    # Debug mode: only Forgemaster (or admins, handled above) can use commands.
-    # Forgemaster can use ALL commands when debug is active.
+    # Debug mode: only admin users can run commands (handled by admin override above).
+    # Non-admins are blocked from everything.
     if globals().get("DEBUG_MODE"):
-        try:
-            user_roles_dbg = _canonical_role_names(user)
-        except Exception:
-            user_roles_dbg = set()
-        return "Forgemaster" in user_roles_dbg
+        return False
 
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
@@ -1515,6 +1448,11 @@ async def on_ready():
         except Exception as e:
             logger.exception(f"Failed to initialize DataStore on ready: {e}")
     # sync app_commands (slash commands)
+    try:
+        # Register target packages commands
+        _target_packages_ops._register_commands(bot.tree)
+    except Exception:
+        logger.exception("Failed to register target packages commands")
     try:
         guild_id = CONFIG.get("guild_id")
         if guild_id:
@@ -1672,21 +1610,8 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start milestone check loop")
 
-    # Start Forge Chronicle tasks (dashboard update and ambient messages)
+    # Register auto-ingest loop.
     try:
-        if not _forge_dashboard_loop.is_running():
-            _forge_dashboard_loop.start()
-            logger.info("Forge Chronicle dashboard loop started (every 30 min).")
-    except Exception:
-        logger.exception("Failed to start forge dashboard loop")
-
-    # Register specialist cadre pressure contributors + start auto-ingest loop.
-    # See opscribe/pressure_registry.py and opscribe/auto_ingest.py.
-    try:
-        from .forge_ops import _register_pressure_contributors as _fp_reg
-        from .librarius_ops import _register_pressure_contributors as _lp_reg
-        _fp_reg()
-        _lp_reg()
         if not _auto_ingest._auto_ingest_loop.is_running():
             _auto_ingest._auto_ingest_loop.start()
             logger.info("Auto-AAR-ingest loop started (gated by config cadence).")
@@ -1706,21 +1631,13 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start LFG queue system")
 
-    # Start campaign inactivity sweep loop
+    # Start target packages expiry loop
     try:
-        if not _campaign_de_enlist_sweep_loop.is_running():
-            _campaign_de_enlist_sweep_loop.start()
-            logger.info("Campaign de-enlist sweep loop started (12h interval).")
+        if not _target_packages_ops._tp_expiry_loop.is_running():
+            _target_packages_ops._tp_expiry_loop.start()
+            logger.info("Target packages expiry loop started (30min interval).")
     except Exception:
-        logger.exception("Failed to start campaign de-enlist sweep loop")
-
-    # Start campaign beat clock loop
-    try:
-        if not _campaign_beat_clock_loop.is_running():
-            _campaign_beat_clock_loop.start()
-            logger.info("Campaign beat clock loop started (15min interval).")
-    except Exception:
-        logger.exception("Failed to start campaign beat clock loop")
+        logger.exception("Failed to start target packages expiry loop")
 
     # Register persistent views for Terminus kill log entries
     try:
@@ -2135,6 +2052,7 @@ def _main():
         global BROADCAST_STATUS, DEBUG_MODE
         BROADCAST_STATUS = not debug_flag
         DEBUG_MODE = bool(debug_flag)
+        _g.DEBUG_MODE = DEBUG_MODE  # propagate to shared globals for other modules
         # If debug mode enabled, set logger to DEBUG level
         if DEBUG_MODE:
             logging.getLogger().setLevel(logging.DEBUG)
