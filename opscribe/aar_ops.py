@@ -3322,15 +3322,6 @@ async def save_aar_record(record: dict):
 
     await _g.DATASTORE.set_record(key, record)
     await _g.DATASTORE.add_processed_id(key)
-    # Add armory points to the community forge pool (no-op if forge pool system is unavailable)
-    armory_pts = record.get("armory_challenge_points", 0) or 0
-    if armory_pts > 0:
-        increment_forge_pool_balance = _b("_increment_forge_pool_balance")
-        if increment_forge_pool_balance is not None:
-            try:
-                await increment_forge_pool_balance(armory_pts)
-            except Exception as exc:
-                _g.logger.debug(f"[AAR] Failed to increment forge pool by {armory_pts}: {exc}")
 
 
 # Use DataStore for processed IDs
