@@ -401,6 +401,7 @@
     "highcom_channel_id": 1499152772225040544,
     "highcom_strategium_channel_id": null,
     "watch_command_strategium_channel_id": null,
-    "ox_rep_channel_id": null
+    "ox_rep_channel_id": null,
+    "general_channel_id": 1430055064969674777
   }
 }

@@ -528,7 +528,21 @@ async def generate_packages(guild: discord.Guild) -> list:
 
         data["cycle"]["generated_at"] = datetime.now(timezone.utc).isoformat()
         _save_tp(data)
-        return new_packages
+
+    # Gap 1 — Notify general fortress channel when WM generates packages
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+    general_channel_id = config_tp.get("general_channel_id")
+    if general_channel_id:
+        general_channel = guild.get_channel(int(general_channel_id))
+        if general_channel:
+            _WM_REQUEST_FLAVOR = [
+                f"<@&{WATCH_BROTHER_ROLE_ID}> The Watch Master has received intelligence packets from Ordo Xenos. Await your orders — prepare for deployment.",
+                f"<@&{WATCH_BROTHER_ROLE_ID}> Astropathic relay inbound. Ordo Xenos has transmitted new target packages to Watch Fortress Jericho. Stand ready, brothers.",
+                f"<@&{WATCH_BROTHER_ROLE_ID}> Orders inbound from Ordo Xenos. The Watch Master is reviewing strike packages. Deployment briefings to follow.",
+            ]
+            await general_channel.send(random.choice(_WM_REQUEST_FLAVOR))
+
+    return new_packages
 
 
 async def distribute_packages(package_ids: list, guild: discord.Guild) -> None:
@@ -649,6 +663,9 @@ async def assign_specialist(
     # If package just went ACTIVE, notify KT
     if now_active and pkg.get("assigned_kt"):
         await _notify_kt_assigned(package_id, pkg["assigned_kt"], pkg, guild, fully_active=True)
+
+    # Gap 2 — Ping specialist in their cadre channel
+    await _notify_specialist_assigned(specialist_member, package_id, pkg, guild)
 
     return True, (
         f"{specialist_member.display_name} attached to package `{package_id}`. "
@@ -1006,6 +1023,87 @@ async def _notify_kt_assigned(
             data["packages"][package_id]["sgt_accept_message_id"] = msg.id
             data["packages"][package_id]["sgt_accept_channel_id"] = channel.id
             _save_tp(data)
+
+
+# Cadre staff channel map — role → channel ID
+_CADRE_STAFF_CHANNELS: dict[str, int] = {
+    "Watch Techmarine": TECHMARINE_STAFF_CHANNEL_ID,
+    "Forgemaster": TECHMARINE_STAFF_CHANNEL_ID,
+    "Honored Dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
+    "Venerable Dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
+    "Watch Librarian": LIBRARIUS_STAFF_CHANNEL_ID,
+    "Void Warden": LIBRARIUS_STAFF_CHANNEL_ID,
+    "Watch Apothecary": APOTHECARY_STAFF_CHANNEL_ID,
+    "Chief Apothecary": APOTHECARY_STAFF_CHANNEL_ID,
+    "Watch Chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
+    "Judiciar": CHAPLAIN_STAFF_CHANNEL_ID,
+    "High Chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
+}
+
+
+async def _notify_specialist_assigned(
+    specialist_member: discord.Member, package_id: str, pkg: dict, guild: discord.Guild
+) -> None:
+    """Ping the specialist in their cadre channel about their assignment (Gap 2).
+    Also updates the KT sign-up embed to show attached specialists (Gap 3)."""
+    # Find the cadre channel based on specialist's roles
+    specialist_roles = _member_role_names(specialist_member)
+    cadre_channel_id = None
+    for role in specialist_roles:
+        ch_id = _CADRE_STAFF_CHANNELS.get(role)
+        if ch_id:
+            cadre_channel_id = ch_id
+            break
+
+    if cadre_channel_id:
+        cadre_channel = guild.get_channel(cadre_channel_id)
+        if cadre_channel:
+            kt_name = pkg.get("assigned_kt", "your assigned Kill Team")
+            mode = pkg.get("mode", "")
+            mission_id = pkg.get("mission_id")
+            try:
+                ops = _load_operations()
+                op_name = next((o["name"] for o in ops if o["id"] == mission_id), str(mission_id))
+            except Exception:
+                op_name = str(mission_id)
+            await cadre_channel.send(
+                f"{specialist_member.mention} — you have been assigned to Target Package `{package_id}` "
+                f"with {kt_name}.\n"
+                f"**Operation:** {op_name}  |  **Mode:** {'HARD-STRAT' if 'Hard' in mode else 'OMEGA-STRAT'}\n"
+                f"You are locked to this package until completion or expiry."
+            )
+
+    # Gap 3 — Update KT sign-up embed to show attached specialists
+    signup_channel_id = pkg.get("signup_channel_id")
+    signup_message_id = pkg.get("signup_message_id")
+    if signup_channel_id and signup_message_id:
+        try:
+            ch = guild.get_channel(int(signup_channel_id))
+            if ch:
+                msg = await ch.fetch_message(int(signup_message_id))
+                # Rebuild specialist list
+                specialist_ids = pkg.get("assigned_specialist_ids", [])
+                specialist_names = []
+                for sid in specialist_ids:
+                    m = guild.get_member(sid)
+                    specialist_names.append(m.display_name if m else str(sid))
+                # Edit embed to add specialist field
+                if msg.embeds:
+                    embed = msg.embeds[0]
+                    # Remove old specialist field if present
+                    new_fields = [f for f in embed.fields if f.name != "▸ Attached Specialists"]
+                    embed.clear_fields()
+                    for f in new_fields:
+                        embed.add_field(name=f.name, value=f.value, inline=f.inline)
+                    if specialist_names:
+                        embed.add_field(
+                            name="▸ Attached Specialists",
+                            value="\n".join(f"• {n}" for n in specialist_names),
+                            inline=False,
+                        )
+                    await msg.edit(embed=embed)
+        except Exception as e:
+            _g.logger.debug(f"[TP] Failed to update KT signup embed for {package_id}: {e}")
 
 
 async def _notify_cadre_leaders_needed(
@@ -1766,8 +1864,8 @@ class PackagePaginatorView(discord.ui.View):
             distribute_btn.callback = self.distribute_all
             self.add_item(distribute_btn)
 
-        # Captain: "Assign to KT" button (visible when viewing distributed packages)
-        if viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant") or _is_admin(viewer)):
+        # Captain: "Assign to KT" button — only on captain/cadre views, not the WM request board
+        if not show_distribute and viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant") or _is_admin(viewer)):
             assign_btn = discord.ui.Button(
                 label="Assign to Kill Team",
                 style=discord.ButtonStyle.primary,
@@ -1776,8 +1874,8 @@ class PackagePaginatorView(discord.ui.View):
             assign_btn.callback = self.assign_to_kt
             self.add_item(assign_btn)
 
-        # Cadre leader: "Assign Specialist" button
-        if viewer and (_member_role_names(viewer) & _CADRE_LEADER_ROLES or _is_admin(viewer)):
+        # Cadre leader: "Assign Specialist" button — only on cadre views, not the WM request board
+        if not show_distribute and viewer and (_member_role_names(viewer) & _CADRE_LEADER_ROLES or _is_admin(viewer)):
             spec_btn = discord.ui.Button(
                 label="Assign Specialist",
                 style=discord.ButtonStyle.secondary,
@@ -1928,7 +2026,11 @@ def _is_cadre_leader(member: discord.Member) -> bool:
 
 
 def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bool:
-    """Return True if the cadre leader has authority over the given specialist role."""
+    """Return True if the cadre leader has authority over the given specialist role.
+    
+    Cadre leaders can assign themselves only if they personally hold the required role.
+    Forgemaster manages Dreadnoughts administratively but cannot self-assign as one.
+    """
     _CADRE_OWNERSHIP = {
         "Lord Executioner": {"Kill Team Champion", "Company Champion"},
         "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
@@ -1936,9 +2038,11 @@ def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bo
         "High Chaplain": {"Watch Chaplain", "Judiciar"},
         "Void Warden": {"Watch Librarian"},
         "Castellan": {"Watch Keeper"},
+        "Venerable Dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
     }
+    cl_roles = _member_role_names(cadre_leader)
     for cl_role, owned in _CADRE_OWNERSHIP.items():
-        if _has_role(cadre_leader, cl_role) and specialist_role in owned:
+        if cl_role in cl_roles and specialist_role in owned:
             return True
     return False
 
