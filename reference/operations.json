@@ -97,7 +97,7 @@
       "name": "Vox Liberatis",
       "planet": "avarax",
       "faction_listed": "chaos",
-      "intel_lapse_forced": true,
+      "intel_lapse_forced": false,
       "faction_effective": "tyranid",
       "terminus_boss": null,
       "terminus_roaming": [
@@ -137,7 +137,7 @@
       "name": "Fall of Atreus",
       "planet": "demerium",
       "faction_listed": "mixed",
-      "intel_lapse_forced": false,
+      "intel_lapse_forced": true,
       "faction_effective": "mixed",
       "terminus_boss": null,
       "terminus_roaming": [
@@ -267,7 +267,7 @@
       "name": "Disruption",
       "planet": "avarax",
       "faction_listed": "mixed",
-      "intel_lapse_forced": true,
+      "intel_lapse_forced": false,
       "faction_effective": "mixed",
       "terminus_boss": null,
       "terminus_roaming": [

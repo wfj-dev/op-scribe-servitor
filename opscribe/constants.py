@@ -22,6 +22,9 @@ WATCH_BROTHER_ROLE_ID = 1429338953227440148
 HIGH_COMMAND_ROLE_ID = 1452913063970865203
 # Watch Sergeant Role ID (for vet promotions)
 WATCH_SERGEANT_ROLE_ID = 1429339146371203112
+# Watch Captain and Watch Lieutenant role IDs (for target package distribution pings)
+WATCH_CAPTAIN_ROLE_ID = 1429341171301220502
+WATCH_LIEUTENANT_ROLE_ID = 1429340527924613120
 # Watch Librarian Role ID (for challenge eligibility notifications)
 WATCH_LIBRARIAN_ROLE_ID = 1429339231654924318
 # Watch Keeper Role ID
@@ -47,25 +50,11 @@ ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(DATA_DIR, "activity_status_last_c
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 AWARD_QUEUE_PATH = os.path.join(DATA_DIR, "award_announcement_queue.json")
 MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
-ARMOR_INTEGRITY_PATH = os.path.join(DATA_DIR, "armor_integrity.json")
-ARMOR_SCAN_STATE_PATH = os.path.join(DATA_DIR, "armor_scan_state.json")
 INDUCTION_OVERRIDES_PATH = os.path.join(DATA_DIR, "induction_overrides.json")
 CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
-BLESSING_POOL_PATH = os.path.join(DATA_DIR, "blessing_pool.json")
-FORGE_POOL_PATH = os.path.join(DATA_DIR, "forge_pool.json")
-FORGE_CHRONICLE_PATH = os.path.join(DATA_DIR, "forge_chronicle.json")
-FORGE_OVERRIDE_PATH = os.path.join(DATA_DIR, "forge_override.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
-# Librarian / Warp Corruption subsystem
-WARP_EXPOSURE_PATH = os.path.join(DATA_DIR, "warp_exposure.json")
-WARDING_POOL_PATH = os.path.join(DATA_DIR, "warding_pool.json")
-LIBRARIUM_CHRONICLE_PATH = os.path.join(DATA_DIR, "librarium_chronicle.json")
-LIBRARIUM_OVERRIDE_PATH = os.path.join(DATA_DIR, "librarium_override.json")
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
-# Campaign subsystem
-CAMPAIGN_STATE_PATH = os.path.join(DATA_DIR, "campaign_state.json")
-CAMPAIGN_ANNOUNCEMENT_CHANNEL_ID: int = 1512146866165383410  # Set to campaign announcement channel ID
 
 # ---------------------------------------------------------------------------
 # Channel IDs
@@ -96,95 +85,6 @@ LFG_QUEUE_TYPES_DEFAULT = {
     "siege": {"max_players": 3, "max_console": None, "display": "Siege", "ping_role_id": None},
     "omega": {"max_players": 5, "max_console": 2, "display": "Omega", "ping_role_id": None},
 }
-
-# ---------------------------------------------------------------------------
-# Forge requisition pool / blessing pool configuration
-# ---------------------------------------------------------------------------
-FORGE_POOL_COST_PER_CHARGE = 10  # Armory points spent per blessing charge
-FORGE_POOL_DAILY_LIMIT = 5  # Max requisitions per Techmarine per day
-FORGE_POOL_MAX_CHARGES = 60  # Maximum charges the forge can hold (600 pts)
-
-BLESSING_POOL_MAX = 10  # Maximum blessings per Techmarine
-BLESSING_POOL_REGEN_HOURS = 24 / 10  # 2.4 hours per blessing regeneration
-BLESSING_RECIPIENT_COOLDOWN_HOURS = 24  # Cooldown window for recipient blessing count
-BLESSING_RECIPIENT_MAX_PER_DAY = 3  # Maximum blessings per recipient per 24h
-BLESSING_RECIPIENT_PER_BLESSING_COOLDOWN_HOURS = 4  # Minimum hours between blessings for same recipient
-
-# Intensive blessing charge costs (full heal to nominal, guaranteed - no roll)
-INTENSIVE_BLESSING_COSTS = {
-    None: 0,  # Nominal: cannot use intensive
-    "damaged": 2,  # Damaged -> Nominal: 2 charges (guaranteed)
-    "compromised": 2,  # Compromised -> Nominal: 2 charges (guaranteed)
-    "critical": 3,  # Critical -> Nominal: 3 charges (guaranteed)
-    "fractured": 4,  # Fractured -> Nominal: 4 charges (guaranteed)
-}
-
-# Forge drain per charge used - scales with tier being healed
-FORGE_DRAIN_PER_CHARGE = {
-    None: 1,  # Nominal: 1 pt per charge
-    "damaged": 2,  # Damaged: 2 pts per charge
-    "compromised": 3,  # Compromised: 3 pts per charge
-    "critical": 4,  # Critical: 4 pts per charge
-    "fractured": 5,  # Fractured: 5 pts per charge
-}
-
-# Blessing roll configuration - asymmetric state-based probabilities
-BLESSING_ROLL_PROBABILITIES = {
-    None: (0.015, 0.015),  # Nominal: 1.5/97/1.5 - routine maintenance
-    "damaged": (0.045, 0.045),  # Damaged: 4.5/91/4.5 - minor repair
-    "compromised": (0.075, 0.075),  # Compromised: 7.5/85/7.5 - agitated spirit
-    "critical": (0.12, 0.09),  # Critical: 12/79/9 - volatile, asymmetric
-    "fractured": (0.15, 0.15),  # Fractured: 15/70/15 - desperate spirit
-}
-# Legacy thresholds (used as fallback)
-BLESSING_ROLL_CRIT_FAIL_THRESHOLD = 0.05  # Bottom 5% = crit fail
-BLESSING_ROLL_CRIT_SUCCESS_THRESHOLD = 0.95  # Top 5% = crit success
-BLESSING_CRIT_SUCCESS_GRACE_POINTS = -10  # Grace points on crit success
-
-# ---------------------------------------------------------------------------
-# Librarian / Warp Corruption pool configuration
-# ---------------------------------------------------------------------------
-WARDING_POOL_MAX = 10  # Max wards per Librarian
-WARDING_POOL_REGEN_HOURS = 24 / 10  # 2.4 hours per ward regeneration
-WARDING_RECIPIENT_COOLDOWN_HOURS = 24  # 24h window for recipient ward count
-WARDING_RECIPIENT_MAX_PER_DAY = 3  # Max wards per recipient per 24h
-WARDING_RECIPIENT_PER_WARDING_COOLDOWN_HOURS = 4  # Min hours between cleanses on same recipient
-
-# Direct susceptibility gain from Black Laurels missions (by difficulty class).
-# Points accumulate as exposure/risk — not direct corruption. An infection
-# roll is made after the gain is applied (mirrors armor: wear accumulates,
-# damage rolls on each exposure event).
-WARP_BL_SUSCEPTIBILITY_GAIN = {
-    "absolute": 4,
-    "hard_stratagem": 5,
-    "omega_ops": 20,
-}
-# Backwards-compat alias (some legacy code/tests may still import this name).
-WARP_BL_EXPOSURE_GAIN = WARP_BL_SUSCEPTIBILITY_GAIN
-
-# Susceptibility gain from /warp_scry on the casting Librarian.
-WARP_SCRY_SUSCEPTIBILITY_GAIN = 1
-
-# Daily cap on unique infectious squadmates that can spread to a brother (24h rolling)
-WARP_SPREAD_DAILY_UNIQUE_SOURCE_CAP = 2
-# Susceptibility added to a target when contagion successfully spreads.
-WARP_SPREAD_SUSCEPTIBILITY_GAIN = 1
-# Legacy alias retained for compatibility.
-WARP_SPREAD_AMOUNT = WARP_SPREAD_SUSCEPTIBILITY_GAIN
-
-# Grace susceptibility granted on a crit_success cleanse (per charge invested).
-# Mirrors armor's BLESSING_CRIT_SUCCESS_GRACE_POINTS (-10).
-WARP_CRIT_SUCCESS_GRACE_POINTS = -10
-
-# Librarian decay: -1 susceptibility every N hours (mirrors regen cadence).
-# Applies to Librarians regardless of infection_state — passive psychic discipline.
-WARP_LIBRARIAN_DECAY_HOURS = 24 / 10  # one point every 2.4h
-
-# Librarian transfer ratio: fraction of cleansed susceptibility absorbed by the
-# cleansing Librarian as their own susceptibility gain on normal/crit_fail outcomes.
-WARP_LIBRARIAN_TRANSFER_RATIO = 0.10
-# Minimum transfer amount when any exposure was removed.
-WARP_LIBRARIAN_TRANSFER_MIN = 1
 
 # ---------------------------------------------------------------------------
 # Scheduler settings (defaults; can be overridden in config.json under
@@ -467,19 +367,6 @@ CHALLENGE_ROLES = [
 # Auto-roster embed configuration
 # ---------------------------------------------------------------------------
 ROSTER_STATE_PATH = os.path.join(DATA_DIR, "roster_state.json")
-
-# Human-readable display names for campaign phase keys.
-# Used in all user-facing embeds and footers so raw internal keys never appear.
-PHASE_DISPLAY: dict[str, str] = {
-    "inactive": "Inactive",
-    "cascade_WM": "Watch Master Orders",
-    "cascade_HC": "High Command Orders",
-    "cascade_Company": "Company Command Orders",
-    "cascade_KT": "Kill Team Orders",
-    "ops": "Operations Window",
-    "paused": "Paused",
-    "complete": "Campaign Complete",
-}
 
 # Embed banner images (Discord attachment URLs — base URL without expiry params)
 ROSTER_IMAGE_HIGH_COMMAND = "https://cdn.discordapp.com/attachments/1444855164023472192/1511919151302705203/High_Command.png?ex=6a2233ef&is=6a20e26f&hm=c88ba02f3f4046ddb5acbb3cf6bb5e404b3f112dddf295cfd0b4ebc4436fda40&"

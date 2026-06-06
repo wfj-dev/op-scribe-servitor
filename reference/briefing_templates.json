@@ -1,0 +1,190 @@
+{
+  "_notes": {
+    "usage": "Briefing text is assembled: sentence_1 = world_type_hook + req_tier_template (with rank/mission injected). sentence_2 = strat_tone (only at rep < 0). Mission name appended in parentheses.",
+    "req_tier_templates": "Keyed by requirement tier. {rank} = role name(s), {mission} = mission name. If no requirement, use 'no_req' key.",
+    "world_type_hooks": "3 options per world type, bot picks one randomly. Used as the opening clause of sentence 1.",
+    "strat_tone": "rep_neg1 shown at rep -1, rep_neg2 at rep -2. 2-3 options each, picked randomly."
+  },
+
+  "world_type_hooks": {
+    "dead_world": [
+      "Auspex returns nothing but silence and decay across the blighted reaches of {node}",
+      "Xenos proliferation confirmed across the lifeless wastes of {node}",
+      "Ordo assets have identified critical xenos activity amid the ruins of {node}"
+    ],
+    "war_world": [
+      "The front lines on {node} are collapsing under sustained xenos pressure",
+      "Ongoing conflict across {node} has created an opening Ordo Xenos intends to exploit",
+      "Intelligence confirms xenos forces are consolidating their position on the war-torn surface of {node}"
+    ],
+    "hive_world": [
+      "Xenos infiltration of {node}'s hive infrastructure has reached critical depth",
+      "The hive districts of {node} are compromised — Ordo Xenos demands immediate intervention",
+      "Auspex traces place xenos command nodes deep within the hab-stacks of {node}"
+    ],
+    "forge_world": [
+      "Mechanicus assets on {node} are under threat — xenos forces have breached the outer facilities",
+      "Xenos incursion detected across the forge complexes of {node}",
+      "Ordo Xenos has identified a high-value target embedded within the industrial sectors of {node}"
+    ],
+    "shrine_world": [
+      "The sacred precincts of {node} have been violated by xenos presence",
+      "Xenos desecration of {node}'s holy sites has been confirmed by Ordo field agents",
+      "Intelligence places xenos command assets within the consecrated grounds of {node}"
+    ],
+    "feral_world": [
+      "Xenos bioforms have established dominance across the untamed wilderness of {node}",
+      "Ordo assets report unchecked xenos expansion through the primeval zones of {node}",
+      "The feral territories of {node} have become a staging ground for xenos forces"
+    ],
+    "agri_world": [
+      "Xenos organisms have compromised agricultural infrastructure across {node}",
+      "Ordo Xenos reports xenos saturation of {node}'s vital food production zones",
+      "The cultivated plains of {node} are overrun — Ordo demands the threat be excised"
+    ],
+    "mining_world": [
+      "Xenos forces have seized extraction infrastructure across the mines of {node}",
+      "Ordo intelligence confirms xenos command nodes embedded within {node}'s mining networks",
+      "Xenos incursion into {node}'s subsurface workings has been confirmed"
+    ],
+    "frontier_world": [
+      "Xenos forces are exploiting the lawless frontier territories of {node}",
+      "Ordo Xenos flags {node} as an active staging ground for xenos expansion",
+      "Intelligence confirms xenos presence embedded deep within the uncharted sectors of {node}"
+    ],
+    "fortress_world": [
+      "Xenos forces have breached the outer defensive lines of {node}",
+      "Ordo Xenos confirms xenos infiltration of {node}'s fortified perimeter",
+      "A high-value xenos asset has been located within the defensive network of {node}"
+    ],
+    "penal_world": [
+      "Xenos forces have exploited the volatile situation on {node} to establish a foothold",
+      "Ordo intelligence confirms xenos presence amid the penal settlements of {node}",
+      "The lawless sectors of {node} have become a xenos operational base"
+    ],
+    "pleasure_world": [
+      "Xenos forces have moved to exploit the vulnerabilities of {node}'s civilian infrastructure",
+      "Ordo Xenos confirms xenos incursion across the populated centers of {node}",
+      "Intelligence places xenos command assets within the civilian districts of {node}"
+    ],
+    "special": [
+      "Ordo Xenos has flagged {node} as a site of extreme xenos activity",
+      "Intelligence confirms anomalous xenos presence at {node} requiring immediate response",
+      "Ordo assets report xenos forces exploiting the unique conditions at {node}"
+    ]
+  },
+
+  "req_tier_templates": {
+    "no_req": [
+      "All available brothers are authorized to execute this package.",
+      "Standard deployment authorization applies.",
+      "No specialist attachment required; all brothers are cleared to proceed."
+    ],
+    "veteran_oathsworn": [
+      "This package demands the experience of {rank}.",
+      "Ordo Xenos requires {rank} lead this engagement.",
+      "{rank} is required to authorize and execute this package."
+    ],
+    "kt_command": [
+      "{rank} is required to direct this operation.",
+      "This package demands Kill Team command authority; {rank} must lead.",
+      "Ordo Xenos mandates {rank} assume command of this engagement."
+    ],
+    "company_command": [
+      "Company-level authority is required; {rank} must be present.",
+      "This package falls under Company Command jurisdiction; {rank} is required.",
+      "Ordo Xenos demands {rank} oversee this operation."
+    ],
+    "hc": [
+      "High Command authority is required; {rank} must sanction this deployment.",
+      "This package demands Fortress-level command; {rank} is required.",
+      "Ordo Xenos will only authorize this package under direct {rank} oversight."
+    ]
+  },
+
+  "mission_hooks": {
+    "1": [
+      "eliminate the xenos swarm by destroying promethium infrastructure in the area",
+      "use the promethium refinery as a weapon — destroy it and thin the infestation",
+      "deny the xenos their foothold by detonating the refinery and burning the swarm"
+    ],
+    "2": [
+      "eliminate the xenos command asset entrenched at the astropathic relay",
+      "rig the bridge for detonation and destroy the xenos command node at the relay",
+      "deny xenos control of the relay — destroy the target before reinforcements arrive"
+    ],
+    "3": [
+      "locate and destroy the source of the vox blackout affecting the sector",
+      "neutralize the interference node and restore vox contact with Imperial assets",
+      "clear the relay site and identify what is severing Imperial communications"
+    ],
+    "4": [
+      "infiltrate the compromised compound and destroy the warp beacon before it activates",
+      "neutralize the beacon buried within the captured ecclesiastical compound",
+      "deny the enemy their ritual anchor — the warp beacon must be destroyed"
+    ],
+    "5": [
+      "locate the Sword of Atreus and prepare it for emergency launch",
+      "reach the battle barge and bring its systems back online before the window closes",
+      "secure the Sword of Atreus and ensure it can be committed to the war effort"
+    ],
+    "6": [
+      "deliver the nova cannon warhead via rail and weaken the xenos swarm",
+      "use the available transport infrastructure to strike at the heart of the xenos formation",
+      "escort the warhead to the firing position and execute the strike against xenos concentrations"
+    ],
+    "7": [
+      "reactivate the fortress and use its systems to destroy xenos capillary towers in the area",
+      "bring the abandoned fortress online and leverage it against xenos infestation infrastructure",
+      "reach the fortress, restore function, and purge the capillary tower network"
+    ],
+    "8": [
+      "return to the site and destroy the source of the chaotic energy destabilizing the region",
+      "neutralize the obelisk and eliminate the xenos presence surrounding it",
+      "locate and destroy the energy source — the longer it remains active, the worse it gets"
+    ],
+    "9": [
+      "extract the Tech-Priest from the compromised Mechanicus facility before assets are lost",
+      "reach the AdMech facility and retrieve the Tech-Priest under active xenos pressure",
+      "the Tech-Priest must not fall into xenos hands — extract them at any cost"
+    ],
+    "10": [
+      "investigate the astropathic relay and cleanse whatever has taken hold there",
+      "neutralize the xenos entity at the relay and restore its function",
+      "reach the relay, identify the threat, and purge it before the sector goes dark"
+    ],
+    "11": [
+      "board the overrun cruiser and destabilize its reactors to deny it to the xenos",
+      "infiltrate the Wrath of Espandor and ensure it cannot be used as a xenos asset",
+      "reach the reactor core of the overrun cruiser and trigger a controlled destabilization"
+    ],
+    "12": [
+      "reinforce Cadian positions and prevent the enemy from completing their ritual",
+      "deny the enemy their ritual objective within the cathedral district",
+      "hold the line alongside Cadian defenders and neutralize the threat before the ritual completes"
+    ],
+    "13": [
+      "reclaim the AdMech facility and secure Nozick's research before it is lost",
+      "clear xenos forces from the facility and recover the research data intact",
+      "reach the facility, purge the infestation, and extract Nozick's findings"
+    ],
+    "14": [
+      "hold the siege line and deny xenos forces the position at all costs",
+      "defend the fortified position against sustained xenos assault",
+      "the siege line must not fall — hold until the threat is neutralized"
+    ]
+  },
+
+  "strat_tone": {
+    "rep_neg1": [
+      "Ordo Xenos notes declining fortress performance — expect reduced operational support.",
+      "Standing with Ordo Xenos is strained; this package reflects their diminished confidence.",
+      "Ordo Xenos has adjusted support allocation downward — conditions will be unforgiving."
+    ],
+    "rep_neg2": [
+      "Ordo Xenos confidence in Watch Fortress Jericho is critically low — this package is issued under censure.",
+      "Fortress standing with Ordo Xenos has reached a critical low; expect minimal support and maximum adversity.",
+      "Ordo Xenos issues this package under formal censure — the fortress must prove its worth or face sanctions."
+    ]
+  }
+}

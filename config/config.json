@@ -395,222 +395,7 @@
     }
   },
   "armor_integrity": {
-    "armor_integrity_channel_id": "1509598835599610029",
-    "arming_chamber_channel_id": "1429303902343401575",
-    "techmarine_role_id": "1429342203251265576",
-    "armor_status_allowed_channels": [
-      "1445526714749943898",
-      "1429303902343401575",
-      "1485797067577102377",
-      "1509598835599610029"
-    ],
-    "damage_role_ids": {
-      "damaged": "1487996088999874591",
-      "compromised": "1487996558447476777",
-      "critical": "1487996649518141531"
-    },
-    "probability_tiers": [
-      {
-        "min": 0,
-        "max": 4,
-        "chance": 0.0,
-        "damage_weights": {
-          "damaged": 100,
-          "compromised": 0,
-          "critical": 0
-        }
-      },
-      {
-        "min": 5,
-        "max": 9,
-        "chance": 0.02,
-        "damage_weights": {
-          "damaged": 90,
-          "compromised": 8,
-          "critical": 2
-        }
-      },
-      {
-        "min": 10,
-        "max": 14,
-        "chance": 0.08,
-        "damage_weights": {
-          "damaged": 80,
-          "compromised": 15,
-          "critical": 5
-        }
-      },
-      {
-        "min": 15,
-        "max": 19,
-        "chance": 0.2,
-        "damage_weights": {
-          "damaged": 65,
-          "compromised": 25,
-          "critical": 10
-        }
-      },
-      {
-        "min": 20,
-        "max": null,
-        "chance": 0.4,
-        "damage_weights": {
-          "damaged": 50,
-          "compromised": 35,
-          "critical": 15
-        }
-      }
-    ],
-    "grace_period_min_points": 100,
-    "grace_period_min_days": 7,
-    "fracture_threshold": 3
-  },
-  "warp_corruption": {
-    "librarium_watch_channel_id": "1502840890446708766",
-    "librarian_role_id": "1429343212421644479",
-    "void_warden_role_id": "1455226254897975389",
-    "warp_status_allowed_channels": [
-      "1502840890446708766",
-      "1445526714749943898",
-      "1482786608137769182"
-    ],
-    "sanction_role_ids": {
-      "screening_due": "1498103432278573076",
-      "under_review": "1498104853153583275",
-      "restricted": "1499806133597245551"
-    },
-    "infection_probability_tiers": [
-      {
-        "min": 0,
-        "max": 4,
-        "chance": 0.0,
-        "infection_weights": {
-          "tainted": 100,
-          "exposed": 0,
-          "volatile": 0
-        }
-      },
-      {
-        "min": 5,
-        "max": 9,
-        "chance": 0.02,
-        "infection_weights": {
-          "tainted": 90,
-          "exposed": 8,
-          "volatile": 2
-        }
-      },
-      {
-        "min": 10,
-        "max": 14,
-        "chance": 0.08,
-        "infection_weights": {
-          "tainted": 80,
-          "exposed": 15,
-          "volatile": 5
-        }
-      },
-      {
-        "min": 15,
-        "max": 19,
-        "chance": 0.2,
-        "infection_weights": {
-          "tainted": 65,
-          "exposed": 25,
-          "volatile": 10
-        }
-      },
-      {
-        "min": 20,
-        "max": null,
-        "chance": 0.4,
-        "infection_weights": {
-          "tainted": 50,
-          "exposed": 35,
-          "volatile": 15
-        }
-      }
-    ],
-    "cleanse_outcome_probabilities": {
-      "clean": {
-        "crit_fail": 0.01,
-        "crit_success": 0.01
-      },
-      "tainted": {
-        "crit_fail": 0.03,
-        "crit_success": 0.03
-      },
-      "exposed": {
-        "crit_fail": 0.05,
-        "crit_success": 0.05
-      },
-      "volatile": {
-        "crit_fail": 0.08,
-        "crit_success": 0.06
-      },
-      "corrupted": {
-        "crit_fail": 0.1,
-        "crit_success": 0.1
-      }
-    },
-    "spread_chances_by_tier": {
-      "tainted": 0.2,
-      "exposed": 0.35,
-      "volatile": 0.5
-    },
-    "librarian_probability_tiers": [
-      {
-        "min": 0,
-        "max": 8,
-        "tier": "stable"
-      },
-      {
-        "min": 9,
-        "max": 18,
-        "tier": "resonant"
-      },
-      {
-        "min": 19,
-        "max": 28,
-        "tier": "surging"
-      },
-      {
-        "min": 29,
-        "max": 38,
-        "tier": "overloaded"
-      },
-      {
-        "min": 39,
-        "max": null,
-        "tier": "abyssal"
-      }
-    ],
-    "spread_daily_unique_source_cap": 2,
-    "spread_susceptibility_gain": 1,
-    "spread_amount": 1,
-    "super_spreader_threshold": 3,
-    "super_spreader_cleanse_bonus_fraction": 0.1,
-    "intensive_cleanse_costs": {
-      "screening_due": 2,
-      "under_review": 3,
-      "restricted": 4,
-      "corrupted": 4
-    },
-    "librarian_decay_hours": 2.4,
-    "librarian_transfer_ratio": 0.1,
-    "librarian_transfer_min": 1,
-    "warding_pool_max": 10,
-    "warding_pool_regen_hours": 2.4,
-    "warding_recipient_max_per_day": 3,
-    "warding_recipient_per_warding_cooldown_hours": 4,
-    "bl_susceptibility_gain": {
-      "absolute": 4,
-      "hard_stratagem": 5,
-      "omega_ops": 20
-    },
-    "scry_susceptibility_gain": 1,
-    "crit_success_grace_points": -10,
-    "warp_corruption_threshold": 3
+    "arming_chamber_channel_id": "1429303902343401575"
   },
   "lfg": {
     "pc_player_role_id": 1470455014022582343,
@@ -644,8 +429,7 @@
       "allow": [
         "forge_rite",
         "set_rite",
-        "litany_of_function",
-        "armor_status"
+        "litany_of_function"
       ]
     },
     "\u2756\u22c5data-vault\u22c5\u2756": {
@@ -670,5 +454,9 @@
     "dual_vigil": "2026-06-18",
     "order_omega": "2026-06-18",
     "crux_terminatus": "2026-06-18"
+  },
+  "target_packages": {
+    "highcom_channel_id": 1499152772225040544,
+    "ox_rep_channel_id": null
   }
 }

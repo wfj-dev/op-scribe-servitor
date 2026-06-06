@@ -89,18 +89,6 @@ _HONOUR_LABELS = {
 }
 
 
-def _load_campaign_state_for_roster() -> Optional[dict]:
-    """Load campaign state without crashing the roster update if absent."""
-    try:
-        from .campaign_ops import _load_campaign_state
-        state = _load_campaign_state()
-        phase = state.get("campaign", {}).get("phase", "inactive")
-        return state if phase != "inactive" else None
-    except Exception as exc:
-        _log().debug(f"Roster: could not load campaign state: {exc}")
-        return None
-
-
 def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional[discord.Guild]) -> Optional[str]:
     """Look up the Kill Team X Discord role name from any enlisted member of this KT."""
     if not guild:
@@ -119,12 +107,7 @@ def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional
     return None
 
 
-def _build_campaign_accolades_embed(
-    company_name: str,
-    campaign_state: dict,
-    now: Optional[datetime] = None,
-    guild: Optional[discord.Guild] = None,
-) -> Optional[discord.Embed]:
+def _clean_roster_name(member: discord.Member) -> str:
     """Build the Campaign Accolades embed for a company roster channel.
 
     Returns None if the campaign is inactive or has no accolades data yet.
@@ -300,7 +283,6 @@ def _load_roster_state() -> dict:
             "hc_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
-            "campaign_accolades_message_id": None,
         }
         for company, channel_id in ROSTER_COMPANY_CHANNELS.items()
     }
@@ -324,7 +306,6 @@ def _load_roster_state() -> dict:
                             if isinstance(existing_company_state.get("killteam_message_ids"), dict)
                             else {}
                         ),
-                        "campaign_accolades_message_id": existing_company_state.get("campaign_accolades_message_id"),
                     }
                 return merged_state
     except Exception as exc:
@@ -688,19 +669,6 @@ async def _update_company_roster(
         channel, company_state.get("hc_message_id"), hc_embed
     )
     company_state["hc_message_id"] = hc_msg_id
-
-    # ── Embed 1b: Campaign Accolades (only when campaign active) ─────────────
-    campaign_state = _load_campaign_state_for_roster()
-    accolades_embed = _build_campaign_accolades_embed(company_name, campaign_state, now=now, guild=guild) if campaign_state else None
-    if accolades_embed:
-        accolades_msg_id = await _upsert_message(
-            channel, company_state.get("campaign_accolades_message_id"), accolades_embed
-        )
-        company_state["campaign_accolades_message_id"] = accolades_msg_id
-    else:
-        # Campaign inactive: if we have a stale message ID, clear it (message won't be deleted,
-        # but we stop tracking it so a future init gets a fresh post in the right position).
-        company_state["campaign_accolades_message_id"] = None
 
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
