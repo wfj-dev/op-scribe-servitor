@@ -18,7 +18,9 @@
     1459606044509606032,
     1512146866165383410,
     1512819170025410621,
-    1429318686447108300
+    1429318686447108300,
+    1512929774970998945,
+    1512929565239152671
   ],
   "admin_user_ids": [
     281651485782310914
@@ -398,10 +400,16 @@
     "crux_terminatus": "2026-06-18"
   },
   "target_packages": {
-    "highcom_channel_id": 1499152772225040544,
-    "highcom_strategium_channel_id": null,
-    "watch_command_strategium_channel_id": null,
+    "highcom_strategium_channel_id": 1512929774970998945,
+    "watch_command_deployment_channel_id": 1512929565239152671,
     "ox_rep_channel_id": null,
-    "general_channel_id": 1430055064969674777
+    "general_channel_id": 1430055064969674777,
+    "cadre_channels": {
+      "techmarine": 1485797067577102377,
+      "librarian": 1482786608137769182,
+      "apothecary": 1484793764634693692,
+      "chaplain": 1508553227656757308,
+      "dreadnought": 1485797067577102377
+    }
   }
 }
