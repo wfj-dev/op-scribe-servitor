@@ -589,12 +589,13 @@ async def _update_company_roster(
 
     # ── Embed 2: Company Command ─────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
+    cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
     cmd_embed = _build_embed(
         _fmt_title(company_role_mention, cmd_emoji),
         cmd_members,
         guild,
         last_updated=now,
-        image_url=ROSTER_IMAGE_COMPANY_COMMAND,
+        image_url=cmd_image,
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
