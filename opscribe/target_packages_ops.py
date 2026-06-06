@@ -524,7 +524,7 @@ async def generate_packages(guild: discord.Guild) -> list:
             )
             existing_ids.add(pkg["id"])
             data["packages"][pkg["id"]] = pkg
-            data["cycle"]["total"] += count
+            data["cycle"]["total"] += 1
             new_packages.append(pkg)
 
         data["cycle"]["generated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1678,11 +1678,15 @@ async def target_package_status(
 # ---------------------------------------------------------------------------
 
 def _register_commands(tree: app_commands.CommandTree) -> None:
-    tree.add_command(request_target_packages)
-    tree.add_command(view_target_packages)
-    tree.add_command(assign_package)
-    tree.add_command(submit_target_package)
-    tree.add_command(target_package_status)
+    for cmd in (
+        request_target_packages,
+        view_target_packages,
+        assign_package,
+        submit_target_package,
+        target_package_status,
+    ):
+        if tree.get_command(cmd.name) is None:
+            tree.add_command(cmd)
 
 
 
