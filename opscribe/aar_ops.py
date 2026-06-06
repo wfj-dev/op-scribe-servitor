@@ -17,21 +17,6 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
-from .forge_ops import (
-    _load_armor_integrity,
-    _save_armor_batch,
-    _process_armor_integrity_for_aar,
-    _post_armor_alert,
-    _get_member_damage_tier,
-    _get_armor_state,
-    _roll_armor_penalty,
-    _increment_aar_generation,
-)
-from .librarius_ops import (
-    _apply_warp_exposure_for_aar,
-    _get_warp_exposure_state,
-    _roll_warp_penalty,
-)
 
 
 def _b(name):
@@ -456,24 +441,6 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
         _save_challenge_progress(progress_data)
 
     return notifications
-
-
-def _get_challenge_librarian_mention(guild: discord.Guild) -> str:
-    """Return the Watch Librarian role mention for challenge notifications.
-
-    Resolves in order: config warp_corruption.librarian_role_id, name lookup, plain text.
-    """
-    try:
-        warp_cfg = ((_g.CONFIG or {}).get("warp_corruption") or {})
-        raw = warp_cfg.get("librarian_role_id")
-        if raw:
-            return f"<@&{int(raw)}>"
-    except (ValueError, TypeError):
-        pass
-    role = discord.utils.get(guild.roles, name="Watch Librarian")
-    if role:
-        return role.mention
-    return "@Watch Librarian"
 
 
 def _get_challenge_keeper_mention(guild: discord.Guild) -> str:
@@ -1446,104 +1413,6 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                 else:
                     await save_aar_record(record)
 
-                    # --- Armor Integrity: Process cycles for reingested AAR ---
-                    try:
-                        guild = aar_channel.guild
-                        brother_ids = record.get("brother_ids") or []
-                        difficulty_class = record.get("difficulty_class")
-                        if guild and brother_ids:
-                            # Calculate base points per brother (same logic as _run_ingest_new)
-                            base_points = {}
-                            is_siege = difficulty_class in ("normal_siege", "hard_siege")
-                            brother_waves = record.get("brother_waves") or {}
-                            global_waves = record.get("waves") or 0
-                            try:
-                                global_waves = int(global_waves)
-                            except Exception:
-                                global_waves = 0
-                            base_difficulty_points = {
-                                "normal_op": 3,
-                                "hard_op": 4,
-                                "lethal_op": 5,
-                                "suicide_op": 6,
-                                "omega_op": 10,
-                            }.get(difficulty_class, 0)
-                            for bid in brother_ids:
-                                if is_siege:
-                                    waves_for_brother = brother_waves.get(bid)
-                                    if waves_for_brother is None:
-                                        waves_for_brother = global_waves
-                                    try:
-                                        waves_for_brother = int(waves_for_brother or 0)
-                                    except Exception:
-                                        waves_for_brother = 0
-                                    if difficulty_class == "normal_siege":
-                                        n = waves_for_brother // 5
-                                        base_points[bid] = n * (n + 5) // 2
-                                    else:
-                                        n = waves_for_brother // 5
-                                        base_points[bid] = n * (n + 7) // 2
-                                else:
-                                    base_points[bid] = base_difficulty_points
-
-                            # Roll penalties for each brother (same logic as _run_ingest_new)
-                            armor_penalties = {}
-                            for bid in brother_ids:
-                                try:
-                                    member = guild.get_member(int(bid))
-                                    if member:
-                                        tier = _get_member_damage_tier(member)
-                                        armor_state = await _get_armor_state(int(bid))
-                                        spirit_fractured = armor_state.get("spirit_fractured", False)
-                                        rolled_penalty = _roll_armor_penalty(tier, spirit_fractured)
-                                        if rolled_penalty > 0:
-                                            armor_penalties[bid] = rolled_penalty
-                                except Exception:
-                                    pass
-
-                            # Process armor integrity for each brother
-                            op_mission = record.get("mission")
-                            op_url = record.get("message_url")
-                            alerts_to_post = []
-                            for bid in brother_ids:
-                                try:
-                                    bid_base_points = base_points.get(bid, 0)
-                                    bid_actual_penalty = armor_penalties.get(bid, 0)
-                                    penalty, alert_info = await _process_armor_integrity_for_aar(
-                                        bid,
-                                        bid_base_points,
-                                        guild,
-                                        None,  # No batch mode for recheck
-                                        op_mission=op_mission,
-                                        op_difficulty_class=difficulty_class,
-                                        op_url=op_url,
-                                        squad_member_ids=brother_ids,
-                                        actual_penalty=bid_actual_penalty,
-                                    )
-                                    if alert_info:
-                                        alerts_to_post.append(alert_info)
-                                except Exception:
-                                    pass
-                            # Post any armor alerts
-                            for alert in alerts_to_post:
-                                try:
-                                    await _post_armor_alert(
-                                        alert["member"],
-                                        alert["tier"],
-                                        alert.get("critical_count", 0),
-                                        guild,
-                                        op_mission=alert.get("op_mission"),
-                                        op_difficulty_class=alert.get("op_difficulty_class"),
-                                        op_url=alert.get("op_url"),
-                                        squad_member_ids=alert.get("squad_member_ids"),
-                                        alert_type=alert.get("alert_type", "sustained"),
-                                        penalty_amount=alert.get("penalty_amount", 0),
-                                    )
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
-
                     # --- Challenge Tracking: Process AAR for challenge eligibility ---
                     if guild:
                         try:
@@ -1623,10 +1492,6 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         except Exception:
             pass
 
-    # Load armor integrity data once for batch processing (avoids repeated file I/O)
-    armor_batch = _load_armor_integrity()
-    armor_batch_modified = False
-
     async for msg in aar_channel.history(**history_kwargs):
         if not is_aar_message(msg):
             continue
@@ -1675,128 +1540,7 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 _b("_print_progress")("Ingest New AARs", scanned, scanned)
             continue
 
-        # --- Armor Integrity: Check penalties BEFORE saving ---
-        guild = aar_channel.guild
-        brother_ids = record.get("brother_ids", [])
-        # Compute per-brother base points for armor tracking
-        # For siege ops: points based on waves per brother
-        # For other ops: use points_for_op (same for all brothers)
-        difficulty_class = record.get("difficulty_class") or ""
-        global_waves = record.get("waves") or 0
-        brother_waves = record.get("brother_waves") or {}
-        # Calculate base difficulty points directly (pre-penalty value for armor wear)
-        base_difficulty_points = compute_points_for_op(difficulty_class, global_waves)
-        base_points = {}
-        if brother_ids:
-            is_siege = difficulty_class in ("normal_siege", "hard_siege")
-            for bid in brother_ids:
-                if is_siege:
-                    # Siege: compute per-brother from waves
-                    waves_for_brother = brother_waves.get(bid)
-                    if waves_for_brother is None:
-                        waves_for_brother = global_waves
-                    try:
-                        waves_for_brother = int(waves_for_brother or 0)
-                    except Exception:
-                        waves_for_brother = 0
-                    if difficulty_class == "normal_siege":
-                        n = waves_for_brother // 5
-                        base_points[bid] = n * (n + 5) // 2
-                    else:
-                        n = waves_for_brother // 5
-                        base_points[bid] = n * (n + 7) // 2
-                else:
-                    # Non-siege: use base difficulty points (before penalties)
-                    base_points[bid] = base_difficulty_points
-        armor_penalties = {}
-        warp_penalties = {}
-
-        if guild and brother_ids:
-            for bid in brother_ids:
-                try:
-                    member = guild.get_member(int(bid))
-                    if member:
-                        tier = _get_member_damage_tier(member)
-                        # Check for spirit fractured state
-                        armor_state = await _get_armor_state(int(bid))
-                        spirit_fractured = armor_state.get("spirit_fractured", False)
-                        # Roll probabilistic penalty instead of fixed
-                        penalty = _roll_armor_penalty(tier, spirit_fractured)
-                        if penalty > 0:
-                            armor_penalties[bid] = penalty
-
-                        # Warp penalty mirrors Techmarine probabilities by
-                        # infection state (3-tier + warp_corrupted flag).
-                        warp_state = await _get_warp_exposure_state(int(bid))
-                        warp_inf = warp_state.get("infection_state")
-                        warp_corrupted = bool(warp_state.get("warp_corrupted"))
-                        warp_pen = _roll_warp_penalty(warp_inf, warp_corrupted)
-                        if warp_pen > 0:
-                            warp_penalties[bid] = warp_pen
-                except Exception:
-                    pass
-
-        # Store armor penalties in the record
-        if armor_penalties:
-            record["armor_penalties"] = armor_penalties
-        if warp_penalties:
-            record["warp_penalties"] = warp_penalties
-
         await save_aar_record(record)
-
-        # Apply warp corruption gains/spread after recording this AAR.
-        try:
-            await _apply_warp_exposure_for_aar(record, guild)
-        except Exception as e:
-            _g.logger.debug(f"Warp exposure update failed for AAR {aar_id}: {e}")
-
-        # --- Armor Integrity: Run checks and post alerts AFTER saving ---
-        alerts_to_post = []
-        # Extract op context for debrief in alerts
-        op_mission = record.get("mission")
-        op_url = record.get("message_url")
-        if guild and brother_ids:
-            for bid in brother_ids:
-                try:
-                    bid_base_points = base_points.get(bid, 0)
-                    bid_actual_penalty = armor_penalties.get(bid, 0)
-                    penalty, alert_info = await _process_armor_integrity_for_aar(
-                        bid,
-                        bid_base_points,
-                        guild,
-                        armor_batch,
-                        op_mission=op_mission,
-                        op_difficulty_class=difficulty_class,
-                        op_url=op_url,
-                        squad_member_ids=brother_ids,
-                        actual_penalty=bid_actual_penalty,
-                    )
-                    if alert_info:
-                        alerts_to_post.append(alert_info)
-                        armor_batch_modified = True
-                except Exception:
-                    pass
-            # Mark batch as modified if any brother was processed
-            if brother_ids:
-                armor_batch_modified = True
-
-        # Post any armor alerts (outside the loop to avoid rate limits)
-        for alert in alerts_to_post:
-            try:
-                await _post_armor_alert(
-                    alert["member"],
-                    alert["tier"],
-                    alert.get("critical_count", 0),
-                    guild,
-                    op_mission=alert.get("op_mission"),
-                    op_difficulty_class=alert.get("op_difficulty_class"),
-                    op_url=alert.get("op_url"),
-                    squad_member_ids=alert.get("squad_member_ids"),
-                    alert_type=alert.get("alert_type", "sustained"),
-                    penalty_amount=alert.get("penalty_amount", 0),
-                )
-            except Exception as e:
-                _g.logger.error(f"Error calling _post_armor_alert: {e}")
 
         # --- Challenge Tracking: Process AAR for challenge eligibility ---
         if guild:
@@ -1853,12 +1597,6 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
             await _set_aar_reaction(m, "ok")
         for m in to_react_err:
             await _set_aar_reaction(m, "error")
-
-    # Save armor batch data once at end (avoid repeated file I/O during loop)
-    if armor_batch_modified:
-        await _save_armor_batch(armor_batch)
-        # Increment AAR generation to invalidate scan caches
-        await _increment_aar_generation()
 
     return ingested, rejected
 
@@ -3637,7 +3375,6 @@ __all__ = [
     "_save_challenge_progress",
     "_process_challenge_tracking",
     "_sweep_challenge_completions",
-    "_get_challenge_librarian_mention",
     "_get_challenge_keeper_mention",
     "_send_challenge_eligibility_notifications",
     "_reconciliation_core",
