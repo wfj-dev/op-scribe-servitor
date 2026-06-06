@@ -1647,8 +1647,7 @@ async def on_ready():
 
     # Register persistent views for Target Packages (Sgt accept + sign-up buttons)
     try:
-        bot.add_view(_target_packages_ops.SgtAcceptView(package_id="", kt_name=""))
-        bot.add_view(_target_packages_ops.SignUpView(package_id=""))
+        await _target_packages_ops.register_persistent_views()
     except Exception:
         logger.exception("Failed to register target packages persistent views")
 

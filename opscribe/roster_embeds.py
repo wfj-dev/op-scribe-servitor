@@ -377,16 +377,21 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     return f"{left} | {mention}"
 
 
-def _tp_status_for_kt(kt_name: str) -> str:
-    """Return a TP deployment status line for a KT. Empty string if no data."""
+def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
+    """Return a TP deployment status line for a KT. Empty string if no data.
+
+    ``packages`` may be a pre-loaded dict from ``target_packages.json`` to avoid
+    repeated disk reads when calling this in a loop.
+    """
     try:
-        import os, json
-        path = os.path.join("data", "target_packages.json")
-        if not os.path.exists(path):
-            return ""
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        packages = data.get("packages", {})
+        if packages is None:
+            import os, json
+            path = os.path.join("data", "target_packages.json")
+            if not os.path.exists(path):
+                return ""
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            packages = data.get("packages", {})
         active_statuses = {"pending_sgt", "recruiting", "deployed"}
         kt_pkgs = [
             p for p in packages.values()
@@ -617,8 +622,18 @@ async def _update_company_roster(
             del kt_message_ids[stale_kt]
 
     kt_image = ROSTER_IMAGE_KILLTEAM_BY_COMPANY.get(company_name, ROSTER_IMAGE_KILLTEAM)
+    # Load TP package data once so _tp_status_for_kt avoids repeated disk I/O per KT
+    _tp_packages: dict | None = None
+    try:
+        import json as _json
+        _tp_path = os.path.join("data", "target_packages.json")
+        if os.path.exists(_tp_path):
+            with open(_tp_path, "r", encoding="utf-8") as _f:
+                _tp_packages = _json.load(_f).get("packages", {})
+    except Exception:
+        pass
     for kt_name, kt_role_id, kt_members in kill_teams:
-        tp_status_line = _tp_status_for_kt(kt_name)
+        tp_status_line = _tp_status_for_kt(kt_name, packages=_tp_packages)
         kt_embed = _build_embed(
             _fmt_title(f"<@&{kt_role_id}>", company_emoji),
             kt_members,
