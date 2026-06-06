@@ -1327,19 +1327,19 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
 
     Each track is independent. Watch Master has access to everything.
     """
-    # Admin override: always grant
-    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
-    uid = str(getattr(user, "id", None))
-    if uid in admin_ids:
-        return True
-
-    # Debug mode: only admin users can run commands (handled by admin override above).
-    # Non-admins are blocked from everything.
+    # Debug mode: admin gets god perms, everyone else blocked.
     if globals().get("DEBUG_MODE"):
-        return False
+        admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+        uid = str(getattr(user, "id", None))
+        return uid in admin_ids
 
     perms = CONFIG.get("permissions", {}) or {}
     cmd_perms = perms.get(command_name, {}) or {}
+
+    # Admin override in production: only applies if user is in user_ids whitelist
+    # for the specific command, or if the command has no explicit config at all.
+    admin_ids = set(str(x) for x in (CONFIG.get("admin_user_ids") or []))
+    uid = str(getattr(user, "id", None))
 
     # Check user_ids whitelist
     user_whitelist = cmd_perms.get("user_ids") or []
