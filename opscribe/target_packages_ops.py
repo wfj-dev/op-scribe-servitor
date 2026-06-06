@@ -75,7 +75,7 @@ _TIER_WEIGHTS = [
     (_REQ_TIER_HC, 5),
 ]
 
-# Strat table: rep range -> (pos_count, neg_count). Core scales 3-6 in each direction.
+# Strat table: rep range -> (pos_count, neg_count). Positive count scales 1-4, negative 2-5.
 _STRAT_TABLE = {
     -3: (1, 5),
     -2: (1, 4),
@@ -575,7 +575,7 @@ async def assign_package_to_kt(
         kt_active = [
             p for p in data["packages"].values()
             if p.get("assigned_kt") == kt_name
-            and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
+            and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
         ]
         if len(kt_active) >= 2:
             return False, f"{kt_name} already has 2 active packages. Cannot assign more until one is completed."
@@ -639,8 +639,8 @@ async def assign_specialist(
         if specialist_member.id not in pkg["assigned_specialist_ids"]:
             pkg["assigned_specialist_ids"].append(specialist_member.id)
 
-        # Check if all required roles are now covered
-        now_active = _requirements_satisfied(pkg, guild)
+        # Check if all required roles are now covered and min sign-ups met
+        now_active = _check_deployed(pkg, guild)
         if now_active:
             pkg["status"] = STATUS_DEPLOYED
 
@@ -946,10 +946,12 @@ async def _notify_kt_assigned(
     package_id: str, kt_name: str, pkg: dict, guild: discord.Guild, fully_active: bool = False
 ) -> None:
     """Post persistent Sgt accept embed in the watch command strategium channel."""
-    from .forge_ops import _get_award_announcement_channel
-
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-    strategium_channel_id = config_tp.get("watch_command_strategium_channel_id") or config_tp.get("highcom_channel_id")
+    strategium_channel_id = (
+        config_tp.get("watch_command_strategium_channel_id")
+        or config_tp.get("highcom_strategium_channel_id")
+        or config_tp.get("highcom_channel_id")
+    )
     if not strategium_channel_id:
         return
 
@@ -1627,7 +1629,7 @@ class SpecialistAssignView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction):
         cadre_leader = interaction.user
-        specialist = interaction.data["resolved"]["members"]
+        specialist = interaction.data.get("resolved", {}).get("members", {})
         if not specialist:
             await interaction.response.send_message("No member selected.", ephemeral=True)
             return
@@ -1673,7 +1675,7 @@ class AssignToKTView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction):
         member = interaction.user
-        role = interaction.data["resolved"]["roles"]
+        role = interaction.data.get("resolved", {}).get("roles", {})
         if not role:
             await interaction.response.send_message("No role selected.", ephemeral=True)
             return

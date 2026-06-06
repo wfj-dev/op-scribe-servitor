@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import opscribe.bot  # noqa: F401 – initialises _g.bot before forge_ops is imported
 import opscribe.roster_embeds as roster_embeds
 
 
@@ -116,3 +117,45 @@ def test_sort_key_for_member_uses_rank_priority_then_clean_name():
 
     assert captain_key == (0, "zephon")
     assert sergeant_key == (1, "alecto")
+
+
+def _make_pkg(kt_name, status, pkg_id="pkg1"):
+    return {pkg_id: {"id": pkg_id, "assigned_kt": kt_name, "status": status}}
+
+
+def test_tp_status_for_kt_no_packages_returns_ready():
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages={})
+    assert result == "🟢 Ready for Deployment"
+
+
+def test_tp_status_for_kt_pending_sgt_shows_assigned():
+    packages = _make_pkg("Kill Team Alpha", "pending_sgt")
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
+    assert result == "🟡 Assigned (1 pkg)"
+
+
+def test_tp_status_for_kt_recruiting_shows_assigned():
+    packages = _make_pkg("Kill Team Alpha", "recruiting")
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
+    assert result == "🟡 Assigned (1 pkg)"
+
+
+def test_tp_status_for_kt_deployed_shows_deployed():
+    packages = _make_pkg("Kill Team Alpha", "deployed")
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
+    assert result == "🔴 Deployed (1 pkg)"
+
+
+def test_tp_status_for_kt_multiple_packages_plural():
+    packages = {
+        "pkg1": {"id": "pkg1", "assigned_kt": "Kill Team Alpha", "status": "deployed"},
+        "pkg2": {"id": "pkg2", "assigned_kt": "Kill Team Alpha", "status": "recruiting"},
+    }
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
+    assert result == "🔴 Deployed (2 pkgs)"
+
+
+def test_tp_status_for_kt_ignores_other_kts():
+    packages = _make_pkg("Kill Team Bravo", "deployed")
+    result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
+    assert result == "🟢 Ready for Deployment"
