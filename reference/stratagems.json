@@ -130,7 +130,7 @@
     {
       "name": "Beset",
       "description": "Both enemy factions spawn.",
-      "type": "buff",
+      "type": "debuff",
       "excluded": false,
       "pools": [
         "command",
