@@ -1433,7 +1433,7 @@ def _get_tree():
     description="[Watch Master] Request a new batch of Ordo Xenos target packages.",
 )
 async def request_target_packages(interaction: discord.Interaction):
-    if not _is_watch_master(interaction.user):
+    if not _b("check_command_permission")(interaction.user, "request_target_packages"):
         await interaction.response.send_message(
             "Only the Watch Master may request target packages.", ephemeral=True
         )

@@ -23,6 +23,11 @@
   ],
   "role_aliases": {},
   "permissions": {
+    "request_target_packages": { "roles": ["Watch Master"] },
+    "view_target_packages": { "min_rank": "Watch Brother" },
+    "assign_package": { "roles": ["Watch Captain", "Watch Lieutenant", "Lord Executioner", "Forgemaster", "Chief Apothecary", "High Chaplain", "Void Warden", "Castellan"] },
+    "submit_target_package": { "min_rank": "Watch Brother" },
+    "target_package_status": { "min_rank": "Watch Brother" },
     "litany_of_function": {
       "roles": [
         "Watch Command"
@@ -240,80 +245,6 @@
     },
     "_default": {
       "min_rank": "Watch Sergeant"
-    },
-    "campaign-init": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-rename": {
-      "roles": [
-        "Forgemaster",
-        "Watch Master"
-      ]
-    },
-    "campaign-pause": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-resume": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-end": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-reset": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-enlist": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-de-enlist": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-log": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-orders": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-cascade": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-prestige": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-mandate": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-milestone": {
-      "min_rank": "Watch Brother"
-    },
-    "campaign-title": {
-      "roles": [
-        "Watch Captain",
-        "Watch Lieutenant",
-        "Watch Master"
-      ]
-    },
-    "campaign-dashboard": {
-      "roles": [
-        "Forgemaster"
-      ]
-    },
-    "campaign-status": {
-      "roles": [
-        "Watch Master",
-        "Forgemaster",
-        "Castellan"
-      ]
     }
   },
   "companies": {
