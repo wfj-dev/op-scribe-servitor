@@ -589,7 +589,7 @@ async def generate_packages(guild: discord.Guild) -> list:
             ]
             wm_embed = discord.Embed(
                 title=f"{_DW_EMOJI} ORDO XENOS TRANSMISSION {_DW_EMOJI}",
-                description=f"<@&{WATCH_BROTHER_ROLE_ID}>\n{random.choice(wm_flavor)}",
+                description=random.choice(wm_flavor),
                 color=0xC4A030,
             )
             wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
@@ -597,7 +597,7 @@ async def generate_packages(guild: discord.Guild) -> list:
                 text=f"{count} target package{'s' if count != 1 else ''} received  ·  CLEARANCE: SANCTIONED",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
-            await _notify_send(general_channel, guild, embed=wm_embed)
+            await _notify_send(general_channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=wm_embed)
 
     return new_packages
 
@@ -894,8 +894,7 @@ async def _update_ox_rep_embed(guild: discord.Guild) -> None:
         color=0xC4A030,
     )
     embed.set_footer(
-        text="INQUISITION ORDO XENOS  ·  ERIOCH DATANET",
-        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        text="INQUISITION ORDO XENOS  ·  JERICHO DATANET",
     )
 
     existing_msg_id = data.get("rep_embed_message_id")
@@ -1345,8 +1344,7 @@ def _build_package_embed(
         color=embed_color,
     )
     embed.set_author(
-        name="INQUISITION ORDO XENOS  ·  ERIOCH DATANET",
-        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        name="INQUISITION ORDO XENOS  ·  JERICHO DATANET",
     )
 
     # ▸ Intel section
@@ -1467,8 +1465,7 @@ def _build_status_board_embed(data: dict, viewer: Optional[discord.Member] = Non
         color=0xC4A030,
     )
     embed.set_author(
-        name="INQUISITION ORDO XENOS  ·  ERIOCH DATANET",
-        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        name="INQUISITION ORDO XENOS  ·  JERICHO DATANET",
     )
 
     # ▸ Standing
@@ -2330,63 +2327,14 @@ async def view_target_packages(interaction: discord.Interaction):
     rep = data.get("rep", 0.0)
     packages = data.get("packages", {})
 
-    if _is_watch_master(member) and not _is_debug_mode():
-        embed = _build_status_board_embed(data, viewer=member)
-        active_pkgs = [
-            p for p in packages.values()
-            if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-        ]
-        view = StatusBoardView(active_pkgs, rep) if active_pkgs else discord.ui.View()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        return
-
-    if _is_captain_or_lt(member):
-        from .roster_ops import _get_member_company_name
-        company = _get_member_company_name(member)
-        company_pkgs = [
-            p for p in packages.values()
-            if (p.get("assigned_company") == company or p["status"] == STATUS_DISTRIBUTED)
-            and p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-        ]
-        if not company_pkgs:
-            await interaction.response.send_message("No active packages for your company.", ephemeral=True)
-            return
-        view = PackagePaginatorView(company_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
-        return
-
-    if _is_cadre_leader(member):
-        # Show packages that have required roles belonging to their cadre
-        cadre_pkgs = [
-            p for p in packages.values()
-            if p["status"] in (STATUS_RECRUITING,)
-            and any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
-        ]
-        if not cadre_pkgs:
-            await interaction.response.send_message("No packages currently awaiting your cadre's specialists.", ephemeral=True)
-            return
-        view = PackagePaginatorView(cadre_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
-        return
-
-    # Default: show packages assigned to member's KT
-    from .forge_ops import _resolve_killteam_for_member
-    kt = _resolve_killteam_for_member(member)
-    if kt:
-        kt_pkgs = [
-            p for p in packages.values()
-            if p.get("assigned_kt") == kt
-            and p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-        ]
-        if not kt_pkgs:
-            await interaction.response.send_message("No active packages assigned to your Kill Team.", ephemeral=True)
-            return
-        view = PackagePaginatorView(kt_pkgs, rep, viewer=member)
-        await interaction.response.send_message(embed=view.current_embed(), **_file_kwarg(view.current_file()), view=view, ephemeral=True)
-        return
-
-    await interaction.response.send_message("No packages found for your current role.", ephemeral=True)
-
+    # Everyone gets the WM status board — role-scoped drill-down via select menu
+    embed = _build_status_board_embed(data, viewer=member)
+    active_pkgs = [
+        p for p in packages.values()
+        if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
+    ]
+    view = StatusBoardView(active_pkgs, rep) if active_pkgs else discord.ui.View()
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 # /submit_target_package
