@@ -37,6 +37,17 @@ _REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 
 _TP_LOCK = asyncio.Lock()
 
+
+def _get_guild_from_bot() -> "discord.Guild | None":
+    """Resolve the configured guild from the bot. Used when interaction.guild is None (DM context)."""
+    bot = getattr(_g, "bot", None) or _b("bot")
+    if not bot:
+        return None
+    guild_id = (_b("CONFIG") or {}).get("guild_id")
+    if guild_id:
+        return bot.get_guild(int(guild_id))
+    return next(iter(bot.guilds), None)
+
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
     "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho",
@@ -342,9 +353,10 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 # ---------------------------------------------------------------------------
 
 # Roles that require formal cadre assignment (not naturally present in a KT)
+# Kill Team Champion is KT-command tier but still requires Lord Executioner assignment
 _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
-)
+) | {"Kill Team Champion"}
 
 # Per-tier draw probability for a single requirement slot
 # Weights used when independently drawing each slot
@@ -639,20 +651,18 @@ async def assign_package_to_kt(
         if pkg["status"] not in (STATUS_DISTRIBUTED,):
             return False, f"Package `{package_id}` is not available for assignment (status: {pkg['status']})."
 
-        # Check KT package cap (max 2)
+        # Check KT package cap (max 3)
         kt_active = [
             p for p in data["packages"].values()
             if p.get("assigned_kt") == kt_name
             and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
         ]
-        if len(kt_active) >= 2:
-            return False, f"{kt_name} already has 2 active packages. Cannot assign more until one is completed."
+        if len(kt_active) >= 3:
+            return False, f"{kt_name} already has 3 active packages. Cannot assign more until one is completed."
 
         # Determine if a cadre specialist needs formal attachment
         # Line ranks (Veteran, Oathsworn, Sgt, KT Champion) are validated
         # at submission from KT membership — no formal attach needed.
-        req_roles = pkg.get("required_roles", [])
-        needs_specialist_attach = any(r in _CADRE_SPECIALIST_ROLES for r in req_roles)
 
         new_status = STATUS_PENDING_SGT
 
@@ -673,9 +683,7 @@ async def assign_package_to_kt(
     # Notify KT channel
     await _notify_kt_assigned(package_id, kt_name, pkg, guild, fully_active=False)
 
-    # If specialist needed, ping cadre leaders in highcom
-    if needs_specialist_attach:
-        await _notify_cadre_leaders_needed(package_id, req_roles, guild)
+    # Cadre leader pings fire after Sgt complies (in SgtAcceptView), not here
 
     return True, f"Package `{package_id}` assigned to {kt_name}."
 
@@ -1198,7 +1206,7 @@ async def _notify_cadre_leaders_needed(
     for cl_role, owned_roles in needed.items():
         # Find members with this cadre leader role
         mentions = []
-        for m in guild.members:
+        for m in (guild.members if guild else []):
             if m.bot or not _is_active(m):
                 continue
             if cl_role in _member_role_names(m):
@@ -1207,8 +1215,20 @@ async def _notify_cadre_leaders_needed(
         flavor_pool = _CADRE_FLAVOR.get(cl_role, _CADRE_DEFAULT_FLAVOR)
         flavor = random.choice(flavor_pool).format(pid=package_id, roles=", ".join(owned_roles))
 
+        cadre_embed = discord.Embed(
+            title=f"{_DW_EMOJI} SPECIALIST REQUISITION {_DW_EMOJI}",
+            description=flavor,
+            color=0xE67E22,
+        )
+        cadre_embed.set_footer(
+            text=f"Package `{package_id}`  ·  CLEARANCE: ROSETTE",
+            icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        )
+
         if mentions:
-            await _notify_send(channel, guild, f"{' '.join(mentions)}\n{flavor}")
+            await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed)
+        elif _is_debug_mode():
+            await _notify_send(channel, guild, content=f"[{cl_role} — no members found]", embed=cadre_embed)
 
 
 # ---------------------------------------------------------------------------
@@ -1731,13 +1751,14 @@ class SgtAcceptView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
         # Post sign-up embed in KT channel
-        await _post_signup_embed(self.package_id, interaction.guild)
+        guild = interaction.guild or _get_guild_from_bot()
+        await _post_signup_embed(self.package_id, guild)
 
         # Notify cadre leaders if specialists needed
         req_roles = pkg.get("required_roles", [])
         cadre_reqs = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
         if cadre_reqs:
-            await _notify_cadre_leaders_needed(self.package_id, cadre_reqs, interaction.guild)
+            await _notify_cadre_leaders_needed(self.package_id, cadre_reqs, guild)
 
 
 class SignUpView(discord.ui.View):
