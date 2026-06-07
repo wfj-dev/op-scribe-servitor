@@ -1645,6 +1645,12 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to register terminus kill log persistent views")
 
+    # Register persistent views for Target Packages (Sgt accept + sign-up buttons)
+    try:
+        await _target_packages_ops.register_persistent_views()
+    except Exception:
+        logger.exception("Failed to register target packages persistent views")
+
 
 def _user_label(u: discord.User | discord.Member) -> str:
     try:

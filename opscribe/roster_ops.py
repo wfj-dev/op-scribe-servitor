@@ -1658,9 +1658,12 @@ async def _check_promotion_milestones():
                         )
 
                         # Send the announcement (content has mentions, embed has details)
+                        _assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+                        _studs_file = discord.File(os.path.join(_assets_dir, "studs.png"), filename="studs.png")
                         await studs_channel.send(
                             content,
                             embed=embed,
+                            file=_studs_file,
                             allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                         )
                         notifications_sent += 1
