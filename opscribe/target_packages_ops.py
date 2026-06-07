@@ -645,8 +645,8 @@ async def assign_package_to_kt(
             if p.get("assigned_kt") == kt_name
             and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
         ]
-        if len(kt_active) >= 3:
-            return False, f"{kt_name} already has 3 active packages. Cannot assign more until one is completed."
+        if len(kt_active) >= 2:
+            return False, f"{kt_name} already has 2 active packages. Cannot assign more until one is completed."
 
         # Determine if a cadre specialist needs formal attachment
         # Line ranks (Veteran, Oathsworn, Sgt, KT Champion) are validated
@@ -713,10 +713,6 @@ async def assign_specialist(
             pkg["status"] = STATUS_DEPLOYED
 
         _save_tp(data)
-
-    # If package just went ACTIVE, notify KT
-    if now_active and pkg.get("assigned_kt"):
-        await _notify_kt_assigned(package_id, pkg["assigned_kt"], pkg, guild, fully_active=True)
 
     # Gap 2 — Ping specialist in their cadre channel
     await _notify_specialist_assigned(specialist_member, package_id, pkg, guild)
