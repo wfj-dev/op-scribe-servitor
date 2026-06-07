@@ -461,7 +461,7 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
         role_counts = {r: 1 for r in available_roles}
         available_set = set(available_roles)
 
-    max_reqs = 2 if "Hard" in mode else 5
+    max_reqs = 3 if "Hard" in mode else 5
     max_hc = 1
 
     weights = [2 ** (max_reqs - i) for i in range(1, max_reqs + 1)]

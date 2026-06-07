@@ -147,10 +147,10 @@ class TestDrawRequirements:
         results = [_draw_requirements(self.ALL_ROLES) for _ in range(200)]
         assert any(r[0] == _REQ_TIER_NO_REQ for r in results)
 
-    def test_hard_strat_max_2_reqs(self):
+    def test_hard_strat_max_3_reqs(self):
         for _ in range(100):
             _, roles = _draw_requirements(self.ALL_ROLES, mode="Hard-Strat")
-            assert len(roles) <= 2
+            assert len(roles) <= 3
 
     def test_omega_strat_max_5_reqs(self):
         for _ in range(100):
