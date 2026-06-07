@@ -740,6 +740,7 @@ from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for sla
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
 from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
+from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1454,6 +1455,11 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to register target packages commands")
     try:
+        # Register LOA commands
+        _loa_ops._register_commands(bot.tree)
+    except Exception:
+        logger.exception("Failed to register LOA commands")
+    try:
         guild_id = CONFIG.get("guild_id")
         if guild_id:
             # During development, sync to a single guild for faster propagation
@@ -1638,6 +1644,14 @@ async def on_ready():
             logger.info("Target packages expiry loop started (30min interval).")
     except Exception:
         logger.exception("Failed to start target packages expiry loop")
+
+    # Start LOA expiry loop
+    try:
+        if not _loa_ops._loa_expiry_loop.is_running():
+            _loa_ops._loa_expiry_loop.start()
+            logger.info("LOA expiry loop started (30min interval).")
+    except Exception:
+        logger.exception("Failed to start LOA expiry loop")
 
     # Register persistent views for Terminus kill log entries
     try:

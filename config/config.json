@@ -20,13 +20,20 @@
     1512819170025410621,
     1429318686447108300,
     1512929774970998945,
-    1512929565239152671
+    1512929565239152671,
+    1433803850438938726
   ],
   "admin_user_ids": [
     281651485782310914
   ],
   "role_aliases": {},
   "permissions": {
+    "set_loa": {
+      "roles": [
+        "Watch Apothecary",
+        "Forgemaster"
+      ]
+    },
     "request_target_packages": {
       "roles": [
         "Watch Master"
