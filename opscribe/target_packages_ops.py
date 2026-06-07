@@ -1,8 +1,8 @@
-"""Ordo Xenos Target Packages subsystem.
+"""Ordo Xenos Strike Packages subsystem.
 
 Strike packages issued by Ordo Xenos for Watch Fortress Jericho to complete.
-Commands: /request_target_packages, /view_target_packages, /assign_package,
-          /log_strike_report, /target_package_status
+Commands: /request_strike_packages, /view_strike_packages, /assign_package,
+          /log_strike_report, /strike_package_status
 """
 
 import os
@@ -884,7 +884,7 @@ def _generate_single_package(
 
 
 async def generate_packages(guild: discord.Guild, actor: discord.Member = None) -> list:
-    """Generate a batch of target packages. Returns list of package dicts."""
+    """Generate a batch of strike packages. Returns list of package dicts."""
     async with _TP_LOCK:
         data = _load_tp()
         rep = data.get("rep", 0.0)
@@ -922,7 +922,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             count = len(new_packages)
             wm_flavor = [
                 "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.",
-                "Astropathic relay inbound. Ordo Xenos has transmitted new target packages to Watch Fortress Jericho. Stand ready, brothers.",
+                "Astropathic relay inbound. Ordo Xenos has transmitted new strike packages to Watch Fortress Jericho. Stand ready, brothers.",
                 "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike packages. Deployment briefings to follow.",
             ]
             wm_embed = discord.Embed(
@@ -1203,12 +1203,12 @@ async def submit_package(
                 break
         aar_mission = str(aar_record.get("mission") or aar_record.get("mission_name") or "")
         if _canonical_mission_name(aar_mission) != _canonical_mission_name(expected_mission):
-            return False, "AAR mission does not match target package mission."
+            return False, "AAR mission does not match strike package mission."
 
         expected_diff = _expected_difficulty_for_mode(pkg.get("mode", ""))
         aar_diff = str(aar_record.get("difficulty_class") or "").strip().lower()
         if aar_diff != expected_diff:
-            return False, "AAR difficulty does not match target package mode."
+            return False, "AAR difficulty does not match strike package mode."
 
         pkg["status"] = STATUS_COMPLETED
         pkg["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -1387,56 +1387,56 @@ async def expire_packages(guild: discord.Guild) -> None:
 # ---------------------------------------------------------------------------
 
 _DISTRIBUTE_FLAVOR = [
-    "Astropathic relay inbound. Watch Captains to the strategium — {count} target package{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.\nUse `/view_target_packages` to review and assign to your Kill Teams.",
-    "Ordo Xenos datalink established. {count} target package{s} received and logged to the strategium. Watch Captains, move to review.\nUse `/view_target_packages` to assign packages to your Kill Teams.",
-    "Intelligence packet cleared Vermillion. {count} target package{s} routed to Watch Fortress Jericho command. Captains — your orders await.\nUse `/view_target_packages` to review and assign.",
+    "Astropathic relay inbound. Watch Captains to the strategium — {count} strike package{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.\nUse `/view_strike_packages` to review and assign to your Kill Teams.",
+    "Ordo Xenos datalink established. {count} strike package{s} received and logged to the strategium. Watch Captains, move to review.\nUse `/view_strike_packages` to assign packages to your Kill Teams.",
+    "Intelligence packet cleared Vermillion. {count} strike package{s} routed to Watch Fortress Jericho command. Captains — your orders await.\nUse `/view_strike_packages` to review and assign.",
 ]
 
 _KT_ASSIGN_FLAVOR = [
-    "Data-inload received, brother. Target Package `{pid}` has been assigned to {kt}. Blackstar is prepped — await final clearance before departure.",
-    "Strategic orders received. {kt} has been tasked with Target Package `{pid}`. All brothers, stand ready.",
-    "Orders transmitted. {kt}, you have your mission — Target Package `{pid}` is yours. Await specialist attachment if flagged.",
+    "Data-inload received, brother. Strike Package `{pid}` has been assigned to {kt}. Blackstar is prepped — await final clearance before departure.",
+    "Strategic orders received. {kt} has been tasked with Strike Package `{pid}`. All brothers, stand ready.",
+    "Orders transmitted. {kt}, you have your mission — Strike Package `{pid}` is yours. Await specialist attachment if flagged.",
 ]
 
 _KT_READY_FLAVOR = [
-    "All conditions met. {kt} is cleared for immediate deployment on Target Package `{pid}`. Emperor guide your blades.",
-    "Deployment authorised. {kt} — Target Package `{pid}` is fully active. Blackstar is green.",
-    "Final clearance granted. {kt}, Target Package `{pid}` is live. Move out.",
+    "All conditions met. {kt} is cleared for immediate deployment on Strike Package `{pid}`. Emperor guide your blades.",
+    "Deployment authorised. {kt} — Strike Package `{pid}` is fully active. Blackstar is green.",
+    "Final clearance granted. {kt}, Strike Package `{pid}` is live. Move out.",
 ]
 
 _CADRE_FLAVOR = {
     "Forgemaster": [
-        "{kt} of {company} requires Techmarine or Dreadnought attachment on Target Package `{pid}`. Forgemaster — designate your specialist.\nUse `/view_target_packages` to assign.",
-        "Forge-lord, {kt} needs a specialist from your cadre for Target Package `{pid}`. Forge-bond required before deployment.\nUse `/view_target_packages` to assign.",
+        "{kt} of {company} requires Techmarine or Dreadnought attachment on Strike Package `{pid}`. Forgemaster — designate your specialist.\nUse `/view_strike_packages` to assign.",
+        "Forge-lord, {kt} needs a specialist from your cadre for Strike Package `{pid}`. Forge-bond required before deployment.\nUse `/view_strike_packages` to assign.",
     ],
     "Chief Apothecary": [
-        "{kt} of {company} requires an Apothecary on Target Package `{pid}`. Chief Apothecary — designate your brother.\nUse `/view_target_packages` to assign.",
-        "Chief Apothecary, {kt} needs your cadre's hand. Target Package `{pid}` cannot deploy without an Apothecary.\nUse `/view_target_packages` to assign.",
+        "{kt} of {company} requires an Apothecary on Strike Package `{pid}`. Chief Apothecary — designate your brother.\nUse `/view_strike_packages` to assign.",
+        "Chief Apothecary, {kt} needs your cadre's hand. Strike Package `{pid}` cannot deploy without an Apothecary.\nUse `/view_strike_packages` to assign.",
     ],
     "High Chaplain": [
-        "Reclusiam requisition raised. {kt} of {company} requires a Chaplain on Target Package `{pid}`. High Chaplain — assign from your cadre.\nUse `/view_target_packages` to assign.",
-        "High Chaplain, {kt} needs spiritual authority in the field. Target Package `{pid}` awaits your designation.\nUse `/view_target_packages` to assign.",
+        "Reclusiam requisition raised. {kt} of {company} requires a Chaplain on Strike Package `{pid}`. High Chaplain — assign from your cadre.\nUse `/view_strike_packages` to assign.",
+        "High Chaplain, {kt} needs spiritual authority in the field. Strike Package `{pid}` awaits your designation.\nUse `/view_strike_packages` to assign.",
     ],
     "Void Warden": [
-        "Librarius requisition transmitted. {kt} of {company} requires a Librarian on Target Package `{pid}`. Void Warden — assign as required.\nUse `/view_target_packages` to assign.",
-        "Void Warden, the psyker's gift is needed by {kt}. Target Package `{pid}` awaits Librarian attachment.\nUse `/view_target_packages` to assign.",
+        "Librarius requisition transmitted. {kt} of {company} requires a Librarian on Strike Package `{pid}`. Void Warden — assign as required.\nUse `/view_strike_packages` to assign.",
+        "Void Warden, the psyker's gift is needed by {kt}. Strike Package `{pid}` awaits Librarian attachment.\nUse `/view_strike_packages` to assign.",
     ],
     "Castellan": [
-        "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Target Package `{pid}`. Castellan — designate your operative.\nUse `/view_target_packages` to assign.",
-        "Castellan, your intelligence cadre is needed by {kt}. Target Package `{pid}` awaits Watch Keeper attachment.\nUse `/view_target_packages` to assign.",
+        "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Strike Package `{pid}`. Castellan — designate your operative.\nUse `/view_strike_packages` to assign.",
+        "Castellan, your intelligence cadre is needed by {kt}. Strike Package `{pid}` awaits Watch Keeper attachment.\nUse `/view_strike_packages` to assign.",
     ],
     "Lord Executioner": [
-        "Champion requisition raised. {kt} of {company} requires a Champion on Target Package `{pid}`. Lord Executioner — designate as required.\nUse `/view_target_packages` to assign.",
-        "Lord Executioner, {kt} needs martial authority on Target Package `{pid}`. Champion assignment required before deployment.\nUse `/view_target_packages` to assign.",
+        "Champion requisition raised. {kt} of {company} requires a Champion on Strike Package `{pid}`. Lord Executioner — designate as required.\nUse `/view_strike_packages` to assign.",
+        "Lord Executioner, {kt} needs martial authority on Strike Package `{pid}`. Champion assignment required before deployment.\nUse `/view_strike_packages` to assign.",
     ],
     "Huntmaster": [
-        "Huntmaster, {kt} of {company} requires your personal engagement on Target Package `{pid}`. Your direct participation is demanded.\nUse `/view_target_packages` to assign yourself.",
-        "Huntmaster — {kt} is called to the field on Target Package `{pid}` and requires you. Await no further orders.\nUse `/view_target_packages` to assign yourself.",
+        "Huntmaster, {kt} of {company} requires your personal engagement on Strike Package `{pid}`. Your direct participation is demanded.\nUse `/view_strike_packages` to assign yourself.",
+        "Huntmaster — {kt} is called to the field on Strike Package `{pid}` and requires you. Await no further orders.\nUse `/view_strike_packages` to assign yourself.",
     ],
 }
 
 _CADRE_DEFAULT_FLAVOR = [
-    "{kt} of {company} requires specialists on Target Package `{pid}`: {roles}. Cadre leaders — assign as required.\nUse `/view_target_packages` to assign.",
+    "{kt} of {company} requires specialists on Strike Package `{pid}`: {roles}. Cadre leaders — assign as required.\nUse `/view_strike_packages` to assign.",
 ]
 
 
@@ -2831,7 +2831,7 @@ class PackagePaginatorView(discord.ui.View):
             self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
             if not self.packages:
                 await interaction.edit_original_response(
-                    content="No active target packages for your role.",
+                    content="No active strike packages for your role.",
                     embed=None,
                     view=None,
                     attachments=[],
@@ -3052,15 +3052,15 @@ def _get_tree():
     return getattr(m, "tree", None) if m else None
 
 
-# /request_target_packages — WM only
+# /request_strike_packages — WM only
 @app_commands.command(
-    name="request_target_packages",
-    description="[Watch Master] Request a new batch of Ordo Xenos target packages.",
+    name="request_strike_packages",
+    description="[Watch Master] Request a new batch of Ordo Xenos strike packages.",
 )
-async def request_target_packages(interaction: discord.Interaction):
-    if not _b("check_command_permission")(interaction.user, "request_target_packages"):
+async def request_strike_packages(interaction: discord.Interaction):
+    if not _b("check_command_permission")(interaction.user, "request_strike_packages"):
         await interaction.response.send_message(
-            "Only the Watch Master may request target packages.", ephemeral=True
+            "Only the Watch Master may request strike packages.", ephemeral=True
         )
         return
 
@@ -3099,7 +3099,7 @@ async def request_target_packages(interaction: discord.Interaction):
     view = PackagePaginatorView(packages, rep, show_distribute=True, viewer=interaction.user)
     _pf = view.current_file()
     await interaction.followup.send(
-        content=f"**{len(packages)} target package{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
+        content=f"**{len(packages)} strike package{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
                 f"Review below and press **Distribute All** when ready.",
         embed=view.current_embed(),
         view=view,
@@ -3108,12 +3108,12 @@ async def request_target_packages(interaction: discord.Interaction):
     )
 
 
-# /view_target_packages — role-overloaded view
+# /view_strike_packages — role-overloaded view
 @app_commands.command(
-    name="view_target_packages",
-    description="View Ordo Xenos target packages relevant to your role.",
+    name="view_strike_packages",
+    description="View Ordo Xenos strike packages relevant to your role.",
 )
-async def view_target_packages(interaction: discord.Interaction):
+async def view_strike_packages(interaction: discord.Interaction):
     member = interaction.user
     await interaction.response.defer(ephemeral=True)
     data = _load_tp()
@@ -3163,7 +3163,7 @@ async def view_target_packages(interaction: discord.Interaction):
         ] if kt else []
 
     if not pkgs:
-        await interaction.followup.send("No active target packages for your role.", ephemeral=True)
+        await interaction.followup.send("No active strike packages for your role.", ephemeral=True)
         return
 
     view = PackagePaginatorView(pkgs, rep, show_distribute=False, viewer=member)
@@ -3177,7 +3177,7 @@ async def view_target_packages(interaction: discord.Interaction):
 
 
 # /log_strike_report
-async def _submit_target_package_autocomplete(
+async def _submit_strike_package_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list:
@@ -3217,8 +3217,8 @@ async def _submit_target_package_autocomplete(
     return choices
 
 
-_submit_target_package_autocomplete_decorator = (
-    app_commands.autocomplete(package_id=_submit_target_package_autocomplete)
+_submit_strike_package_autocomplete_decorator = (
+    app_commands.autocomplete(package_id=_submit_strike_package_autocomplete)
     if hasattr(app_commands, "autocomplete")
     else (lambda func: func)
 )
@@ -3229,10 +3229,10 @@ _submit_target_package_autocomplete_decorator = (
     description="Log a completed Ordo Xenos strike report.",
 )
 @app_commands.describe(
-    package_id="The target package ID (e.g. OX-A4B2C)",
+    package_id="The strike package ID (e.g. OX-A4B2C)",
     aar_link="Link to the After Action Report",
 )
-@_submit_target_package_autocomplete_decorator
+@_submit_strike_package_autocomplete_decorator
 async def log_strike_report(
     interaction: discord.Interaction,
     package_id: str,
@@ -3287,13 +3287,13 @@ async def log_strike_report(
 submit_target_package = log_strike_report
 
 
-# /target_package_status
+# /strike_package_status
 @app_commands.command(
-    name="target_package_status",
-    description="View the full status of a specific target package.",
+    name="strike_package_status",
+    description="View the full status of a specific strike package.",
 )
-@app_commands.describe(package_id="The target package ID (e.g. OX-A4B2C)")
-async def target_package_status(
+@app_commands.describe(package_id="The strike package ID (e.g. OX-A4B2C)")
+async def strike_package_status(
     interaction: discord.Interaction,
     package_id: str,
 ):
@@ -3341,10 +3341,10 @@ async def target_package_status(
 
 def _register_commands(tree: app_commands.CommandTree) -> None:
     for cmd in (
-        request_target_packages,
-        view_target_packages,
+        request_strike_packages,
+        view_strike_packages,
         log_strike_report,
-        target_package_status,
+        strike_package_status,
     ):
         if tree.get_command(cmd.name) is None:
             tree.add_command(cmd)
@@ -3417,10 +3417,14 @@ async def register_persistent_views() -> None:
 
 # Public exports
 __all__ = [
+    "request_strike_packages",
+    "view_strike_packages",
+    "log_strike_report",
+    "submit_strike_package",
+    "submit_target_package",
+    "strike_package_status",
     "request_target_packages",
     "view_target_packages",
-    "log_strike_report",
-    "submit_target_package",
     "target_package_status",
     "_register_commands",
     "_tp_expiry_loop",
@@ -3429,3 +3433,9 @@ __all__ = [
     "expire_packages",
     "register_persistent_views",
 ]
+
+# Backward-compatible Python aliases for older imports/call sites.
+submit_strike_package = log_strike_report
+request_target_packages = request_strike_packages
+view_target_packages = view_strike_packages
+target_package_status = strike_package_status
