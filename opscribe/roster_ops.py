@@ -490,6 +490,36 @@ def _get_member_display_name(member: discord.Member) -> str:
         return str(getattr(member, "id", "Unknown"))
 
 
+async def _sync_member_service_studs_nickname(member: discord.Member, earned_studs: int) -> bool:
+    """Apply service stud pips to member nickname (replace existing pips if present)."""
+    try:
+        studs_count = max(0, min(int(earned_studs or 0), 16))
+    except Exception:
+        studs_count = 0
+
+    studs_pips = _studs_pips(studs_count) if studs_count > 0 else ""
+    raw_name = str(member.nick or member.display_name or member.name or "").strip()
+    # Remove any existing stud glyphs and collapse whitespace.
+    base_name = re.sub(r"[●⚬]+", "", raw_name)
+    base_name = re.sub(r"\s+", " ", base_name).strip()
+    if not base_name:
+        base_name = str(member.name or member.id)
+
+    target_nick = f"{base_name} {studs_pips}".strip() if studs_pips else base_name
+    current_nick = str(member.nick or "").strip()
+    if current_nick == target_nick:
+        return True
+
+    try:
+        await member.edit(nick=target_nick, reason=f"Sync service studs ({studs_count})")
+        return True
+    except discord.Forbidden:
+        _g.logger.debug(f"Service studs nickname update forbidden for {member.id}")
+    except discord.HTTPException as e:
+        _g.logger.debug(f"Service studs nickname update failed for {member.id}: {e}")
+    return False
+
+
 def _get_member_rank_role(member: discord.Member) -> Optional[discord.Role]:
     """Return the member's highest rank role object, or None if no rank."""
     roles = getattr(member, "roles", []) or []
@@ -1667,6 +1697,7 @@ async def _check_promotion_milestones():
                             allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                         )
                         notifications_sent += 1
+                        await _sync_member_service_studs_nickname(member, earned_studs)
                         await asyncio.sleep(0.5)
                         # Only update tracking when we actually announce, so new_studs
                         # correctly reflects the full step (e.g. +4 at each auramite
