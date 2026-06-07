@@ -1558,6 +1558,14 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
                 )
             except Exception as e:
                 _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
+            # Clear LOA for any members with an active LOA who appear in this AAR
+            try:
+                from . import loa_ops as _loa_ops
+                for uid in record.get("brother_ids", []):
+                    if _loa_ops._get_active_loa(int(uid)):
+                        await _loa_ops.clear_loa_on_aar(int(uid), _guild)
+            except Exception as e:
+                _g.logger.debug(f"[LOA] AAR ingest LOA check failed: {e}")
 
         # If an error entry exists for this AAR/message, remove stored reply and clear the error
         try:

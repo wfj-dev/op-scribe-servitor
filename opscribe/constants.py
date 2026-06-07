@@ -33,6 +33,8 @@ WATCH_KEEPER_ROLE_ID = 1488211606813806693
 HUNTMASTER_ROLE_ID = 1510397444113039581
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
+# Role ID for Leave of Absence (LOA) — members on LOA are excluded from specialist requirement generation
+LOA_ROLE_ID = 1513198169217830912
 # Ping role ID for Black Laurels challenge announcements
 BLACK_LAURELS_PING_ROLE_ID = 1429343212421644479
 
