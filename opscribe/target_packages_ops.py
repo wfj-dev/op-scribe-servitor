@@ -2,7 +2,7 @@
 
 Strike packages issued by Ordo Xenos for Watch Fortress Jericho to complete.
 Commands: /request_target_packages, /view_target_packages, /assign_package,
-          /submit_target_package, /target_package_status
+          /log_strike_report, /target_package_status
 """
 
 import os
@@ -159,7 +159,7 @@ async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int
 
 
 _DISCORD_MSG_URL_RE = re.compile(
-    r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/\d+/\d+/(\d+)$",
+    r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/\d+/(\d+)/(\d+)$",
     re.IGNORECASE,
 )
 
@@ -179,7 +179,7 @@ def _resolve_aar_record_for_link(aar_link: str) -> tuple[Optional[str], Optional
     message_id: Optional[str] = None
     m = _DISCORD_MSG_URL_RE.match(aar_link.strip())
     if m:
-        message_id = m.group(1)
+        message_id = m.group(2)
 
     record = ds.get_record(message_id) if message_id else None
     key = str((record or {}).get("aar_id") or message_id or "")
@@ -198,6 +198,35 @@ def _resolve_aar_record_for_link(aar_link: str) -> tuple[Optional[str], Optional
     if not key:
         key = str(record.get("aar_id") or "")
     return (key or None), record
+
+
+async def _parse_live_aar_for_link(aar_link: str, guild: discord.Guild | None) -> Optional[dict]:
+    """Fetch and parse a live AAR message when it has not yet been ingested."""
+    if not aar_link or guild is None:
+        return None
+
+    m = _DISCORD_MSG_URL_RE.match(aar_link.strip())
+    if not m:
+        return None
+
+    channel_id = int(m.group(1))
+    message_id = int(m.group(2))
+    channel = await _resolve_channel(guild, channel_id)
+    if channel is None:
+        return None
+
+    try:
+        msg = await channel.fetch_message(message_id)
+    except Exception:
+        return None
+
+    try:
+        from .aar_ops import parse_aar
+
+        return parse_aar(msg)
+    except Exception as exc:
+        _g.logger.debug(f"[TP] Live AAR parse failed for {aar_link}: {exc}")
+        return None
 
 
 def _canonical_mission_name(name: str) -> str:
@@ -1146,7 +1175,9 @@ async def submit_package(
         # Validate linked AAR content against package contract.
         aar_key, aar_record = _resolve_aar_record_for_link(aar_link)
         if not aar_record:
-            return False, "AAR link could not be resolved to an ingested AAR record."
+            aar_record = await _parse_live_aar_for_link(aar_link, guild)
+        if not aar_record:
+            return False, "AAR link could not be resolved or parsed."
 
         expected_brothers = {
             int(uid)
@@ -1185,7 +1216,7 @@ async def submit_package(
         pkg["aar_link"] = aar_link
         _m = _DISCORD_MSG_URL_RE.match((aar_link or "").strip())
         if _m:
-            pkg["aar_message_id"] = _m.group(1)
+            pkg["aar_message_id"] = _m.group(2)
         if aar_key:
             pkg["aar_record_id"] = str(aar_key)
 
@@ -2403,10 +2434,6 @@ class SignUpView(discord.ui.View):
         except Exception as e:
             _g.logger.debug(f"[TP] Failed signup roster update for {self.package_id}: {e}")
 
-        await interaction.followup.send(
-            f"Registered for package `{self.package_id}` ({count}/{total_capacity}).",
-            ephemeral=True,
-        )
 
     @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
     async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3205,16 +3232,64 @@ async def view_target_packages(interaction: discord.Interaction):
     )
 
 
-# /submit_target_package
+# /log_strike_report
+async def _submit_target_package_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list:
+    """Autocomplete package IDs for packages the current user is attached to."""
+    data = _load_tp()
+    packages = data.get("packages", {})
+    member = interaction.user
+    current_norm = (current or "").strip().upper()
+
+    choices: list = []
+    for pkg in packages.values():
+        if pkg.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            continue
+
+        signed_up = member.id in pkg.get("signed_up", [])
+        specialist = member.id in pkg.get("assigned_specialist_ids", [])
+        if not (signed_up or specialist):
+            continue
+
+        pid = str(pkg.get("id", "")).upper()
+        if current_norm and current_norm not in pid:
+            continue
+
+        label_bits = [pid]
+        kt = pkg.get("assigned_kt")
+        if kt:
+            label_bits.append(kt)
+        if specialist:
+            label_bits.append("specialist")
+        elif signed_up:
+            label_bits.append("signed up")
+
+        choices.append(app_commands.Choice(name=" · ".join(label_bits)[:100], value=pid))
+        if len(choices) >= 25:
+            break
+
+    return choices
+
+
+_submit_target_package_autocomplete_decorator = (
+    app_commands.autocomplete(package_id=_submit_target_package_autocomplete)
+    if hasattr(app_commands, "autocomplete")
+    else (lambda func: func)
+)
+
+
 @app_commands.command(
-    name="submit_target_package",
-    description="Submit a completed Ordo Xenos target package.",
+    name="log_strike_report",
+    description="Log a completed Ordo Xenos strike report.",
 )
 @app_commands.describe(
     package_id="The target package ID (e.g. OX-A4B2C)",
     aar_link="Link to the After Action Report",
 )
-async def submit_target_package(
+@_submit_target_package_autocomplete_decorator
+async def log_strike_report(
     interaction: discord.Interaction,
     package_id: str,
     aar_link: str,
@@ -3222,6 +3297,10 @@ async def submit_target_package(
     package_id = package_id.strip().upper()
     success, msg = await submit_package(package_id, aar_link, interaction.user, interaction.guild)
     await interaction.response.send_message(msg, ephemeral=not success)
+
+
+# Backward-compatible Python alias for older imports/call sites.
+submit_target_package = log_strike_report
 
 
 # /target_package_status
@@ -3280,7 +3359,7 @@ def _register_commands(tree: app_commands.CommandTree) -> None:
     for cmd in (
         request_target_packages,
         view_target_packages,
-        submit_target_package,
+        log_strike_report,
         target_package_status,
     ):
         if tree.get_command(cmd.name) is None:
@@ -3356,6 +3435,7 @@ async def register_persistent_views() -> None:
 __all__ = [
     "request_target_packages",
     "view_target_packages",
+    "log_strike_report",
     "submit_target_package",
     "target_package_status",
     "_register_commands",
