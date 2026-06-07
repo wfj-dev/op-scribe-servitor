@@ -1,7 +1,8 @@
 """Leave of Absence (LOA) subsystem.
 
-/set_loa assigns the LOA role to a member for a date range.
-LOA role is automatically removed at end date or when a valid AAR is ingested.
+/set_loa schedules LOA for a member for a date range.
+LOA role is applied at LOA start, removed at LOA end, or cleared earlier when a
+valid AAR is ingested.
 """
 
 import os
@@ -56,12 +57,27 @@ def _get_active_loa(user_id: int) -> dict | None:
     if not rec:
         return None
     try:
+        start = datetime.fromisoformat(rec["start"])
         end = datetime.fromisoformat(rec["end"])
-        if datetime.now(timezone.utc) <= end:
+        now = datetime.now(timezone.utc)
+        if start <= now <= end:
             return rec
     except Exception:
         pass
     return None
+
+
+async def _apply_loa_role(member: discord.Member) -> bool:
+    """Ensure LOA role is present on member. Returns True if role was added."""
+    try:
+        loa_role = member.guild.get_role(LOA_ROLE_ID)
+        if loa_role and loa_role not in member.roles:
+            await member.add_roles(loa_role, reason="LOA window started")
+            _g.logger.info(f"[LOA] Added LOA role to {member.display_name} ({member.id})")
+            return True
+    except Exception as e:
+        _g.logger.warning(f"[LOA] Failed to add LOA role to {getattr(member, 'id', '?')}: {e}")
+    return False
 
 
 async def _remove_loa_role(member: discord.Member) -> bool:
@@ -99,7 +115,7 @@ async def clear_loa_on_aar(user_id: int, guild: discord.Guild) -> None:
 
 @_tasks.loop(minutes=30)
 async def _loa_expiry_loop():
-    """Check for expired LOA records and remove the role."""
+    """Sync LOA role state: apply when started, remove when expired."""
     try:
         bot = getattr(_g, "bot", None) or _b("bot")
         if not bot:
@@ -113,13 +129,22 @@ async def _loa_expiry_loop():
         async with _LOA_LOCK:
             data = _load_loa()
             expired = []
+            started = []
             for uid_str, rec in data["records"].items():
                 try:
+                    start = datetime.fromisoformat(rec["start"])
                     end = datetime.fromisoformat(rec["end"])
                     if now > end:
                         expired.append(uid_str)
+                    elif start <= now <= end:
+                        started.append(uid_str)
                 except Exception:
                     expired.append(uid_str)
+
+            for uid_str in started:
+                member = guild.get_member(int(uid_str))
+                if member:
+                    await _apply_loa_role(member)
 
             for uid_str in expired:
                 member = guild.get_member(int(uid_str))
@@ -173,17 +198,22 @@ async def set_loa(
         await interaction.response.send_message("End date must be after start date.", ephemeral=True)
         return
 
-    # Assign LOA role
+    now = datetime.now(timezone.utc)
+
+    # Resolve LOA role and assign immediately only when window is already active.
     loa_role = interaction.guild.get_role(LOA_ROLE_ID)
     if not loa_role:
         await interaction.response.send_message("LOA role not found in this server.", ephemeral=True)
         return
 
-    try:
-        await member.add_roles(loa_role, reason=f"LOA set by {interaction.user.display_name}")
-    except discord.Forbidden:
-        await interaction.response.send_message("Missing permissions to assign the LOA role.", ephemeral=True)
-        return
+    role_applied_now = False
+    if start_dt <= now <= end_dt:
+        try:
+            await member.add_roles(loa_role, reason=f"LOA set by {interaction.user.display_name}")
+            role_applied_now = True
+        except discord.Forbidden:
+            await interaction.response.send_message("Missing permissions to assign the LOA role.", ephemeral=True)
+            return
 
     # Store record
     async with _LOA_LOCK:
@@ -197,11 +227,17 @@ async def set_loa(
         _save_loa(data)
 
     days = (end_dt - start_dt).days + 1
-    await interaction.response.send_message(
-        f"**{member.display_name}** is now on LOA from `{start_date}` to `{end_date}` ({days} day{'s' if days != 1 else ''}).\n"
-        f"LOA role will be automatically removed at end of day on `{end_date}`, or earlier if an AAR is ingested.",
-        ephemeral=True,
-    )
+    if role_applied_now:
+        msg = (
+            f"**{member.display_name}** is now on LOA from `{start_date}` to `{end_date}` ({days} day{'s' if days != 1 else ''}).\n"
+            f"LOA role will be automatically removed at end of day on `{end_date}`, or earlier if an AAR is ingested."
+        )
+    else:
+        msg = (
+            f"Scheduled LOA for **{member.display_name}** from `{start_date}` to `{end_date}` ({days} day{'s' if days != 1 else ''}).\n"
+            f"LOA role will be applied automatically on `{start_date}` and removed at end of day on `{end_date}`, or earlier if an AAR is ingested."
+        )
+    await interaction.response.send_message(msg, ephemeral=True)
     _g.logger.info(f"[LOA] {member.display_name} ({member.id}) set on LOA {start_date}→{end_date} by {interaction.user.id}")
 
 
