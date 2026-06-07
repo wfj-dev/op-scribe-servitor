@@ -1390,8 +1390,40 @@ async def _challenge_progress_inner(
     ts_progress = ts_state.get("progress", {}).get(user_id_str, {})
 
     # --- Helpers ---
+    def _normalize_mission_name(raw: str) -> str:
+        """Normalize mission strings by stripping mentions/extra tokens and lowercasing."""
+        text = re.sub(r"<@&\d+>", "", raw or "").lower().strip()
+        if "@" in text:
+            text = text.split("@", 1)[0].strip()
+        return text
+
     def _unique_missions(key: str) -> set:
-        return {m["mission"] for m in user_progress.get(key, [])}
+        # Base from persisted challenge_progress.json
+        completed = {
+            _normalize_mission_name(str(m.get("mission", "")))
+            for m in user_progress.get(key, [])
+            if isinstance(m, dict)
+        }
+
+        # Live union from datastore for Black Laurels / Order Omega to avoid stale undercounts.
+        if _g.DATASTORE and key in {"black_laurels", "order_omega"}:
+            required_set = BLACK_LAURELS_REQUIRED_MISSIONS if key == "black_laurels" else ORDER_OMEGA_REQUIRED_MISSIONS
+            for rec in _g.DATASTORE.iter_records():
+                brothers = {str(b) for b in (rec.get("brother_ids") or [])}
+                if user_id_str not in brothers:
+                    continue
+
+                if not (rec.get("black_laurels_in_mission") or rec.get("black_laurels_in_difficulty")):
+                    continue
+
+                if key == "order_omega" and (rec.get("difficulty_class") or "") != "omega_ops":
+                    continue
+
+                mission = _normalize_mission_name(rec.get("mission") or rec.get("mission_name") or "")
+                if mission in required_set:
+                    completed.add(mission)
+
+        return completed
 
     def _unique_mission_count(key: str) -> int:
         return len(_unique_missions(key))

@@ -1833,21 +1833,28 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     if len(signed_up) >= total_capacity:
         return False, "This package is already at full capacity."
 
-    # Once all unconstrained slots would be taken, enforce rank reqs for remaining slots
-    # Unconstrained slots = total_capacity - len(line_reqs)
-    unconstrained = total_capacity - len(line_reqs)
-    if len(signed_up) >= unconstrained and line_reqs:
+    # Enforce rank requirements.
+    # A person may sign up on a "free" slot as long as enough remaining slots exist
+    # to still satisfy all uncovered requirements later.  Specifically, block the
+    # incoming member when:
+    #   - there are unsatisfied rank requirements, AND
+    #   - the number of remaining slots (including this one) is exactly equal to
+    #     the number of uncovered requirements (every remaining slot must be
+    #     rank-gated), AND
+    #   - this member cannot fill any of those requirements.
+    if line_reqs:
         uncovered = _remaining_line_requirements(line_reqs, signed_up, guild)
-        if not uncovered:
-            return False, "This package is already at full capacity."
-        member_max_rank = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
-        can_fill = any(
-            member_max_rank >= _RANK_SENIORITY_MAP.get(req, -1)
-            for req in uncovered
-        )
-        if not can_fill:
-            unfilled_str = ", ".join(uncovered)
-            return False, f"The remaining slot(s) require: **{unfilled_str}**. Your current rank does not qualify."
+        if uncovered:
+            member_max_rank = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
+            can_fill = any(
+                member_max_rank >= _RANK_SENIORITY_MAP.get(req, -1)
+                for req in uncovered
+            )
+            slots_remaining = total_capacity - len(signed_up)  # >= 1 (capacity checked above)
+            # Only gate if all remaining slots must be used for rank requirements
+            if not can_fill and len(uncovered) >= slots_remaining:
+                unfilled_str = ", ".join(sorted(set(uncovered)))
+                return False, f"The remaining slot(s) require: **{unfilled_str}**. Your current rank does not qualify."
 
     return True, ""
 
@@ -2118,6 +2125,40 @@ class SignUpView(discord.ui.View):
                 return
             pkg["signed_up"].remove(member.id)
             _save_tp(data)
+
+        # Update the signup embed roster
+        try:
+            resolved_guild = interaction.guild or _get_guild_from_bot()
+            data3 = _load_tp()
+            pkg3 = data3["packages"].get(self.package_id, {})
+            signed_up3 = pkg3.get("signed_up", [])
+            mode3 = pkg3.get("mode", "")
+            total_capacity3 = 3 if "Hard" in mode3 else 5
+            count3 = len(signed_up3)
+            signed_names = []
+            for uid in signed_up3:
+                m2 = resolved_guild.get_member(uid) if resolved_guild else None
+                signed_names.append(m2.display_name if m2 else str(uid))
+            roster_field_name = f"▸ Signed Up ({count3}/{total_capacity3})"
+            roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
+
+            signup_channel_id = pkg3.get("signup_channel_id")
+            signup_message_id = pkg3.get("signup_message_id")
+            if signup_channel_id and signup_message_id and resolved_guild:
+                ch = await _resolve_channel(resolved_guild, int(signup_channel_id))
+                if ch:
+                    msg = await ch.fetch_message(int(signup_message_id))
+                    if msg.embeds:
+                        upd_embed = msg.embeds[0]
+                        new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
+                        upd_embed.clear_fields()
+                        for f in new_fields:
+                            upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
+                        upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
+                        await msg.edit(embed=upd_embed)
+        except Exception as e:
+            _g.logger.debug(f"[TP] Stand Down embed update failed for {self.package_id}: {e}")
+
         await interaction.response.send_message(
             f"{member.display_name} has stood down from `{self.package_id}`.", ephemeral=False
         )
@@ -2423,25 +2464,48 @@ class PackagePaginatorView(discord.ui.View):
         )
 
     def _build_kt_options(self, viewer: discord.Member) -> list:
-        """Build KT select options filtered to the captain's company."""
+        """Build KT select options filtered to the captain's company, excluding KTs at capacity."""
         from .roster_ops import _get_member_company_name
         try:
             from .roster_embeds import _get_kill_teams_for_company
         except Exception:
             _get_kill_teams_for_company = None
         company = _get_member_company_name(viewer)
+
+        # Determine which KTs already have 3 active packages (capped)
+        tp_data = _load_tp()
+        active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
+        kt_active_counts: dict[str, int] = {}
+        for p in tp_data.get("packages", {}).values():
+            kt = p.get("assigned_kt")
+            if kt and p["status"] in active_statuses:
+                kt_active_counts[kt] = kt_active_counts.get(kt, 0) + 1
+        at_capacity = {kt for kt, cnt in kt_active_counts.items() if cnt >= 3}
+
         options = []
         if _is_debug_mode() or not company or not _get_kill_teams_for_company:
             kill_teams = list(_b("KILL_TEAMS") or [])
-            options = [discord.SelectOption(label=kt, value=kt) for kt in kill_teams[:25]]
+            options = [
+                discord.SelectOption(label=kt, value=kt)
+                for kt in kill_teams
+                if kt not in at_capacity
+            ]
         else:
             guild = _get_guild_from_bot()
             if guild:
                 kt_list = _get_kill_teams_for_company(guild, company)
-                options = [discord.SelectOption(label=kt_name, value=kt_name) for kt_name, _, __ in kt_list]
+                options = [
+                    discord.SelectOption(label=kt_name, value=kt_name)
+                    for kt_name, _, __ in kt_list
+                    if kt_name not in at_capacity
+                ]
             if not options:
                 kill_teams = list(_b("KILL_TEAMS") or [])
-                options = [discord.SelectOption(label=kt, value=kt) for kt in kill_teams[:25]]
+                options = [
+                    discord.SelectOption(label=kt, value=kt)
+                    for kt in kill_teams
+                    if kt not in at_capacity
+                ]
         return options[:25]
 
     async def on_kt_select(self, interaction: discord.Interaction):
@@ -2746,13 +2810,19 @@ async def view_target_packages(interaction: discord.Interaction):
     if _is_watch_master(member):
         pkgs = _active()
 
-    # Captain / Lieutenant — distributed + assigned to their company
+    # Captain / Lieutenant — distributed (awaiting assignment) + company packages
+    # already in-flight (recruiting/deployed for tracking); exclude pending_sgt since
+    # the captain already acted and the Sgt needs to accept.
     elif _is_captain_or_lt(member):
         from .roster_ops import _get_member_company_name
         company = _get_member_company_name(member)
         pkgs = [
             p for p in _active()
-            if p.get("assigned_company") == company or p["status"] == STATUS_DISTRIBUTED
+            if p["status"] == STATUS_DISTRIBUTED
+            or (
+                p.get("assigned_company") == company
+                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
+            )
         ]
 
     # Cadre leader — packages needing their cadre's specialists
