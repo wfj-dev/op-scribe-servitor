@@ -1883,97 +1883,6 @@ def _file_kwarg(f: "discord.File | None") -> dict:
     """Return {'file': f} if f is not None, else empty dict. Prevents passing file=None."""
     return {"file": f} if f is not None else {}
 
-
-def _build_status_board_embed(data: dict, viewer: Optional[discord.Member] = None) -> discord.Embed:
-    """Build a compact status board embed."""
-    packages = data.get("packages", {})
-    rep = data.get("rep", 0.0)
-    cycle = data.get("cycle", {})
-
-    active_pkgs = [
-        p for p in packages.values()
-        if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-    ]
-    completed = cycle.get("completed", 0)
-    failed = cycle.get("failed", 0)
-    lapsed = cycle.get("lapsed", 0)
-
-    groups = {}
-    for p in active_pkgs:
-        groups.setdefault(p["status"], []).append(p)
-
-    status_order = [STATUS_UNASSIGNED, STATUS_DISTRIBUTED, STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED]
-    status_labels = {
-        STATUS_UNASSIGNED: "UNASSIGNED",
-        STATUS_DISTRIBUTED: "DISTRIBUTED",
-        STATUS_PENDING_SGT: "PENDING SGT",
-        STATUS_RECRUITING: "RECRUITING",
-        STATUS_DEPLOYED: "DEPLOYED",
-    }
-
-    clearance = _clearance_for_member(viewer)
-
-    embed = discord.Embed(
-        title=f"{_DW_EMOJI} ᴏʀᴅᴏ xᴇɴᴏs ᴛᴀʀɢᴇᴛ ᴘᴋɢs {_DW_EMOJI}",
-        color=0xC4A030,
-    )
-    embed.set_author(
-        name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ",
-    )
-
-    # ▸ Standing
-    embed.add_field(name="▸ Ordo Xenos Standing", value=_rep_display(rep), inline=True)
-
-    # ▸ Cycle report
-    embed.add_field(
-        name="▸ Cycle Report",
-        value=f"Completed: **{completed}**\nFailed: **{failed}**\nLapsed: **{lapsed}**",
-        inline=True,
-    )
-
-    # ▸ Active packages grouped by status
-    if not active_pkgs:
-        embed.add_field(name="▸ Active Packages", value="*No active packages.*", inline=False)
-    else:
-        # Build KT load map: kt_name -> count of active packages
-        kt_load: dict[str, int] = {}
-        for p in active_pkgs:
-            kt = p.get("assigned_kt")
-            if kt:
-                kt_load[kt] = kt_load.get(kt, 0) + 1
-
-        for s in status_order:
-            grp = groups.get(s, [])
-            if not grp:
-                continue
-            lines = []
-            for p in grp[:10]:
-                mode_short = "Ω" if "Omega" in p.get("mode", "") else "HS"
-                kt = p.get("assigned_kt", "")
-                specialists = p.get("assigned_specialist_ids", [])
-                classification = p.get("classification", "")
-                kt_suffix = f" · {kt} [{kt_load.get(kt, 1)}/3]" if kt else ""
-                spc_suffix = f" + {len(specialists)} spc" if specialists else ""
-                cls_suffix = f" · {classification}" if classification else ""
-                lines.append(f"`{p['id']}` · {mode_short}{cls_suffix}{kt_suffix}{spc_suffix}")
-            if len(grp) > 10:
-                lines.append(f"*…and {len(grp) - 10} more*")
-            field_value = "\n".join(lines)
-            if len(field_value) > 1024:
-                field_value = field_value[:1020] + "\n…"
-            embed.add_field(
-                name=f"▸ {status_labels[s]} ({len(grp)})",
-                value=field_value,
-                inline=False,
-            )
-
-    embed.set_footer(
-        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}",
-        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
-    )
-    return embed
-
-
 # ---------------------------------------------------------------------------
 # Persistent views (Sgt accept, KT sign-up, specialist assignment)
 # ---------------------------------------------------------------------------
@@ -2776,6 +2685,21 @@ class PackagePaginatorView(discord.ui.View):
             self._refresh_specialist_btn()
             self._refresh_assign_btn()
 
+    def _refresh_current_package_snapshot(self) -> dict:
+        """Refresh current package from datastore so status changes show live."""
+        if not self.packages:
+            return {}
+        idx = max(0, min(self.index, len(self.packages) - 1))
+        pkg = self.packages[idx]
+        pid = pkg.get("id")
+        if not pid:
+            return pkg
+        latest = (_load_tp().get("packages", {}) or {}).get(pid)
+        if latest:
+            self.packages[idx] = latest
+            return latest
+        return pkg
+
     async def on_select(self, interaction: discord.Interaction):
         pid = interaction.data["values"][0]
         self.index = next((i for i, p in enumerate(self.packages) if p["id"] == pid), self.index)
@@ -2860,7 +2784,7 @@ class PackagePaginatorView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
     async def assign_to_kt(self, interaction: discord.Interaction):
-        pkg = self.packages[self.index]
+        pkg = self._refresh_current_package_snapshot()
         if pkg["status"] != STATUS_DISTRIBUTED:
             await interaction.response.send_message(
                 f"Package `{pkg['id']}` is `{pkg['status']}` — cannot assign.", ephemeral=True
@@ -2907,7 +2831,7 @@ class PackagePaginatorView(discord.ui.View):
         )
 
     async def assign_specialist_btn(self, interaction: discord.Interaction):
-        pkg = self.packages[self.index]
+        pkg = self._refresh_current_package_snapshot()
         if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
             await interaction.response.send_message(
                 f"Package `{pkg['id']}` is `{pkg['status']}` — cannot assign specialist.", ephemeral=True
@@ -2924,6 +2848,7 @@ class PackagePaginatorView(discord.ui.View):
         )
 
     def current_embed(self) -> discord.Embed:
+        self._refresh_current_package_snapshot()
         return _build_package_embed(
             self.packages[self.index],
             self.rep,
@@ -2933,11 +2858,12 @@ class PackagePaginatorView(discord.ui.View):
         )
 
     def current_file(self) -> "discord.File | None":
+        self._refresh_current_package_snapshot()
         return _classification_file(self.packages[self.index])
 
     def _refresh_specialist_btn(self) -> None:
         """Disable Assign Specialist button if current package has no required specialist roles or wrong status."""
-        pkg = self.packages[self.index]
+        pkg = self._refresh_current_package_snapshot()
         needs = (
             bool(set(pkg.get("required_roles", [])) & _CADRE_SPECIALIST_ROLES)
             and pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
@@ -2949,7 +2875,7 @@ class PackagePaginatorView(discord.ui.View):
 
     def _refresh_assign_btn(self) -> None:
         """Disable Assign button when package not DISTRIBUTED or no KT selected."""
-        pkg = self.packages[self.index]
+        pkg = self._refresh_current_package_snapshot()
         can_assign = pkg.get("status") == STATUS_DISTRIBUTED and bool(self.selected_kt)
         for item in self.children:
             if getattr(item, "custom_id", None) == "tp_assign_kt":
@@ -3296,7 +3222,23 @@ async def log_strike_report(
 ):
     package_id = package_id.strip().upper()
     success, msg = await submit_package(package_id, aar_link, interaction.user, interaction.guild)
-    await interaction.response.send_message(msg, ephemeral=not success)
+    if success:
+        embed = discord.Embed(
+            title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ʀᴇᴘᴏʀᴛ ʟᴏɢɢᴇᴅ {_DW_EMOJI}",
+            description=msg,
+            color=0x2ECC71,
+        )
+        embed.add_field(name="Package", value=f"`{package_id}`", inline=True)
+        embed.add_field(name="AAR", value=aar_link, inline=False)
+        completion_img = os.path.join(_ASSETS_DIR, "Mission_Complete.png")
+        if os.path.exists(completion_img):
+            comp_file = discord.File(completion_img, filename="mission_complet.png")
+            embed.set_image(url="attachment://mission_complet.png")
+            await interaction.response.send_message(embed=embed, file=comp_file, ephemeral=False)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=False)
+    else:
+        await interaction.response.send_message(msg, ephemeral=True)
 
 
 # Backward-compatible Python alias for older imports/call sites.
