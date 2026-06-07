@@ -72,6 +72,90 @@ async def _resolve_channel(guild: "discord.Guild | None", channel_id: int):
     except Exception:
         return None
 
+
+async def _track_package_message(package_id: str, msg: "discord.Message | None") -> None:
+    """Persist message references so package cleanup can remove all related embeds."""
+    if not msg or not package_id:
+        return
+
+    channel_id = getattr(getattr(msg, "channel", None), "id", None)
+    message_id = getattr(msg, "id", None)
+    if not channel_id or not message_id:
+        return
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id)
+        if not pkg:
+            return
+        pkg.setdefault("message_refs", [])
+        exists = any(
+            int(ref.get("channel_id", 0) or 0) == int(channel_id)
+            and int(ref.get("message_id", 0) or 0) == int(message_id)
+            for ref in pkg["message_refs"]
+            if isinstance(ref, dict)
+        )
+        if not exists:
+            pkg["message_refs"].append({"channel_id": int(channel_id), "message_id": int(message_id)})
+            _save_tp(data)
+
+
+async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int:
+    """Delete all tracked package messages across channels."""
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id)
+        if not pkg:
+            return 0
+
+        refs: set[tuple[int, int]] = set()
+
+        def _add_ref(ch_id, msg_id):
+            if ch_id and msg_id:
+                try:
+                    refs.add((int(ch_id), int(msg_id)))
+                except Exception:
+                    pass
+
+        _add_ref(pkg.get("sgt_accept_channel_id"), pkg.get("sgt_accept_message_id"))
+        _add_ref(pkg.get("signup_channel_id"), pkg.get("signup_message_id"))
+
+        for ref in pkg.get("specialist_notification_msgs", []):
+            if isinstance(ref, dict):
+                _add_ref(ref.get("channel_id"), ref.get("message_id"))
+
+        for ref in pkg.get("message_refs", []):
+            if isinstance(ref, dict):
+                _add_ref(ref.get("channel_id"), ref.get("message_id"))
+
+    deleted = 0
+    for ch_id, msg_id in refs:
+        try:
+            ch = await _resolve_channel(guild, ch_id)
+            if not ch:
+                continue
+            msg = await ch.fetch_message(msg_id)
+            await msg.delete()
+            deleted += 1
+        except (discord.NotFound, discord.Forbidden):
+            continue
+        except Exception as e:
+            _g.logger.debug(f"[TP] Failed deleting message {msg_id} in {ch_id} for {package_id}: {e}")
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id)
+        if pkg:
+            pkg["sgt_accept_message_id"] = None
+            pkg["sgt_accept_channel_id"] = None
+            pkg["signup_message_id"] = None
+            pkg["signup_channel_id"] = None
+            pkg["specialist_notification_msgs"] = []
+            pkg["message_refs"] = []
+            _save_tp(data)
+
+    return deleted
+
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
     "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho",
@@ -648,6 +732,7 @@ def _generate_single_package(
         "assigned_company": None,
         "sgt_accept_message_id": None,   # message ID of the Sgt accept embed
         "signup_message_id": None,       # message ID of the KT sign-up embed
+        "message_refs": [],              # tracked channel/message refs for cleanup
         "generated_at": now.isoformat(),
         "deadline": deadline.isoformat(),
         "completed_at": None,
@@ -755,9 +840,13 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
             if os.path.exists(_dist_img_path):
                 _dist_file = discord.File(_dist_img_path, filename="priority_op_alert.jpg")
                 dist_embed.set_image(url="attachment://priority_op_alert.jpg")
-                await _notify_send(channel, guild, content=mention_str, embed=dist_embed, file=_dist_file)
+                dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed, file=_dist_file)
             else:
-                await _notify_send(channel, guild, content=mention_str, embed=dist_embed)
+                dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed)
+
+            if dist_msg:
+                for pid in package_ids:
+                    await _track_package_message(pid, dist_msg)
 
 
 async def assign_package_to_kt(
@@ -962,6 +1051,7 @@ async def submit_package(
         _save_tp(data)
 
     await _update_ox_rep_embed(guild)
+    await _delete_package_messages(package_id, guild)
     return True, f"Package `{package_id}` marked completed. Ordo Xenos standing updated."
 
 
@@ -1193,8 +1283,9 @@ async def _notify_kt_assigned(
             data = _load_tp()
             if package_id in data["packages"]:
                 data["packages"][package_id]["sgt_accept_message_id"] = msg.id
-                data["packages"][package_id]["sgt_accept_channel_id"] = getattr(channel, "id", None)
+                data["packages"][package_id]["sgt_accept_channel_id"] = getattr(msg.channel, "id", None)
                 _save_tp(data)
+        await _track_package_message(package_id, msg)
 
 
 # Cadre role → config key mapping
@@ -1269,6 +1360,7 @@ async def _notify_specialist_assigned(
             sent_msg = await _notify_send(cadre_channel, guild, content=specialist_member.mention, embed=embed, **_file_kwarg(_cls_file))
             # Store specialist notification message for later roster updates
             if sent_msg:
+                await _track_package_message(package_id, sent_msg)
                 async with _TP_LOCK:
                     _sp_data = _load_tp()
                     if package_id in _sp_data["packages"]:
@@ -1386,9 +1478,11 @@ async def _notify_cadre_leaders_needed(
             cadre_embed.set_image(url="attachment://specialist_requisition.jpg")
 
         if mentions:
-            await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed, **_file_kwarg(_spec_file))
+            sent_msg = await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed, **_file_kwarg(_spec_file))
+            await _track_package_message(package_id, sent_msg)
         elif _is_debug_mode():
-            await _notify_send(channel, guild, content=f"[{cl_role} — no members found]", embed=cadre_embed, **_file_kwarg(_spec_file))
+            sent_msg = await _notify_send(channel, guild, content=f"[{cl_role} — no members found]", embed=cadre_embed, **_file_kwarg(_spec_file))
+            await _track_package_message(package_id, sent_msg)
 
 
 # ---------------------------------------------------------------------------
@@ -1904,6 +1998,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
                         data2["packages"][package_id]["signup_message_id"] = msg.id
                         data2["packages"][package_id]["signup_channel_id"] = getattr(msg.channel, "id", channel.id)
                         _save_tp(data2)
+                await _track_package_message(package_id, msg)
                 sent = True
             return
 
@@ -1961,11 +2056,15 @@ class SgtAcceptView(discord.ui.View):
     @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_sgt_accept")
     async def accept_orders(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
-        # Must be Sgt of the assigned KT (or admin)
+        # Must be Sgt of the assigned KT.
+        # Debug admin may bypass to help with staging flows.
         from .forge_ops import _resolve_killteam_for_member
-        if not _is_admin(member):
+        if not (_is_debug_mode() and _is_admin(member)):
             if not _has_role(member, "Watch Sergeant"):
-                await interaction.response.send_message("Only the Watch Sergeant may accept these orders.", ephemeral=True)
+                await interaction.response.send_message(
+                    "Only the assigned Kill Team's Watch Sergeant may accept these orders.",
+                    ephemeral=True,
+                )
                 return
             if _resolve_killteam_for_member(member) != self.kt_name:
                 await interaction.response.send_message(f"These orders are addressed to {self.kt_name}.", ephemeral=True)
@@ -2535,14 +2634,36 @@ class PackagePaginatorView(discord.ui.View):
         )
         await interaction.response.send_message(msg, ephemeral=True)
         if success:
+            assigned_pid = pkg["id"]
             self.selected_kt = None
             # Re-disable the Assign button
             for item in self.children:
                 if getattr(item, "custom_id", None) == "tp_assign_kt":
                     item.disabled = True
                     break
+
+            # Live-update the current captain/LT paginator view so assigned package disappears.
+            # For captain/LT views, once assigned it moves to pending_sgt and should no longer appear.
+            if self.viewer and _is_captain_or_lt(self.viewer):
+                self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
+                if not self.packages:
+                    await interaction.edit_original_response(
+                        content="No active target packages for your role.",
+                        embed=None,
+                        view=None,
+                        attachments=[],
+                    )
+                    return
+                self.index = min(self.index, len(self.packages) - 1)
+
             self._refresh_assign_btn()
             self._refresh_specialist_btn()
+            f = self.current_file()
+            await interaction.edit_original_response(
+                embed=self.current_embed(),
+                view=self,
+                attachments=[f] if f else [],
+            )
 
     async def assign_specialist_btn(self, interaction: discord.Interaction):
         pkg = self.packages[self.index]
