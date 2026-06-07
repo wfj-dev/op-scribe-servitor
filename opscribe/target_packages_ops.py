@@ -1232,7 +1232,11 @@ async def submit_package(
             stats["companies"][company]["completed"] += 1
 
         data["cycle"]["completed"] += 1
+        rep_before = float(data.get("rep", 0.0) or 0.0)
         _update_rep(data)
+        rep_after = float(data.get("rep", 0.0) or 0.0)
+        pkg["rep_before"] = rep_before
+        pkg["rep_after"] = rep_after
         _save_tp(data)
 
     await _update_ox_rep_embed(guild)
@@ -3223,12 +3227,25 @@ async def log_strike_report(
     package_id = package_id.strip().upper()
     success, msg = await submit_package(package_id, aar_link, interaction.user, interaction.guild)
     if success:
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id, {})
+        classification = str(pkg.get("classification") or "STRIKE").strip().title()
+        completed_kt = str(pkg.get("assigned_kt") or "Unassigned")
+        rep_before = float(pkg.get("rep_before", data.get("rep", 0.0)) or 0.0)
+        rep_after = float(pkg.get("rep_after", data.get("rep", 0.0)) or 0.0)
+
         embed = discord.Embed(
             title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ʀᴇᴘᴏʀᴛ ʟᴏɢɢᴇᴅ {_DW_EMOJI}",
             description=msg,
             color=0x2ECC71,
         )
-        embed.add_field(name="Package", value=f"`{package_id}`", inline=True)
+        embed.add_field(name=f"{classification} Package", value=f"`{package_id}`", inline=True)
+        embed.add_field(name="Kill Team Completed", value=completed_kt, inline=True)
+        embed.add_field(
+            name="Ordo Xenos Standing",
+            value=f"{rep_before:+.2f} -> {rep_after:+.2f}",
+            inline=False,
+        )
         embed.add_field(name="AAR", value=aar_link, inline=False)
         completion_img = os.path.join(_ASSETS_DIR, "Mission_Complete.png")
         if os.path.exists(completion_img):
