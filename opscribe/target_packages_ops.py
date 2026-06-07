@@ -1021,9 +1021,9 @@ async def expire_packages(guild: discord.Guild) -> None:
 # ---------------------------------------------------------------------------
 
 _DISTRIBUTE_FLAVOR = [
-    "Astropathic relay inbound. Watch Captains to the strategium — {count} target package{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.",
-    "Ordo Xenos datalink established. {count} target package{s} received and logged to the strategium. Watch Captains, move to review.",
-    "Intelligence packet cleared Vermillion. {count} target package{s} routed to Watch Fortress Jericho command. Captains — your orders await.",
+    "Astropathic relay inbound. Watch Captains to the strategium — {count} target package{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.\nUse `/view_target_packages` to review and assign to your Kill Teams.",
+    "Ordo Xenos datalink established. {count} target package{s} received and logged to the strategium. Watch Captains, move to review.\nUse `/view_target_packages` to assign packages to your Kill Teams.",
+    "Intelligence packet cleared Vermillion. {count} target package{s} routed to Watch Fortress Jericho command. Captains — your orders await.\nUse `/view_target_packages` to review and assign.",
 ]
 
 _KT_ASSIGN_FLAVOR = [
@@ -1040,37 +1040,37 @@ _KT_READY_FLAVOR = [
 
 _CADRE_FLAVOR = {
     "Forgemaster": [
-        "Armoury requisition flagged. Package `{pid}` requires Techmarine or Dreadnought attachment. Forgemaster — assign as required.",
-        "Forge-lord, your expertise is called upon. Package `{pid}` requires a specialist from your cadre. Use `/assign_package` to attach.",
+        "{kt} of {company} requires Techmarine or Dreadnought attachment on Target Package `{pid}`. Forgemaster — designate your specialist.\nUse `/view_target_packages` to assign.",
+        "Forge-lord, {kt} needs a specialist from your cadre for Target Package `{pid}`. Forge-bond required before deployment.\nUse `/view_target_packages` to assign.",
     ],
     "Chief Apothecary": [
-        "Apothecarion requisition logged. Package `{pid}` requires an Apothecary. Chief Apothecary — designate your brother.",
-        "Chief Apothecary, the field requires your cadre's hand. Package `{pid}` awaits specialist attachment.",
+        "{kt} of {company} requires an Apothecary on Target Package `{pid}`. Chief Apothecary — designate your brother.\nUse `/view_target_packages` to assign.",
+        "Chief Apothecary, {kt} needs your cadre's hand. Target Package `{pid}` cannot deploy without an Apothecary.\nUse `/view_target_packages` to assign.",
     ],
     "High Chaplain": [
-        "Reclusiam requisition raised. Package `{pid}` requires a Chaplain. High Chaplain — assign from your cadre.",
-        "High Chaplain, spiritual authority is required in the field. Package `{pid}` awaits your designation.",
+        "Reclusiam requisition raised. {kt} of {company} requires a Chaplain on Target Package `{pid}`. High Chaplain — assign from your cadre.\nUse `/view_target_packages` to assign.",
+        "High Chaplain, {kt} needs spiritual authority in the field. Target Package `{pid}` awaits your designation.\nUse `/view_target_packages` to assign.",
     ],
     "Void Warden": [
-        "Librarius requisition transmitted. Package `{pid}` requires a Librarian. Void Warden — assign as required.",
-        "Void Warden, the psyker's gift is needed. Package `{pid}` is awaiting Librarian attachment.",
+        "Librarius requisition transmitted. {kt} of {company} requires a Librarian on Target Package `{pid}`. Void Warden — assign as required.\nUse `/view_target_packages` to assign.",
+        "Void Warden, the psyker's gift is needed by {kt}. Target Package `{pid}` awaits Librarian attachment.\nUse `/view_target_packages` to assign.",
     ],
     "Castellan": [
-        "Watch Keeper requisition flagged. Package `{pid}` requires a Keeper. Castellan — designate your operative.",
-        "Castellan, your intelligence cadre is required. Package `{pid}` awaits Watch Keeper attachment.",
+        "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Target Package `{pid}`. Castellan — designate your operative.\nUse `/view_target_packages` to assign.",
+        "Castellan, your intelligence cadre is needed by {kt}. Target Package `{pid}` awaits Watch Keeper attachment.\nUse `/view_target_packages` to assign.",
     ],
     "Lord Executioner": [
-        "Champion requisition raised. Package `{pid}` requires a Champion attached. Lord Executioner — designate as required.",
-        "Lord Executioner, martial authority is required on the ground. Package `{pid}` awaits Champion assignment.",
+        "Champion requisition raised. {kt} of {company} requires a Champion on Target Package `{pid}`. Lord Executioner — designate as required.\nUse `/view_target_packages` to assign.",
+        "Lord Executioner, {kt} needs martial authority on Target Package `{pid}`. Champion assignment required before deployment.\nUse `/view_target_packages` to assign.",
     ],
     "Huntmaster": [
-        "Huntmaster, your personal engagement is required. Package `{pid}` demands your direct participation.",
-        "Huntmaster — you are called to the field. Package `{pid}` awaits your compliance.",
+        "Huntmaster, {kt} of {company} requires your personal engagement on Target Package `{pid}`. Your direct participation is demanded.\nUse `/view_target_packages` to assign yourself.",
+        "Huntmaster — {kt} is called to the field on Target Package `{pid}` and requires you. Await no further orders.\nUse `/view_target_packages` to assign yourself.",
     ],
 }
 
 _CADRE_DEFAULT_FLAVOR = [
-    "Specialist requisition logged. Package `{pid}` requires: {roles}. Cadre leaders — assign as required using `/assign_package`.",
+    "{kt} of {company} requires specialists on Target Package `{pid}`: {roles}. Cadre leaders — assign as required.\nUse `/view_target_packages` to assign.",
 ]
 
 
@@ -1290,7 +1290,13 @@ async def _notify_cadre_leaders_needed(
                 mentions.append(m.mention)
 
         flavor_pool = _CADRE_FLAVOR.get(cl_role, _CADRE_DEFAULT_FLAVOR)
-        flavor = random.choice(flavor_pool).format(pid=package_id, roles=", ".join(owned_roles))
+        # Load KT and company context for this package
+        _pkg_data = _load_tp()["packages"].get(package_id, {})
+        _kt = _pkg_data.get("assigned_kt", "the assigned Kill Team")
+        _company = _pkg_data.get("assigned_company", "Watch Fortress Jericho")
+        flavor = random.choice(flavor_pool).format(
+            pid=package_id, roles=", ".join(owned_roles), kt=_kt, company=_company
+        )
 
         cadre_embed = discord.Embed(
             title=f"{_DW_EMOJI} sᴘᴇᴄɪᴀʟɪsᴛ ʀᴇQᴜɪsɪᴛɪᴏɴ {_DW_EMOJI}",
@@ -1300,11 +1306,15 @@ async def _notify_cadre_leaders_needed(
         cadre_embed.set_footer(
             text=f"ᴘᴋɢ `{package_id}` · ᴄʟᴇᴀʀᴀɴᴄᴇ: ʀᴏsᴇᴛᴛᴇ",
         )
+        _spec_img = os.path.join(_ASSETS_DIR, "priority operation orders special assignment.jpg")
+        _spec_file = discord.File(_spec_img, filename="specialist_requisition.jpg") if os.path.exists(_spec_img) else None
+        if _spec_file:
+            cadre_embed.set_image(url="attachment://specialist_requisition.jpg")
 
         if mentions:
-            await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed)
+            await _notify_send(channel, guild, content=" ".join(mentions), embed=cadre_embed, **_file_kwarg(_spec_file))
         elif _is_debug_mode():
-            await _notify_send(channel, guild, content=f"[{cl_role} — no members found]", embed=cadre_embed)
+            await _notify_send(channel, guild, content=f"[{cl_role} — no members found]", embed=cadre_embed, **_file_kwarg(_spec_file))
 
 
 # ---------------------------------------------------------------------------
@@ -1965,13 +1975,27 @@ class SpecialistAssignView(discord.ui.View):
 
         # Build filtered member list: only members who hold a CADRE SPECIALIST role
         # (line roles like Watch Veteran / Oathsworn sign up via Comply, not here)
+        # Also excludes specialists already locked on another active package.
         cadre_roles_needed = [r for r in required_roles if r in _CADRE_SPECIALIST_ROLES]
+
+        # Collect IDs already locked on an active package (excluding this one)
+        _tp_data = _load_tp()
+        _active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
+        already_assigned: set = set()
+        for _p in _tp_data.get("packages", {}).values():
+            if _p["id"] == package_id:
+                continue
+            if _p["status"] in _active_statuses:
+                already_assigned.update(_p.get("assigned_specialist_ids", []))
+
         options = []
         seen = set()
         for role_name in cadre_roles_needed:
             for m in (guild.members if guild else []):
                 if m.bot or m.id in seen:
                     continue
+                if m.id in already_assigned:
+                    continue  # already on another package
                 if any((getattr(r, "name", "") or "").strip() == role_name for r in getattr(m, "roles", [])):
                     options.append(discord.SelectOption(
                         label=m.display_name[:100],
