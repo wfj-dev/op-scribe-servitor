@@ -10,6 +10,7 @@ import json
 import random
 import string
 import asyncio
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import sys as _sys
@@ -47,6 +48,29 @@ def _get_guild_from_bot() -> "discord.Guild | None":
     if guild_id:
         return bot.get_guild(int(guild_id))
     return next(iter(bot.guilds), None)
+
+
+async def _resolve_channel(guild: "discord.Guild | None", channel_id: int):
+    """Resolve a channel from cache, then API as fallback."""
+    if not channel_id:
+        return None
+
+    ch = guild.get_channel(int(channel_id)) if guild else None
+    if ch:
+        return ch
+
+    bot = getattr(_g, "bot", None) or _b("bot")
+    if not bot:
+        return None
+
+    ch = bot.get_channel(int(channel_id))
+    if ch:
+        return ch
+
+    try:
+        return await bot.fetch_channel(int(channel_id))
+    except Exception:
+        return None
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -1260,7 +1284,7 @@ async def _notify_specialist_assigned(
     signup_message_id = pkg.get("signup_message_id")
     if signup_channel_id and signup_message_id:
         try:
-            ch = guild.get_channel(int(signup_channel_id))
+            ch = await _resolve_channel(guild, int(signup_channel_id))
             if ch:
                 msg = await ch.fetch_message(int(signup_message_id))
                 # Rebuild specialist list
@@ -1714,6 +1738,38 @@ def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dic
     return member_company == assigned_company or is_hc
 
 
+def _remaining_line_requirements(line_reqs: list[str], member_ids: list[int], guild: discord.Guild) -> list[str]:
+    """Return unsatisfied line requirements after greedily assigning each signer to one requirement.
+
+    Supports duplicate requirements by consuming counts from a multiset.
+    """
+    remaining = Counter(line_reqs)
+    if not remaining:
+        return []
+
+    for uid in member_ids:
+        m = guild.get_member(uid) if guild else None
+        if not m:
+            continue
+        m_roles = _member_role_names(m)
+        m_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m_roles), default=-1)
+        if m_max < 0:
+            continue
+
+        satisfiable = [
+            req for req, cnt in remaining.items()
+            if cnt > 0 and m_max >= _RANK_SENIORITY_MAP.get(req, -1)
+        ]
+        if not satisfiable:
+            continue
+
+        # Consume the hardest requirement this member can fill.
+        chosen = max(satisfiable, key=lambda req: _RANK_SENIORITY_MAP.get(req, -1))
+        remaining[chosen] -= 1
+
+    return list(remaining.elements())
+
+
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
     """Return (eligible, reason). Watch Brother+ check, unit scope, not already signed up."""
     if member.bot or not _is_active(member):
@@ -1781,20 +1837,7 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     # Unconstrained slots = total_capacity - len(line_reqs)
     unconstrained = total_capacity - len(line_reqs)
     if len(signed_up) >= unconstrained and line_reqs:
-        # Find which line reqs are already covered
-        covered_reqs: set = set()
-        for uid in signed_up:
-            m2 = guild.get_member(uid) if guild else None
-            if not m2:
-                continue
-            m2_roles = _member_role_names(m2)
-            for req in line_reqs:
-                if req not in covered_reqs:
-                    req_idx = _RANK_SENIORITY_MAP.get(req, -1)
-                    m2_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m2_roles), default=-1)
-                    if m2_max >= req_idx:
-                        covered_reqs.add(req)
-        uncovered = [r for r in line_reqs if r not in covered_reqs]
+        uncovered = _remaining_line_requirements(line_reqs, signed_up, guild)
         if not uncovered:
             return False, "This package is already at full capacity."
         member_max_rank = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
@@ -1852,7 +1895,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
                     data2 = _load_tp()
                     if package_id in data2["packages"]:
                         data2["packages"][package_id]["signup_message_id"] = msg.id
-                        data2["packages"][package_id]["signup_channel_id"] = channel.id
+                        data2["packages"][package_id]["signup_channel_id"] = getattr(msg.channel, "id", channel.id)
                         _save_tp(data2)
                 sent = True
             return
@@ -1876,19 +1919,8 @@ def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
     # Check line role requirements covered by signed-up members
     line_reqs = [r for r in req_roles if r not in _CADRE_SPECIALIST_ROLES]
     if line_reqs:
-        covered: set = set()
-        for uid in signed_up:
-            m = guild.get_member(uid) if guild else None
-            if not m:
-                continue
-            m_roles = _member_role_names(m)
-            for req in line_reqs:
-                if req not in covered:
-                    req_idx = _RANK_SENIORITY_MAP.get(req, -1)
-                    m_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m_roles), default=-1)
-                    if m_max >= req_idx:
-                        covered.add(req)
-        if not all(r in covered for r in line_reqs):
+        uncovered = _remaining_line_requirements(line_reqs, signed_up, guild)
+        if uncovered:
             return False
 
     # Check cadre specialist requirements
@@ -2017,12 +2049,6 @@ class SignUpView(discord.ui.View):
         total_capacity = 3 if "Hard" in mode else 5
         count = len(signed_up)
 
-        status_indicator = "🟢 **DEPLOYED**" if pkg2["status"] == STATUS_DEPLOYED else f"🟡 **RECRUITING** ({count}/{total_capacity} brothers)"
-        await interaction.response.send_message(
-            f"{status_indicator}\n{member.display_name} complied with orders for `{self.package_id}`.",
-            ephemeral=False,
-        )
-
         # Update the sign-up embed to show current roster
         try:
             resolved_guild = guild or _get_guild_from_bot()
@@ -2037,12 +2063,12 @@ class SignUpView(discord.ui.View):
             signup_channel_id = pkg2.get("signup_channel_id")
             signup_message_id = pkg2.get("signup_message_id")
             if signup_channel_id and signup_message_id and resolved_guild:
-                ch = resolved_guild.get_channel(int(signup_channel_id))
+                ch = await _resolve_channel(resolved_guild, int(signup_channel_id))
                 if ch:
                     msg = await ch.fetch_message(int(signup_message_id))
                     if msg.embeds:
                         upd_embed = msg.embeds[0]
-                        new_fields = [f for f in upd_embed.fields if f.name != "▸ Signed Up"]
+                        new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
                         upd_embed.clear_fields()
                         for f in new_fields:
                             upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
@@ -2056,22 +2082,22 @@ class SignUpView(discord.ui.View):
                     sp_msg_id = sp_msg_ref.get("message_id")
                     if not sp_ch_id or not sp_msg_id or not resolved_guild:
                         continue
-                    sp_ch = resolved_guild.get_channel(int(sp_ch_id))
+                    sp_ch = await _resolve_channel(resolved_guild, int(sp_ch_id))
                     if not sp_ch:
                         continue
                     sp_msg = await sp_ch.fetch_message(int(sp_msg_id))
                     if sp_msg.embeds:
                         sp_embed = sp_msg.embeds[0]
-                        sp_fields = [f for f in sp_embed.fields if f.name != "▸ Signed Up"]
+                        sp_fields = [f for f in sp_embed.fields if not f.name.startswith("▸ Signed Up")]
                         sp_embed.clear_fields()
                         for f in sp_fields:
                             sp_embed.add_field(name=f.name, value=f.value, inline=f.inline)
                         sp_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await sp_msg.edit(embed=sp_embed)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    _g.logger.debug(f"[TP] Failed specialist roster update for {self.package_id}: {e}")
+        except Exception as e:
+            _g.logger.debug(f"[TP] Failed signup roster update for {self.package_id}: {e}")
 
     @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
     async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
