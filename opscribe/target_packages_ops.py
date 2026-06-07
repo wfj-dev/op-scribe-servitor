@@ -681,7 +681,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             )
             if actor:
                 wm_embed.set_author(
-                    name=f"Watch Master {actor.display_name}",
+                    name=actor.display_name,
                     icon_url=actor.display_avatar.url if actor.display_avatar else None,
                 )
             wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
@@ -1486,15 +1486,15 @@ def _build_package_embed(
 
     # ▸ Intel section
     intel_lines = [
-        f"ᴛʜᴇᴀᴛʀᴇ: **{node}**",
-        f"ᴏᴘᴇʀᴀᴛɪᴏɴ: **{op_name}**",
-        f"ᴄʟᴀssɪғɪᴄᴀᴛɪᴏɴ: **{pkg.get('classification', 'STRIKE')}**",
-        f"ᴍᴏᴅᴇ: **{mode_short}**",
-        f"ᴅᴇᴀᴅʟɪɴᴇ: **{deadline_str or '—'}**",
-        f"sᴛᴀᴛᴜs: **{status_str}**",
+        f"**ᴛʜᴇᴀᴛʀᴇ:** {node}",
+        f"**ᴏᴘᴇʀᴀᴛɪᴏɴ:** {op_name}",
+        f"**ᴄʟᴀssɪғɪᴄᴀᴛɪᴏɴ:** {pkg.get('classification', 'STRIKE')}",
+        f"**ᴍᴏᴅᴇ:** {mode_short}",
+        f"**ᴅᴇᴀᴅʟɪɴᴇ:** {deadline_str or '—'}",
+        f"**sᴛᴀᴛᴜs:** {status_str}",
     ]
     if req_roles:
-        intel_lines.append(f"ʀᴇQᴜɪʀᴇᴅ: **{', '.join(req_roles)}**")
+        intel_lines.append(f"**ʀᴇQᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
     intel_value = "\n".join(intel_lines)
     if len(intel_value) > 1024:
         intel_value = intel_value[:1020] + "\n…"
@@ -2321,6 +2321,7 @@ class PackagePaginatorView(discord.ui.View):
         self.index = 0
         self.show_distribute = show_distribute
         self.viewer = viewer
+        self.selected_kt: str | None = None
 
         if show_distribute:
             distribute_btn = discord.ui.Button(
@@ -2331,12 +2332,22 @@ class PackagePaginatorView(discord.ui.View):
             distribute_btn.callback = self.distribute_all
             self.add_item(distribute_btn)
 
-        # Captain: "Assign to KT" button — only on captain/cadre views, not the WM request board
+        # Captain: inline KT select + green Assign button
         if not show_distribute and viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant") or _is_admin(viewer)):
+            kt_options = self._build_kt_options(viewer)
+            if kt_options:
+                kt_select = discord.ui.Select(
+                    placeholder="Select Kill Team…",
+                    options=kt_options,
+                    custom_id="tp_kt_select_inline",
+                )
+                kt_select.callback = self.on_kt_select
+                self.add_item(kt_select)
             assign_btn = discord.ui.Button(
-                label="Assign to Kill Team",
-                style=discord.ButtonStyle.primary,
+                label="Assign",
+                style=discord.ButtonStyle.success,
                 custom_id="tp_assign_kt",
+                disabled=True,  # enabled once a KT is selected
             )
             assign_btn.callback = self.assign_to_kt
             self.add_item(assign_btn)
@@ -2385,6 +2396,37 @@ class PackagePaginatorView(discord.ui.View):
             attachments=[f] if f else [],
         )
 
+    def _build_kt_options(self, viewer: discord.Member) -> list:
+        """Build KT select options filtered to the captain's company."""
+        from .roster_ops import _get_member_company_name
+        try:
+            from .roster_embeds import _get_kill_teams_for_company
+        except Exception:
+            _get_kill_teams_for_company = None
+        company = _get_member_company_name(viewer)
+        options = []
+        if _is_debug_mode() or not company or not _get_kill_teams_for_company:
+            kill_teams = list(_b("KILL_TEAMS") or [])
+            options = [discord.SelectOption(label=kt, value=kt) for kt in kill_teams[:25]]
+        else:
+            guild = _get_guild_from_bot()
+            if guild:
+                kt_list = _get_kill_teams_for_company(guild, company)
+                options = [discord.SelectOption(label=kt_name, value=kt_name) for kt_name, _, __ in kt_list]
+            if not options:
+                kill_teams = list(_b("KILL_TEAMS") or [])
+                options = [discord.SelectOption(label=kt, value=kt) for kt in kill_teams[:25]]
+        return options[:25]
+
+    async def on_kt_select(self, interaction: discord.Interaction):
+        self.selected_kt = interaction.data["values"][0]
+        # Enable the Assign button
+        for item in self.children:
+            if getattr(item, "custom_id", None) == "tp_assign_kt":
+                item.disabled = False
+                break
+        await interaction.response.edit_message(view=self)
+
     async def assign_to_kt(self, interaction: discord.Interaction):
         pkg = self.packages[self.index]
         if pkg["status"] != STATUS_DISTRIBUTED:
@@ -2392,10 +2434,25 @@ class PackagePaginatorView(discord.ui.View):
                 f"Package `{pkg['id']}` is `{pkg['status']}` — cannot assign.", ephemeral=True
             )
             return
-        view = AssignToKTView(package_id=pkg["id"], member=interaction.user, guild=interaction.guild or _get_guild_from_bot())
-        await interaction.response.send_message(
-            f"Select the Kill Team role to assign `{pkg['id']}` to:", view=view, ephemeral=True
+        if not self.selected_kt:
+            await interaction.response.send_message("Select a Kill Team first.", ephemeral=True)
+            return
+        member = interaction.user
+        from .roster_ops import _get_member_company_name
+        company = _get_member_company_name(member) or ("Debug" if _is_debug_mode() else None)
+        success, msg = await assign_package_to_kt(
+            pkg["id"], self.selected_kt, company, member, interaction.guild or _get_guild_from_bot()
         )
+        await interaction.response.send_message(msg, ephemeral=True)
+        if success:
+            self.selected_kt = None
+            # Re-disable the Assign button
+            for item in self.children:
+                if getattr(item, "custom_id", None) == "tp_assign_kt":
+                    item.disabled = True
+                    break
+            self._refresh_assign_btn()
+            self._refresh_specialist_btn()
 
     async def assign_specialist_btn(self, interaction: discord.Interaction):
         pkg = self.packages[self.index]
@@ -2439,12 +2496,16 @@ class PackagePaginatorView(discord.ui.View):
                 break
 
     def _refresh_assign_btn(self) -> None:
-        """Disable Assign to KT button when package is not DISTRIBUTED."""
+        """Disable Assign button when package not DISTRIBUTED or no KT selected."""
         pkg = self.packages[self.index]
+        can_assign = pkg.get("status") == STATUS_DISTRIBUTED and bool(self.selected_kt)
         for item in self.children:
             if getattr(item, "custom_id", None) == "tp_assign_kt":
-                item.disabled = pkg.get("status") != STATUS_DISTRIBUTED
+                item.disabled = not can_assign
                 break
+        # Also reset selection when navigating away from a DISTRIBUTED package
+        if pkg.get("status") != STATUS_DISTRIBUTED:
+            self.selected_kt = None
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
     async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
