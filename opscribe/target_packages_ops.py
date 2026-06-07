@@ -1864,6 +1864,36 @@ def _remaining_line_requirements(line_reqs: list[str], member_ids: list[int], gu
     return list(remaining.elements())
 
 
+def _remaining_cadre_requirements(
+    cadre_reqs: list[str],
+    signed_up_ids: list[int],
+    specialist_ids: list[int],
+    guild: discord.Guild,
+) -> list[str]:
+    """Return unsatisfied cadre requirements after consuming specialists/signed-up members.
+
+    Cadre requirements are exact-role matches (no rank-seniority substitution).
+    """
+    remaining = Counter(cadre_reqs)
+    if not remaining:
+        return []
+
+    # Attached specialists should satisfy first, then signed-up roster members.
+    ordered_ids = list(dict.fromkeys(list(specialist_ids) + list(signed_up_ids)))
+    for uid in ordered_ids:
+        m = guild.get_member(uid) if guild else None
+        if not m:
+            continue
+        m_roles = _member_role_names(m)
+        satisfiable = [req for req, cnt in remaining.items() if cnt > 0 and req in m_roles]
+        if not satisfiable:
+            continue
+        chosen = satisfiable[0]
+        remaining[chosen] -= 1
+
+    return list(remaining.elements())
+
+
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
     """Return (eligible, reason). Watch Brother+ check, unit scope, not already signed up."""
     if member.bot or not _is_active(member):
@@ -1922,33 +1952,28 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     total_capacity = 3 if "Hard" in mode else 5
     req_roles = pkg.get("required_roles", [])
     line_reqs = [r for r in req_roles if r not in _CADRE_SPECIALIST_ROLES]
+    cadre_reqs = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
     signed_up = pkg.get("signed_up", [])
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
 
     if len(signed_up) >= total_capacity:
         return False, "This package is already at full capacity."
 
-    # Enforce rank requirements.
-    # A person may sign up on a "free" slot as long as enough remaining slots exist
-    # to still satisfy all uncovered requirements later.  Specifically, block the
-    # incoming member when:
-    #   - there are unsatisfied rank requirements, AND
-    #   - the number of remaining slots (including this one) is exactly equal to
-    #     the number of uncovered requirements (every remaining slot must be
-    #     rank-gated), AND
-    #   - this member cannot fill any of those requirements.
-    if line_reqs:
-        uncovered = _remaining_line_requirements(line_reqs, signed_up, guild)
-        if uncovered:
-            member_max_rank = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
-            can_fill = any(
-                member_max_rank >= _RANK_SENIORITY_MAP.get(req, -1)
-                for req in uncovered
-            )
-            slots_remaining = total_capacity - len(signed_up)  # >= 1 (capacity checked above)
-            # Only gate if all remaining slots must be used for rank requirements
-            if not can_fill and len(uncovered) >= slots_remaining:
-                unfilled_str = ", ".join(sorted(set(uncovered)))
-                return False, f"The remaining slot(s) require: **{unfilled_str}**. Your current rank does not qualify."
+    # Feasibility gate: simulate this member signing up and ensure the remaining
+    # slots are still sufficient to satisfy all unresolved requirements.
+    projected_signed = list(signed_up) + [member.id]
+    projected_uncovered_line = (
+        _remaining_line_requirements(line_reqs, projected_signed, guild) if line_reqs else []
+    )
+    projected_uncovered_cadre = (
+        _remaining_cadre_requirements(cadre_reqs, projected_signed, specialist_ids, guild) if cadre_reqs else []
+    )
+    slots_after_signup = total_capacity - len(projected_signed)
+    remaining_required_slots = len(projected_uncovered_line) + len(projected_uncovered_cadre)
+    if remaining_required_slots > slots_after_signup:
+        unfilled = sorted(set(projected_uncovered_line + projected_uncovered_cadre))
+        unfilled_str = ", ".join(unfilled)
+        return False, f"The remaining slot(s) require: **{unfilled_str}**. Your current rank/roles do not qualify."
 
     return True, ""
 
@@ -2025,14 +2050,16 @@ def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
         if uncovered:
             return False
 
-    # Check cadre specialist requirements
+    # Check cadre specialist requirements.
+    # A cadre requirement may be satisfied by an attached specialist OR by a
+    # signed-up member who explicitly holds that cadre role.
     cadre_reqs = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
     if not cadre_reqs:
         return True
-    specialist_ids = set(pkg.get("assigned_specialist_ids", []))
-    for r in cadre_reqs:
-        if not _role_satisfied_by_unit_ids(r, specialist_ids, pkg, guild):
-            return False
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    uncovered_cadre = _remaining_cadre_requirements(cadre_reqs, signed_up, specialist_ids, guild)
+    if uncovered_cadre:
+        return False
     return True
 
 
@@ -2125,22 +2152,26 @@ class SignUpView(discord.ui.View):
             await interaction.response.send_message(reason, ephemeral=True)
             return
 
+        # Acknowledge promptly so long-running embed updates do not trigger
+        # "Interaction Failed" while still allowing follow-up messaging.
+        await interaction.response.defer(ephemeral=True)
+
         async with _TP_LOCK:
             data2 = _load_tp()
             pkg2 = data2["packages"].get(self.package_id)
             if not pkg2:
-                await interaction.response.send_message("Package not found.", ephemeral=True)
+                await interaction.followup.send("Package not found.", ephemeral=True)
                 return
             if pkg2.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
-                await interaction.response.send_message("This package is no longer accepting sign-ups.", ephemeral=True)
+                await interaction.followup.send("This package is no longer accepting sign-ups.", ephemeral=True)
                 return
             eligible2, reason2 = _is_eligible_to_sign_up(member, pkg2, guild)
             if not eligible2:
-                await interaction.response.send_message(reason2, ephemeral=True)
+                await interaction.followup.send(reason2, ephemeral=True)
                 return
             pkg2.setdefault("signed_up", [])
             if member.id in pkg2["signed_up"]:
-                await interaction.response.send_message("Already signed up.", ephemeral=True)
+                await interaction.followup.send("Already signed up.", ephemeral=True)
                 return
             pkg2["signed_up"].append(member.id)
 
@@ -2204,6 +2235,11 @@ class SignUpView(discord.ui.View):
                     _g.logger.debug(f"[TP] Failed specialist roster update for {self.package_id}: {e}")
         except Exception as e:
             _g.logger.debug(f"[TP] Failed signup roster update for {self.package_id}: {e}")
+
+        await interaction.followup.send(
+            f"Registered for package `{self.package_id}` ({count}/{total_capacity}).",
+            ephemeral=True,
+        )
 
     @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
     async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
