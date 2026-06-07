@@ -164,12 +164,12 @@ _DISCORD_MSG_URL_RE = re.compile(
 )
 
 
-async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple[Optional[str], Optional[str]]:
-    """Attach target package metadata to the submitted AAR record, if present.
+def _resolve_aar_record_for_link(aar_link: str) -> tuple[Optional[str], Optional[dict]]:
+    """Resolve datastore AAR record from a Discord message URL.
 
-    Returns (aar_record_id, canonical_message_url) when linked, else (None, None).
+    Returns (aar_record_key, record) if found, else (None, None).
     """
-    if not package_id or not aar_link:
+    if not aar_link:
         return None, None
 
     ds = getattr(_g, "DATASTORE", None)
@@ -182,13 +182,49 @@ async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple
         message_id = m.group(1)
 
     record = ds.get_record(message_id) if message_id else None
+    key = str((record or {}).get("aar_id") or message_id or "")
+
     if not record:
         # Fallback by direct URL match in case format differs.
         for rec in ds.iter_records():
             if (rec.get("message_url") or "").strip() == aar_link.strip():
                 record = rec
-                message_id = str(rec.get("aar_id") or message_id or "")
+                key = str(rec.get("aar_id") or message_id or "")
                 break
+
+    if not record:
+        return None, None
+
+    if not key:
+        key = str(record.get("aar_id") or "")
+    return (key or None), record
+
+
+def _canonical_mission_name(name: str) -> str:
+    """Normalize mission name for safe equality checks."""
+    val = (name or "").lower()
+    val = re.sub(r"<@&\d+>", "", val)
+    val = re.sub(r"\s+", " ", val).strip()
+    return val
+
+
+def _expected_difficulty_for_mode(mode: str) -> str:
+    return "omega_ops" if "Omega" in (mode or "") else "hard_stratagem"
+
+
+async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple[Optional[str], Optional[str]]:
+    """Attach target package metadata to the submitted AAR record, if present.
+
+    Returns (aar_record_id, canonical_message_url) when linked, else (None, None).
+    """
+    if not package_id or not aar_link:
+        return None, None
+
+    ds = getattr(_g, "DATASTORE", None)
+    if ds is None:
+        return None, None
+
+    key, record = _resolve_aar_record_for_link(aar_link)
 
     if not record:
         _g.logger.debug(f"[TP] AAR link not found in datastore for package {package_id}: {aar_link}")
@@ -202,7 +238,7 @@ async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple
     updated["target_package_ids"] = pkg_ids
 
     # Persist under canonical key if possible.
-    key = str(updated.get("aar_id") or message_id or "")
+    key = str(updated.get("aar_id") or key or "")
     if not key:
         _g.logger.debug(f"[TP] Could not resolve datastore key for package {package_id} attachment")
         return None, None
@@ -262,6 +298,9 @@ _STRAT_TABLE = {
      2: (3, 2),
      3: (4, 2),
 }
+
+# Generator switch: disable Omega packages temporarily when needed.
+ENABLE_OMEGA_PACKAGES = False
 
 # Chaos-only mission IDs that force Intel Lapse — sourced from operations.json intel_lapse_forced field.
 # Do not hardcode here; the generation code reads directly from the ops data.
@@ -769,7 +808,10 @@ def _generate_single_package(
     intel_lapse_forced = bool(op_data.get("intel_lapse_forced", False))
     classification = _OBJECTIVE_CLASSIFICATION.get(op_data.get("objective_type", ""), "STRIKE")
 
-    mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[70, 30])[0]
+    if ENABLE_OMEGA_PACKAGES:
+        mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[70, 30])[0]
+    else:
+        mode = "Hard-Strat"
 
     tier_key, req_roles = _draw_requirement_tier(available_roles, mode=mode)
     strats = _draw_strats(rep, active_strats, mode=mode)
@@ -1101,6 +1143,42 @@ async def submit_package(
                 f"Signed up: {signed}/{min_p} minimum brothers."
             )
 
+        # Validate linked AAR content against package contract.
+        aar_key, aar_record = _resolve_aar_record_for_link(aar_link)
+        if not aar_record:
+            return False, "AAR link could not be resolved to an ingested AAR record."
+
+        expected_brothers = {
+            int(uid)
+            for uid in (pkg.get("signed_up", []) + pkg.get("assigned_specialist_ids", []))
+            if str(uid).strip()
+        }
+        aar_brothers: set[int] = set()
+        for uid in aar_record.get("brother_ids", []) or []:
+            try:
+                aar_brothers.add(int(uid))
+            except Exception:
+                continue
+        if aar_brothers != expected_brothers:
+            return False, (
+                "AAR team roster does not match package roster "
+                f"(expected {len(expected_brothers)}, got {len(aar_brothers)})."
+            )
+
+        expected_mission = str(pkg.get("mission_id") or "")
+        for op in (_load_operations() or []):
+            if op.get("id") == pkg.get("mission_id"):
+                expected_mission = str(op.get("name") or expected_mission)
+                break
+        aar_mission = str(aar_record.get("mission") or aar_record.get("mission_name") or "")
+        if _canonical_mission_name(aar_mission) != _canonical_mission_name(expected_mission):
+            return False, "AAR mission does not match target package mission."
+
+        expected_diff = _expected_difficulty_for_mode(pkg.get("mode", ""))
+        aar_diff = str(aar_record.get("difficulty_class") or "").strip().lower()
+        if aar_diff != expected_diff:
+            return False, "AAR difficulty does not match target package mode."
+
         pkg["status"] = STATUS_COMPLETED
         pkg["completed_at"] = datetime.now(timezone.utc).isoformat()
         pkg["submitted_by"] = submitter.id
@@ -1108,6 +1186,8 @@ async def submit_package(
         _m = _DISCORD_MSG_URL_RE.match((aar_link or "").strip())
         if _m:
             pkg["aar_message_id"] = _m.group(1)
+        if aar_key:
+            pkg["aar_record_id"] = str(aar_key)
 
         # Update entity stats
         stats = data["entity_stats"]
