@@ -329,6 +329,46 @@ def _get_active_roles_in_guild(guild: discord.Guild) -> set:
     return present - excluded
 
 
+def _get_active_role_counts(guild: discord.Guild) -> dict:
+    """Return {role_name: count} for non-LOA, non-Reserves active members.
+
+    Counts how many eligible members hold each role. Used by _draw_requirements
+    to allow duplicate role requirements up to the number of available holders.
+    Roles excluded by LOA cadre-leader logic are omitted entirely.
+    """
+    excluded = _get_active_roles_in_guild.__wrapped__(guild)[1] if hasattr(_get_active_roles_in_guild, '__wrapped__') else set()
+    # Recompute excluded set inline (same logic as _get_active_roles_in_guild)
+    _CADRE_ADMIN_ROLES = {
+        "Forgemaster": {"Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought", "Forgemaster"},
+        "Chief Apothecary": {"Watch Apothecary", "Chief Apothecary"},
+        "High Chaplain": {"Watch Chaplain", "High Chaplain"},
+        "Void Warden": {"Watch Librarian", "Void Warden"},
+        "Castellan": {"Watch Keeper", "Castellan"},
+        "Lord Executioner": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
+        "Huntmaster": {"Huntmaster"},
+    }
+    def _is_loa(m: discord.Member) -> bool:
+        return any(getattr(r, "id", 0) == LOA_ROLE_ID for r in getattr(m, "roles", []))
+    active = _active_members(guild)
+    excluded: set = set()
+    for m in active:
+        if not _is_loa(m):
+            continue
+        roles = _member_role_names(m)
+        for leader_role, admin_set in _CADRE_ADMIN_ROLES.items():
+            if leader_role in roles:
+                excluded.update(admin_set)
+
+    counts: dict = {}
+    for m in active:
+        if _is_loa(m):
+            continue
+        for rn in _member_role_names(m):
+            if rn not in excluded:
+                counts[rn] = counts.get(rn, 0) + 1
+    return counts
+
+
 # ---------------------------------------------------------------------------
 # Stratagem draw (conflict-aware)
 # ---------------------------------------------------------------------------
@@ -405,21 +445,26 @@ _SLOT_TIER_WEIGHTS = [
 ]
 
 
-def _draw_requirements(available_roles: set, mode: str = "Hard-Strat") -> tuple:
+def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") -> tuple:
     """Draw cross-tier role requirements for a package.
 
-    Returns (tier_label, [role_names]) where tier_label is the highest tier drawn.
-    Caps: Hard-Strat max 2 reqs, max 1 HC. Omega-Strat max 5 reqs, max 1 HC.
-    Each slot is drawn independently weighted by tier, skipping unavailable roles.
-    Duplicates are never drawn.
-    Falls back to no_req if nothing can be drawn.
+    available_roles may be a set (presence only) or dict {role: count}.
+    When a dict is provided, a role may appear multiple times up to its count
+    (e.g. 2x Watch Veteran if 2 eligible Vets exist in the guild).
+    HC roles are still capped at max 1.
     """
+    # Normalise to count dict
+    if isinstance(available_roles, dict):
+        role_counts = available_roles
+        available_set = set(available_roles.keys())
+    else:
+        role_counts = {r: 1 for r in available_roles}
+        available_set = set(available_roles)
+
     max_reqs = 2 if "Hard" in mode else 5
     max_hc = 1
 
-    # Total count: exponentially weighted toward 1
     weights = [2 ** (max_reqs - i) for i in range(1, max_reqs + 1)]
-    # 50% chance of no requirement at all
     if random.random() < 0.50:
         return (_REQ_TIER_NO_REQ, [])
 
@@ -427,21 +472,26 @@ def _draw_requirements(available_roles: set, mode: str = "Hard-Strat") -> tuple:
 
     tiers, tier_weights = zip(*_SLOT_TIER_WEIGHTS)
     chosen: list = []
-    chosen_set: set = set()
+    chosen_counts: dict = {}  # role -> times already drawn
     hc_count = 0
 
-    for _ in range(target_count * 5):  # limited attempts
+    for _ in range(target_count * 5):
         if len(chosen) >= target_count:
             break
         tier = random.choices(tiers, weights=tier_weights)[0]
         if tier == _REQ_TIER_HC and hc_count >= max_hc:
             continue
-        pool = [r for r in _TIER_ROLES[tier] if r in available_roles and r not in chosen_set]
+        # A role is available if we haven't drawn it more times than there are holders
+        pool = [
+            r for r in _TIER_ROLES[tier]
+            if r in available_set
+            and chosen_counts.get(r, 0) < role_counts.get(r, 1)
+        ]
         if not pool:
             continue
         role = random.choice(pool)
         chosen.append(role)
-        chosen_set.add(role)
+        chosen_counts[role] = chosen_counts.get(role, 0) + 1
         if tier == _REQ_TIER_HC:
             hc_count += 1
 
@@ -592,7 +642,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         active_strats = _load_stratagems()
         templates = _load_briefing_templates()
         ops_list = _load_operations()
-        available_roles = _get_active_roles_in_guild(guild)
+        available_roles = _get_active_role_counts(guild)
 
         kt_count = _count_active_kts(guild)
         multiplier = random.randint(1, 3)
@@ -1716,6 +1766,46 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
                 and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)):
             return False, f"You are already committed to package `{p['id']}`. Complete that operation first."
 
+    # Enforce slot availability and rank requirements
+    # Hard-Strat = 3 total slots, Omega-Strat = 5 total slots
+    mode = pkg.get("mode", "")
+    total_capacity = 3 if "Hard" in mode else 5
+    req_roles = pkg.get("required_roles", [])
+    line_reqs = [r for r in req_roles if r not in _CADRE_SPECIALIST_ROLES]
+    signed_up = pkg.get("signed_up", [])
+
+    if len(signed_up) >= total_capacity:
+        return False, "This package is already at full capacity."
+
+    # Once all unconstrained slots would be taken, enforce rank reqs for remaining slots
+    # Unconstrained slots = total_capacity - len(line_reqs)
+    unconstrained = total_capacity - len(line_reqs)
+    if len(signed_up) >= unconstrained and line_reqs:
+        # Find which line reqs are already covered
+        covered_reqs: set = set()
+        for uid in signed_up:
+            m2 = guild.get_member(uid) if guild else None
+            if not m2:
+                continue
+            m2_roles = _member_role_names(m2)
+            for req in line_reqs:
+                if req not in covered_reqs:
+                    req_idx = _RANK_SENIORITY_MAP.get(req, -1)
+                    m2_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m2_roles), default=-1)
+                    if m2_max >= req_idx:
+                        covered_reqs.add(req)
+        uncovered = [r for r in line_reqs if r not in covered_reqs]
+        if not uncovered:
+            return False, "This package is already at full capacity."
+        member_max_rank = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
+        can_fill = any(
+            member_max_rank >= _RANK_SENIORITY_MAP.get(req, -1)
+            for req in uncovered
+        )
+        if not can_fill:
+            unfilled_str = ", ".join(uncovered)
+            return False, f"The remaining slot(s) require: **{unfilled_str}**. Your current rank does not qualify."
+
     return True, ""
 
 
@@ -1731,16 +1821,16 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     kt_name = pkg.get("assigned_kt", "")
     mode = pkg.get("mode", "")
     req_roles = pkg.get("required_roles", [])
-    min_players = 2 if "Hard" in mode else 3
 
     data_rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, data_rep)
+    total_capacity = 3 if "Hard" in mode else 5
     embed.add_field(
         name="▸ Deployment Requirements",
         value=(
             (f"{complier.mention} has accepted these orders.\n" if complier else "")
-            + f"**Minimum Brothers:** {min_players}\n"
-            + (f"**Required Specialists:** {', '.join(req_roles)}\n" if req_roles else "")
+            + f"**Strike Team Size:** {total_capacity}\n"
+            + (f"**Required Ranks:** {', '.join(req_roles)}\n" if req_roles else "")
             + "\nPress **⚔ Comply** to register for this operation."
         ),
         inline=False,
@@ -1774,18 +1864,37 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
 
 
 def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
-    """Return True if package meets deployment criteria: min sign-ups + all cadre specialists attached."""
+    """Return True if package is full (3/Hard or 5/Omega) and all rank/specialist reqs covered."""
     mode = pkg.get("mode", "")
-    min_players = 2 if "Hard" in mode else 3
+    total_capacity = 3 if "Hard" in mode else 5
     signed_up = pkg.get("signed_up", [])
-    if len(signed_up) < min_players:
+    if len(signed_up) < total_capacity:
         return False
-    # All cadre specialist requirements must be covered
+
     req_roles = pkg.get("required_roles", [])
+
+    # Check line role requirements covered by signed-up members
+    line_reqs = [r for r in req_roles if r not in _CADRE_SPECIALIST_ROLES]
+    if line_reqs:
+        covered: set = set()
+        for uid in signed_up:
+            m = guild.get_member(uid) if guild else None
+            if not m:
+                continue
+            m_roles = _member_role_names(m)
+            for req in line_reqs:
+                if req not in covered:
+                    req_idx = _RANK_SENIORITY_MAP.get(req, -1)
+                    m_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m_roles), default=-1)
+                    if m_max >= req_idx:
+                        covered.add(req)
+        if not all(r in covered for r in line_reqs):
+            return False
+
+    # Check cadre specialist requirements
     cadre_reqs = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
     if not cadre_reqs:
         return True
-    # Check all cadre reqs covered by assigned specialists
     specialist_ids = set(pkg.get("assigned_specialist_ids", []))
     for r in cadre_reqs:
         if not _role_satisfied_by_unit_ids(r, specialist_ids, pkg, guild):
@@ -1905,10 +2014,10 @@ class SignUpView(discord.ui.View):
 
         signed_up = pkg2.get("signed_up", [])
         mode = pkg2.get("mode", "")
-        min_players = 2 if "Hard" in mode else 3
+        total_capacity = 3 if "Hard" in mode else 5
         count = len(signed_up)
 
-        status_indicator = "🟢 **DEPLOYED**" if pkg2["status"] == STATUS_DEPLOYED else f"🟡 **RECRUITING** ({count}/{min_players} minimum)"
+        status_indicator = "🟢 **DEPLOYED**" if pkg2["status"] == STATUS_DEPLOYED else f"🟡 **RECRUITING** ({count}/{total_capacity} brothers)"
         await interaction.response.send_message(
             f"{status_indicator}\n{member.display_name} complied with orders for `{self.package_id}`.",
             ephemeral=False,
@@ -1921,7 +2030,7 @@ class SignUpView(discord.ui.View):
             for uid in pkg2.get("signed_up", []):
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
                 signed_names.append(m2.display_name if m2 else str(uid))
-            roster_field_name = f"▸ Signed Up ({count}/{min_players})"
+            roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
 
             # Update KT sign-up embed
@@ -1963,6 +2072,29 @@ class SignUpView(discord.ui.View):
                     pass
         except Exception:
             pass
+
+    @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
+    async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
+        member = interaction.user
+        async with _TP_LOCK:
+            data = _load_tp()
+            pkg = data["packages"].get(self.package_id)
+            if not pkg:
+                await interaction.response.send_message("Package not found.", ephemeral=True)
+                return
+            if member.id not in pkg.get("signed_up", []):
+                await interaction.response.send_message("You are not signed up for this package.", ephemeral=True)
+                return
+            if pkg["status"] == STATUS_DEPLOYED:
+                await interaction.response.send_message(
+                    "Package is already deployed — you cannot stand down at this stage.", ephemeral=True
+                )
+                return
+            pkg["signed_up"].remove(member.id)
+            _save_tp(data)
+        await interaction.response.send_message(
+            f"{member.display_name} has stood down from `{self.package_id}`.", ephemeral=False
+        )
 
 
 class SpecialistAssignView(discord.ui.View):

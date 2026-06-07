@@ -138,9 +138,12 @@ class TestDrawRequirements:
         "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
         "Venerable Dreadnought",
     }
+    # Count dict with 1 of each role — same as the set but in dict form
+    ALL_ROLES_DICT = {r: 1 for r in ALL_ROLES}
+    # Count dict with 3 of each role — allows duplicates
+    ALL_ROLES_MULTI = {r: 3 for r in ALL_ROLES}
 
     def test_no_req_possible(self):
-        # With 50% no-req chance and enough iterations, we get no_req at least once
         results = [_draw_requirements(self.ALL_ROLES) for _ in range(200)]
         assert any(r[0] == _REQ_TIER_NO_REQ for r in results)
 
@@ -160,14 +163,36 @@ class TestDrawRequirements:
             "High Chaplain", "Huntmaster", "Void Warden", "Castellan", "Venerable Dreadnought",
         }
         for _ in range(200):
-            _, roles = _draw_requirements(self.ALL_ROLES, mode="Omega-Strat")
+            _, roles = _draw_requirements(self.ALL_ROLES_MULTI, mode="Omega-Strat")
             hc_count = sum(1 for r in roles if r in hc_roles)
             assert hc_count <= 1
 
-    def test_no_duplicate_roles(self):
+    def test_no_duplicate_with_count_1(self):
+        """When each role has count=1, no duplicates should appear."""
         for _ in range(100):
-            _, roles = _draw_requirements(self.ALL_ROLES)
+            _, roles = _draw_requirements(self.ALL_ROLES_DICT)
             assert len(roles) == len(set(roles))
+
+    def test_duplicates_allowed_with_count_gt_1(self):
+        """When roles have count>1, duplicates can appear on Omega-Strat."""
+        # With 3 of each role and 5 slots, we may get duplicates eventually
+        found_duplicate = False
+        for _ in range(500):
+            _, roles = _draw_requirements(self.ALL_ROLES_MULTI, mode="Omega-Strat")
+            if len(roles) != len(set(roles)):
+                found_duplicate = True
+                break
+        assert found_duplicate, "Expected at least one duplicate draw with multi-count roles"
+
+    def test_duplicate_capped_by_count(self):
+        """A role with count=2 cannot appear 3 times."""
+        limited = {r: 2 for r in self.ALL_ROLES}
+        for _ in range(200):
+            _, roles = _draw_requirements(limited, mode="Omega-Strat")
+            from collections import Counter
+            counts = Counter(roles)
+            for role, cnt in counts.items():
+                assert cnt <= 2, f"{role} drawn {cnt} times but count=2"
 
     def test_empty_available_roles_returns_no_req(self):
         tier, roles = _draw_requirements(set())
@@ -273,29 +298,29 @@ class TestDrawStrats:
 
 class TestCheckDeployed:
     def test_not_deployed_not_enough_signed_up_hard(self):
-        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1, 2])
         guild = _make_guild([])
         assert _check_deployed(pkg, guild) is False
 
     def test_deployed_enough_hard(self):
-        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1, 2])
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1, 2, 3])
         guild = _make_guild([])
         assert _check_deployed(pkg, guild) is True
 
     def test_not_deployed_not_enough_omega(self):
-        pkg = _make_pkg(mode="Omega-Strat", signed_up=[1, 2])
+        pkg = _make_pkg(mode="Omega-Strat", signed_up=[1, 2, 3, 4])
         guild = _make_guild([])
         assert _check_deployed(pkg, guild) is False
 
     def test_deployed_enough_omega(self):
-        pkg = _make_pkg(mode="Omega-Strat", signed_up=[1, 2, 3])
+        pkg = _make_pkg(mode="Omega-Strat", signed_up=[1, 2, 3, 4, 5])
         guild = _make_guild([])
         assert _check_deployed(pkg, guild) is True
 
     def test_specialist_required_not_attached(self):
         pkg = _make_pkg(
             mode="Hard-Strat",
-            signed_up=[1, 2],
+            signed_up=[1, 2, 3],
             required_roles=["Watch Apothecary"],
             assigned_specialist_ids=[],
         )
@@ -306,7 +331,7 @@ class TestCheckDeployed:
     def test_specialist_required_and_attached(self):
         pkg = _make_pkg(
             mode="Hard-Strat",
-            signed_up=[1, 2],
+            signed_up=[1, 2, 3],
             required_roles=["Watch Apothecary"],
             assigned_specialist_ids=[99],
         )
@@ -314,16 +339,26 @@ class TestCheckDeployed:
         guild = _make_guild([specialist])
         assert _check_deployed(pkg, guild) is True
 
-    def test_line_role_not_gated_by_specialist_check(self):
-        # Watch Veteran is NOT in _CADRE_SPECIALIST_ROLES, so no specialist attach needed
+    def test_line_role_requires_rank_coverage(self):
+        # Watch Veteran is a line role — someone in signed_up must have Veteran+
+        veteran = _make_member(["Watch Veteran"], member_id=10)
         pkg = _make_pkg(
             mode="Hard-Strat",
-            signed_up=[1, 2],
+            signed_up=[1, 2, 10],  # 10 is the veteran
             required_roles=["Watch Veteran"],
-            assigned_specialist_ids=[],
         )
-        guild = _make_guild([])
+        guild = _make_guild([veteran])
         assert _check_deployed(pkg, guild) is True
+
+    def test_line_role_not_covered_not_deployed(self):
+        # All 3 signed up but none holds Watch Veteran rank
+        pkg = _make_pkg(
+            mode="Hard-Strat",
+            signed_up=[1, 2, 3],
+            required_roles=["Watch Veteran"],
+        )
+        guild = _make_guild([])  # guild has no members to resolve rank
+        assert _check_deployed(pkg, guild) is False
 
 
 # ---------------------------------------------------------------------------
