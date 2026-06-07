@@ -14,6 +14,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import sys as _sys
+import re
 
 import discord
 from discord import app_commands
@@ -155,6 +156,63 @@ async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int
             _save_tp(data)
 
     return deleted
+
+
+_DISCORD_MSG_URL_RE = re.compile(
+    r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/channels/\d+/\d+/(\d+)$",
+    re.IGNORECASE,
+)
+
+
+async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple[Optional[str], Optional[str]]:
+    """Attach target package metadata to the submitted AAR record, if present.
+
+    Returns (aar_record_id, canonical_message_url) when linked, else (None, None).
+    """
+    if not package_id or not aar_link:
+        return None, None
+
+    ds = getattr(_g, "DATASTORE", None)
+    if ds is None:
+        return None, None
+
+    message_id: Optional[str] = None
+    m = _DISCORD_MSG_URL_RE.match(aar_link.strip())
+    if m:
+        message_id = m.group(1)
+
+    record = ds.get_record(message_id) if message_id else None
+    if not record:
+        # Fallback by direct URL match in case format differs.
+        for rec in ds.iter_records():
+            if (rec.get("message_url") or "").strip() == aar_link.strip():
+                record = rec
+                message_id = str(rec.get("aar_id") or message_id or "")
+                break
+
+    if not record:
+        _g.logger.debug(f"[TP] AAR link not found in datastore for package {package_id}: {aar_link}")
+        return None, None
+
+    updated = dict(record)
+    updated["target_package_id"] = package_id
+    pkg_ids = list(updated.get("target_package_ids", []))
+    if package_id not in pkg_ids:
+        pkg_ids.append(package_id)
+    updated["target_package_ids"] = pkg_ids
+
+    # Persist under canonical key if possible.
+    key = str(updated.get("aar_id") or message_id or "")
+    if not key:
+        _g.logger.debug(f"[TP] Could not resolve datastore key for package {package_id} attachment")
+        return None, None
+    await ds.set_record(key, updated)
+    # Ensure the link appears in aar_records.json immediately after submission.
+    try:
+        await ds.flush()
+    except Exception:
+        pass
+    return key, (updated.get("message_url") or aar_link)
 
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
@@ -492,8 +550,13 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 
     # Omega-Strat: YOLO is redundant (Omega already has 1-life rules)
     omega_excluded = {"You Only Live Once"} if "Omega" in mode else set()
-    # Great Responsibility and Fatality blacklisted from all strat modes
-    mode_excluded = {"Great Responsibility", "Fatality"} | omega_excluded
+    # Globally blacklisted stratagems across all modes.
+    mode_excluded = {
+        "Great Responsibility",
+        "Fatality",
+        "No Delays",
+        "Corrosion",
+    } | omega_excluded
 
     buffs = [s for s in active_strats if s["type"] == "buff" and s["name"] not in mode_excluded and s["name"] != "Intelligence Lapse"]
     debuffs = [s for s in active_strats if s["type"] == "debuff" and s["name"] not in mode_excluded]
@@ -738,6 +801,8 @@ def _generate_single_package(
         "completed_at": None,
         "submitted_by": None,
         "aar_link": None,
+        "aar_record_id": None,
+        "aar_message_id": None,
     }
 
 
@@ -1034,6 +1099,9 @@ async def submit_package(
         pkg["completed_at"] = datetime.now(timezone.utc).isoformat()
         pkg["submitted_by"] = submitter.id
         pkg["aar_link"] = aar_link
+        _m = _DISCORD_MSG_URL_RE.match((aar_link or "").strip())
+        if _m:
+            pkg["aar_message_id"] = _m.group(1)
 
         # Update entity stats
         stats = data["entity_stats"]
@@ -1051,6 +1119,19 @@ async def submit_package(
         _save_tp(data)
 
     await _update_ox_rep_embed(guild)
+    linked_aar_id, canonical_aar_link = await _attach_package_to_aar_record(package_id, aar_link)
+    if linked_aar_id or canonical_aar_link:
+        async with _TP_LOCK:
+            data2 = _load_tp()
+            pkg2 = data2.get("packages", {}).get(package_id)
+            if pkg2:
+                if linked_aar_id:
+                    pkg2["aar_record_id"] = str(linked_aar_id)
+                    # Keep aar_message_id in sync with canonical record key.
+                    pkg2["aar_message_id"] = str(linked_aar_id)
+                if canonical_aar_link:
+                    pkg2["aar_link"] = canonical_aar_link
+                _save_tp(data2)
     await _delete_package_messages(package_id, guild)
     return True, f"Package `{package_id}` marked completed. Ordo Xenos standing updated."
 
@@ -2294,10 +2375,6 @@ class SignUpView(discord.ui.View):
         except Exception as e:
             _g.logger.debug(f"[TP] Stand Down embed update failed for {self.package_id}: {e}")
 
-        await interaction.response.send_message(
-            f"{member.display_name} has stood down from `{self.package_id}`.", ephemeral=False
-        )
-
 
 class SpecialistAssignView(discord.ui.View):
     """View for cadre leaders to assign a specialist to a package."""
@@ -2799,6 +2876,20 @@ class PackagePaginatorView(discord.ui.View):
         ids = [p["id"] for p in self.packages]
         await interaction.response.defer(ephemeral=True)
         await distribute_packages(ids, guild, actor=interaction.user)
+
+        # Best-effort close of the ephemeral panel after successful distribution.
+        # Depending on Discord interaction type/client, deletion may not be allowed.
+        try:
+            if interaction.message is not None:
+                await interaction.message.delete()
+                return
+        except Exception:
+            pass
+        try:
+            await interaction.delete_original_response()
+            return
+        except Exception:
+            pass
 
         # Disable the distribute button after use
         for item in self.children:
