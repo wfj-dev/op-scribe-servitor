@@ -1692,15 +1692,16 @@ async def _notify_cadre_leaders_needed(
 # ---------------------------------------------------------------------------
 
 _DW_EMOJI = "<:Deathwatch:1501748904880767147>"
+_OX_STANDING_EMOJI = ":OrdoXenosStanding:"
 
 _REP_TIER_LABELS = {
-    -3: "CENSURED",
-    -2: "STRAINED",
-    -1: "WARY",
-     0: "NEUTRAL",
-     1: "FAVOURED",
-     2: "TRUSTED",
-     3: "EXEMPLARY",
+    -3: "ANATHEMA",
+    -2: "CENSURED",
+    -1: "WATCHED",
+     0: "SCRUTINY",
+     1: "SANCTIONED",
+     2: "FAVOURED",
+     3: "MANDATED",
 }
 
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"}
@@ -1725,6 +1726,19 @@ def _rep_display(rep: float) -> str:
     # 7-emoji bar: 1 at -3, scaling to 7 at +3
     emoji_count = tier + 4  # -3->1, 0->4, +3->7
     return f"{_DW_EMOJI * emoji_count} {label} · {rep:+.2f}"
+
+
+def _standing_skull_bar(rep: float) -> str:
+    """Render standing as 1..7 Ordo Xenos skulls from tier -3..+3."""
+    tier = max(-3, min(3, round(rep)))
+    emoji_count = tier + 4  # -3->1, 0->4, +3->7
+    return " ".join([_OX_STANDING_EMOJI] * emoji_count)
+
+
+def _standing_state_name(rep: float) -> str:
+    """Resolve named standing state from the rounded rep tier."""
+    tier = max(-3, min(3, round(rep)))
+    return _REP_TIER_LABELS[tier]
 
 
 def _strat_line(strat: dict) -> str:
@@ -3233,27 +3247,38 @@ async def log_strike_report(
         completed_kt = str(pkg.get("assigned_kt") or "Unassigned")
         rep_before = float(pkg.get("rep_before", data.get("rep", 0.0)) or 0.0)
         rep_after = float(pkg.get("rep_after", data.get("rep", 0.0)) or 0.0)
+        standing_before = _standing_skull_bar(rep_before)
+        standing_after = _standing_skull_bar(rep_after)
+        state_before = _standing_state_name(rep_before)
+        state_after = _standing_state_name(rep_after)
 
         embed = discord.Embed(
             title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ʀᴇᴘᴏʀᴛ ʟᴏɢɢᴇᴅ {_DW_EMOJI}",
             description=msg,
             color=0x2ECC71,
         )
-        embed.add_field(name=f"{classification} Package", value=f"`{package_id}`", inline=True)
-        embed.add_field(name="Kill Team Completed", value=completed_kt, inline=True)
+        embed.add_field(name=f"▸ {classification} Package", value=f"`{package_id}`", inline=True)
+        embed.add_field(name="▸ Kill Team Completed", value=completed_kt, inline=True)
         embed.add_field(
-            name="Ordo Xenos Standing",
-            value=f"{rep_before:+.2f} -> {rep_after:+.2f}",
+            name="▸ Ordo Xenos Standing",
+            value=(
+                f"{standing_before} **{state_before}** `{rep_before:+.2f}`\n"
+                f"-> {standing_after} **{state_after}** `{rep_after:+.2f}`"
+            ),
             inline=False,
         )
-        embed.add_field(name="AAR", value=aar_link, inline=False)
+        embed.add_field(name="▸ AAR", value=aar_link, inline=False)
+
+        report_header = "**```++ 𝐒𝐓𝐑𝐈𝐊𝐄 𝐑𝐄𝐏𝐎𝐑𝐓 ++```**"
+        report_footer = "**```++ 𝐄𝐍𝐃 𝐎𝐅 𝐑𝐄𝐏𝐎𝐑𝐓 ++```**"
         completion_img = os.path.join(_ASSETS_DIR, "Mission_Complete.png")
         if os.path.exists(completion_img):
             comp_file = discord.File(completion_img, filename="mission_complet.png")
             embed.set_image(url="attachment://mission_complet.png")
-            await interaction.response.send_message(embed=embed, file=comp_file, ephemeral=False)
+            await interaction.response.send_message(content=report_header, embed=embed, file=comp_file, ephemeral=False)
         else:
-            await interaction.response.send_message(embed=embed, ephemeral=False)
+            await interaction.response.send_message(content=report_header, embed=embed, ephemeral=False)
+        await interaction.followup.send(report_footer, ephemeral=False)
     else:
         await interaction.response.send_message(msg, ephemeral=True)
 
