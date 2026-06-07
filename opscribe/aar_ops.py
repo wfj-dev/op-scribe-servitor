@@ -1414,16 +1414,17 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                     await save_aar_record(record)
 
                     # --- Challenge Tracking: Process AAR for challenge eligibility ---
-                    if guild:
+                    _guild = getattr(aar_channel, "guild", None)
+                    if _guild:
                         try:
-                            challenge_notifications = await _process_challenge_tracking(record, guild)
+                            challenge_notifications = await _process_challenge_tracking(record, _guild)
                             if challenge_notifications:
-                                await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+                                await _send_challenge_eligibility_notifications(challenge_notifications, _guild)
                         except Exception as e:
                             _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
                         try:
                             await _b("_check_award_milestones_for_members")(
-                                [str(uid) for uid in record.get("brother_ids", [])], guild
+                                [str(uid) for uid in record.get("brother_ids", [])], _guild
                             )
                         except Exception as e:
                             _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
@@ -1543,16 +1544,17 @@ async def _run_ingest_new(aar_channel: discord.TextChannel, span_days: Optional[
         await save_aar_record(record)
 
         # --- Challenge Tracking: Process AAR for challenge eligibility ---
-        if guild:
+        _guild = getattr(aar_channel, "guild", None)
+        if _guild:
             try:
-                challenge_notifications = await _process_challenge_tracking(record, guild)
+                challenge_notifications = await _process_challenge_tracking(record, _guild)
                 if challenge_notifications:
-                    await _send_challenge_eligibility_notifications(challenge_notifications, guild)
+                    await _send_challenge_eligibility_notifications(challenge_notifications, _guild)
             except Exception as e:
                 _g.logger.error(f"Error processing challenge tracking for AAR {aar_id}: {e}")
             try:
                 await _b("_check_award_milestones_for_members")(
-                    [str(uid) for uid in record.get("brother_ids", [])], guild
+                    [str(uid) for uid in record.get("brother_ids", [])], _guild
                 )
             except Exception as e:
                 _g.logger.error(f"Error checking award milestones for AAR {aar_id}: {e}")
@@ -3322,13 +3324,6 @@ async def save_aar_record(record: dict):
 
     await _g.DATASTORE.set_record(key, record)
     await _g.DATASTORE.add_processed_id(key)
-    # Add armory points to the community forge pool
-    armory_pts = record.get("armory_challenge_points", 0) or 0
-    if armory_pts > 0:
-        increment_forge_pool_balance = _b("_increment_forge_pool_balance")
-        if increment_forge_pool_balance is None:
-            raise NameError("_increment_forge_pool_balance is not available in aar_ops.py or bot")
-        await increment_forge_pool_balance(armory_pts)
 
 
 # Use DataStore for processed IDs
