@@ -1356,7 +1356,7 @@ def _get_service_studs_announcement(
     # Footer with closing phrase from ceremonial closings
     closing_phrase = random.choice(DEATHWATCH_STUD_CLOSINGS)
     embed.set_footer(text=f"᛭⋅ {closing_phrase} Jericho Stands! ⋅᛭")
-    embed.set_image(url="attachment://studs.jpg")
+    embed.set_image(url="attachment://studs.png")
 
     # Content has @Watch Brother and member mention for actual pings (outside embed)
     content = f"{wb_mention} {member.mention}" if wb_mention else member.mention

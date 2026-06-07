@@ -580,6 +580,7 @@ async def generate_packages(guild: discord.Guild) -> list:
                 description=f"<@&{WATCH_BROTHER_ROLE_ID}>\n{random.choice(wm_flavor)}",
                 color=0xC4A030,
             )
+            wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
             wm_embed.set_footer(
                 text=f"{count} target package{'s' if count != 1 else ''} received  ·  CLEARANCE: SANCTIONED",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
@@ -1324,7 +1325,7 @@ def _build_package_embed(
     embed_color = _STATUS_COLORS.get(status, 0xC4A030)
 
     embed = discord.Embed(
-        title=f"{_DW_EMOJI} TARGET PACKAGE {pid}{page_label} {_DW_EMOJI}",
+        title=f"`TARGET PACKAGE {pid}{page_label}`",
         color=embed_color,
     )
     embed.set_author(
