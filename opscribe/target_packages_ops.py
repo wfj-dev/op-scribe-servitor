@@ -2607,13 +2607,30 @@ class PackagePaginatorView(discord.ui.View):
                 ]
         return options[:25]
 
+    def _sync_kt_select_state(self) -> None:
+        """Keep KT select UI aligned with current selection."""
+        for item in self.children:
+            if getattr(item, "custom_id", None) != "tp_kt_select_inline":
+                continue
+            options = getattr(item, "options", None)
+            if not options:
+                continue
+
+            has_selected = False
+            for opt in options:
+                opt.default = bool(self.selected_kt and opt.value == self.selected_kt)
+                if opt.default:
+                    has_selected = True
+
+            if self.selected_kt and not has_selected:
+                self.selected_kt = None
+
+            item.placeholder = f"Kill Team: {self.selected_kt}" if self.selected_kt else "Select Kill Team…"
+            break
+
     async def on_kt_select(self, interaction: discord.Interaction):
         self.selected_kt = interaction.data["values"][0]
-        # Enable the Assign button
-        for item in self.children:
-            if getattr(item, "custom_id", None) == "tp_assign_kt":
-                item.disabled = False
-                break
+        self._refresh_assign_btn()
         await interaction.response.edit_message(view=self)
 
     async def assign_to_kt(self, interaction: discord.Interaction):
@@ -2632,38 +2649,36 @@ class PackagePaginatorView(discord.ui.View):
         success, msg = await assign_package_to_kt(
             pkg["id"], self.selected_kt, company, member, interaction.guild or _get_guild_from_bot()
         )
-        await interaction.response.send_message(msg, ephemeral=True)
-        if success:
-            assigned_pid = pkg["id"]
-            self.selected_kt = None
-            # Re-disable the Assign button
-            for item in self.children:
-                if getattr(item, "custom_id", None) == "tp_assign_kt":
-                    item.disabled = True
-                    break
+        if not success:
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
 
-            # Live-update the current captain/LT paginator view so assigned package disappears.
-            # For captain/LT views, once assigned it moves to pending_sgt and should no longer appear.
-            if self.viewer and _is_captain_or_lt(self.viewer):
-                self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
-                if not self.packages:
-                    await interaction.edit_original_response(
-                        content="No active target packages for your role.",
-                        embed=None,
-                        view=None,
-                        attachments=[],
-                    )
-                    return
-                self.index = min(self.index, len(self.packages) - 1)
+        await interaction.response.defer()
+        assigned_pid = pkg["id"]
+        self.selected_kt = None
 
-            self._refresh_assign_btn()
-            self._refresh_specialist_btn()
-            f = self.current_file()
-            await interaction.edit_original_response(
-                embed=self.current_embed(),
-                view=self,
-                attachments=[f] if f else [],
-            )
+        # Live-update the current captain/LT paginator view so assigned package disappears.
+        # For captain/LT views, once assigned it moves to pending_sgt and should no longer appear.
+        if self.viewer and _is_captain_or_lt(self.viewer):
+            self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
+            if not self.packages:
+                await interaction.edit_original_response(
+                    content="No active target packages for your role.",
+                    embed=None,
+                    view=None,
+                    attachments=[],
+                )
+                return
+            self.index = min(self.index, len(self.packages) - 1)
+
+        self._refresh_assign_btn()
+        self._refresh_specialist_btn()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(),
+            view=self,
+            attachments=[f] if f else [],
+        )
 
     async def assign_specialist_btn(self, interaction: discord.Interaction):
         pkg = self.packages[self.index]
@@ -2717,6 +2732,7 @@ class PackagePaginatorView(discord.ui.View):
         # Also reset selection when navigating away from a DISTRIBUTED package
         if pkg.get("status") != STATUS_DISTRIBUTED:
             self.selected_kt = None
+        self._sync_kt_select_state()
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
     async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
