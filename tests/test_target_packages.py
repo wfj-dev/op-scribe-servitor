@@ -447,6 +447,16 @@ class TestGetActiveLoa:
         monkeypatch.setattr(loa, "LOA_RECORDS_PATH", str(loa_file))
         assert loa._get_active_loa(42) is None
 
+    def test_future_start_loa_returns_none_until_start(self, tmp_path, monkeypatch):
+        import opscribe.loa_ops as loa
+        start = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+        end = (datetime.now(timezone.utc) + timedelta(days=4)).isoformat()
+        data = {"records": {"42": {"user_id": 42, "start": start, "end": end, "set_by": 1}}}
+        loa_file = tmp_path / "loa_records.json"
+        loa_file.write_text(__import__("json").dumps(data))
+        monkeypatch.setattr(loa, "LOA_RECORDS_PATH", str(loa_file))
+        assert loa._get_active_loa(42) is None
+
     def test_no_record_returns_none(self, tmp_path, monkeypatch):
         import opscribe.loa_ops as loa
         loa_file = tmp_path / "loa_records.json"

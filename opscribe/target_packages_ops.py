@@ -645,6 +645,12 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
     chosen: list = []
     chosen_counts: dict = {}  # role -> times already drawn
     hc_count = 0
+    # Per-role hard caps that override holder count.
+    # Default: no duplicate rank requirements. Explicit exceptions can repeat.
+    role_caps = {
+        "Watch Veteran": 2,
+        "Kill Team Champion": 2,
+    }
 
     for _ in range(target_count * 5):
         if len(chosen) >= target_count:
@@ -656,7 +662,7 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
         pool = [
             r for r in _TIER_ROLES[tier]
             if r in available_set
-            and chosen_counts.get(r, 0) < role_counts.get(r, 1)
+            and chosen_counts.get(r, 0) < min(role_counts.get(r, 1), role_caps.get(r, 1))
         ]
         if not pool:
             continue
