@@ -978,10 +978,10 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
             dist_embed.set_footer(
                 text=f"{count} ᴘᴋɢ{s} ᴀᴡᴀɪᴛɪɴɢ ᴀssɪɢɴᴍᴇɴᴛ · ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴀɴᴄᴛɪᴏɴᴇᴅ",
             )
-            _dist_img_path = os.path.join(_ASSETS_DIR, "priority operation alert assign kill teams.jpg")
+            _dist_img_path = os.path.join(_ASSETS_DIR, "distributed to captains.jpg")
             if os.path.exists(_dist_img_path):
-                _dist_file = discord.File(_dist_img_path, filename="priority_op_alert.jpg")
-                dist_embed.set_image(url="attachment://priority_op_alert.jpg")
+                _dist_file = discord.File(_dist_img_path, filename="distributed_to_captains.jpg")
+                dist_embed.set_image(url="attachment://distributed_to_captains.jpg")
                 dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed, file=_dist_file)
             else:
                 dist_msg = await _notify_send(channel, guild, content=mention_str, embed=dist_embed)
