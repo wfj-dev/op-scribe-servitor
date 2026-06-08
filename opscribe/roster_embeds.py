@@ -274,11 +274,15 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
             continue
         if _is_in_reserves(m):
             continue
+        role_names = _member_role_names(m)
         role_ids = _member_role_ids(m)
-        if HIGH_COMMAND_ROLE_ID not in role_ids:
+        # Watch Master must always appear in High Command, even if HC role ID
+        # was not applied or is temporarily missing.
+        is_high_command = HIGH_COMMAND_ROLE_ID in role_ids or "Watch Master" in role_names
+        if not is_high_command:
             continue
         # Watch Captains belong in Company Command, not HC
-        if "Watch Captain" in _member_role_names(m):
+        if "Watch Captain" in role_names:
             continue
         result.append(m)
     return sorted(result, key=_sort_key_for_member)
@@ -301,6 +305,12 @@ def _get_company_command_members(
         if _is_in_reserves(m):
             continue
         role_names = _member_role_names(m)
+        # High Command members should not appear in Company Command,
+        # except Watch Captains who belong to their company command embed.
+        is_watch_captain = "Watch Captain" in role_names
+        is_high_command = HIGH_COMMAND_ROLE_ID in _member_role_ids(m) or "Watch Master" in role_names
+        if is_high_command and not is_watch_captain:
+            continue
         if company_name not in role_names:
             continue
         if not (role_names & ROSTER_COMPANY_COMMAND_RANKS):
@@ -404,6 +414,84 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
         return f"🟡 Assigned ({len(kt_pkgs)} pkg{'s' if len(kt_pkgs) > 1 else ''})"
     except Exception:
         return ""
+
+
+def _package_member_ids(pkg: dict) -> set[int]:
+    """Return all member IDs actively attached to a package."""
+    ids: set[int] = set()
+    for uid in (pkg.get("signed_up", []) or []):
+        try:
+            ids.add(int(uid))
+        except Exception:
+            continue
+    for uid in (pkg.get("assigned_specialist_ids", []) or []):
+        try:
+            ids.add(int(uid))
+        except Exception:
+            continue
+    return ids
+
+
+def _tp_status_for_company(
+    guild: discord.Guild,
+    company_name: str,
+    packages: dict | None = None,
+) -> str:
+    """Return company-command status based on member participation in active packages."""
+    try:
+        if packages is None:
+            path = os.path.join("data", "target_packages.json")
+            if not os.path.exists(path):
+                return "🟢 Ready for Deployment"
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            packages = data.get("packages", {})
+
+        active_statuses = {"pending_sgt", "recruiting", "deployed"}
+        company_member_ids = {m.id for m in _get_company_command_members(guild, company_name)}
+        company_pkgs = [
+            p for p in packages.values()
+            if p.get("status") in active_statuses
+            and bool(_package_member_ids(p) & company_member_ids)
+        ]
+
+        if not company_pkgs:
+            return "🟢 Ready for Deployment"
+        if any(p.get("status") == "deployed" for p in company_pkgs):
+            return f"🔴 Deployed ({len(company_pkgs)} pkg{'s' if len(company_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(company_pkgs)} pkg{'s' if len(company_pkgs) > 1 else ''})"
+    except Exception:
+        return "🟢 Ready for Deployment"
+
+
+def _tp_status_for_high_command(
+    guild: discord.Guild,
+    packages: dict | None = None,
+) -> str:
+    """Return high-command status based on member participation in active packages."""
+    try:
+        if packages is None:
+            path = os.path.join("data", "target_packages.json")
+            if not os.path.exists(path):
+                return "🟢 Ready for Deployment"
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            packages = data.get("packages", {})
+
+        active_statuses = {"pending_sgt", "recruiting", "deployed"}
+        hc_member_ids = {m.id for m in _get_hc_members(guild)}
+        hc_pkgs = [
+            p for p in packages.values()
+            if p.get("status") in active_statuses and bool(_package_member_ids(p) & hc_member_ids)
+        ]
+
+        if not hc_pkgs:
+            return "🟢 Ready for Deployment"
+        if any(p.get("status") == "deployed" for p in hc_pkgs):
+            return f"🔴 Deployed ({len(hc_pkgs)} pkg{'s' if len(hc_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(hc_pkgs)} pkg{'s' if len(hc_pkgs) > 1 else ''})"
+    except Exception:
+        return "🟢 Ready for Deployment"
 
 
 def _build_embed(
@@ -578,6 +666,16 @@ async def _update_company_roster(
     cmd_role = discord.utils.get(guild.roles, name=f"{short_name} Command")
     company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
 
+    # Load strike package data once so status lines can be rendered on all embeds.
+    _tp_packages: dict | None = None
+    try:
+        _tp_path = os.path.join("data", "target_packages.json")
+        if os.path.exists(_tp_path):
+            with open(_tp_path, "r", encoding="utf-8") as _f:
+                _tp_packages = json.load(_f).get("packages", {})
+    except Exception:
+        pass
+
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_embed = _build_embed(
@@ -586,6 +684,7 @@ async def _update_company_roster(
         guild,
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
+        tp_status=_tp_status_for_high_command(guild, packages=_tp_packages),
     )
     hc_msg_id = await _upsert_message(
         channel, company_state.get("hc_message_id"), hc_embed
@@ -601,6 +700,7 @@ async def _update_company_roster(
         guild,
         last_updated=now,
         image_url=cmd_image,
+        tp_status=_tp_status_for_company(guild, company_name, packages=_tp_packages),
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
@@ -622,15 +722,6 @@ async def _update_company_roster(
             del kt_message_ids[stale_kt]
 
     kt_image = ROSTER_IMAGE_KILLTEAM_BY_COMPANY.get(company_name, ROSTER_IMAGE_KILLTEAM)
-    # Load TP package data once so _tp_status_for_kt avoids repeated disk I/O per KT
-    _tp_packages: dict | None = None
-    try:
-        _tp_path = os.path.join("data", "target_packages.json")
-        if os.path.exists(_tp_path):
-            with open(_tp_path, "r", encoding="utf-8") as _f:
-                _tp_packages = json.load(_f).get("packages", {})
-    except Exception:
-        pass
     for kt_name, kt_role_id, kt_members in kill_teams:
         tp_status_line = _tp_status_for_kt(kt_name, packages=_tp_packages)
         kt_embed = _build_embed(
