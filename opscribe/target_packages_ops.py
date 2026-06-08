@@ -2578,6 +2578,18 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
 
     view = SignUpView(package_id=package_id)
 
+    # Delete the old sign-up embed before reposting to avoid stale duplicates
+    _old_signup_ch = pkg.get("signup_channel_id")
+    _old_signup_msg = pkg.get("signup_message_id")
+    if _old_signup_ch and _old_signup_msg and guild:
+        try:
+            _old_ch = await _resolve_channel(guild, int(_old_signup_ch))
+            if _old_ch:
+                _old_msg = await _old_ch.fetch_message(int(_old_signup_msg))
+                await _old_msg.delete()
+        except Exception:
+            pass  # already gone or not found — that's fine
+
     # Find KT channel via any KT member
     sent = False
     for m in guild.members if guild else []:
