@@ -266,6 +266,12 @@ async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple
         pkg_ids.append(package_id)
     updated["target_package_ids"] = pkg_ids
 
+    # Apply +1 AAR point to everyone in this op for completing a strike directive.
+    # Guarded by a flag so reconcile / re-ingest never double-counts.
+    if not updated.get("strike_directive_bonus_applied"):
+        updated["points_for_op"] = int(updated.get("points_for_op") or 0) + 1
+        updated["strike_directive_bonus_applied"] = True
+
     # Persist under canonical key if possible.
     key = str(updated.get("aar_id") or key or "")
     if not key:
