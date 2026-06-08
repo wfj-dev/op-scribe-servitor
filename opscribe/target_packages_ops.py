@@ -2245,7 +2245,7 @@ async def _notify_cadre_leaders_needed(
 # ---------------------------------------------------------------------------
 
 _DW_EMOJI = "<:Deathwatch:1501748904880767147>"
-_OX_STANDING_EMOJI = ":OrdoXenosStanding:"
+_OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
 
 _REP_TIER_LABELS = {
     -3: "ANATHEMA",
@@ -3249,29 +3249,51 @@ class SignUpView(discord.ui.View):
     @discord.ui.button(label="Stand Down", style=discord.ButtonStyle.secondary, custom_id="tp_stand_down")
     async def stand_down(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
+        success_message = None
         async with _TP_LOCK:
             data = _load_tp()
             pkg = data["packages"].get(self.package_id)
             if not pkg:
                 await interaction.response.send_message("Package not found.", ephemeral=True)
                 return
-            if member.id not in pkg.get("signed_up", []):
-                if member.id in pkg.get("assigned_specialist_ids", []):
-                    await interaction.response.send_message(
-                        "You are attached as a specialist on this directive, not signed up via ⚔ Comply. "
-                        "Ask your cadre leader to reassign if needed.",
-                        ephemeral=True,
-                    )
-                    return
-                await interaction.response.send_message("You are not signed up for this package.", ephemeral=True)
-                return
-            if pkg["status"] == STATUS_DEPLOYED:
+            if pkg.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
                 await interaction.response.send_message(
-                    "Package is already deployed — you cannot stand down at this stage.", ephemeral=True
+                    "You can only stand down while this directive is recruiting or deployed.",
+                    ephemeral=True,
                 )
                 return
-            pkg["signed_up"].remove(member.id)
+
+            in_signed = member.id in pkg.get("signed_up", [])
+            in_specialist = member.id in pkg.get("assigned_specialist_ids", [])
+            if not in_signed and not in_specialist:
+                await interaction.response.send_message("You are not currently attached to this directive.", ephemeral=True)
+                return
+
+            if in_signed:
+                pkg["signed_up"].remove(member.id)
+            if in_specialist:
+                pkg["assigned_specialist_ids"] = [
+                    uid for uid in pkg.get("assigned_specialist_ids", [])
+                    if int(uid) != int(member.id)
+                ]
+                pkg.setdefault("specialist_assigners", {})
+                pkg["specialist_assigners"].pop(str(member.id), None)
+
+            resolved_guild_for_state = interaction.guild or _get_guild_from_bot()
+            if pkg.get("status") == STATUS_DEPLOYED:
+                if not resolved_guild_for_state or not _check_deployed(pkg, resolved_guild_for_state):
+                    pkg["status"] = STATUS_RECRUITING
+
+            if in_signed and in_specialist:
+                success_message = "You have stood down and removed your specialist attachment from this directive."
+            elif in_specialist:
+                success_message = "You have removed your specialist attachment from this directive."
+            else:
+                success_message = "You have stood down from this directive."
+
             _save_tp(data)
+
+        await interaction.response.send_message(success_message, ephemeral=True)
 
         # Update the signup embed roster
         try:
@@ -4492,8 +4514,9 @@ async def log_strike_report(
         embed.add_field(
             name="▸ Ordo Xenos Standing",
             value=(
-                f"{standing_before} **{state_before}** `{rep_before:+.2f}`\n"
-                f"-> {standing_after} **{state_after}** `{rep_after:+.2f}`"
+                f"{standing_before} **{state_before}** `{rep_before:+.4f}`\n"
+                f"-> {standing_after} **{state_after}** `{rep_after:+.4f}`\n"
+                f"Delta: `{(rep_after - rep_before):+.4f}`"
             ),
             inline=False,
         )
@@ -4501,14 +4524,28 @@ async def log_strike_report(
 
         report_header = "**```++ 𝐒𝐓𝐑𝐈𝐊𝐄 𝐑𝐄𝐏𝐎𝐑𝐓 ++```**"
         report_footer = "**```++ 𝐄𝐍𝐃 𝐎𝐅 𝐑𝐄𝐏𝐎𝐑𝐓 ++```**"
+        config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+        report_channel_id = config_tp.get("strike_report_channel_id")
+        report_channel = await _resolve_channel(guild, int(report_channel_id)) if (guild and report_channel_id) else None
+        if not report_channel:
+            await interaction.followup.send(
+                "Strike report logged, but configured strike report channel is not resolvable.",
+                ephemeral=True,
+            )
+            return
+
         completion_img = os.path.join(_ASSETS_DIR, "Mission_Complete.png")
         if os.path.exists(completion_img):
             comp_file = discord.File(completion_img, filename="mission_complet.png")
             embed.set_image(url="attachment://mission_complet.png")
-            await interaction.followup.send(content=report_header, embed=embed, file=comp_file, ephemeral=False)
+            await _notify_send(report_channel, guild, content=report_header, embed=embed, file=comp_file)
         else:
-            await interaction.followup.send(content=report_header, embed=embed, ephemeral=False)
-        await interaction.followup.send(report_footer, ephemeral=False)
+            await _notify_send(report_channel, guild, content=report_header, embed=embed)
+        await _notify_send(report_channel, guild, content=report_footer)
+        await interaction.followup.send(
+            f"Strike report posted to {getattr(report_channel, 'mention', '#strike-reports')}",
+            ephemeral=True,
+        )
     else:
         await interaction.followup.send(msg, ephemeral=True)
 
