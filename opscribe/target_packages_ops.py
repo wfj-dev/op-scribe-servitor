@@ -1649,6 +1649,7 @@ async def expire_packages(guild: discord.Guild) -> None:
         data = _load_tp()
         now = datetime.now(timezone.utc)
         changed = False
+        expired_ids: list[str] = []
 
         for pkg in data["packages"].values():
             if pkg["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED):
@@ -1670,17 +1671,26 @@ async def expire_packages(guild: discord.Guild) -> None:
                     data["entity_stats"]["companies"].setdefault(company, {"completed": 0, "failed": 0})
                     data["entity_stats"]["companies"][company]["failed"] += 1
                 changed = True
+                expired_ids.append(pkg["id"])
 
             elif pkg["status"] == STATUS_DISTRIBUTED:
                 pkg["status"] = STATUS_LAPSED
                 data["cycle"]["lapsed"] += 1
                 changed = True
+                expired_ids.append(pkg["id"])
 
         if changed:
             _update_rep(data)
             _save_tp(data)
 
     if changed:
+        # Delete Discord embeds for all expired directives
+        for _eid in expired_ids:
+            try:
+                await _delete_package_messages(_eid, guild)
+            except Exception as exc:
+                _g.logger.debug(f"[TP] Cleanup failed for expired directive {_eid}: {exc}")
+
         # Fire rep embed update
         try:
             await _update_ox_rep_embed(guild)
