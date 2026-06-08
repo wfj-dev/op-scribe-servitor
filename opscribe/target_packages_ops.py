@@ -2229,22 +2229,25 @@ def _build_package_embed(
         f"**ᴅᴇᴀᴅʟɪɴᴇ:** {deadline_str or '—'}",
         f"**sᴛᴀᴛᴜs:** {status_str}",
     ]
-    # Only show plain req list in Intel Dossier when no guild (no member resolution)
-    if req_roles and not guild:
-        intel_lines.append(f"**ʀᴇǫᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
-    elif req_roles and guild:
-        req_display = _resolve_requirements_display(pkg, guild)
-        req_lines = []
-        for role, emoji, who in req_display:
-            line = f"{emoji} {role}"
-            if who:
-                line += f" — {who}"
-            req_lines.append(line)
-        intel_lines.append("**ʀᴇǫᴜɪʀᴇᴅ:**\n" + "\n".join(req_lines))
     intel_value = "\n".join(intel_lines)
     if len(intel_value) > 1024:
         intel_value = intel_value[:1020] + "\n…"
     embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
+
+    # ▸ Required Ranks — separate field with live checkboxes when guild available
+    if req_roles:
+        if guild:
+            req_display = _resolve_requirements_display(pkg, guild)
+            req_lines = [
+                f"{emoji} **{role}**" + (f" — {who}" if who else "")
+                for role, emoji, who in req_display
+            ]
+        else:
+            req_lines = [f"🔲 **{r}**" for r in req_roles]
+        req_value = "\n".join(req_lines)
+        if len(req_value) > 1024:
+            req_value = req_value[:1020] + "\n…"
+        embed.add_field(name="▸ Required Ranks", value=req_value, inline=False)
 
     # ▸ Briefing
     if briefing:
@@ -2561,7 +2564,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             _assigner_id = _specialist_assigners.get(str(uid))
             if _assigner_id:
                 _a = guild.get_member(_assigner_id) if guild else None
-                _sp_name += f" _(specialist, via {_a.display_name if _a else str(_assigner_id)})_"
+                _sp_name += f" _(via {_a.display_name if _a else str(_assigner_id)})_"
             else:
                 _sp_name += " _(specialist)_"
             _roster_names.append(_sp_name)
@@ -2799,7 +2802,7 @@ class SignUpView(discord.ui.View):
                 sp_assigners = pkg2.get("specialist_assigners", {})
                 sp_assigner_id = sp_assigners.get(str(uid))
                 sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
-                sp_suffix = f" _(specialist, via {sp_a.display_name})_" if sp_a else " _(specialist)_"
+                sp_suffix = f" _(via {sp_a.display_name})_" if sp_a else " _(specialist)_"
                 signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
             roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
@@ -2829,10 +2832,27 @@ class SignUpView(discord.ui.View):
                             upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         else:
                             upd_embed = msg.embeds[0]
-                            new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
+                            # Refresh both roster and requirements checklist
+                            _req_roles2 = pkg2.get("required_roles", [])
+                            if _req_roles2 and resolved_guild:
+                                _req_display2 = _resolve_requirements_display(pkg2, resolved_guild)
+                                _req_lines2 = [
+                                    f"{em} **{rl}**" + (f" — {wh}" if wh else "")
+                                    for rl, em, wh in _req_display2
+                                ]
+                                _req_value2 = "\n".join(_req_lines2) or "—"
+                            else:
+                                _req_value2 = None
+                            new_fields = [
+                                f for f in upd_embed.fields
+                                if not f.name.startswith("▸ Signed Up")
+                                and f.name != "▸ Required Ranks"
+                            ]
                             upd_embed.clear_fields()
                             for f in new_fields:
                                 upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
+                            if _req_value2:
+                                upd_embed.add_field(name="▸ Required Ranks", value=_req_value2, inline=False)
                             upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await msg.edit(embed=upd_embed)
 
@@ -2909,10 +2929,26 @@ class SignUpView(discord.ui.View):
                     msg = await ch.fetch_message(int(signup_message_id))
                     if msg.embeds:
                         upd_embed = msg.embeds[0]
-                        new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
+                        _req_roles3 = pkg3.get("required_roles", [])
+                        if _req_roles3 and resolved_guild:
+                            _req_display3 = _resolve_requirements_display(pkg3, resolved_guild)
+                            _req_lines3 = [
+                                f"{em} **{rl}**" + (f" — {wh}" if wh else "")
+                                for rl, em, wh in _req_display3
+                            ]
+                            _req_value3 = "\n".join(_req_lines3) or "—"
+                        else:
+                            _req_value3 = None
+                        new_fields = [
+                            f for f in upd_embed.fields
+                            if not f.name.startswith("▸ Signed Up")
+                            and f.name != "▸ Required Ranks"
+                        ]
                         upd_embed.clear_fields()
                         for f in new_fields:
                             upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
+                        if _req_value3:
+                            upd_embed.add_field(name="▸ Required Ranks", value=_req_value3, inline=False)
                         upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await msg.edit(embed=upd_embed)
         except Exception as e:
