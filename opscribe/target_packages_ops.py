@@ -2016,29 +2016,62 @@ def _get_cadre_channel_id(role: str) -> int | None:
 async def _notify_specialist_assigned(
     specialist_member: discord.Member, package_id: str, pkg: dict, guild: discord.Guild, cadre_leader: discord.Member = None
 ) -> None:
-    """Ping the specialist in their cadre channel about their assignment with a full package embed."""
+    """Post a lightweight assignment notification with a link to the KT directive embed."""
     specialist_roles = _member_role_names(specialist_member)
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+
+    signup_channel_id = pkg.get("signup_channel_id")
+    signup_message_id = pkg.get("signup_message_id")
+
+    directive_url = None
+    if guild and signup_channel_id and signup_message_id:
+        directive_url = (
+            f"https://discord.com/channels/{guild.id}/"
+            f"{int(signup_channel_id)}/{int(signup_message_id)}"
+        )
+
+    # Champion routing is explicit and takes precedence over cadre routing.
+    company_champion_channel_id = config_tp.get("company_champion_channel_id") or config_tp.get("watch_command_deployment_channel_id")
 
     # Determine the right channel for this specialist
     cadre_channel_id = None
-    for role in specialist_roles:
-        ch_id = _get_cadre_channel_id(role)
-        if ch_id:
-            cadre_channel_id = ch_id
-            break
+    if "Company Champion" in specialist_roles:
+        cadre_channel_id = company_champion_channel_id
+    elif "Kill Team Champion" in specialist_roles:
+        cadre_channel_id = signup_channel_id
+    else:
+        for role in specialist_roles:
+            ch_id = _get_cadre_channel_id(role)
+            if ch_id:
+                cadre_channel_id = ch_id
+                break
 
-    # KTC fallback: ping in KT signup channel
-    if not cadre_channel_id and "Kill Team Champion" in specialist_roles:
-        cadre_channel_id = pkg.get("signup_channel_id")
+    embed = discord.Embed(
+        title=f"{_DW_EMOJI} Specialist Assignment {_DW_EMOJI}",
+        color=0xE67E22,
+        description=f"{specialist_member.mention} has been attached to directive `{pkg.get('directive_code') or package_id}`.",
+    )
+    if cadre_leader:
+        embed.set_author(
+            name=cadre_leader.display_name,
+            icon_url=cadre_leader.display_avatar.url if getattr(cadre_leader, "display_avatar", None) else None,
+        )
+    directive_name = pkg.get("directive_name", "")
+    directive_label = f"`{pkg.get('directive_code') or package_id}`"
+    if directive_name:
+        directive_label += f" - {directive_name}"
 
-    data = _load_tp()
-    rep = data.get("rep", 0.0)
-    embed = _build_package_embed(pkg, rep, guild=guild)
+    link_line = f"[Open KT Directive]({directive_url})" if directive_url else "KT directive link unavailable"
     embed.add_field(
-        name="▸ Assignment",
+        name="▸ Directive",
+        value=f"{directive_label}\n{link_line}",
+        inline=False,
+    )
+    embed.add_field(
+        name="▸ Status",
         value=(
-            (f"Assigned by {cadre_leader.mention}\n" if cadre_leader else "")
-            + f"{specialist_member.mention} — you have been attached to this package. You are locked until completion or expiry."
+            "You are attached as a specialist and remain locked until completion, failure, lapse, "
+            "or cadre leader reassignment."
         ),
         inline=False,
     )
@@ -2046,8 +2079,7 @@ async def _notify_specialist_assigned(
     if cadre_channel_id:
         cadre_channel = guild.get_channel(int(cadre_channel_id)) if guild else None
         if cadre_channel or _is_debug_mode():
-            _cls_file = _classification_file(pkg)
-            sent_msg = await _notify_send(cadre_channel, guild, content=specialist_member.mention, embed=embed, **_file_kwarg(_cls_file))
+            sent_msg = await _notify_send(cadre_channel, guild, content=specialist_member.mention, embed=embed)
             # Store specialist notification message for later roster updates
             if sent_msg:
                 await _track_package_message(package_id, sent_msg)
@@ -2058,12 +2090,11 @@ async def _notify_specialist_assigned(
                         _sp_data["packages"][package_id]["specialist_notification_msgs"].append({
                             "channel_id": getattr(sent_msg.channel, "id", None),
                             "message_id": sent_msg.id,
+                            "kind": "assignment_link",
                         })
                         _save_tp(_sp_data)
 
     # Gap 3 — Update KT sign-up embed with refreshed deployment checks + roster
-    signup_channel_id = pkg.get("signup_channel_id")
-    signup_message_id = pkg.get("signup_message_id")
     if signup_channel_id and signup_message_id:
         try:
             ch = await _resolve_channel(guild, int(signup_channel_id))
@@ -2896,6 +2927,47 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
                         data2["packages"][package_id]["signup_channel_id"] = getattr(msg.channel, "id", channel.id)
                         _save_tp(data2)
                 await _track_package_message(package_id, msg)
+
+                # If the KT signup embed was reposted, update previously-sent lightweight
+                # specialist assignment notifications so their jump links stay valid.
+                try:
+                    _new_ch_id = int(getattr(msg.channel, "id", channel.id))
+                    _new_msg_id = int(msg.id)
+                    _new_url = f"https://discord.com/channels/{guild.id}/{_new_ch_id}/{_new_msg_id}"
+                    _latest_pkg = (_load_tp().get("packages", {}) or {}).get(package_id, {})
+                    for _ref in _latest_pkg.get("specialist_notification_msgs", []):
+                        if (_ref or {}).get("kind") != "assignment_link":
+                            continue
+                        _sp_ch_id = (_ref or {}).get("channel_id")
+                        _sp_msg_id = (_ref or {}).get("message_id")
+                        if not _sp_ch_id or not _sp_msg_id:
+                            continue
+                        _sp_ch = await _resolve_channel(guild, int(_sp_ch_id))
+                        if not _sp_ch:
+                            continue
+                        _sp_msg = await _sp_ch.fetch_message(int(_sp_msg_id))
+                        if not _sp_msg or not _sp_msg.embeds:
+                            continue
+
+                        _sp_embed = _sp_msg.embeds[0]
+                        _updated = False
+                        _rebuilt = []
+                        for _f in _sp_embed.fields:
+                            if _f.name == "▸ Directive":
+                                _lines = [ln for ln in (_f.value or "").split("\n") if ln.strip()]
+                                _label = _lines[0] if _lines else f"`{_latest_pkg.get('directive_code') or package_id}`"
+                                _rebuilt.append(("▸ Directive", f"{_label}\n[Open KT Directive]({_new_url})", _f.inline))
+                                _updated = True
+                            else:
+                                _rebuilt.append((_f.name, _f.value, _f.inline))
+
+                        if _updated:
+                            _sp_embed.clear_fields()
+                            for _name, _value, _inline in _rebuilt:
+                                _sp_embed.add_field(name=_name, value=_value, inline=_inline)
+                            await _sp_msg.edit(embed=_sp_embed)
+                except Exception as _link_exc:
+                    _g.logger.debug(f"[TP] Failed refreshing assignment-link notifications for {package_id}: {_link_exc}")
                 sent = True
             return
 
@@ -3145,6 +3217,8 @@ class SignUpView(discord.ui.View):
             # Update specialist notification embeds
             for sp_msg_ref in pkg2.get("specialist_notification_msgs", []):
                 try:
+                    if sp_msg_ref.get("kind") == "assignment_link":
+                        continue
                     sp_ch_id = sp_msg_ref.get("channel_id")
                     sp_msg_id = sp_msg_ref.get("message_id")
                     if not sp_ch_id or not sp_msg_id or not resolved_guild:
