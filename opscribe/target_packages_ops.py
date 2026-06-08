@@ -2310,7 +2310,8 @@ def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> l
     """Greedy assignment of required roles to participants.
 
     Returns list of (role_name, emoji, who_name) for each requirement slot.
-    Specialists fill cadre roles first; signed-up members fill line roles by rank.
+    Specialists fill cadre roles first; signed-up members can fill line roles only
+    when they explicitly hold the required role.
     Each participant satisfies at most one slot.
     """
     req_roles = pkg.get("required_roles", [])
@@ -2335,35 +2336,31 @@ def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> l
         if m:
             participants.append((m, _member_role_names(m), m.display_name))
 
+    # Process hardest-to-fill slots first (fewest matching participants), while
+    # preserving original order in the returned list.
+    req_slots = list(enumerate(req_roles))
+    slot_priority = {}
+    for idx, req in req_slots:
+        candidate_count = sum(1 for _m, roles, _d in participants if req in roles)
+        slot_priority[idx] = (candidate_count, -_RANK_SENIORITY_MAP.get(req, -1), idx)
+
     used: set[int] = set()
-    results: list[tuple[str, str, str]] = []
+    results_by_idx: dict[int, tuple[str, str, str]] = {}
 
-    for req in req_roles:
+    for idx, req in sorted(req_slots, key=lambda item: slot_priority[item[0]]):
         filled_by = None
-        if req in _CADRE_SPECIALIST_ROLES:
-            # Exact role match required
-            for m, roles, display in participants:
-                if m.id in used:
-                    continue
-                if req in roles:
-                    filled_by = display
-                    used.add(m.id)
-                    break
-        else:
-            # Rank-seniority match
-            req_idx = _RANK_SENIORITY_MAP.get(req, -1)
-            for m, roles, display in participants:
-                if m.id in used:
-                    continue
-                member_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in roles), default=-1)
-                if member_max >= req_idx:
-                    filled_by = display
-                    used.add(m.id)
-                    break
+        # Exact role match required for all requirement types.
+        for m, roles, display in participants:
+            if m.id in used:
+                continue
+            if req in roles:
+                filled_by = display
+                used.add(m.id)
+                break
         emoji = "✅" if filled_by else "🔲"
-        results.append((req, emoji, filled_by or ""))
+        results_by_idx[idx] = (req, emoji, filled_by or "")
 
-    return results
+    return [results_by_idx[i] for i in range(len(req_roles))]
 
 
 def _inject_readiness_fields_for_view(
@@ -2611,18 +2608,13 @@ _RANK_SENIORITY_MAP = {r: i for i, r in enumerate(_RANK_SENIORITY)}
 
 
 def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dict, guild: discord.Guild) -> bool:
-    """Return True if member meets or exceeds the required rank AND is in the right unit."""
-    req_idx = _RANK_SENIORITY_MAP.get(required_role, -1)
-    if req_idx < 0:
+    """Return True if member explicitly holds required role and is in the right unit."""
+    if required_role not in _RANK_SENIORITY_MAP:
         return False
 
     member_roles = _member_role_names(member)
-    # Check rank — member must hold required role or higher
-    member_max_rank = max(
-        (_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles),
-        default=-1,
-    )
-    if member_max_rank < req_idx:
+    # Member must explicitly hold the required role.
+    if required_role not in member_roles:
         return False
 
     # Check unit scope — same KT, same company (for company command / HC only), or HC
@@ -2643,35 +2635,38 @@ def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dic
 
 
 def _remaining_line_requirements(line_reqs: list[str], member_ids: list[int], guild: discord.Guild) -> list[str]:
-    """Return unsatisfied line requirements after greedily assigning each signer to one requirement.
+    """Return unsatisfied line requirements after assigning one explicit role per signer.
 
     Supports duplicate requirements by consuming counts from a multiset.
     """
-    remaining = Counter(line_reqs)
-    if not remaining:
+    if not line_reqs:
         return []
 
+    participants: list[tuple[int, set[str]]] = []
     for uid in member_ids:
         m = guild.get_member(uid) if guild else None
         if not m:
             continue
-        m_roles = _member_role_names(m)
-        m_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in m_roles), default=-1)
-        if m_max < 0:
-            continue
+        participants.append((int(uid), _member_role_names(m)))
 
-        satisfiable = [
-            req for req, cnt in remaining.items()
-            if cnt > 0 and m_max >= _RANK_SENIORITY_MAP.get(req, -1)
-        ]
-        if not satisfiable:
-            continue
+    req_slots = list(enumerate(line_reqs))
+    slot_priority = {}
+    for idx, req in req_slots:
+        candidate_count = sum(1 for _uid, roles in participants if req in roles)
+        slot_priority[idx] = (candidate_count, -_RANK_SENIORITY_MAP.get(req, -1), idx)
 
-        # Consume the hardest requirement this member can fill.
-        chosen = max(satisfiable, key=lambda req: _RANK_SENIORITY_MAP.get(req, -1))
-        remaining[chosen] -= 1
+    used_members: set[int] = set()
+    satisfied: set[int] = set()
+    for idx, req in sorted(req_slots, key=lambda item: slot_priority[item[0]]):
+        for uid, roles in participants:
+            if uid in used_members:
+                continue
+            if req in roles:
+                used_members.add(uid)
+                satisfied.add(idx)
+                break
 
-    return list(remaining.elements())
+    return [req for idx, req in req_slots if idx not in satisfied]
 
 
 def _remaining_cadre_requirements(
