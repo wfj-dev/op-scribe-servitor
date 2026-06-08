@@ -415,6 +415,7 @@
   "target_packages": {
     "highcom_strategium_channel_id": 1512929774970998945,
     "watch_command_deployment_channel_id": 1512929565239152671,
+    "company_champion_channel_id": 1512929565239152671,
     "ox_rep_channel_id": null,
     "general_channel_id": 1430055064969674777,
     "cadre_channels": {
