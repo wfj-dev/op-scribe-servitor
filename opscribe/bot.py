@@ -1450,10 +1450,10 @@ async def on_ready():
             logger.exception(f"Failed to initialize DataStore on ready: {e}")
     # sync app_commands (slash commands)
     try:
-        # Register target packages commands
+        # Register strike directives commands
         _target_packages_ops._register_commands(bot.tree)
     except Exception:
-        logger.exception("Failed to register target packages commands")
+        logger.exception("Failed to register strike directives commands")
     try:
         # Register LOA commands
         _loa_ops._register_commands(bot.tree)
@@ -1637,13 +1637,13 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start LFG queue system")
 
-    # Start target packages expiry loop
+    # Start strike directives expiry loop
     try:
         if not _target_packages_ops._tp_expiry_loop.is_running():
             _target_packages_ops._tp_expiry_loop.start()
-            logger.info("Target packages expiry loop started (30min interval).")
+            logger.info("Strike directives expiry loop started (30min interval).")
     except Exception:
-        logger.exception("Failed to start target packages expiry loop")
+        logger.exception("Failed to start strike directives expiry loop")
 
     # Start LOA expiry loop
     try:
@@ -1659,11 +1659,11 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to register terminus kill log persistent views")
 
-    # Register persistent views for Target Packages (Sgt accept + sign-up buttons)
+    # Register persistent views for Strike Directives (Sgt accept + sign-up buttons)
     try:
         await _target_packages_ops.register_persistent_views()
     except Exception:
-        logger.exception("Failed to register target packages persistent views")
+        logger.exception("Failed to register strike directives persistent views")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:

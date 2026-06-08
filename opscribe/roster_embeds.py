@@ -669,7 +669,7 @@ async def _update_company_roster(
     cmd_role = discord.utils.get(guild.roles, name=f"{short_name} Command")
     company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
 
-    # Load strike package data once so status lines can be rendered on all embeds.
+    # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_packages: dict | None = None
     try:
         _tp_path = os.path.join("data", "target_packages.json")

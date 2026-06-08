@@ -70,6 +70,54 @@ def _save_challenge_progress(progress_data: Dict[str, Dict]):
         _g.logger.exception(f"Failed to save challenge progress: {e}")
 
 
+def _normalize_challenge_mission_name(raw_mission: str) -> str:
+    """Normalize mission text for challenge set comparisons.
+
+    Handles role mentions and inline tag suffixes such as '@Black Laurels'.
+    """
+    mission = (raw_mission or "").lower().strip()
+    if not mission:
+        return ""
+
+    mission = re.sub(r"<@&\d+>", "", mission).strip()
+    mission = re.split(r"\s*@", mission, maxsplit=1)[0].strip()
+    mission = re.sub(
+        r"\b(black\s+laurels|dual\s+vigil|leviathan\s+protocol|black\s+reef\s+persecution)\b",
+        "",
+        mission,
+    )
+    mission = re.sub(r"\s+", " ", mission).strip(" -|:,;\t")
+    return mission
+
+
+def _normalize_progress_entries(entries: list) -> tuple[list, bool]:
+    """Normalize + de-duplicate mission entries in challenge progress lists."""
+    changed = False
+    normalized: list = []
+    seen_missions: set[str] = set()
+
+    for entry in entries or []:
+        if not isinstance(entry, dict) or "mission" not in entry:
+            normalized.append(entry)
+            continue
+
+        old_mission = str(entry.get("mission") or "")
+        new_mission = _normalize_challenge_mission_name(old_mission) or old_mission
+        if new_mission != old_mission:
+            changed = True
+
+        new_entry = dict(entry)
+        new_entry["mission"] = new_mission
+
+        if new_mission in seen_missions:
+            changed = True
+            continue
+        seen_missions.add(new_mission)
+        normalized.append(new_entry)
+
+    return normalized, changed
+
+
 async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> List[Tuple[str, str, int, str, List[str]]]:
     """Process an AAR record for challenge progress tracking.
 
@@ -85,8 +133,8 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     # Extract AAR fields
     # Strip role ID mentions (e.g., "<@&123456>") from mission name before comparisons so that
     # missions like "Inferno <@&1435812894532042843>" match the clean set entries like "inferno".
-    _raw_mission = (record.get("mission") or record.get("mission_name") or "").lower()
-    mission_name = re.sub(r"<@&\d+>", "", _raw_mission).strip()
+    _raw_mission = record.get("mission") or record.get("mission_name") or ""
+    mission_name = _normalize_challenge_mission_name(_raw_mission)
     brother_ids = record.get("brother_ids", [])
     aar_id = record.get("aar_id") or record.get("id", "")
     message_url = record.get("message_url", "")
@@ -122,6 +170,23 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 progress_data[user_id_str] = {"notified": []}
 
             user_progress = progress_data[user_id_str]
+
+            # Sanitize stored mission entries so legacy tag-suffixed missions
+            # (e.g., "purgation @black laurels") still count correctly.
+            for _k in (
+                "sok_g_pipehitter",
+                "kadaku_campaign",
+                "black_reef",
+                "distinguished_black_reef",
+                "dual_vigil",
+                "black_laurels",
+                "order_omega",
+            ):
+                _entries = user_progress.get(_k)
+                if isinstance(_entries, list):
+                    _normalized, _changed = _normalize_progress_entries(_entries)
+                    if _changed:
+                        user_progress[_k] = _normalized
             
             # Update display name if we have the member
             if member:
@@ -420,7 +485,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
                     )
 
-                # Check if all 13 missions completed at Omega with Black Laurels
+                # Check if all 13 missions completed at Omega with Black Laurels.
                 unique_missions = {m["mission"] for m in user_progress["order_omega"]}
                 if (
                     len(unique_missions) >= 13
@@ -621,9 +686,13 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                     entries = user_progress.get(prog_key, [])
                     if not entries:
                         continue
-                    unique = {e["mission"] for e in entries}
+                    normalized_entries, normalized_changed = _normalize_progress_entries(entries)
+                    if normalized_changed:
+                        user_progress[prog_key] = normalized_entries
+                        changed = True
+                    unique = {e["mission"] for e in normalized_entries if isinstance(e, dict) and "mission" in e}
                     if unique >= required:
-                        aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
+                        aar_urls = [e["message_url"] for e in normalized_entries if isinstance(e, dict) and e.get("message_url")]
                         notifications.append((user_id_str, display_name, role_id, award_type, aar_urls))
                         notified.append(notified_key)
                         user_progress["notified"] = notified

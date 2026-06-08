@@ -1,8 +1,8 @@
-"""Ordo Xenos Strike Packages subsystem.
+"""Ordo Xenos Strike Directives subsystem.
 
-Strike packages issued by Ordo Xenos for Watch Fortress Jericho to complete.
-Commands: /request_strike_packages, /view_strike_packages, /assign_package,
-          /log_strike_report, /strike_package_status
+Strike directives issued by Ordo Xenos for Watch Fortress Jericho to complete.
+Commands: /request_strike_directives, /view_strike_directives, /assign_directive,
+          /log_strike_report, /strike_directive_status
 """
 
 import os
@@ -242,7 +242,7 @@ def _expected_difficulty_for_mode(mode: str) -> str:
 
 
 async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple[Optional[str], Optional[str]]:
-    """Attach target package metadata to the submitted AAR record, if present.
+    """Attach strike directive metadata to the submitted AAR record, if present.
 
     Returns (aar_record_id, canonical_message_url) when linked, else (None, None).
     """
@@ -478,6 +478,68 @@ def _generate_package_id(existing_ids: set) -> str:
         if pid not in existing_ids:
             return pid
     raise RuntimeError("Failed to generate unique package ID after 1000 attempts")
+
+
+# ---------------------------------------------------------------------------
+# Directive code / name generation
+# ---------------------------------------------------------------------------
+
+_DIRECTIVE_GREEK = [
+    "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
+    "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi",
+    "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
+]
+
+_DIRECTIVE_ADJECTIVES = [
+    "Silent", "Iron", "Void", "Crimson", "Ashen", "Hollow", "Pale", "Dark",
+    "Steel", "Broken", "Fallen", "Cold", "Burning", "Black", "White", "Grey",
+    "Eternal", "Lost", "Bitter", "Sable", "Veiled", "Sacred", "Grim",
+    "Severed", "Sundered", "Blighted", "Forsaken", "Shrouded", "Ravaged",
+]
+
+_DIRECTIVE_NOUNS = [
+    "Spear", "Blade", "Storm", "Vigil", "Gate", "Throne", "Shroud", "Lance",
+    "Pyre", "Forge", "Warden", "Oath", "Seal", "Relic", "Abyss", "Dirge",
+    "Veil", "Chain", "Brand", "Coil", "Tide", "Hammer", "Fang", "Crest",
+    "Hunger", "Wake", "Talon", "Shard", "Pact", "Mantle", "Sigil", "Wound",
+]
+
+_DIRECTIVE_MODIFIERS = [
+    "Protocol", "Mandate", "Sanction", "Verdict", "Rite", "Accord",
+    "Measure", "Decree", "Inquisition",
+]
+
+
+def _generate_directive_code(existing_codes: set) -> str:
+    """Generate a unique SD-xxx-GREEK display code."""
+    for _ in range(1000):
+        number = random.randint(100, 999)
+        greek = random.choice(_DIRECTIVE_GREEK).upper()
+        code = f"SD-{number}-{greek}"
+        if code not in existing_codes:
+            return code
+    raise RuntimeError("Failed to generate unique directive code after 1000 attempts")
+
+
+def _generate_directive_name(existing_names: set) -> str:
+    """Generate a unique 1-3 word directive codename (e.g. 'Silent Spear')."""
+    for _ in range(1000):
+        style = random.randint(1, 4)
+        if style == 1:
+            name = random.choice(_DIRECTIVE_NOUNS)
+        elif style == 2:
+            name = f"{random.choice(_DIRECTIVE_ADJECTIVES)} {random.choice(_DIRECTIVE_NOUNS)}"
+        elif style == 3:
+            name = f"{random.choice(_DIRECTIVE_NOUNS)} {random.choice(_DIRECTIVE_MODIFIERS)}"
+        else:
+            name = (
+                f"{random.choice(_DIRECTIVE_ADJECTIVES)} "
+                f"{random.choice(_DIRECTIVE_NOUNS)} "
+                f"{random.choice(_DIRECTIVE_MODIFIERS)}"
+            )
+        if name not in existing_names:
+            return name
+    return f"Directive {random.randint(1000, 9999)}"
 
 
 # ---------------------------------------------------------------------------
@@ -816,6 +878,8 @@ def _build_briefing(node_name: str, world_type: str, mission_id: int,
 
 def _generate_single_package(
     existing_ids: set,
+    existing_codes: set,
+    existing_names: set,
     rep: float,
     graph: dict,
     active_strats: list,
@@ -851,9 +915,13 @@ def _generate_single_package(
     now = datetime.now(timezone.utc)
     deadline = now + timedelta(days=7)
     pid = _generate_package_id(existing_ids)
+    directive_code = _generate_directive_code(existing_codes)
+    directive_name = _generate_directive_name(existing_names)
 
     return {
         "id": pid,
+        "directive_code": directive_code,
+        "directive_name": directive_name,
         "node": node["id"],
         "world_type": world_type,
         "mission_id": mission_id,
@@ -884,7 +952,7 @@ def _generate_single_package(
 
 
 async def generate_packages(guild: discord.Guild, actor: discord.Member = None) -> list:
-    """Generate a batch of strike packages. Returns list of package dicts."""
+    """Generate a batch of strike directives. Returns list of directive dicts."""
     async with _TP_LOCK:
         data = _load_tp()
         rep = data.get("rep", 0.0)
@@ -900,12 +968,19 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         count = kt_count * multiplier
 
         existing_ids = set(data["packages"].keys())
+        existing_codes = {p.get("directive_code", "") for p in data["packages"].values() if p.get("directive_code")}
+        existing_names = {p.get("directive_name", "") for p in data["packages"].values() if p.get("directive_name")}
         new_packages = []
         for _ in range(count):
             pkg = _generate_single_package(
-                existing_ids, rep, graph, active_strats, templates, available_roles, ops_list
+                existing_ids, existing_codes, existing_names,
+                rep, graph, active_strats, templates, available_roles, ops_list
             )
             existing_ids.add(pkg["id"])
+            if pkg.get("directive_code"):
+                existing_codes.add(pkg["directive_code"])
+            if pkg.get("directive_name"):
+                existing_names.add(pkg["directive_name"])
             data["packages"][pkg["id"]] = pkg
             data["cycle"]["total"] += 1
             new_packages.append(pkg)
@@ -922,8 +997,8 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             count = len(new_packages)
             wm_flavor = [
                 "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.",
-                "Astropathic relay inbound. Ordo Xenos has transmitted new strike packages to Watch Fortress Jericho. Stand ready, brothers.",
-                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike packages. Deployment briefings to follow.",
+                "Astropathic relay inbound. Ordo Xenos has transmitted new strike directives to Watch Fortress Jericho. Stand ready, brothers.",
+                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike directives. Deployment briefings to follow.",
             ]
             wm_embed = discord.Embed(
                 title=f"{_DW_EMOJI} ᴏʀᴅᴏ xᴇɴᴏs ᴛʀᴀɴsᴍɪssɪᴏɴ {_DW_EMOJI}",
@@ -937,7 +1012,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
                 )
             wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
             wm_embed.set_footer(
-                text=f"{count} ᴘᴋɢ{'s' if count != 1 else ''} ʀᴇᴄᴇɪᴠᴇᴅ · ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴀɴᴄᴛɪᴏɴᴇᴅ",
+                text=f"{count} ᴅɪʀᴇᴄᴛɪᴠᴇ{'s' if count != 1 else ''} ʀᴇᴄᴇɪᴠᴇᴅ · ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴀɴᴄᴛɪᴏɴᴇᴅ",
             )
             await _notify_send(general_channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=wm_embed)
 
@@ -966,7 +1041,7 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
             s = "s" if count != 1 else ""
             flavor = random.choice(_DISTRIBUTE_FLAVOR).format(count=count, s=s)
             dist_embed = discord.Embed(
-                title=f"{_DW_EMOJI} ᴛᴀʀɢᴇᴛ ᴘᴋɢs ᴅɪsᴛʀɪʙᴜᴛᴇᴅ {_DW_EMOJI}",
+                title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇs ᴅɪsᴛʀɪʙᴜᴛᴇᴅ {_DW_EMOJI}",
                 description=flavor,
                 color=0xC4A030,
             )
@@ -998,14 +1073,14 @@ async def assign_package_to_kt(
     captain_member: discord.Member,
     guild: discord.Guild,
 ) -> tuple:
-    """Assign a package to a KT. Returns (success: bool, message: str)."""
+    """Assign a directive to a KT. Returns (success: bool, message: str)."""
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data["packages"].get(package_id)
         if not pkg:
-            return False, f"Package `{package_id}` not found."
+            return False, f"Directive `{package_id}` not found."
         if pkg["status"] not in (STATUS_DISTRIBUTED,):
-            return False, f"Package `{package_id}` is not available for assignment (status: {pkg['status']})."
+            return False, f"Directive `{package_id}` is not available for assignment (status: {pkg['status']})."
 
         # Check KT package cap (max 3)
         kt_active = [
@@ -1014,7 +1089,7 @@ async def assign_package_to_kt(
             and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
         ]
         if len(kt_active) >= 3:
-            return False, f"{kt_name} already has 3 active packages. Cannot assign more until one is completed."
+            return False, f"{kt_name} already has 3 active directives. Cannot assign more until one is completed."
 
         # Determine if a cadre specialist needs formal attachment
         # Line ranks (Veteran, Oathsworn, Sgt, KT Champion) are validated
@@ -1041,7 +1116,7 @@ async def assign_package_to_kt(
 
     # Cadre leader pings fire after Sgt complies (in SgtAcceptView), not here
 
-    return True, f"Package `{package_id}` assigned to {kt_name}."
+    return True, f"Directive `{package_id}` assigned to {kt_name}."
 
 
 async def assign_specialist(
@@ -1050,14 +1125,14 @@ async def assign_specialist(
     cadre_leader: discord.Member,
     guild: discord.Guild,
 ) -> tuple:
-    """Attach a specialist to a package. Returns (success, message)."""
+    """Attach a specialist to a directive. Returns (success, message)."""
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data["packages"].get(package_id)
         if not pkg:
-            return False, f"Package `{package_id}` not found."
+            return False, f"Directive `{package_id}` not found."
         if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
-            return False, f"Package `{package_id}` cannot accept a specialist attachment (status: {pkg['status']})."
+            return False, f"Directive `{package_id}` cannot accept a specialist attachment (status: {pkg['status']})."
 
         # Check specialist not already locked on another package
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
@@ -1065,7 +1140,7 @@ async def assign_specialist(
             if (specialist_member.id in p.get("assigned_specialist_ids", [])
                     and p["id"] != package_id
                     and p["status"] in active_statuses):
-                return False, f"{specialist_member.display_name} is already attached to package `{p['id']}`."
+                return False, f"{specialist_member.display_name} is already attached to directive `{p['id']}`."
 
         pkg.setdefault("assigned_specialist_ids", [])
         if specialist_member.id not in pkg["assigned_specialist_ids"]:
@@ -1085,7 +1160,7 @@ async def assign_specialist(
     await _notify_specialist_assigned(specialist_member, package_id, pkg, guild, cadre_leader=cadre_leader)
 
     return True, (
-        f"{specialist_member.display_name} attached to package `{package_id}`. "
+        f"{specialist_member.display_name} attached to directive `{package_id}`. "
         f"Status: `{pkg['status']}`."
     )
 
@@ -1124,20 +1199,28 @@ async def submit_package(
     submitter: discord.Member,
     guild: discord.Guild,
 ) -> tuple:
-    """Submit a completed package. Returns (success, message)."""
+    """Submit a completed directive. Returns (success, message)."""
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data["packages"].get(package_id)
         if not pkg:
-            return False, f"Package `{package_id}` not found."
+            # Try directive_code lookup
+            _upper = package_id.upper()
+            for _pid_key, _p in data["packages"].items():
+                if (_p.get("directive_code") or "").upper() == _upper:
+                    package_id = _pid_key
+                    pkg = _p
+                    break
+        if not pkg:
+            return False, f"Directive `{package_id}` not found."
 
         if pkg["status"] not in (STATUS_DEPLOYED, STATUS_RECRUITING):
-            return False, f"Package `{package_id}` cannot be submitted (status: `{pkg['status']}`)."
+            return False, f"Directive `{package_id}` cannot be submitted (status: `{pkg['status']}`)."
 
         # Check deadline
         deadline = datetime.fromisoformat(pkg["deadline"])
         if datetime.now(timezone.utc) > deadline:
-            return False, f"Package `{package_id}` has expired (deadline passed)."
+            return False, f"Directive `{package_id}` has expired (deadline passed)."
 
         # Submitter must be signed up OR be command of the assigned KT/company
         from .forge_ops import _resolve_killteam_for_member
@@ -1157,7 +1240,7 @@ async def submit_package(
 
         if not (is_signed_up or is_command or submitter_company == assigned_company or is_hc):
             return False, (
-                f"You do not have permission to submit package `{package_id}`. "
+                f"You do not have permission to submit directive `{package_id}`. "
                 f"Submission requires: being signed up, KT command (Sergeant/Champion), "
                 f"same-company membership, or High Command."
             )
@@ -1168,7 +1251,7 @@ async def submit_package(
             min_p = 2 if "Hard" in mode else 3
             signed = len(pkg.get("signed_up", []))
             return False, (
-                f"Package `{package_id}` is not yet deployed. "
+                f"Directive `{package_id}` is not yet deployed. "
                 f"Signed up: {signed}/{min_p} minimum brothers."
             )
 
@@ -1192,7 +1275,7 @@ async def submit_package(
                 continue
         if aar_brothers != expected_brothers:
             return False, (
-                "AAR team roster does not match package roster "
+                "AAR team roster does not match directive roster "
                 f"(expected {len(expected_brothers)}, got {len(aar_brothers)})."
             )
 
@@ -1203,12 +1286,12 @@ async def submit_package(
                 break
         aar_mission = str(aar_record.get("mission") or aar_record.get("mission_name") or "")
         if _canonical_mission_name(aar_mission) != _canonical_mission_name(expected_mission):
-            return False, "AAR mission does not match strike package mission."
+            return False, "AAR mission does not match strike directive mission."
 
         expected_diff = _expected_difficulty_for_mode(pkg.get("mode", ""))
         aar_diff = str(aar_record.get("difficulty_class") or "").strip().lower()
         if aar_diff != expected_diff:
-            return False, "AAR difficulty does not match strike package mode."
+            return False, "AAR difficulty does not match strike directive mode."
 
         pkg["status"] = STATUS_COMPLETED
         pkg["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -1254,7 +1337,7 @@ async def submit_package(
                     pkg2["aar_link"] = canonical_aar_link
                 _save_tp(data2)
     await _delete_package_messages(package_id, guild)
-    return True, f"Package `{package_id}` marked completed. Ordo Xenos standing updated."
+    return True, f"Directive `{package_id}` marked completed. Ordo Xenos standing updated."
 
 
 def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
@@ -1387,56 +1470,56 @@ async def expire_packages(guild: discord.Guild) -> None:
 # ---------------------------------------------------------------------------
 
 _DISTRIBUTE_FLAVOR = [
-    "Astropathic relay inbound. Watch Captains to the strategium — {count} strike package{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.\nUse `/view_strike_packages` to review and assign to your Kill Teams.",
-    "Ordo Xenos datalink established. {count} strike package{s} received and logged to the strategium. Watch Captains, move to review.\nUse `/view_strike_packages` to assign packages to your Kill Teams.",
-    "Intelligence packet cleared Vermillion. {count} strike package{s} routed to Watch Fortress Jericho command. Captains — your orders await.\nUse `/view_strike_packages` to review and assign.",
+    "Astropathic relay inbound. Watch Captains to the strategium — {count} strike directive{s} transmitted from Ordo Xenos to Watch Fortress Jericho. Await your assignments.\nUse `/view_strike_directives` to review and assign to your Kill Teams.",
+    "Ordo Xenos datalink established. {count} strike directive{s} received and logged to the strategium. Watch Captains, move to review.\nUse `/view_strike_directives` to assign directives to your Kill Teams.",
+    "Intelligence packet cleared Vermilion. {count} strike directive{s} routed to Watch Fortress Jericho command. Captains — your orders await.\nUse `/view_strike_directives` to review and assign.",
 ]
 
 _KT_ASSIGN_FLAVOR = [
-    "Data-inload received, brother. Strike Package `{pid}` has been assigned to {kt}. Blackstar is prepped — await final clearance before departure.",
-    "Strategic orders received. {kt} has been tasked with Strike Package `{pid}`. All brothers, stand ready.",
-    "Orders transmitted. {kt}, you have your mission — Strike Package `{pid}` is yours. Await specialist attachment if flagged.",
+    "Data-inload received, brother. Strike Directive `{pid}` has been assigned to {kt}. Blackstar is prepped — await final clearance before departure.",
+    "Strategic orders received. {kt} has been tasked with Strike Directive `{pid}`. All brothers, stand ready.",
+    "Orders transmitted. {kt}, you have your mission — Strike Directive `{pid}` is yours. Await specialist attachment if flagged.",
 ]
 
 _KT_READY_FLAVOR = [
-    "All conditions met. {kt} is cleared for immediate deployment on Strike Package `{pid}`. Emperor guide your blades.",
-    "Deployment authorised. {kt} — Strike Package `{pid}` is fully active. Blackstar is green.",
-    "Final clearance granted. {kt}, Strike Package `{pid}` is live. Move out.",
+    "All conditions met. {kt} is cleared for immediate deployment on Strike Directive `{pid}`. Emperor guide your blades.",
+    "Deployment authorised. {kt} — Strike Directive `{pid}` is fully active. Blackstar is green.",
+    "Final clearance granted. {kt}, Strike Directive `{pid}` is live. Move out.",
 ]
 
 _CADRE_FLAVOR = {
     "Forgemaster": [
-        "{kt} of {company} requires Techmarine or Dreadnought attachment on Strike Package `{pid}`. Forgemaster — designate your specialist.\nUse `/view_strike_packages` to assign.",
-        "Forge-lord, {kt} needs a specialist from your cadre for Strike Package `{pid}`. Forge-bond required before deployment.\nUse `/view_strike_packages` to assign.",
+        "{kt} of {company} requires Techmarine or Dreadnought attachment on Strike Directive `{pid}`. Forgemaster — designate your specialist.\nUse `/view_strike_directives` to assign.",
+        "Forge-lord, {kt} needs a specialist from your cadre for Strike Directive `{pid}`. Forge-bond required before deployment.\nUse `/view_strike_directives` to assign.",
     ],
     "Chief Apothecary": [
-        "{kt} of {company} requires an Apothecary on Strike Package `{pid}`. Chief Apothecary — designate your brother.\nUse `/view_strike_packages` to assign.",
-        "Chief Apothecary, {kt} needs your cadre's hand. Strike Package `{pid}` cannot deploy without an Apothecary.\nUse `/view_strike_packages` to assign.",
+        "{kt} of {company} requires an Apothecary on Strike Directive `{pid}`. Chief Apothecary — designate your brother.\nUse `/view_strike_directives` to assign.",
+        "Chief Apothecary, {kt} needs your cadre's hand. Strike Directive `{pid}` cannot deploy without an Apothecary.\nUse `/view_strike_directives` to assign.",
     ],
     "High Chaplain": [
-        "Reclusiam requisition raised. {kt} of {company} requires a Chaplain on Strike Package `{pid}`. High Chaplain — assign from your cadre.\nUse `/view_strike_packages` to assign.",
-        "High Chaplain, {kt} needs spiritual authority in the field. Strike Package `{pid}` awaits your designation.\nUse `/view_strike_packages` to assign.",
+        "Reclusiam requisition raised. {kt} of {company} requires a Chaplain on Strike Directive `{pid}`. High Chaplain — assign from your cadre.\nUse `/view_strike_directives` to assign.",
+        "High Chaplain, {kt} needs spiritual authority in the field. Strike Directive `{pid}` awaits your designation.\nUse `/view_strike_directives` to assign.",
     ],
     "Void Warden": [
-        "Librarius requisition transmitted. {kt} of {company} requires a Librarian on Strike Package `{pid}`. Void Warden — assign as required.\nUse `/view_strike_packages` to assign.",
-        "Void Warden, the psyker's gift is needed by {kt}. Strike Package `{pid}` awaits Librarian attachment.\nUse `/view_strike_packages` to assign.",
+        "Librarius requisition transmitted. {kt} of {company} requires a Librarian on Strike Directive `{pid}`. Void Warden — assign as required.\nUse `/view_strike_directives` to assign.",
+        "Void Warden, the psyker's gift is needed by {kt}. Strike Directive `{pid}` awaits Librarian attachment.\nUse `/view_strike_directives` to assign.",
     ],
     "Castellan": [
-        "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Strike Package `{pid}`. Castellan — designate your operative.\nUse `/view_strike_packages` to assign.",
-        "Castellan, your intelligence cadre is needed by {kt}. Strike Package `{pid}` awaits Watch Keeper attachment.\nUse `/view_strike_packages` to assign.",
+        "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Strike Directive `{pid}`. Castellan — designate your operative.\nUse `/view_strike_directives` to assign.",
+        "Castellan, your intelligence cadre is needed by {kt}. Strike Directive `{pid}` awaits Watch Keeper attachment.\nUse `/view_strike_directives` to assign.",
     ],
     "Lord Executioner": [
-        "Champion requisition raised. {kt} of {company} requires a Champion on Strike Package `{pid}`. Lord Executioner — designate as required.\nUse `/view_strike_packages` to assign.",
-        "Lord Executioner, {kt} needs martial authority on Strike Package `{pid}`. Champion assignment required before deployment.\nUse `/view_strike_packages` to assign.",
+        "Champion requisition raised. {kt} of {company} requires a Champion on Strike Directive `{pid}`. Lord Executioner — designate as required.\nUse `/view_strike_directives` to assign.",
+        "Lord Executioner, {kt} needs martial authority on Strike Directive `{pid}`. Champion assignment required before deployment.\nUse `/view_strike_directives` to assign.",
     ],
     "Huntmaster": [
-        "Huntmaster, {kt} of {company} requires your personal engagement on Strike Package `{pid}`. Your direct participation is demanded.\nUse `/view_strike_packages` to assign yourself.",
-        "Huntmaster — {kt} is called to the field on Strike Package `{pid}` and requires you. Await no further orders.\nUse `/view_strike_packages` to assign yourself.",
+        "Huntmaster, {kt} of {company} requires your personal engagement on Strike Directive `{pid}`. Your direct participation is demanded.\nUse `/view_strike_directives` to assign yourself.",
+        "Huntmaster — {kt} is called to the field on Strike Directive `{pid}` and requires you. Await no further orders.\nUse `/view_strike_directives` to assign yourself.",
     ],
 }
 
 _CADRE_DEFAULT_FLAVOR = [
-    "{kt} of {company} requires specialists on Strike Package `{pid}`: {roles}. Cadre leaders — assign as required.\nUse `/view_strike_packages` to assign.",
+    "{kt} of {company} requires specialists on Strike Directive `{pid}`: {roles}. Cadre leaders — assign as required.\nUse `/view_strike_directives` to assign.",
 ]
 
 
@@ -1662,17 +1745,18 @@ async def _notify_cadre_leaders_needed(
         _pkg_data = _load_tp()["packages"].get(package_id, {})
         _kt = _pkg_data.get("assigned_kt", "the assigned Kill Team")
         _company = _pkg_data.get("assigned_company", "Watch Fortress Jericho")
+        _display_id = _pkg_data.get("directive_code") or package_id
         flavor = random.choice(flavor_pool).format(
-            pid=package_id, roles=", ".join(owned_roles), kt=_kt, company=_company
+            pid=_display_id, roles=", ".join(owned_roles), kt=_kt, company=_company
         )
 
         cadre_embed = discord.Embed(
-            title=f"{_DW_EMOJI} sᴘᴇᴄɪᴀʟɪsᴛ ʀᴇQᴜɪsɪᴛɪᴏɴ {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} sᴘᴇᴄɪᴀʟɪsᴛ ʀᴇǫᴜɪsɪᴛɪᴏɴ  {_DW_EMOJI}",
             description=flavor,
             color=0xE67E22,
         )
         cadre_embed.set_footer(
-            text=f"ᴘᴋɢ `{package_id}` · ᴄʟᴇᴀʀᴀɴᴄᴇ: ʀᴏsᴇᴛᴛᴇ",
+            text=f"sᴅ `{_display_id}` · ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
         )
         _spec_img = os.path.join(_ASSETS_DIR, "priority operation orders special assignment.jpg")
         _spec_file = discord.File(_spec_img, filename="specialist_requisition.jpg") if os.path.exists(_spec_img) else None
@@ -1709,15 +1793,15 @@ _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"}
 
 def _clearance_for_member(member: Optional[discord.Member]) -> str:
     if member is None or _is_admin(member):
-        return "VERMILLION"
+        return "VERMILION"
     roles = _member_role_names(member)
     if roles & _HC_ROLES:
-        return "VERMILLION"
+        return "VERMILION"
     if roles & _COMMAND_ROLES:
-        return "ROSETTE"
+        return "OBSIDIAN"
     if roles & _KT_COMMAND_ROLES:
-        return "HERETICUS"
-    return "SANCTIONED"
+        return "MAGENTA"
+    return "SCARLET"
 
 
 def _rep_display(rep: float) -> str:
@@ -1810,8 +1894,11 @@ def _build_package_embed(
     }
     embed_color = _STATUS_COLORS.get(status, 0xC4A030)
 
+    _dcode = pkg.get("directive_code") or pid
+    _dname = pkg.get("directive_name", "")
+    _dtitle = f"{_dcode}: {_dname}" if _dname else _dcode
     embed = discord.Embed(
-        title=f"`ᴛᴀʀɢᴇᴛ ᴘᴋɢ {pid}{page_label}`",
+        title=f"`sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ {_dtitle}{page_label}`",
         color=embed_color,
     )
     embed.set_author(
@@ -1828,7 +1915,7 @@ def _build_package_embed(
         f"**sᴛᴀᴛᴜs:** {status_str}",
     ]
     if req_roles:
-        intel_lines.append(f"**ʀᴇQᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
+        intel_lines.append(f"**ʀᴇǫᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
     intel_value = "\n".join(intel_lines)
     if len(intel_value) > 1024:
         intel_value = intel_value[:1020] + "\n…"
@@ -2027,21 +2114,21 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     # In debug mode, skip rank/unit/company checks
     if _is_debug_mode() and _is_admin(member):
         if member.id in pkg.get("signed_up", []):
-            return False, "You are already signed up for this package."
+            return False, "You are already signed up for this directive."
         return True, ""
 
-    # Already signed up on this package
+    # Already signed up on this directive
     if member.id in pkg.get("signed_up", []):
-        return False, "You are already signed up for this package."
+        return False, "You are already signed up for this directive."
 
-    # Check not signed up on another active package
+    # Check not signed up on another active directive
     data = _load_tp()
     active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
     for p in data["packages"].values():
         if p["id"] == pkg["id"]:
             continue
         if member.id in p.get("signed_up", []) and p["status"] in active_statuses:
-            return False, f"You are already signed up for package `{p['id']}`."
+            return False, f"You are already signed up for directive `{p.get('directive_code') or p['id']}`."
 
     # Must be Watch Brother+
     member_roles = _member_role_names(member)
@@ -2069,7 +2156,7 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
             continue
         if (member.id in p.get("signed_up", [])
                 and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)):
-            return False, f"You are already committed to package `{p['id']}`. Complete that operation first."
+            return False, f"You are already committed to directive `{p.get('directive_code') or p['id']}`. Complete that operation first."
 
     # Enforce slot availability and rank requirements
     # Hard-Strat = 3 total slots, Omega-Strat = 5 total slots
@@ -2082,7 +2169,7 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     specialist_ids = pkg.get("assigned_specialist_ids", [])
 
     if len(signed_up) >= total_capacity:
-        return False, "This package is already at full capacity."
+        return False, "This directive is already at full capacity."
 
     # Feasibility gate: simulate this member signing up and ensure the remaining
     # slots are still sufficient to satisfy all unresolved requirements.
@@ -2266,10 +2353,10 @@ class SignUpView(discord.ui.View):
         data = _load_tp()
         pkg = data["packages"].get(self.package_id)
         if not pkg:
-            await interaction.response.send_message("Package not found.", ephemeral=True)
+            await interaction.response.send_message("Directive not found.", ephemeral=True)
             return
         if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
-            await interaction.response.send_message("This package is no longer accepting sign-ups.", ephemeral=True)
+            await interaction.response.send_message("This directive is no longer accepting sign-ups.", ephemeral=True)
             return
 
         eligible, reason = _is_eligible_to_sign_up(member, pkg, guild)
@@ -2285,10 +2372,10 @@ class SignUpView(discord.ui.View):
             data2 = _load_tp()
             pkg2 = data2["packages"].get(self.package_id)
             if not pkg2:
-                await interaction.followup.send("Package not found.", ephemeral=True)
+                await interaction.followup.send("Directive not found.", ephemeral=True)
                 return
             if pkg2.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
-                await interaction.followup.send("This package is no longer accepting sign-ups.", ephemeral=True)
+                await interaction.followup.send("This directive is no longer accepting sign-ups.", ephemeral=True)
                 return
             eligible2, reason2 = _is_eligible_to_sign_up(member, pkg2, guild)
             if not eligible2:
@@ -2597,9 +2684,11 @@ class StatusBoardView(discord.ui.View):
             mode_short = "HS" if "Hard" in p.get("mode", "") else "Ω"
             status_short = p["status"].upper()[:12]
             kt = p.get("assigned_kt", "")
-            label = p["id"]
+            _code = p.get("directive_code") or p["id"]
+            _name = p.get("directive_name", "")
+            label = f"{_code}: {_name}" if _name else _code
             desc = f"{mode_short} · {status_short}" + (f" → {kt}" if kt else "")
-            options.append(discord.SelectOption(label=label, description=desc[:100], value=p["id"]))
+            options.append(discord.SelectOption(label=label[:100], description=desc[:100], value=p["id"]))
 
         if options:
             select = discord.ui.Select(
@@ -2688,10 +2777,13 @@ class PackagePaginatorView(discord.ui.View):
                 mode_short = "HS" if "Hard" in p.get("mode", "") else "Ω"
                 status_short = p["status"].upper()[:12]
                 kt = p.get("assigned_kt", "")
+                _s_code = p.get("directive_code") or p["id"]
+                _s_name = p.get("directive_name", "")
+                _s_label = f"{_s_code}: {_s_name}" if _s_name else _s_code
                 desc = f"{mode_short} · {status_short}" + (f" → {kt}" if kt else "")
-                options.append(discord.SelectOption(label=p["id"], description=desc[:100], value=p["id"]))
+                options.append(discord.SelectOption(label=_s_label[:100], description=desc[:100], value=p["id"]))
             select = discord.ui.Select(
-                placeholder="Jump to package…",
+                placeholder="Jump to directive…",
                 options=options,
                 custom_id="tp_paginator_select",
             )
@@ -2805,7 +2897,7 @@ class PackagePaginatorView(discord.ui.View):
         pkg = self._refresh_current_package_snapshot()
         if pkg["status"] != STATUS_DISTRIBUTED:
             await interaction.response.send_message(
-                f"Package `{pkg['id']}` is `{pkg['status']}` — cannot assign.", ephemeral=True
+                f"Directive `{pkg.get('directive_code') or pkg['id']}` is `{pkg['status']}` — cannot assign.", ephemeral=True
             )
             return
         if not self.selected_kt:
@@ -2831,7 +2923,7 @@ class PackagePaginatorView(discord.ui.View):
             self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
             if not self.packages:
                 await interaction.edit_original_response(
-                    content="No active strike packages for your role.",
+                    content="No active strike directives for your role.",
                     embed=None,
                     view=None,
                     attachments=[],
@@ -2852,17 +2944,17 @@ class PackagePaginatorView(discord.ui.View):
         pkg = self._refresh_current_package_snapshot()
         if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
             await interaction.response.send_message(
-                f"Package `{pkg['id']}` is `{pkg['status']}` — cannot assign specialist.", ephemeral=True
+                f"Directive `{pkg.get('directive_code') or pkg['id']}` is `{pkg['status']}` — cannot assign specialist.", ephemeral=True
             )
             return
         req_roles = pkg.get("required_roles", [])
         cadre_roles = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
         if not cadre_roles:
-            await interaction.response.send_message("This package has no cadre specialist requirements.", ephemeral=True)
+            await interaction.response.send_message("This directive has no cadre specialist requirements.", ephemeral=True)
             return
         view = SpecialistAssignView(package_id=pkg["id"], required_roles=cadre_roles, guild=interaction.guild)
         await interaction.response.send_message(
-            f"Select the specialist to attach to `{pkg['id']}`:", view=view, ephemeral=True
+            f"Select the specialist to attach to `{pkg.get('directive_code') or pkg['id']}`:", view=view, ephemeral=True
         )
 
     def current_embed(self) -> discord.Embed:
@@ -3052,15 +3144,15 @@ def _get_tree():
     return getattr(m, "tree", None) if m else None
 
 
-# /request_strike_packages — WM only
+# /request_strike_directives — WM only
 @app_commands.command(
-    name="request_strike_packages",
-    description="[Watch Master] Request a new batch of Ordo Xenos strike packages.",
+    name="request_strike_directives",
+    description="[Watch Master] Request a new batch of Ordo Xenos strike directives.",
 )
-async def request_strike_packages(interaction: discord.Interaction):
-    if not _b("check_command_permission")(interaction.user, "request_strike_packages"):
+async def request_strike_directives(interaction: discord.Interaction):
+    if not _b("check_command_permission")(interaction.user, "request_strike_directives"):
         await interaction.response.send_message(
-            "Only the Watch Master may request strike packages.", ephemeral=True
+            "Only the Watch Master may request strike directives.", ephemeral=True
         )
         return
 
@@ -3099,7 +3191,7 @@ async def request_strike_packages(interaction: discord.Interaction):
     view = PackagePaginatorView(packages, rep, show_distribute=True, viewer=interaction.user)
     _pf = view.current_file()
     await interaction.followup.send(
-        content=f"**{len(packages)} strike package{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
+        content=f"**{len(packages)} strike directive{'s' if len(packages) != 1 else ''} received from Ordo Xenos.** "
                 f"Review below and press **Distribute All** when ready.",
         embed=view.current_embed(),
         view=view,
@@ -3108,12 +3200,12 @@ async def request_strike_packages(interaction: discord.Interaction):
     )
 
 
-# /view_strike_packages — role-overloaded view
+# /view_strike_directives — role-overloaded view
 @app_commands.command(
-    name="view_strike_packages",
-    description="View Ordo Xenos strike packages relevant to your role.",
+    name="view_strike_directives",
+    description="View Ordo Xenos strike directives relevant to your role.",
 )
-async def view_strike_packages(interaction: discord.Interaction):
+async def view_strike_directives(interaction: discord.Interaction):
     member = interaction.user
     await interaction.response.defer(ephemeral=True)
     data = _load_tp()
@@ -3163,7 +3255,7 @@ async def view_strike_packages(interaction: discord.Interaction):
         ] if kt else []
 
     if not pkgs:
-        await interaction.followup.send("No active strike packages for your role.", ephemeral=True)
+        await interaction.followup.send("No active strike directives for your role.", ephemeral=True)
         return
 
     view = PackagePaginatorView(pkgs, rep, show_distribute=False, viewer=member)
@@ -3177,72 +3269,74 @@ async def view_strike_packages(interaction: discord.Interaction):
 
 
 # /log_strike_report
-async def _submit_strike_package_autocomplete(
-    interaction: discord.Interaction,
-    current: str,
-) -> list:
-    """Autocomplete package IDs for packages the current user is attached to."""
-    data = _load_tp()
-    packages = data.get("packages", {})
-    member = interaction.user
-    current_norm = (current or "").strip().upper()
-
-    choices: list = []
-    for pkg in packages.values():
-        if pkg.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
-            continue
-
-        signed_up = member.id in pkg.get("signed_up", [])
-        specialist = member.id in pkg.get("assigned_specialist_ids", [])
-        if not (signed_up or specialist):
-            continue
-
-        pid = str(pkg.get("id", "")).upper()
-        if current_norm and current_norm not in pid:
-            continue
-
-        label_bits = [pid]
-        kt = pkg.get("assigned_kt")
-        if kt:
-            label_bits.append(kt)
-        if specialist:
-            label_bits.append("specialist")
-        elif signed_up:
-            label_bits.append("signed up")
-
-        choices.append(app_commands.Choice(name=" · ".join(label_bits)[:100], value=pid))
-        if len(choices) >= 25:
-            break
-
-    return choices
-
-
-_submit_strike_package_autocomplete_decorator = (
-    app_commands.autocomplete(package_id=_submit_strike_package_autocomplete)
-    if hasattr(app_commands, "autocomplete")
-    else (lambda func: func)
-)
-
-
 @app_commands.command(
     name="log_strike_report",
     description="Log a completed Ordo Xenos strike report.",
 )
-@app_commands.describe(
-    package_id="The strike package ID (e.g. OX-A4B2C)",
-    aar_link="Link to the After Action Report",
-)
-@_submit_strike_package_autocomplete_decorator
+@app_commands.describe(aar_link="Link to the After Action Report")
 async def log_strike_report(
     interaction: discord.Interaction,
-    package_id: str,
     aar_link: str,
 ):
-    package_id = package_id.strip().upper()
-    success, msg = await submit_package(package_id, aar_link, interaction.user, interaction.guild)
+    member = interaction.user
+    guild = interaction.guild
+    await interaction.response.defer(ephemeral=True)
+
+    # Resolve AAR early so we can match against directives
+    aar_key, aar_record = _resolve_aar_record_for_link(aar_link)
+    if not aar_record:
+        aar_record = await _parse_live_aar_for_link(aar_link, guild)
+    if not aar_record:
+        await interaction.followup.send(
+            "AAR link could not be resolved or parsed.", ephemeral=True
+        )
+        return
+
+    aar_mission_clean = _canonical_mission_name(
+        str(aar_record.get("mission") or aar_record.get("mission_name") or "")
+    )
+    aar_diff = str(aar_record.get("difficulty_class") or "").strip().lower()
+
+    # Find DEPLOYED directives this member is attached to
+    data = _load_tp()
+    candidates = [
+        pkg for pkg in data.get("packages", {}).values()
+        if pkg.get("status") == STATUS_DEPLOYED
+        and (
+            member.id in pkg.get("signed_up", [])
+            or member.id in pkg.get("assigned_specialist_ids", [])
+        )
+    ]
+
+    if not candidates:
+        await interaction.followup.send(
+            "You are not attached to any deployed strike directives. "
+            "Ensure your Kill Team has signed up and all requirements are met before submitting.",
+            ephemeral=True,
+        )
+        return
+
+    # Narrow to directives whose mission + difficulty match the AAR
+    matching = []
+    for pkg in candidates:
+        expected_mission = str(pkg.get("mission_id") or "")
+        for op in (_load_operations() or []):
+            if op.get("id") == pkg.get("mission_id"):
+                expected_mission = str(op.get("name") or expected_mission)
+                break
+        if _canonical_mission_name(expected_mission) != aar_mission_clean:
+            continue
+        if _expected_difficulty_for_mode(pkg.get("mode", "")) != aar_diff:
+            continue
+        matching.append(pkg)
+
+    # Use best match; fall back to first candidate so submit_package returns a proper error
+    target_pkg = matching[0] if matching else candidates[0]
+
+    success, msg = await submit_package(target_pkg["id"], aar_link, member, guild)
     if success:
         data = _load_tp()
-        pkg = data.get("packages", {}).get(package_id, {})
+        pkg = data.get("packages", {}).get(target_pkg["id"], target_pkg)
         classification = str(pkg.get("classification") or "STRIKE").strip().title()
         completed_kt = str(pkg.get("assigned_kt") or "Unassigned")
         rep_before = float(pkg.get("rep_before", data.get("rep", 0.0)) or 0.0)
@@ -3252,12 +3346,18 @@ async def log_strike_report(
         state_before = _standing_state_name(rep_before)
         state_after = _standing_state_name(rep_after)
 
+        display_code = pkg.get("directive_code") or target_pkg["id"]
+        directive_name = pkg.get("directive_name", "")
+        directive_display = f"`{display_code}`"
+        if directive_name:
+            directive_display = f"`{display_code}` — {directive_name}"
+
         embed = discord.Embed(
             title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ʀᴇᴘᴏʀᴛ ʟᴏɢɢᴇᴅ {_DW_EMOJI}",
             description=msg,
             color=0x2ECC71,
         )
-        embed.add_field(name=f"▸ {classification} Package", value=f"`{package_id}`", inline=True)
+        embed.add_field(name=f"▸ {classification} Directive", value=directive_display, inline=True)
         embed.add_field(name="▸ Kill Team Completed", value=completed_kt, inline=True)
         embed.add_field(
             name="▸ Ordo Xenos Standing",
@@ -3275,30 +3375,30 @@ async def log_strike_report(
         if os.path.exists(completion_img):
             comp_file = discord.File(completion_img, filename="mission_complet.png")
             embed.set_image(url="attachment://mission_complet.png")
-            await interaction.response.send_message(content=report_header, embed=embed, file=comp_file, ephemeral=False)
+            await interaction.followup.send(content=report_header, embed=embed, file=comp_file, ephemeral=False)
         else:
-            await interaction.response.send_message(content=report_header, embed=embed, ephemeral=False)
+            await interaction.followup.send(content=report_header, embed=embed, ephemeral=False)
         await interaction.followup.send(report_footer, ephemeral=False)
     else:
-        await interaction.response.send_message(msg, ephemeral=True)
+        await interaction.followup.send(msg, ephemeral=True)
 
 
 # Backward-compatible Python alias for older imports/call sites.
 submit_target_package = log_strike_report
 
 
-# /strike_package_status
+# /strike_directive_status
 @app_commands.command(
-    name="strike_package_status",
-    description="View the full status of a specific strike package.",
+    name="strike_directive_status",
+    description="View the full status of a specific strike directive.",
 )
-@app_commands.describe(package_id="The strike package ID (e.g. OX-A4B2C)")
-async def strike_package_status(
+@app_commands.describe(directive_id="The strike directive ID (e.g. SD-734-THETA)")
+async def strike_directive_status(
     interaction: discord.Interaction,
-    package_id: str,
+    directive_id: str,
 ):
     member = interaction.user
-    package_id = package_id.strip().upper()
+    package_id = directive_id.strip().upper()
 
     can_view = (
         _is_admin(member)
@@ -3310,16 +3410,23 @@ async def strike_package_status(
     data = _load_tp()
     pkg = data["packages"].get(package_id)
     if not pkg:
-        await interaction.response.send_message(f"Package `{package_id}` not found.", ephemeral=True)
+        # Try directive_code lookup
+        for _pid_key, _p in data["packages"].items():
+            if (_p.get("directive_code") or "").upper() == package_id:
+                package_id = _pid_key
+                pkg = _p
+                break
+    if not pkg:
+        await interaction.response.send_message(f"Directive `{package_id}` not found.", ephemeral=True)
         return
 
-    # Non-command members can only view their own KT's packages
+    # Non-command members can only view their own KT's directives
     if not can_view:
         from .forge_ops import _resolve_killteam_for_member
         kt = _resolve_killteam_for_member(member)
         if pkg.get("assigned_kt") != kt:
             await interaction.response.send_message(
-                f"Package `{package_id}` is not assigned to your Kill Team.", ephemeral=True
+                f"Directive `{pkg.get('directive_code') or package_id}` is not assigned to your Kill Team.", ephemeral=True
             )
             return
 
@@ -3341,10 +3448,10 @@ async def strike_package_status(
 
 def _register_commands(tree: app_commands.CommandTree) -> None:
     for cmd in (
-        request_strike_packages,
-        view_strike_packages,
+        request_strike_directives,
+        view_strike_directives,
         log_strike_report,
-        strike_package_status,
+        strike_directive_status,
     ):
         if tree.get_command(cmd.name) is None:
             tree.add_command(cmd)
@@ -3417,11 +3524,14 @@ async def register_persistent_views() -> None:
 
 # Public exports
 __all__ = [
-    "request_strike_packages",
-    "view_strike_packages",
+    "request_strike_directives",
+    "view_strike_directives",
     "log_strike_report",
     "submit_strike_package",
     "submit_target_package",
+    "strike_directive_status",
+    "request_strike_packages",
+    "view_strike_packages",
     "strike_package_status",
     "request_target_packages",
     "view_target_packages",
@@ -3436,6 +3546,9 @@ __all__ = [
 
 # Backward-compatible Python aliases for older imports/call sites.
 submit_strike_package = log_strike_report
-request_target_packages = request_strike_packages
-view_target_packages = view_strike_packages
-target_package_status = strike_package_status
+request_strike_packages = request_strike_directives
+view_strike_packages = view_strike_directives
+strike_package_status = strike_directive_status
+request_target_packages = request_strike_directives
+view_target_packages = view_strike_directives
+target_package_status = strike_directive_status

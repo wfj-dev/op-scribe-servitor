@@ -141,7 +141,7 @@ flowchart TB
 
 ---
 
-## Ordo Xenos Target Packages
+## Ordo Xenos Strike Directives
 
 **Module:** `opscribe/target_packages_ops.py`  
 **Data:** `data/target_packages.json`  
@@ -149,7 +149,7 @@ flowchart TB
 **Config:** `config.json` → `target_packages.highcom_channel_id`
 
 ### Overview
-Strike packages issued by Ordo Xenos (the bot) for Watch Fortress Jericho to complete. Watch Master requests a batch, reviews ephemerally, and distributes to Captains. Captains assign to Kill Teams. KTs run the op and submit an AAR. Completion/failure adjusts Ordo Xenos standing (-2.0 to +2.0), which controls the stratagem loadout difficulty of future packages.
+Strike directives issued by Ordo Xenos (the bot) for Watch Fortress Jericho to complete. Watch Master requests a batch, reviews ephemerally, and distributes to Captains. Captains assign to Kill Teams. KTs run the op and submit an AAR. Completion/failure adjusts Ordo Xenos standing (-2.0 to +2.0), which controls the stratagem loadout difficulty of future directives.
 
 ### Package Lifecycle
 ```
