@@ -2477,6 +2477,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     # Add current roster if anyone is already signed up / attached (e.g. on repost)
     _current_signed = pkg.get("signed_up", [])
     _current_specialists = pkg.get("assigned_specialist_ids", [])
+    _specialist_assigners = pkg.get("specialist_assigners", {})
     _roster_total = len(_current_signed) + len(_current_specialists)
     if _roster_total > 0:
         _roster_names = []
@@ -2485,7 +2486,14 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             _roster_names.append(m2.display_name if m2 else str(uid))
         for uid in _current_specialists:
             m2 = guild.get_member(uid) if guild else None
-            _roster_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
+            _sp_name = m2.display_name if m2 else str(uid)
+            _assigner_id = _specialist_assigners.get(str(uid))
+            if _assigner_id:
+                _a = guild.get_member(_assigner_id) if guild else None
+                _sp_name += f" _(specialist, via {_a.display_name if _a else str(_assigner_id)})_"
+            else:
+                _sp_name += " _(specialist)_"
+            _roster_names.append(_sp_name)
         embed.add_field(
             name=f"▸ Signed Up ({_roster_total}/{total_capacity})",
             value="\n".join(f"• {n}" for n in _roster_names),
