@@ -3232,23 +3232,43 @@ async def request_strike_directives(interaction: discord.Interaction):
     data = _load_tp()
     rep = data.get("rep", 0.0)
 
-    # If there are already unassigned packages, re-show them instead of generating new ones
-    pending = [
+    # Block new generation while any directives are still unassigned or distributed.
+    # WM must resolve the current cycle before issuing a fresh batch.
+    _active_pkgs = [
         p for p in data["packages"].values()
-        if p["status"] == STATUS_UNASSIGNED
+        if p["status"] in (STATUS_UNASSIGNED, STATUS_DISTRIBUTED)
     ]
-    if pending:
-        view = PackagePaginatorView(pending, rep, show_distribute=True, viewer=interaction.user)
-        _pf = view.current_file()
-        await interaction.followup.send(
-            content=f"**{len(pending)} unassigned package{'s' if len(pending) != 1 else ''} already pending distribution.** "
-                    f"Review and press **Distribute All** when ready. "
-                    f"To generate a fresh batch instead, distribute or let these lapse first.",
-            embed=view.current_embed(),
-            view=view,
-            ephemeral=True,
-            **_file_kwarg(_pf),
-        )
+    if _active_pkgs:
+        _unassigned = [p for p in _active_pkgs if p["status"] == STATUS_UNASSIGNED]
+        _distributed = [p for p in _active_pkgs if p["status"] == STATUS_DISTRIBUTED]
+        if _unassigned:
+            # Show unassigned ones with the Distribute All button
+            view = PackagePaginatorView(_unassigned, rep, show_distribute=True, viewer=interaction.user)
+            _pf = view.current_file()
+            await interaction.followup.send(
+                content=(
+                    f"**{len(_unassigned)} directive{'s' if len(_unassigned) != 1 else ''} awaiting distribution.** "
+                    f"These must be distributed before a new batch can be requested."
+                ),
+                embed=view.current_embed(),
+                view=view,
+                ephemeral=True,
+                **_file_kwarg(_pf),
+            )
+        else:
+            # All unassigned are gone but distributed ones are still outstanding
+            view = PackagePaginatorView(_distributed, rep, show_distribute=False, viewer=interaction.user)
+            _pf = view.current_file()
+            await interaction.followup.send(
+                content=(
+                    f"**{len(_distributed)} directive{'s' if len(_distributed) != 1 else ''} still awaiting captain assignment.** "
+                    f"A new batch cannot be requested until all distributed directives are assigned, completed, or lapsed."
+                ),
+                embed=view.current_embed(),
+                view=view,
+                ephemeral=True,
+                **_file_kwarg(_pf),
+            )
         return
 
     packages = await generate_packages(guild, actor=interaction.user)
