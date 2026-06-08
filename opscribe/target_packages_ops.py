@@ -2474,6 +2474,24 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         inline=False,
     )
 
+    # Add current roster if anyone is already signed up / attached (e.g. on repost)
+    _current_signed = pkg.get("signed_up", [])
+    _current_specialists = pkg.get("assigned_specialist_ids", [])
+    _roster_total = len(_current_signed) + len(_current_specialists)
+    if _roster_total > 0:
+        _roster_names = []
+        for uid in _current_signed:
+            m2 = guild.get_member(uid) if guild else None
+            _roster_names.append(m2.display_name if m2 else str(uid))
+        for uid in _current_specialists:
+            m2 = guild.get_member(uid) if guild else None
+            _roster_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
+        embed.add_field(
+            name=f"▸ Signed Up ({_roster_total}/{total_capacity})",
+            value="\n".join(f"• {n}" for n in _roster_names),
+            inline=False,
+        )
+
     view = SignUpView(package_id=package_id)
 
     # Find KT channel via any KT member
