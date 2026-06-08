@@ -1229,6 +1229,37 @@ async def assign_specialist(
         if specialist_member.id in pkg["assigned_specialist_ids"]:
             return False, f"{specialist_member.display_name} is already attached to directive `{package_id}`."
 
+        specialist_slots = _specialist_slots_allowed(pkg)
+        current_specialists = len(pkg.get("assigned_specialist_ids", []))
+        if specialist_slots <= 0:
+            return False, f"Directive `{package_id}` does not require specialist attachment."
+        if current_specialists >= specialist_slots:
+            return False, (
+                f"Directive `{package_id}` already has all required specialists "
+                f"({current_specialists}/{specialist_slots})."
+            )
+
+        cadre_roles_for_leader = [
+            r for r in (pkg.get("required_roles", []) or [])
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(cadre_leader, r)
+        ]
+        if not cadre_roles_for_leader:
+            return False, "This directive has no specialist requirements for your cadre."
+
+        cadre_assigned = 0
+        for uid in pkg.get("assigned_specialist_ids", []):
+            m = guild.get_member(uid) if guild else None
+            if not m:
+                continue
+            m_roles = _member_role_names(m)
+            if any(r in m_roles for r in cadre_roles_for_leader):
+                cadre_assigned += 1
+        if cadre_assigned >= len(cadre_roles_for_leader):
+            return False, (
+                f"Your cadre assignment slots for directive `{package_id}` are already filled "
+                f"({cadre_assigned}/{len(cadre_roles_for_leader)})."
+            )
+
         # Hard cap: specialists count toward strike team size and cannot exceed capacity.
         mode = pkg.get("mode", "")
         total_capacity = 3 if "Hard" in mode else 5
@@ -1938,7 +1969,7 @@ async def _notify_specialist_assigned(
                         })
                         _save_tp(_sp_data)
 
-    # Gap 3 — Update KT sign-up embed to show attached specialists
+    # Gap 3 — Update KT sign-up embed with refreshed deployment checks + roster
     signup_channel_id = pkg.get("signup_channel_id")
     signup_message_id = pkg.get("signup_message_id")
     if signup_channel_id and signup_message_id:
@@ -1946,33 +1977,56 @@ async def _notify_specialist_assigned(
             ch = await _resolve_channel(guild, int(signup_channel_id))
             if ch:
                 msg = await ch.fetch_message(int(signup_message_id))
-                # Rebuild specialist list
-                specialist_ids = pkg.get("assigned_specialist_ids", [])
-                specialist_assigners = pkg.get("specialist_assigners", {})
-                specialist_names = []
-                for sid in specialist_ids:
-                    m = guild.get_member(sid)
-                    name = m.display_name if m else str(sid)
-                    assigner_id = specialist_assigners.get(str(sid))
-                    if assigner_id:
-                        a = guild.get_member(assigner_id)
-                        assigner_name = a.display_name if a else str(assigner_id)
-                        name += f" (via {assigner_name})"
-                    specialist_names.append(name)
-                # Edit embed to add specialist field
                 if msg.embeds:
+                    mode = pkg.get("mode", "")
+                    total_capacity = 3 if "Hard" in mode else 5
+                    signed_up = pkg.get("signed_up", [])
+                    specialist_ids = pkg.get("assigned_specialist_ids", [])
+                    specialist_assigners = pkg.get("specialist_assigners", {})
+
+                    roster_names = []
+                    for uid in signed_up:
+                        m = guild.get_member(uid) if guild else None
+                        roster_names.append(m.display_name if m else str(uid))
+                    for uid in specialist_ids:
+                        m = guild.get_member(uid) if guild else None
+                        name = m.display_name if m else str(uid)
+                        assigner_id = specialist_assigners.get(str(uid))
+                        if assigner_id:
+                            a = guild.get_member(assigner_id) if guild else None
+                            name += f" _(via {a.display_name if a else str(assigner_id)})_"
+                        else:
+                            name += " _(specialist)_"
+                        roster_names.append(name)
+
+                    roster_total = len(signed_up) + len(specialist_ids)
+                    roster_field_name = f"▸ Signed Up ({roster_total}/{total_capacity})"
+                    roster_field_value = "\n".join(f"• {n}" for n in roster_names) if roster_names else "—"
+
+                    req_roles = pkg.get("required_roles", [])
+                    deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
+                    if req_roles and guild:
+                        req_display = _resolve_requirements_display(pkg, guild)
+                        for role_name, emoji, _who in req_display:
+                            deploy_lines.append(f"{emoji} **{role_name}**")
+                    elif req_roles:
+                        for role_name in req_roles:
+                            deploy_lines.append(f"🔲 **{role_name}**")
+                    deploy_lines.append("Press **⚔ Comply** to register for this operation.")
+
                     embed = msg.embeds[0]
-                    # Remove old specialist field if present
-                    new_fields = [f for f in embed.fields if f.name != "▸ Attached Specialists"]
+                    base_fields = [
+                        f for f in embed.fields
+                        if not f.name.startswith("▸ Signed Up")
+                        and f.name != "▸ Deployment Requirements"
+                        and f.name != "▸ Required Ranks"
+                        and f.name != "▸ Attached Specialists"
+                    ]
                     embed.clear_fields()
-                    for f in new_fields:
+                    for f in base_fields:
                         embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                    if specialist_names:
-                        embed.add_field(
-                            name="▸ Attached Specialists",
-                            value="\n".join(f"• {n}" for n in specialist_names),
-                            inline=False,
-                        )
+                    embed.add_field(name="▸ Deployment Requirements", value="\n".join(deploy_lines), inline=False)
+                    embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                     await msg.edit(embed=embed)
         except Exception as e:
             _g.logger.debug(f"[TP] Failed to update KT signup embed for {package_id}: {e}")
@@ -2525,6 +2579,12 @@ def _remaining_cadre_requirements(
         remaining[chosen] -= 1
 
     return list(remaining.elements())
+
+
+def _specialist_slots_allowed(pkg: dict) -> int:
+    """Maximum specialist attachments allowed for this directive based on requirement slots."""
+    req_roles = pkg.get("required_roles", []) or []
+    return len([r for r in req_roles if r in _CADRE_SPECIALIST_ROLES])
 
 
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
@@ -3099,6 +3159,37 @@ class SpecialistAssignView(discord.ui.View):
         _tp_data = _load_tp()
         _active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         _pkg = (_tp_data.get("packages", {}) or {}).get(package_id, {})
+        _specialist_slots = _specialist_slots_allowed(_pkg)
+        _current_specialists = len(_pkg.get("assigned_specialist_ids", []))
+        if _current_specialists >= _specialist_slots:
+            select = discord.ui.Select(
+                placeholder=f"Specialist slots filled ({_current_specialists}/{_specialist_slots})",
+                options=[discord.SelectOption(label="No additional specialist slots", value="none")],
+                custom_id="tp_specialist_select",
+                disabled=True,
+            )
+            self.add_item(select)
+            return
+
+        _cadre_slots = len(cadre_roles_needed)
+        _cadre_assigned = 0
+        _assigned_ids = _pkg.get("assigned_specialist_ids", [])
+        for _uid in _assigned_ids:
+            _m = guild.get_member(_uid) if guild else None
+            if not _m:
+                continue
+            _m_roles = _member_role_names(_m)
+            if any(_r in _m_roles for _r in cadre_roles_needed):
+                _cadre_assigned += 1
+        if _cadre_assigned >= _cadre_slots:
+            select = discord.ui.Select(
+                placeholder=f"Your cadre slots filled ({_cadre_assigned}/{_cadre_slots})",
+                options=[discord.SelectOption(label="No additional specialist slots", value="none")],
+                custom_id="tp_specialist_select",
+                disabled=True,
+            )
+            self.add_item(select)
+            return
         currently_assigned = set(_pkg.get("assigned_specialist_ids", []))
         currently_signed = set(_pkg.get("signed_up", []))
         already_assigned: set = set()
@@ -3278,13 +3369,6 @@ class StatusBoardView(discord.ui.View):
             await interaction.response.send_message(f"Package `{package_id}` not found.", ephemeral=True)
             return
         embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user, guild=interaction.guild)
-        specialist_ids = pkg.get("assigned_specialist_ids", [])
-        if specialist_ids and interaction.guild:
-            names = []
-            for sid in specialist_ids:
-                m = interaction.guild.get_member(sid)
-                names.append(m.display_name if m else str(sid))
-            embed.add_field(name="Attached Specialists", value=", ".join(names), inline=False)
         await interaction.response.send_message(embed=embed, **_file_kwarg(_classification_file(pkg)), ephemeral=True)
 
 
@@ -3476,6 +3560,11 @@ class PackagePaginatorView(discord.ui.View):
         if current_total >= total_capacity:
             return [], f"Directive full ({current_total}/{total_capacity})", False
 
+        specialist_slots = _specialist_slots_allowed(pkg)
+        current_specialists = len(pkg.get("assigned_specialist_ids", []))
+        if current_specialists >= specialist_slots:
+            return [], f"Specialist slots filled ({current_specialists}/{specialist_slots})", False
+
         req_roles = pkg.get("required_roles", [])
         cadre_roles = [
             r for r in req_roles
@@ -3487,6 +3576,17 @@ class PackagePaginatorView(discord.ui.View):
         guild = getattr(viewer, "guild", None) or _get_guild_from_bot()
         if not guild:
             return [], "Guild context unavailable", False
+
+        cadre_assigned = 0
+        for uid in pkg.get("assigned_specialist_ids", []):
+            m = guild.get_member(uid) if guild else None
+            if not m:
+                continue
+            m_roles = _member_role_names(m)
+            if any(r in m_roles for r in cadre_roles):
+                cadre_assigned += 1
+        if cadre_assigned >= len(cadre_roles):
+            return [], f"Your cadre slots filled ({cadre_assigned}/{len(cadre_roles)})", False
 
         tp_data = _load_tp()
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
@@ -3828,7 +3928,6 @@ def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bo
         "High Chaplain": {"Watch Chaplain"},
         "Void Warden": {"Watch Librarian"},
         "Castellan": {"Watch Keeper"},
-        "Venerable Dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
     }
     cl_roles = _member_role_names(cadre_leader)
     for cl_role, owned in _CADRE_OWNERSHIP.items():
@@ -4178,13 +4277,6 @@ async def strike_directive_status(
             return
 
     embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user, guild=interaction.guild)
-    specialist_ids = pkg.get("assigned_specialist_ids", [])
-    if specialist_ids:
-        names = []
-        for sid in specialist_ids:
-            m = interaction.guild.get_member(sid)
-            names.append(m.display_name if m else str(sid))
-        embed.add_field(name="Attached Specialists", value=", ".join(names), inline=False)
 
     await interaction.response.send_message(embed=embed, **_file_kwarg(_classification_file(pkg)), ephemeral=True)
 
