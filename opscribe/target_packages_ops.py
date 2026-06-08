@@ -2920,6 +2920,11 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
                     view=view,
                     **_file_kwarg(_cls_file),
                 )
+                if msg:
+                    try:
+                        await msg.pin(reason=f"Pin directive {pkg.get('directive_code') or package_id} for KT coordination")
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        _g.logger.debug(f"[TP] Failed to pin KT directive message {getattr(msg, 'id', '?')} for {package_id}: {exc}")
                 async with _TP_LOCK:
                     data2 = _load_tp()
                     if package_id in data2["packages"]:
