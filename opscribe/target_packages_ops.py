@@ -1084,7 +1084,7 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
             if actor:
                 dist_embed.set_author(
                     name=f"Distributed by {actor.display_name}",
-                    icon_url=actor.display_avatar.url if actor.display_avatar else discord.Embed.Empty,
+                    icon_url=actor.display_avatar.url if actor.display_avatar else None,
                 )
             dist_embed.set_footer(
                 text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
