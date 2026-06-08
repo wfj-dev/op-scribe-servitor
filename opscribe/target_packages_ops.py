@@ -3284,14 +3284,19 @@ async def view_strike_directives(interaction: discord.Interaction):
             and (statuses is None or p["status"] in statuses)
         ]
 
-    # Watch Master / admin — all active packages
-    if _is_watch_master(member):
+    # Role checks use actual Discord roles first so that admins with a specific
+    # rank (e.g. Forgemaster) get the view appropriate to that rank rather than
+    # the catch-all WM view that the admin override would otherwise trigger.
+    _mroles = _member_role_names(member)
+
+    # Watch Master role (true role, not admin override)
+    if "Watch Master" in _mroles:
         pkgs = _active()
 
     # Captain / Lieutenant — distributed (awaiting assignment) + company packages
     # already in-flight (recruiting/deployed for tracking); exclude pending_sgt since
     # the captain already acted and the Sgt needs to accept.
-    elif _is_captain_or_lt(member):
+    elif "Watch Captain" in _mroles or "Watch Lieutenant" in _mroles:
         from .roster_ops import _get_member_company_name
         company = _get_member_company_name(member)
         pkgs = [
@@ -3303,12 +3308,17 @@ async def view_strike_directives(interaction: discord.Interaction):
             )
         ]
 
-    # Cadre leader — packages needing their cadre's specialists
-    elif _is_cadre_leader(member):
+    # Cadre leader — only directives where their cadre's specialist is required,
+    # and only once the directive is assigned to a KT (RECRUITING or DEPLOYED).
+    elif _mroles & _CADRE_LEADER_ROLES:
         pkgs = [
             p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
             if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
         ]
+
+    # Admin fallback in debug mode only — see everything, same as WM
+    elif _is_debug_mode() and _is_admin(member):
+        pkgs = _active()
 
     # Everyone else — packages assigned to their KT
     else:
