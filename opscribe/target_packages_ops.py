@@ -329,7 +329,7 @@ _STRAT_TABLE = {
 }
 
 # Generator switch: disable Omega packages temporarily when needed.
-ENABLE_OMEGA_PACKAGES = False
+ENABLE_OMEGA_PACKAGES = True
 
 # Chaos-only mission IDs that force Intel Lapse — sourced from operations.json intel_lapse_forced field.
 # Do not hardcode here; the generation code reads directly from the ops data.
