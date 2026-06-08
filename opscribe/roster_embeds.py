@@ -281,8 +281,8 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
         is_high_command = HIGH_COMMAND_ROLE_ID in role_ids or "Watch Master" in role_names
         if not is_high_command:
             continue
-        # Watch Captains belong in Company Command, not HC
-        if "Watch Captain" in role_names:
+        # Watch Captains belong in Company Command, not HC, except Watch Master.
+        if "Watch Captain" in role_names and "Watch Master" not in role_names:
             continue
         result.append(m)
     return sorted(result, key=_sort_key_for_member)
@@ -305,6 +305,9 @@ def _get_company_command_members(
         if _is_in_reserves(m):
             continue
         role_names = _member_role_names(m)
+        # Watch Master must always be displayed in High Command.
+        if "Watch Master" in role_names:
+            continue
         # High Command members should not appear in Company Command,
         # except Watch Captains who belong to their company command embed.
         is_watch_captain = "Watch Captain" in role_names
