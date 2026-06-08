@@ -2232,13 +2232,7 @@ def _build_package_embed(
     # Only show plain req list in Intel Dossier when no guild (no member resolution)
     if req_roles and not guild:
         intel_lines.append(f"**ʀᴇǫᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
-    intel_value = "\n".join(intel_lines)
-    if len(intel_value) > 1024:
-        intel_value = intel_value[:1020] + "\n…"
-    embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
-
-    # ▸ Requirements checklist (only when guild context is available)
-    if req_roles and guild:
+    elif req_roles and guild:
         req_display = _resolve_requirements_display(pkg, guild)
         req_lines = []
         for role, emoji, who in req_display:
@@ -2246,10 +2240,11 @@ def _build_package_embed(
             if who:
                 line += f" — {who}"
             req_lines.append(line)
-        req_value = "\n".join(req_lines)
-        if len(req_value) > 1024:
-            req_value = req_value[:1020] + "\n…"
-        embed.add_field(name="▸ Requirements", value=req_value, inline=False)
+        intel_lines.append("**ʀᴇǫᴜɪʀᴇᴅ:**\n" + "\n".join(req_lines))
+    intel_value = "\n".join(intel_lines)
+    if len(intel_value) > 1024:
+        intel_value = intel_value[:1020] + "\n…"
+    embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
 
     # ▸ Briefing
     if briefing:
@@ -2587,8 +2582,13 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             if _old_ch:
                 _old_msg = await _old_ch.fetch_message(int(_old_signup_msg))
                 await _old_msg.delete()
-        except Exception:
-            pass  # already gone or not found — that's fine
+                _g.logger.info(f"[TP] Deleted old signup embed {_old_signup_msg} for {package_id} before repost")
+            else:
+                _g.logger.debug(f"[TP] Could not resolve old signup channel {_old_signup_ch} for deletion")
+        except discord.NotFound:
+            _g.logger.debug(f"[TP] Old signup embed {_old_signup_msg} already deleted")
+        except Exception as exc:
+            _g.logger.warning(f"[TP] Failed to delete old signup embed {_old_signup_msg}: {exc}")
 
     # Find KT channel via any KT member
     sent = False
@@ -2796,7 +2796,11 @@ class SignUpView(discord.ui.View):
                 signed_names.append(m2.display_name if m2 else str(uid))
             for uid in _specialists_su:
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
-                signed_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
+                sp_assigners = pkg2.get("specialist_assigners", {})
+                sp_assigner_id = sp_assigners.get(str(uid))
+                sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
+                sp_suffix = f" _(specialist, via {sp_a.display_name})_" if sp_a else " _(specialist)_"
+                signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
             roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
 
@@ -2808,12 +2812,28 @@ class SignUpView(discord.ui.View):
                 if ch:
                     msg = await ch.fetch_message(int(signup_message_id))
                     if msg.embeds:
-                        upd_embed = msg.embeds[0]
-                        new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
-                        upd_embed.clear_fields()
-                        for f in new_fields:
-                            upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                        upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
+                        # If status just flipped to DEPLOYED, rebuild the full embed
+                        # so the Intel Dossier status line also updates.
+                        if pkg2.get("status") == STATUS_DEPLOYED:
+                            data_rep = _load_tp().get("rep", 0.0)
+                            upd_embed = _build_package_embed(pkg2, data_rep, guild=resolved_guild)
+                            upd_embed.add_field(
+                                name="▸ Deployment Requirements",
+                                value=(
+                                    f"**Strike Team Size:** {total_capacity}\n"
+                                    + (f"**Required Ranks:** {', '.join(pkg2.get('required_roles', []))}\n" if pkg2.get("required_roles") else "")
+                                    + "\nPress **⚔ Comply** to register for this operation."
+                                ),
+                                inline=False,
+                            )
+                            upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
+                        else:
+                            upd_embed = msg.embeds[0]
+                            new_fields = [f for f in upd_embed.fields if not f.name.startswith("▸ Signed Up")]
+                            upd_embed.clear_fields()
+                            for f in new_fields:
+                                upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
+                            upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await msg.edit(embed=upd_embed)
 
             # Update specialist notification embeds
