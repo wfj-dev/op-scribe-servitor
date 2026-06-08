@@ -1215,6 +1215,19 @@ async def assign_specialist(
                 return False, f"{specialist_member.display_name} is already attached to directive `{p['id']}`."
 
         pkg.setdefault("assigned_specialist_ids", [])
+        if specialist_member.id in pkg["assigned_specialist_ids"]:
+            return False, f"{specialist_member.display_name} is already attached to directive `{package_id}`."
+
+        # Hard cap: specialists count toward strike team size and cannot exceed capacity.
+        mode = pkg.get("mode", "")
+        total_capacity = 3 if "Hard" in mode else 5
+        current_total = len(pkg.get("signed_up", [])) + len(pkg.get("assigned_specialist_ids", []))
+        if current_total >= total_capacity:
+            return False, (
+                f"Directive `{package_id}` is already at full capacity "
+                f"({current_total}/{total_capacity})."
+            )
+
         if specialist_member.id not in pkg["assigned_specialist_ids"]:
             pkg["assigned_specialist_ids"].append(specialist_member.id)
         # Track who assigned each specialist
@@ -2152,6 +2165,73 @@ def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> l
 
     return results
 
+
+def _inject_readiness_fields_for_view(
+    embed: discord.Embed,
+    pkg: dict,
+    guild: "discord.Guild | None",
+) -> discord.Embed:
+    """Add live deployment readiness fields used by /view_strike_directives."""
+    mode = pkg.get("mode", "")
+    total_capacity = 3 if "Hard" in mode else 5
+    req_roles = pkg.get("required_roles", [])
+
+    # Remove stale copies if this embed is being rebuilt while paging.
+    keep_fields = [
+        f for f in embed.fields
+        if f.name != "▸ Deployment Requirements" and not f.name.startswith("▸ Signed Up")
+    ]
+    embed.clear_fields()
+    for f in keep_fields:
+        embed.add_field(name=f.name, value=f.value, inline=f.inline)
+
+    deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
+    req_met = 0
+    req_total = len(req_roles)
+    if req_roles and guild:
+        req_display = _resolve_requirements_display(pkg, guild)
+        req_met = sum(1 for _r, emoji, _w in req_display if emoji == "✅")
+        for role_name, emoji, _who in req_display:
+            deploy_lines.append(f"{emoji} **{role_name}**")
+    elif req_roles:
+        for role_name in req_roles:
+            deploy_lines.append(f"🔲 **{role_name}**")
+    if req_total:
+        deploy_lines.append(f"**Requirements Met:** {req_met}/{req_total}")
+
+    embed.add_field(
+        name="▸ Deployment Requirements",
+        value="\n".join(deploy_lines),
+        inline=False,
+    )
+
+    signed_ids = pkg.get("signed_up", [])
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    specialist_assigners = pkg.get("specialist_assigners", {})
+    roster_total = len(signed_ids) + len(specialist_ids)
+
+    roster_lines: list[str] = []
+    for uid in signed_ids:
+        m = guild.get_member(uid) if guild else None
+        roster_lines.append(m.display_name if m else str(uid))
+    for uid in specialist_ids:
+        m = guild.get_member(uid) if guild else None
+        name = m.display_name if m else str(uid)
+        assigner_id = specialist_assigners.get(str(uid))
+        if assigner_id:
+            assigner = guild.get_member(assigner_id) if guild else None
+            name += f" (via {assigner.display_name if assigner else str(assigner_id)})"
+        else:
+            name += " (specialist)"
+        roster_lines.append(name)
+
+    embed.add_field(
+        name=f"▸ Signed Up ({roster_total}/{total_capacity})",
+        value="\n".join(f"• {n}" for n in roster_lines) if roster_lines else "—",
+        inline=False,
+    )
+    return embed
+
 def _build_package_embed(
     pkg: dict,
     rep: float,
@@ -2973,6 +3053,7 @@ class SpecialistAssignView(discord.ui.View):
         super().__init__(timeout=600)
         self.package_id = package_id
         self.required_roles = required_roles
+        self.has_assignable_options = False
 
         # Build filtered member list: only members who hold a CADRE SPECIALIST role
         # (line roles like Watch Veteran / Oathsworn sign up via Comply, not here)
@@ -2982,6 +3063,8 @@ class SpecialistAssignView(discord.ui.View):
         # Collect IDs already locked on an active package (excluding this one)
         _tp_data = _load_tp()
         _active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
+        _pkg = (_tp_data.get("packages", {}) or {}).get(package_id, {})
+        currently_assigned = set(_pkg.get("assigned_specialist_ids", []))
         already_assigned: set = set()
         for _p in _tp_data.get("packages", {}).values():
             if _p["id"] == package_id:
@@ -2995,6 +3078,10 @@ class SpecialistAssignView(discord.ui.View):
             for m in (guild.members if guild else []):
                 if m.bot or m.id in seen:
                     continue
+                if not _is_active(m):
+                    continue
+                if m.id in currently_assigned:
+                    continue  # already attached to this directive
                 if m.id in already_assigned:
                     continue  # already on another package
                 if any((getattr(r, "name", "") or "").strip() == role_name for r in getattr(m, "roles", [])):
@@ -3006,6 +3093,7 @@ class SpecialistAssignView(discord.ui.View):
                     seen.add(m.id)
 
         if options:
+            self.has_assignable_options = True
             select = discord.ui.Select(
                 placeholder="Select specialist to attach…",
                 options=options[:25],
@@ -3014,12 +3102,12 @@ class SpecialistAssignView(discord.ui.View):
             select.callback = self.on_select
             self.add_item(select)
         else:
-            # Fallback if no members found with the required role
-            select = discord.ui.UserSelect(
-                placeholder="Select specialist to attach…",
+            select = discord.ui.Select(
+                placeholder="No assignable specialists available",
+                options=[discord.SelectOption(label="No eligible specialists", value="none")],
                 custom_id="tp_specialist_select",
+                disabled=True,
             )
-            select.callback = self.on_select_user
             self.add_item(select)
 
     async def on_select(self, interaction: discord.Interaction):
@@ -3031,28 +3119,6 @@ class SpecialistAssignView(discord.ui.View):
             return
         success, msg = await assign_specialist(self.package_id, specialist_member, cadre_leader, interaction.guild)
         await interaction.response.send_message(msg, ephemeral=True)
-
-    async def on_select_user(self, interaction: discord.Interaction):
-        cadre_leader = interaction.user
-        specialist = interaction.data.get("resolved", {}).get("members", {})
-        if not specialist:
-            await interaction.response.send_message("No member selected.", ephemeral=True)
-            return
-        member_id = next(iter(specialist))
-        specialist_member = interaction.guild.get_member(int(member_id))
-        if not specialist_member:
-            await interaction.response.send_message("Could not resolve member.", ephemeral=True)
-            return
-        specialist_roles = _member_role_names(specialist_member)
-        owned = any(_cadre_leader_owns(cadre_leader, r) for r in specialist_roles)
-        if not owned and not _is_admin(cadre_leader):
-            await interaction.response.send_message(
-                f"{specialist_member.display_name} is not in your cadre.", ephemeral=True
-            )
-            return
-        success, msg = await assign_specialist(self.package_id, specialist_member, cadre_leader, interaction.guild)
-        await interaction.response.send_message(msg, ephemeral=True)
-
 
 # ---------------------------------------------------------------------------
 # Captain KT assignment button (inside PackagePaginatorView)
@@ -3225,13 +3291,15 @@ class PackagePaginatorView(discord.ui.View):
 
         # Cadre leader: "Assign Specialist" button — only on cadre views, not the WM request board
         if not show_distribute and viewer and (_member_role_names(viewer) & _CADRE_LEADER_ROLES):
-            spec_btn = discord.ui.Button(
-                label="Assign Specialist",
-                style=discord.ButtonStyle.secondary,
-                custom_id="tp_assign_specialist",
+            spec_options, spec_placeholder, spec_enabled = self._build_specialist_options(viewer)
+            spec_select = discord.ui.Select(
+                placeholder=spec_placeholder,
+                options=spec_options or [discord.SelectOption(label="No eligible specialists", value="none")],
+                custom_id="tp_assign_specialist_inline",
+                disabled=not spec_enabled,
             )
-            spec_btn.callback = self.assign_specialist_btn
-            self.add_item(spec_btn)
+            spec_select.callback = self.on_specialist_select
+            self.add_item(spec_select)
 
         # Select menu for quick navigation (max 25)
         if len(packages) > 1:
@@ -3351,10 +3419,107 @@ class PackagePaginatorView(discord.ui.View):
             item.placeholder = f"Kill Team: {self.selected_kt}" if self.selected_kt else "Select Kill Team…"
             break
 
+    def _build_specialist_options(self, viewer: discord.Member) -> tuple[list, str, bool]:
+        """Build inline specialist options for a cadre leader on the current directive."""
+        pkg = self._refresh_current_package_snapshot()
+        if not pkg:
+            return [], "No directive selected", False
+
+        if pkg.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            return [], "Specialists unavailable for this status", False
+
+        mode = pkg.get("mode", "")
+        total_capacity = 3 if "Hard" in mode else 5
+        current_total = len(pkg.get("signed_up", [])) + len(pkg.get("assigned_specialist_ids", []))
+        if current_total >= total_capacity:
+            return [], f"Directive full ({current_total}/{total_capacity})", False
+
+        req_roles = pkg.get("required_roles", [])
+        cadre_roles = [
+            r for r in req_roles
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(viewer, r)
+        ]
+        if not cadre_roles:
+            return [], "No specialist reqs for your cadre", False
+
+        guild = getattr(viewer, "guild", None) or _get_guild_from_bot()
+        if not guild:
+            return [], "Guild context unavailable", False
+
+        tp_data = _load_tp()
+        active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
+        pkg_id = pkg.get("id")
+        currently_assigned = set(pkg.get("assigned_specialist_ids", []))
+        already_assigned_elsewhere: set[int] = set()
+        for p in tp_data.get("packages", {}).values():
+            if p.get("id") == pkg_id:
+                continue
+            if p.get("status") in active_statuses:
+                already_assigned_elsewhere.update(p.get("assigned_specialist_ids", []))
+
+        options = []
+        seen: set[int] = set()
+        for m in guild.members:
+            if m.bot or m.id in seen:
+                continue
+            if not _is_active(m):
+                continue
+            if m.id in currently_assigned:
+                continue
+            if m.id in already_assigned_elsewhere:
+                continue
+            member_roles = _member_role_names(m)
+            matches = [r for r in cadre_roles if r in member_roles]
+            if not matches:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=m.display_name[:100],
+                    value=str(m.id),
+                    description=matches[0][:100],
+                )
+            )
+            seen.add(m.id)
+            if len(options) >= 25:
+                break
+
+        if not options:
+            return [], "No eligible specialists available", False
+        return options, "Select specialist to attach…", True
+
     async def on_kt_select(self, interaction: discord.Interaction):
         self.selected_kt = interaction.data["values"][0]
         self._refresh_assign_btn()
         await interaction.response.edit_message(view=self)
+
+    async def on_specialist_select(self, interaction: discord.Interaction):
+        selected = (interaction.data.get("values") or [None])[0]
+        if not selected or selected == "none":
+            await interaction.response.send_message("No eligible specialist to assign.", ephemeral=True)
+            return
+
+        specialist_member = interaction.guild.get_member(int(selected)) if interaction.guild else None
+        if not specialist_member:
+            await interaction.response.send_message("Could not resolve selected specialist.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        success, msg = await assign_specialist(
+            self._refresh_current_package_snapshot().get("id", ""),
+            specialist_member,
+            interaction.user,
+            interaction.guild,
+        )
+
+        self._refresh_specialist_btn()
+        self._refresh_assign_btn()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(),
+            view=self,
+            attachments=[f] if f else [],
+        )
+        await interaction.followup.send(msg, ephemeral=True)
 
     async def assign_to_kt(self, interaction: discord.Interaction):
         pkg = self._refresh_current_package_snapshot()
@@ -3410,6 +3575,15 @@ class PackagePaginatorView(discord.ui.View):
                 f"Directive `{pkg.get('directive_code') or pkg['id']}` is `{pkg['status']}` — cannot assign specialist.", ephemeral=True
             )
             return
+        mode = pkg.get("mode", "")
+        total_capacity = 3 if "Hard" in mode else 5
+        current_total = len(pkg.get("signed_up", [])) + len(pkg.get("assigned_specialist_ids", []))
+        if current_total >= total_capacity:
+            await interaction.response.send_message(
+                f"Directive `{pkg.get('directive_code') or pkg['id']}` is already at full capacity ({current_total}/{total_capacity}).",
+                ephemeral=True,
+            )
+            return
         req_roles = pkg.get("required_roles", [])
         # Only show the roles this cadre leader is responsible for
         cadre_roles = [
@@ -3420,34 +3594,49 @@ class PackagePaginatorView(discord.ui.View):
             await interaction.response.send_message("This directive has no specialist requirements for your cadre.", ephemeral=True)
             return
         view = SpecialistAssignView(package_id=pkg["id"], required_roles=cadre_roles, guild=interaction.guild)
+        if not view.has_assignable_options:
+            await interaction.response.send_message(
+                "No eligible specialists are currently available for assignment.",
+                ephemeral=True,
+            )
+            return
         await interaction.response.send_message(
             f"Select the specialist to attach to `{pkg.get('directive_code') or pkg['id']}`:", view=view, ephemeral=True
         )
 
     def current_embed(self) -> discord.Embed:
         self._refresh_current_package_snapshot()
-        return _build_package_embed(
-            self.packages[self.index],
+        pkg = self.packages[self.index]
+        resolved_guild = getattr(self.viewer, "guild", None) if self.viewer else _get_guild_from_bot()
+        embed = _build_package_embed(
+            pkg,
             self.rep,
             index=self.index + 1,
             total=len(self.packages),
             viewer=self.viewer,
+            guild=resolved_guild,
         )
+        if pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            embed = _inject_readiness_fields_for_view(embed, pkg, resolved_guild)
+        return embed
 
     def current_file(self) -> "discord.File | None":
         self._refresh_current_package_snapshot()
         return _classification_file(self.packages[self.index])
 
     def _refresh_specialist_btn(self) -> None:
-        """Disable Assign Specialist button if current package has no required specialist roles or wrong status."""
-        pkg = self._refresh_current_package_snapshot()
-        needs = (
-            bool(set(pkg.get("required_roles", [])) & _CADRE_SPECIALIST_ROLES)
-            and pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
-        )
+        """Refresh inline specialist selector for the currently viewed directive."""
         for item in self.children:
-            if getattr(item, "custom_id", None) == "tp_assign_specialist":
-                item.disabled = not needs
+            if getattr(item, "custom_id", None) == "tp_assign_specialist_inline":
+                if not self.viewer:
+                    item.disabled = True
+                    item.options = [discord.SelectOption(label="No viewer context", value="none")]
+                    item.placeholder = "Specialist selector unavailable"
+                    break
+                opts, placeholder, enabled = self._build_specialist_options(self.viewer)
+                item.options = opts or [discord.SelectOption(label="No eligible specialists", value="none")]
+                item.placeholder = placeholder
+                item.disabled = not enabled
                 break
 
     def _refresh_assign_btn(self) -> None:
@@ -3555,7 +3744,7 @@ def _is_captain_or_lt(member: discord.Member) -> bool:
 
 _CADRE_LEADER_ROLES = {
     "Lord Executioner", "Forgemaster", "Chief Apothecary",
-    "High Chaplain", "Void Warden", "Castellan",
+    "High Chaplain", "Void Warden", "Castellan", "Huntmaster",
 }
 
 _HC_ROLES = {
