@@ -495,6 +495,7 @@ _DIRECTIVE_ADJECTIVES = [
     "Steel", "Broken", "Fallen", "Cold", "Burning", "Black", "White", "Grey",
     "Eternal", "Lost", "Bitter", "Sable", "Veiled", "Sacred", "Grim",
     "Severed", "Sundered", "Blighted", "Forsaken", "Shrouded", "Ravaged",
+    "Wrathful", "Undying", "Buried", "Starless", "Hollow", "Scarred",
 ]
 
 _DIRECTIVE_NOUNS = [
@@ -502,20 +503,46 @@ _DIRECTIVE_NOUNS = [
     "Pyre", "Forge", "Warden", "Oath", "Seal", "Relic", "Abyss", "Dirge",
     "Veil", "Chain", "Brand", "Coil", "Tide", "Hammer", "Fang", "Crest",
     "Hunger", "Wake", "Talon", "Shard", "Pact", "Mantle", "Sigil", "Wound",
+    "Bastion", "Requiem", "Purgatory", "Terminus", "Omen", "Cipher",
+]
+
+_DIRECTIVE_VERBS = [
+    "Break", "Sever", "Purge", "Strike", "Hunt", "Burn", "Seal",
+    "Claim", "Raze", "Pierce", "Silence", "Condemn", "Expunge",
+    "Shatter", "Crush", "Reclaim", "Sanctify", "Annul", "Bleed",
+    "Unmake", "Scour", "Erase", "Consume", "Drive", "Slay",
 ]
 
 _DIRECTIVE_MODIFIERS = [
     "Protocol", "Mandate", "Sanction", "Verdict", "Rite", "Accord",
-    "Measure", "Decree", "Inquisition",
+    "Measure", "Decree", "Inquisition", "Edict", "Warrant", "Judgment",
 ]
+
+# Total unique codenames:
+#   Noun only:           38
+#   Adj + Noun:          35 × 38 = 1,330
+#   Verb + Noun:         25 × 38 = 950
+#   Noun + Modifier:     38 × 12 = 456
+#   Adj + Noun + Mod:    35 × 38 × 12 = 15,960
+#   Verb + Adj + Noun:   25 × 35 × 38 = 33,250
+#   Total ≈ 51,984 unique codenames
+
+
+def _smallcaps(text: str) -> str:
+    """Convert ASCII letters to Unicode small-cap equivalents."""
+    _MAP = str.maketrans(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+        "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢ",
+    )
+    return text.translate(_MAP)
 
 
 def _generate_directive_code(existing_codes: set) -> str:
-    """Generate a unique SD-xxx-GREEK display code."""
+    """Generate a unique xxx-GREEK display code (e.g. 734-THETA)."""
     for _ in range(1000):
         number = random.randint(100, 999)
         greek = random.choice(_DIRECTIVE_GREEK).upper()
-        code = f"SD-{number}-{greek}"
+        code = f"{number}-{greek}"
         if code not in existing_codes:
             return code
     raise RuntimeError("Failed to generate unique directive code after 1000 attempts")
@@ -524,18 +551,26 @@ def _generate_directive_code(existing_codes: set) -> str:
 def _generate_directive_name(existing_names: set) -> str:
     """Generate a unique 1-3 word directive codename (e.g. 'Silent Spear')."""
     for _ in range(1000):
-        style = random.randint(1, 4)
+        style = random.randint(1, 6)
         if style == 1:
             name = random.choice(_DIRECTIVE_NOUNS)
         elif style == 2:
             name = f"{random.choice(_DIRECTIVE_ADJECTIVES)} {random.choice(_DIRECTIVE_NOUNS)}"
         elif style == 3:
+            name = f"{random.choice(_DIRECTIVE_VERBS)} {random.choice(_DIRECTIVE_NOUNS)}"
+        elif style == 4:
             name = f"{random.choice(_DIRECTIVE_NOUNS)} {random.choice(_DIRECTIVE_MODIFIERS)}"
-        else:
+        elif style == 5:
             name = (
                 f"{random.choice(_DIRECTIVE_ADJECTIVES)} "
                 f"{random.choice(_DIRECTIVE_NOUNS)} "
                 f"{random.choice(_DIRECTIVE_MODIFIERS)}"
+            )
+        else:
+            name = (
+                f"{random.choice(_DIRECTIVE_VERBS)} "
+                f"{random.choice(_DIRECTIVE_ADJECTIVES)} "
+                f"{random.choice(_DIRECTIVE_NOUNS)}"
             )
         if name not in existing_names:
             return name
@@ -1896,7 +1931,10 @@ def _build_package_embed(
 
     _dcode = pkg.get("directive_code") or pid
     _dname = pkg.get("directive_name", "")
-    _dtitle = f"{_dcode}: {_dname}" if _dname else _dcode
+    _dtitle = (
+        f"{_smallcaps(_dcode)}: {_smallcaps(_dname)}" if _dname
+        else _smallcaps(_dcode)
+    )
     embed = discord.Embed(
         title=f"`sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ {_dtitle}{page_label}`",
         color=embed_color,
@@ -2228,7 +2266,22 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             channel = await _get_award_announcement_channel(m, guild)
             if channel:
                 _cls_file = _classification_file(pkg)
-                msg = await _notify_send(channel, guild, embed=embed, view=view, **_file_kwarg(_cls_file))
+                # Mention the KT role so the whole team sees the deployment embed
+                kt_role_mention = ""
+                if guild:
+                    _kt_role = discord.utils.find(
+                        lambda r: r.name.lower() == kt_name.lower(),
+                        guild.roles,
+                    )
+                    if _kt_role:
+                        kt_role_mention = _kt_role.mention
+                msg = await _notify_send(
+                    channel, guild,
+                    content=kt_role_mention or None,
+                    embed=embed,
+                    view=view,
+                    **_file_kwarg(_cls_file),
+                )
                 async with _TP_LOCK:
                     data2 = _load_tp()
                     if package_id in data2["packages"]:
