@@ -413,8 +413,8 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
         if not kt_pkgs:
             return "🟢 Ready for Deployment"
         if any(p["status"] == "deployed" for p in kt_pkgs):
-            return f"🔴 Deployed ({len(kt_pkgs)} pkg{'s' if len(kt_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(kt_pkgs)} pkg{'s' if len(kt_pkgs) > 1 else ''})"
+            return f"🔴 Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
     except Exception:
         return ""
 
@@ -461,8 +461,8 @@ def _tp_status_for_company(
         if not company_pkgs:
             return "🟢 Ready for Deployment"
         if any(p.get("status") == "deployed" for p in company_pkgs):
-            return f"🔴 Deployed ({len(company_pkgs)} pkg{'s' if len(company_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(company_pkgs)} pkg{'s' if len(company_pkgs) > 1 else ''})"
+            return f"🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
     except Exception:
         return "🟢 Ready for Deployment"
 
@@ -491,8 +491,8 @@ def _tp_status_for_high_command(
         if not hc_pkgs:
             return "🟢 Ready for Deployment"
         if any(p.get("status") == "deployed" for p in hc_pkgs):
-            return f"🔴 Deployed ({len(hc_pkgs)} pkg{'s' if len(hc_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(hc_pkgs)} pkg{'s' if len(hc_pkgs) > 1 else ''})"
+            return f"🔴 Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+        return f"🟡 Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
     except Exception:
         return "🟢 Ready for Deployment"
 
