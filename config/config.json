@@ -34,18 +34,18 @@
         "Forgemaster"
       ]
     },
-    "request_strike_packages": {
+    "request_strike_directives": {
       "roles": [
         "Watch Master"
       ]
     },
-    "view_strike_packages": {
+    "view_strike_directives": {
       "min_rank": "Watch Sergeant"
     },
     "submit_target_package": {
       "min_rank": "Watch Brother"
     },
-    "strike_package_status": {
+    "strike_directive_status": {
       "min_rank": "Watch Sergeant"
     },
     "litany_of_function": {
