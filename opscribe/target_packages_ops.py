@@ -743,7 +743,14 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
         "Broken Bulwark",
         "Fallen Vanguard",
         "Heavy Burden",
-        "Tactical Weakness"
+        "Tactical Weakness",
+        "Booby Trap",
+        "Depleted Armour",
+        "Empathy",
+        "Equipment Malfunction",
+        "Fatal Contamination",
+        "Hazardous Environment",
+        "Shadow of the Warp"
     } | omega_excluded
 
     buffs = [s for s in active_strats if s["type"] == "buff" and s["name"] not in mode_excluded and s["name"] != "Intelligence Lapse"]
