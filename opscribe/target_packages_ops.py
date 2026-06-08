@@ -1406,12 +1406,12 @@ def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
 
 
 def _update_rep(data: dict) -> None:
-    """Recalculate and clamp rep after a completed/failed package."""
+    """Recalculate and clamp rep after a completed/failed/lapsed directive."""
     cycle = data["cycle"]
-    total_assigned = cycle.get("completed", 0) + cycle.get("failed", 0)
-    if total_assigned == 0:
+    total = cycle.get("completed", 0) + cycle.get("failed", 0) + cycle.get("lapsed", 0)
+    if total == 0:
         return
-    delta = (cycle["completed"] - cycle["failed"]) / total_assigned
+    delta = (cycle["completed"] - cycle.get("failed", 0) - cycle.get("lapsed", 0)) / total
     data["rep"] = max(-3.0, min(3.0, data.get("rep", 0.0) + delta))
 
 
