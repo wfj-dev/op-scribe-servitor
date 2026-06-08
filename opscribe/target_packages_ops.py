@@ -4143,7 +4143,7 @@ async def strike_directive_status(
 # /repost_directive_embed — WM/admin only
 @app_commands.command(
     name="repost_directive_embed",
-    description="[Watch Master] Re-post a directive's sign-up embed to the KT channel.",
+    description="[Watch Master] Re-post a directive embed (Sgt accept or sign-up) to the correct channel.",
 )
 @app_commands.describe(directive_id="The directive code (e.g. 542-CHI) or internal ID")
 async def repost_directive_embed(interaction: discord.Interaction, directive_id: str):
@@ -4166,19 +4166,37 @@ async def repost_directive_embed(interaction: discord.Interaction, directive_id:
         await interaction.followup.send(f"Directive `{directive_id}` not found.", ephemeral=True)
         return
 
-    if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+    if pkg["status"] not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
         await interaction.followup.send(
-            f"Directive is `{pkg['status']}` — can only repost for RECRUITING or DEPLOYED directives.",
+            f"Directive is `{pkg['status']}` — can only repost for PENDING_SGT, RECRUITING, or DEPLOYED directives.",
             ephemeral=True,
         )
         return
 
     guild = interaction.guild or _get_guild_from_bot()
-    await _post_signup_embed(pkg_id, guild)
+    if pkg["status"] == STATUS_PENDING_SGT:
+        # Best-effort cleanup of old accept embed if it still exists.
+        _old_ch_id = pkg.get("sgt_accept_channel_id")
+        _old_msg_id = pkg.get("sgt_accept_message_id")
+        if _old_ch_id and _old_msg_id and guild:
+            try:
+                _old_ch = await _resolve_channel(guild, int(_old_ch_id))
+                if _old_ch:
+                    _old_msg = await _old_ch.fetch_message(int(_old_msg_id))
+                    await _old_msg.delete()
+            except Exception:
+                pass
+
+        _captain = guild.get_member(pkg.get("assigned_captain_id")) if guild and pkg.get("assigned_captain_id") else None
+        await _notify_kt_assigned(pkg_id, pkg.get("assigned_kt", ""), pkg, guild, fully_active=False, captain=_captain)
+    else:
+        await _post_signup_embed(pkg_id, guild)
+
     code = pkg.get("directive_code") or pkg_id
     name = pkg.get("directive_name", "")
+    _kind = "Sgt-accept" if pkg.get("status") == STATUS_PENDING_SGT else "sign-up"
     await interaction.followup.send(
-        f"Sign-up embed reposted for `{code}`{': ' + name if name else ''}.",
+        f"{_kind} embed reposted for `{code}`{': ' + name if name else ''}.",
         ephemeral=True,
     )
 
