@@ -2538,6 +2538,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     _deploy_lines = []
     if complier:
         _deploy_lines.append(f"{complier.mention} has accepted these orders.")
+    _deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
     if req_roles and guild:
         _req_disp = _resolve_requirements_display(pkg, guild)
         for _role, _emoji, _who in _req_disp:
@@ -2545,7 +2546,6 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     elif req_roles:
         for _r in req_roles:
             _deploy_lines.append(f"🔲 **{_r}**")
-    _deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
     _deploy_lines.append("Press **⚔ Comply** to register for this operation.")
     embed.add_field(
         name="▸ Deployment Requirements",
@@ -2843,7 +2843,7 @@ class SignUpView(discord.ui.View):
                             upd_embed = msg.embeds[0]
                             # Rebuild ▸ Deployment Requirements with updated checkboxes (no names)
                             _req_roles2 = pkg2.get("required_roles", [])
-                            _new_deploy_lines = []
+                            _new_deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
                             if _req_roles2 and resolved_guild:
                                 _req_display2 = _resolve_requirements_display(pkg2, resolved_guild)
                                 for _rl, _em, _wh in _req_display2:
@@ -2851,7 +2851,6 @@ class SignUpView(discord.ui.View):
                             elif _req_roles2:
                                 for _rl in _req_roles2:
                                     _new_deploy_lines.append(f"🔲 **{_rl}**")
-                            _new_deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
                             _new_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
                             _new_deploy_value = "\n".join(_new_deploy_lines)
                             new_fields = [
@@ -2941,7 +2940,7 @@ class SignUpView(discord.ui.View):
                     if msg.embeds:
                         upd_embed = msg.embeds[0]
                         _req_roles3 = pkg3.get("required_roles", [])
-                        _sd_deploy_lines = []
+                        _sd_deploy_lines = [f"**Strike Team Size:** {total_capacity3}"]
                         if _req_roles3 and resolved_guild:
                             _req_display3 = _resolve_requirements_display(pkg3, resolved_guild)
                             for _rl3, _em3, _wh3 in _req_display3:
@@ -2949,7 +2948,6 @@ class SignUpView(discord.ui.View):
                         elif _req_roles3:
                             for _rl3 in _req_roles3:
                                 _sd_deploy_lines.append(f"🔲 **{_rl3}**")
-                        _sd_deploy_lines.append(f"**Strike Team Size:** {total_capacity3}")
                         _sd_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
                         _sd_deploy_value = "\n".join(_sd_deploy_lines)
                         new_fields = [
