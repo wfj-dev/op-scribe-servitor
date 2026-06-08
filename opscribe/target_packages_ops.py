@@ -3232,23 +3232,24 @@ async def request_strike_directives(interaction: discord.Interaction):
     data = _load_tp()
     rep = data.get("rep", 0.0)
 
-    # Block new generation while any directives are still unassigned or distributed.
-    # WM must resolve the current cycle before issuing a fresh batch.
+    # Block new generation while any directives are still active (not yet terminal).
+    # WM must wait until every directive is completed, failed, or lapsed.
     _active_pkgs = [
         p for p in data["packages"].values()
-        if p["status"] in (STATUS_UNASSIGNED, STATUS_DISTRIBUTED)
+        if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
     ]
     if _active_pkgs:
         _unassigned = [p for p in _active_pkgs if p["status"] == STATUS_UNASSIGNED]
         _distributed = [p for p in _active_pkgs if p["status"] == STATUS_DISTRIBUTED]
+        _in_progress = [p for p in _active_pkgs if p["status"] not in (STATUS_UNASSIGNED, STATUS_DISTRIBUTED)]
+
         if _unassigned:
-            # Show unassigned ones with the Distribute All button
             view = PackagePaginatorView(_unassigned, rep, show_distribute=True, viewer=interaction.user)
             _pf = view.current_file()
             await interaction.followup.send(
                 content=(
                     f"**{len(_unassigned)} directive{'s' if len(_unassigned) != 1 else ''} awaiting distribution.** "
-                    f"These must be distributed before a new batch can be requested."
+                    f"All directives must be completed or expired before a new batch can be requested."
                 ),
                 embed=view.current_embed(),
                 view=view,
@@ -3256,13 +3257,20 @@ async def request_strike_directives(interaction: discord.Interaction):
                 **_file_kwarg(_pf),
             )
         else:
-            # All unassigned are gone but distributed ones are still outstanding
-            view = PackagePaginatorView(_distributed, rep, show_distribute=False, viewer=interaction.user)
+            _show_pkgs = _distributed or _in_progress
+            _total = len(_active_pkgs)
+            view = PackagePaginatorView(_show_pkgs, rep, show_distribute=False, viewer=interaction.user)
             _pf = view.current_file()
+            status_summary = []
+            if _distributed:
+                status_summary.append(f"{len(_distributed)} awaiting captain assignment")
+            if _in_progress:
+                status_summary.append(f"{len(_in_progress)} in-progress with Kill Teams")
             await interaction.followup.send(
                 content=(
-                    f"**{len(_distributed)} directive{'s' if len(_distributed) != 1 else ''} still awaiting captain assignment.** "
-                    f"A new batch cannot be requested until all distributed directives are assigned, completed, or lapsed."
+                    f"**{_total} active directive{'s' if _total != 1 else ''} still outstanding** "
+                    f"({', '.join(status_summary)}). "
+                    f"A new batch cannot be requested until all directives are completed or expired."
                 ),
                 embed=view.current_embed(),
                 view=view,
