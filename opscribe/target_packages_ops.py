@@ -1380,6 +1380,15 @@ async def submit_package(
                     pkg2["aar_link"] = canonical_aar_link
                 _save_tp(data2)
     await _delete_package_messages(package_id, guild)
+
+    # If this completion made every directive terminal, post batch summary.
+    try:
+        _final_data = _load_tp()
+        if _all_packages_terminal(_final_data):
+            await _post_batch_summary(guild, _final_data)
+    except Exception as exc:
+        _g.logger.debug(f"[TP] Batch summary check failed after submission: {exc}")
+
     return True, f"Directive `{package_id}` marked completed. Ordo Xenos standing updated."
 
 
@@ -1413,6 +1422,153 @@ def _update_rep(data: dict) -> None:
         return
     delta = (cycle["completed"] - cycle.get("failed", 0) - cycle.get("lapsed", 0)) / total
     data["rep"] = max(-3.0, min(3.0, data.get("rep", 0.0) + delta))
+
+
+_BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945
+
+
+def _all_packages_terminal(data: dict) -> bool:
+    """Return True if every directive in the store is in a terminal state."""
+    return all(
+        p["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
+        for p in data.get("packages", {}).values()
+    )
+
+
+async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
+    """Post a batch-close summary embed to the strategium channel."""
+    channel = guild.get_channel(_BATCH_SUMMARY_CHANNEL_ID)
+    if not channel:
+        try:
+            channel = await guild.fetch_channel(_BATCH_SUMMARY_CHANNEL_ID)
+        except Exception:
+            _g.logger.warning(f"[TP] Batch summary: could not resolve channel {_BATCH_SUMMARY_CHANNEL_ID}")
+            return
+
+    packages = data.get("packages", {})
+    rep = data.get("rep", 0.0)
+    cycle = data.get("cycle", {})
+    entity_stats = data.get("entity_stats", {})
+
+    # Only include packages from this batch (generated in current cycle)
+    batch_pkgs = list(packages.values())
+    if not batch_pkgs:
+        return
+
+    total = len(batch_pkgs)
+    completed = [p for p in batch_pkgs if p["status"] == STATUS_COMPLETED]
+    failed = [p for p in batch_pkgs if p["status"] == STATUS_FAILED]
+    lapsed = [p for p in batch_pkgs if p["status"] == STATUS_LAPSED]
+
+    # Determine overall batch outcome colour
+    completion_rate = len(completed) / total if total else 0
+    if completion_rate >= 0.75:
+        color = 0x2ECC71   # green — strong batch
+    elif completion_rate >= 0.4:
+        color = 0xF39C12   # orange — mixed
+    else:
+        color = 0x8B0000   # dark red — poor batch
+
+    standing_bar = _standing_skull_bar(rep)
+    standing_name = _standing_state_name(rep)
+
+    embed = discord.Embed(
+        title=f"{_DW_EMOJI} s\u1d1b\u0280\u026a\u1d0b\u1d07 \u1d05\u026a\u0280\u1d07\u1d04\u1d1b\u026a\u1d20\u1d07 \u0299\u1d00\u1d1b\u1d04\u029c \u0280\u1d07\u1d18\u1d0f\u0280\u1d1b {_DW_EMOJI}",
+        color=color,
+    )
+    embed.set_author(name="\u1d0f\u0280\u1d05\u1d0f x\u1d07\u0274\u1d0fs \u00b7 \u1da4\u1d07\u0280\u026a\u1d04\u029c\u1d0f \u1d05\u1d00\u1d1b\u1d00\u0274\u1d07\u1d1b")
+
+    # ── Fortress summary ──────────────────────────────────────────────────
+    embed.add_field(
+        name="\u25b8 Fortress After-Action",
+        value=(
+            f"**Directives Issued:** {total}\n"
+            f"**Completed:** {len(completed)}  \u00b7  "
+            f"**Failed:** {len(failed)}  \u00b7  "
+            f"**Lapsed:** {len(lapsed)}\n"
+            f"**Completion Rate:** {completion_rate * 100:.0f}%\n"
+            f"**Ordo Xenos Standing:** {standing_bar} **{standing_name}** `{rep:+.2f}`"
+        ),
+        inline=False,
+    )
+
+    # ── Per-company summary ───────────────────────────────────────────────
+    company_stats = entity_stats.get("companies", {})
+    if company_stats:
+        company_lines = []
+        for cname, cdata in sorted(company_stats.items()):
+            c_done = cdata.get("completed", 0)
+            c_fail = cdata.get("failed", 0)
+            c_total = c_done + c_fail
+            icon = "\U0001f7e2" if c_fail == 0 and c_total > 0 else ("\U0001f7e1" if c_fail < c_done else "\U0001f534")
+            company_lines.append(
+                f"{icon} **{cname}** — {c_done}/{c_total} completed"
+                + (f"  ·  {c_fail} failed" if c_fail else "")
+            )
+        embed.add_field(
+            name="\u25b8 Companies",
+            value="\n".join(company_lines) or "\u2014",
+            inline=False,
+        )
+
+    # ── Per-KT summary ────────────────────────────────────────────────────
+    kt_stats = entity_stats.get("kill_teams", {})
+    if kt_stats:
+        kt_lines = []
+        for kt_name, ktdata in sorted(kt_stats.items()):
+            kt_done = ktdata.get("completed", 0)
+            kt_fail = ktdata.get("failed", 0)
+            kt_total = kt_done + kt_fail
+            icon = "\U0001f7e2" if kt_fail == 0 and kt_total > 0 else ("\U0001f7e1" if kt_fail < kt_done else "\U0001f534")
+            # List what they completed
+            their_pkgs = [
+                p for p in completed
+                if p.get("assigned_kt") == kt_name
+            ]
+            completed_names = [
+                f"{p.get('directive_code') or p['id']}: {p.get('directive_name', '')}"
+                for p in their_pkgs
+            ]
+            kt_lines.append(
+                f"{icon} **{kt_name}** — {kt_done}/{kt_total} completed"
+                + (f"  ·  {kt_fail} failed" if kt_fail else "")
+                + (f"\n  ↳ {', '.join(completed_names)}" if completed_names else "")
+            )
+        # Truncate if too long for a single field
+        kt_block = "\n".join(kt_lines)
+        if len(kt_block) > 1024:
+            kt_block = kt_block[:1020] + "\n…"
+        embed.add_field(
+            name="\u25b8 Kill Teams",
+            value=kt_block or "\u2014",
+            inline=False,
+        )
+
+    # ── Lapsed (no KT ever assigned) ─────────────────────────────────────
+    if lapsed:
+        lapsed_lines = [
+            f"`{p.get('directive_code') or p['id']}` {p.get('directive_name', '')} — {p.get('world_type', '')}".strip()
+            for p in lapsed
+        ]
+        lapsed_block = "\n".join(lapsed_lines)
+        if len(lapsed_block) > 1024:
+            lapsed_block = lapsed_block[:1020] + "\n…"
+        embed.add_field(
+            name="\u25b8 Lapsed — Never Assigned",
+            value=lapsed_block,
+            inline=False,
+        )
+
+    embed.set_footer(
+        text="\u1d04\u029f\u1d07\u1d00\u0280\u1d00\u0274\u1d04\u1d07: s\u1d04\u1d00\u0280\u029f\u1d07\u1d1b",
+        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+    )
+
+    try:
+        await channel.send(content=f"<@&{WATCH_MASTER_ROLE_ID}>", embed=embed)
+        _g.logger.info("[TP] Batch summary posted.")
+    except Exception as exc:
+        _g.logger.warning(f"[TP] Batch summary send failed: {exc}")
 
 
 async def _update_ox_rep_embed(guild: discord.Guild) -> None:
@@ -1506,6 +1662,14 @@ async def expire_packages(guild: discord.Guild) -> None:
             await _update_ox_rep_embed(guild)
         except Exception as exc:
             _g.logger.debug(f"[TP] Rep embed update failed: {exc}")
+
+        # If expiry made every directive terminal, post batch summary.
+        try:
+            _final_data = _load_tp()
+            if _all_packages_terminal(_final_data):
+                await _post_batch_summary(guild, _final_data)
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Batch summary check failed after expiry: {exc}")
 
 
 # ---------------------------------------------------------------------------
