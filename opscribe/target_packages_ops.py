@@ -2658,9 +2658,10 @@ class SignUpView(discord.ui.View):
             _save_tp(data2)
 
         signed_up = pkg2.get("signed_up", [])
+        _specialists_su = pkg2.get("assigned_specialist_ids", [])
         mode = pkg2.get("mode", "")
         total_capacity = 3 if "Hard" in mode else 5
-        count = len(signed_up)
+        count = len(signed_up) + len(_specialists_su)
 
         # Update the sign-up embed to show current roster
         try:
@@ -2669,6 +2670,9 @@ class SignUpView(discord.ui.View):
             for uid in pkg2.get("signed_up", []):
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
                 signed_names.append(m2.display_name if m2 else str(uid))
+            for uid in _specialists_su:
+                m2 = resolved_guild.get_member(uid) if resolved_guild else None
+                signed_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
             roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
 
@@ -2739,13 +2743,17 @@ class SignUpView(discord.ui.View):
             data3 = _load_tp()
             pkg3 = data3["packages"].get(self.package_id, {})
             signed_up3 = pkg3.get("signed_up", [])
+            _specialists3 = pkg3.get("assigned_specialist_ids", [])
             mode3 = pkg3.get("mode", "")
             total_capacity3 = 3 if "Hard" in mode3 else 5
-            count3 = len(signed_up3)
+            count3 = len(signed_up3) + len(_specialists3)
             signed_names = []
             for uid in signed_up3:
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
                 signed_names.append(m2.display_name if m2 else str(uid))
+            for uid in _specialists3:
+                m2 = resolved_guild.get_member(uid) if resolved_guild else None
+                signed_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
             roster_field_name = f"▸ Signed Up ({count3}/{total_capacity3})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
 
