@@ -3770,6 +3770,49 @@ async def strike_directive_status(
     await interaction.response.send_message(embed=embed, **_file_kwarg(_classification_file(pkg)), ephemeral=True)
 
 
+# /repost_directive_embed — WM/admin only
+@app_commands.command(
+    name="repost_directive_embed",
+    description="[Watch Master] Re-post a directive's sign-up embed to the KT channel.",
+)
+@app_commands.describe(directive_id="The directive code (e.g. 542-CHI) or internal ID")
+async def repost_directive_embed(interaction: discord.Interaction, directive_id: str):
+    if not _b("check_command_permission")(interaction.user, "repost_directive_embed"):
+        await interaction.response.send_message("Only the Watch Master or Forgemaster may repost directive embeds.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    data = _load_tp()
+    pkg_id = directive_id.strip().upper()
+    pkg = data["packages"].get(pkg_id)
+    if not pkg:
+        for _pid, _p in data["packages"].items():
+            if (_p.get("directive_code") or "").upper() == pkg_id:
+                pkg_id = _pid
+                pkg = _p
+                break
+    if not pkg:
+        await interaction.followup.send(f"Directive `{directive_id}` not found.", ephemeral=True)
+        return
+
+    if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+        await interaction.followup.send(
+            f"Directive is `{pkg['status']}` — can only repost for RECRUITING or DEPLOYED directives.",
+            ephemeral=True,
+        )
+        return
+
+    guild = interaction.guild or _get_guild_from_bot()
+    await _post_signup_embed(pkg_id, guild)
+    code = pkg.get("directive_code") or pkg_id
+    name = pkg.get("directive_name", "")
+    await interaction.followup.send(
+        f"Sign-up embed reposted for `{code}`{': ' + name if name else ''}.",
+        ephemeral=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Register commands + expiry loop
 # ---------------------------------------------------------------------------
@@ -3780,6 +3823,7 @@ def _register_commands(tree: app_commands.CommandTree) -> None:
         view_strike_directives,
         log_strike_report,
         strike_directive_status,
+        repost_directive_embed,
     ):
         if tree.get_command(cmd.name) is None:
             tree.add_command(cmd)

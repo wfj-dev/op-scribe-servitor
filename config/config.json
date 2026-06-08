@@ -48,6 +48,12 @@
     "strike_directive_status": {
       "min_rank": "Watch Sergeant"
     },
+    "repost_directive_embed": {
+      "roles": [
+        "Watch Master",
+        "Forgemaster"
+      ]
+    },
     "litany_of_function": {
       "roles": [
         "Watch Command"
