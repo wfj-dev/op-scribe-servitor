@@ -1339,6 +1339,53 @@ async def assign_specialist(
     )
 
 
+async def unassign_specialist(
+    package_id: str,
+    specialist_member: discord.Member,
+    cadre_leader: discord.Member,
+    guild: discord.Guild,
+) -> tuple:
+    """Detach a specialist from a directive. Returns (success, message)."""
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = data["packages"].get(package_id)
+        if not pkg:
+            return False, f"Directive `{package_id}` not found."
+        if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            return False, f"Directive `{package_id}` cannot remove specialists (status: {pkg['status']})."
+
+        assigned_ids = pkg.get("assigned_specialist_ids", [])
+        if specialist_member.id not in assigned_ids:
+            return False, f"{specialist_member.display_name} is not attached to directive `{package_id}`."
+
+        cadre_roles_for_leader = [
+            r for r in (pkg.get("required_roles", []) or [])
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(cadre_leader, r)
+        ]
+        if not cadre_roles_for_leader:
+            return False, "This directive has no specialist requirements for your cadre."
+
+        specialist_roles = _member_role_names(specialist_member)
+        if not any(r in specialist_roles for r in cadre_roles_for_leader):
+            return False, "You can only unassign specialists that belong to your cadre requirements."
+
+        pkg["assigned_specialist_ids"] = [
+            uid for uid in assigned_ids if int(uid) != int(specialist_member.id)
+        ]
+        pkg.setdefault("specialist_assigners", {})
+        pkg["specialist_assigners"].pop(str(specialist_member.id), None)
+
+        if pkg.get("status") == STATUS_DEPLOYED and not _check_deployed(pkg, guild):
+            pkg["status"] = STATUS_RECRUITING
+
+        _save_tp(data)
+
+    return True, (
+        f"{specialist_member.display_name} detached from directive `{package_id}`. "
+        f"Status: `{pkg['status']}`."
+    )
+
+
 def _requirements_satisfied(pkg: dict, guild: discord.Guild) -> bool:
     """Check if all required roles for a package are satisfied by assigned members."""
     req_roles = pkg.get("required_roles", [])
@@ -1892,7 +1939,7 @@ async def _notify_kt_assigned(
     embed = _build_package_embed(pkg, rep, guild=guild)
     if leader_member:
         embed.set_author(
-            name=f"{kt_name} Lead: {leader_member.display_name} ({leader_role})",
+            name=f"{leader_member.display_name}",
             icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
         )
     req_roles = pkg.get("required_roles", [])
@@ -2742,7 +2789,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
     if leader_member:
         embed.set_author(
-            name=f"{kt_name} Lead: {leader_member.display_name} ({leader_role})",
+            name=f"{leader_member.display_name}",
             icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
         )
     total_capacity = 3 if "Hard" in mode else 5
@@ -3488,6 +3535,16 @@ class PackagePaginatorView(discord.ui.View):
             spec_select.callback = self.on_specialist_select
             self.add_item(spec_select)
 
+            unspec_options, unspec_placeholder, unspec_enabled = self._build_unassign_specialist_options(viewer)
+            unspec_select = discord.ui.Select(
+                placeholder=unspec_placeholder,
+                options=unspec_options or [discord.SelectOption(label="No assigned specialists", value="none")],
+                custom_id="tp_unassign_specialist_inline",
+                disabled=not unspec_enabled,
+            )
+            unspec_select.callback = self.on_unassign_specialist_select
+            self.add_item(unspec_select)
+
         # Select menu for quick navigation (max 25)
         if len(packages) > 1:
             options = []
@@ -3697,6 +3754,52 @@ class PackagePaginatorView(discord.ui.View):
             return [], "No eligible specialists available", False
         return options, "Select specialist to attach…", True
 
+    def _build_unassign_specialist_options(self, viewer: discord.Member) -> tuple[list, str, bool]:
+        """Build inline specialist detach options for a cadre leader on the current directive."""
+        pkg = self._refresh_current_package_snapshot()
+        if not pkg:
+            return [], "No directive selected", False
+
+        if pkg.get("status") not in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            return [], "Specialists unavailable for this status", False
+
+        req_roles = pkg.get("required_roles", [])
+        cadre_roles = [
+            r for r in req_roles
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(viewer, r)
+        ]
+        if not cadre_roles:
+            return [], "No specialist reqs for your cadre", False
+
+        guild = getattr(viewer, "guild", None) or _get_guild_from_bot()
+        if not guild:
+            return [], "Guild context unavailable", False
+
+        options = []
+        seen: set[int] = set()
+        for uid in pkg.get("assigned_specialist_ids", []):
+            m = guild.get_member(uid) if guild else None
+            if not m or m.bot or m.id in seen:
+                continue
+            member_roles = _member_role_names(m)
+            matches = [r for r in cadre_roles if r in member_roles]
+            if not matches:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=m.display_name[:100],
+                    value=str(m.id),
+                    description=matches[0][:100],
+                )
+            )
+            seen.add(m.id)
+            if len(options) >= 25:
+                break
+
+        if not options:
+            return [], "No assigned specialists from your cadre", False
+        return options, "Select specialist to detach…", True
+
     async def on_kt_select(self, interaction: discord.Interaction):
         self.selected_kt = interaction.data["values"][0]
         self._refresh_assign_btn()
@@ -3715,6 +3818,35 @@ class PackagePaginatorView(discord.ui.View):
 
         await interaction.response.defer(ephemeral=True)
         success, msg = await assign_specialist(
+            self._refresh_current_package_snapshot().get("id", ""),
+            specialist_member,
+            interaction.user,
+            interaction.guild,
+        )
+
+        self._refresh_specialist_btn()
+        self._refresh_assign_btn()
+        f = self.current_file()
+        await interaction.edit_original_response(
+            embed=self.current_embed(),
+            view=self,
+            attachments=[f] if f else [],
+        )
+        await interaction.followup.send(msg, ephemeral=True)
+
+    async def on_unassign_specialist_select(self, interaction: discord.Interaction):
+        selected = (interaction.data.get("values") or [None])[0]
+        if not selected or selected == "none":
+            await interaction.response.send_message("No assigned specialist to detach.", ephemeral=True)
+            return
+
+        specialist_member = interaction.guild.get_member(int(selected)) if interaction.guild else None
+        if not specialist_member:
+            await interaction.response.send_message("Could not resolve selected specialist.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        success, msg = await unassign_specialist(
             self._refresh_current_package_snapshot().get("id", ""),
             specialist_member,
             interaction.user,
@@ -3837,17 +3969,22 @@ class PackagePaginatorView(discord.ui.View):
     def _refresh_specialist_btn(self) -> None:
         """Refresh inline specialist selector for the currently viewed directive."""
         for item in self.children:
-            if getattr(item, "custom_id", None) == "tp_assign_specialist_inline":
-                if not self.viewer:
-                    item.disabled = True
-                    item.options = [discord.SelectOption(label="No viewer context", value="none")]
-                    item.placeholder = "Specialist selector unavailable"
-                    break
+            custom_id = getattr(item, "custom_id", None)
+            if custom_id not in ("tp_assign_specialist_inline", "tp_unassign_specialist_inline"):
+                continue
+            if not self.viewer:
+                item.disabled = True
+                item.options = [discord.SelectOption(label="No viewer context", value="none")]
+                item.placeholder = "Specialist selector unavailable"
+                continue
+            if custom_id == "tp_assign_specialist_inline":
                 opts, placeholder, enabled = self._build_specialist_options(self.viewer)
                 item.options = opts or [discord.SelectOption(label="No eligible specialists", value="none")]
-                item.placeholder = placeholder
-                item.disabled = not enabled
-                break
+            else:
+                opts, placeholder, enabled = self._build_unassign_specialist_options(self.viewer)
+                item.options = opts or [discord.SelectOption(label="No assigned specialists", value="none")]
+            item.placeholder = placeholder
+            item.disabled = not enabled
 
     def _refresh_assign_btn(self) -> None:
         """Disable Assign button when package not DISTRIBUTED or no KT selected."""
@@ -4155,7 +4292,14 @@ async def view_strike_directives(interaction: discord.Interaction):
         pkgs = [
             p for p in _active()
             if p.get("assigned_kt") == kt
+            or member.id in p.get("assigned_specialist_ids", [])
         ] if kt else []
+
+        if not kt:
+            pkgs = [
+                p for p in _active()
+                if member.id in p.get("assigned_specialist_ids", [])
+            ]
 
     if not pkgs:
         await interaction.followup.send("No active strike directives for your role.", ephemeral=True)
