@@ -720,7 +720,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
     pos_count, neg_count = _STRAT_TABLE[rep_tier]
 
     # Omega-Strat: YOLO is redundant (Omega already has 1-life rules)
-    omega_excluded = {"You Only Live Once"} if "Omega" in mode else set()
+    omega_excluded = {"You Only Live Once", "Fatality"} if "Omega" in mode else set()
     # Globally blacklisted stratagems across all modes.
     mode_excluded = {
         "Great Responsibility",
@@ -730,6 +730,20 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
         "Beset",
         "Personal Quarry",
         "Posthumous Proliferation",
+        "Mine Field",
+        "Hunted",
+        "Armour Malfunction",
+        "Split Up",
+        "Squad Unity",
+        "Press the Attack",
+        "No Apothecaries",
+        "Clever Foe",
+        "Aggravated Assault",
+        "Bleary Sniper",
+        "Broken Bulwark",
+        "Fallen Vanguard",
+        "Heavy Burden",
+        "Tactical Weakness"
     } | omega_excluded
 
     buffs = [s for s in active_strats if s["type"] == "buff" and s["name"] not in mode_excluded and s["name"] != "Intelligence Lapse"]
