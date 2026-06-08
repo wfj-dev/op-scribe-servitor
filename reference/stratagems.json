@@ -131,7 +131,7 @@
       "name": "Beset",
       "description": "Both enemy factions spawn.",
       "type": "debuff",
-      "excluded": false,
+      "excluded": true,
       "pools": [
         "command",
         "librarian",
@@ -943,7 +943,7 @@
       "name": "On the Clock",
       "description": "Mission has a timer extendable by kills and checkpoints; abort if it runs out.",
       "type": "debuff",
-      "excluded": true,
+      "excluded": false,
       "pools": [],
       "tags": [
         "timer",
@@ -1193,7 +1193,7 @@
       "name": "Suboptimal State",
       "description": "Maximum Health reduced by 50%.",
       "type": "debuff",
-      "excluded": true,
+      "excluded": false,
       "pools": [],
       "tags": [
         "health",
@@ -1279,7 +1279,7 @@
       "name": "Suspicious Behaviour",
       "description": "Friendly fire from firearms and explosives is enabled.",
       "type": "debuff",
-      "excluded": true,
+      "excluded": false,
       "pools": [],
       "tags": [
         "friendly_fire"
