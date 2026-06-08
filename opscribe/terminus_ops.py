@@ -618,6 +618,10 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
             error_msg = "Kill log entry not found."
         elif entry["status"] != "pending":
             error_msg = f"This entry is no longer pending (status: {entry['status']})."
+        elif not _is_apothecary(interaction.user) and (
+            datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
+        ) < timedelta(minutes=5):
+            error_msg = "Kill log entries cannot be verified until 5 minutes after submission."
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
@@ -691,6 +695,10 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
             error_msg = "Kill log entry not found."
         elif entry["status"] != "pending":
             error_msg = f"This entry is no longer pending (status: {entry['status']})."
+        elif not _is_apothecary(interaction.user) and (
+            datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
+        ) < timedelta(minutes=5):
+            error_msg = "Kill log entries cannot be denied until 5 minutes after submission."
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
