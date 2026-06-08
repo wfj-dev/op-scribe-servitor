@@ -52,11 +52,16 @@ def _get_guild_from_bot() -> "discord.Guild | None":
 
 
 async def _resolve_channel(guild: "discord.Guild | None", channel_id: int):
-    """Resolve a channel from cache, then API as fallback."""
+    """Resolve a channel from cache, then API as fallback. Handles forum threads."""
     if not channel_id:
         return None
 
     ch = guild.get_channel(int(channel_id)) if guild else None
+    if ch:
+        return ch
+
+    # Try thread cache (forum posts / active threads are not in get_channel)
+    ch = guild.get_thread(int(channel_id)) if guild else None
     if ch:
         return ch
 
@@ -2541,8 +2546,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         name="▸ Deployment Requirements",
         value=(
             (f"{complier.mention} has accepted these orders.\n" if complier else "")
-            + f"**Strike Team Size:** {total_capacity}\n"
-            + (f"**Required Ranks:** {', '.join(req_roles)}\n" if req_roles else "")
+            + f"**Strike Team Size:** {total_capacity}"
             + "\nPress **⚔ Comply** to register for this operation."
         ),
         inline=False,
@@ -2823,8 +2827,7 @@ class SignUpView(discord.ui.View):
                             upd_embed.add_field(
                                 name="▸ Deployment Requirements",
                                 value=(
-                                    f"**Strike Team Size:** {total_capacity}\n"
-                                    + (f"**Required Ranks:** {', '.join(pkg2.get('required_roles', []))}\n" if pkg2.get("required_roles") else "")
+                                    f"**Strike Team Size:** {total_capacity}"
                                     + "\nPress **⚔ Comply** to register for this operation."
                                 ),
                                 inline=False,
