@@ -1209,12 +1209,23 @@ async def assign_specialist(
         # Check specialist not already locked on another package
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         for p in data["packages"].values():
+            if (
+                specialist_member.id in p.get("signed_up", [])
+                and p["id"] != package_id
+                and p["status"] in active_statuses
+            ):
+                return False, f"{specialist_member.display_name} is already signed up for directive `{p['id']}`."
             if (specialist_member.id in p.get("assigned_specialist_ids", [])
                     and p["id"] != package_id
                     and p["status"] in active_statuses):
                 return False, f"{specialist_member.display_name} is already attached to directive `{p['id']}`."
 
         pkg.setdefault("assigned_specialist_ids", [])
+        if specialist_member.id in pkg.get("signed_up", []):
+            return False, (
+                f"{specialist_member.display_name} is already signed up on this directive. "
+                "No specialist attachment is needed."
+            )
         if specialist_member.id in pkg["assigned_specialist_ids"]:
             return False, f"{specialist_member.display_name} is already attached to directive `{package_id}`."
 
@@ -1808,6 +1819,18 @@ async def _notify_kt_assigned(
     data = _load_tp()
     rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, rep, guild=guild)
+    req_roles = pkg.get("required_roles", [])
+    if req_roles:
+        # Sgt accept view should explicitly show required ranks before KT signup starts.
+        req_counts = Counter(req_roles)
+        req_lines = []
+        for role_name, cnt in req_counts.items():
+            req_lines.append(f"• {role_name}" if cnt == 1 else f"• {role_name} x{cnt}")
+        embed.add_field(
+            name="▸ Required Ranks",
+            value="\n".join(req_lines),
+            inline=False,
+        )
     embed.add_field(
         name="▸ Orders",
         value=(
@@ -2527,6 +2550,8 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
             continue
         if member.id in p.get("signed_up", []) and p["status"] in active_statuses:
             return False, f"You are already signed up for directive `{p.get('directive_code') or p['id']}`."
+        if member.id in p.get("assigned_specialist_ids", []) and p["status"] in active_statuses:
+            return False, f"You are already attached as a specialist to directive `{p.get('directive_code') or p['id']}`."
 
     # Must be Watch Brother+
     member_roles = _member_role_names(member)
@@ -2555,6 +2580,9 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
         if (member.id in p.get("signed_up", [])
                 and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)):
             return False, f"You are already committed to directive `{p.get('directive_code') or p['id']}`. Complete that operation first."
+        if (member.id in p.get("assigned_specialist_ids", [])
+                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)):
+            return False, f"You are already committed as a specialist to directive `{p.get('directive_code') or p['id']}`. Complete that operation first."
 
     # Enforce slot availability and rank requirements
     # Hard-Strat = 3 total slots, Omega-Strat = 5 total slots
@@ -2981,6 +3009,13 @@ class SignUpView(discord.ui.View):
                 await interaction.response.send_message("Package not found.", ephemeral=True)
                 return
             if member.id not in pkg.get("signed_up", []):
+                if member.id in pkg.get("assigned_specialist_ids", []):
+                    await interaction.response.send_message(
+                        "You are attached as a specialist on this directive, not signed up via ⚔ Comply. "
+                        "Ask your cadre leader to reassign if needed.",
+                        ephemeral=True,
+                    )
+                    return
                 await interaction.response.send_message("You are not signed up for this package.", ephemeral=True)
                 return
             if pkg["status"] == STATUS_DEPLOYED:
@@ -3065,12 +3100,15 @@ class SpecialistAssignView(discord.ui.View):
         _active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         _pkg = (_tp_data.get("packages", {}) or {}).get(package_id, {})
         currently_assigned = set(_pkg.get("assigned_specialist_ids", []))
+        currently_signed = set(_pkg.get("signed_up", []))
         already_assigned: set = set()
+        already_signed: set = set()
         for _p in _tp_data.get("packages", {}).values():
             if _p["id"] == package_id:
                 continue
             if _p["status"] in _active_statuses:
                 already_assigned.update(_p.get("assigned_specialist_ids", []))
+                already_signed.update(_p.get("signed_up", []))
 
         options = []
         seen = set()
@@ -3082,8 +3120,12 @@ class SpecialistAssignView(discord.ui.View):
                     continue
                 if m.id in currently_assigned:
                     continue  # already attached to this directive
+                if m.id in currently_signed:
+                    continue  # already signed up on this directive
                 if m.id in already_assigned:
                     continue  # already on another package
+                if m.id in already_signed:
+                    continue  # already signed up on another active package
                 if any((getattr(r, "name", "") or "").strip() == role_name for r in getattr(m, "roles", [])):
                     options.append(discord.SelectOption(
                         label=m.display_name[:100],
@@ -3450,12 +3492,15 @@ class PackagePaginatorView(discord.ui.View):
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         pkg_id = pkg.get("id")
         currently_assigned = set(pkg.get("assigned_specialist_ids", []))
+        currently_signed = set(pkg.get("signed_up", []))
         already_assigned_elsewhere: set[int] = set()
+        already_signed_elsewhere: set[int] = set()
         for p in tp_data.get("packages", {}).values():
             if p.get("id") == pkg_id:
                 continue
             if p.get("status") in active_statuses:
                 already_assigned_elsewhere.update(p.get("assigned_specialist_ids", []))
+                already_signed_elsewhere.update(p.get("signed_up", []))
 
         options = []
         seen: set[int] = set()
@@ -3466,7 +3511,11 @@ class PackagePaginatorView(discord.ui.View):
                 continue
             if m.id in currently_assigned:
                 continue
+            if m.id in currently_signed:
+                continue
             if m.id in already_assigned_elsewhere:
+                continue
+            if m.id in already_signed_elsewhere:
                 continue
             member_roles = _member_role_names(m)
             matches = [r for r in cadre_roles if r in member_roles]
@@ -4143,7 +4192,7 @@ async def strike_directive_status(
 # /repost_directive_embed — WM/admin only
 @app_commands.command(
     name="repost_directive_embed",
-    description="[Watch Master] Re-post a directive embed (Sgt accept or sign-up) to the correct channel.",
+    description="[Watch Master/Forgemaster] Re-post a directive embed (Sgt accept or sign-up) to the correct channel.",
 )
 @app_commands.describe(directive_id="The directive code (e.g. 542-CHI) or internal ID")
 async def repost_directive_embed(interaction: discord.Interaction, directive_id: str):
