@@ -2412,7 +2412,9 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     signed_up = pkg.get("signed_up", [])
     specialist_ids = pkg.get("assigned_specialist_ids", [])
 
-    if len(signed_up) >= total_capacity:
+    # Specialists count toward total capacity
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    if len(signed_up) + len(specialist_ids) >= total_capacity:
         return False, "This directive is already at full capacity."
 
     # Feasibility gate: simulate this member signing up and ensure the remaining
@@ -2424,7 +2426,8 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     projected_uncovered_cadre = (
         _remaining_cadre_requirements(cadre_reqs, projected_signed, specialist_ids, guild) if cadre_reqs else []
     )
-    slots_after_signup = total_capacity - len(projected_signed)
+    # Slots remaining = capacity minus (projected signed-up + already attached specialists)
+    slots_after_signup = total_capacity - len(projected_signed) - len(specialist_ids)
     remaining_required_slots = len(projected_uncovered_line) + len(projected_uncovered_cadre)
     if remaining_required_slots > slots_after_signup:
         unfilled = sorted(set(projected_uncovered_line + projected_uncovered_cadre))
@@ -2509,7 +2512,9 @@ def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
     mode = pkg.get("mode", "")
     total_capacity = 3 if "Hard" in mode else 5
     signed_up = pkg.get("signed_up", [])
-    if len(signed_up) < total_capacity:
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    # Specialists count toward total capacity alongside signed-up brothers
+    if len(signed_up) + len(specialist_ids) < total_capacity:
         return False
 
     req_roles = pkg.get("required_roles", [])
@@ -2999,8 +3004,8 @@ class PackagePaginatorView(discord.ui.View):
             distribute_btn.callback = self.distribute_all
             self.add_item(distribute_btn)
 
-        # Captain: inline KT select + green Assign button
-        if not show_distribute and viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant") or _is_admin(viewer)):
+        # Captain: inline KT select + green Assign button (never show to cadre leaders/admins)
+        if not show_distribute and viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant")):
             kt_options = self._build_kt_options(viewer)
             if kt_options:
                 kt_select = discord.ui.Select(
@@ -3207,9 +3212,13 @@ class PackagePaginatorView(discord.ui.View):
             )
             return
         req_roles = pkg.get("required_roles", [])
-        cadre_roles = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
+        # Only show the roles this cadre leader is responsible for
+        cadre_roles = [
+            r for r in req_roles
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(interaction.user, r)
+        ]
         if not cadre_roles:
-            await interaction.response.send_message("This directive has no cadre specialist requirements.", ephemeral=True)
+            await interaction.response.send_message("This directive has no specialist requirements for your cadre.", ephemeral=True)
             return
         view = SpecialistAssignView(package_id=pkg["id"], required_roles=cadre_roles, guild=interaction.guild)
         await interaction.response.send_message(
