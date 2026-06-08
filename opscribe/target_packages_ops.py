@@ -1047,7 +1047,8 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
                 )
             wm_embed.set_image(url="https://cdn.discordapp.com/attachments/1512944307840090304/1512952612079669268/content.png?ex=6a25f66c&is=6a24a4ec&hm=79449fbdf92892c418cbe5f66118581905755cdba1845b8cf91a8bf32545aead&")
             wm_embed.set_footer(
-                text=f"{count} ᴅɪʀᴇᴄᴛɪᴠᴇ{'s' if count != 1 else ''} ʀᴇᴄᴇɪᴠᴇᴅ · ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴀɴᴄᴛɪᴏɴᴇᴅ",
+                text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ",
+                icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
             await _notify_send(general_channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=wm_embed)
 
@@ -1086,7 +1087,8 @@ async def distribute_packages(package_ids: list, guild: discord.Guild, actor: di
                     icon_url=actor.display_avatar.url if actor.display_avatar else discord.Embed.Empty,
                 )
             dist_embed.set_footer(
-                text=f"{count} ᴘᴋɢ{s} ᴀᴡᴀɪᴛɪɴɢ ᴀssɪɢɴᴍᴇɴᴛ · ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴀɴᴄᴛɪᴏɴᴇᴅ",
+                text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
+                icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
             _dist_img_path = os.path.join(_ASSETS_DIR, "distributed to captains.jpg")
             if os.path.exists(_dist_img_path):
@@ -1785,13 +1787,23 @@ async def _notify_cadre_leaders_needed(
             pid=_display_id, roles=", ".join(owned_roles), kt=_kt, company=_company
         )
 
+        # Look up the Watch Captain who assigned this directive for the author line
+        _captain_id = _pkg_data.get("assigned_captain_id")
+        _captain_member = guild.get_member(_captain_id) if (guild and _captain_id) else None
+
         cadre_embed = discord.Embed(
-            title=f"{_DW_EMOJI} sᴘᴇᴄɪᴀʟɪsᴛ ʀᴇǫᴜɪsɪᴛɪᴏɴ  {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} sᴘᴇᴄɪᴀʟɪsᴛ ʀᴇǫᴜɪsɪᴛɪᴏɴ {_DW_EMOJI}",
             description=flavor,
             color=0xE67E22,
         )
+        if _captain_member:
+            cadre_embed.set_author(
+                name=f"Assigned by {_captain_member.display_name}",
+                icon_url=_captain_member.display_avatar.url if _captain_member.display_avatar else None,
+            )
         cadre_embed.set_footer(
-            text=f"sᴅ `{_display_id}` · ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
+            text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
+            icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
         )
         _spec_img = os.path.join(_ASSETS_DIR, "priority operation orders special assignment.jpg")
         _spec_file = discord.File(_spec_img, filename="specialist_requisition.jpg") if os.path.exists(_spec_img) else None
@@ -3409,6 +3421,10 @@ async def log_strike_report(
             title=f"{_DW_EMOJI} sᴛʀɪᴋᴇ ʀᴇᴘᴏʀᴛ ʟᴏɢɢᴇᴅ {_DW_EMOJI}",
             description=msg,
             color=0x2ECC71,
+        )
+        embed.set_author(
+            name=member.display_name,
+            icon_url=member.display_avatar.url if member.display_avatar else None,
         )
         embed.add_field(name=f"▸ {classification} Directive", value=directive_display, inline=True)
         embed.add_field(name="▸ Kill Team Completed", value=completed_kt, inline=True)
