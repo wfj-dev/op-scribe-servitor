@@ -2239,21 +2239,6 @@ def _build_package_embed(
         intel_value = intel_value[:1020] + "\n…"
     embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
 
-    # ▸ Required Ranks — separate field with live checkboxes when guild available
-    if req_roles:
-        if guild:
-            req_display = _resolve_requirements_display(pkg, guild)
-            req_lines = [
-                f"{emoji} **{role}**" + (f" — {who}" if who else "")
-                for role, emoji, who in req_display
-            ]
-        else:
-            req_lines = [f"🔲 **{r}**" for r in req_roles]
-        req_value = "\n".join(req_lines)
-        if len(req_value) > 1024:
-            req_value = req_value[:1020] + "\n…"
-        embed.add_field(name="▸ Required Ranks", value=req_value, inline=False)
-
     # ▸ Briefing
     if briefing:
         embed.add_field(name="▸ Field Briefing", value=f"> {briefing[:380]}", inline=False)
@@ -2542,13 +2527,29 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     data_rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, data_rep, guild=guild)
     total_capacity = 3 if "Hard" in mode else 5
+
+    # Remove ▸ Required Ranks — it will be merged into ▸ Deployment Requirements below
+    _embed_fields = [f for f in embed.fields if f.name != "▸ Required Ranks"]
+    embed.clear_fields()
+    for _f in _embed_fields:
+        embed.add_field(name=_f.name, value=_f.value, inline=_f.inline)
+
+    # Build merged ▸ Deployment Requirements: checkboxes (no names) + size + comply
+    _deploy_lines = []
+    if complier:
+        _deploy_lines.append(f"{complier.mention} has accepted these orders.")
+    if req_roles and guild:
+        _req_disp = _resolve_requirements_display(pkg, guild)
+        for _role, _emoji, _who in _req_disp:
+            _deploy_lines.append(f"{_emoji} **{_role}**")
+    elif req_roles:
+        for _r in req_roles:
+            _deploy_lines.append(f"🔲 **{_r}**")
+    _deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
+    _deploy_lines.append("Press **⚔ Comply** to register for this operation.")
     embed.add_field(
         name="▸ Deployment Requirements",
-        value=(
-            (f"{complier.mention} has accepted these orders.\n" if complier else "")
-            + f"**Strike Team Size:** {total_capacity}"
-            + "\nPress **⚔ Comply** to register for this operation."
-        ),
+        value="\n".join(_deploy_lines),
         inline=False,
     )
 
@@ -2824,38 +2825,45 @@ class SignUpView(discord.ui.View):
                         if pkg2.get("status") == STATUS_DEPLOYED:
                             data_rep = _load_tp().get("rep", 0.0)
                             upd_embed = _build_package_embed(pkg2, data_rep, guild=resolved_guild)
+                            _rck2 = []
+                            if pkg2.get("required_roles"):
+                                if resolved_guild:
+                                    _rd2 = _resolve_requirements_display(pkg2, resolved_guild)
+                                    _rck2 = [f"{em} **{rl}**" for rl, em, _ in _rd2]
+                                else:
+                                    _rck2 = [f"🔲 **{r}**" for r in pkg2.get("required_roles", [])]
+                            _dp2 = _rck2 + [f"**Strike Team Size:** {total_capacity}", "Press **⚔ Comply** to register for this operation."]
                             upd_embed.add_field(
                                 name="▸ Deployment Requirements",
-                                value=(
-                                    f"**Strike Team Size:** {total_capacity}"
-                                    + "\nPress **⚔ Comply** to register for this operation."
-                                ),
+                                value="\n".join(_dp2),
                                 inline=False,
                             )
                             upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         else:
                             upd_embed = msg.embeds[0]
-                            # Refresh both roster and requirements checklist
+                            # Rebuild ▸ Deployment Requirements with updated checkboxes (no names)
                             _req_roles2 = pkg2.get("required_roles", [])
+                            _new_deploy_lines = []
                             if _req_roles2 and resolved_guild:
                                 _req_display2 = _resolve_requirements_display(pkg2, resolved_guild)
-                                _req_lines2 = [
-                                    f"{em} **{rl}**" + (f" — {wh}" if wh else "")
-                                    for rl, em, wh in _req_display2
-                                ]
-                                _req_value2 = "\n".join(_req_lines2) or "—"
-                            else:
-                                _req_value2 = None
+                                for _rl, _em, _wh in _req_display2:
+                                    _new_deploy_lines.append(f"{_em} **{_rl}**")
+                            elif _req_roles2:
+                                for _rl in _req_roles2:
+                                    _new_deploy_lines.append(f"🔲 **{_rl}**")
+                            _new_deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
+                            _new_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
+                            _new_deploy_value = "\n".join(_new_deploy_lines)
                             new_fields = [
                                 f for f in upd_embed.fields
                                 if not f.name.startswith("▸ Signed Up")
+                                and f.name != "▸ Deployment Requirements"
                                 and f.name != "▸ Required Ranks"
                             ]
                             upd_embed.clear_fields()
                             for f in new_fields:
                                 upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                            if _req_value2:
-                                upd_embed.add_field(name="▸ Required Ranks", value=_req_value2, inline=False)
+                            upd_embed.add_field(name="▸ Deployment Requirements", value=_new_deploy_value, inline=False)
                             upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await msg.edit(embed=upd_embed)
 
@@ -2933,25 +2941,27 @@ class SignUpView(discord.ui.View):
                     if msg.embeds:
                         upd_embed = msg.embeds[0]
                         _req_roles3 = pkg3.get("required_roles", [])
+                        _sd_deploy_lines = []
                         if _req_roles3 and resolved_guild:
                             _req_display3 = _resolve_requirements_display(pkg3, resolved_guild)
-                            _req_lines3 = [
-                                f"{em} **{rl}**" + (f" — {wh}" if wh else "")
-                                for rl, em, wh in _req_display3
-                            ]
-                            _req_value3 = "\n".join(_req_lines3) or "—"
-                        else:
-                            _req_value3 = None
+                            for _rl3, _em3, _wh3 in _req_display3:
+                                _sd_deploy_lines.append(f"{_em3} **{_rl3}**")
+                        elif _req_roles3:
+                            for _rl3 in _req_roles3:
+                                _sd_deploy_lines.append(f"🔲 **{_rl3}**")
+                        _sd_deploy_lines.append(f"**Strike Team Size:** {total_capacity3}")
+                        _sd_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
+                        _sd_deploy_value = "\n".join(_sd_deploy_lines)
                         new_fields = [
                             f for f in upd_embed.fields
                             if not f.name.startswith("▸ Signed Up")
+                            and f.name != "▸ Deployment Requirements"
                             and f.name != "▸ Required Ranks"
                         ]
                         upd_embed.clear_fields()
                         for f in new_fields:
                             upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                        if _req_value3:
-                            upd_embed.add_field(name="▸ Required Ranks", value=_req_value3, inline=False)
+                        upd_embed.add_field(name="▸ Deployment Requirements", value=_sd_deploy_value, inline=False)
                         upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
                         await msg.edit(embed=upd_embed)
         except Exception as e:
