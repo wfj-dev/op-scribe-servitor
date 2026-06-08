@@ -1789,7 +1789,7 @@ async def _notify_kt_assigned(
 
     data = _load_tp()
     rep = data.get("rep", 0.0)
-    embed = _build_package_embed(pkg, rep)
+    embed = _build_package_embed(pkg, rep, guild=guild)
     embed.add_field(
         name="▸ Orders",
         value=(
@@ -1869,7 +1869,7 @@ async def _notify_specialist_assigned(
 
     data = _load_tp()
     rep = data.get("rep", 0.0)
-    embed = _build_package_embed(pkg, rep)
+    embed = _build_package_embed(pkg, rep, guild=guild)
     embed.add_field(
         name="▸ Assignment",
         value=(
@@ -2087,12 +2087,73 @@ def _strat_line(strat: dict) -> str:
     return f"{prefix} {strat['name']}"
 
 
+
+def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> list[tuple[str, str, str]]:
+    """Greedy assignment of required roles to participants.
+
+    Returns list of (role_name, emoji, who_name) for each requirement slot.
+    Specialists fill cadre roles first; signed-up members fill line roles by rank.
+    Each participant satisfies at most one slot.
+    """
+    req_roles = pkg.get("required_roles", [])
+    if not req_roles or not guild:
+        return []
+
+    signed_up = pkg.get("signed_up", [])
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    specialist_assigners = pkg.get("specialist_assigners", {})
+
+    # Build ordered participant list: specialists first, then signed-up
+    participants = []
+    for uid in specialist_ids:
+        m = guild.get_member(uid)
+        if m:
+            assigner_id = specialist_assigners.get(str(uid))
+            assigner = guild.get_member(assigner_id) if assigner_id else None
+            suffix = f" _(via {assigner.display_name})_" if assigner else " _(specialist)_"
+            participants.append((m, _member_role_names(m), m.display_name + suffix))
+    for uid in signed_up:
+        m = guild.get_member(uid)
+        if m:
+            participants.append((m, _member_role_names(m), m.display_name))
+
+    used: set[int] = set()
+    results: list[tuple[str, str, str]] = []
+
+    for req in req_roles:
+        filled_by = None
+        if req in _CADRE_SPECIALIST_ROLES:
+            # Exact role match required
+            for m, roles, display in participants:
+                if m.id in used:
+                    continue
+                if req in roles:
+                    filled_by = display
+                    used.add(m.id)
+                    break
+        else:
+            # Rank-seniority match
+            req_idx = _RANK_SENIORITY_MAP.get(req, -1)
+            for m, roles, display in participants:
+                if m.id in used:
+                    continue
+                member_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in roles), default=-1)
+                if member_max >= req_idx:
+                    filled_by = display
+                    used.add(m.id)
+                    break
+        emoji = "✅" if filled_by else "🔲"
+        results.append((req, emoji, filled_by or ""))
+
+    return results
+
 def _build_package_embed(
     pkg: dict,
     rep: float,
     index: int = 0,
     total: int = 0,
     viewer: Optional[discord.Member] = None,
+    guild: "discord.Guild | None" = None,
 ) -> discord.Embed:
     pid = pkg["id"]
     node = pkg.get("node", "Unknown")
@@ -2168,12 +2229,27 @@ def _build_package_embed(
         f"**ᴅᴇᴀᴅʟɪɴᴇ:** {deadline_str or '—'}",
         f"**sᴛᴀᴛᴜs:** {status_str}",
     ]
-    if req_roles:
+    # Only show plain req list in Intel Dossier when no guild (no member resolution)
+    if req_roles and not guild:
         intel_lines.append(f"**ʀᴇǫᴜɪʀᴇᴅ:** {', '.join(req_roles)}")
     intel_value = "\n".join(intel_lines)
     if len(intel_value) > 1024:
         intel_value = intel_value[:1020] + "\n…"
     embed.add_field(name="▸ Intel Dossier", value=intel_value, inline=False)
+
+    # ▸ Requirements checklist (only when guild context is available)
+    if req_roles and guild:
+        req_display = _resolve_requirements_display(pkg, guild)
+        req_lines = []
+        for role, emoji, who in req_display:
+            line = f"{emoji} {role}"
+            if who:
+                line += f" — {who}"
+            req_lines.append(line)
+        req_value = "\n".join(req_lines)
+        if len(req_value) > 1024:
+            req_value = req_value[:1020] + "\n…"
+        embed.add_field(name="▸ Requirements", value=req_value, inline=False)
 
     # ▸ Briefing
     if briefing:
@@ -2461,7 +2537,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     req_roles = pkg.get("required_roles", [])
 
     data_rep = data.get("rep", 0.0)
-    embed = _build_package_embed(pkg, data_rep)
+    embed = _build_package_embed(pkg, data_rep, guild=guild)
     total_capacity = 3 if "Hard" in mode else 5
     embed.add_field(
         name="▸ Deployment Requirements",
@@ -3014,7 +3090,7 @@ class StatusBoardView(discord.ui.View):
         if not pkg:
             await interaction.response.send_message(f"Package `{package_id}` not found.", ephemeral=True)
             return
-        embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user)
+        embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user, guild=interaction.guild)
         specialist_ids = pkg.get("assigned_specialist_ids", [])
         if specialist_ids and interaction.guild:
             names = []
@@ -3784,7 +3860,7 @@ async def strike_directive_status(
             )
             return
 
-    embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user)
+    embed = _build_package_embed(pkg, data.get("rep", 0.0), viewer=interaction.user, guild=interaction.guild)
     specialist_ids = pkg.get("assigned_specialist_ids", [])
     if specialist_ids:
         names = []
