@@ -601,6 +601,53 @@ def _member_role_names(member: discord.Member) -> set:
     return {(getattr(r, "name", "") or "").strip() for r in getattr(member, "roles", [])}
 
 
+_KT_LEADER_PRIORITY = (
+    "Watch Master",
+    "Watch Captain",
+    "Watch Lieutenant",
+    "Watch Sergeant",
+)
+
+
+def _resolve_kt_leader_for_package(pkg: dict, guild: "discord.Guild | None") -> tuple["discord.Member | None", str | None]:
+    """Resolve KT leader by role precedence among active members of assigned KT.
+
+    Preference order: Watch Master > Watch Captain > Watch Lieutenant > Watch Sergeant.
+    Ties are deterministic by display name then member id, with assigned captain preferred
+    when role precedence is equal.
+    """
+    kt_name = pkg.get("assigned_kt")
+    if not guild or not kt_name:
+        return None, None
+
+    from .forge_ops import _resolve_killteam_for_member
+
+    assigned_captain_id = pkg.get("assigned_captain_id")
+    candidates: list[tuple[int, int, str, int, discord.Member, str]] = []
+
+    for m in guild.members:
+        if m.bot or not _is_active(m):
+            continue
+        if _resolve_killteam_for_member(m) != kt_name:
+            continue
+
+        roles = _member_role_names(m)
+        for rank_idx, leader_role in enumerate(_KT_LEADER_PRIORITY):
+            if leader_role in roles:
+                captain_bias = -1 if assigned_captain_id and int(assigned_captain_id) == int(m.id) else 0
+                candidates.append(
+                    (rank_idx, captain_bias, (m.display_name or "").lower(), int(m.id), m, leader_role)
+                )
+                break
+
+    if not candidates:
+        return None, None
+
+    candidates.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
+    best = candidates[0]
+    return best[4], best[5]
+
+
 def _active_members(guild: discord.Guild) -> list:
     return [m for m in guild.members if not m.bot and _is_active(m)]
 
@@ -1837,19 +1884,17 @@ async def _notify_kt_assigned(
     if not channel and not _is_debug_mode():
         return
 
-    # Find and ping the Sgt
-    sgt_mention = ""
-    for m in guild.members if guild else []:
-        if m.bot or not _is_active(m):
-            continue
-        from .forge_ops import _resolve_killteam_for_member
-        if _resolve_killteam_for_member(m) == kt_name and _has_role(m, "Watch Sergeant"):
-            sgt_mention = m.mention
-            break
+    leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
+    leader_mention = leader_member.mention if leader_member else ""
 
     data = _load_tp()
     rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, rep, guild=guild)
+    if leader_member:
+        embed.set_author(
+            name=f"{kt_name} Lead: {leader_member.display_name} ({leader_role})",
+            icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
+        )
     req_roles = pkg.get("required_roles", [])
     if req_roles:
         # Sgt accept view should explicitly show required ranks before KT signup starts.
@@ -1866,14 +1911,14 @@ async def _notify_kt_assigned(
         name="▸ Orders",
         value=(
             (f"Assigned by {captain.mention}\n" if captain else "")
-            + "Watch Sergeant — press **⚔ Comply** to accept these orders."
+            + f"{leader_role or 'Watch Sergeant'} — press **⚔ Comply** to accept these orders."
         ),
         inline=False,
     )
 
     view = SgtAcceptView(package_id=package_id, kt_name=kt_name)
     _cls_file = _classification_file(pkg)
-    msg = await _notify_send(channel, guild, content=sgt_mention, embed=embed, view=view, **_file_kwarg(_cls_file))
+    msg = await _notify_send(channel, guild, content=leader_mention or None, embed=embed, view=view, **_file_kwarg(_cls_file))
 
     # Store message ID for later editing
     if msg:
@@ -2694,6 +2739,12 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
 
     data_rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, data_rep, guild=guild)
+    leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
+    if leader_member:
+        embed.set_author(
+            name=f"{kt_name} Lead: {leader_member.display_name} ({leader_role})",
+            icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
+        )
     total_capacity = 3 if "Hard" in mode else 5
 
     # Remove ▸ Required Ranks — it will be merged into ▸ Deployment Requirements below
@@ -2859,18 +2910,28 @@ class SgtAcceptView(discord.ui.View):
     @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_sgt_accept")
     async def accept_orders(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
-        # Must be Sgt of the assigned KT.
-        # Debug admin may bypass to help with staging flows.
-        from .forge_ops import _resolve_killteam_for_member
+        guild = interaction.guild or _get_guild_from_bot()
+
+        # Resolve package and expected KT leader before status update.
+        pre_data = _load_tp()
+        pre_pkg = pre_data.get("packages", {}).get(self.package_id)
+        if not pre_pkg:
+            await interaction.response.send_message("Package not found.", ephemeral=True)
+            return
+
         if not (_is_debug_mode() and _is_admin(member)):
-            if not _has_role(member, "Watch Sergeant"):
+            expected_leader, expected_role = _resolve_kt_leader_for_package(pre_pkg, guild)
+            if not expected_leader:
                 await interaction.response.send_message(
-                    "Only the assigned Kill Team's Watch Sergeant may accept these orders.",
+                    "No Kill Team leader could be resolved for this directive. Contact command staff.",
                     ephemeral=True,
                 )
                 return
-            if _resolve_killteam_for_member(member) != self.kt_name:
-                await interaction.response.send_message(f"These orders are addressed to {self.kt_name}.", ephemeral=True)
+            if int(member.id) != int(expected_leader.id):
+                await interaction.response.send_message(
+                    f"Only {expected_leader.display_name} ({expected_role}) may accept these orders for {self.kt_name}.",
+                    ephemeral=True,
+                )
                 return
 
         async with _TP_LOCK:
