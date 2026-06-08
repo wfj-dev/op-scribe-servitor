@@ -606,6 +606,7 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
 
     # Collect outcome inside the lock; send Discord responses outside.
     error_msg: Optional[str] = None
+    shame_msg: Optional[str] = None
     entry: Optional[dict] = None
     newly_confirmed = False
     class_complete = False
@@ -621,7 +622,11 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
         ) < timedelta(minutes=5):
-            error_msg = "Kill log entries cannot be verified until 5 minutes after submission."
+            shame_msg = (
+                f"\N{EYES} {interaction.user.mention} is trying to **VERIFY** a kill log "
+                f"without watching the video or checking the AAR. "
+                f"Please make fun of them."
+            )
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
@@ -661,6 +666,9 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
                     _save_state(state)
 
     # All Discord API calls happen outside the lock.
+    if shame_msg:
+        await interaction.response.send_message(shame_msg, ephemeral=False)
+        return
     if error_msg:
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
@@ -686,6 +694,7 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
 
     # Collect outcome inside the lock; send Discord responses outside.
     error_msg: Optional[str] = None
+    shame_msg: Optional[str] = None
     entry: Optional[dict] = None
 
     async with _g.TERMINUS_SLAYER_LOCK:
@@ -698,7 +707,11 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
         ) < timedelta(minutes=5):
-            error_msg = "Kill log entries cannot be denied until 5 minutes after submission."
+            shame_msg = (
+                f"\N{EYES} {interaction.user.mention} is trying to **DENY** a kill log "
+                f"without watching the video or checking the AAR. "
+                f"Please make fun of them."
+            )
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
@@ -720,6 +733,9 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
                 _save_state(state)
 
     # All Discord API calls happen outside the lock.
+    if shame_msg:
+        await interaction.response.send_message(shame_msg, ephemeral=False)
+        return
     if error_msg:
         await interaction.response.send_message(error_msg, ephemeral=True)
         return
