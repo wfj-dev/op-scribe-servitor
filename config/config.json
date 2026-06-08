@@ -42,7 +42,7 @@
     "view_strike_directives": {
       "min_rank": "Watch Sergeant"
     },
-    "submit_target_package": {
+    "log_strike_report": {
       "min_rank": "Watch Brother"
     },
     "strike_directive_status": {
