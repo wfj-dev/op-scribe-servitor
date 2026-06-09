@@ -1988,13 +1988,15 @@ async def _award_announcement_dispatch_loop():
         if not queue:
             return
 
-        item = queue.pop(0)
-        _save_award_queue(queue)
+        # Peek at the first item — do NOT pop/save until after successful send.
+        item = queue[0]
 
         guild = _g.bot.get_guild(int(item["guild_id"]))
         if not guild:
             reason = f"guild `{item['guild_id']}` not found"
             _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            queue.pop(0)
+            _save_award_queue(queue)
             await _dm_award_failure(item, reason)
             return
 
@@ -2002,6 +2004,8 @@ async def _award_announcement_dispatch_loop():
         if not member:
             reason = f"member `{item['member_id']}` not found in guild"
             _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            queue.pop(0)
+            _save_award_queue(queue)
             await _dm_award_failure(item, reason)
             return
 
@@ -2018,6 +2022,8 @@ async def _award_announcement_dispatch_loop():
         if not channel:
             reason = f"no usable channel (tried `{channel_id}` + service studs fallback)"
             _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            queue.pop(0)
+            _save_award_queue(queue)
             await _dm_award_failure(item, reason)
             return
 
@@ -2025,6 +2031,8 @@ async def _award_announcement_dispatch_loop():
         if not fn_name:
             reason = f"unknown award type `{item['award_type']}`"
             _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            queue.pop(0)
+            _save_award_queue(queue)
             await _dm_award_failure(item, reason)
             return
 
@@ -2032,6 +2040,8 @@ async def _award_announcement_dispatch_loop():
         if not fn:
             reason = f"announcement function `{fn_name}` not found in bot module"
             _g.logger.warning(f"Award dispatch: {reason}; dropping item")
+            queue.pop(0)
+            _save_award_queue(queue)
             await _dm_award_failure(item, reason)
             return
 
@@ -2060,6 +2070,10 @@ async def _award_announcement_dispatch_loop():
                 await fallback.send(content, **send_kwargs)
             else:
                 raise
+
+        # Send succeeded — now remove from the persisted queue.
+        queue.pop(0)
+        _save_award_queue(queue)
         _g.logger.info(
             f"Award announcement dispatched: {item['award_type']} for {item['member_id']} "
             f"({len(queue)} remaining in queue)"
