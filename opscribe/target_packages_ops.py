@@ -3274,10 +3274,9 @@ class SignUpView(discord.ui.View):
                 pkg.setdefault("specialist_assigners", {})
                 pkg["specialist_assigners"].pop(str(member.id), None)
 
-            resolved_guild_for_state = interaction.guild or _get_guild_from_bot()
+            # Any stand-down while deployed immediately returns the directive to recruiting.
             if pkg.get("status") == STATUS_DEPLOYED:
-                if not resolved_guild_for_state or not _check_deployed(pkg, resolved_guild_for_state):
-                    pkg["status"] = STATUS_RECRUITING
+                pkg["status"] = STATUS_RECRUITING
 
             if in_signed and in_specialist:
                 success_message = "You have stood down and removed your specialist attachment from this directive."
