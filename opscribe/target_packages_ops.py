@@ -3978,6 +3978,19 @@ class PackagePaginatorView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
     async def on_specialist_select(self, interaction: discord.Interaction):
+        pkg = self._refresh_current_package_snapshot()
+        req_roles = pkg.get("required_roles", []) if pkg else []
+        cadre_roles = [
+            r for r in req_roles
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(interaction.user, r)
+        ]
+        if not cadre_roles:
+            await interaction.response.send_message(
+                "You cannot assign cadre specialists to this directive.",
+                ephemeral=True,
+            )
+            return
+
         selected = (interaction.data.get("values") or [None])[0]
         if not selected or selected == "none":
             await interaction.response.send_message("No eligible specialist to assign.", ephemeral=True)
@@ -4007,6 +4020,19 @@ class PackagePaginatorView(discord.ui.View):
         await interaction.followup.send(msg, ephemeral=True)
 
     async def on_unassign_specialist_select(self, interaction: discord.Interaction):
+        pkg = self._refresh_current_package_snapshot()
+        req_roles = pkg.get("required_roles", []) if pkg else []
+        cadre_roles = [
+            r for r in req_roles
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(interaction.user, r)
+        ]
+        if not cadre_roles:
+            await interaction.response.send_message(
+                "You cannot unassign cadre specialists from this directive.",
+                ephemeral=True,
+            )
+            return
+
         selected = (interaction.data.get("values") or [None])[0]
         if not selected or selected == "none":
             await interaction.response.send_message("No assigned specialist to detach.", ephemeral=True)
