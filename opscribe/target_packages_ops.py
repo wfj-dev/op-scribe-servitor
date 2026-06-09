@@ -2044,7 +2044,12 @@ async def _notify_kt_assigned(
     data = _load_tp()
     rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, rep, guild=guild)
-    if leader_member:
+    if captain:
+        embed.set_author(
+            name=f"{captain.display_name}",
+            icon_url=captain.display_avatar.url if getattr(captain, "display_avatar", None) else None,
+        )
+    elif leader_member:
         embed.set_author(
             name=f"{leader_member.display_name}",
             icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
@@ -2063,10 +2068,7 @@ async def _notify_kt_assigned(
         )
     embed.add_field(
         name="▸ Orders",
-        value=(
-            (f"Assigned by {captain.mention}\n" if captain else "")
-            + f"{leader_role or 'Watch Sergeant'} — press **⚔ Comply** to accept these orders."
-        ),
+        value=f"{leader_role or 'Watch Sergeant'} — press **⚔ Comply** to accept these orders.",
         inline=False,
     )
 
