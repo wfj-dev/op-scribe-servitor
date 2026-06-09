@@ -622,11 +622,16 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
         ) < timedelta(minutes=5):
-            shame_msg = (
-                f"\N{EYES} {interaction.user.mention} is trying to **VERIFY** a kill log "
-                f"without watching the video or checking the AAR. "
-                f"Please make fun of them."
-            )
+            if not entry.get("early_action_shame_sent"):
+                entry["early_action_shame_sent"] = True
+                _save_state(state)
+                shame_msg = (
+                    f"\N{EYES} {interaction.user.mention} is trying to **VERIFY** a kill log "
+                    f"without watching the video or checking the AAR. "
+                    f"Please make fun of them."
+                )
+            else:
+                error_msg = "You cannot verify or deny a kill log within 5 minutes of posting."
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
@@ -707,11 +712,16 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
         ) < timedelta(minutes=5):
-            shame_msg = (
-                f"\N{EYES} {interaction.user.mention} is trying to **DENY** a kill log "
-                f"without watching the video or checking the AAR. "
-                f"Please make fun of them."
-            )
+            if not entry.get("early_action_shame_sent"):
+                entry["early_action_shame_sent"] = True
+                _save_state(state)
+                shame_msg = (
+                    f"\N{EYES} {interaction.user.mention} is trying to **DENY** a kill log "
+                    f"without watching the video or checking the AAR. "
+                    f"Please make fun of them."
+                )
+            else:
+                error_msg = "You cannot verify or deny a kill log within 5 minutes of posting."
         else:
             vet_id = str(interaction.user.id)
             brother_id = str(entry["brother_id"])
