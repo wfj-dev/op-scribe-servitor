@@ -4421,6 +4421,12 @@ async def view_strike_directives(interaction: discord.Interaction):
             and (statuses is None or p["status"] in statuses)
         ]
 
+    def _is_personally_attached(p: dict) -> bool:
+        return (
+            member.id in p.get("signed_up", [])
+            or member.id in p.get("assigned_specialist_ids", [])
+        )
+
     # Role checks use actual Discord roles first so that admins with a specific
     # rank (e.g. Forgemaster) get the view appropriate to that rank rather than
     # the catch-all WM view that the admin override would otherwise trigger.
@@ -4443,6 +4449,7 @@ async def view_strike_directives(interaction: discord.Interaction):
                 p.get("assigned_company") == company
                 and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
             )
+            or _is_personally_attached(p)
         ]
 
     # Cadre leader — directives where their cadre's specialist is required,
@@ -4454,7 +4461,7 @@ async def view_strike_directives(interaction: discord.Interaction):
         ]
         attached_pkgs = [
             p for p in _active()
-            if member.id in p.get("assigned_specialist_ids", [])
+            if _is_personally_attached(p)
         ]
         merged_by_id = {p.get("id"): p for p in cadre_pkgs}
         for p in attached_pkgs:
@@ -4472,13 +4479,13 @@ async def view_strike_directives(interaction: discord.Interaction):
         pkgs = [
             p for p in _active()
             if p.get("assigned_kt") == kt
-            or member.id in p.get("assigned_specialist_ids", [])
+            or _is_personally_attached(p)
         ] if kt else []
 
         if not kt:
             pkgs = [
                 p for p in _active()
-                if member.id in p.get("assigned_specialist_ids", [])
+                if _is_personally_attached(p)
             ]
 
     if not pkgs:
