@@ -372,6 +372,11 @@ _STRAT_TABLE = {
      3: (4, 2),
 }
 
+_REP_MIN = 0.0
+_REP_MAX = 60.0
+_REP_NEUTRAL = 30.0
+_REP_SCALE_VERSION = 2
+
 # Generator switch: disable Omega packages temporarily when needed.
 ENABLE_OMEGA_PACKAGES = True
 
@@ -449,7 +454,11 @@ def _load_tp() -> dict:
         if not os.path.exists(TARGET_PACKAGES_PATH):
             return _empty_tp_store()
         with open(TARGET_PACKAGES_PATH, "r", encoding="utf-8") as f:
-            return json.load(f) or _empty_tp_store()
+            data = json.load(f) or _empty_tp_store()
+        migrated = _migrate_rep_scale_if_needed(data)
+        if migrated:
+            _save_tp(data)
+        return data
     except Exception:
         return _empty_tp_store()
 
@@ -465,7 +474,8 @@ def _save_tp(data: dict) -> None:
 
 def _empty_tp_store() -> dict:
     return {
-        "rep": 0.0,
+        "rep": _REP_NEUTRAL,
+        "rep_scale_version": _REP_SCALE_VERSION,
         "cycle": {
             "generated_at": None,
             "total": 0,
@@ -481,6 +491,67 @@ def _empty_tp_store() -> dict:
         "packages": {},
         "rep_embed_message_id": None,
     }
+
+
+def _legacy_rep_to_new(rep_value: float) -> float:
+    """Convert legacy -3..3 rep to new 0..60 scale."""
+    legacy = max(-3.0, min(3.0, float(rep_value or 0.0)))
+    return float(round((legacy + 3.0) * 10.0, 4))
+
+
+def _migrate_rep_scale_if_needed(data: dict) -> bool:
+    """One-time migration for target_packages.json rep values to 0..60 scale."""
+    if int(data.get("rep_scale_version", 1) or 1) >= _REP_SCALE_VERSION:
+        return False
+
+    data["rep"] = _legacy_rep_to_new(data.get("rep", 0.0))
+    for pkg in (data.get("packages", {}) or {}).values():
+        if "rep_before" in pkg:
+            pkg["rep_before"] = _legacy_rep_to_new(pkg.get("rep_before", 0.0))
+        if "rep_after" in pkg:
+            pkg["rep_after"] = _legacy_rep_to_new(pkg.get("rep_after", 0.0))
+
+    data["rep_scale_version"] = _REP_SCALE_VERSION
+    return True
+
+
+def _rep_tier_for_strat(rep: float) -> int:
+    """Map 0..60 reputation to legacy strat tiers -3..+3."""
+    rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
+    if rep_clamped < 10:
+        return -3
+    if rep_clamped < 20:
+        return -2
+    if rep_clamped < 30:
+        return -1
+    if rep_clamped < 40:
+        return 0
+    if rep_clamped < 50:
+        return 1
+    if rep_clamped < 58:
+        return 2
+    return 3
+
+
+def _rep_delta_for_package(pkg: dict, outcome: str) -> float:
+    """Return rep delta for a directive outcome under the 0..60 model."""
+    if outcome == STATUS_COMPLETED:
+        mode = str(pkg.get("mode", "") or "")
+        req_roles = pkg.get("required_roles", []) or []
+        delta = 2.0 if "Omega" in mode else 1.0
+        if req_roles:
+            delta += 1.0
+        return delta
+    if outcome == STATUS_FAILED:
+        return -2.0
+    if outcome == STATUS_LAPSED:
+        return -1.0
+    return 0.0
+
+
+def _apply_rep_delta(data: dict, delta: float) -> None:
+    cur = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
+    data["rep"] = max(_REP_MIN, min(_REP_MAX, cur + float(delta or 0.0)))
 
 
 def _load_graph() -> dict:
@@ -801,7 +872,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
     Returns {"core": [...], "wildcards": [...]}
     (intel_lapse is injected later based on mission).
     """
-    rep_tier = max(-3, min(3, round(rep)))
+    rep_tier = _rep_tier_for_strat(rep)
     pos_count, neg_count = _STRAT_TABLE[rep_tier]
 
     # Omega-Strat: YOLO is redundant (Omega already has 1-life rules)
@@ -1011,7 +1082,7 @@ def _build_briefing(node_name: str, world_type: str, mission_id: int,
     sentence1 = f"{hook} — {mission_hook}. {req_clause} ({op_name})"
 
     sentence2 = ""
-    rep_tier = max(-3, min(3, round(rep)))
+    rep_tier = _rep_tier_for_strat(rep)
     if rep_tier <= -2:
         tone_options = templates["strat_tone"]["rep_neg2"]
         sentence2 = random.choice(tone_options)
@@ -1581,9 +1652,9 @@ async def submit_package(
             stats["companies"][company]["completed"] += 1
 
         data["cycle"]["completed"] += 1
-        rep_before = float(data.get("rep", 0.0) or 0.0)
-        _update_rep(data)
-        rep_after = float(data.get("rep", 0.0) or 0.0)
+        rep_before = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
+        _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_COMPLETED))
+        rep_after = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
         pkg["rep_before"] = rep_before
         pkg["rep_after"] = rep_after
         _save_tp(data)
@@ -1637,16 +1708,6 @@ def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
     return False
 
 
-def _update_rep(data: dict) -> None:
-    """Recalculate and clamp rep after a completed/failed/lapsed directive."""
-    cycle = data["cycle"]
-    total = cycle.get("completed", 0) + cycle.get("failed", 0) + cycle.get("lapsed", 0)
-    if total == 0:
-        return
-    delta = (cycle["completed"] - cycle.get("failed", 0) - cycle.get("lapsed", 0)) / total
-    data["rep"] = max(-3.0, min(3.0, data.get("rep", 0.0) + delta))
-
-
 _BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945
 
 
@@ -1669,7 +1730,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             return
 
     packages = data.get("packages", {})
-    rep = data.get("rep", 0.0)
+    rep = data.get("rep", _REP_NEUTRAL)
     cycle = data.get("cycle", {})
     entity_stats = data.get("entity_stats", {})
 
@@ -1710,7 +1771,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             f"**Failed:** {len(failed)}  \u00b7  "
             f"**Lapsed:** {len(lapsed)}\n"
             f"**Completion Rate:** {completion_rate * 100:.0f}%\n"
-            f"**Ordo Xenos Standing:** {standing_bar} **{standing_name}** `{rep:+.2f}`"
+            f"**Ordo Xenos Standing:** {standing_bar} **{standing_name}** `{rep:.2f}`"
         ),
         inline=False,
     )
@@ -1860,6 +1921,7 @@ async def expire_packages(guild: discord.Guild) -> None:
             if pkg["status"] in (STATUS_DEPLOYED, STATUS_RECRUITING, STATUS_PENDING_SGT):
                 pkg["status"] = STATUS_FAILED
                 data["cycle"]["failed"] += 1
+                _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_FAILED))
                 # Update entity stats
                 kt = pkg.get("assigned_kt")
                 company = pkg.get("assigned_company")
@@ -1875,11 +1937,11 @@ async def expire_packages(guild: discord.Guild) -> None:
             elif pkg["status"] == STATUS_DISTRIBUTED:
                 pkg["status"] = STATUS_LAPSED
                 data["cycle"]["lapsed"] += 1
+                _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_LAPSED))
                 changed = True
                 expired_ids.append(pkg["id"])
 
         if changed:
-            _update_rep(data)
             _save_tp(data)
 
     if changed:
@@ -2322,40 +2384,53 @@ def _clearance_for_member(member: Optional[discord.Member]) -> str:
 def _rep_display(rep: float) -> str:
     label = _standing_state_name(rep)
     icons = _standing_skull_bar(rep)
-    return f"{icons} **{label}** `{rep:+.2f}`" if icons else f"**{label}** `{rep:+.2f}`"
+    return f"{icons} **{label}** `{rep:.2f}`" if icons else f"**{label}** `{rep:.2f}`"
 
 
 def _standing_skull_bar(rep: float) -> str:
     """Render compact standing icons.
 
-    Positive rep shows 1..3 Ordo Xenos skulls.
-    Negative rep shows 1..3 heresy icons.
-    Neutral (0 range) shows no icons.
+    0-60 scale:
+    - Censured/Suspect/Tolerated use 3/2/1 heresy icons.
+    - Neutral uses no icons.
+    - Favoured/Endorsed/Mandated use 1/2/3 Ordo Xenos skulls.
     """
-    rep_clamped = max(-3.0, min(3.0, float(rep or 0.0)))
-    if rep_clamped >= 1.0:
-        count = min(3, int(rep_clamped))
+    rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
+    if rep_clamped >= 58.0:
+        count = 3
         return " ".join([_OX_STANDING_EMOJI] * count)
-    if rep_clamped <= -1.0:
-        count = min(3, int(abs(rep_clamped)))
+    if rep_clamped >= 50.0:
+        count = 2
+        return " ".join([_OX_STANDING_EMOJI] * count)
+    if rep_clamped >= 40.0:
+        count = 1
+        return " ".join([_OX_STANDING_EMOJI] * count)
+    if rep_clamped < 10.0:
+        count = 3
+        return " ".join([_HERESY_EMOJI] * count)
+    if rep_clamped < 20.0:
+        count = 2
+        return " ".join([_HERESY_EMOJI] * count)
+    if rep_clamped < 30.0:
+        count = 1
         return " ".join([_HERESY_EMOJI] * count)
     return ""
 
 
 def _standing_state_name(rep: float) -> str:
-    """Resolve named standing state from shifted floating thresholds."""
-    rep_clamped = max(-3.0, min(3.0, float(rep or 0.0)))
-    if rep_clamped < -2.0:
+    """Resolve named standing state from 0..60 bands."""
+    rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
+    if rep_clamped < 10.0:
         return _REP_TIER_LABELS["censured"]
-    if rep_clamped < -1.0:
+    if rep_clamped < 20.0:
         return _REP_TIER_LABELS["suspect"]
-    if rep_clamped < 0.0:
+    if rep_clamped < 30.0:
         return _REP_TIER_LABELS["tolerated"]
-    if rep_clamped < 1.0:
+    if rep_clamped < 40.0:
         return _REP_TIER_LABELS["neutral"]
-    if rep_clamped < 2.0:
+    if rep_clamped < 50.0:
         return _REP_TIER_LABELS["favoured"]
-    if rep_clamped < 2.75:
+    if rep_clamped < 58.0:
         return _REP_TIER_LABELS["endorsed"]
     return _REP_TIER_LABELS["mandated"]
 
@@ -2600,7 +2675,7 @@ def _build_package_embed(
         embed.add_field(name="▸ Operational Stratagems", value=strat_block, inline=False)
 
     embed.set_footer(
-        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {rep:+.2f}",
+        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {rep:.2f}",
         icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
     )
 
@@ -4599,8 +4674,8 @@ async def log_strike_report(
         pkg = data.get("packages", {}).get(target_pkg["id"], target_pkg)
         classification = str(pkg.get("classification") or "STRIKE").strip().title()
         completed_kt = str(pkg.get("assigned_kt") or "Unassigned")
-        rep_before = float(pkg.get("rep_before", data.get("rep", 0.0)) or 0.0)
-        rep_after = float(pkg.get("rep_after", data.get("rep", 0.0)) or 0.0)
+        rep_before = float(pkg.get("rep_before", data.get("rep", _REP_NEUTRAL)) or _REP_NEUTRAL)
+        rep_after = float(pkg.get("rep_after", data.get("rep", _REP_NEUTRAL)) or _REP_NEUTRAL)
         standing_before = _standing_skull_bar(rep_before)
         standing_after = _standing_skull_bar(rep_after)
         state_before = _standing_state_name(rep_before)
@@ -4628,9 +4703,9 @@ async def log_strike_report(
         embed.add_field(
             name="▸ Ordo Xenos Standing",
             value=(
-                f"{standing_before_line} `{rep_before:+.4f}`\n"
-                f"-> {standing_after_line} `{rep_after:+.4f}`\n"
-                f"Delta: `{(rep_after - rep_before):+.4f}`"
+                f"{standing_before_line} `{rep_before:.2f}`\n"
+                f"-> {standing_after_line} `{rep_after:.2f}`\n"
+                f"Delta: `{(rep_after - rep_before):+.2f}`"
             ),
             inline=False,
         )
