@@ -51,6 +51,39 @@ def _get_guild_from_bot() -> "discord.Guild | None":
     return next(iter(bot.guilds), None)
 
 
+def _tp_get_player_platform(member: discord.Member) -> Optional[str]:
+    """Resolve member platform as "pc" or "console" using LFG role semantics."""
+    platform_fn = _b("_get_player_platform")
+    if callable(platform_fn):
+        try:
+            platform = platform_fn(member)
+            if platform in ("pc", "console"):
+                return platform
+        except Exception:
+            pass
+
+    cfg = (_b("CONFIG") or {}).get("lfg", {})
+    pc_role_id = int(cfg.get("pc_player_role_id") or LFG_PC_PLAYER_ROLE_ID_DEFAULT)
+    console_role_id = int(cfg.get("console_player_role_id") or LFG_CONSOLE_PLAYER_ROLE_ID_DEFAULT)
+    role_ids = {int(getattr(r, "id", 0) or 0) for r in getattr(member, "roles", [])}
+
+    if pc_role_id in role_ids:
+        return "pc"
+    if console_role_id in role_ids:
+        return "console"
+    return None
+
+
+def _tp_console_count(pkg: dict, guild: discord.Guild) -> int:
+    """Count console players currently committed to a directive (signed + specialists)."""
+    count = 0
+    for uid in (pkg.get("signed_up", []) + pkg.get("assigned_specialist_ids", [])):
+        m = guild.get_member(int(uid)) if guild else None
+        if m and _tp_get_player_platform(m) == "console":
+            count += 1
+    return count
+
+
 async def _resolve_channel(guild: "discord.Guild | None", channel_id: int):
     """Resolve a channel from cache, then API as fallback. Handles forum threads."""
     if not channel_id:
@@ -1253,6 +1286,18 @@ async def assign_specialist(
         if pkg["status"] not in (STATUS_RECRUITING, STATUS_DEPLOYED):
             return False, f"Directive `{package_id}` cannot accept a specialist attachment (status: {pkg['status']})."
 
+        # Omega directives must keep console players at <= 2 total (signed + specialists).
+        mode = pkg.get("mode", "")
+        if "Omega" in mode:
+            resolved_guild = guild or _get_guild_from_bot()
+            if not resolved_guild:
+                return False, "Guild context unavailable to validate Omega platform limits."
+            sp_platform = _tp_get_player_platform(specialist_member)
+            if not sp_platform:
+                return False, "Omega directives require a PC/Console role before specialist attachment."
+            if sp_platform == "console" and _tp_console_count(pkg, resolved_guild) >= 2:
+                return False, "This Omega directive already has the maximum 2 console players."
+
         # Check specialist not already locked on another package
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         for p in data["packages"].values():
@@ -2115,7 +2160,7 @@ async def _notify_specialist_assigned(
                         m = guild.get_member(uid) if guild else None
                         name = m.display_name if m else str(uid)
                         assigner_id = specialist_assigners.get(str(uid))
-                        if assigner_id:
+                        if assigner_id and int(assigner_id) != int(uid):
                             a = guild.get_member(assigner_id) if guild else None
                             name += f" _(via {a.display_name if a else str(assigner_id)})_"
                         else:
@@ -2246,15 +2291,16 @@ async def _notify_cadre_leaders_needed(
 
 _DW_EMOJI = "<:Deathwatch:1501748904880767147>"
 _OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
+_HERESY_EMOJI = "<:whatisthisheresy:1429676711108153384>"
 
 _REP_TIER_LABELS = {
-    -3: "ANATHEMA",
-    -2: "CENSURED",
-    -1: "WATCHED",
-     0: "SCRUTINY",
-     1: "SANCTIONED",
-     2: "FAVOURED",
-     3: "MANDATED",
+    "censured": "CENSURED",
+    "suspect": "SUSPECT",
+    "tolerated": "TOLERATED",
+    "neutral": "NEUTRAL",
+    "favoured": "FAVOURED",
+    "endorsed": "ENDORSED",
+    "mandated": "MANDATED",
 }
 
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"}
@@ -2274,24 +2320,44 @@ def _clearance_for_member(member: Optional[discord.Member]) -> str:
 
 
 def _rep_display(rep: float) -> str:
-    tier = max(-3, min(3, round(rep)))
-    label = _REP_TIER_LABELS[tier]
-    # 7-emoji bar: 1 at -3, scaling to 7 at +3
-    emoji_count = tier + 4  # -3->1, 0->4, +3->7
-    return f"{_DW_EMOJI * emoji_count} {label} · {rep:+.2f}"
+    label = _standing_state_name(rep)
+    icons = _standing_skull_bar(rep)
+    return f"{icons} **{label}** `{rep:+.2f}`" if icons else f"**{label}** `{rep:+.2f}`"
 
 
 def _standing_skull_bar(rep: float) -> str:
-    """Render standing as 1..7 Ordo Xenos skulls from tier -3..+3."""
-    tier = max(-3, min(3, round(rep)))
-    emoji_count = tier + 4  # -3->1, 0->4, +3->7
-    return " ".join([_OX_STANDING_EMOJI] * emoji_count)
+    """Render compact standing icons.
+
+    Positive rep shows 1..3 Ordo Xenos skulls.
+    Negative rep shows 1..3 heresy icons.
+    Neutral (0 range) shows no icons.
+    """
+    rep_clamped = max(-3.0, min(3.0, float(rep or 0.0)))
+    if rep_clamped >= 1.0:
+        count = min(3, int(rep_clamped))
+        return " ".join([_OX_STANDING_EMOJI] * count)
+    if rep_clamped <= -1.0:
+        count = min(3, int(abs(rep_clamped)))
+        return " ".join([_HERESY_EMOJI] * count)
+    return ""
 
 
 def _standing_state_name(rep: float) -> str:
-    """Resolve named standing state from the rounded rep tier."""
-    tier = max(-3, min(3, round(rep)))
-    return _REP_TIER_LABELS[tier]
+    """Resolve named standing state from shifted floating thresholds."""
+    rep_clamped = max(-3.0, min(3.0, float(rep or 0.0)))
+    if rep_clamped < -2.0:
+        return _REP_TIER_LABELS["censured"]
+    if rep_clamped < -1.0:
+        return _REP_TIER_LABELS["suspect"]
+    if rep_clamped < 0.0:
+        return _REP_TIER_LABELS["tolerated"]
+    if rep_clamped < 1.0:
+        return _REP_TIER_LABELS["neutral"]
+    if rep_clamped < 2.0:
+        return _REP_TIER_LABELS["favoured"]
+    if rep_clamped < 2.75:
+        return _REP_TIER_LABELS["endorsed"]
+    return _REP_TIER_LABELS["mandated"]
 
 
 def _strat_line(strat: dict) -> str:
@@ -2329,7 +2395,7 @@ def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> l
         if m:
             assigner_id = specialist_assigners.get(str(uid))
             assigner = guild.get_member(assigner_id) if assigner_id else None
-            suffix = f" _(via {assigner.display_name})_" if assigner else " _(specialist)_"
+            suffix = f" _(via {assigner.display_name})_" if (assigner and int(assigner_id) != int(uid)) else " _(specialist)_"
             participants.append((m, _member_role_names(m), m.display_name + suffix))
     for uid in signed_up:
         m = guild.get_member(uid)
@@ -2415,7 +2481,7 @@ def _inject_readiness_fields_for_view(
         m = guild.get_member(uid) if guild else None
         name = m.display_name if m else str(uid)
         assigner_id = specialist_assigners.get(str(uid))
-        if assigner_id:
+        if assigner_id and int(assigner_id) != int(uid):
             assigner = guild.get_member(assigner_id) if guild else None
             name += f" (via {assigner.display_name if assigner else str(assigner_id)})"
         else:
@@ -2534,7 +2600,7 @@ def _build_package_embed(
         embed.add_field(name="▸ Operational Stratagems", value=strat_block, inline=False)
 
     embed.set_footer(
-        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_REP_TIER_LABELS[max(-3, min(3, round(rep)))]} {rep:+.2f}",
+        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {rep:+.2f}",
         icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
     )
 
@@ -2777,6 +2843,17 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     if len(signed_up) + len(specialist_ids) >= total_capacity:
         return False, "This directive is already at full capacity."
 
+    # Omega directives must keep console players at <= 2 total (signed + specialists).
+    if "Omega" in mode:
+        resolved_guild = guild or getattr(member, "guild", None) or _get_guild_from_bot()
+        if not resolved_guild:
+            return False, "Guild context unavailable to validate Omega platform limits."
+        member_platform = _tp_get_player_platform(member)
+        if not member_platform:
+            return False, "Omega directives require a PC/Console role before sign-up."
+        if member_platform == "console" and _tp_console_count(pkg, resolved_guild) >= 2:
+            return False, "This Omega directive already has the maximum 2 console players."
+
     # Feasibility gate: simulate this member signing up and ensure the remaining
     # slots are still sufficient to satisfy all unresolved requirements.
     projected_signed = list(signed_up) + [member.id]
@@ -2859,7 +2936,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             m2 = guild.get_member(uid) if guild else None
             _sp_name = m2.display_name if m2 else str(uid)
             _assigner_id = _specialist_assigners.get(str(uid))
-            if _assigner_id:
+            if _assigner_id and int(_assigner_id) != int(uid):
                 _a = guild.get_member(_assigner_id) if guild else None
                 _sp_name += f" _(via {_a.display_name if _a else str(_assigner_id)})_"
             else:
@@ -3155,7 +3232,7 @@ class SignUpView(discord.ui.View):
                 sp_assigners = pkg2.get("specialist_assigners", {})
                 sp_assigner_id = sp_assigners.get(str(uid))
                 sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
-                sp_suffix = f" _(via {sp_a.display_name})_" if sp_a else " _(specialist)_"
+                sp_suffix = f" _(via {sp_a.display_name})_" if (sp_a and int(sp_assigner_id) != int(uid)) else " _(specialist)_"
                 signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
             roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
@@ -4368,13 +4445,21 @@ async def view_strike_directives(interaction: discord.Interaction):
             )
         ]
 
-    # Cadre leader — only directives where their cadre's specialist is required,
-    # and only once the directive is assigned to a KT (RECRUITING or DEPLOYED).
+    # Cadre leader — directives where their cadre's specialist is required,
+    # plus any directive they are personally attached to as a specialist.
     elif _mroles & _CADRE_LEADER_ROLES:
-        pkgs = [
+        cadre_pkgs = [
             p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
             if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
         ]
+        attached_pkgs = [
+            p for p in _active()
+            if member.id in p.get("assigned_specialist_ids", [])
+        ]
+        merged_by_id = {p.get("id"): p for p in cadre_pkgs}
+        for p in attached_pkgs:
+            merged_by_id[p.get("id")] = p
+        pkgs = list(merged_by_id.values())
 
     # Admin fallback in debug mode only — see everything, same as WM
     elif _is_debug_mode() and _is_admin(member):
@@ -4487,6 +4572,8 @@ async def log_strike_report(
         standing_after = _standing_skull_bar(rep_after)
         state_before = _standing_state_name(rep_before)
         state_after = _standing_state_name(rep_after)
+        standing_before_line = f"{standing_before} **{state_before}**" if standing_before else f"**{state_before}**"
+        standing_after_line = f"{standing_after} **{state_after}**" if standing_after else f"**{state_after}**"
 
         display_code = pkg.get("directive_code") or target_pkg["id"]
         directive_name = pkg.get("directive_name", "")
@@ -4508,8 +4595,8 @@ async def log_strike_report(
         embed.add_field(
             name="▸ Ordo Xenos Standing",
             value=(
-                f"{standing_before} **{state_before}** `{rep_before:+.4f}`\n"
-                f"-> {standing_after} **{state_after}** `{rep_after:+.4f}`\n"
+                f"{standing_before_line} `{rep_before:+.4f}`\n"
+                f"-> {standing_after_line} `{rep_after:+.4f}`\n"
                 f"Delta: `{(rep_after - rep_before):+.4f}`"
             ),
             inline=False,
