@@ -245,33 +245,30 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     if "sok_g_pipehitter" not in user_progress:
                         user_progress["sok_g_pipehitter"] = []
 
-                    # Check if this mission already tracked
-                    existing_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
-                    if mission_name not in existing_missions:
-                        user_progress["sok_g_pipehitter"].append(
-                            {
-                                "mission": mission_name,
-                                "aar_id": aar_id,
-                                "message_url": message_url,
-                                "timestamp": timestamp,
-                            }
-                        )
+                    user_progress["sok_g_pipehitter"].append(
+                        {
+                            "mission": mission_name,
+                            "aar_id": aar_id,
+                            "message_url": message_url,
+                            "timestamp": timestamp,
+                        }
+                    )
 
-                    # Check if qualified for SOK-G: Pipehitter (1 mission)
-                    unique_missions = {m["mission"] for m in user_progress["sok_g_pipehitter"]}
+                    # Check if qualified for SOK-G: Pipehitter (1 op)
+                    pip_entries = user_progress["sok_g_pipehitter"]
                     if (
-                        len(unique_missions) >= 1
+                        len(pip_entries) >= 1
                         and "sok_g_pipehitter" not in notified_challenges
                         and is_watch_brother_or_higher
                         and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID)
                     ):
-                        aar_urls = [m["message_url"] for m in user_progress["sok_g_pipehitter"] if m["message_url"]]
+                        aar_urls = [m["message_url"] for m in pip_entries if m["message_url"]]
                         notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
                         notified_challenges.append("sok_g_pipehitter")
 
-                    # Check if qualified for Distinguished SOK-G: Pipehitter (2+ missions)
+                    # Check if qualified for Distinguished SOK-G: Pipehitter (2+ ops)
                     if (
-                        len(unique_missions) >= 2
+                        len(pip_entries) >= 2
                         and "distinguished_sok_g_pipehitter" not in notified_challenges
                         and is_watch_brother_or_higher
                         and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID)
@@ -703,10 +700,10 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                             f"[{len(unique)}/{len(required)} missions]"
                         )
 
-                # --- SOK-G Pipehitter (1 mission) ---
+                # --- SOK-G Pipehitter (1 op) ---
                 if "sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=PIPEHITTER_ROLE_ID):
                     entries = user_progress.get("sok_g_pipehitter", [])
-                    if len({e["mission"] for e in entries}) >= 1:
+                    if len(entries) >= 1:
                         aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
                         notifications.append((user_id_str, "SOK-G: Pipehitter", PIPEHITTER_ROLE_ID, "sok_g_pipehitter", aar_urls))
                         notified.append("sok_g_pipehitter")
@@ -714,10 +711,10 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                         changed = True
                         _g.logger.info(f"challenge sweep: SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
 
-                # --- Distinguished SOK-G Pipehitter (2+ missions) ---
+                # --- Distinguished SOK-G Pipehitter (2+ ops) ---
                 if "distinguished_sok_g_pipehitter" not in notified and not discord.utils.get(member.roles, id=DISTINGUISHED_PIPEHITTER_ROLE_ID):
                     entries = user_progress.get("sok_g_pipehitter", [])
-                    if len({e["mission"] for e in entries}) >= 2:
+                    if len(entries) >= 2:
                         aar_urls = [e["message_url"] for e in entries if e.get("message_url")]
                         notifications.append((user_id_str, "Distinguished SOK-G: Pipehitter", DISTINGUISHED_PIPEHITTER_ROLE_ID, "distinguished_pipehitter", aar_urls))
                         notified.append("distinguished_sok_g_pipehitter")
