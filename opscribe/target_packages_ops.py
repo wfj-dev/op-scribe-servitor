@@ -1930,10 +1930,12 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 pass
         return "BATCH-UNKNOWN"
 
-    # If still no batch_id resolved, pick the most recent batch in the file.
+    # If still no batch_id resolved, pick the most recent non-UNKNOWN batch in the file.
+    # Fall back to UNKNOWN only when that's all that exists.
     if not batch_id:
         all_batch_ids = sorted({_pkg_batch_id(p) for p in packages.values()}, reverse=True)
-        batch_id = all_batch_ids[0] if all_batch_ids else "BATCH-UNKNOWN"
+        known_batch_ids = [bid for bid in all_batch_ids if bid != "BATCH-UNKNOWN"]
+        batch_id = (known_batch_ids[0] if known_batch_ids else (all_batch_ids[0] if all_batch_ids else "BATCH-UNKNOWN"))
 
     batch_pkgs = [p for p in packages.values() if _pkg_batch_id(p) == batch_id]
     if not batch_pkgs:
@@ -5448,8 +5450,7 @@ async def post_cycle_reports(interaction: discord.Interaction, batch: Optional[s
             gen_str = pkg.get("generated_at")
             if gen_str:
                 try:
-                    from datetime import datetime as _dt
-                    gen = _dt.fromisoformat(gen_str)
+                    gen = datetime.fromisoformat(gen_str)
                     return f"BATCH-{gen.strftime('%Y%m%d')}"
                 except Exception:
                     pass
