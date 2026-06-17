@@ -1900,7 +1900,33 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
     rep = data.get("rep", _REP_NEUTRAL)
     entity_stats = data.get("entity_stats", {})
 
-    batch_pkgs = list(packages.values())
+    # Scope reports to the current cycle only, using cycle.generated_at as the lower bound.
+    # Older packages from prior cycles remain in the file but should not pollute this report.
+    cycle_generated_at_str = data.get("cycle", {}).get("generated_at")
+    cycle_cutoff: "datetime | None" = None
+    if cycle_generated_at_str:
+        try:
+            cycle_cutoff = datetime.fromisoformat(cycle_generated_at_str)
+            if cycle_cutoff.tzinfo is None:
+                cycle_cutoff = cycle_cutoff.replace(tzinfo=timezone.utc)
+        except Exception:
+            cycle_cutoff = None
+
+    def _in_cycle(pkg: dict) -> bool:
+        if cycle_cutoff is None:
+            return True
+        gen_str = pkg.get("generated_at")
+        if not gen_str:
+            return True
+        try:
+            gen = datetime.fromisoformat(gen_str)
+            if gen.tzinfo is None:
+                gen = gen.replace(tzinfo=timezone.utc)
+            return gen >= cycle_cutoff
+        except Exception:
+            return True
+
+    batch_pkgs = [p for p in packages.values() if _in_cycle(p)]
     if not batch_pkgs:
         return
 
