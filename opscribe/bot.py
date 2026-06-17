@@ -808,6 +808,7 @@ HOME_CHAPTERS = [
     "Lamenters",
     "Marines Errant",
     "Marines Malevolent",
+    "Mantis Warriors",
     "Mentors",
     "Minotaurs",
     "Necropolis Hawks",

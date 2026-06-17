@@ -497,6 +497,38 @@ def _tp_status_for_high_command(
         return "🟢 Ready for Deployment"
 
 
+def _honors_title_for_kt(kt_name: str) -> str:
+    """Return formatted honor title line for a KT, or empty string."""
+    try:
+        path = os.path.join("data", "honors.json")
+        if not os.path.exists(path):
+            return ""
+        with open(path, "r", encoding="utf-8") as f:
+            honors = json.load(f)
+        tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "")
+        if tier and tier != "Unproven":
+            return f"🎖 **{tier}**"
+        return ""
+    except Exception:
+        return ""
+
+
+def _honors_title_for_company(company_name: str) -> str:
+    """Return formatted honor title line for a company, or empty string."""
+    try:
+        path = os.path.join("data", "honors.json")
+        if not os.path.exists(path):
+            return ""
+        with open(path, "r", encoding="utf-8") as f:
+            honors = json.load(f)
+        tier = honors.get("companies", {}).get(company_name, {}).get("tier", "")
+        if tier and tier != "Unrecorded":
+            return f"🏅 **{tier}**"
+        return ""
+    except Exception:
+        return ""
+
+
 def _build_embed(
     title: str,
     members: List[discord.Member],
@@ -504,6 +536,7 @@ def _build_embed(
     last_updated: Optional[datetime] = None,
     image_url: Optional[str] = None,
     tp_status: Optional[str] = None,
+    honors_title: Optional[str] = None,
 ) -> discord.Embed:
     """Build a roster discord.Embed for a list of members.
 
@@ -525,6 +558,8 @@ def _build_embed(
     header_parts = [title, f"**{count} {noun} Assigned**"]
     if tp_status:
         header_parts.append(tp_status)
+    if honors_title:
+        header_parts.append(honors_title)
     header_parts.append(SEPARATOR)
     header = "\n".join(header_parts)
 
@@ -704,6 +739,7 @@ async def _update_company_roster(
         last_updated=now,
         image_url=cmd_image,
         tp_status=_tp_status_for_company(guild, company_name, packages=_tp_packages),
+        honors_title=_honors_title_for_company(company_name),
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
@@ -734,6 +770,7 @@ async def _update_company_roster(
             last_updated=now,
             image_url=kt_image,
             tp_status=tp_status_line,
+            honors_title=_honors_title_for_kt(kt_name),
         )
         kt_msg_id = await _upsert_message(
             channel, kt_message_ids.get(kt_name), kt_embed
