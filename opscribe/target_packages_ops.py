@@ -2021,8 +2021,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
 
     # ── 2. KT REPORTS ────────────────────────────────────────────────────
     # Group completed/failed packages by KT for per-KT report embeds.
-    # Post to each KT's signup_channel_id; fall back to watch_command channel.
-    wc_channel_id = config_tp.get("watch_command_deployment_channel_id")
+    # Channel resolved via _get_award_announcement_channel (same as active-flow embeds).
     kt_pkgs_map: dict[str, list] = {}
     for p in batch_pkgs:
         kt = p.get("assigned_kt")
@@ -2103,22 +2102,20 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
         )
 
-        # Resolve KT channel from completed pkg signup_channel_id, then fallback
-        kt_ch_id = next(
-            (p.get("signup_channel_id") for p in kt_batch if p.get("signup_channel_id")),
-            wc_channel_id,
-        )
+        # Resolve KT channel via _get_award_announcement_channel — same resolver used
+        # by _post_signup_embed. Prefers KT_ROLE_CHANNEL_MAP override, then active forum
+        # thread fuzzy-matched by KT name, then falls back to SERVICE_STUDS_CHANNEL_ID.
+        from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
         kt_ch = None
-        if kt_ch_id:
-            try:
-                kt_ch = guild.get_channel(int(kt_ch_id)) or await guild.fetch_channel(int(kt_ch_id))
-            except Exception:
-                kt_ch = None
-        if not kt_ch and wc_channel_id:
-            try:
-                kt_ch = guild.get_channel(int(wc_channel_id)) or await guild.fetch_channel(int(wc_channel_id))
-            except Exception:
-                kt_ch = None
+        for _m in (guild.members if guild else []):
+            if _m.bot or not _is_active(_m):
+                continue
+            if _resolve_killteam_for_member(_m) == kt_name:
+                try:
+                    kt_ch = await _get_award_announcement_channel(_m, guild)
+                except Exception:
+                    kt_ch = None
+                break
 
         # Resolve KT Discord role mention
         kt_role_mention = ""
