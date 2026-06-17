@@ -1206,7 +1206,13 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             data["cycle"]["total"] += 1
             new_packages.append(pkg)
 
-        data["cycle"]["generated_at"] = datetime.now(timezone.utc).isoformat()
+        now_utc = datetime.now(timezone.utc)
+        batch_id = f"BATCH-{now_utc.strftime('%Y%m%d')}"
+        data["cycle"]["generated_at"] = now_utc.isoformat()
+        data["cycle"]["batch_id"] = batch_id
+        # Stamp each package with the batch ID for reliable cycle scoping
+        for pkg in new_packages:
+            pkg["batch_id"] = batch_id
         _save_tp(data)
 
     # Gap 1 — Notify general fortress channel when WM generates packages
@@ -1892,51 +1898,44 @@ def _all_packages_terminal(data: dict) -> bool:
 # Cycle-close reports (three scopes) + honors
 # ---------------------------------------------------------------------------
 
-async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
-    """Post cycle-close reports to three channels and update KT/company honors."""
+async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Optional[str] = None) -> None:
+    """Post cycle-close reports to three channels and update KT/company honors.
+
+    batch_id: "BATCH-YYYYMMDD" to report on a specific batch. If None, uses the
+    batch_id stored in cycle.batch_id, or derives it from package generated_at
+    dates for legacy packages that predate the batch_id field.
+    """
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
 
     packages = data.get("packages", {})
     rep = data.get("rep", _REP_NEUTRAL)
     entity_stats = data.get("entity_stats", {})
 
-    # Scope reports to the current cycle only. Use the earliest package generated_at
-    # as the cycle lower bound — this is robust against cycle.generated_at being updated
-    # on re-runs after the batch was originally created.
-    cycle_cutoff: "datetime | None" = None
-    pkg_gen_times = []
-    for pkg in packages.values():
+    # Resolve which batch to report on.
+    if not batch_id:
+        batch_id = data.get("cycle", {}).get("batch_id")
+
+    # For legacy packages without a batch_id field, derive it from generated_at date.
+    # Group packages by their date-derived batch key so we can scope correctly.
+    def _pkg_batch_id(pkg: dict) -> str:
+        explicit = pkg.get("batch_id")
+        if explicit:
+            return explicit
         gen_str = pkg.get("generated_at")
         if gen_str:
             try:
                 gen = datetime.fromisoformat(gen_str)
-                if gen.tzinfo is None:
-                    gen = gen.replace(tzinfo=timezone.utc)
-                pkg_gen_times.append(gen)
+                return f"BATCH-{gen.strftime('%Y%m%d')}"
             except Exception:
                 pass
-    if pkg_gen_times:
-        # All packages in a batch share the same generation timestamp (within seconds).
-        # The earliest timestamp is the true start of this cycle.
-        cycle_cutoff = min(pkg_gen_times)
+        return "BATCH-UNKNOWN"
 
-    def _in_cycle(pkg: dict) -> bool:
-        if cycle_cutoff is None:
-            return True
-        gen_str = pkg.get("generated_at")
-        if not gen_str:
-            return True
-        try:
-            gen = datetime.fromisoformat(gen_str)
-            if gen.tzinfo is None:
-                gen = gen.replace(tzinfo=timezone.utc)
-            # Allow a 60-second window to handle packages generated in the same batch
-            # but with slightly different timestamps.
-            return gen >= (cycle_cutoff - timedelta(seconds=60))
-        except Exception:
-            return True
+    # If still no batch_id resolved, pick the most recent batch in the file.
+    if not batch_id:
+        all_batch_ids = sorted({_pkg_batch_id(p) for p in packages.values()}, reverse=True)
+        batch_id = all_batch_ids[0] if all_batch_ids else "BATCH-UNKNOWN"
 
-    batch_pkgs = [p for p in packages.values() if _in_cycle(p)]
+    batch_pkgs = [p for p in packages.values() if _pkg_batch_id(p) == batch_id]
     if not batch_pkgs:
         return
 
@@ -1963,6 +1962,24 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
 
     standing_bar  = _standing_skull_bar(rep)
     standing_name = _standing_state_name(rep)
+
+    # Human-readable batch label and date range for embed headers.
+    _batch_date_str = batch_id.replace("BATCH-", "") if batch_id else ""
+    try:
+        _batch_date = datetime.strptime(_batch_date_str, "%Y%m%d")
+        _batch_label = f"Directive Batch-{_batch_date.strftime('%d %b %Y')}"
+        # Cycle window: generation date → latest deadline across batch packages
+        _deadlines = [
+            datetime.fromisoformat(p["deadline"]) for p in batch_pkgs if p.get("deadline")
+        ]
+        if _deadlines:
+            _cycle_end = max(_deadlines)
+            _cycle_range = f"{_batch_date.strftime('%d %b')} – {_cycle_end.strftime('%d %b %Y')}"
+        else:
+            _cycle_range = _batch_date.strftime("%d %b %Y")
+    except Exception:
+        _batch_label = batch_id or "Directive Batch"
+        _cycle_range = ""
 
     # ── 1. FORTRESS-WIDE REPORT ──────────────────────────────────────────
     general_channel_id = config_tp.get("general_channel_id")
@@ -2002,7 +2019,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
                 description=flavor,
                 color=color,
             )
-            fw_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+            fw_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}  ·  {_cycle_range}" if _cycle_range else f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
             fw_embed.add_field(
                 name="▸ Cycle Results",
@@ -2097,7 +2114,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             title=f"{_DW_EMOJI} ᴋɪʟʟ ᴛᴇᴀᴍ ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ʀᴇᴄᴏʀᴅ {_DW_EMOJI}",
             color=kt_color,
         )
-        kt_embed.set_author(name=f"{kt_name}  ·  ᴏʀᴅᴏ xᴇɴᴏs ᴅᴀᴛᴀɴᴇᴛ")
+        kt_embed.set_author(name=f"{kt_name}  ·  {_batch_label}")
 
         kt_embed.add_field(
             name="▸ Cycle Summary",
@@ -2190,7 +2207,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             title=f"{_DW_EMOJI} ᴄᴏᴍᴍᴀɴᴅ sᴛʀᴀᴛᴀɢᴇᴍ ᴀᴜᴅɪᴛ {_DW_EMOJI}",
             color=color,
         )
-        hc_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+        hc_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}  ·  {_cycle_range}" if _cycle_range else f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
         # Theatre summary
         _before_line2 = f"{_standing_skull_bar(rep_start)} **{_standing_state_name(rep_start)}**" if _standing_skull_bar(rep_start) else f"**{_standing_state_name(rep_start)}**"
@@ -2362,7 +2379,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
                     description="Ordo Xenos standing records updated. Title tiers reflect rolling 28-day performance.",
                     color=0xC4A030,
                 )
-                hon_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+                hon_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
                 if kt_changes:
                     kt_block = "\n".join(kt_changes)
@@ -5400,9 +5417,10 @@ async def repost_directive_embed(interaction: discord.Interaction, directive_id:
 # /post_cycle_reports — WM/admin only manual trigger
 @app_commands.command(
     name="post_cycle_reports",
-    description="[Watch Master] Manually post cycle-close reports and honors for the current directive data.",
+    description="[Watch Master] Manually post cycle-close reports and honors for a directive batch.",
 )
-async def post_cycle_reports(interaction: discord.Interaction):
+@app_commands.describe(batch="Batch date to report on, e.g. 20260608. Defaults to the current batch.")
+async def post_cycle_reports(interaction: discord.Interaction, batch: Optional[str] = None):
     if not _b("check_command_permission")(interaction.user, "post_cycle_reports"):
         await interaction.response.send_message(
             "You do not have permission to use this command.", ephemeral=True
@@ -5417,10 +5435,39 @@ async def post_cycle_reports(interaction: discord.Interaction):
         await interaction.followup.send("No directive data found.", ephemeral=True)
         return
 
+    # Normalize batch arg: accept "20260608" or "BATCH-20260608"
+    resolved_batch_id: Optional[str] = None
+    if batch:
+        cleaned = batch.strip().upper().replace("BATCH-", "")
+        resolved_batch_id = f"BATCH-{cleaned}"
+        # Verify at least one package matches
+        def _pkg_batch_id_check(pkg: dict) -> str:
+            b = pkg.get("batch_id")
+            if b:
+                return b
+            gen_str = pkg.get("generated_at")
+            if gen_str:
+                try:
+                    from datetime import datetime as _dt
+                    gen = _dt.fromisoformat(gen_str)
+                    return f"BATCH-{gen.strftime('%Y%m%d')}"
+                except Exception:
+                    pass
+            return "BATCH-UNKNOWN"
+        matching = [p for p in data["packages"].values() if _pkg_batch_id_check(p) == resolved_batch_id]
+        if not matching:
+            await interaction.followup.send(
+                f"No directives found for batch `{resolved_batch_id}`. "
+                f"Available batches: {', '.join(sorted({_pkg_batch_id_check(p) for p in data['packages'].values()}, reverse=True))}",
+                ephemeral=True,
+            )
+            return
+
     try:
-        await _post_batch_summary(guild, data)
+        await _post_batch_summary(guild, data, batch_id=resolved_batch_id)
+        label = resolved_batch_id or data.get("cycle", {}).get("batch_id") or "current batch"
         await interaction.followup.send(
-            "Cycle reports posted: fortress-wide, per-KT, highcom, and honors announcement.",
+            f"Cycle reports posted for `{label}`: fortress-wide, per-KT, highcom, and honors announcement.",
             ephemeral=True,
         )
     except Exception as exc:
