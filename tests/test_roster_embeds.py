@@ -159,3 +159,55 @@ def test_tp_status_for_kt_ignores_other_kts():
     packages = _make_pkg("Kill Team Bravo", "deployed")
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
     assert result == "🟢 Ready for Deployment"
+
+
+# ---------------------------------------------------------------------------
+# Honors title helpers
+# ---------------------------------------------------------------------------
+
+def test_honors_title_for_kt_returns_empty_when_no_honors_file():
+    with patch.object(roster_embeds.os.path, "exists", return_value=False):
+        result = roster_embeds._honors_title_for_kt("Kill Team Alpha")
+    assert result == ""
+
+
+def test_honors_title_for_kt_returns_empty_for_unknown_kt():
+    honors = {"kill_teams": {}, "companies": {}}
+    result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
+    assert result == ""
+
+
+def test_honors_title_for_kt_returns_empty_for_unproven():
+    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Unproven"}}, "companies": {}}
+    result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
+    assert result == ""
+
+
+def test_honors_title_for_kt_returns_formatted_tier():
+    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Stalwart"}}, "companies": {}}
+    result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
+    assert result == "🎖 **Stalwart**"
+
+
+def test_honors_title_for_company_returns_empty_for_unrecorded():
+    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Unrecorded"}}}
+    result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
+    assert result == ""
+
+
+def test_honors_title_for_company_returns_empty_for_unknown_company():
+    honors = {"kill_teams": {}, "companies": {}}
+    result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
+    assert result == ""
+
+
+def test_honors_title_for_company_returns_formatted_tier():
+    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Renowned"}}}
+    result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
+    assert result == "🏅 **Renowned**"
+
+
+def test_load_honors_returns_empty_dict_when_file_missing():
+    with patch.object(roster_embeds.os.path, "exists", return_value=False):
+        result = roster_embeds._load_honors()
+    assert result == {}

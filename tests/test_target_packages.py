@@ -73,6 +73,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _draw_strats,
     _check_deployed,
     _is_eligible_to_sign_up,
+    _compute_honors,
     _STRAT_TABLE,
     _CADRE_SPECIALIST_ROLES,
     _REQ_TIER_NO_REQ,
@@ -82,6 +83,8 @@ from opscribe.target_packages_ops import (  # noqa: E402
     STATUS_RECRUITING,
     STATUS_DEPLOYED,
     STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_LAPSED,
 )
 
 
@@ -494,3 +497,143 @@ class TestCadreSpecialistRoles:
 
     def test_watch_sergeant_not_cadre(self):
         assert "Watch Sergeant" not in _CADRE_SPECIALIST_ROLES
+
+
+# ---------------------------------------------------------------------------
+# _compute_honors
+# ---------------------------------------------------------------------------
+
+def _make_completed_pkg(pkg_id, kt, company, rep_before, rep_after, completed_at):
+    """Build a minimal completed-package dict for honors scoring tests."""
+    return {
+        "id": pkg_id,
+        "status": STATUS_COMPLETED,
+        "mode": "Hard-Strat",
+        "assigned_kt": kt,
+        "assigned_company": company,
+        "rep_before": rep_before,
+        "rep_after": rep_after,
+        "completed_at": completed_at,
+    }
+
+
+class TestComputeHonors:
+    """Tests for _compute_honors() tier assignment logic."""
+
+    # Fixed "now" used across tests so the 28-day cutoff is deterministic.
+    _NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    _WITHIN = (datetime(2025, 5, 15, 12, 0, 0, tzinfo=timezone.utc)).isoformat()   # 17 days ago
+    _OUTSIDE = (datetime(2025, 4, 1, 12, 0, 0, tzinfo=timezone.utc)).isoformat()   # 61 days ago
+    _CUTOFF  = (datetime(2025, 5, 4, 12, 0, 0, tzinfo=timezone.utc)).isoformat()   # exactly 28 days ago
+
+    def _call(self, packages: dict) -> dict:
+        import opscribe.target_packages_ops as tp
+        from unittest.mock import patch
+        with patch.object(tp, "datetime") as mock_dt:
+            mock_dt.now.return_value = self._NOW
+            mock_dt.fromisoformat = datetime.fromisoformat
+            return _compute_honors({"packages": packages})
+
+    def test_empty_data_returns_empty_dicts(self):
+        result = self._call({})
+        assert result == {"kill_teams": {}, "companies": {}}
+
+    def test_failed_and_lapsed_packages_ignored(self):
+        """Failed/lapsed directives don't contribute to honors scoring."""
+        pkgs = {
+            "p1": {
+                "id": "p1",
+                "status": STATUS_FAILED,
+                "assigned_kt": "Alpha",
+                "assigned_company": "Primus",
+                "rep_before": 10.0,
+                "rep_after": 8.0,
+                "completed_at": self._WITHIN,
+            },
+            "p2": {
+                "id": "p2",
+                "status": STATUS_LAPSED,
+                "assigned_kt": "Alpha",
+                "assigned_company": "Primus",
+                "rep_before": 8.0,
+                "rep_after": 7.0,
+                "completed_at": self._WITHIN,
+            },
+        }
+        result = self._call(pkgs)
+        assert result["kill_teams"] == {}
+        assert result["companies"] == {}
+
+    def test_package_outside_28_day_window_excluded(self):
+        """Completions older than 28 days must not count towards tier."""
+        pkgs = {
+            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 10.0, 12.0, self._OUTSIDE),
+        }
+        result = self._call(pkgs)
+        assert result["kill_teams"] == {}
+        assert result["companies"] == {}
+
+    def test_package_at_cutoff_boundary_excluded(self):
+        """A package completed strictly before the cutoff (28+ days ago) is excluded."""
+        # The cutoff is `now - 28 days`; completed_at < cutoff means strictly before → excluded.
+        # A package completed exactly 29 days ago is outside the window.
+        _29_days_ago = (self._NOW - timedelta(days=29)).isoformat()
+        pkgs = {
+            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 10.0, 12.0, _29_days_ago),
+        }
+        result = self._call(pkgs)
+        assert result["kill_teams"] == {}
+        assert result["companies"] == {}
+
+    def test_kt_one_completion_low_rep_gives_initiated(self):
+        """1 completion with rep_delta < 4 → Initiated (tier index 1)."""
+        # rep delta = 1.0 → ri = 1 (≥1.0 threshold), ci = 1 (1 completion)
+        # final = round(0.75*1 + 0.25*1) = round(1.0) = 1 → "Initiated"
+        pkgs = {
+            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 10.0, 11.0, self._WITHIN),
+        }
+        result = self._call(pkgs)
+        assert result["kill_teams"]["Alpha"]["tier"] == "Initiated"
+        assert result["kill_teams"]["Alpha"]["completions_28d"] == 1
+
+    def test_kt_high_rep_and_completions_gives_higher_tier(self):
+        """Many completions with high rep delta escalates the tier."""
+        # 6 completions, rep_delta 2 each = 12 total
+        # ri: 12 >= 8.0 → index 3; ci: 6 completions >= 6 → index 3
+        # final = round(0.75*3 + 0.25*3) = 3 → "Sworn"
+        pkgs = {
+            f"p{i}": _make_completed_pkg(f"p{i}", "Bravo", "Secundus", float(10 + i*2), float(12 + i*2), self._WITHIN)
+            for i in range(6)
+        }
+        result = self._call(pkgs)
+        assert result["kill_teams"]["Bravo"]["tier_index"] == 3
+        assert result["kill_teams"]["Bravo"]["tier"] == "Sworn"
+
+    def test_company_contributor_gate_caps_tier(self):
+        """Company tier is capped when too few distinct KTs contributed."""
+        # 3 completions each contributing 2 rep → co_rep=6, co_comp=3
+        # ri: 6 >= 6.0 → index 2; ci: 3 >= 3 → index 2
+        # raw_final = round(0.75*2 + 0.25*2) = 2 → "Recognized"
+        # Tier index 2 needs _CO_KT_GATES[2] = 2 distinct KTs.
+        # Only 1 KT contributed → gate triggers → raw_final drops to 1 → "Marked"
+        pkgs = {
+            f"p{i}": _make_completed_pkg(f"p{i}", "Alpha", "Primus", float(i*2), float(i*2+2), self._WITHIN)
+            for i in range(3)
+        }
+        result = self._call(pkgs)
+        tier_idx = result["companies"]["Primus"]["tier_index"]
+        assert tier_idx < 2, f"Expected gate to cap tier below 2 but got {tier_idx}"
+        assert result["companies"]["Primus"]["contributing_kts"] == 1
+
+    def test_company_multi_kt_unlocks_higher_tier(self):
+        """Two contributing KTs satisfy the gate for tier index 2."""
+        # Same total stats as test_company_contributor_gate_caps_tier but split across 2 KTs
+        pkgs = {
+            "p0": _make_completed_pkg("p0", "Alpha", "Primus", 0.0, 2.0, self._WITHIN),
+            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 2.0, 4.0, self._WITHIN),
+            "p2": _make_completed_pkg("p2", "Bravo", "Primus", 4.0, 6.0, self._WITHIN),
+        }
+        result = self._call(pkgs)
+        assert result["companies"]["Primus"]["contributing_kts"] == 2
+        assert result["companies"]["Primus"]["tier_index"] >= 2
+

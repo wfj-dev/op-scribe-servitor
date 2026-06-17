@@ -497,6 +497,54 @@ def _tp_status_for_high_command(
         return "🟢 Ready for Deployment"
 
 
+def _load_honors() -> dict:
+    """Load and return parsed honors.json, or an empty dict on any error."""
+    try:
+        path = os.path.join("data", "honors.json")
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
+    """Return formatted honor title line for a KT, or empty string.
+
+    Args:
+        kt_name: The kill team name to look up.
+        honors: Pre-loaded honors dict (from ``_load_honors()``). When ``None``,
+            the dict is loaded from disk on demand. Pass a pre-loaded dict when
+            calling this multiple times in a single roster update to avoid
+            repeated disk I/O.
+    """
+    if honors is None:
+        honors = _load_honors()
+    tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "")
+    if tier and tier != "Unproven":
+        return f"🎖 **{tier}**"
+    return ""
+
+
+def _honors_title_for_company(company_name: str, honors: dict | None = None) -> str:
+    """Return formatted honor title line for a company, or empty string.
+
+    Args:
+        company_name: The company name to look up.
+        honors: Pre-loaded honors dict (from ``_load_honors()``). When ``None``,
+            the dict is loaded from disk on demand. Pass a pre-loaded dict when
+            calling this multiple times in a single roster update to avoid
+            repeated disk I/O.
+    """
+    if honors is None:
+        honors = _load_honors()
+    tier = honors.get("companies", {}).get(company_name, {}).get("tier", "")
+    if tier and tier != "Unrecorded":
+        return f"🏅 **{tier}**"
+    return ""
+
+
 def _build_embed(
     title: str,
     members: List[discord.Member],
@@ -504,6 +552,7 @@ def _build_embed(
     last_updated: Optional[datetime] = None,
     image_url: Optional[str] = None,
     tp_status: Optional[str] = None,
+    honors_title: Optional[str] = None,
 ) -> discord.Embed:
     """Build a roster discord.Embed for a list of members.
 
@@ -525,6 +574,8 @@ def _build_embed(
     header_parts = [title, f"**{count} {noun} Assigned**"]
     if tp_status:
         header_parts.append(tp_status)
+    if honors_title:
+        header_parts.append(honors_title)
     header_parts.append(SEPARATOR)
     header = "\n".join(header_parts)
 
@@ -679,6 +730,9 @@ async def _update_company_roster(
     except Exception:
         pass
 
+    # Load honors data once for all embeds in this company update.
+    _honors_data = _load_honors()
+
     # ── Embed 1: High Command ────────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_embed = _build_embed(
@@ -704,6 +758,7 @@ async def _update_company_roster(
         last_updated=now,
         image_url=cmd_image,
         tp_status=_tp_status_for_company(guild, company_name, packages=_tp_packages),
+        honors_title=_honors_title_for_company(company_name, honors=_honors_data),
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
@@ -734,6 +789,7 @@ async def _update_company_roster(
             last_updated=now,
             image_url=kt_image,
             tp_status=tp_status_line,
+            honors_title=_honors_title_for_kt(kt_name, honors=_honors_data),
         )
         kt_msg_id = await _upsert_message(
             channel, kt_message_ids.get(kt_name), kt_embed
