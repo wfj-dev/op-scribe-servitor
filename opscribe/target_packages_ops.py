@@ -1900,17 +1900,25 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
     rep = data.get("rep", _REP_NEUTRAL)
     entity_stats = data.get("entity_stats", {})
 
-    # Scope reports to the current cycle only, using cycle.generated_at as the lower bound.
-    # Older packages from prior cycles remain in the file but should not pollute this report.
-    cycle_generated_at_str = data.get("cycle", {}).get("generated_at")
+    # Scope reports to the current cycle only. Use the earliest package generated_at
+    # as the cycle lower bound — this is robust against cycle.generated_at being updated
+    # on re-runs after the batch was originally created.
     cycle_cutoff: "datetime | None" = None
-    if cycle_generated_at_str:
-        try:
-            cycle_cutoff = datetime.fromisoformat(cycle_generated_at_str)
-            if cycle_cutoff.tzinfo is None:
-                cycle_cutoff = cycle_cutoff.replace(tzinfo=timezone.utc)
-        except Exception:
-            cycle_cutoff = None
+    pkg_gen_times = []
+    for pkg in packages.values():
+        gen_str = pkg.get("generated_at")
+        if gen_str:
+            try:
+                gen = datetime.fromisoformat(gen_str)
+                if gen.tzinfo is None:
+                    gen = gen.replace(tzinfo=timezone.utc)
+                pkg_gen_times.append(gen)
+            except Exception:
+                pass
+    if pkg_gen_times:
+        # All packages in a batch share the same generation timestamp (within seconds).
+        # The earliest timestamp is the true start of this cycle.
+        cycle_cutoff = min(pkg_gen_times)
 
     def _in_cycle(pkg: dict) -> bool:
         if cycle_cutoff is None:
@@ -1922,7 +1930,9 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
             gen = datetime.fromisoformat(gen_str)
             if gen.tzinfo is None:
                 gen = gen.replace(tzinfo=timezone.utc)
-            return gen >= cycle_cutoff
+            # Allow a 60-second window to handle packages generated in the same batch
+            # but with slightly different timestamps.
+            return gen >= (cycle_cutoff - timedelta(seconds=60))
         except Exception:
             return True
 
