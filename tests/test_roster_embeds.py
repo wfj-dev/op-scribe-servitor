@@ -207,7 +207,7 @@ def test_honors_title_for_company_returns_formatted_tier():
     assert result == "🏅 **Renowned**"
 
 
-def test_load_honors_returns_empty_dict_when_file_missing(tmp_path):
+def test_load_honors_returns_empty_dict_when_file_missing():
     with patch.object(roster_embeds.os.path, "exists", return_value=False):
         result = roster_embeds._load_honors()
     assert result == {}

@@ -510,7 +510,15 @@ def _load_honors() -> dict:
 
 
 def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
-    """Return formatted honor title line for a KT, or empty string."""
+    """Return formatted honor title line for a KT, or empty string.
+
+    Args:
+        kt_name: The kill team name to look up.
+        honors: Pre-loaded honors dict (from ``_load_honors()``). When ``None``,
+            the dict is loaded from disk on demand. Pass a pre-loaded dict when
+            calling this multiple times in a single roster update to avoid
+            repeated disk I/O.
+    """
     if honors is None:
         honors = _load_honors()
     tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "")
@@ -520,7 +528,15 @@ def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
 
 
 def _honors_title_for_company(company_name: str, honors: dict | None = None) -> str:
-    """Return formatted honor title line for a company, or empty string."""
+    """Return formatted honor title line for a company, or empty string.
+
+    Args:
+        company_name: The company name to look up.
+        honors: Pre-loaded honors dict (from ``_load_honors()``). When ``None``,
+            the dict is loaded from disk on demand. Pass a pre-loaded dict when
+            calling this multiple times in a single roster update to avoid
+            repeated disk I/O.
+    """
     if honors is None:
         honors = _load_honors()
     tier = honors.get("companies", {}).get(company_name, {}).get("tier", "")
