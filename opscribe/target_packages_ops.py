@@ -1727,7 +1727,7 @@ def _random_strike_image_file(filename_hint: str = "report") -> "tuple[discord.F
             return None, None
         chosen = random.choice(images)
         path = os.path.join(_STRIKE_DIRECTIVE_IMAGES_DIR, chosen)
-        safe_name = chosen.replace(" ", "_")
+        safe_name = f"{filename_hint}_{chosen.replace(' ', '_')}"
         return discord.File(path, filename=safe_name), safe_name
     except Exception:
         return None, None
@@ -1910,13 +1910,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
     lapsed    = [p for p in batch_pkgs if p["status"] == STATUS_LAPSED]
     completion_rate = len(completed) / total if total else 0
 
-    # Rep delta this cycle
-    rep_start = min(
-        (float(p["rep_before"]) for p in completed if p.get("rep_before") is not None),
-        default=float(rep),
-    )
+    # Rep delta this cycle — derived from all terminal directives so failures/lapses
+    # (which carry negative deltas) are included and the starting value is accurate
+    # even when no directives completed.
+    terminal_pkgs = completed + failed + lapsed
+    rep_delta = sum(_rep_delta_for_package(p, p["status"]) for p in terminal_pkgs)
     rep_end   = rep
-    rep_delta = rep_end - rep_start
+    rep_start = rep_end - rep_delta
 
     if completion_rate >= 0.75:
         color = 0x2ECC71
@@ -2028,6 +2028,17 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
         if kt:
             kt_pkgs_map.setdefault(kt, []).append(p)
 
+    # Build a KT-name → sample-member map in a single pass so channel resolution
+    # below is O(members) total rather than O(KTs × members).
+    from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
+    kt_sample_member: dict[str, object] = {}
+    for _m in (guild.members if guild else []):
+        if _m.bot or not _is_active(_m):
+            continue
+        _mkt = _resolve_killteam_for_member(_m)
+        if _mkt and _mkt not in kt_sample_member:
+            kt_sample_member[_mkt] = _m
+
     for kt_name, kt_batch in kt_pkgs_map.items():
         kt_completed = [p for p in kt_batch if p["status"] == STATUS_COMPLETED]
         kt_failed    = [p for p in kt_batch if p["status"] == STATUS_FAILED]
@@ -2105,17 +2116,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
         # Resolve KT channel via _get_award_announcement_channel — same resolver used
         # by _post_signup_embed. Prefers KT_ROLE_CHANNEL_MAP override, then active forum
         # thread fuzzy-matched by KT name, then falls back to SERVICE_STUDS_CHANNEL_ID.
-        from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
         kt_ch = None
-        for _m in (guild.members if guild else []):
-            if _m.bot or not _is_active(_m):
-                continue
-            if _resolve_killteam_for_member(_m) == kt_name:
-                try:
-                    kt_ch = await _get_award_announcement_channel(_m, guild)
-                except Exception:
-                    kt_ch = None
-                break
+        _sample = kt_sample_member.get(kt_name)
+        if _sample:
+            try:
+                kt_ch = await _get_award_announcement_channel(_sample, guild)
+            except Exception:
+                kt_ch = None
 
         # Resolve KT Discord role mention
         kt_role_mention = ""

@@ -165,7 +165,7 @@ def test_tp_status_for_kt_ignores_other_kts():
 # Honors title helpers
 # ---------------------------------------------------------------------------
 
-def test_honors_title_for_kt_returns_empty_when_no_honors_file(tmp_path):
+def test_honors_title_for_kt_returns_empty_when_no_honors_file():
     with patch.object(roster_embeds.os.path, "exists", return_value=False):
         result = roster_embeds._honors_title_for_kt("Kill Team Alpha")
     assert result == ""
