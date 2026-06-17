@@ -1710,8 +1710,6 @@ def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
 
 _BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945  # legacy fallback only
 
-_STRIKE_DIRECTIVE_IMAGES_DIR = os.path.join(_ASSETS_DIR, "strike directive images")
-
 
 def _random_strike_image_file(filename_hint: str = "report") -> "tuple[discord.File | None, str | None]":
     """Pick a random image from assets/strike directive images/.
@@ -1913,7 +1911,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
     completion_rate = len(completed) / total if total else 0
 
     # Rep delta this cycle
-    rep_start = float(completed[0].get("rep_before", rep) if completed else rep)
+    rep_start = min((float(p.get("rep_before", rep)) for p in completed), default=float(rep))
     rep_end   = rep
     rep_delta = rep_end - rep_start
 
@@ -3194,6 +3192,7 @@ def _build_package_embed(
 
 
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+_STRIKE_DIRECTIVE_IMAGES_DIR = os.path.join(_ASSETS_DIR, "strike directive images")
 
 _CLASSIFICATION_IMAGE_FILES = {
     "TARGET STRIKE": "Target_Strike.png",

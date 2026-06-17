@@ -424,8 +424,10 @@
     "strike_report_channel_id": 1429318686447108300,
     "company_champion_channel_id": 1512929565239152671,
     "ox_rep_channel_id": null,
-    "general_channel_id": 1430055064969674777,      "highcom_role_id": 1452913063970865203,
-      "honors_announcement_channel_id": 1430055064969674777,    "cadre_channels": {
+    "general_channel_id": 1430055064969674777,
+    "highcom_role_id": 1452913063970865203,
+    "honors_announcement_channel_id": 1430055064969674777,
+    "cadre_channels": {
       "techmarine": 1485797067577102377,
       "librarian": 1482786608137769182,
       "apothecary": 1484793764634693692,
