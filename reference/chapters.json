@@ -806,6 +806,31 @@
       }
     },
     {
+      "name": "Mantis Warriors",
+      "founding": "Alleged 8th Founding (mid-34th Millennium)",
+      "primarch": "Jaghatai Khan",
+      "homebrew": false,
+      "lore_summary": "A loyalist White Scars successor renowned for guerrilla warfare, devastating ambushes, and sudden large-scale assaults. Guardians of the Endymion Cluster for millennia, the Mantis Warriors were deceived by the Astral Claws into joining the Badab War secession. Absolved of treachery, they were sentenced to a 100-year penitent crusade, forbidden to recruit. Now critically understrength, they fight with a deep streak of shame and an unbreakable need for redemption, deploying hit-and-run tactics honed across centuries of isolation.",
+      "strengths": [
+        "guerrilla warfare and ambush",
+        "misdirection and hit-and-run",
+        "patience and tactical cunning"
+      ],
+      "weaknesses": [
+        "penitent shame and internal doubt",
+        "critically understrength",
+        "distrust from wider Imperium"
+      ],
+      "faction_affinity": "xenos",
+      "execution_style": "patient misdirection into overwhelming strike",
+      "tag_weights": {
+        "stealth": 2,
+        "speed": 2,
+        "precision": 1,
+        "faith": -1
+      }
+    },
+    {
       "name": "Mentors",
       "founding": "26th Founding",
       "primarch": "Roboute Guilliman",
