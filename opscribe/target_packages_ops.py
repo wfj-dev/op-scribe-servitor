@@ -1708,7 +1708,178 @@ def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
     return False
 
 
-_BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945
+_BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945  # legacy fallback only
+
+_STRIKE_DIRECTIVE_IMAGES_DIR = os.path.join(_ASSETS_DIR, "strike directive images")
+
+
+def _random_strike_image_file(filename_hint: str = "report") -> "tuple[discord.File | None, str | None]":
+    """Pick a random image from assets/strike directive images/.
+
+    Returns (discord.File, attachment_filename) or (None, None) if unavailable.
+    """
+    try:
+        if not os.path.isdir(_STRIKE_DIRECTIVE_IMAGES_DIR):
+            return None, None
+        images = [
+            f for f in os.listdir(_STRIKE_DIRECTIVE_IMAGES_DIR)
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+        ]
+        if not images:
+            return None, None
+        chosen = random.choice(images)
+        path = os.path.join(_STRIKE_DIRECTIVE_IMAGES_DIR, chosen)
+        safe_name = chosen.replace(" ", "_")
+        return discord.File(path, filename=safe_name), safe_name
+    except Exception:
+        return None, None
+
+_HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
+
+# ---------------------------------------------------------------------------
+# KT title tiers (ordered lowest → highest; index = tier level)
+# ---------------------------------------------------------------------------
+_KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
+_COMPANY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+
+# Cadre sections for highcom report: (section_name, [role_names_in_cadre])
+# Castellan omitted by design. Huntmaster not a cadre.
+_CADRE_SECTIONS = [
+    ("Armory Deployments",       ["Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought"]),
+    ("Apothecarion Interventions", ["Watch Apothecary"]),
+    ("Reclusiam Attachments",    ["Watch Chaplain"]),
+    ("Librarius Operations",     ["Watch Librarian"]),
+    ("Champion Detachments",     ["Kill Team Champion", "Company Champion"]),
+]
+
+
+def _load_honors() -> dict:
+    try:
+        if not os.path.exists(_HONORS_PATH):
+            return {"kill_teams": {}, "companies": {}}
+        with open(_HONORS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"kill_teams": {}, "companies": {}}
+
+
+def _save_honors(data: dict) -> None:
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(_HONORS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        _g.logger.error(f"[TP] Failed to save honors.json: {e}")
+
+
+def _compute_honors(tp_data: dict) -> dict:
+    """Compute current KT and company title tiers from the rolling 28-day window.
+
+    Scoring (dual metric, rep-weighted):
+      rep_index   (0-5): based on net rep delta earned in window
+      comp_index  (0-5): based on completions in window
+      final_index = round(0.75 * rep_index + 0.25 * comp_index), clamped 0-5
+
+    Company tiers additionally gate on distinct contributing KTs in window.
+    Titles go up AND down based on re-evaluation.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=28)
+
+    # KT thresholds: (min_rep_delta, min_completions) → index
+    _KT_REP_THRESHOLDS  = [0.0, 1.0, 4.0, 8.0, 14.0, 20.0]   # index 0-5
+    _KT_COMP_THRESHOLDS = [0,   1,   3,   6,   9,    12]       # index 0-5
+    # Company thresholds
+    _CO_REP_THRESHOLDS  = [0.0, 2.0, 6.0, 11.0, 16.0, 22.0]
+    _CO_COMP_THRESHOLDS = [0,   3,   6,   10,   14,   18]
+    # Company KT contributor gates per tier index (minimum distinct KTs)
+    _CO_KT_GATES = [0, 1, 2, 3, 4, 4]
+
+    def _rep_index(delta: float, thresholds: list) -> int:
+        idx = 0
+        for i, t in enumerate(thresholds):
+            if delta >= t:
+                idx = i
+        return idx
+
+    def _comp_index(count: int, thresholds: list) -> int:
+        idx = 0
+        for i, t in enumerate(thresholds):
+            if count >= t:
+                idx = i
+        return idx
+
+    # Scan packages within 28-day window
+    kt_completions: dict[str, int] = {}
+    kt_rep_earned:  dict[str, float] = {}
+    co_completions: dict[str, int] = {}
+    co_rep_earned:  dict[str, float] = {}
+    co_kt_contributors: dict[str, set] = {}
+
+    for pkg in tp_data.get("packages", {}).values():
+        if pkg.get("status") != STATUS_COMPLETED:
+            continue
+        completed_at_str = pkg.get("completed_at")
+        if not completed_at_str:
+            continue
+        try:
+            completed_at = datetime.fromisoformat(completed_at_str)
+            if completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if completed_at < cutoff:
+            continue
+
+        kt = pkg.get("assigned_kt")
+        company = pkg.get("assigned_company")
+        rep_delta = float(pkg.get("rep_after", 0.0) or 0.0) - float(pkg.get("rep_before", 0.0) or 0.0)
+
+        if kt:
+            kt_completions[kt] = kt_completions.get(kt, 0) + 1
+            kt_rep_earned[kt] = kt_rep_earned.get(kt, 0.0) + max(rep_delta, 0.0)
+        if company:
+            co_completions[company] = co_completions.get(company, 0) + 1
+            co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(rep_delta, 0.0)
+            if kt:
+                co_kt_contributors.setdefault(company, set()).add(kt)
+
+    # Score KTs
+    kt_results: dict[str, dict] = {}
+    all_kts = set(kt_completions) | set(kt_rep_earned)
+    for kt in all_kts:
+        ri = _rep_index(kt_rep_earned.get(kt, 0.0), _KT_REP_THRESHOLDS)
+        ci = _comp_index(kt_completions.get(kt, 0), _KT_COMP_THRESHOLDS)
+        final = min(5, round(0.75 * ri + 0.25 * ci))
+        kt_results[kt] = {
+            "tier": _KT_TITLE_TIERS[final],
+            "tier_index": final,
+            "completions_28d": kt_completions.get(kt, 0),
+            "rep_earned_28d": round(kt_rep_earned.get(kt, 0.0), 2),
+            "last_evaluated": now.isoformat(),
+        }
+
+    # Score companies
+    co_results: dict[str, dict] = {}
+    all_cos = set(co_completions) | set(co_rep_earned)
+    for company in all_cos:
+        ri = _rep_index(co_rep_earned.get(company, 0.0), _CO_REP_THRESHOLDS)
+        ci = _comp_index(co_completions.get(company, 0), _CO_COMP_THRESHOLDS)
+        raw_final = min(5, round(0.75 * ri + 0.25 * ci))
+        # Apply KT contributor gate — cap tier if not enough distinct KTs
+        kt_count = len(co_kt_contributors.get(company, set()))
+        while raw_final > 0 and kt_count < _CO_KT_GATES[raw_final]:
+            raw_final -= 1
+        co_results[company] = {
+            "tier": _COMPANY_TITLE_TIERS[raw_final],
+            "tier_index": raw_final,
+            "completions_28d": co_completions.get(company, 0),
+            "rep_earned_28d": round(co_rep_earned.get(company, 0.0), 2),
+            "contributing_kts": kt_count,
+            "last_evaluated": now.isoformat(),
+        }
+
+    return {"kill_teams": kt_results, "companies": co_results}
 
 
 def _all_packages_terminal(data: dict) -> bool:
@@ -1719,140 +1890,466 @@ def _all_packages_terminal(data: dict) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# Cycle-close reports (three scopes) + honors
+# ---------------------------------------------------------------------------
+
 async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
-    """Post a batch-close summary embed to the strategium channel."""
-    channel = guild.get_channel(_BATCH_SUMMARY_CHANNEL_ID)
-    if not channel:
-        try:
-            channel = await guild.fetch_channel(_BATCH_SUMMARY_CHANNEL_ID)
-        except Exception:
-            _g.logger.warning(f"[TP] Batch summary: could not resolve channel {_BATCH_SUMMARY_CHANNEL_ID}")
-            return
+    """Post cycle-close reports to three channels and update KT/company honors."""
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
 
     packages = data.get("packages", {})
     rep = data.get("rep", _REP_NEUTRAL)
-    cycle = data.get("cycle", {})
     entity_stats = data.get("entity_stats", {})
 
-    # Only include packages from this batch (generated in current cycle)
     batch_pkgs = list(packages.values())
     if not batch_pkgs:
         return
 
     total = len(batch_pkgs)
     completed = [p for p in batch_pkgs if p["status"] == STATUS_COMPLETED]
-    failed = [p for p in batch_pkgs if p["status"] == STATUS_FAILED]
-    lapsed = [p for p in batch_pkgs if p["status"] == STATUS_LAPSED]
-
-    # Determine overall batch outcome colour
+    failed    = [p for p in batch_pkgs if p["status"] == STATUS_FAILED]
+    lapsed    = [p for p in batch_pkgs if p["status"] == STATUS_LAPSED]
     completion_rate = len(completed) / total if total else 0
-    if completion_rate >= 0.75:
-        color = 0x2ECC71   # green — strong batch
-    elif completion_rate >= 0.4:
-        color = 0xF39C12   # orange — mixed
-    else:
-        color = 0x8B0000   # dark red — poor batch
 
-    standing_bar = _standing_skull_bar(rep)
+    # Rep delta this cycle
+    rep_start = float(completed[0].get("rep_before", rep) if completed else rep)
+    rep_end   = rep
+    rep_delta = rep_end - rep_start
+
+    if completion_rate >= 0.75:
+        color = 0x2ECC71
+    elif completion_rate >= 0.4:
+        color = 0xF39C12
+    else:
+        color = 0x8B0000
+
+    standing_bar  = _standing_skull_bar(rep)
     standing_name = _standing_state_name(rep)
 
-    embed = discord.Embed(
-        title=f"{_DW_EMOJI} s\u1d1b\u0280\u026a\u1d0b\u1d07 \u1d05\u026a\u0280\u1d07\u1d04\u1d1b\u026a\u1d20\u1d07 \u0299\u1d00\u1d1b\u1d04\u029c \u0280\u1d07\u1d18\u1d0f\u0280\u1d1b {_DW_EMOJI}",
-        color=color,
-    )
-    embed.set_author(name="\u1d0f\u0280\u1d05\u1d0f x\u1d07\u0274\u1d0fs \u00b7 \u1da4\u1d07\u0280\u026a\u1d04\u029c\u1d0f \u1d05\u1d00\u1d1b\u1d00\u0274\u1d07\u1d1b")
+    # ── 1. FORTRESS-WIDE REPORT ──────────────────────────────────────────
+    general_channel_id = config_tp.get("general_channel_id")
+    if general_channel_id:
+        try:
+            gen_ch = guild.get_channel(int(general_channel_id))
+            if not gen_ch:
+                gen_ch = await guild.fetch_channel(int(general_channel_id))
+        except Exception:
+            gen_ch = None
 
-    # ── Fortress summary ──────────────────────────────────────────────────
-    embed.add_field(
-        name="\u25b8 Fortress After-Action",
-        value=(
-            f"**Directives Issued:** {total}\n"
-            f"**Completed:** {len(completed)}  \u00b7  "
-            f"**Failed:** {len(failed)}  \u00b7  "
-            f"**Lapsed:** {len(lapsed)}\n"
-            f"**Completion Rate:** {completion_rate * 100:.0f}%\n"
-            f"**Ordo Xenos Standing:** {standing_bar} **{standing_name}** `{rep:.2f}`"
-        ),
-        inline=False,
-    )
-
-    # ── Per-company summary ───────────────────────────────────────────────
-    company_stats = entity_stats.get("companies", {})
-    if company_stats:
-        company_lines = []
-        for cname, cdata in sorted(company_stats.items()):
-            c_done = cdata.get("completed", 0)
-            c_fail = cdata.get("failed", 0)
-            c_total = c_done + c_fail
-            icon = "\U0001f7e2" if c_fail == 0 and c_total > 0 else ("\U0001f7e1" if c_fail < c_done else "\U0001f534")
-            company_lines.append(
-                f"{icon} **{cname}** — {c_done}/{c_total} completed"
-                + (f"  ·  {c_fail} failed" if c_fail else "")
-            )
-        embed.add_field(
-            name="\u25b8 Companies",
-            value="\n".join(company_lines) or "\u2014",
-            inline=False,
-        )
-
-    # ── Per-KT summary ────────────────────────────────────────────────────
-    kt_stats = entity_stats.get("kill_teams", {})
-    if kt_stats:
-        kt_lines = []
-        for kt_name, ktdata in sorted(kt_stats.items()):
-            kt_done = ktdata.get("completed", 0)
-            kt_fail = ktdata.get("failed", 0)
-            kt_total = kt_done + kt_fail
-            icon = "\U0001f7e2" if kt_fail == 0 and kt_total > 0 else ("\U0001f7e1" if kt_fail < kt_done else "\U0001f534")
-            # List what they completed
-            their_pkgs = [
-                p for p in completed
-                if p.get("assigned_kt") == kt_name
+        if gen_ch or _is_debug_mode():
+            _FORTRESS_FLAVOR_STRONG = [
+                "The Deathwatch held the line. Ordo Xenos acknowledges Watch Fortress Jericho's service.",
+                "The xenos threat was answered. Sectors cleared, directives executed — the Watch endures.",
+                "Watch Fortress Jericho's kill teams struck true. The Ordos are satisfied.",
             ]
-            completed_names = [
-                f"{p.get('directive_code') or p['id']}: {p.get('directive_name', '')}"
-                for p in their_pkgs
+            _FORTRESS_FLAVOR_MIXED = [
+                "The Jericho Reach remains contested. Some directives went unanswered, but the Watch did not yield entirely.",
+                "A mixed accounting reaches Ordos Xenos. Victories tempered by gaps in the line.",
+                "Brothers answered the call — not all of them. Ordo Xenos notes both the resolved and the lapsed.",
             ]
-            kt_lines.append(
-                f"{icon} **{kt_name}** — {kt_done}/{kt_total} completed"
-                + (f"  ·  {kt_fail} failed" if kt_fail else "")
-                + (f"\n  ↳ {', '.join(completed_names)}" if completed_names else "")
+            _FORTRESS_FLAVOR_POOR = [
+                "The Watch stumbled. Directives lapsed, operations failed — the Ordos grow impatient.",
+                "Too many directives went cold. Ordo Xenos logs its disappointment with Watch Fortress Jericho.",
+                "A dark accounting. The Jericho Reach demands more than this cycle delivered.",
+            ]
+            if completion_rate >= 0.75:
+                flavor = random.choice(_FORTRESS_FLAVOR_STRONG)
+            elif completion_rate >= 0.4:
+                flavor = random.choice(_FORTRESS_FLAVOR_MIXED)
+            else:
+                flavor = random.choice(_FORTRESS_FLAVOR_POOR)
+
+            fw_embed = discord.Embed(
+                title=f"{_DW_EMOJI} ꜰᴏʀᴛʀᴇss ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ᴄʏᴄʟᴇ ᴄʟᴏsᴇᴅ {_DW_EMOJI}",
+                description=flavor,
+                color=color,
             )
-        # Truncate if too long for a single field
-        kt_block = "\n".join(kt_lines)
-        if len(kt_block) > 1024:
-            kt_block = kt_block[:1020] + "\n…"
-        embed.add_field(
-            name="\u25b8 Kill Teams",
-            value=kt_block or "\u2014",
+            fw_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+
+            fw_embed.add_field(
+                name="▸ Cycle Results",
+                value=(
+                    f"**Directives Issued:** {total}\n"
+                    f"**Completed:** {len(completed)}  ·  "
+                    f"**Failed:** {len(failed)}  ·  "
+                    f"**Lapsed:** {len(lapsed)}\n"
+                    f"**Completion Rate:** {completion_rate * 100:.0f}%"
+                ),
+                inline=False,
+            )
+            _bar_before = _standing_skull_bar(rep_start)
+            _name_before = _standing_state_name(rep_start)
+            _before_line = f"{_bar_before} **{_name_before}**" if _bar_before else f"**{_name_before}**"
+            _after_line  = f"{standing_bar} **{standing_name}**" if standing_bar else f"**{standing_name}**"
+            fw_embed.add_field(
+                name="▸ Ordo Xenos Standing",
+                value=(
+                    f"{_before_line} `{rep_start:.2f}`\n"
+                    f"→ {_after_line} `{rep_end:.2f}`\n"
+                    f"**Delta:** `{rep_delta:+.2f}`"
+                ),
+                inline=False,
+            )
+
+            kt_stats = entity_stats.get("kill_teams", {})
+            if kt_stats:
+                distinguished = []
+                for kt_name, ktdata in sorted(kt_stats.items(), key=lambda x: -x[1].get("completed", 0)):
+                    kt_done = ktdata.get("completed", 0)
+                    if kt_done > 0:
+                        distinguished.append(f"**{kt_name}** — {kt_done} operation{'s' if kt_done != 1 else ''} completed")
+                if distinguished:
+                    dist_block = "\n".join(distinguished)
+                    if len(dist_block) > 1024:
+                        dist_block = dist_block[:1020] + "\n…"
+                    fw_embed.add_field(name="▸ Brothers Distinguished", value=dist_block, inline=False)
+
+            fw_embed.set_footer(
+                text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ",
+                icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+            )
+            _fw_img, _fw_img_name = _random_strike_image_file("fortress")
+            if _fw_img and _fw_img_name:
+                fw_embed.set_image(url=f"attachment://{_fw_img_name}")
+            try:
+                await _notify_send(gen_ch, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=fw_embed, **_file_kwarg(_fw_img))
+                _g.logger.info("[TP] Fortress-wide cycle report posted.")
+            except Exception as exc:
+                _g.logger.warning(f"[TP] Fortress-wide report send failed: {exc}")
+
+    # ── 2. KT REPORTS ────────────────────────────────────────────────────
+    # Group completed/failed packages by KT for per-KT report embeds.
+    # Post to each KT's signup_channel_id; fall back to watch_command channel.
+    wc_channel_id = config_tp.get("watch_command_deployment_channel_id")
+    kt_pkgs_map: dict[str, list] = {}
+    for p in batch_pkgs:
+        kt = p.get("assigned_kt")
+        if kt:
+            kt_pkgs_map.setdefault(kt, []).append(p)
+
+    for kt_name, kt_batch in kt_pkgs_map.items():
+        kt_completed = [p for p in kt_batch if p["status"] == STATUS_COMPLETED]
+        kt_failed    = [p for p in kt_batch if p["status"] == STATUS_FAILED]
+        if not kt_completed and not kt_failed:
+            continue  # nothing terminal to report for this KT
+
+        kt_rep_contributed = sum(
+            float(p.get("rep_after", 0.0) or 0.0) - float(p.get("rep_before", 0.0) or 0.0)
+            for p in kt_completed
+        )
+        kt_rate = len(kt_completed) / len(kt_batch) if kt_batch else 0
+        if kt_rate >= 0.75:
+            kt_color = 0x2ECC71
+        elif kt_rate >= 0.4:
+            kt_color = 0xF39C12
+        else:
+            kt_color = 0x8B0000
+
+        kt_embed = discord.Embed(
+            title=f"{_DW_EMOJI} ᴋɪʟʟ ᴛᴇᴀᴍ ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ʀᴇᴄᴏʀᴅ {_DW_EMOJI}",
+            color=kt_color,
+        )
+        kt_embed.set_author(name=f"{kt_name}  ·  ᴏʀᴅᴏ xᴇɴᴏs ᴅᴀᴛᴀɴᴇᴛ")
+
+        kt_embed.add_field(
+            name="▸ Cycle Summary",
+            value=(
+                f"**Directives Assigned:** {len(kt_batch)}\n"
+                f"**Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}\n"
+                f"**Rep Contributed:** `{kt_rep_contributed:+.2f}`"
+            ),
             inline=False,
         )
 
-    # ── Lapsed (no KT ever assigned) ─────────────────────────────────────
-    if lapsed:
-        lapsed_lines = [
-            f"`{p.get('directive_code') or p['id']}` {p.get('directive_name', '')} — {p.get('world_type', '')}".strip()
-            for p in lapsed
-        ]
-        lapsed_block = "\n".join(lapsed_lines)
-        if len(lapsed_block) > 1024:
-            lapsed_block = lapsed_block[:1020] + "\n…"
-        embed.add_field(
-            name="\u25b8 Lapsed — Never Assigned",
-            value=lapsed_block,
-            inline=False,
+        # Per-directive detail for completed ops
+        if kt_completed:
+            completed_lines = []
+            for p in kt_completed:
+                code = p.get("directive_code") or p["id"]
+                name = p.get("directive_name", "")
+                node = p.get("node", "")
+                cls  = p.get("classification", "")
+                mode_short = "HARD-STRAT" if "Hard" in p.get("mode", "") else "OMEGA-STRAT"
+                intel = " · ⚠ Intel Lapse" if p.get("intel_lapse") else ""
+                req_roles = p.get("required_roles", [])
+                req_str = f" · Roles: {', '.join(req_roles)}" if req_roles else ""
+                strats = p.get("stratagems", {}).get("core", [])
+                strat_lines = [_strat_line(s) for s in strats]
+                strat_block = ("```diff\n" + "\n".join(strat_lines) + "\n```") if strat_lines else ""
+                completed_lines.append(
+                    f"**{code}** — {name}\n"
+                    f"  `{node}` · {cls} · {mode_short}{intel}{req_str}\n"
+                    + strat_block
+                )
+            block = "\n".join(completed_lines)
+            if len(block) > 1024:
+                block = block[:1020] + "\n…"
+            kt_embed.add_field(name=f"▸ Completed Operations ({len(kt_completed)})", value=block, inline=False)
+
+        if kt_failed:
+            fail_lines = [
+                f"`{p.get('directive_code') or p['id']}` {p.get('directive_name', '')} — {p.get('node', '')}".strip()
+                for p in kt_failed
+            ]
+            fail_block = "\n".join(fail_lines)
+            if len(fail_block) > 1024:
+                fail_block = fail_block[:1020] + "\n…"
+            kt_embed.add_field(name=f"▸ Failed Operations ({len(kt_failed)})", value=fail_block, inline=False)
+
+        kt_embed.set_footer(
+            text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴍᴀɢᴇɴᴛᴀ",
+            icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
         )
 
-    embed.set_footer(
-        text="\u1d04\u029f\u1d07\u1d00\u0280\u1d00\u0274\u1d04\u1d07: s\u1d04\u1d00\u0280\u029f\u1d07\u1d1b",
-        icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
-    )
+        # Resolve KT channel from completed pkg signup_channel_id, then fallback
+        kt_ch_id = next(
+            (p.get("signup_channel_id") for p in kt_batch if p.get("signup_channel_id")),
+            wc_channel_id,
+        )
+        kt_ch = None
+        if kt_ch_id:
+            try:
+                kt_ch = guild.get_channel(int(kt_ch_id)) or await guild.fetch_channel(int(kt_ch_id))
+            except Exception:
+                kt_ch = None
+        if not kt_ch and wc_channel_id:
+            try:
+                kt_ch = guild.get_channel(int(wc_channel_id)) or await guild.fetch_channel(int(wc_channel_id))
+            except Exception:
+                kt_ch = None
 
+        # Resolve KT Discord role mention
+        kt_role_mention = ""
+        _kt_role = discord.utils.find(lambda r: r.name.lower() == kt_name.lower(), guild.roles) if guild else None
+        if _kt_role:
+            kt_role_mention = _kt_role.mention
+
+        if kt_ch or _is_debug_mode():
+            try:
+                _kt_img, _kt_img_name = _random_strike_image_file(f"kt_{kt_name}")
+                if _kt_img and _kt_img_name:
+                    kt_embed.set_image(url=f"attachment://{_kt_img_name}")
+                await _notify_send(kt_ch, guild, content=kt_role_mention or None, embed=kt_embed, **_file_kwarg(_kt_img))
+            except Exception as exc:
+                _g.logger.warning(f"[TP] KT report send failed for {kt_name}: {exc}")
+
+    # ── 3. HIGHCOM REPORT ────────────────────────────────────────────────
+    highcom_channel_id = config_tp.get("highcom_strategium_channel_id") or _BATCH_SUMMARY_CHANNEL_ID
+    highcom_role_id    = config_tp.get("highcom_role_id")
     try:
-        await channel.send(content=f"<@&{WATCH_MASTER_ROLE_ID}>", embed=embed)
-        _g.logger.info("[TP] Batch summary posted.")
+        hc_ch = guild.get_channel(int(highcom_channel_id))
+        if not hc_ch:
+            hc_ch = await guild.fetch_channel(int(highcom_channel_id))
+    except Exception:
+        hc_ch = None
+
+    if hc_ch or _is_debug_mode():
+        hc_embed = discord.Embed(
+            title=f"{_DW_EMOJI} ᴄᴏᴍᴍᴀɴᴅ sᴛʀᴀᴛᴀɢᴇᴍ ᴀᴜᴅɪᴛ {_DW_EMOJI}",
+            color=color,
+        )
+        hc_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+
+        # Theatre summary
+        _before_line2 = f"{_standing_skull_bar(rep_start)} **{_standing_state_name(rep_start)}**" if _standing_skull_bar(rep_start) else f"**{_standing_state_name(rep_start)}**"
+        _after_line2  = f"{standing_bar} **{standing_name}**" if standing_bar else f"**{standing_name}**"
+        hc_embed.add_field(
+            name="▸ Theatre Summary",
+            value=(
+                f"**Directives Issued:** {total}\n"
+                f"**Completed:** {len(completed)}  ·  "
+                f"**Failed:** {len(failed)}  ·  "
+                f"**Lapsed:** {len(lapsed)}\n"
+                f"**Completion Rate:** {completion_rate * 100:.0f}%\n"
+                f"**Standing:** {_before_line2} `{rep_start:.2f}` → {_after_line2} `{rep_end:.2f}` (`{rep_delta:+.2f}`)"
+            ),
+            inline=False,
+        )
+
+        # Per-company
+        company_stats = entity_stats.get("companies", {})
+        if company_stats:
+            co_lines = []
+            for cname, cdata in sorted(company_stats.items()):
+                c_done = cdata.get("completed", 0)
+                c_fail = cdata.get("failed", 0)
+                c_total = c_done + c_fail
+                icon = "🟢" if c_fail == 0 and c_total > 0 else ("🟡" if c_fail < c_done else "🔴")
+                co_lines.append(f"{icon} **{cname}** — {c_done}/{c_total} completed" + (f"  ·  {c_fail} failed" if c_fail else ""))
+            hc_embed.add_field(name="▸ Companies", value="\n".join(co_lines) or "—", inline=False)
+
+        # Per-KT
+        kt_stats = entity_stats.get("kill_teams", {})
+        if kt_stats:
+            kt_lines = []
+            for kt_name, ktdata in sorted(kt_stats.items()):
+                kt_done = ktdata.get("completed", 0)
+                kt_fail = ktdata.get("failed", 0)
+                kt_total = kt_done + kt_fail
+                icon = "🟢" if kt_fail == 0 and kt_total > 0 else ("🟡" if kt_fail < kt_done else "🔴")
+                their_codes = [
+                    p.get("directive_code") or p["id"]
+                    for p in completed if p.get("assigned_kt") == kt_name
+                ]
+                kt_lines.append(
+                    f"{icon} **{kt_name}** — {kt_done}/{kt_total} completed"
+                    + (f"  ·  {kt_fail} failed" if kt_fail else "")
+                    + (f"\n  ↳ {', '.join(their_codes)}" if their_codes else "")
+                )
+            kt_block = "\n".join(kt_lines)
+            if len(kt_block) > 1024:
+                kt_block = kt_block[:1020] + "\n…"
+            hc_embed.add_field(name="▸ Kill Teams", value=kt_block or "—", inline=False)
+
+        # Cadre sections — only include cadres that participated
+        for section_name, cadre_roles in _CADRE_SECTIONS:
+            # Directives requiring any of this cadre's roles
+            cadre_required = [
+                p for p in batch_pkgs
+                if any(r in (p.get("required_roles") or []) for r in cadre_roles)
+            ]
+            if not cadre_required:
+                continue  # cadre had no requisitions this cycle
+            cadre_completed  = [p for p in cadre_required if p["status"] == STATUS_COMPLETED]
+            cadre_failed     = [p for p in cadre_required if p["status"] == STATUS_FAILED]
+            cadre_lapsed     = [p for p in cadre_required if p["status"] == STATUS_LAPSED]
+            # Unfilled = required but the directive expired without the role being filled
+            cadre_unfilled   = [
+                p for p in cadre_required
+                if p["status"] in (STATUS_FAILED, STATUS_LAPSED)
+                and not any(
+                    uid and (
+                        lambda m: m and any(r in _member_role_names(m) for r in cadre_roles)
+                    )(guild.get_member(int(uid)) if guild else None)
+                    for uid in (p.get("assigned_specialist_ids", []) or [])
+                )
+            ]
+            icon = "🟢" if not cadre_failed and not cadre_lapsed else ("🟡" if cadre_completed else "🔴")
+            cadre_val = (
+                f"{icon} **Assisted:** {len(cadre_required)}  ·  "
+                f"**Completed:** {len(cadre_completed)}  ·  "
+                f"**Failed/Lapsed:** {len(cadre_failed) + len(cadre_lapsed)}"
+            )
+            if cadre_unfilled:
+                cadre_val += f"\n⚠ Unfilled requisitions: {len(cadre_unfilled)}"
+            hc_embed.add_field(name=f"▸ {section_name}", value=cadre_val, inline=False)
+
+        # Lapsed
+        if lapsed:
+            lapsed_lines = [
+                f"`{p.get('directive_code') or p['id']}` {p.get('directive_name', '')} — {p.get('world_type', '')}".strip()
+                for p in lapsed
+            ]
+            lapsed_block = "\n".join(lapsed_lines)
+            if len(lapsed_block) > 1024:
+                lapsed_block = lapsed_block[:1020] + "\n…"
+            hc_embed.add_field(name="▸ Lapsed — Never Assigned", value=lapsed_block, inline=False)
+
+        hc_embed.set_footer(
+            text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴠᴇʀᴍɪʟɪᴏɴ",
+            icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        )
+        _hc_img, _hc_img_name = _random_strike_image_file("highcom")
+        if _hc_img and _hc_img_name:
+            hc_embed.set_image(url=f"attachment://{_hc_img_name}")
+        hc_ping = f"<@&{highcom_role_id}>" if highcom_role_id else f"<@&{WATCH_MASTER_ROLE_ID}>"
+        try:
+            await _notify_send(hc_ch, guild, content=hc_ping, embed=hc_embed, **_file_kwarg(_hc_img))
+            _g.logger.info("[TP] Highcom command audit posted.")
+        except Exception as exc:
+            _g.logger.warning(f"[TP] Highcom report send failed: {exc}")
+
+    # ── 4. HONORS EVALUATION + ANNOUNCEMENT ─────────────────────────────
+    try:
+        old_honors = _load_honors()
+        new_honors = _compute_honors(data)
+
+        # Build change log for announcement
+        kt_changes:  list[str] = []
+        co_changes:  list[str] = []
+
+        _TIER_UP   = "⬆"
+        _TIER_DOWN = "⬇"
+        _TIER_SAME = "—"
+
+        for kt_name, new_data in sorted(new_honors["kill_teams"].items()):
+            old_data  = old_honors.get("kill_teams", {}).get(kt_name, {})
+            old_tier  = old_data.get("tier", "Unproven")
+            new_tier  = new_data["tier"]
+            old_idx   = _KT_TITLE_TIERS.index(old_tier) if old_tier in _KT_TITLE_TIERS else 0
+            new_idx   = new_data["tier_index"]
+            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
+            comp  = new_data.get("completions_28d", 0)
+            rep_e = new_data.get("rep_earned_28d", 0.0)
+            kt_changes.append(
+                f"**{kt_name}**: **{new_tier}** {arrow}"
+                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
+                + f"  ·  {comp} ops  ·  `+{rep_e:.1f}` rep"
+            )
+
+        for co_name, new_data in sorted(new_honors["companies"].items()):
+            old_data  = old_honors.get("companies", {}).get(co_name, {})
+            old_tier  = old_data.get("tier", "Unrecorded")
+            new_tier  = new_data["tier"]
+            old_idx   = _COMPANY_TITLE_TIERS.index(old_tier) if old_tier in _COMPANY_TITLE_TIERS else 0
+            new_idx   = new_data["tier_index"]
+            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
+            comp  = new_data.get("completions_28d", 0)
+            kts   = new_data.get("contributing_kts", 0)
+            co_changes.append(
+                f"**{co_name}**: **{new_tier}** {arrow}"
+                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
+                + f"  ·  {comp} ops  ·  {kts} KT{'s' if kts != 1 else ''} contributing"
+            )
+
+        _save_honors(new_honors)
+
+        # Post honors announcement to general channel
+        honors_channel_id = config_tp.get("honors_announcement_channel_id") or general_channel_id
+        if honors_channel_id and (kt_changes or co_changes):
+            try:
+                hon_ch = guild.get_channel(int(honors_channel_id))
+                if not hon_ch:
+                    hon_ch = await guild.fetch_channel(int(honors_channel_id))
+            except Exception:
+                hon_ch = None
+
+            if hon_ch or _is_debug_mode():
+                hon_embed = discord.Embed(
+                    title=f"{_DW_EMOJI} ᴡᴀᴛᴄʜ ꜰᴏʀᴛʀᴇss ʜᴏɴᴏʀs — 28-ᴅᴀʏ ᴇᴠᴀʟᴜᴀᴛɪᴏɴ {_DW_EMOJI}",
+                    description="Ordo Xenos standing records updated. Title tiers reflect rolling 28-day performance.",
+                    color=0xC4A030,
+                )
+                hon_embed.set_author(name="ᴏʀᴅᴏ xᴇɴᴏs · ᴊᴇʀɪᴄʜᴏ ᴅᴀᴛᴀɴᴇᴛ")
+
+                if kt_changes:
+                    kt_block = "\n".join(kt_changes)
+                    if len(kt_block) > 1024:
+                        kt_block = kt_block[:1020] + "\n…"
+                    hon_embed.add_field(name="▸ Kill Team Honours", value=kt_block, inline=False)
+
+                if co_changes:
+                    co_block = "\n".join(co_changes)
+                    if len(co_block) > 1024:
+                        co_block = co_block[:1020] + "\n…"
+                    hon_embed.add_field(name="▸ Company Honours", value=co_block, inline=False)
+
+                hon_embed.set_footer(
+                    text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ  ·  Rolling 28-day window",
+                    icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+                )
+                _hon_img, _hon_img_name = _random_strike_image_file("honors")
+                if _hon_img and _hon_img_name:
+                    hon_embed.set_image(url=f"attachment://{_hon_img_name}")
+                try:
+                    await _notify_send(hon_ch, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=hon_embed, **_file_kwarg(_hon_img))
+                    _g.logger.info("[TP] Honors announcement posted.")
+                except Exception as exc:
+                    _g.logger.warning(f"[TP] Honors announcement send failed: {exc}")
+
     except Exception as exc:
-        _g.logger.warning(f"[TP] Batch summary send failed: {exc}")
+        _g.logger.warning(f"[TP] Honors evaluation failed: {exc}")
 
 
 async def _update_ox_rep_embed(guild: discord.Guild) -> None:
@@ -4858,6 +5355,37 @@ async def repost_directive_embed(interaction: discord.Interaction, directive_id:
 # Register commands + expiry loop
 # ---------------------------------------------------------------------------
 
+# /post_cycle_reports — WM/admin only manual trigger
+@app_commands.command(
+    name="post_cycle_reports",
+    description="[Watch Master] Manually post cycle-close reports and honors for the current directive data.",
+)
+async def post_cycle_reports(interaction: discord.Interaction):
+    if not _b("check_command_permission")(interaction.user, "post_cycle_reports"):
+        await interaction.response.send_message(
+            "You do not have permission to use this command.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild or _get_guild_from_bot()
+    data = _load_tp()
+
+    if not data.get("packages"):
+        await interaction.followup.send("No directive data found.", ephemeral=True)
+        return
+
+    try:
+        await _post_batch_summary(guild, data)
+        await interaction.followup.send(
+            "Cycle reports posted: fortress-wide, per-KT, highcom, and honors announcement.",
+            ephemeral=True,
+        )
+    except Exception as exc:
+        _g.logger.error(f"[TP] Manual cycle report failed: {exc}")
+        await interaction.followup.send(f"Report failed: {exc}", ephemeral=True)
+
+
 def _register_commands(tree: app_commands.CommandTree) -> None:
     for cmd in (
         request_strike_directives,
@@ -4865,6 +5393,7 @@ def _register_commands(tree: app_commands.CommandTree) -> None:
         log_strike_report,
         strike_directive_status,
         repost_directive_embed,
+        post_cycle_reports,
     ):
         if tree.get_command(cmd.name) is None:
             tree.add_command(cmd)
@@ -4943,6 +5472,7 @@ __all__ = [
     "submit_strike_package",
     "submit_target_package",
     "strike_directive_status",
+    "post_cycle_reports",
     "request_strike_packages",
     "view_strike_packages",
     "strike_package_status",
