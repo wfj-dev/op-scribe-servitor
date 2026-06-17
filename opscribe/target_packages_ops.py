@@ -1911,7 +1911,10 @@ async def _post_batch_summary(guild: discord.Guild, data: dict) -> None:
     completion_rate = len(completed) / total if total else 0
 
     # Rep delta this cycle
-    rep_start = min((float(p.get("rep_before", rep)) for p in completed), default=float(rep))
+    rep_start = min(
+        (float(p["rep_before"]) for p in completed if p.get("rep_before") is not None),
+        default=float(rep),
+    )
     rep_end   = rep
     rep_delta = rep_end - rep_start
 
