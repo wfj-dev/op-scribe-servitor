@@ -2239,29 +2239,6 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 co_lines.append(f"{icon} **{cname}** — {c_done}/{c_total} completed" + (f"  ·  {c_fail} failed" if c_fail else ""))
             hc_embed.add_field(name="▸ Companies", value="\n".join(co_lines) or "—", inline=False)
 
-        # Per-KT
-        kt_stats = entity_stats.get("kill_teams", {})
-        if kt_stats:
-            kt_lines = []
-            for kt_name, ktdata in sorted(kt_stats.items()):
-                kt_done = ktdata.get("completed", 0)
-                kt_fail = ktdata.get("failed", 0)
-                kt_total = kt_done + kt_fail
-                icon = "🟢" if kt_fail == 0 and kt_total > 0 else ("🟡" if kt_fail < kt_done else "🔴")
-                their_codes = [
-                    p.get("directive_code") or p["id"]
-                    for p in completed if p.get("assigned_kt") == kt_name
-                ]
-                kt_lines.append(
-                    f"{icon} **{kt_name}** — {kt_done}/{kt_total} completed"
-                    + (f"  ·  {kt_fail} failed" if kt_fail else "")
-                    + (f"\n  ↳ {', '.join(their_codes)}" if their_codes else "")
-                )
-            kt_block = "\n".join(kt_lines)
-            if len(kt_block) > 1024:
-                kt_block = kt_block[:1020] + "\n…"
-            hc_embed.add_field(name="▸ Kill Teams", value=kt_block or "—", inline=False)
-
         # Cadre sections — only include cadres that participated
         for section_name, cadre_roles in _CADRE_SECTIONS:
             # Directives requiring any of this cadre's roles

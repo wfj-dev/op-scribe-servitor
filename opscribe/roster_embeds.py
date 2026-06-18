@@ -509,8 +509,34 @@ def _load_honors() -> dict:
         return {}
 
 
+_OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
+_KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
+_CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
+
+
+def _tier_window(tiers: list, current: str) -> str:
+    """Return a sliding window of 4 tiers centered on current, bracketing it.
+
+    Always shows _HONORS_WINDOW tiers where possible, shifting the window
+    left/right at the edges to maintain width.
+    """
+    if current not in tiers:
+        current = tiers[0]
+    idx = tiers.index(current)
+    # Initial window: 1 behind + current + 2 ahead
+    start = max(0, idx - 1)
+    end   = min(len(tiers), start + _HONORS_WINDOW)
+    # Shift left if we hit the right edge and have room
+    if end - start < _HONORS_WINDOW:
+        start = max(0, end - _HONORS_WINDOW)
+    window = tiers[start:end]
+    parts = [f"[{t}]" if t == current else t for t in window]
+    return f"{_OX_STANDING_EMOJI} " + " · ".join(parts)
+
+
 def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
-    """Return formatted honor title line for a KT, or empty string.
+    """Return formatted sliding-window honor title line for a KT.
 
     Args:
         kt_name: The kill team name to look up.
@@ -521,14 +547,14 @@ def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
     """
     if honors is None:
         honors = _load_honors()
-    tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "")
-    if tier and tier != "Unproven":
-        return f"🎖 **{tier}**"
-    return ""
+    tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "Unproven")
+    if not tier:
+        tier = "Unproven"
+    return _tier_window(_KT_TITLE_TIERS, tier)
 
 
 def _honors_title_for_company(company_name: str, honors: dict | None = None) -> str:
-    """Return formatted honor title line for a company, or empty string.
+    """Return formatted sliding-window honor title line for a company.
 
     Args:
         company_name: The company name to look up.
@@ -539,10 +565,10 @@ def _honors_title_for_company(company_name: str, honors: dict | None = None) -> 
     """
     if honors is None:
         honors = _load_honors()
-    tier = honors.get("companies", {}).get(company_name, {}).get("tier", "")
-    if tier and tier != "Unrecorded":
-        return f"🏅 **{tier}**"
-    return ""
+    tier = honors.get("companies", {}).get(company_name, {}).get("tier", "Unrecorded")
+    if not tier:
+        tier = "Unrecorded"
+    return _tier_window(_CO_TITLE_TIERS, tier)
 
 
 def _build_embed(
