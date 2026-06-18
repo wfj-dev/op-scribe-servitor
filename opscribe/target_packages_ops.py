@@ -2227,7 +2227,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 _g.logger.warning(f"[TP] KT report send failed for {kt_name}: {exc}")
 
     # ── 3. HIGHCOM REPORT ────────────────────────────────────────────────
-    highcom_channel_id = config_tp.get("highcom_strategium_channel_id") or _BATCH_SUMMARY_CHANNEL_ID
+    highcom_channel_id = (
+        config_tp.get("highcom_audit_channel_id")
+        or config_tp.get("highcom_strategium_channel_id")
+        or _BATCH_SUMMARY_CHANNEL_ID
+    )
     highcom_role_id    = config_tp.get("highcom_role_id")
     try:
         hc_ch = guild.get_channel(int(highcom_channel_id))
