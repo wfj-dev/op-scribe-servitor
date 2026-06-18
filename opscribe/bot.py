@@ -823,6 +823,7 @@ HOME_CHAPTERS = [
     "Storm Giants",
     "Tempestuous Angels",
     "The Drakes",
+    "Tigers Argent",
     "Tome Keepers",
     "Ultramarines",
     "White Scars",

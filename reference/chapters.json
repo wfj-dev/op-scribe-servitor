@@ -1163,6 +1163,29 @@
       }
     },
     {
+      "name": "Tigers Argent",
+      "founding": "Unknown",
+      "primarch": "Unknown",
+      "homebrew": false,
+      "lore_summary": "A Loyalist Codex-compliant chapter of uncertain origin associated with the Calixis Sector since the Angevin Crusade in early M39. Their homeworld, Icefang, sits in a perilous region close to both the Great Rift and Pariah Nexus, forcing the chapter into repeated defensive campaigns against multiple threats. Despite sustained attrition, their strike forces are noted for refusing defeat and repeatedly restoring the line after successive incursions. Icefang has become a regional sanctuary, and the chapter's doctrine reflects grim endurance under constant pressure rather than pursuit of singular glory.",
+      "strengths": [
+        "multi-front defensive endurance",
+        "high attrition tolerance",
+        "stubborn line-holding under repeated incursions"
+      ],
+      "weaknesses": [
+        "prolonged operational strain",
+        "limited strategic respite"
+      ],
+      "faction_affinity": "neutral",
+      "execution_style": "stubborn multi-front defensive warfare",
+      "tag_weights": {
+        "resilience": 2,
+        "fortify": 1,
+        "suppression": 1
+      }
+    },
+    {
       "name": "Tome Keepers",
       "founding": "4th Founding (after 546.M32)",
       "primarch": "Roboute Guilliman",

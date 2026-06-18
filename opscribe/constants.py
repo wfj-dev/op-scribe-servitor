@@ -471,6 +471,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Knights of the Raven":   0x14342B,  # Dark green (Dark Angels successor)
     "Tempestuous Angels":     0x3A6EA5,  # Storm blue
     "The Drakes":             0x1E5631,  # Dark green (fire/drake themed)
+    "Tigers Argent":          0x8A8F98,  # Metallic silver-grey
 }
 
 # ---------------------------------------------------------------------------
