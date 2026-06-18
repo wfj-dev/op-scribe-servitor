@@ -2713,6 +2713,9 @@ _ROLE_TO_CADRE_KEY: dict[str, str] = {
     "Chief Apothecary": "apothecary",
     "Watch Chaplain": "chaplain",
     "High Chaplain": "chaplain",
+    "Kill Team Champion": "champion",
+    "Company Champion": "champion",
+    "Lord Executioner": "champion",
 }
 
 # Fallback constants if not set in config
@@ -2722,17 +2725,26 @@ _CADRE_CHANNEL_FALLBACKS: dict[str, int] = {
     "apothecary": APOTHECARY_STAFF_CHANNEL_ID,
     "chaplain": CHAPLAIN_STAFF_CHANNEL_ID,
     "dreadnought": TECHMARINE_STAFF_CHANNEL_ID,
+    # champion falls back to watch_command_deployment_channel_id (resolved at runtime)
 }
 
 
 def _get_cadre_channel_id(role: str) -> int | None:
-    """Return cadre staff channel ID for a role. Config takes precedence over constants."""
+    """Return cadre staff channel ID for a role. Config takes precedence over constants.
+    
+    For the 'champion' cadre key, falls back to watch_command_deployment_channel_id
+    when not explicitly configured.
+    """
     cadre_key = _ROLE_TO_CADRE_KEY.get(role)
     if not cadre_key:
         return None
     config_ch = (((_b("CONFIG") or {}).get("target_packages") or {}).get("cadre_channels") or {}).get(cadre_key)
     if config_ch:
         return int(config_ch)
+    if cadre_key == "champion":
+        # No champion channel configured yet — fall back to watch command deployment channel
+        wc = (((_b("CONFIG") or {}).get("target_packages") or {}).get("watch_command_deployment_channel_id"))
+        return int(wc) if wc else None
     return _CADRE_CHANNEL_FALLBACKS.get(cadre_key)
 
 
@@ -2753,14 +2765,11 @@ async def _notify_specialist_assigned(
             f"{int(signup_channel_id)}/{int(signup_message_id)}"
         )
 
-    # Champion routing is explicit and takes precedence over cadre routing.
-    company_champion_channel_id = config_tp.get("company_champion_channel_id") or config_tp.get("watch_command_deployment_channel_id")
-
-    # Determine the right channel for this specialist
+    # Determine the right channel for this specialist — all cadres including champions
+    # route through _get_cadre_channel_id. Kill Team Champion is an exception: they
+    # get pinged in their KT's signup channel since they operate at KT level.
     cadre_channel_id = None
-    if "Company Champion" in specialist_roles:
-        cadre_channel_id = company_champion_channel_id
-    elif "Kill Team Champion" in specialist_roles:
+    if "Kill Team Champion" in specialist_roles:
         cadre_channel_id = signup_channel_id
     else:
         for role in specialist_roles:
