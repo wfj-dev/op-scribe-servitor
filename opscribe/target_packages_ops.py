@@ -1980,6 +1980,51 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     except Exception:
         _batch_label = batch_id or "Directive Batch"
 
+    # ── HONORS EVALUATION (done first so results can be appended to fw_embed) ──
+    _honors_kt_changes:  list[str] = []
+    _honors_co_changes:  list[str] = []
+    try:
+        old_honors = _load_honors()
+        _new_honors = _compute_honors(data)
+
+        _TIER_UP   = "⬆"
+        _TIER_DOWN = "⬇"
+        _TIER_SAME = "—"
+
+        for kt_name, new_data in sorted(_new_honors["kill_teams"].items()):
+            old_data  = old_honors.get("kill_teams", {}).get(kt_name, {})
+            old_tier  = old_data.get("tier", "Unproven")
+            new_tier  = new_data["tier"]
+            old_idx   = _KT_TITLE_TIERS.index(old_tier) if old_tier in _KT_TITLE_TIERS else 0
+            new_idx   = new_data["tier_index"]
+            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
+            comp  = new_data.get("completions_28d", 0)
+            rep_e = new_data.get("rep_earned_28d", 0.0)
+            _honors_kt_changes.append(
+                f"**{kt_name}**: **{new_tier}** {arrow}"
+                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
+                + f"  ·  {comp} ops  ·  `+{rep_e:.1f}` rep"
+            )
+
+        for co_name, new_data in sorted(_new_honors["companies"].items()):
+            old_data  = old_honors.get("companies", {}).get(co_name, {})
+            old_tier  = old_data.get("tier", "Unrecorded")
+            new_tier  = new_data["tier"]
+            old_idx   = _COMPANY_TITLE_TIERS.index(old_tier) if old_tier in _COMPANY_TITLE_TIERS else 0
+            new_idx   = new_data["tier_index"]
+            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
+            comp  = new_data.get("completions_28d", 0)
+            kts   = new_data.get("contributing_kts", 0)
+            _honors_co_changes.append(
+                f"**{co_name}**: **{new_tier}** {arrow}"
+                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
+                + f"  ·  {comp} ops  ·  {kts} KT{'s' if kts != 1 else ''} contributing"
+            )
+
+        _save_honors(_new_honors)
+    except Exception as exc:
+        _g.logger.warning(f"[TP] Honors evaluation failed: {exc}")
+
     # ── 1. FORTRESS-WIDE REPORT ──────────────────────────────────────────
     general_channel_id = config_tp.get("general_channel_id")
     if general_channel_id:
@@ -2059,9 +2104,20 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                     fw_embed.add_field(name="▸ Brothers Distinguished", value=dist_block, inline=False)
 
             fw_embed.set_footer(
-                text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ",
+                text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ  ·  Honours reflect rolling 28-day window",
                 icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
             )
+            # Append honors fields to this embed (evaluated in section 4 above)
+            if _honors_kt_changes:
+                kt_hon_block = "\n".join(_honors_kt_changes)
+                if len(kt_hon_block) > 1024:
+                    kt_hon_block = kt_hon_block[:1020] + "\n…"
+                fw_embed.add_field(name="▸ Kill Team Honours", value=kt_hon_block, inline=False)
+            if _honors_co_changes:
+                co_hon_block = "\n".join(_honors_co_changes)
+                if len(co_hon_block) > 1024:
+                    co_hon_block = co_hon_block[:1020] + "\n…"
+                fw_embed.add_field(name="▸ Company Honours", value=co_hon_block, inline=False)
             _fw_img, _fw_img_name = _random_strike_image_file("fortress")
             if _fw_img and _fw_img_name:
                 fw_embed.set_image(url=f"attachment://{_fw_img_name}")
@@ -2294,96 +2350,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         except Exception as exc:
             _g.logger.warning(f"[TP] Highcom report send failed: {exc}")
 
-    # ── 4. HONORS EVALUATION + ANNOUNCEMENT ─────────────────────────────
-    try:
-        old_honors = _load_honors()
-        new_honors = _compute_honors(data)
-
-        # Build change log for announcement
-        kt_changes:  list[str] = []
-        co_changes:  list[str] = []
-
-        _TIER_UP   = "⬆"
-        _TIER_DOWN = "⬇"
-        _TIER_SAME = "—"
-
-        for kt_name, new_data in sorted(new_honors["kill_teams"].items()):
-            old_data  = old_honors.get("kill_teams", {}).get(kt_name, {})
-            old_tier  = old_data.get("tier", "Unproven")
-            new_tier  = new_data["tier"]
-            old_idx   = _KT_TITLE_TIERS.index(old_tier) if old_tier in _KT_TITLE_TIERS else 0
-            new_idx   = new_data["tier_index"]
-            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
-            comp  = new_data.get("completions_28d", 0)
-            rep_e = new_data.get("rep_earned_28d", 0.0)
-            kt_changes.append(
-                f"**{kt_name}**: **{new_tier}** {arrow}"
-                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
-                + f"  ·  {comp} ops  ·  `+{rep_e:.1f}` rep"
-            )
-
-        for co_name, new_data in sorted(new_honors["companies"].items()):
-            old_data  = old_honors.get("companies", {}).get(co_name, {})
-            old_tier  = old_data.get("tier", "Unrecorded")
-            new_tier  = new_data["tier"]
-            old_idx   = _COMPANY_TITLE_TIERS.index(old_tier) if old_tier in _COMPANY_TITLE_TIERS else 0
-            new_idx   = new_data["tier_index"]
-            arrow = _TIER_UP if new_idx > old_idx else (_TIER_DOWN if new_idx < old_idx else _TIER_SAME)
-            comp  = new_data.get("completions_28d", 0)
-            kts   = new_data.get("contributing_kts", 0)
-            co_changes.append(
-                f"**{co_name}**: **{new_tier}** {arrow}"
-                + (f" _(was {old_tier})_" if old_tier != new_tier else "")
-                + f"  ·  {comp} ops  ·  {kts} KT{'s' if kts != 1 else ''} contributing"
-            )
-
-        _save_honors(new_honors)
-
-        # Post honors announcement to general channel
-        honors_channel_id = config_tp.get("honors_announcement_channel_id") or general_channel_id
-        if honors_channel_id and (kt_changes or co_changes):
-            try:
-                hon_ch = guild.get_channel(int(honors_channel_id))
-                if not hon_ch:
-                    hon_ch = await guild.fetch_channel(int(honors_channel_id))
-            except Exception:
-                hon_ch = None
-
-            if hon_ch or _is_debug_mode():
-                hon_embed = discord.Embed(
-                    title=f"{_DW_EMOJI} ᴡᴀᴛᴄʜ ꜰᴏʀᴛʀᴇss ʜᴏɴᴏʀs — 28-ᴅᴀʏ ᴇᴠᴀʟᴜᴀᴛɪᴏɴ {_DW_EMOJI}",
-                    description="Ordo Xenos standing records updated. Title tiers reflect rolling 28-day performance.",
-                    color=0xC4A030,
-                )
-                hon_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
-
-                if kt_changes:
-                    kt_block = "\n".join(kt_changes)
-                    if len(kt_block) > 1024:
-                        kt_block = kt_block[:1020] + "\n…"
-                    hon_embed.add_field(name="▸ Kill Team Honours", value=kt_block, inline=False)
-
-                if co_changes:
-                    co_block = "\n".join(co_changes)
-                    if len(co_block) > 1024:
-                        co_block = co_block[:1020] + "\n…"
-                    hon_embed.add_field(name="▸ Company Honours", value=co_block, inline=False)
-
-                hon_embed.set_footer(
-                    text="ᴄʟᴇᴀʀᴀɴᴄᴇ: sᴄᴀʀʟᴇᴛ  ·  Rolling 28-day window",
-                    icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
-                )
-                _hon_img, _hon_img_name = _random_strike_image_file("honors")
-                if _hon_img and _hon_img_name:
-                    hon_embed.set_image(url=f"attachment://{_hon_img_name}")
-                try:
-                    await _notify_send(hon_ch, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=hon_embed, **_file_kwarg(_hon_img))
-                    _g.logger.info("[TP] Honors announcement posted.")
-                except Exception as exc:
-                    _g.logger.warning(f"[TP] Honors announcement send failed: {exc}")
-
-    except Exception as exc:
-        _g.logger.warning(f"[TP] Honors evaluation failed: {exc}")
+    # ── 4. (Honors already evaluated and appended to fortress-wide report above) ──
 
 
 async def _update_ox_rep_embed(guild: discord.Guild) -> None:
