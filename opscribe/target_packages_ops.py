@@ -2352,6 +2352,122 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
 
     # ── 4. (Honors already evaluated and appended to fortress-wide report above) ──
 
+    # ── 5. CADRE REPORTS ─────────────────────────────────────────────────
+    # One embed per cadre, posted to their staff channel, pinging their leader(s).
+    # Cadre → (config_key, [roles in cadre], cadre_leader_role, section_label)
+    _CADRE_REPORT_DEFS = [
+        ("techmarine", ["Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought"],
+         "Forgemaster", "Armory Deployments"),
+        ("apothecary",  ["Watch Apothecary"],
+         "Chief Apothecary", "Apothecarion Interventions"),
+        ("chaplain",    ["Watch Chaplain"],
+         "High Chaplain", "Reclusiam Attachments"),
+        ("librarian",   ["Watch Librarian"],
+         "Void Warden", "Librarius Operations"),
+        ("champion",    ["Kill Team Champion", "Company Champion"],
+         "Lord Executioner", "Champion Detachments"),
+    ]
+    cadre_cfg = config_tp.get("cadre_channels", {})
+    for cadre_key, cadre_roles, leader_role, section_label in _CADRE_REPORT_DEFS:
+        cadre_ch_id = cadre_cfg.get(cadre_key)
+        if not cadre_ch_id:
+            continue  # channel not configured yet (e.g. champion)
+
+        # Directives requiring any role from this cadre
+        cadre_required = [
+            p for p in batch_pkgs
+            if any(r in (p.get("required_roles") or []) for r in cadre_roles)
+        ]
+        # Post even if zero requisitions — cadre deserves an "all quiet" report
+        cadre_completed = [p for p in cadre_required if p["status"] == STATUS_COMPLETED]
+        cadre_failed    = [p for p in cadre_required if p["status"] == STATUS_FAILED]
+        cadre_lapsed    = [p for p in cadre_required if p["status"] == STATUS_LAPSED]
+        cadre_unfilled  = [
+            p for p in cadre_required
+            if p["status"] in (STATUS_FAILED, STATUS_LAPSED)
+            and not any(
+                guild.get_member(int(uid)) and
+                any(r in _member_role_names(guild.get_member(int(uid))) for r in cadre_roles)
+                for uid in (p.get("assigned_specialist_ids") or [])
+                if uid and guild
+            )
+        ]
+
+        cadre_color = 0x2ECC71 if not cadre_failed and not cadre_lapsed and cadre_required else (
+            0xF39C12 if cadre_completed else (0x8B0000 if cadre_required else 0x555555)
+        )
+
+        c_embed = discord.Embed(
+            title=f"{_DW_EMOJI} {_smallcaps(section_label)} — ᴄʏᴄʟᴇ ᴅᴇʙʀɪᴇꜰ {_DW_EMOJI}",
+            color=cadre_color,
+        )
+        c_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
+
+        if not cadre_required:
+            c_embed.add_field(
+                name="▸ Cycle Summary",
+                value="No directives required this cadre's attachment this cycle.",
+                inline=False,
+            )
+        else:
+            icon = "🟢" if not cadre_failed and not cadre_lapsed else ("🟡" if cadre_completed else "🔴")
+            c_embed.add_field(
+                name="▸ Cycle Summary",
+                value=(
+                    f"{icon} **Requisitions:** {len(cadre_required)}  ·  "
+                    f"**Completed:** {len(cadre_completed)}  ·  "
+                    f"**Failed/Lapsed:** {len(cadre_failed) + len(cadre_lapsed)}\n"
+                    + (f"⚠ **Unfilled requisitions:** {len(cadre_unfilled)}" if cadre_unfilled else "")
+                ).strip(),
+                inline=False,
+            )
+
+            # Per-directive breakdown
+            if cadre_required:
+                directive_lines = []
+                for p in cadre_required:
+                    code = p.get("directive_code") or p["id"]
+                    name = p.get("directive_name", "")
+                    kt   = p.get("assigned_kt", "—")
+                    status_icon = {"completed": "✅", "failed": "❌", "lapsed": "⬛"}.get(p["status"], "🔲")
+                    roles_needed = [r for r in (p.get("required_roles") or []) if r in cadre_roles]
+                    directive_lines.append(
+                        f"{status_icon} **{code}**{' — ' + name if name else ''}  ·  {kt}"
+                        + (f"\n  ↳ Required: {', '.join(roles_needed)}" if roles_needed else "")
+                    )
+                dir_block = "\n".join(directive_lines)
+                if len(dir_block) > 1024:
+                    dir_block = dir_block[:1020] + "\n…"
+                c_embed.add_field(name="▸ Directives", value=dir_block, inline=False)
+
+        c_embed.set_footer(
+            text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
+            icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
+        )
+        _c_img, _c_img_name = _random_strike_image_file(f"cadre_{cadre_key}")
+        if _c_img and _c_img_name:
+            c_embed.set_image(url=f"attachment://{_c_img_name}")
+
+        # Resolve channel and ping the cadre leader(s)
+        try:
+            cadre_ch = guild.get_channel(int(cadre_ch_id))
+            if not cadre_ch:
+                cadre_ch = await guild.fetch_channel(int(cadre_ch_id))
+        except Exception:
+            cadre_ch = None
+
+        if cadre_ch or _is_debug_mode():
+            leader_mentions = [
+                m.mention for m in (guild.members if guild else [])
+                if not m.bot and _is_active(m) and leader_role in _member_role_names(m)
+            ]
+            ping_str = " ".join(leader_mentions) if leader_mentions else None
+            try:
+                await _notify_send(cadre_ch, guild, content=ping_str, embed=c_embed, **_file_kwarg(_c_img))
+                _g.logger.info(f"[TP] Cadre report posted for {section_label}.")
+            except Exception as exc:
+                _g.logger.warning(f"[TP] Cadre report send failed for {section_label}: {exc}")
+
 
 async def _update_ox_rep_embed(guild: discord.Guild) -> None:
     """Post or update the persistent Ordo Xenos standing embed in the configured channel."""
