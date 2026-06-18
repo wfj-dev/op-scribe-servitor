@@ -2055,6 +2055,81 @@ def _get_order_omega_announcement(
     )
 
 
+def _get_herisor_defense_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Herisor Defense Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="HERISOR DEFENSE MEDAL",
+        color=0x5D6D7E,
+        openings=[
+            "**{name}** stood the line at Herisor and held it against every wave.",
+        ],
+        proclamations=[
+            "The Watch records this action as a confirmed Defense of Herisor completion.",
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Herisor Defense Medal",
+        award_image="award_herisor_defense_medal.png",
+    )
+
+
+def _get_distinguished_herisor_defense_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Distinguished Herisor Defense Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED HERISOR DEFENSE MEDAL",
+        color=0x2E4053,
+        openings=[
+            "**{name}** completed the Defense of Herisor under Black Laurels distinction.",
+        ],
+        proclamations=[
+            "The Watch marks this warrior's Herisor defense record as Distinguished.",
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Distinguished Herisor Defense Medal",
+        award_image="award_distinguished_herisor_defense_medal.png",
+    )
+
+
+def _get_distinguished_herisor_defense_valor_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Distinguished Herisor Defense Medal with Valor announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED HERISOR DEFENSE MEDAL WITH VALOR",
+        color=0x1B2631,
+        openings=[
+            "**{name}** held Herisor with full Black Laurels distinction across siege and operations.",
+        ],
+        proclamations=[
+            "The Watch confers the Herisor Distinguished mark with Valor for complete excellence in all required actions.",
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Distinguished Herisor Defense Medal with Valor",
+        award_image="award_distinguished_herisor_defense_medal_with_valor.png",
+    )
+
+
 def _get_dual_vigil_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -3481,6 +3556,7 @@ __all__ = [
     "_get_distinguished_pipehitter_announcement",
     "_get_dual_vigil_announcement",
     "_get_emoji_by_name",
+    "_get_herisor_defense_announcement",
     "_get_kadaku_campaign_announcement",
     "_get_lfg_config",
     "_get_lfg_console_role_id",
@@ -3494,6 +3570,8 @@ __all__ = [
     "_get_member_rank_title",
     "_get_oathsworn_announcement",
     "_get_order_omega_announcement",
+    "_get_distinguished_herisor_defense_announcement",
+    "_get_distinguished_herisor_defense_valor_announcement",
     "_get_player_platform",
     "_get_rank_category_for_blend",
     "_get_rank_emoji",

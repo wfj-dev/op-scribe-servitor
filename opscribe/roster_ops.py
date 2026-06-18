@@ -1947,6 +1947,9 @@ _AWARD_DISPATCH_FN_MAP = {
     "black_reef_campaign_medal": "_get_black_reef_campaign_announcement",
     "distinguished_black_reef_campaign_medal": "_get_distinguished_black_reef_announcement",
     "the_order_omega": "_get_order_omega_announcement",
+    "herisor_defense_medal": "_get_herisor_defense_announcement",
+    "distinguished_herisor_defense_medal": "_get_distinguished_herisor_defense_announcement",
+    "distinguished_herisor_defense_medal_with_valor": "_get_distinguished_herisor_defense_valor_announcement",
     "dual_vigil": "_get_dual_vigil_announcement",
     "terminus_slayer_assault": "_get_terminus_slayer_assault_announcement",
     "terminus_slayer_bulwark": "_get_terminus_slayer_bulwark_announcement",
@@ -1969,6 +1972,12 @@ _CHALLENGE_AWARD_ROLE_MAP: dict[str, tuple[int, str]] = {
     "black_reef_campaign_medal":               (BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,               "black_reef"),
     "distinguished_black_reef_campaign_medal": (DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "distinguished_black_reef"),
     "the_order_omega":                         (THE_ORDER_OMEGA_ROLE_ID,                         "order_omega"),
+    "herisor_defense_medal":                   (HERISOR_DEFENSE_MEDAL_ROLE_ID,                   "herisor_defense"),
+    "distinguished_herisor_defense_medal":     (DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,     "distinguished_herisor_defense"),
+    "distinguished_herisor_defense_medal_with_valor": (
+        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+        "distinguished_herisor_defense_valor",
+    ),
     "dual_vigil":                              (DUAL_VIGIL_AWARD_ROLE_ID,                        "dual_vigil"),
 }
 
