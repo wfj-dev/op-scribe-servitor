@@ -1965,23 +1965,20 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     standing_bar  = _standing_skull_bar(rep)
     standing_name = _standing_state_name(rep)
 
-    # Human-readable batch label and date range for embed headers.
+    # Human-readable batch label for embed headers: "Directive Batch 08 Jun – 15 Jun 2026"
     _batch_date_str = batch_id.replace("BATCH-", "") if batch_id else ""
     try:
         _batch_date = datetime.strptime(_batch_date_str, "%Y%m%d")
-        _batch_label = f"Directive Batch-{_batch_date.strftime('%d %b %Y')}"
-        # Cycle window: generation date → latest deadline across batch packages
         _deadlines = [
             datetime.fromisoformat(p["deadline"]) for p in batch_pkgs if p.get("deadline")
         ]
         if _deadlines:
             _cycle_end = max(_deadlines)
-            _cycle_range = f"{_batch_date.strftime('%d %b')} – {_cycle_end.strftime('%d %b %Y')}"
+            _batch_label = f"Directive Batch {_batch_date.strftime('%d %b')} – {_cycle_end.strftime('%d %b %Y')}"
         else:
-            _cycle_range = _batch_date.strftime("%d %b %Y")
+            _batch_label = f"Directive Batch {_batch_date.strftime('%d %b %Y')}"
     except Exception:
         _batch_label = batch_id or "Directive Batch"
-        _cycle_range = ""
 
     # ── 1. FORTRESS-WIDE REPORT ──────────────────────────────────────────
     general_channel_id = config_tp.get("general_channel_id")
@@ -2021,7 +2018,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 description=flavor,
                 color=color,
             )
-            fw_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}  ·  {_cycle_range}" if _cycle_range else f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
+            fw_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
             fw_embed.add_field(
                 name="▸ Cycle Results",
@@ -2209,7 +2206,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             title=f"{_DW_EMOJI} ᴄᴏᴍᴍᴀɴᴅ sᴛʀᴀᴛᴀɢᴇᴍ ᴀᴜᴅɪᴛ {_DW_EMOJI}",
             color=color,
         )
-        hc_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}  ·  {_cycle_range}" if _cycle_range else f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
+        hc_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
         # Theatre summary
         _before_line2 = f"{_standing_skull_bar(rep_start)} **{_standing_state_name(rep_start)}**" if _standing_skull_bar(rep_start) else f"**{_standing_state_name(rep_start)}**"
