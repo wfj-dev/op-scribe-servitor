@@ -421,6 +421,7 @@
   },
   "target_packages": {
     "highcom_strategium_channel_id": 1512929774970998945,
+    "highcom_audit_channel_id": 1512819170025410621,
     "watch_command_deployment_channel_id": 1512929565239152671,
     "strike_report_channel_id": 1429318686447108300,
     "company_champion_channel_id": 1512929565239152671,
