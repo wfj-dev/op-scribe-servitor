@@ -411,10 +411,10 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
             if p.get("assigned_kt") == kt_name and p["status"] in active_statuses
         ]
         if not kt_pkgs:
-            return "🟢 Ready for Deployment"
+            return "-# 🟢 Ready for Deployment"
         if any(p["status"] == "deployed" for p in kt_pkgs):
-            return f"🔴 Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+            return f"-# 🔴 Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+        return f"-# 🟡 Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
     except Exception:
         return ""
 
@@ -459,12 +459,12 @@ def _tp_status_for_company(
         ]
 
         if not company_pkgs:
-            return "🟢 Ready for Deployment"
+            return "-# 🟢 Ready for Deployment"
         if any(p.get("status") == "deployed" for p in company_pkgs):
-            return f"🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+            return f"-# 🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+        return f"-# 🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
     except Exception:
-        return "🟢 Ready for Deployment"
+        return "-# 🟢 Ready for Deployment"
 
 
 def _tp_status_for_high_command(
@@ -489,12 +489,12 @@ def _tp_status_for_high_command(
         ]
 
         if not hc_pkgs:
-            return "🟢 Ready for Deployment"
+            return "-# 🟢 Ready for Deployment"
         if any(p.get("status") == "deployed" for p in hc_pkgs):
-            return f"🔴 Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
-        return f"🟡 Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+            return f"-# 🔴 Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+        return f"-# 🟡 Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
     except Exception:
-        return "🟢 Ready for Deployment"
+        return "-# 🟢 Ready for Deployment"
 
 
 def _load_honors() -> dict:
@@ -530,7 +530,7 @@ def _tier_window(tiers: list, current: str) -> str:
     if end - start < _HONORS_WINDOW:
         start = max(0, end - _HONORS_WINDOW)
     window = tiers[start:end]
-    parts = [f"**{t}**" if t == current else t for t in window]
+    parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
     return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
 
 
