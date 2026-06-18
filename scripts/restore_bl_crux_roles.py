@@ -265,9 +265,7 @@ async def main() -> None:
                 await client.close()
                 return
 
-            print(f"Guild: {guild.name} ({guild.id}) — loading member cache...")
-            await guild.chunk()  # ensure member cache is populated
-            print(f"Member cache loaded ({len(guild.members)} members).")
+            print(f"Guild: {guild.name} ({guild.id}) — fetching members...")
 
             bl_role = guild.get_role(BLACK_LAURELS_ROLE_ID)
             oo_role = guild.get_role(THE_ORDER_OMEGA_ROLE_ID)
@@ -290,13 +288,20 @@ async def main() -> None:
 
             print(f"\nProcessing {len(AFFECTED_USER_IDS)} affected members...\n")
 
+            all_fetched_ids = []
             for uid in AFFECTED_USER_IDS:
-                member = guild.get_member(uid)
-                if member is None:
+                try:
+                    member = await guild.fetch_member(uid)
+                except discord.NotFound:
                     print(f"  [{uid}] NOT IN SERVER — skipping")
                     bl_not_in_server += 1
                     continue
+                except Exception as e:
+                    print(f"  [{uid}] ERROR fetching member: {e} — skipping")
+                    bl_not_in_server += 1
+                    continue
 
+                all_fetched_ids.append(uid)
                 name = member.display_name
                 member_role_ids = {r.id for r in member.roles}
 
@@ -310,21 +315,18 @@ async def main() -> None:
                         print(f"  [{uid}] {name}: ✓ Black Laurels restored")
                         bl_restored += 1
                         await asyncio.sleep(0.4)
+                        # Re-fetch to get updated roles for Crux check
+                        member = await guild.fetch_member(uid)
+                        member_role_ids = {r.id for r in member.roles}
                     except Exception as e:
                         print(f"  [{uid}] {name}: ERROR adding BL role: {e}")
                         continue
 
-                # Refresh role IDs after potential add
-                member = guild.get_member(uid)
-                if member is None:
-                    continue
-
                 # --- Check and restore Crux Terminatus ---
                 if crux_role is None:
                     continue
-                if CRUX_TERMINATUS_ROLE_ID in {r.id for r in member.roles}:
-                    # Already has it — nothing to do
-                    pass
+                if CRUX_TERMINATUS_ROLE_ID in member_role_ids:
+                    pass  # already has it
                 else:
                     eligible, failures = _meets_crux_requirements(member, aar_records)
                     if eligible:
@@ -337,16 +339,19 @@ async def main() -> None:
                             print(f"  [{uid}] {name}: ERROR adding Crux role: {e}")
                     else:
                         crux_skipped_ineligible += 1
-                        # Only log if they're close (1 failure) to avoid noise
                         if len(failures) == 1:
                             print(f"  [{uid}] {name}: Crux not restored — {failures[0]}")
 
             # --- Restore Order Omega for the 2 wrongly revoked members ---
             print(f"\nRestoring Order Omega for {len(ORDER_OMEGA_REVOKED_USER_IDS)} members...")
             for uid in ORDER_OMEGA_REVOKED_USER_IDS:
-                member = guild.get_member(uid)
-                if member is None:
+                try:
+                    member = await guild.fetch_member(uid)
+                except discord.NotFound:
                     print(f"  [{uid}] NOT IN SERVER — skipping OO")
+                    continue
+                except Exception as e:
+                    print(f"  [{uid}] ERROR fetching member: {e} — skipping OO")
                     continue
                 name = member.display_name
                 if oo_role is None:
@@ -374,9 +379,7 @@ async def main() -> None:
 
             # Fix data files
             print()
-            all_restored_ids = [uid for uid in AFFECTED_USER_IDS
-                                 if guild.get_member(uid) is not None]
-            _fix_promotion_tracking(all_restored_ids)
+            _fix_promotion_tracking(all_fetched_ids)
             _clear_bl_queue_entries()
 
             print("\nDone. You can restart the bot now.")
