@@ -2331,6 +2331,8 @@ def parse_aar(message: discord.Message):
     leviathan_protocol_in_difficulty = False
     # Black Reef Persecution tracking (allows Black Laurels on Hard-Stratagem when present on Mission line)
     black_reef_persecution_in_mission = False
+    # Defense of Herisor mission tag tracking (mention-only on Mission line)
+    herisor_defense_in_mission = False
     # Dual Vigil tracking (2-brother Absolute-only Black Laurels missions)
     dual_vigil_in_mission = False
     # Pipehitter tracking
@@ -2364,6 +2366,9 @@ def parse_aar(message: discord.Message):
             # Check if Black Reef Persecution is in mission line
             if f"<@&{BLACK_REEF_PERSECUTION_ROLE_ID}>" in mission or ("black reef persecution" in mission.lower()):
                 black_reef_persecution_in_mission = True
+            # Defense of Herisor tag must be a role mention on the Mission line
+            if f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in mission:
+                herisor_defense_in_mission = True
             # Check if Dual Vigil is in mission line (role ID or resolved name)
             if f"<@&{DUAL_VIGIL_ROLE_ID}>" in mission or ("dual vigil" in mission.lower()):
                 dual_vigil_in_mission = True
@@ -2691,6 +2696,8 @@ def parse_aar(message: discord.Message):
         "leviathan_protocol_in_difficulty": leviathan_protocol_in_difficulty,
         # Black Reef Persecution tracking for validation
         "black_reef_persecution_in_mission": black_reef_persecution_in_mission,
+        # Defense of Herisor mission tag tracking for validation
+        "herisor_defense_in_mission": herisor_defense_in_mission,
         # Dual Vigil tracking for validation and challenge progress
         "dual_vigil_in_mission": dual_vigil_in_mission,
         # Pipehitter tracking for validation
@@ -2892,6 +2899,17 @@ def validate_aar(record: dict):
                     "Inferno, Decapitation, Vox Liberatis, Ballistic Engine, "
                     "Exfiltration, Termination, Reclamation, Disruption, Purgation."
                 )
+
+        # Defense of Herisor tag validation: mention-only tag is parsed from Mission line.
+        # If present, enforce challenge-safe operation constraints at ingest time.
+        has_herisor_defense = record.get("herisor_defense_in_mission", False)
+        if has_herisor_defense:
+            has_hard_stratagem = "hard-stratagem" in dlower
+            has_hard_siege = "hard-siege" in dlower
+            if not has_hard_stratagem and not has_hard_siege:
+                errors.append("@Defense_of_Herisor requires @Hard-Stratagem or @Hard-Siege on the Difficulty line.")
+            if len(brothers) != 3:
+                errors.append("@Defense_of_Herisor requires exactly 3 Brothers.")
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)

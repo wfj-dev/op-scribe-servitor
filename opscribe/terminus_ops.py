@@ -33,8 +33,12 @@ from .constants import (  # noqa: F401
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
+    DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+    DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     DUAL_VIGIL_REQUIRED_MISSIONS,
     DUAL_VIGIL_ROLE_ID,
+    HERISOR_DEFENSE_MEDAL_ROLE_ID,
+    HERISOR_DEFENSE_TAG_ROLE_ID,
     KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
@@ -99,6 +103,114 @@ async def _validate_aar_link(
         if not re.search(rf"<@!?{re.escape(brother_id)}>", content):
             return "You must have participated in the linked AAR to submit a kill log for it."
     return None
+
+
+def _load_challenge_progress_state() -> dict:
+    if not os.path.exists(CHALLENGE_PROGRESS_PATH):
+        return {}
+    try:
+        with open(CHALLENGE_PROGRESS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_challenge_progress_state(state: dict) -> None:
+    bak = CHALLENGE_PROGRESS_PATH + ".bak"
+    tmp = CHALLENGE_PROGRESS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    if os.path.exists(CHALLENGE_PROGRESS_PATH):
+        shutil.copy2(CHALLENGE_PROGRESS_PATH, bak)
+    os.replace(tmp, CHALLENGE_PROGRESS_PATH)
+
+
+def _normalize_mission_name(value: str) -> str:
+    mission = (value or "").lower().strip()
+    mission = re.sub(r"<@&\d+>", "", mission)
+    mission = re.split(r"\s*@", mission, maxsplit=1)[0].strip()
+    mission = re.sub(r"\bdefense\s+of\s+herisor\b", "", mission)
+    mission = re.sub(r"\s+", " ", mission)
+    return mission.strip(" -|:,;")
+
+
+def _record_has_herisor_tag(record: dict) -> bool:
+    raw_mission = str(record.get("mission") or record.get("mission_name") or "")
+    return bool(
+        record.get("herisor_defense_in_mission")
+        or f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in raw_mission
+    )
+
+
+def _record_has_black_laurels(record: dict) -> bool:
+    return bool(record.get("black_laurels_in_mission") or record.get("black_laurels_in_difficulty"))
+
+
+def _record_team_ids(record: dict) -> set[str]:
+    return {str(x) for x in (record.get("brother_ids") or [])}
+
+
+def _record_message_url_or_fallback(record: dict, fallback_link: str) -> str:
+    return str((record.get("message_url") or fallback_link or "").strip())
+
+
+def _extract_message_id_from_link(aar_link: str) -> Optional[str]:
+    m = _AAR_LINK_RE.match((aar_link or "").strip())
+    if not m:
+        return None
+    return m.group(2)
+
+
+async def _resolve_aar_record_for_link(
+    aar_link: str,
+    guild: discord.Guild,
+) -> tuple[Optional[dict], Optional[str], Optional[str]]:
+    """Resolve a parsed AAR record from an AAR link.
+
+    Returns (record, canonical_url, error).
+    """
+    m = _AAR_LINK_RE.match((aar_link or "").strip())
+    if not m:
+        return None, None, "The AAR link must be a Discord message URL (`https://discord.com/channels/...`)."
+
+    channel_id_str, message_id_str = m.groups()
+    if int(channel_id_str) != AAR_CHANNEL_ID:
+        return None, None, f"The AAR link must point to a message in <#{AAR_CHANNEL_ID}>."
+
+    record = _g.DATASTORE.get_record(message_id_str) if _g.DATASTORE else None
+    if not record:
+        aar_ch = guild.get_channel(AAR_CHANNEL_ID)
+        if aar_ch is None:
+            return None, None, "AAR channel not accessible. Contact the Forgemaster."
+        try:
+            msg = await aar_ch.fetch_message(int(message_id_str))
+        except discord.NotFound:
+            return None, None, "That AAR message was not found. Double-check the link."
+        except discord.Forbidden:
+            return None, None, "Bot lacks permission to read the AAR channel."
+
+        try:
+            from .aar_ops import parse_aar
+
+            record = parse_aar(msg)
+        except Exception as exc:
+            if _g.logger:
+                _g.logger.warning(f"Defense of Herisor: failed live AAR parse for {aar_link}: {exc}")
+            return None, None, "The AAR could not be parsed. Ensure it follows mission report format."
+
+    return record, _record_message_url_or_fallback(record, aar_link), None
+
+
+def _format_mentions(user_ids: set[str]) -> str:
+    return ", ".join(f"<@{uid}>" for uid in sorted(user_ids))
+
+
+def _compute_herisor_tiers(siege_bl: bool, op1_bl: bool, op2_bl: bool) -> tuple[bool, bool]:
+    """Return (distinguished, distinguished_with_valor)."""
+    distinguished = bool(siege_bl or (op1_bl and op2_bl))
+    distinguished_with_valor = bool(siege_bl and op1_bl and op2_bl)
+    return distinguished, distinguished_with_valor
 
 
 # ---------------------------------------------------------------------------
@@ -1304,6 +1416,261 @@ async def submit_kill_log(
 
 
 # ---------------------------------------------------------------------------
+# /submit_defense_of_herisor command
+# ---------------------------------------------------------------------------
+
+@_g.bot.tree.command(
+    name="submit_defense_of_herisor",
+    description="Submit 1 Hard-Siege + 2 Hard-Strat AARs for Defense of Herisor.",
+)
+@app_commands.describe(
+    siege_aar_link="AAR link for the Hard-Siege run (3 brothers).",
+    termination_aar_link="AAR link for Termination on Hard-Strat (3 brothers).",
+    reclamation_aar_link="AAR link for Reclamation on Hard-Strat (3 brothers).",
+)
+async def submit_defense_of_herisor(
+    interaction: discord.Interaction,
+    siege_aar_link: str,
+    termination_aar_link: str,
+    reclamation_aar_link: str,
+):
+    if not _b("is_allowed_channel")(interaction):
+        await interaction.response.send_message(
+            "This command cannot be used in this channel.",
+            ephemeral=True,
+        )
+        return
+
+    member = interaction.user
+    if not any(r.name in _MEMBER_RANKS for r in getattr(member, "roles", [])):
+        await interaction.response.send_message(
+            "Only Watch Brothers and above may submit challenge records.",
+            ephemeral=True,
+        )
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    # Temporarily disabled until Watch Command re-enables Herisor submissions.
+    await interaction.response.send_message(
+        "Defense of Herisor submission is temporarily disabled until further notice.",
+        ephemeral=True,
+    )
+    return
+
+    await interaction.response.defer(ephemeral=True)
+
+    # Prevent duplicate AAR links inside the same submission.
+    raw_links = [
+        (siege_aar_link or "").strip(),
+        (termination_aar_link or "").strip(),
+        (reclamation_aar_link or "").strip(),
+    ]
+    if len(set(raw_links)) != 3:
+        await interaction.followup.send(
+            "Each Defense of Herisor field must use a different AAR link.",
+            ephemeral=True,
+        )
+        return
+
+    siege_record, siege_url, siege_err = await _resolve_aar_record_for_link(siege_aar_link, guild)
+    if siege_err:
+        await interaction.followup.send(f"Siege AAR error: {siege_err}", ephemeral=True)
+        return
+
+    term_record, term_url, term_err = await _resolve_aar_record_for_link(termination_aar_link, guild)
+    if term_err:
+        await interaction.followup.send(f"Termination AAR error: {term_err}", ephemeral=True)
+        return
+
+    rec_record, rec_url, rec_err = await _resolve_aar_record_for_link(reclamation_aar_link, guild)
+    if rec_err:
+        await interaction.followup.send(f"Reclamation AAR error: {rec_err}", ephemeral=True)
+        return
+
+    if not (siege_record and term_record and rec_record):
+        await interaction.followup.send(
+            "Unable to resolve all AAR records. Please verify each link.",
+            ephemeral=True,
+        )
+        return
+
+    siege_team = _record_team_ids(siege_record)
+    term_team = _record_team_ids(term_record)
+    rec_team = _record_team_ids(rec_record)
+
+    submitter_id = str(interaction.user.id)
+    if submitter_id not in siege_team or submitter_id not in term_team or submitter_id not in rec_team:
+        await interaction.followup.send(
+            "You must be listed in all three linked AARs to submit Defense of Herisor.",
+            ephemeral=True,
+        )
+        return
+
+    if len(siege_team) != 3:
+        await interaction.followup.send(
+            "The Siege AAR must list exactly 3 brothers.",
+            ephemeral=True,
+        )
+        return
+
+    if len(term_team) != 3 or len(rec_team) != 3:
+        await interaction.followup.send(
+            "Both operation AARs must list exactly 3 brothers.",
+            ephemeral=True,
+        )
+        return
+
+    if (siege_record.get("difficulty_class") or "") != "hard_siege":
+        await interaction.followup.send(
+            "The Siege AAR must be `Hard-Siege`.",
+            ephemeral=True,
+        )
+        return
+
+    siege_waves = siege_record.get("waves")
+    try:
+        siege_waves = int(siege_waves)
+    except Exception:
+        siege_waves = None
+    if siege_waves is None or siege_waves < 15:
+        await interaction.followup.send(
+            "The Siege AAR must be recorded at `Wave: 15` or higher.",
+            ephemeral=True,
+        )
+        return
+
+    if (term_record.get("difficulty_class") or "") != "hard_stratagem":
+        await interaction.followup.send(
+            "The Termination AAR must be `Hard-Stratagem`.",
+            ephemeral=True,
+        )
+        return
+
+    if (rec_record.get("difficulty_class") or "") != "hard_stratagem":
+        await interaction.followup.send(
+            "The Reclamation AAR must be `Hard-Stratagem`.",
+            ephemeral=True,
+        )
+        return
+
+    if not _record_has_herisor_tag(term_record):
+        await interaction.followup.send(
+            "The Termination AAR mission line must include the `Defense of Herisor` tag.",
+            ephemeral=True,
+        )
+        return
+
+    if not _record_has_herisor_tag(rec_record):
+        await interaction.followup.send(
+            "The Reclamation AAR mission line must include the `Defense of Herisor` tag.",
+            ephemeral=True,
+        )
+        return
+
+    if _normalize_mission_name(term_record.get("mission") or term_record.get("mission_name") or "") != "termination":
+        await interaction.followup.send(
+            "The second link must be an AAR whose mission is `Termination`.",
+            ephemeral=True,
+        )
+        return
+
+    if _normalize_mission_name(rec_record.get("mission") or rec_record.get("mission_name") or "") != "reclamation":
+        await interaction.followup.send(
+            "The third link must be an AAR whose mission is `Reclamation`.",
+            ephemeral=True,
+        )
+        return
+
+    overlap_term = siege_team & term_team
+    overlap_rec = siege_team & rec_team
+    if overlap_term or overlap_rec:
+        overlap = overlap_term | overlap_rec
+        await interaction.followup.send(
+            "Siege brothers cannot appear in either linked operation AAR. "
+            f"Overlapping brothers: {_format_mentions(overlap)}",
+            ephemeral=True,
+        )
+        return
+
+    siege_bl = _record_has_black_laurels(siege_record)
+    term_bl = _record_has_black_laurels(term_record)
+    rec_bl = _record_has_black_laurels(rec_record)
+    distinguished, distinguished_with_valor = _compute_herisor_tiers(siege_bl, term_bl, rec_bl)
+
+    submitted_at = _now_iso()
+    siege_msg_id = _extract_message_id_from_link(siege_url or siege_aar_link)
+    term_msg_id = _extract_message_id_from_link(term_url or termination_aar_link)
+    rec_msg_id = _extract_message_id_from_link(rec_url or reclamation_aar_link)
+    submission_key = "|".join([
+        str(siege_msg_id or ""),
+        str(term_msg_id or ""),
+        str(rec_msg_id or ""),
+    ])
+
+    async with _g.CHALLENGE_PROGRESS_LOCK:
+        progress = _load_challenge_progress_state()
+        user_id = str(interaction.user.id)
+        user_progress = progress.setdefault(user_id, {"notified": []})
+        submissions = user_progress.setdefault("defense_of_herisor_submissions", [])
+
+        already = next(
+            (s for s in submissions if str(s.get("submission_key") or "") == submission_key),
+            None,
+        )
+        if already:
+            prev_distinguished = bool(already.get("distinguished"))
+            prev_valor = bool(already.get("distinguished_with_valor"))
+            await interaction.followup.send(
+                "That exact Defense of Herisor trio has already been submitted.\n"
+                f"Distinguished Defense of Herisor: {'✅' if prev_distinguished else '🔲'}\n"
+                f"Distinguished with Valor: {'✅' if prev_valor else '🔲'}",
+                ephemeral=True,
+            )
+            return
+
+        submissions.append(
+            {
+                "submission_key": submission_key,
+                "submitted_at": submitted_at,
+                "siege_aar_id": str(siege_record.get("aar_id") or siege_msg_id or ""),
+                "termination_aar_id": str(term_record.get("aar_id") or term_msg_id or ""),
+                "reclamation_aar_id": str(rec_record.get("aar_id") or rec_msg_id or ""),
+                "siege_aar_link": siege_url,
+                "termination_aar_link": term_url,
+                "reclamation_aar_link": rec_url,
+                "siege_black_laurels": siege_bl,
+                "termination_black_laurels": term_bl,
+                "reclamation_black_laurels": rec_bl,
+                "distinguished": distinguished,
+                "distinguished_with_valor": distinguished_with_valor,
+                "siege_team_ids": sorted(siege_team),
+                "termination_team_ids": sorted(term_team),
+                "reclamation_team_ids": sorted(rec_team),
+            }
+        )
+
+        _save_challenge_progress_state(progress)
+
+    tier_line = "✅ Distinguished with Valor" if distinguished_with_valor else (
+        "✅ Distinguished Defense of Herisor" if distinguished else "🔲 Base Completion Only"
+    )
+    await interaction.followup.send(
+        "Defense of Herisor submission recorded.\n"
+        f"Tier: {tier_line}\n"
+        f"Siege Black Laurels: {'✅' if siege_bl else '🔲'}\n"
+        f"Operations Black Laurels (both): {'✅' if (term_bl and rec_bl) else '🔲'}",
+        ephemeral=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # /verifier_standing  command
 # ---------------------------------------------------------------------------
 
@@ -1513,6 +1880,21 @@ async def _challenge_progress_inner(
             current = _unique_mission_count(key)
             line = f"**{label}**\n{_bar(current, total, role_id)}"
         challenge_lines.append(line)
+
+    # Defense of Herisor submissions are manually validated via /submit_defense_of_herisor.
+    herisor_subs = user_progress.get("defense_of_herisor_submissions", [])
+    if not isinstance(herisor_subs, list):
+        herisor_subs = []
+    herisor_base = len(herisor_subs) > 0
+    herisor_distinguished = any(bool(s.get("distinguished")) for s in herisor_subs if isinstance(s, dict))
+    herisor_valor = any(bool(s.get("distinguished_with_valor")) for s in herisor_subs if isinstance(s, dict))
+    challenge_lines.append(f"**Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1)}")
+    challenge_lines.append(
+        f"**Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1)}"
+    )
+    challenge_lines.append(
+        f"**Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1)}"
+    )
 
     # --- Crux Terminatus eligibility checklist ---
     # All requirements are evaluated live against current roles and AAR records.

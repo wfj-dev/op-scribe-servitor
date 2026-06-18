@@ -252,6 +252,9 @@
     "submit_kill_log": {
       "min_rank": "Watch Brother"
     },
+    "submit_defense_of_herisor": {
+      "min_rank": "Watch Brother"
+    },
     "revoke_slay": {
       "roles": [
         "Watch Apothecary",

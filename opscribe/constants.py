@@ -134,6 +134,8 @@ BLACK_LAURELS_ROLE_ID = 1440108298115485716
 LEVIATHAN_PROTOCOL_ROLE_ID = 1486066148834541619
 # Black Reef Persecution role ID - allows Black Laurels with Hard-Stratagem when present on Mission line
 BLACK_REEF_PERSECUTION_ROLE_ID = 1496892435496833054
+# Defense of Herisor mission tag role ID (must be present on Mission line for challenge submissions)
+HERISOR_DEFENSE_TAG_ROLE_ID = 1511108024922673233
 # Dual Vigil tag role ID - used on the Mission line in AARs (detection only)
 DUAL_VIGIL_ROLE_ID = 1509277797611470931
 # Dual Vigil award role ID - the role actually granted when the challenge is completed
@@ -238,6 +240,9 @@ BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
 DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
 CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
 THE_ORDER_OMEGA_ROLE_ID = 1502135764312526858
+HERISOR_DEFENSE_MEDAL_ROLE_ID = 1511108645104910526
+DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID = 1511109108231700690
+DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID = 1511109325769281633
 
 # ---------------------------------------------------------------------------
 # Specialist award thresholds and role mappings
@@ -364,6 +369,9 @@ CHALLENGE_ROLES = [
     (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
     (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
     (1502135764312526858, "The Order Omega", "TheOrderOmega"),
+    (1511108645104910526, "Herisor Defense Medal", None),
+    (1511109108231700690, "Distinguished Herisor Defense Medal", None),
+    (1511109325769281633, "Distinguished Herisor Defense Medal with Valor", None),
 ]
 
 # ---------------------------------------------------------------------------
