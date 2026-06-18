@@ -54,6 +54,13 @@ BLACK_LAURELS_REQUIRED_MISSIONS = {
 }
 BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
 
+# Members who had Order Omega wrongly revoked — fully qualified (all 13 missions
+# logged in challenge_progress.json) but stripped by the grace-period run.
+ORDER_OMEGA_REVOKED_USER_IDS = [
+    1294159011331051530,
+    152625031183073281,
+]
+
 # ---------------------------------------------------------------------------
 # Members confirmed to have had Black Laurels erroneously revoked.
 # Source: promotion_tracking.json entries where black_laurels_notified=False.
@@ -179,6 +186,21 @@ def _meets_crux_requirements(member: discord.Member, aar_records: dict) -> tuple
     return (len(failures) == 0), failures
 
 
+def _fix_challenge_progress_notified(uid: int, key: str) -> None:
+    """Re-add a challenge key to the notified list in challenge_progress.json."""
+    path = DATA_DIR / "challenge_progress.json"
+    with open(path) as f:
+        data = json.load(f)
+    uid_str = str(uid)
+    if uid_str in data:
+        notified = data[uid_str].get("notified", [])
+        if key not in notified:
+            notified.append(key)
+            data[uid_str]["notified"] = notified
+            with open(path, "w") as f:
+                json.dump(data, f, indent=2)
+
+
 def _fix_promotion_tracking(restored_ids: list[int]) -> None:
     path = DATA_DIR / "promotion_tracking.json"
     with open(path) as f:
@@ -225,6 +247,7 @@ async def main() -> None:
     @client.event
     async def on_ready():
         print(f"Logged in as {client.user}")
+        print("Connecting to guild and loading member cache (this can take a few minutes)...")
         try:
             guild = None
             if guild_id:
@@ -241,9 +264,12 @@ async def main() -> None:
                 await client.close()
                 return
 
+            print(f"Guild: {guild.name} ({guild.id}) — loading member cache...")
             await guild.chunk()  # ensure member cache is populated
+            print(f"Member cache loaded ({len(guild.members)} members).")
 
             bl_role = guild.get_role(BLACK_LAURELS_ROLE_ID)
+            oo_role = guild.get_role(THE_ORDER_OMEGA_ROLE_ID)
             crux_role = guild.get_role(CRUX_TERMINATUS_ROLE_ID)
             if bl_role is None:
                 sys.exit("ERROR: Black Laurels role not found in guild.")
@@ -259,6 +285,7 @@ async def main() -> None:
             bl_not_in_server = 0
             crux_restored = 0
             crux_skipped_ineligible = 0
+            oo_restored = 0
 
             print(f"\nProcessing {len(AFFECTED_USER_IDS)} affected members...\n")
 
@@ -313,12 +340,36 @@ async def main() -> None:
                         if len(failures) == 1:
                             print(f"  [{uid}] {name}: Crux not restored — {failures[0]}")
 
+            # --- Restore Order Omega for the 2 wrongly revoked members ---
+            print(f"\nRestoring Order Omega for {len(ORDER_OMEGA_REVOKED_USER_IDS)} members...")
+            for uid in ORDER_OMEGA_REVOKED_USER_IDS:
+                member = guild.get_member(uid)
+                if member is None:
+                    print(f"  [{uid}] NOT IN SERVER — skipping OO")
+                    continue
+                name = member.display_name
+                if oo_role is None:
+                    print("  WARNING: Order Omega role not found in guild — skipping")
+                    break
+                if oo_role in member.roles:
+                    print(f"  [{uid}] {name}: OO already present — skipping")
+                else:
+                    try:
+                        await member.add_roles(oo_role, reason="Recovery: Order Omega wrongly revoked by grace-period run")
+                        _fix_challenge_progress_notified(uid, "order_omega")
+                        print(f"  [{uid}] {name}: ✓ Order Omega restored")
+                        oo_restored += 1
+                        await asyncio.sleep(0.4)
+                    except Exception as e:
+                        print(f"  [{uid}] {name}: ERROR adding OO role: {e}")
+
             print(f"\n=== ROLE RESTORATION COMPLETE ===")
             print(f"  Black Laurels restored:      {bl_restored}")
             print(f"  Black Laurels already held:  {bl_already_had}")
             print(f"  Not in server:               {bl_not_in_server}")
             print(f"  Crux Terminatus restored:    {crux_restored}")
             print(f"  Crux ineligible (skipped):   {crux_skipped_ineligible}")
+            print(f"  Order Omega restored:        {oo_restored}")
 
             # Fix data files
             print()
