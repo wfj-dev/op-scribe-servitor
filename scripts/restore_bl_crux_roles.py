@@ -216,7 +216,7 @@ async def main() -> None:
 
     with open(CONFIG_PATH) as f:
         config = json.load(f)
-    guild_id = int(config["guild_id"])
+    guild_id = config.get("guild_id")  # may be None; fall back to first guild
 
     intents = discord.Intents.default()
     intents.members = True
@@ -226,10 +226,20 @@ async def main() -> None:
     async def on_ready():
         print(f"Logged in as {client.user}")
         try:
-            guild = client.get_guild(guild_id)
+            guild = None
+            if guild_id:
+                guild = client.get_guild(int(guild_id))
+                if guild is None:
+                    try:
+                        guild = await client.fetch_guild(int(guild_id))
+                    except Exception:
+                        pass
             if guild is None:
-                print("ERROR: guild not found in cache, trying fetch...")
-                guild = await client.fetch_guild(guild_id)
+                guild = client.guilds[0] if client.guilds else None
+            if guild is None:
+                print("ERROR: could not resolve guild — bot is not in any guild.")
+                await client.close()
+                return
 
             await guild.chunk()  # ensure member cache is populated
 
