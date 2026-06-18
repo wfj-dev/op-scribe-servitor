@@ -1345,6 +1345,21 @@ async def _enforce_challenge_grace_periods(
                     uid = str(member.id)
                     user_cp = cp_data.get(uid, {})
                     logged = {m["mission"] for m in user_cp.get(challenge_name, [])}
+                    # For Order Omega, augment with live datastore data so that a stale
+                    # challenge_progress.json doesn't trigger a false revocation.
+                    # (Mirrors the _unique_missions live-union logic in terminus_ops.py.)
+                    if challenge_name == "order_omega" and _g.DATASTORE:
+                        for _rec in _g.DATASTORE.iter_records():
+                            if uid not in {str(b) for b in (_rec.get("brother_ids") or [])}:
+                                continue
+                            if not (_rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")):
+                                continue
+                            if (_rec.get("difficulty_class") or "") != "omega_ops":
+                                continue
+                            _raw = re.sub(r"<@&\d+>", "", _rec.get("mission") or _rec.get("mission_name") or "").lower().strip()
+                            _mission = re.split(r"\s*@", _raw)[0].strip()
+                            if _mission in required:
+                                logged.add(_mission)
                     if logged >= required:
                         continue  # still fully qualified
                     missing = sorted(required - logged)
