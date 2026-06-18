@@ -1287,9 +1287,31 @@ async def _enforce_challenge_grace_periods(
         if role is None:
             _g.logger.warning(f"Grace period: role {role_id} not found in guild")
             continue
-        for member in guild.members:
-            if member.bot or role not in member.roles:
-                continue
+
+        # Safety check: if the AAR datastore produced zero BL mission records for
+        # any member who holds the role, the datastore is likely unavailable or
+        # the scan logic is broken. Revoking under those conditions would be a
+        # mass false-positive. Abort and log so the issue is visible.
+        role_holders = [m for m in guild.members if not m.bot and role in m.roles]
+        holders_with_data = sum(1 for m in role_holders if user_bl_missions.get(str(m.id)))
+        if role_holders and holders_with_data == 0:
+            _g.logger.error(
+                f"Grace period ABORTED for {role.name}: {len(role_holders)} members hold the role "
+                f"but user_bl_missions is empty for all of them — datastore scan likely failed. "
+                f"No roles will be revoked this cycle."
+            )
+            continue
+        # Also abort if the map accounts for fewer than half the role holders —
+        # another sign that data is incomplete and mass-revocation would be wrong.
+        if role_holders and holders_with_data < len(role_holders) // 2:
+            _g.logger.error(
+                f"Grace period ABORTED for {role.name}: only {holders_with_data}/{len(role_holders)} "
+                f"role holders have BL mission data — datastore scan appears incomplete. "
+                f"No roles will be revoked this cycle."
+            )
+            continue
+
+        for member in role_holders:
             uid = str(member.id)
             completed = user_bl_missions.get(uid, set())
             if completed >= required:
@@ -1500,26 +1522,7 @@ async def _check_promotion_milestones():
         # Build a map of user_id -> set of completed Black Laurels missions
         user_bl_missions: Dict[str, set] = {}
         for rec in _g.DATASTORE.iter_records():
-            difficulty = (rec.get("difficulty") or "").lower()
-            black_laurels_in_difficulty = "black" in difficulty and "laurel" in difficulty
-            black_laurels_in_mission = rec.get("black_laurels_in_mission", False)
-
-            # Check grace period
-            is_in_grace_period = True
-            try:
-                timestamp_str = rec.get("timestamp", "")
-                if timestamp_str:
-                    message_created_at = datetime.fromisoformat(timestamp_str)
-                    if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
-                        is_in_grace_period = False
-            except Exception:
-                pass
-
-            if is_in_grace_period:
-                has_black_laurels = black_laurels_in_difficulty or black_laurels_in_mission
-            else:
-                has_black_laurels = black_laurels_in_difficulty
-
+            has_black_laurels = rec.get("black_laurels_in_mission", False) or rec.get("black_laurels_in_difficulty", False)
             if not has_black_laurels:
                 continue
 

@@ -9,6 +9,7 @@ Tests cover:
 - loa_ops._get_active_loa: expiry logic
 """
 
+import asyncio
 import sys
 import types
 import pytest
@@ -25,6 +26,7 @@ def _install_discord_stub():
         return
     discord_stub = types.ModuleType("discord")
     discord_stub.Member = object
+    discord_stub.User = object
     discord_stub.Guild = object
     discord_stub.Embed = object
     discord_stub.File = object
@@ -74,6 +76,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _check_deployed,
     _is_eligible_to_sign_up,
     _compute_honors,
+    _post_batch_summary,
     _STRAT_TABLE,
     _CADRE_SPECIALIST_ROLES,
     _REQ_TIER_NO_REQ,
@@ -637,3 +640,70 @@ class TestComputeHonors:
         assert result["companies"]["Primus"]["contributing_kts"] == 2
         assert result["companies"]["Primus"]["tier_index"] >= 2
 
+
+class TestPostBatchSummaryBatchSelection:
+    def test_prefers_latest_non_unknown_batch(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        selected_ids = []
+
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: False)
+        monkeypatch.setattr(tp, "_b", lambda *_args, **_kwargs: {})
+        monkeypatch.setattr(tp, "_load_honors", lambda: {"kill_teams": {}, "companies": {}})
+        monkeypatch.setattr(tp, "_save_honors", lambda _data: None)
+        monkeypatch.setattr(tp, "_compute_honors", lambda _data: {"kill_teams": {}, "companies": {}})
+        monkeypatch.setattr(tp, "_rep_delta_for_package", lambda pkg, _status: selected_ids.append(pkg["id"]) or 0)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _get_award_announcement_channel=lambda _member: None,
+                _resolve_killteam_for_member=lambda _member: None,
+            ),
+        )
+
+        data = {
+            "rep": 0.0,
+            "entity_stats": {},
+            "cycle": {},
+            "packages": {
+                "unknown": {"id": "unknown", "status": STATUS_COMPLETED, "generated_at": "not-a-date"},
+                "legacy_old": {"id": "legacy_old", "status": STATUS_COMPLETED, "generated_at": "2026-06-01T12:00:00"},
+                "legacy_new": {"id": "legacy_new", "status": STATUS_COMPLETED, "generated_at": "2026-06-08T12:00:00"},
+            },
+        }
+
+        asyncio.run(_post_batch_summary(None, data))
+        assert selected_ids == ["legacy_new"]
+
+    def test_uses_unknown_when_only_unknown_exists(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        selected_ids = []
+
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: False)
+        monkeypatch.setattr(tp, "_b", lambda *_args, **_kwargs: {})
+        monkeypatch.setattr(tp, "_load_honors", lambda: {"kill_teams": {}, "companies": {}})
+        monkeypatch.setattr(tp, "_save_honors", lambda _data: None)
+        monkeypatch.setattr(tp, "_compute_honors", lambda _data: {"kill_teams": {}, "companies": {}})
+        monkeypatch.setattr(tp, "_rep_delta_for_package", lambda pkg, _status: selected_ids.append(pkg["id"]) or 0)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _get_award_announcement_channel=lambda _member: None,
+                _resolve_killteam_for_member=lambda _member: None,
+            ),
+        )
+
+        data = {
+            "rep": 0.0,
+            "entity_stats": {},
+            "cycle": {},
+            "packages": {
+                "unknown": {"id": "unknown", "status": STATUS_COMPLETED, "generated_at": "not-a-date"},
+            },
+        }
+
+        asyncio.run(_post_batch_summary(None, data))
+        assert selected_ids == ["unknown"]
