@@ -530,8 +530,8 @@ def _tier_window(tiers: list, current: str) -> str:
     if end - start < _HONORS_WINDOW:
         start = max(0, end - _HONORS_WINDOW)
     window = tiers[start:end]
-    parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
-    return f"{_OX_STANDING_EMOJI} " + " · ".join(parts)
+    parts = [f"**{t}**" if t == current else t for t in window]
+    return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
 
 
 def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
