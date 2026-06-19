@@ -413,10 +413,22 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             #   - Hard-Stratagem Termination with Herisor tag
             #   - Hard-Stratagem Reclamation with Herisor tag
             _waves_ok = False
-            try:
-                _waves_ok = int(waves) >= 15
-            except Exception:
-                _waves_ok = False
+            _brother_waves = record.get("brother_waves") or {}
+            _member_wave_counts = []
+            if isinstance(_brother_waves, dict):
+                for _wv in _brother_waves.values():
+                    try:
+                        _member_wave_counts.append(int(_wv))
+                    except Exception:
+                        pass
+
+            if _member_wave_counts:
+                _waves_ok = max(_member_wave_counts) >= 15
+            else:
+                try:
+                    _waves_ok = int(waves) >= 15
+                except Exception:
+                    _waves_ok = False
 
             _is_herisor_siege = herisor_defense and difficulty_class == "hard_siege" and _waves_ok
             _is_herisor_term = herisor_defense and difficulty_class == "hard_stratagem" and mission_name == "termination"
