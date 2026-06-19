@@ -3,8 +3,11 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from opscribe.bot import _process_challenge_tracking, parse_aar, validate_aar
+from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, parse_aar, validate_aar
 from opscribe.constants import (
+    BLACK_LAURELS_ROLE_ID,
+    BLACK_REEF_PERSECUTION_ROLE_ID,
+    CHAPTER_APPROVED_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
@@ -52,6 +55,26 @@ class _FakeGuild:
         if member_id == self._member.id:
             return self._member
         return None
+
+
+class _FakeChannel:
+    def __init__(self, guild, messages):
+        self.guild = guild
+        self._messages = messages
+
+    async def fetch_message(self, msg_id):
+        return self._messages[msg_id]
+
+
+class _FakeRecheckMessage:
+    def __init__(self, msg_id):
+        self.id = msg_id
+        self.created_at = datetime.utcnow()
+        self.jump_url = f"https://discord.example/jump/{msg_id}"
+        self.channel = self
+
+    async def fetch_message(self, _msg_id):
+        raise Exception("No reply message")
 
 
 def test_parse_and_validate_basic_stratagem():
@@ -337,3 +360,226 @@ def test_process_challenge_tracking_herisor_awards_and_normalized_missions():
     assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in award_role_ids
+
+
+def _make_black_laurels_exception_message(
+    *,
+    mission_line: str,
+    difficulty_name: str,
+    brothers: int = 3,
+    waves_line: str = "",
+    include_herisor: bool = False,
+    include_black_reef: bool = False,
+):
+    users = [FakeUser(800 + i, f"BLBrother{i}", nick=f"BLBrother{i}") for i in range(brothers)]
+    role_mentions = [FakeRole(8800, difficulty_name), FakeRole(BLACK_LAURELS_ROLE_ID, "Black Laurels")]
+    mission_suffix = ""
+    if include_herisor:
+        role_mentions.append(FakeRole(HERISOR_DEFENSE_TAG_ROLE_ID, "Defense of Herisor"))
+        mission_suffix += f" <@&{HERISOR_DEFENSE_TAG_ROLE_ID}>"
+    if include_black_reef:
+        role_mentions.append(FakeRole(BLACK_REEF_PERSECUTION_ROLE_ID, "Black Reef Persecution"))
+        mission_suffix += f" <@&{BLACK_REEF_PERSECUTION_ROLE_ID}>"
+    brothers_lines = "".join(f" - <@{u.id}>\n" for u in users)
+    waves = f"{waves_line}\n" if waves_line else ""
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Mission: {mission_line} <@&{BLACK_LAURELS_ROLE_ID}>{mission_suffix}\n"
+        "Rank: A\n"
+        f"Difficulty: <@&{role_mentions[0].id}>\n"
+        f"Gene-seed: <@{users[0].id}>\n"
+        "Armory Data: 3\n"
+        f"{waves}"
+        "Brothers:\n"
+        f"{brothers_lines}"
+        "++ END OF REPORT ++\n"
+    )
+    return FakeMessage(content, mentions=users, role_mentions=role_mentions)
+
+
+def test_black_laurels_hard_strat_herisor_termination_valid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Termination",
+        difficulty_name="Hard-Stratagem",
+        include_herisor=True,
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected Herisor Hard-Strat Termination BL to validate, got: {errs}"
+
+
+def test_black_laurels_hard_strat_herisor_wrong_mission_invalid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Inferno",
+        difficulty_name="Hard-Stratagem",
+        include_herisor=True,
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("Defense_of_Herisor with @Hard-Stratagem is only valid" in e for e in errs), errs
+
+
+def test_black_laurels_hard_siege_herisor_waves_15_valid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Reclamation",
+        difficulty_name="Hard-Siege",
+        include_herisor=True,
+        waves_line="Waves: 15",
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected Herisor Hard-Siege BL with Waves 15 to validate, got: {errs}"
+
+
+def test_black_laurels_hard_siege_herisor_waves_below_15_invalid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Reclamation",
+        difficulty_name="Hard-Siege",
+        include_herisor=True,
+        waves_line="Waves: 10",
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("@Defense_of_Herisor with @Hard-Siege requires Waves 15+." in e for e in errs), errs
+
+
+def test_black_laurels_hard_siege_without_exceptions_invalid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Reclamation",
+        difficulty_name="Hard-Siege",
+        include_herisor=False,
+        waves_line="Waves: 20",
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("@Black_Laurels requires @Absolute or @Omega on the Difficulty line" in e for e in errs), errs
+
+
+def test_black_laurels_black_reef_hard_strat_still_valid():
+    msg = _make_black_laurels_exception_message(
+        mission_line="Inferno",
+        difficulty_name="Hard-Stratagem",
+        include_black_reef=True,
+        brothers=2,
+    )
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected Black Reef Hard-Strat BL path to remain valid, got: {errs}"
+
+
+def test_chapter_approved_role_mention_is_detected():
+    u1 = FakeUser(9501, "ChapA", nick="ChapA")
+    u2 = FakeUser(9502, "ChapB", nick="ChapB")
+    difficulty = FakeRole(9801, "Normal-Stratagem")
+    chapter_approved = FakeRole(CHAPTER_APPROVED_ROLE_ID, "Chapter Approved")
+    msg = FakeMessage(
+        (
+            "++ MISSION REPORT ++\n"
+            "Mission: Inferno\n"
+            "Rank: A\n"
+            f"Difficulty: <@&{difficulty.id}>\n"
+            f"Mission Tag: <@&{CHAPTER_APPROVED_ROLE_ID}>\n"
+            f"Gene-seed: <@{u1.id}>\n"
+            "Armory Data: 1\n"
+            "Brothers:\n"
+            f" - <@{u1.id}>\n"
+            f" - <@{u2.id}>\n"
+            "++ END OF REPORT ++\n"
+        ),
+        mentions=[u1, u2],
+        role_mentions=[difficulty, chapter_approved],
+    )
+    rec = parse_aar(msg)
+    assert rec.get("chapter_approved") is True
+
+
+def test_editing_existing_aar_replaces_challenge_progress_entry():
+    role = SimpleNamespace(id=999003, name="Watch Brother")
+    member = SimpleNamespace(id=889, display_name="Brother889", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    original = {
+        "mission": "Inferno",
+        "difficulty_class": "absolute_ops",
+        "black_laurels_in_mission": True,
+        "black_laurels_in_difficulty": False,
+        "brother_ids": [str(member.id)],
+        "aar_id": "edited-aar-1",
+        "message_url": "https://discord.example/aar/original",
+        "timestamp": "2026-06-19T00:10:00Z",
+    }
+    edited = {
+        "mission": "Reclamation",
+        "difficulty_class": "absolute_ops",
+        "black_laurels_in_mission": True,
+        "black_laurels_in_difficulty": False,
+        "brother_ids": [str(member.id)],
+        "aar_id": "edited-aar-1",
+        "message_url": "https://discord.example/aar/edited",
+        "timestamp": "2026-06-19T00:11:00Z",
+    }
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        asyncio.run(_process_challenge_tracking(original, guild))
+        asyncio.run(_process_challenge_tracking(edited, guild))
+
+    entries = progress_data[str(member.id)]["black_laurels"]
+    missions = [e.get("mission") for e in entries]
+    aar_ids = [str(e.get("aar_id")) for e in entries]
+
+    assert "reclamation" in missions
+    assert "inferno" not in missions
+    assert aar_ids.count("edited-aar-1") == 1
+
+
+def test_recheck_errors_recovered_aar_updates_challenge_progress():
+    role = SimpleNamespace(id=999004, name="Watch Brother")
+    member = SimpleNamespace(id=890, display_name="Brother890", roles=[role])
+    guild = _FakeGuild(member)
+    msg_id = 123456789
+    channel = _FakeChannel(guild, {msg_id: _FakeRecheckMessage(msg_id)})
+
+    # Simulated previously rejected AAR, now reparsed as valid.
+    recovered_record = {
+        "aar_id": msg_id,
+        "mission": "Inferno",
+        "difficulty_class": "absolute_ops",
+        "black_laurels_in_mission": True,
+        "black_laurels_in_difficulty": False,
+        "brother_ids": [str(member.id)],
+        "message_url": "https://discord.example/aar/recovered",
+        "timestamp": "2026-06-19T01:00:00Z",
+    }
+
+    error_store = {str(msg_id): {"errors": ["old validation error"]}}
+    progress_data = {}
+
+    def _fake_load_json_dict(path):
+        # _run_recheck_errors only needs the error archive in this test.
+        return error_store
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+        patch("opscribe.aar_ops._load_json_dict", side_effect=_fake_load_json_dict),
+        patch("opscribe.aar_ops._save_json_dict"),
+        patch("opscribe.aar_ops.has_been_processed", return_value=False),
+        patch("opscribe.aar_ops.parse_aar", return_value=recovered_record),
+        patch("opscribe.aar_ops.validate_aar", return_value=[]),
+        patch("opscribe.aar_ops.save_aar_record"),
+        patch("opscribe.aar_ops._set_aar_reaction"),
+        patch("opscribe.aar_ops._send_challenge_eligibility_notifications"),
+    ):
+        fixed, still_broken = asyncio.run(_run_recheck_errors(channel, span_days=None))
+
+    assert fixed == 1
+    assert still_broken == 0
+    entries = progress_data[str(member.id)]["black_laurels"]
+    assert any(str(e.get("aar_id")) == str(msg_id) for e in entries)
