@@ -195,6 +195,32 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     _normalized, _changed = _normalize_progress_entries(_entries)
                     if _changed:
                         user_progress[_k] = _normalized
+
+            # Keep challenge progress in sync when an already-accepted AAR is edited:
+            # remove any previous contribution for this same AAR ID, then re-apply
+            # the current parsed/validated record below.
+            _aar_id_str = str(aar_id)
+            for _k in (
+                "sok_g_pipehitter",
+                "kadaku_campaign",
+                "black_reef",
+                "distinguished_black_reef",
+                "dual_vigil",
+                "black_laurels",
+                "order_omega",
+                "herisor_defense_siege",
+                "herisor_defense_termination",
+                "herisor_defense_reclamation",
+                "crux_bl_aars",
+            ):
+                _entries = user_progress.get(_k)
+                if isinstance(_entries, list):
+                    _pruned = [
+                        e for e in _entries
+                        if not (isinstance(e, dict) and str(e.get("aar_id", "")) == _aar_id_str)
+                    ]
+                    if len(_pruned) != len(_entries):
+                        user_progress[_k] = _pruned
             
             # Update display name if we have the member
             if member:
@@ -2640,6 +2666,9 @@ def parse_aar(message: discord.Message):
                 waves = int(parts[1].strip())
             except Exception:
                 waves = None
+            # Siege templates often omit Mission and place challenge tags on Wave(s) line.
+            if f"<@&{HERISOR_DEFENSE_TAG_ROLE_ID}>" in raw_line:
+                herisor_defense_in_mission = True
 
     difficulty_class = classify_difficulty(difficulty)
     points_for_op = compute_points_for_op(difficulty_class, waves)
@@ -2704,7 +2733,7 @@ def parse_aar(message: discord.Message):
     # Detect Chapter Approved role mention anywhere in the message.
     chapter_approved = role_mentioned(
         message,
-        role_id=1467960627795464344,
+        role_id=CHAPTER_APPROVED_ROLE_ID,
         role_name="chapter approved",
     )
 
@@ -2940,8 +2969,15 @@ def validate_aar(record: dict):
         try:
             timestamp_str = record.get("timestamp", "")
             if timestamp_str:
-                # Parse ISO format timestamp
-                message_created_at = datetime.fromisoformat(timestamp_str)
+                # Parse ISO format timestamp (accept trailing 'Z' and normalize to UTC)
+                normalized_timestamp = timestamp_str.strip()
+                if normalized_timestamp.endswith("Z"):
+                    normalized_timestamp = normalized_timestamp[:-1] + "+00:00"
+                message_created_at = datetime.fromisoformat(normalized_timestamp)
+                if message_created_at.tzinfo is None:
+                    message_created_at = message_created_at.replace(tzinfo=timezone.utc)
+                else:
+                    message_created_at = message_created_at.astimezone(timezone.utc)
                 if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
                     is_in_grace_period = False
         except Exception:
@@ -2954,9 +2990,36 @@ def validate_aar(record: dict):
         has_absolute = "absolute" in dlower
         has_omega = "omega" in dlower
         has_hard_stratagem = "hard-stratagem" in dlower
+        has_hard_siege = "hard-siege" in dlower
         has_black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
+        has_herisor_defense = record.get("herisor_defense_in_mission", False)
+        mission_lower = (mission or "").lower().strip()
+        mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+        herisor_hard_strat_allowed = mission_clean in {"termination", "reclamation"}
+        waves_ok_for_herisor_siege = False
+        try:
+            if isinstance(brother_waves, dict) and brother_waves:
+                wave_counts = []
+                for value in brother_waves.values():
+                    try:
+                        wave_counts.append(int(value))
+                    except Exception:
+                        pass
+                if wave_counts:
+                    waves_ok_for_herisor_siege = max(wave_counts) >= 15
+            if not waves_ok_for_herisor_siege:
+                waves_ok_for_herisor_siege = int(waves or 0) >= 15
+        except Exception:
+            waves_ok_for_herisor_siege = False
         # Black Reef Persecution on Mission line unlocks Black Laurels with Hard-Stratagem
         bl_hard_strat_unlocked = has_hard_stratagem and has_black_reef_persecution
+        # Defense of Herisor on Mission line can also unlock Black Laurels for:
+        # - Hard-Stratagem Termination/Reclamation
+        # - Hard-Siege with Waves >= 15
+        bl_herisor_hard_unlock = has_herisor_defense and (
+            (has_hard_stratagem and herisor_hard_strat_allowed)
+            or (has_hard_siege and waves_ok_for_herisor_siege)
+        )
 
         if has_black_laurels_difficulty or has_black_laurels_mission:
             # Black Laurels on Omega requires 5 brothers and 0 KIA
@@ -2968,6 +3031,9 @@ def validate_aar(record: dict):
                 kia = record.get("killed_in_action", 0)
                 if kia != 0:
                     errors.append("@Black_Laurels on @Omega requires 0 KIA (no deaths).")
+            elif has_herisor_defense:
+                # @Defense_of_Herisor owns its 3-brother validation in the dedicated block below.
+                pass
             elif bl_hard_strat_unlocked:
                 if len(brothers) not in (2, 3):
                     errors.append("@Black_Laurels with @Black_Reef_Persecution requires 2 or 3 Brothers.")
@@ -2977,12 +3043,10 @@ def validate_aar(record: dict):
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute or @Omega when Black Laurels is present
-                if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
+                if not has_absolute and not has_omega and not bl_hard_strat_unlocked and not bl_herisor_hard_unlock:
                     errors.append("@Black_Laurels requires @Absolute or @Omega on the Difficulty line.")
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
                 if not has_omega and not bl_hard_strat_unlocked:
-                    mission_lower = (mission or "").lower().strip()
-                    mission_clean = re.sub(r"<.*", "", mission_lower).strip()
                     if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
@@ -2994,15 +3058,14 @@ def validate_aar(record: dict):
                 # Exception: @Hard-Stratagem is also allowed when @Black_Reef_Persecution is on the Mission line
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append("@Black_Laurels must be placed on the Mission line only.")
-                if not has_absolute and not has_omega and not bl_hard_strat_unlocked:
+                if not has_absolute and not has_omega and not bl_hard_strat_unlocked and not bl_herisor_hard_unlock:
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
-                        "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line)."
+                        "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line, "
+                        "or @Hard-Stratagem/@Hard-Siege when @Defense_of_Herisor is on the Mission line)."
                     )
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
                 if not has_omega and not bl_hard_strat_unlocked:
-                    mission_lower = (mission or "").lower().strip()
-                    mission_clean = re.sub(r"<.*", "", mission_lower).strip()
                     if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
                         errors.append(
                             "@Black_Laurels may only be used on eligible missions: "
@@ -3029,16 +3092,18 @@ def validate_aar(record: dict):
                     "Exfiltration, Termination, Reclamation, Disruption, Purgation."
                 )
 
-        # Defense of Herisor tag validation: mention-only tag is parsed from Mission line.
+        # Defense of Herisor tag validation: mention-only tag is parsed from Mission line
+        # (and from Waves line for Siege templates).
         # If present, enforce challenge-safe operation constraints at ingest time.
-        has_herisor_defense = record.get("herisor_defense_in_mission", False)
         if has_herisor_defense:
-            has_hard_stratagem = "hard-stratagem" in dlower
-            has_hard_siege = "hard-siege" in dlower
             if not has_hard_stratagem and not has_hard_siege:
                 errors.append("@Defense_of_Herisor requires @Hard-Stratagem or @Hard-Siege on the Difficulty line.")
             if len(brothers) != 3:
                 errors.append("@Defense_of_Herisor requires exactly 3 Brothers.")
+            if has_hard_stratagem and not herisor_hard_strat_allowed:
+                errors.append("@Defense_of_Herisor with @Hard-Stratagem is only valid for Termination or Reclamation.")
+            if has_hard_siege and not waves_ok_for_herisor_siege:
+                errors.append("@Defense_of_Herisor with @Hard-Siege requires Waves 15+.")
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
