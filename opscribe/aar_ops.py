@@ -148,10 +148,15 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     black_laurels = record.get("black_laurels_in_mission", False) or record.get("black_laurels_in_difficulty", False)
     # Dual Vigil tag must be on the Mission line; tracked separately from Black Laurels.
     dual_vigil = record.get("dual_vigil_in_mission", False)
+    # Defense of Herisor tag must be on Mission line (mention-only).
+    herisor_defense = record.get("herisor_defense_in_mission", False)
     difficulty_class = record.get("difficulty_class") or ""
+    waves = record.get("waves")
 
-    # Skip if no mission name or no participants
-    if not mission_name or not brother_ids:
+    # Skip if no participants. Mission can be omitted for Herisor Hard-Siege.
+    if not brother_ids:
+        return notifications
+    if not mission_name and not (herisor_defense and difficulty_class == "hard_siege"):
         return notifications
 
     # Load current progress
@@ -181,6 +186,9 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 "dual_vigil",
                 "black_laurels",
                 "order_omega",
+                "herisor_defense_siege",
+                "herisor_defense_termination",
+                "herisor_defense_reclamation",
             ):
                 _entries = user_progress.get(_k)
                 if isinstance(_entries, list):
@@ -398,6 +406,115 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["black_laurels"] if m["message_url"]]
                     notifications.append((user_id_str, "Black Laurels", BLACK_LAURELS_ROLE_ID, "black_laurels", aar_urls))
                     notified_challenges.append("black_laurels")
+
+            # === Defense of Herisor tracking (auto-award; no submit command required) ===
+            # Tally individually by qualifying AAR categories:
+            #   - Hard-Siege, Wave 15+ with Herisor tag
+            #   - Hard-Stratagem Termination with Herisor tag
+            #   - Hard-Stratagem Reclamation with Herisor tag
+            _waves_ok = False
+            try:
+                _waves_ok = int(waves) >= 15
+            except Exception:
+                _waves_ok = False
+
+            _is_herisor_siege = herisor_defense and difficulty_class == "hard_siege" and _waves_ok
+            _is_herisor_term = herisor_defense and difficulty_class == "hard_stratagem" and mission_name == "termination"
+            _is_herisor_rec = herisor_defense and difficulty_class == "hard_stratagem" and mission_name == "reclamation"
+
+            if _is_herisor_siege or _is_herisor_term or _is_herisor_rec:
+                _herisor_key = (
+                    "herisor_defense_siege"
+                    if _is_herisor_siege
+                    else ("herisor_defense_termination" if _is_herisor_term else "herisor_defense_reclamation")
+                )
+                if _herisor_key not in user_progress:
+                    user_progress[_herisor_key] = []
+
+                _existing_ids = {str(m.get("aar_id")) for m in user_progress[_herisor_key] if isinstance(m, dict)}
+                if str(aar_id) not in _existing_ids:
+                    user_progress[_herisor_key].append(
+                        {
+                            "mission": mission_name if mission_name else "siege",
+                            "aar_id": aar_id,
+                            "message_url": message_url,
+                            "timestamp": timestamp,
+                            "black_laurels": bool(black_laurels),
+                        }
+                    )
+
+                _siege_entries = user_progress.get("herisor_defense_siege", [])
+                _term_entries = user_progress.get("herisor_defense_termination", [])
+                _rec_entries = user_progress.get("herisor_defense_reclamation", [])
+
+                _has_base = bool(_siege_entries and _term_entries and _rec_entries)
+                _siege_bl = any(bool(e.get("black_laurels")) for e in _siege_entries if isinstance(e, dict))
+                _term_bl = any(bool(e.get("black_laurels")) for e in _term_entries if isinstance(e, dict))
+                _rec_bl = any(bool(e.get("black_laurels")) for e in _rec_entries if isinstance(e, dict))
+                _has_distinguished = _has_base and (_siege_bl or (_term_bl and _rec_bl))
+                _has_valor = _has_base and _siege_bl and _term_bl and _rec_bl
+
+                _herisor_urls = sorted(
+                    {
+                        m.get("message_url", "")
+                        for m in (_siege_entries + _term_entries + _rec_entries)
+                        if isinstance(m, dict) and m.get("message_url")
+                    }
+                )
+
+                if (
+                    _has_base
+                    and "herisor_defense" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=HERISOR_DEFENSE_MEDAL_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Herisor Defense Medal",
+                            HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                            "herisor_defense_medal",
+                            _herisor_urls,
+                        )
+                    )
+                    notified_challenges.append("herisor_defense")
+
+                if (
+                    _has_distinguished
+                    and "distinguished_herisor_defense" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Distinguished Herisor Defense Medal",
+                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                            "distinguished_herisor_defense_medal",
+                            _herisor_urls,
+                        )
+                    )
+                    notified_challenges.append("distinguished_herisor_defense")
+
+                if (
+                    _has_valor
+                    and "distinguished_herisor_defense_valor" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Distinguished Herisor Defense Medal with Valor",
+                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+                            "distinguished_herisor_defense_medal_with_valor",
+                            _herisor_urls,
+                        )
+                    )
+                    notified_challenges.append("distinguished_herisor_defense_valor")
 
             # === Crux Terminatus tracking (auto-verification) ===
             # Auto-verify: Watch Veteran rank, 2+ SOK-G missions, All 8 Black Laurels, 2+ Terminus Slayer classes,

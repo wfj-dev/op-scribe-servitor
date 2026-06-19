@@ -2055,6 +2055,29 @@ def _get_order_omega_announcement(
     )
 
 
+_HERISOR_DEFENSE_PROCLAMATION = (
+    "After the last of the Charcaradon's Void Ships departed the Black Reef, "
+    "there were several days spent re-arming and repairing both materiel and Marines. "
+    "En-route back to the Watch Fortress, the Battle Barge received the call...\n\n"
+    "**BEGIN ENCRYPTED MESSAGE.....\n\n"
+    "CLEARANCE LEVEL: INQUISITORIAL\n\n"
+    "BY AUTHORITY OF: EPISTOLARY BORGOS, LIBRARIAN, VII LEGION, 10TH COMPANY - CURRENT STATION - "
+    "RESEARCH FACILITY EPSILON - HERISOR -JERICHO REACH - ORPHEUS SALIENT\n\n"
+    "TO: ANY INQUISITORIAL FORCES IN AO\n\n"
+    "Imperial Research Facility Epsilon Under Tyranid and Heretic Attack.\n"
+    "Research focus - Stunt Tyranid Evolutionary processes. Assets considered Absolute.\n"
+    "Prototype Evolutionary Impedance Virus Bomb must not be lost or fall into Heretic Hands.\n"
+    "Navis Imperalis forces engaged with fragments of Hive Fleet Dagon at 01:30 hours\n"
+    "Contact with Grand Cruiser Indomitable lost at 02:15. Status of vessel and personnel unknown.\n"
+    "VII Legion will hold Epsilon at all costs.\n"
+    "Request Local Forces to cripple Hive Fleet Space Based Elements\n"
+    "Request Deathwatch Force to cripple ground based command elements.\n"
+    "Imperial worlds spinward from Hadex Anomaly bolstering defenses.\n\n"
+    "Primarch-Progenitor, to your glory and the glory of Him on Earth!\n\n"
+    "END TRANSMISSION**"
+)
+
+
 def _get_herisor_defense_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -2071,7 +2094,7 @@ def _get_herisor_defense_announcement(
             "**{name}** stood the line at Herisor and held it against every wave.",
         ],
         proclamations=[
-            "The Watch records this action as a confirmed Defense of Herisor completion.",
+            _HERISOR_DEFENSE_PROCLAMATION,
         ],
         chapter_lines={},
         rank_lines={},
@@ -2096,7 +2119,7 @@ def _get_distinguished_herisor_defense_announcement(
             "**{name}** completed the Defense of Herisor under Black Laurels distinction.",
         ],
         proclamations=[
-            "The Watch marks this warrior's Herisor defense record as Distinguished.",
+            _HERISOR_DEFENSE_PROCLAMATION,
         ],
         chapter_lines={},
         rank_lines={},
@@ -2121,7 +2144,7 @@ def _get_distinguished_herisor_defense_valor_announcement(
             "**{name}** held Herisor with full Black Laurels distinction across siege and operations.",
         ],
         proclamations=[
-            "The Watch confers the Herisor Distinguished mark with Valor for complete excellence in all required actions.",
+            _HERISOR_DEFENSE_PROCLAMATION,
         ],
         chapter_lines={},
         rank_lines={},
