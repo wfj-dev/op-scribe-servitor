@@ -2969,8 +2969,15 @@ def validate_aar(record: dict):
         try:
             timestamp_str = record.get("timestamp", "")
             if timestamp_str:
-                # Parse ISO format timestamp
-                message_created_at = datetime.fromisoformat(timestamp_str)
+                # Parse ISO format timestamp (accept trailing 'Z' and normalize to UTC)
+                normalized_timestamp = timestamp_str.strip()
+                if normalized_timestamp.endswith("Z"):
+                    normalized_timestamp = normalized_timestamp[:-1] + "+00:00"
+                message_created_at = datetime.fromisoformat(normalized_timestamp)
+                if message_created_at.tzinfo is None:
+                    message_created_at = message_created_at.replace(tzinfo=timezone.utc)
+                else:
+                    message_created_at = message_created_at.astimezone(timezone.utc)
                 if message_created_at >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
                     is_in_grace_period = False
         except Exception:
@@ -3024,9 +3031,9 @@ def validate_aar(record: dict):
                 kia = record.get("killed_in_action", 0)
                 if kia != 0:
                     errors.append("@Black_Laurels on @Omega requires 0 KIA (no deaths).")
-            elif bl_herisor_hard_unlock:
-                if len(brothers) != 3:
-                    errors.append("@Black_Laurels with @Defense_of_Herisor requires exactly 3 Brothers.")
+            elif has_herisor_defense:
+                # @Defense_of_Herisor owns its 3-brother validation in the dedicated block below.
+                pass
             elif bl_hard_strat_unlocked:
                 if len(brothers) not in (2, 3):
                     errors.append("@Black_Laurels with @Black_Reef_Persecution requires 2 or 3 Brothers.")
@@ -3085,7 +3092,8 @@ def validate_aar(record: dict):
                     "Exfiltration, Termination, Reclamation, Disruption, Purgation."
                 )
 
-        # Defense of Herisor tag validation: mention-only tag is parsed from Mission line.
+        # Defense of Herisor tag validation: mention-only tag is parsed from Mission line
+        # (and from Waves line for Siege templates).
         # If present, enforce challenge-safe operation constraints at ingest time.
         if has_herisor_defense:
             if not has_hard_stratagem and not has_hard_siege:
