@@ -174,7 +174,15 @@ HERISOR_DEFENSE_TAG_ROLE_ID = 1511108024922673233
 
 
 def _make_herisor_message(difficulty_name: str, brother_count: int):
-    """Build a FakeMessage with the Defense of Herisor tag on the Mission line."""
+    """Build a FakeMessage with the Defense of Herisor tag on the Mission line.
+
+    Args:
+        difficulty_name: Role name for the Difficulty line (e.g. 'Hard-Stratagem', 'Normal-Stratagem').
+        brother_count: Number of Brothers to include in the Brothers list.
+
+    Returns:
+        A FakeMessage instance suitable for parse_aar() / validate_aar().
+    """
     users = [FakeUser(400 + i, f"Brother{i}", nick=f"Brother{i}") for i in range(brother_count)]
     difficulty_role = FakeRole(700, difficulty_name)
     herisor_role = FakeRole(HERISOR_DEFENSE_TAG_ROLE_ID, "Defense of Herisor")
