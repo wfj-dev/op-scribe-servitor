@@ -2661,9 +2661,15 @@ def parse_aar(message: discord.Message):
 
         elif lower.startswith("waves:") or lower.startswith("wave:"):
             # Legacy/global waves support (non-siege or old format)
+            # Extract the first number from the line (may have role mentions after it)
             parts = line.split(":", 1)
             try:
-                waves = int(parts[1].strip())
+                remainder = parts[1].strip()
+                match = re.search(r'\d+', remainder)
+                if match:
+                    waves = int(match.group())
+                else:
+                    waves = None
             except Exception:
                 waves = None
             # Siege templates often omit Mission and place challenge tags on Wave(s) line.
