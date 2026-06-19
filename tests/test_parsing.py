@@ -168,3 +168,54 @@ def test_omega_without_kia_line_returns_error():
     assert any("KIA" in e for e in errs), (
         f"Expected a KIA line required error for Omega without KIA line, but got: {errs}"
     )
+
+
+HERISOR_DEFENSE_TAG_ROLE_ID = 1511108024922673233
+
+
+def _make_herisor_message(difficulty_name: str, brother_count: int):
+    """Build a FakeMessage with the Defense of Herisor tag on the Mission line."""
+    users = [FakeUser(400 + i, f"Brother{i}", nick=f"Brother{i}") for i in range(brother_count)]
+    difficulty_role = FakeRole(700, difficulty_name)
+    herisor_role = FakeRole(HERISOR_DEFENSE_TAG_ROLE_ID, "Defense of Herisor")
+
+    brothers_lines = "".join(f" - <@{u.id}>\n" for u in users)
+    gene_seed_user = users[0] if users else FakeUser(400, "Brother0", nick="Brother0")
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Mission: Reclamation <@&{HERISOR_DEFENSE_TAG_ROLE_ID}>\n"
+        "Rank: A\n"
+        f"Difficulty: <@&{difficulty_role.id}>\n"
+        f"Gene-seed: <@{gene_seed_user.id}>\n"
+        "Armory Data: 3\n"
+        "Brothers:\n"
+        f"{brothers_lines}"
+        "++ END OF REPORT ++\n"
+    )
+
+    return FakeMessage(content, mentions=users, role_mentions=[difficulty_role, herisor_role])
+
+
+def test_herisor_wrong_difficulty_returns_error():
+    """Defense of Herisor with Normal-Stratagem (not Hard) should fail validation."""
+    msg = _make_herisor_message(difficulty_name="Normal-Stratagem", brother_count=3)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("herisor_defense_in_mission") is True
+    errs = validate_aar(rec)
+    assert any("Hard-Stratagem" in e or "Hard-Siege" in e for e in errs), (
+        f"Expected a difficulty error for @Defense_of_Herisor without Hard difficulty, but got: {errs}"
+    )
+
+
+def test_herisor_wrong_brother_count_returns_error():
+    """Defense of Herisor with 2 brothers (not exactly 3) should fail validation."""
+    msg = _make_herisor_message(difficulty_name="Hard-Stratagem", brother_count=2)
+    rec = parse_aar(msg)
+    assert rec is not None
+    assert rec.get("herisor_defense_in_mission") is True
+    errs = validate_aar(rec)
+    assert any("3 Brothers" in e or "exactly 3" in e for e in errs), (
+        f"Expected a brother count error for @Defense_of_Herisor with 2 brothers, but got: {errs}"
+    )

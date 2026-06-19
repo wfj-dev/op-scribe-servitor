@@ -121,8 +121,10 @@ def _save_challenge_progress_state(state: dict) -> None:
     tmp = CHALLENGE_PROGRESS_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     if os.path.exists(CHALLENGE_PROGRESS_PATH):
-        shutil.copy2(CHALLENGE_PROGRESS_PATH, bak)
+        os.replace(CHALLENGE_PROGRESS_PATH, bak)
     os.replace(tmp, CHALLENGE_PROGRESS_PATH)
 
 
@@ -189,6 +191,10 @@ async def _resolve_aar_record_for_link(
             return None, None, "That AAR message was not found. Double-check the link."
         except discord.Forbidden:
             return None, None, "Bot lacks permission to read the AAR channel."
+        except discord.HTTPException as exc:
+            if _g.logger:
+                _g.logger.warning(f"Defense of Herisor: Discord API error fetching {aar_link}: {exc}")
+            return None, None, "A Discord API error occurred while fetching the AAR. Please try again."
 
         try:
             from .aar_ops import parse_aar
@@ -1457,13 +1463,6 @@ async def submit_defense_of_herisor(
         )
         return
 
-    # Temporarily disabled until Watch Command re-enables Herisor submissions.
-    await interaction.response.send_message(
-        "Defense of Herisor submission is temporarily disabled until further notice.",
-        ephemeral=True,
-    )
-    return
-
     await interaction.response.defer(ephemeral=True)
 
     # Prevent duplicate AAR links inside the same submission.
@@ -1888,12 +1887,12 @@ async def _challenge_progress_inner(
     herisor_base = len(herisor_subs) > 0
     herisor_distinguished = any(bool(s.get("distinguished")) for s in herisor_subs if isinstance(s, dict))
     herisor_valor = any(bool(s.get("distinguished_with_valor")) for s in herisor_subs if isinstance(s, dict))
-    challenge_lines.append(f"**Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1)}")
+    challenge_lines.append(f"**Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1, HERISOR_DEFENSE_MEDAL_ROLE_ID)}")
     challenge_lines.append(
-        f"**Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1)}"
+        f"**Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
     )
     challenge_lines.append(
-        f"**Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1)}"
+        f"**Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)}"
     )
 
     # --- Crux Terminatus eligibility checklist ---
