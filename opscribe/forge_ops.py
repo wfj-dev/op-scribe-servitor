@@ -2055,6 +2055,104 @@ def _get_order_omega_announcement(
     )
 
 
+_HERISOR_DEFENSE_PROCLAMATION = (
+    "After the last of the Carcharodons' Void Ships departed the Black Reef, "
+    "there were several days spent re-arming and repairing both materiel and Marines. "
+    "En-route back to the Watch Fortress, the Battle Barge received the call...\n\n"
+    "**BEGIN ENCRYPTED MESSAGE.....\n\n"
+    "CLEARANCE LEVEL: INQUISITORIAL\n\n"
+    "BY AUTHORITY OF: EPISTOLARY BORGOS, LIBRARIAN, VII LEGION, 10TH COMPANY - CURRENT STATION - "
+    "RESEARCH FACILITY EPSILON - HERISOR -JERICHO REACH - ORPHEUS SALIENT\n\n"
+    "TO: ANY INQUISITORIAL FORCES IN AO\n\n"
+    "Imperial Research Facility Epsilon Under Tyranid and Heretic Attack.\n"
+    "Research focus - Stunt Tyranid Evolutionary processes. Assets considered Absolute.\n"
+    "Prototype Evolutionary Impedance Virus Bomb must not be lost or fall into Heretic Hands.\n"
+    "Navis Imperalis forces engaged with fragments of Hive Fleet Dagon at 01:30 hours\n"
+    "Contact with Grand Cruiser Indomitable lost at 02:15. Status of vessel and personnel unknown.\n"
+    "VII Legion will hold Epsilon at all costs.\n"
+    "Request Local Forces to cripple Hive Fleet Space Based Elements\n"
+    "Request Deathwatch Force to cripple ground based command elements.\n"
+    "Imperial worlds spinward from Hadex Anomaly bolstering defenses.\n\n"
+    "Primarch-Progenitor, to your glory and the glory of Him on Earth!\n\n"
+    "END TRANSMISSION**"
+)
+
+
+def _get_herisor_defense_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Herisor Defense Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="HERISOR DEFENSE MEDAL",
+        color=0x5D6D7E,
+        openings=[
+            "**{name}** stood the line at Herisor and held it against every wave.",
+        ],
+        proclamations=[
+            _HERISOR_DEFENSE_PROCLAMATION,
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Herisor Defense Medal",
+        award_image="award_herisor_defense_medal.png",
+    )
+
+
+def _get_distinguished_herisor_defense_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Distinguished Herisor Defense Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED HERISOR DEFENSE MEDAL",
+        color=0x2E4053,
+        openings=[
+            "**{name}** completed the Defense of Herisor under Black Laurels distinction.",
+        ],
+        proclamations=[
+            _HERISOR_DEFENSE_PROCLAMATION,
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Distinguished Herisor Defense Medal",
+        award_image="award_distinguished_herisor_defense_medal.png",
+    )
+
+
+def _get_distinguished_herisor_defense_valor_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a Distinguished Herisor Defense Medal with Valor announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED HERISOR DEFENSE MEDAL WITH VALOR",
+        color=0x1B2631,
+        openings=[
+            "**{name}** held Herisor with full Black Laurels distinction across siege and operations.",
+        ],
+        proclamations=[
+            _HERISOR_DEFENSE_PROCLAMATION,
+        ],
+        chapter_lines={},
+        rank_lines={},
+        award_label="Distinguished Herisor Defense Medal with Valor",
+        award_image="award_distinguished_herisor_defense_medal_with_valor.png",
+    )
+
+
 def _get_dual_vigil_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -3481,6 +3579,7 @@ __all__ = [
     "_get_distinguished_pipehitter_announcement",
     "_get_dual_vigil_announcement",
     "_get_emoji_by_name",
+    "_get_herisor_defense_announcement",
     "_get_kadaku_campaign_announcement",
     "_get_lfg_config",
     "_get_lfg_console_role_id",
@@ -3494,6 +3593,8 @@ __all__ = [
     "_get_member_rank_title",
     "_get_oathsworn_announcement",
     "_get_order_omega_announcement",
+    "_get_distinguished_herisor_defense_announcement",
+    "_get_distinguished_herisor_defense_valor_announcement",
     "_get_player_platform",
     "_get_rank_category_for_blend",
     "_get_rank_emoji",

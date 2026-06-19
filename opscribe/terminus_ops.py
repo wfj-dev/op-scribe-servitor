@@ -33,8 +33,11 @@ from .constants import (  # noqa: F401
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
+    DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+    DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     DUAL_VIGIL_REQUIRED_MISSIONS,
     DUAL_VIGIL_ROLE_ID,
+    HERISOR_DEFENSE_MEDAL_ROLE_ID,
     KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
@@ -1513,6 +1516,41 @@ async def _challenge_progress_inner(
             current = _unique_mission_count(key)
             line = f"**{label}**\n{_bar(current, total, role_id)}"
         challenge_lines.append(line)
+
+    # Defense of Herisor is tallied automatically from qualifying tagged AARs.
+    # Backward-compat: also respect legacy command submissions if present.
+    def _as_list(value) -> list:
+        return value if isinstance(value, list) else []
+
+    _herisor_siege = _as_list(user_progress.get("herisor_defense_siege"))
+    _herisor_term = _as_list(user_progress.get("herisor_defense_termination"))
+    _herisor_rec = _as_list(user_progress.get("herisor_defense_reclamation"))
+
+    _auto_base = bool(_herisor_siege and _herisor_term and _herisor_rec)
+    _auto_siege_bl = any(bool(x.get("black_laurels")) for x in _herisor_siege if isinstance(x, dict))
+    _auto_term_bl = any(bool(x.get("black_laurels")) for x in _herisor_term if isinstance(x, dict))
+    _auto_rec_bl = any(bool(x.get("black_laurels")) for x in _herisor_rec if isinstance(x, dict))
+    _auto_distinguished = _auto_base and (_auto_siege_bl or (_auto_term_bl and _auto_rec_bl))
+    _auto_valor = _auto_base and _auto_siege_bl and _auto_term_bl and _auto_rec_bl
+
+    _legacy_subs = _as_list(user_progress.get("defense_of_herisor_submissions"))
+    _legacy_base = len(_legacy_subs) > 0
+    _legacy_distinguished = any(bool(s.get("distinguished")) for s in _legacy_subs if isinstance(s, dict))
+    _legacy_valor = any(bool(s.get("distinguished_with_valor")) for s in _legacy_subs if isinstance(s, dict))
+
+    herisor_base = _auto_base or _legacy_base
+    herisor_distinguished = _auto_distinguished or _legacy_distinguished
+    herisor_valor = _auto_valor or _legacy_valor
+
+    challenge_lines.append(
+        f"**Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1, HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
+    )
+    challenge_lines.append(
+        f"**Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
+    )
+    challenge_lines.append(
+        f"**Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)}"
+    )
 
     # --- Crux Terminatus eligibility checklist ---
     # All requirements are evaluated live against current roles and AAR records.
