@@ -104,36 +104,6 @@ async def _validate_aar_link(
     return None
 
 
-def _load_challenge_progress_state() -> dict:
-    if not os.path.exists(CHALLENGE_PROGRESS_PATH):
-        return {}
-    try:
-        with open(CHALLENGE_PROGRESS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-def _save_challenge_progress_state(state: dict) -> None:
-    bak = CHALLENGE_PROGRESS_PATH + ".bak"
-    tmp = CHALLENGE_PROGRESS_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
-    if os.path.exists(CHALLENGE_PROGRESS_PATH):
-        shutil.copy2(CHALLENGE_PROGRESS_PATH, bak)
-    os.replace(tmp, CHALLENGE_PROGRESS_PATH)
-
-
-def _normalize_mission_name(value: str) -> str:
-    mission = (value or "").lower().strip()
-    mission = re.sub(r"<@&\d+>", "", mission)
-    mission = re.split(r"\s*@", mission, maxsplit=1)[0].strip()
-    mission = re.sub(r"\bdefense\s+of\s+herisor\b", "", mission)
-    mission = re.sub(r"\s+", " ", mission)
-    return mission.strip(" -|:,;")
-
-
 # ---------------------------------------------------------------------------
 # Data helpers
 # ---------------------------------------------------------------------------

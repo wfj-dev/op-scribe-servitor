@@ -2056,7 +2056,7 @@ def _get_order_omega_announcement(
 
 
 _HERISOR_DEFENSE_PROCLAMATION = (
-    "After the last of the Charcaradon's Void Ships departed the Black Reef, "
+    "After the last of the Carcharodons' Void Ships departed the Black Reef, "
     "there were several days spent re-arming and repairing both materiel and Marines. "
     "En-route back to the Watch Fortress, the Battle Barge received the call...\n\n"
     "**BEGIN ENCRYPTED MESSAGE.....\n\n"
