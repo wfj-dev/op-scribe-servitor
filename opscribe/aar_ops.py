@@ -1525,56 +1525,73 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
         cutoff_dt = datetime.utcnow() - timedelta(days=span_days)
     error_entries = _load_json_dict(AAR_ERRORS_PATH)
     if len(error_entries) > 0:
-        # If windowed, compute total within window for progress counters
-        total_errs = 0
-        done_errs = 0
-        if cutoff_dt is not None:
-            # We will determine window membership lazily when fetching messages
-            pass
-        else:
-            total_errs = len(error_entries)
+        ids_to_remove: set[str] = set()
+
+        def _entry_dt_from_meta(aar_id: int, entry: dict) -> Optional[datetime]:
+            ts_raw = entry.get("timestamp") if isinstance(entry, dict) else None
+            if isinstance(ts_raw, str) and ts_raw.strip():
+                try:
+                    dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    return dt
+                except Exception:
+                    pass
+            try:
+                dt = _snowflake_to_datetime(aar_id)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+            except Exception:
+                return None
+
+        candidates: list[tuple[int, str]] = []
         for aar_id_str in list(error_entries.keys()):
             try:
                 aar_id = int(aar_id_str)
             except ValueError:
-                del error_entries[aar_id_str]
+                ids_to_remove.add(aar_id_str)
                 continue
+            if cutoff_dt is not None:
+                entry_dt = _entry_dt_from_meta(aar_id, error_entries.get(aar_id_str, {}))
+                # If we can confidently determine the entry is older than the
+                # requested window, skip before any Discord API fetches.
+                if entry_dt is not None and entry_dt < cutoff_dt:
+                    continue
+            candidates.append((aar_id, aar_id_str))
+
+        total_errs = len(candidates)
+        done_errs = 0
+        for aar_id, aar_id_str in candidates:
             if has_been_processed(aar_id):
                 # If the AAR has been processed since the error was recorded,
                 # remove it from the errors archive rather than touching the
                 # saved records. Previously this removed the record file by
                 # mistake which prevented error entries from being cleared.
                 try:
-                    data = _load_json_dict(AAR_ERRORS_PATH)
                     sid = str(aar_id)
-                    if sid in data:
-                        reply_id = data.get(sid, {}).get("reply_id")
+                    entry = error_entries.get(sid, {}) if isinstance(error_entries, dict) else {}
+                    reply_id = entry.get("reply_id") if isinstance(entry, dict) else None
+                    if reply_id:
                         if reply_id:
                             try:
-                                # reply is in the same channel as original message
-                                dummy_msg = await aar_channel.fetch_message(aar_id)
+                                reply_msg = await aar_channel.fetch_message(int(reply_id))
                                 try:
-                                    reply_msg = await dummy_msg.channel.fetch_message(int(reply_id))
-                                    try:
-                                        await reply_msg.delete()
-                                    except Exception:
-                                        try:
-                                            _g.logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
-                                        except Exception:
-                                            pass
+                                    await reply_msg.delete()
                                 except Exception:
-                                    pass
+                                    try:
+                                        _g.logger.debug(f"Unable to delete reply {reply_id} for AAR {sid}")
+                                    except Exception:
+                                        pass
                             except Exception:
                                 pass
-                        del data[sid]
-                        _save_json_dict(AAR_ERRORS_PATH, data)
+                    ids_to_remove.add(sid)
                 except Exception:
                     pass
                 fixed += 1
                 done_errs += 1
-                if cutoff_dt is None:
-                    if (done_errs % 5 == 0) or (done_errs == total_errs):
-                        _b("_print_progress")("Recheck Errors", done_errs, total_errs)
+                if (done_errs % 5 == 0) or (done_errs == total_errs):
+                    _b("_print_progress")("Recheck Errors", done_errs, total_errs)
                 continue
             try:
                 msg = await aar_channel.fetch_message(aar_id)
@@ -1582,29 +1599,11 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                 msg = None
             if not msg:
                 log_aar_errors(aar_id, ["Original message not found; cannot reprocess."])
-                # Count as broken only for full scans (no reliable timestamp)
-                if cutoff_dt is None:
-                    still_broken += 1
+                still_broken += 1
                 done_errs += 1
-                if cutoff_dt is None:
-                    if (done_errs % 5 == 0) or (done_errs == total_errs):
-                        _b("_print_progress")("Recheck Errors", done_errs, total_errs)
+                if (done_errs % 5 == 0) or (done_errs == total_errs):
+                    _b("_print_progress")("Recheck Errors", done_errs, total_errs)
                 continue
-            # Window filter: skip messages older than cutoff
-            if cutoff_dt is not None:
-                try:
-                    msg_dt = msg.created_at
-                    if msg_dt.tzinfo is not None:
-                        msg_dt = msg_dt.astimezone(timezone.utc).replace(tzinfo=None)
-                    if total_errs == 0:
-                        # First time we see a windowed message, estimate total as count of window hits
-                        pass
-                    if msg_dt < cutoff_dt:
-                        continue
-                    total_errs += 1
-                except Exception:
-                    # If timestamp parse fails, conservatively skip from windowed run
-                    continue
             record = parse_aar(msg)
             if record is None:
                 log_aar_error_with_meta(
@@ -1653,10 +1652,10 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                     # If an error entry exists for this AAR, attempt to remove
                     # the bot's previous reply and clear the error record.
                     try:
-                        data = _load_json_dict(AAR_ERRORS_PATH)
                         sid = str(aar_id)
-                        if sid in data:
-                            reply_id = data.get(sid, {}).get("reply_id")
+                        entry = error_entries.get(sid, {}) if isinstance(error_entries, dict) else {}
+                        reply_id = entry.get("reply_id") if isinstance(entry, dict) else None
+                        if sid in error_entries:
                             if reply_id:
                                 try:
                                     # reply is in the same channel as the original message
@@ -1670,16 +1669,24 @@ async def _run_recheck_errors(aar_channel: discord.TextChannel, span_days: Optio
                                             pass
                                 except Exception:
                                     pass
-                            del data[sid]
-                            _save_json_dict(AAR_ERRORS_PATH, data)
+                            ids_to_remove.add(sid)
                     except Exception:
                         pass
                     await _set_aar_reaction(msg, "ok")
                     fixed += 1
             done_errs += 1
-            if cutoff_dt is None:
-                if (done_errs % 5 == 0) or (done_errs == total_errs):
-                    _b("_print_progress")("Recheck Errors", done_errs, total_errs)
+            if (done_errs % 5 == 0) or (done_errs == total_errs):
+                _b("_print_progress")("Recheck Errors", done_errs, total_errs)
+
+        if ids_to_remove:
+            latest_errors = _load_json_dict(AAR_ERRORS_PATH)
+            changed = False
+            for sid in ids_to_remove:
+                if sid in latest_errors:
+                    del latest_errors[sid]
+                    changed = True
+            if changed:
+                _save_json_dict(AAR_ERRORS_PATH, latest_errors)
 
     if cutoff_dt is None:
         remaining_errors = _load_json_dict(AAR_ERRORS_PATH)
