@@ -194,7 +194,7 @@ async def _resolve_aar_record_for_link(
         except discord.HTTPException as exc:
             if _g.logger:
                 _g.logger.warning(f"Defense of Herisor: Discord API error fetching {aar_link}: {exc}")
-            return None, None, "A Discord API error occurred while fetching the AAR. Please try again."
+            return None, None, "The AAR message may be temporarily unavailable. Please verify the link and try again in a moment."
 
         try:
             from .aar_ops import parse_aar
