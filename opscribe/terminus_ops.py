@@ -29,6 +29,7 @@ from .constants import (  # noqa: F401
     BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
     BLACK_REEF_REQUIRED_MISSIONS,
     BLACK_LAURELS_REQUIRED_MISSIONS,
+    CHALLENGE_ROLES,
     CHALLENGE_PROGRESS_PATH,
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
@@ -1497,6 +1498,26 @@ async def _challenge_progress_inner(
 
     # Collect target's role IDs for completed-role detection.
     target_role_ids: set[int] = {r.id for r in getattr(target, "roles", [])}
+    challenge_emoji_by_role_id = {rid: hint for rid, _name, hint in CHALLENGE_ROLES}
+
+    def _award_prefix(role_id: Optional[int]) -> str:
+        """Return emoji prefix for awarded roles when the member holds the role."""
+        if role_id is None or role_id not in target_role_ids:
+            return ""
+        hint = challenge_emoji_by_role_id.get(role_id)
+        if not hint:
+            return ""
+        if hint.startswith("unicode:"):
+            return f"{hint[8:]} "
+        get_emoji = _b("_get_emoji_by_name")
+        if get_emoji:
+            try:
+                emoji = get_emoji(interaction.guild, hint)
+                if emoji:
+                    return f"{emoji} "
+            except Exception:
+                pass
+        return ""
 
     def _bar(current: int, total: int, role_id: Optional[int] = None) -> str:
         # If the member already holds the award role, treat as fully complete.
@@ -1538,15 +1559,19 @@ async def _challenge_progress_inner(
 
     challenge_lines = []
     for label, key, required, role_id in challenge_rows:
+        label_with_emoji = f"{_award_prefix(role_id)}{label}"
         if required is not None:
             total = len(required)
             completed = _unique_missions(key)
             current = len(completed)
-            line = f"**{label}**\n{_bar(current, total, role_id)}{_missing_line(completed, required, role_id)}"
+            line = f"**{label_with_emoji}**\n{_bar(current, total, role_id)}{_missing_line(completed, required, role_id)}"
         else:
             total = _fixed_totals[label]
             current = _unique_mission_count(key)
-            line = f"**{label}**\n{_bar(current, total, role_id)}"
+            # If a member has Pipehitter, show at least 1/2 toward Distinguished Pipehitter.
+            if label == "Distinguished SOK-G: Pipehitter" and PIPEHITTER_ROLE_ID in target_role_ids and current < 1:
+                current = 1
+            line = f"**{label_with_emoji}**\n{_bar(current, total, role_id)}"
         challenge_lines.append(line)
 
     # Defense of Herisor is tallied automatically from qualifying tagged AARs.
