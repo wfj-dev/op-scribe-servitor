@@ -300,7 +300,9 @@ def test_process_challenge_tracking_herisor_siege_uses_brother_waves():
     ):
         notifications = asyncio.run(_process_challenge_tracking(record, guild))
 
-    assert notifications == []
+    # Under new rules: completing on either team alone triggers the base medal.
+    award_role_ids = {n[2] for n in notifications}
+    assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert progress_data[str(member.id)]["herisor_defense_siege"][0]["aar_id"] == "herisor-siege-1"
 
 
@@ -350,16 +352,27 @@ def test_process_challenge_tracking_herisor_awards_and_normalized_missions():
         patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
         patch("opscribe.aar_ops._save_challenge_progress"),
     ):
-        for record in records[:2]:
-            notifications = asyncio.run(_process_challenge_tracking(record, guild))
-            assert notifications == []
+        # Record 1: siege with BL — triggers base medal AND distinguished (BL = no downs)
+        n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
+        n1_ids = {n[2] for n in n1}
+        assert HERISOR_DEFENSE_MEDAL_ROLE_ID in n1_ids
+        assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in n1_ids
+        assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in n1_ids
 
+        # Record 2: termination with BL — both siege+BL and strat+BL now present → valor fires
+        n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
+        n2_ids = {n[2] for n in n2}
+        assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in n2_ids
+
+        # Record 3: reclamation with BL — already awarded, no new notifications for Herisor
         final_notifications = asyncio.run(_process_challenge_tracking(records[2], guild))
 
-    award_role_ids = {n[2] for n in final_notifications}
-    assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
-    assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
-    assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in award_role_ids
+    herisor_ids = {n[2] for n in final_notifications if n[2] in (
+        HERISOR_DEFENSE_MEDAL_ROLE_ID,
+        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+    )}
+    assert herisor_ids == set(), f"Expected no duplicate Herisor awards on record 3, got: {herisor_ids}"
 
 
 def _make_black_laurels_exception_message(
