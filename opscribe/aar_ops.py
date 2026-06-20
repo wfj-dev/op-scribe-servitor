@@ -2536,8 +2536,6 @@ def parse_aar(message: discord.Message):
                 dual_vigil_in_mission = True
             # If mission contains a trial-like token, mark the legacy initiation flag
             try:
-                import re
-
                 if re.search(r"\b-?\d+/\d+\b", mission) or "trial" in mission.lower():
                     initiation_trial = True
             except Exception:

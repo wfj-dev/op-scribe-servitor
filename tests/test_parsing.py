@@ -432,6 +432,31 @@ def test_black_laurels_hard_siege_herisor_waves_15_valid():
     assert errs == [], f"Expected Herisor Hard-Siege BL with Waves 15 to validate, got: {errs}"
 
 
+def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
+    users = [FakeUser(901, "Brother1"), FakeUser(902, "Brother2"), FakeUser(903, "Brother3")]
+    hard_siege = FakeRole(1431732824708485170, "Hard-Siege")
+    herisor = FakeRole(HERISOR_DEFENSE_TAG_ROLE_ID, "Defense of Herisor")
+    black_laurels = FakeRole(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+
+    content = (
+        "++ MISSION REPORT ++\n"
+        f"Wave: 15 <@&{HERISOR_DEFENSE_TAG_ROLE_ID}> <@&{BLACK_LAURELS_ROLE_ID}>\n"
+        f"Difficulty: <@&{hard_siege.id}>\n"
+        "Armory Data: 3\n"
+        "Team:\n"
+        f"<@{users[0].id}>\n"
+        f"<@{users[1].id}>\n"
+        f"<@{users[2].id}>\n"
+        "++ END OF REPORT ++\n"
+    )
+
+    msg = FakeMessage(content, mentions=users, role_mentions=[hard_siege, herisor, black_laurels])
+    rec = parse_aar(msg)
+    assert rec.get("waves") == 15
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected wave-only Herisor Hard-Siege BL report to validate, got: {errs}"
+
+
 def test_black_laurels_hard_siege_herisor_waves_below_15_invalid():
     msg = _make_black_laurels_exception_message(
         mission_line="Reclamation",
