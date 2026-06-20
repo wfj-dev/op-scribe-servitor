@@ -57,6 +57,7 @@ from .constants import (  # noqa: F401
 )
 from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES
 from . import _bot_globals as _g
+from .challenge_policy import evaluate_crux_bl_rank_a
 
 
 # Any role that counts as a server member (Watch Brother or higher on any track)
@@ -1632,45 +1633,25 @@ async def _challenge_progress_inner(
     # Holding the Crux role does NOT short-circuit — roles can be revoked if new
     # missions are added and requirements are no longer met.
 
-    # Requirement 1: Black Laurels role held AND every post-enforcement BL AAR is Rank A.
+    # Requirement 1: Black Laurels role held AND every post-enforcement BL AAR is Rank A
+    # over the user's effective mission baseline.
     has_bl_role = BLACK_LAURELS_ROLE_ID in target_role_ids
     all_bl_rank_a = False
     non_a_missions: list[str] = []  # verbose: missions with non-A rank post-enforcement
+    _grandfathered_bl = False
     if has_bl_role and _g.DATASTORE:
-        saw_any_bl = False
-        _all_rank_a = True
-        for _rec in _g.DATASTORE.iter_records():
-            _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
-            _mission_raw = re.sub(r"<@&\d+>", "", (_rec.get("mission") or "")).lower().strip()
-            _mission = re.split(r"\s*@", _mission_raw)[0].strip()
-            if not _bl or _mission not in BLACK_LAURELS_REQUIRED_MISSIONS:
-                continue
-            if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
-                continue
-            saw_any_bl = True
-            _rank = (_rec.get("rank") or "").upper()
-            if _rank != "A":
-                _ts = _rec.get("timestamp", "")
-                _pre_enforcement = True
-                try:
-                    if _ts:
-                        _rec_dt = datetime.fromisoformat(_ts)
-                        if _rec_dt >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
-                            _pre_enforcement = False
-                except Exception:
-                    pass
-                if not _pre_enforcement:
-                    _all_rank_a = False
-                    if verbose and _mission and _mission not in non_a_missions:
-                        non_a_missions.append(_mission)
-        all_bl_rank_a = saw_any_bl and _all_rank_a
+        audit = evaluate_crux_bl_rank_a(user_id_str, _g.DATASTORE.iter_records())
+        all_bl_rank_a = bool(audit["all_rank_a"])
+        _grandfathered_bl = bool(audit["grandfathered"])
+        if verbose:
+            non_a_missions = list(audit["non_a_missions"])
 
     # Requirement 2: Distinguished SOK-G Pipehitter role held.
     has_distinguished = DISTINGUISHED_PIPEHITTER_ROLE_ID in target_role_ids
 
-    # Requirement 3: 2+ Terminus Slayer class completions (role-held).
-    ts_class_count = sum(1 for rid in KILL_LOG_CLASS_ROLES if rid in target_role_ids)
-    ts_slays_met = ts_class_count >= 2
+    # Requirement 3: 2+ Terminus Slayer roles held.
+    ts_role_count = sum(1 for rid in TERMINUS_SLAYER_ROLE_IDS if rid in target_role_ids)
+    ts_slays_met = ts_role_count >= 2
 
     bl_check = "✅" if all_bl_rank_a else "🔲"
     dist_check = "✅" if has_distinguished else "🔲"
@@ -1678,11 +1659,14 @@ async def _challenge_progress_inner(
     bl_rank_detail = ""
     if verbose and non_a_missions:
         bl_rank_detail = "\n  _Non-Rank A (post-enforcement): " + ", ".join(sorted(non_a_missions)) + "_"
+    bl_scope_detail = ""
+    if verbose and _grandfathered_bl:
+        bl_scope_detail = "\n  _Grandfathered baseline in effect for Crux BL audit._"
     challenge_lines.append(
         f"**Crux Terminatus**\n"
-        f"{bl_check} Black Laurels — all missions, Rank A{bl_rank_detail}\n"
+        f"{bl_check} Black Laurels — baseline missions, Rank A{bl_rank_detail}{bl_scope_detail}\n"
         f"{dist_check} Distinguished SOK-G: Pipehitter\n"
-        f"{ts_check} Terminus Slayer classes completed: {ts_class_count}/2"
+        f"{ts_check} Terminus Slayer roles held: {ts_role_count}/2"
     )
 
     # --- Dual Vigil eligibility checklist ---

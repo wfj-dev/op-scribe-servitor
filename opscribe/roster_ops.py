@@ -22,6 +22,7 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
+from .challenge_policy import evaluate_crux_bl_rank_a
 
 
 def _b(name):
@@ -1398,44 +1399,28 @@ async def _enforce_challenge_grace_periods(
                         failed: list[str] = []
 
                         # Req 1: BL role held + all post-enforcement BL AARs are Rank A
+                        # over the user's effective mission baseline.
                         has_bl = BLACK_LAURELS_ROLE_ID in member_role_ids
                         if not has_bl:
                             failed.append("Black Laurels role not held")
                         elif _g.DATASTORE:
-                            _all_rank_a = True
-                            for _rec in _g.DATASTORE.iter_records():
-                                _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
-                                _mission_raw = re.sub(r"<@&\d+>", "", (_rec.get("mission") or "")).lower().strip()
-                                _mission_clean = re.split(r"\s*@", _mission_raw)[0].strip()
-                                if not _bl or _mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
-                                    continue
-                                if uid not in [str(b) for b in (_rec.get("brother_ids") or [])]:
-                                    continue
-                                _rank = (_rec.get("rank") or "").upper()
-                                if _rank != "A":
-                                    _ts = _rec.get("timestamp", "")
-                                    _pre = True
-                                    try:
-                                        if _ts:
-                                            _rec_dt = datetime.fromisoformat(_ts)
-                                            if _rec_dt >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
-                                                _pre = False
-                                    except Exception:
-                                        pass
-                                    if not _pre:
-                                        _all_rank_a = False
-                                        break
-                            if not _all_rank_a:
-                                failed.append("Black Laurels \u2014 not all missions completed at Rank A")
+                            audit = evaluate_crux_bl_rank_a(uid, _g.DATASTORE.iter_records())
+                            if not audit["all_rank_a"]:
+                                if audit["grandfathered"]:
+                                    failed.append(
+                                        "Black Laurels — non-Rank A record found on grandfathered baseline after enforcement"
+                                    )
+                                else:
+                                    failed.append("Black Laurels — not all missions completed at Rank A")
 
                         # Req 2: Distinguished SOK-G Pipehitter role
                         if DISTINGUISHED_PIPEHITTER_ROLE_ID not in member_role_ids:
                             failed.append("Distinguished SOK-G: Pipehitter role not held")
 
-                        # Req 3: 2+ Terminus Slayer class roles
-                        ts_count = sum(1 for rid in KILL_LOG_CLASS_ROLES if rid in member_role_ids)
+                        # Req 3: 2+ Terminus Slayer roles (must match auto-award criteria)
+                        ts_count = sum(1 for rid in TERMINUS_SLAYER_ROLE_IDS if rid in member_role_ids)
                         if ts_count < 2:
-                            failed.append(f"Terminus Slayer classes: {ts_count}/2 completed")
+                            failed.append(f"Terminus Slayer roles: {ts_count}/2 held")
 
                         if not failed:
                             continue

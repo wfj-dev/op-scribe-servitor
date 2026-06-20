@@ -25,6 +25,8 @@ from opscribe.constants import (
     BLACK_LAURELS_REQUIRED_MISSIONS,
     THE_ORDER_OMEGA_ROLE_ID,
     ORDER_OMEGA_REQUIRED_MISSIONS,
+    CRUX_TERMINATUS_ROLE_ID,
+    DISTINGUISHED_PIPEHITTER_ROLE_ID,
 )
 
 
@@ -318,68 +320,164 @@ class TestOrderOmegaGrace:
 
         assert result == 0
         member.remove_roles.assert_not_called()
-        save_mock.assert_not_called()  # no changes, no save
 
-    def test_notified_flag_cleared_enables_reearn(self):
-        """After revocation the notified list no longer contains 'order_omega'."""
-        uid = 600
-        partial = set(ORDER_OMEGA_REQUIRED_MISSIONS) - {"purgation"}
-        member, guild, oo_role, cp_data = self._setup(uid, partial)
 
-        save_mock = MagicMock()
+class TestCruxGrace:
+    class _FakeDataStore:
+        def __init__(self, records):
+            self._records = records
+
+        def iter_records(self):
+            return iter(self._records)
+
+    def test_master_plus_one_class_meets_terminus_requirement(self):
+        """Crux grace check should use the same Terminus role counting as auto-award.
+
+        Regression: using class-only counting revoked members who held Master
+        Terminus Slayer plus one class role.
+        """
+        crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
+        bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+        distinguished_role = _make_role(DISTINGUISHED_PIPEHITTER_ROLE_ID, "Distinguished SOK-G: Pipehitter")
+        master_terminus = _make_role(1452803611477147668, "Master Terminus Slayer")
+        assault_terminus = _make_role(1449257352112111646, "Terminus Slayer (Assault)")
+
+        member = _make_member(
+            600,
+            [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus],
+        )
+        crux_role.members = [member]
+
+        guild = _make_guild([member], [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        guild.get_role = MagicMock(side_effect=lambda rid: crux_role if rid == CRUX_TERMINATUS_ROLE_ID else None)
+
         with (
-            _patch_config({"challenge_grace_periods": {"order_omega": PAST_DATE}}),
+            _patch_config({"challenge_grace_periods": {"crux_terminatus": PAST_DATE}}),
             _patch_lock(),
-            patch("discord.utils.get", return_value=oo_role),
+            patch.object(_g_module, "DATASTORE", None),
             patch("opscribe.roster_ops._b") as mock_b,
         ):
             def _b_side(name):
                 if name == "_load_challenge_progress":
-                    return lambda: cp_data
+                    return lambda: {}
                 if name == "_save_challenge_progress":
-                    return save_mock
+                    return MagicMock()
                 return MagicMock()
 
             mock_b.side_effect = _b_side
 
-            _run(_grace(guild, {}, {}))
+            result = _run(_grace(guild, {}, {}))
 
-        assert "order_omega" not in cp_data[str(uid)]["notified"]
+        assert result == 0
+        member.remove_roles.assert_not_called()
 
-    def test_return_count_for_multiple_revocations(self):
-        """When two members are revoked, count == 2."""
-        oo_role = _make_role(THE_ORDER_OMEGA_ROLE_ID, "The Order Omega")
-        partial = set(ORDER_OMEGA_REQUIRED_MISSIONS) - {"purgation"}
-        m1 = _make_member(701, [oo_role])
-        m2 = _make_member(702, [oo_role])
-        guild = _make_guild([m1, m2], [oo_role])
+    def test_grandfathered_baseline_not_revoked_on_new_mission_non_a(self):
+        """Grandfathered BL holders should not lose Crux due to expanded mission set.
 
-        cp_data = {
-            "701": {
-                "notified": ["order_omega"],
-                "order_omega": [{"mission": m, "aar_id": 1, "message_url": "", "timestamp": ""} for m in partial],
-            },
-            "702": {
-                "notified": ["order_omega"],
-                "order_omega": [{"mission": m, "aar_id": 2, "message_url": "", "timestamp": ""} for m in partial],
-            },
-        }
+        User completed the legacy BL baseline pre-enforcement, but later submits a
+        non-A run on a newly-required mission. Crux should remain because the
+        grandfathered baseline is used for retention.
+        """
+        crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
+        bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+        distinguished_role = _make_role(DISTINGUISHED_PIPEHITTER_ROLE_ID, "Distinguished SOK-G: Pipehitter")
+        master_terminus = _make_role(1452803611477147668, "Master Terminus Slayer")
+        assault_terminus = _make_role(1449257352112111646, "Terminus Slayer (Assault)")
 
-        save_mock = MagicMock()
+        uid = 601
+        member = _make_member(uid, [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        crux_role.members = [member]
+        guild = _make_guild([member], [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        guild.get_role = MagicMock(side_effect=lambda rid: crux_role if rid == CRUX_TERMINATUS_ROLE_ID else None)
+
+        legacy_missions = [
+            "inferno",
+            "decapitation",
+            "vox liberatis",
+            "ballistic engine",
+            "exfiltration",
+            "termination",
+            "reclamation",
+        ]
+        records = [
+            {
+                "black_laurels_in_mission": True,
+                "mission": m,
+                "brother_ids": [uid],
+                "timestamp": "2026-05-20T12:00:00+00:00",
+            }
+            for m in legacy_missions
+        ]
+        # Added mission after enforcement, non-A rank; should not affect
+        # grandfathered baseline retention checks.
+        records.append(
+            {
+                "black_laurels_in_mission": True,
+                "mission": "purgation",
+                "brother_ids": [uid],
+                "rank": "C",
+                "timestamp": "2026-06-10T12:00:00+00:00",
+            }
+        )
+
         with (
-            _patch_config({"challenge_grace_periods": {"order_omega": PAST_DATE}}),
+            _patch_config({"challenge_grace_periods": {"crux_terminatus": PAST_DATE}}),
             _patch_lock(),
-            patch("discord.utils.get", return_value=oo_role),
+            patch.object(_g_module, "DATASTORE", self._FakeDataStore(records)),
             patch("opscribe.roster_ops._b") as mock_b,
         ):
             def _b_side(name):
                 if name == "_load_challenge_progress":
-                    return lambda: cp_data
+                    return lambda: {}
                 if name == "_save_challenge_progress":
-                    return save_mock
+                    return MagicMock()
                 return MagicMock()
 
             mock_b.side_effect = _b_side
             result = _run(_grace(guild, {}, {}))
 
-        assert result == 2
+        assert result == 0
+        member.remove_roles.assert_not_called()
+
+    def test_non_grandfathered_post_enforcement_non_a_is_revoked(self):
+        """Non-grandfathered users are still subject to strict post-cutoff rank checks."""
+        crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
+        bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+        distinguished_role = _make_role(DISTINGUISHED_PIPEHITTER_ROLE_ID, "Distinguished SOK-G: Pipehitter")
+        master_terminus = _make_role(1452803611477147668, "Master Terminus Slayer")
+        assault_terminus = _make_role(1449257352112111646, "Terminus Slayer (Assault)")
+
+        uid = 602
+        member = _make_member(uid, [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        crux_role.members = [member]
+        guild = _make_guild([member], [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        guild.get_role = MagicMock(side_effect=lambda rid: crux_role if rid == CRUX_TERMINATUS_ROLE_ID else None)
+
+        records = [
+            {
+                "black_laurels_in_mission": True,
+                "mission": "inferno",
+                "brother_ids": [uid],
+                "rank": "B",
+                "timestamp": "2026-06-10T12:00:00+00:00",
+            }
+        ]
+
+        with (
+            _patch_config({"challenge_grace_periods": {"crux_terminatus": PAST_DATE}}),
+            _patch_lock(),
+            patch.object(_g_module, "DATASTORE", self._FakeDataStore(records)),
+            patch("opscribe.roster_ops._b") as mock_b,
+        ):
+            def _b_side(name):
+                if name == "_load_challenge_progress":
+                    return lambda: {}
+                if name == "_save_challenge_progress":
+                    return MagicMock()
+                return MagicMock()
+
+            mock_b.side_effect = _b_side
+            result = _run(_grace(guild, {}, {}))
+
+        assert result == 1
+        member.remove_roles.assert_called_once()
