@@ -1501,8 +1501,8 @@ async def _challenge_progress_inner(
     challenge_emoji_by_role_id = {rid: hint for rid, _name, hint in CHALLENGE_ROLES}
 
     def _award_prefix(role_id: Optional[int]) -> str:
-        """Return emoji prefix for awarded roles when the member holds the role."""
-        if role_id is None or role_id not in target_role_ids:
+        """Return challenge emoji prefix for a role, regardless of completion state."""
+        if role_id is None:
             return ""
         hint = challenge_emoji_by_role_id.get(role_id)
         if not hint:

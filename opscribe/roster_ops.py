@@ -2729,6 +2729,69 @@ async def tally_deeds(
     killteam: Optional[discord.Role] = None,
     send_to: Optional[str] = None,
 ):
+
+    class _EmbedPagesView(discord.ui.View):
+        def __init__(self, embeds: list[discord.Embed], requester_id: int):
+            super().__init__(timeout=180)
+            self.embeds = embeds
+            self.page = 0
+            self.requester_id = requester_id
+            self.message: Optional[discord.Message] = None
+            self._refresh()
+
+        def _refresh(self) -> None:
+            self.prev_btn.disabled = self.page <= 0
+            self.next_btn.disabled = self.page >= len(self.embeds) - 1
+
+        async def interaction_check(self, interaction: discord.Interaction) -> bool:
+            return bool(interaction.user and interaction.user.id == self.requester_id)
+
+        @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
+        async def prev_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+            if self.page > 0:
+                self.page -= 1
+                self._refresh()
+                await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            else:
+                await interaction.response.defer()
+
+        @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+        async def next_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+            if self.page < len(self.embeds) - 1:
+                self.page += 1
+                self._refresh()
+                await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            else:
+                await interaction.response.defer()
+
+        async def on_timeout(self) -> None:
+            try:
+                self.prev_btn.disabled = True
+                self.next_btn.disabled = True
+                if self.message is not None:
+                    await self.message.edit(view=self)
+            except Exception:
+                pass
+
+    def _paginate_embed_fields(embed: discord.Embed, max_fields: int = 5) -> list[discord.Embed]:
+        data = embed.to_dict()
+        fields = data.pop("fields", [])
+        if len(fields) <= max_fields:
+            return [embed]
+
+        pages: list[discord.Embed] = []
+        total_pages = (len(fields) + max_fields - 1) // max_fields
+        for idx in range(total_pages):
+            page_fields = fields[idx * max_fields : (idx + 1) * max_fields]
+            page_data = dict(data)
+            page_data["fields"] = page_fields
+            page_embed = discord.Embed.from_dict(page_data)
+            footer_obj = page_data.get("footer", {}) if isinstance(page_data.get("footer", {}), dict) else {}
+            footer_text = footer_obj.get("text", "")
+            page_footer = f"{footer_text} | Page {idx + 1}/{total_pages}" if footer_text else f"Page {idx + 1}/{total_pages}"
+            page_embed.set_footer(text=page_footer)
+            pages.append(page_embed)
+        return pages
     # Resolve send_to string to an actual channel/thread
     send_to_channel = None
     if send_to is not None:
@@ -3513,11 +3576,20 @@ async def tally_deeds(
 
                 roster_embed.set_footer(text="᛭⋅ Roster generated from recent service records ⋅᛭")
 
-                # Send embed only (clean output)
-                if send_to_channel:
-                    await send_to_channel.send(embed=roster_embed)
+                pages = _paginate_embed_fields(roster_embed)
+                if len(pages) > 1:
+                    view = _EmbedPagesView(pages, interaction.user.id)
+                    if send_to_channel:
+                        msg = await send_to_channel.send(embed=pages[0], view=view)
+                    else:
+                        msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
+                    view.message = msg
                 else:
-                    await interaction.followup.send(embed=roster_embed, ephemeral=True)
+                    # Send embed only (clean output)
+                    if send_to_channel:
+                        await send_to_channel.send(embed=roster_embed)
+                    else:
+                        await interaction.followup.send(embed=roster_embed, ephemeral=True)
             except Exception:
                 # Fallback to simple embed
                 try:
@@ -3678,12 +3750,23 @@ async def tally_deeds(
             except Exception:
                 pass
 
-        # Send embed only (clean output like forge_rite/stud announcement)
-        if send_to_channel:
-            await send_to_channel.send(embed=embed, **({"file": _portrait_file} if _portrait_file else {}))
-            await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+        # Send embed output, with pagination when field-heavy and no portrait attachment.
+        pages = _paginate_embed_fields(embed)
+        if len(pages) > 1 and _portrait_file is None:
+            view = _EmbedPagesView(pages, interaction.user.id)
+            if send_to_channel:
+                msg = await send_to_channel.send(embed=pages[0], view=view)
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+            else:
+                msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
+            view.message = msg
         else:
-            await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _portrait_file} if _portrait_file else {}))
+            # Send embed only (clean output like forge_rite/stud announcement)
+            if send_to_channel:
+                await send_to_channel.send(embed=embed, **({"file": _portrait_file} if _portrait_file else {}))
+                await interaction.followup.send(f"Posted to <#{send_to_channel.id}>.", ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True, **({"file": _portrait_file} if _portrait_file else {}))
 
 
 _PORTRAIT_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "portrait_submissions.json")
