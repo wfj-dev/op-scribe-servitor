@@ -1371,6 +1371,38 @@ async def verifier_standing(interaction: discord.Interaction):
 # /challenge-progress command
 # ---------------------------------------------------------------------------
 
+class _ChallengePagesView(discord.ui.View):
+    """Paginator for the two-page challenge-progress embed (ephemeral)."""
+
+    def __init__(self, embeds: list[discord.Embed]):
+        super().__init__(timeout=180)
+        self.embeds = embeds
+        self.page = 0
+        self._refresh_buttons()
+
+    def _refresh_buttons(self) -> None:
+        self.prev_btn.disabled = self.page == 0
+        self.next_btn.disabled = self.page >= len(self.embeds) - 1
+
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if self.page > 0:
+            self.page -= 1
+            self._refresh_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if self.page < len(self.embeds) - 1:
+            self.page += 1
+            self._refresh_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+        else:
+            await interaction.response.defer()
+
+
 @_g.bot.tree.command(
     name="challenge-progress",
     description="View your challenge progress — mission awards and Terminus Slayer kills.",
@@ -1543,13 +1575,13 @@ async def _challenge_progress_inner(
     herisor_valor = _auto_valor or _legacy_valor
 
     challenge_lines.append(
-        f"**Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1, HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
+        f"<:HerisorDefense:1511109884521742416> **Defense of Herisor**\n{_bar(1 if herisor_base else 0, 1, HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
     )
     challenge_lines.append(
-        f"**Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
+        f"<:DistinguishedHerisorDefense:1511109951106584778> **Distinguished Defense of Herisor**\n{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
     )
     challenge_lines.append(
-        f"**Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)}"
+        f"<:HerisorDefensewithValor:1511110040566763630> **Distinguished Defense of Herisor with Valor**\n{_bar(1 if herisor_valor else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)}"
     )
 
     # --- Crux Terminatus eligibility checklist ---
@@ -1642,11 +1674,13 @@ async def _challenge_progress_inner(
         if current:
             embed.add_field(name=name if first else "\u200b", value=current, inline=False)
 
-    embed = discord.Embed(
+    base_colour = discord.Colour.from_rgb(80, 140, 200)
+    embed1 = discord.Embed(
         title=f"Challenge Progress — {target.display_name}",
-        colour=discord.Colour.from_rgb(80, 140, 200),
+        description="Page 1 of 2 — Mission Awards",
+        colour=base_colour,
     )
-    _add_chunked_fields(embed, "⚔️ Mission Awards", challenge_lines)
+    _add_chunked_fields(embed1, "⚔️ Mission Awards", challenge_lines)
 
     # --- Section 2: Terminus Slayer Kill Grid ---
     ts_lines = []
@@ -1669,10 +1703,19 @@ async def _challenge_progress_inner(
                 type_parts.append(f"{check} {t_type}: {count}/3")
             ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
 
-    _add_chunked_fields(embed, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
+    embed2 = discord.Embed(
+        title=f"Challenge Progress — {target.display_name}",
+        description="Page 2 of 2 — Terminus Slayer Kills",
+        colour=base_colour,
+    )
+    _add_chunked_fields(embed2, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
 
-    embed.set_footer(text="Progress updates automatically as AARs and kill logs are processed. Use verbose=True to see missing missions.")
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    footer_text = "Progress updates automatically as AARs and kill logs are processed. Use verbose=True to see missing missions."
+    embed1.set_footer(text=footer_text)
+    embed2.set_footer(text=footer_text)
+
+    view = _ChallengePagesView([embed1, embed2])
+    await interaction.followup.send(embed=embed1, view=view, ephemeral=True)
 
 
 # ---------------------------------------------------------------------------

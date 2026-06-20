@@ -371,9 +371,9 @@ CHALLENGE_ROLES = [
     (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
     (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
     (1502135764312526858, "The Order Omega", "TheOrderOmega"),
-    (1511108645104910526, "Herisor Defense Medal", None),
-    (1511109108231700690, "Distinguished Herisor Defense Medal", None),
-    (1511109325769281633, "Distinguished Herisor Defense Medal with Valor", None),
+    (1511108645104910526, "Herisor Defense Medal", "HerisorDefense"),
+    (1511109108231700690, "Distinguished Herisor Defense Medal", "DistinguishedHerisorDefense"),
+    (1511109325769281633, "Distinguished Herisor Defense Medal with Valor", "HerisorDefensewithValor"),
 ]
 
 # ---------------------------------------------------------------------------
