@@ -435,7 +435,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
 
             # === Defense of Herisor tracking (auto-award; no submit command required) ===
             # Tally individually by qualifying AAR categories:
-            #   - Hard-Siege, Wave 15+ with Herisor tag
+            #   - Hard-Siege, Wave 10+ with Herisor tag
             #   - Hard-Stratagem Termination with Herisor tag
             #   - Hard-Stratagem Reclamation with Herisor tag
             _waves_ok = False
@@ -449,10 +449,10 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         pass
 
             if _member_wave_counts:
-                _waves_ok = max(_member_wave_counts) >= 15
+                _waves_ok = max(_member_wave_counts) >= 10
             else:
                 try:
-                    _waves_ok = int(waves) >= 15
+                    _waves_ok = int(waves) >= 10
                 except Exception:
                     _waves_ok = False
 
@@ -881,6 +881,100 @@ async def _sweep_challenge_completions(guild: discord.Guild) -> int:
                         user_progress["notified"] = notified
                         changed = True
                         _g.logger.info(f"challenge sweep: Distinguished SOK-G: Pipehitter queued for {member.display_name} ({user_id_str})")
+
+                # --- Defense of Herisor family ---
+                def _as_list(value) -> list:
+                    return value if isinstance(value, list) else []
+
+                siege_entries = _as_list(user_progress.get("herisor_defense_siege"))
+                term_entries = _as_list(user_progress.get("herisor_defense_termination"))
+                rec_entries = _as_list(user_progress.get("herisor_defense_reclamation"))
+                legacy_subs = _as_list(user_progress.get("defense_of_herisor_submissions"))
+
+                auto_base = bool(siege_entries) or bool(term_entries and rec_entries)
+                siege_bl = any(bool(e.get("black_laurels")) for e in siege_entries if isinstance(e, dict))
+                term_bl = any(bool(e.get("black_laurels")) for e in term_entries if isinstance(e, dict))
+                rec_bl = any(bool(e.get("black_laurels")) for e in rec_entries if isinstance(e, dict))
+                auto_strat_bl = bool(term_entries and rec_entries and term_bl and rec_bl)
+                auto_distinguished = siege_bl or auto_strat_bl
+                auto_valor = siege_bl and auto_strat_bl
+
+                legacy_base = len(legacy_subs) > 0
+                legacy_distinguished = any(bool(s.get("distinguished")) for s in legacy_subs if isinstance(s, dict))
+                legacy_valor = any(bool(s.get("distinguished_with_valor")) for s in legacy_subs if isinstance(s, dict))
+
+                has_herisor_base = auto_base or legacy_base
+                has_herisor_distinguished = auto_distinguished or legacy_distinguished
+                has_herisor_valor = auto_valor or legacy_valor
+
+                herisor_urls = sorted(
+                    {
+                        e.get("message_url", "")
+                        for e in (siege_entries + term_entries + rec_entries + legacy_subs)
+                        if isinstance(e, dict) and e.get("message_url")
+                    }
+                )
+
+                if (
+                    has_herisor_base
+                    and "herisor_defense" not in notified
+                    and not discord.utils.get(member.roles, id=HERISOR_DEFENSE_MEDAL_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Herisor Defense Medal",
+                            HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                            "herisor_defense_medal",
+                            herisor_urls,
+                        )
+                    )
+                    notified.append("herisor_defense")
+                    user_progress["notified"] = notified
+                    changed = True
+                    _g.logger.info(f"challenge sweep: Herisor Defense Medal queued for {member.display_name} ({user_id_str})")
+
+                if (
+                    has_herisor_distinguished
+                    and "distinguished_herisor_defense" not in notified
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Distinguished Herisor Defense Medal",
+                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
+                            "distinguished_herisor_defense_medal",
+                            herisor_urls,
+                        )
+                    )
+                    notified.append("distinguished_herisor_defense")
+                    user_progress["notified"] = notified
+                    changed = True
+                    _g.logger.info(
+                        f"challenge sweep: Distinguished Herisor Defense Medal queued for {member.display_name} ({user_id_str})"
+                    )
+
+                if (
+                    has_herisor_valor
+                    and "distinguished_herisor_defense_valor" not in notified
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)
+                ):
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Distinguished Herisor Defense Medal with Valor",
+                            DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
+                            "distinguished_herisor_defense_medal_with_valor",
+                            herisor_urls,
+                        )
+                    )
+                    notified.append("distinguished_herisor_defense_valor")
+                    user_progress["notified"] = notified
+                    changed = True
+                    _g.logger.info(
+                        f"challenge sweep: Distinguished Herisor Defense Medal with Valor queued for {member.display_name} ({user_id_str})"
+                    )
 
             except Exception as exc:
                 _g.logger.exception(
@@ -3022,16 +3116,16 @@ def validate_aar(record: dict):
                     except Exception:
                         pass
                 if wave_counts:
-                    waves_ok_for_herisor_siege = max(wave_counts) >= 15
+                    waves_ok_for_herisor_siege = max(wave_counts) >= 10
             if not waves_ok_for_herisor_siege:
-                waves_ok_for_herisor_siege = int(waves or 0) >= 15
+                waves_ok_for_herisor_siege = int(waves or 0) >= 10
         except Exception:
             waves_ok_for_herisor_siege = False
         # Black Reef Persecution on Mission line unlocks Black Laurels with Hard-Stratagem
         bl_hard_strat_unlocked = has_hard_stratagem and has_black_reef_persecution
         # Defense of Herisor on Mission line can also unlock Black Laurels for:
         # - Hard-Stratagem Termination/Reclamation
-        # - Hard-Siege with Waves >= 15
+        # - Hard-Siege with Waves >= 10
         bl_herisor_hard_unlock = has_herisor_defense and (
             (has_hard_stratagem and herisor_hard_strat_allowed)
             or (has_hard_siege and waves_ok_for_herisor_siege)
@@ -3119,7 +3213,7 @@ def validate_aar(record: dict):
             if has_hard_stratagem and not herisor_hard_strat_allowed:
                 errors.append("@Defense_of_Herisor with @Hard-Stratagem is only valid for Termination or Reclamation.")
             if has_hard_siege and not waves_ok_for_herisor_siege:
-                errors.append("@Defense_of_Herisor with @Hard-Siege requires Waves 15+.")
+                errors.append("@Defense_of_Herisor with @Hard-Siege requires Waves 10+.")
 
         # Leviathan Protocol validation: must be on Mission line only
         leviathan_in_difficulty = record.get("leviathan_protocol_in_difficulty", False)
