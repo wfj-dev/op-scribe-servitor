@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, parse_aar, validate_aar
+from opscribe.bot import _process_challenge_tracking, _run_recheck_errors, _sweep_challenge_completions, parse_aar, validate_aar
 from opscribe.constants import (
     BLACK_LAURELS_ROLE_ID,
     BLACK_REEF_PERSECUTION_ROLE_ID,
@@ -286,7 +286,7 @@ def test_process_challenge_tracking_herisor_siege_uses_brother_waves():
         "difficulty_class": "hard_siege",
         "herisor_defense_in_mission": True,
         "brother_ids": [str(member.id)],
-        "brother_waves": {str(member.id): 15},
+        "brother_waves": {str(member.id): 10},
         "waves": 0,
         "aar_id": "herisor-siege-1",
         "message_url": "https://discord.example/aar/1",
@@ -304,6 +304,41 @@ def test_process_challenge_tracking_herisor_siege_uses_brother_waves():
     award_role_ids = {n[2] for n in notifications}
     assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert progress_data[str(member.id)]["herisor_defense_siege"][0]["aar_id"] == "herisor-siege-1"
+
+
+def test_sweep_challenge_completions_backfills_herisor_medal():
+    role = SimpleNamespace(id=999003, name="Watch Brother")
+    member = SimpleNamespace(id=889, display_name="Brother889", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {
+        str(member.id): {
+            "display_name": member.display_name,
+            "notified": [],
+            "herisor_defense_siege": [
+                {
+                    "mission": "siege",
+                    "aar_id": "herisor-siege-sweep-1",
+                    "message_url": "https://discord.example/aar/sweep1",
+                    "timestamp": "2026-06-20T00:00:00Z",
+                    "black_laurels": False,
+                }
+            ],
+        }
+    }
+
+    send_mock = AsyncMock()
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+        patch("opscribe.aar_ops._send_challenge_eligibility_notifications", send_mock),
+    ):
+        count = asyncio.run(_sweep_challenge_completions(guild))
+
+    assert count == 1
+    sent_notifications = send_mock.await_args.args[0]
+    assert sent_notifications[0][2] == HERISOR_DEFENSE_MEDAL_ROLE_ID
+    assert "herisor_defense" in progress_data[str(member.id)]["notified"]
 
 
 def test_process_challenge_tracking_herisor_awards_and_normalized_missions():
@@ -429,16 +464,16 @@ def test_black_laurels_hard_strat_herisor_wrong_mission_invalid():
     assert any("Defense_of_Herisor with @Hard-Stratagem is only valid" in e for e in errs), errs
 
 
-def test_black_laurels_hard_siege_herisor_waves_15_valid():
+def test_black_laurels_hard_siege_herisor_waves_10_valid():
     msg = _make_black_laurels_exception_message(
         mission_line="Reclamation",
         difficulty_name="Hard-Siege",
         include_herisor=True,
-        waves_line="Waves: 15",
+        waves_line="Waves: 10",
     )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert errs == [], f"Expected Herisor Hard-Siege BL with Waves 15 to validate, got: {errs}"
+    assert errs == [], f"Expected Herisor Hard-Siege BL with Waves 10 to validate, got: {errs}"
 
 
 def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
@@ -449,7 +484,7 @@ def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
 
     content = (
         "++ MISSION REPORT ++\n"
-        f"Wave: 15 <@&{HERISOR_DEFENSE_TAG_ROLE_ID}> <@&{BLACK_LAURELS_ROLE_ID}>\n"
+        f"Wave: 10 <@&{HERISOR_DEFENSE_TAG_ROLE_ID}> <@&{BLACK_LAURELS_ROLE_ID}>\n"
         f"Difficulty: <@&{hard_siege.id}>\n"
         "Armory Data: 3\n"
         "Team:\n"
@@ -461,21 +496,21 @@ def test_black_laurels_hard_siege_herisor_wave_line_without_mission_valid():
 
     msg = FakeMessage(content, mentions=users, role_mentions=[hard_siege, herisor, black_laurels])
     rec = parse_aar(msg)
-    assert rec.get("waves") == 15
+    assert rec.get("waves") == 10
     errs = validate_aar(rec)
     assert errs == [], f"Expected wave-only Herisor Hard-Siege BL report to validate, got: {errs}"
 
 
-def test_black_laurels_hard_siege_herisor_waves_below_15_invalid():
+def test_black_laurels_hard_siege_herisor_waves_below_10_invalid():
     msg = _make_black_laurels_exception_message(
         mission_line="Reclamation",
         difficulty_name="Hard-Siege",
         include_herisor=True,
-        waves_line="Waves: 10",
+        waves_line="Waves: 9",
     )
     rec = parse_aar(msg)
     errs = validate_aar(rec)
-    assert any("@Defense_of_Herisor with @Hard-Siege requires Waves 15+." in e for e in errs), errs
+    assert any("@Defense_of_Herisor with @Hard-Siege requires Waves 10+." in e for e in errs), errs
 
 
 def test_black_laurels_hard_siege_without_exceptions_invalid():
