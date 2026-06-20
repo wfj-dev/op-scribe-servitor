@@ -2056,25 +2056,21 @@ def _get_order_omega_announcement(
 
 
 _HERISOR_DEFENSE_PROCLAMATION = (
-    "After the last of the Carcharodons' Void Ships departed the Black Reef, "
-    "there were several days spent re-arming and repairing both materiel and Marines. "
-    "En-route back to the Watch Fortress, the Battle Barge received the call...\n\n"
-    "**BEGIN ENCRYPTED MESSAGE.....\n\n"
-    "CLEARANCE LEVEL: INQUISITORIAL\n\n"
-    "BY AUTHORITY OF: EPISTOLARY BORGOS, LIBRARIAN, VII LEGION, 10TH COMPANY - CURRENT STATION - "
-    "RESEARCH FACILITY EPSILON - HERISOR -JERICHO REACH - ORPHEUS SALIENT\n\n"
-    "TO: ANY INQUISITORIAL FORCES IN AO\n\n"
-    "Imperial Research Facility Epsilon Under Tyranid and Heretic Attack.\n"
-    "Research focus - Stunt Tyranid Evolutionary processes. Assets considered Absolute.\n"
-    "Prototype Evolutionary Impedance Virus Bomb must not be lost or fall into Heretic Hands.\n"
-    "Navis Imperalis forces engaged with fragments of Hive Fleet Dagon at 01:30 hours\n"
-    "Contact with Grand Cruiser Indomitable lost at 02:15. Status of vessel and personnel unknown.\n"
-    "VII Legion will hold Epsilon at all costs.\n"
-    "Request Local Forces to cripple Hive Fleet Space Based Elements\n"
-    "Request Deathwatch Force to cripple ground based command elements.\n"
-    "Imperial worlds spinward from Hadex Anomaly bolstering defenses.\n\n"
-    "Primarch-Progenitor, to your glory and the glory of Him on Earth!\n\n"
-    "END TRANSMISSION**"
+    "Research Facility Epsilon on Herisor sheltered a prototype Evolutionary Impedance Virus Bomb — "
+    "the last hope of stunting Hive Fleet Dagon's adaptation. "
+    "When the VII Legion called for aid, the Deathwatch answered, holding the line long enough for the asset to survive."
+)
+
+_HERISOR_DEFENSE_DISTINGUISHED_PROCLAMATION = (
+    "To secure Facility Epsilon demanded more than endurance — it demanded dominance. "
+    "Advancing under Black Laurels distinction, **{name}** prosecuted strike and siege operations "
+    "against the Tyranid vanguard until the prototype was secured and the enemy broken."
+)
+
+_HERISOR_DEFENSE_VALOR_PROCLAMATION = (
+    "Few warriors have bled for Herisor in every theatre of its defense. "
+    "**{name}** prosecuted Hard-Siege against the swarm at the walls *and* led Black Laurels operations "
+    "to decapitate the Tyranid ground command — earning the highest distinction the campaign can confer."
 )
 
 
@@ -2116,10 +2112,10 @@ def _get_distinguished_herisor_defense_announcement(
         title="DISTINGUISHED HERISOR DEFENSE MEDAL",
         color=0x2E4053,
         openings=[
-            "**{name}** completed the Defense of Herisor under Black Laurels distinction.",
+            "**{name}** earned the Defense of Herisor with Black Laurels distinction.",
         ],
         proclamations=[
-            _HERISOR_DEFENSE_PROCLAMATION,
+            _HERISOR_DEFENSE_DISTINGUISHED_PROCLAMATION,
         ],
         chapter_lines={},
         rank_lines={},
@@ -2141,10 +2137,10 @@ def _get_distinguished_herisor_defense_valor_announcement(
         title="DISTINGUISHED HERISOR DEFENSE MEDAL WITH VALOR",
         color=0x1B2631,
         openings=[
-            "**{name}** held Herisor with full Black Laurels distinction across siege and operations.",
+            "**{name}** proved their valor across every dimension of Herisor's defense.",
         ],
         proclamations=[
-            _HERISOR_DEFENSE_PROCLAMATION,
+            _HERISOR_DEFENSE_VALOR_PROCLAMATION,
         ],
         chapter_lines={},
         rank_lines={},
