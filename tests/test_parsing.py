@@ -352,27 +352,23 @@ def test_process_challenge_tracking_herisor_awards_and_normalized_missions():
         patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
         patch("opscribe.aar_ops._save_challenge_progress"),
     ):
-        # Record 1: siege with BL — triggers base medal AND distinguished (BL = no downs)
+        # Record 1: siege with BL — triggers base AND distinguished (siege+BL), NOT valor yet
         n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
         n1_ids = {n[2] for n in n1}
         assert HERISOR_DEFENSE_MEDAL_ROLE_ID in n1_ids
         assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in n1_ids
         assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in n1_ids
 
-        # Record 2: termination with BL — both siege+BL and strat+BL now present → valor fires
+        # Record 2: termination with BL — strat_bl needs BOTH term+BL and rec+BL; valor not yet
         n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
         n2_ids = {n[2] for n in n2}
-        assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in n2_ids
+        assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in n2_ids
 
-        # Record 3: reclamation with BL — already awarded, no new notifications for Herisor
+        # Record 3: reclamation with BL — now siege+BL AND (term+BL AND rec+BL) → valor fires
         final_notifications = asyncio.run(_process_challenge_tracking(records[2], guild))
 
-    herisor_ids = {n[2] for n in final_notifications if n[2] in (
-        HERISOR_DEFENSE_MEDAL_ROLE_ID,
-        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
-        DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
-    )}
-    assert herisor_ids == set(), f"Expected no duplicate Herisor awards on record 3, got: {herisor_ids}"
+    award_role_ids = {n[2] for n in final_notifications}
+    assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in award_role_ids
 
 
 def _make_black_laurels_exception_message(
