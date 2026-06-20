@@ -1559,11 +1559,16 @@ async def _challenge_progress_inner(
     _herisor_rec = _as_list(user_progress.get("herisor_defense_reclamation"))
 
     _auto_strat = _herisor_term + _herisor_rec
-    _auto_base = bool(_herisor_siege or _auto_strat)
+    # Base: siege done OR (both term AND rec done)
+    _auto_base = bool(_herisor_siege) or bool(_herisor_term and _herisor_rec)
     _auto_siege_bl = any(bool(x.get("black_laurels")) for x in _herisor_siege if isinstance(x, dict))
-    _auto_strat_bl = any(bool(x.get("black_laurels")) for x in _auto_strat if isinstance(x, dict))
+    _auto_term_bl = any(bool(x.get("black_laurels")) for x in _herisor_term if isinstance(x, dict))
+    _auto_rec_bl = any(bool(x.get("black_laurels")) for x in _herisor_rec if isinstance(x, dict))
+    _auto_strat_bl = bool(_herisor_term and _herisor_rec and _auto_term_bl and _auto_rec_bl)
+    # Distinguished: siege with BL OR (both term AND rec with BL)
     _auto_distinguished = _auto_siege_bl or _auto_strat_bl
-    _auto_valor = bool(_herisor_siege and _auto_strat and _auto_siege_bl and _auto_strat_bl)
+    # Valor: siege with BL AND (both term AND rec with BL)
+    _auto_valor = _auto_siege_bl and _auto_strat_bl
 
     _legacy_subs = _as_list(user_progress.get("defense_of_herisor_submissions"))
     _legacy_base = len(_legacy_subs) > 0
@@ -1575,20 +1580,26 @@ async def _challenge_progress_inner(
     herisor_valor = _auto_valor or _legacy_valor
 
     siege_done = bool(_herisor_siege)
-    strat_done = bool(_herisor_term + _herisor_rec)
+    term_done = bool(_herisor_term)
+    rec_done = bool(_herisor_rec)
     challenge_lines.append(
-        f"<:HerisorDefense:1511109884521742416> **Defense of Herisor** — complete either team\n"
+        f"<:HerisorDefense:1511109884521742416> **Defense of Herisor** — siege or both ops\n"
         f"{_bar(1 if herisor_base else 0, 1, HERISOR_DEFENSE_MEDAL_ROLE_ID)} "
-        f"{'✅ Siege' if siege_done else '🔲 Siege'}  {'✅ Strat' if strat_done else '🔲 Strat'}"
+        f"{'✅' if siege_done else '🔲'} Siege  "
+        f"{'✅' if term_done else '🔲'} Term  "
+        f"{'✅' if rec_done else '🔲'} Rec"
     )
     challenge_lines.append(
-        f"<:DistinguishedHerisorDefense:1511109951106584778> **Distinguished Defense of Herisor** — either team, no downs\n"
-        f"{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)}"
+        f"<:DistinguishedHerisorDefense:1511109951106584778> **Distinguished Defense of Herisor** — no downs (BL)\n"
+        f"{_bar(1 if herisor_distinguished else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID)} "
+        f"{'✅' if _auto_siege_bl else '🔲'} Siege+BL  "
+        f"{'✅' if _auto_strat_bl else '🔲'} Term+Rec+BL"
     )
     challenge_lines.append(
         f"<:HerisorDefensewithValor:1511110040566763630> **Distinguished Defense of Herisor with Valor** — both teams, no downs\n"
         f"{_bar(1 if herisor_valor else 0, 1, DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID)} "
-        f"{'✅ Siege+BL' if _auto_siege_bl else '🔲 Siege+BL'}  {'✅ Strat+BL' if _auto_strat_bl else '🔲 Strat+BL'}"
+        f"{'✅' if _auto_siege_bl else '🔲'} Siege+BL  "
+        f"{'✅' if _auto_strat_bl else '🔲'} Term+Rec+BL"
     )
 
     # --- Crux Terminatus eligibility checklist ---

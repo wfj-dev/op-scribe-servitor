@@ -486,14 +486,16 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                 _rec_entries = user_progress.get("herisor_defense_reclamation", [])
                 _strat_entries = _term_entries + _rec_entries
 
-                # Base: completed on either team (siege OR stratagem)
-                _has_base = bool(_siege_entries or _strat_entries)
-                # Distinguished: completed on a team with Black Laurels (= no downs)
+                # Base: siege done OR (both termination AND reclamation done)
+                _has_base = bool(_siege_entries) or bool(_term_entries and _rec_entries)
+                # Distinguished: siege with BL OR (both term AND rec with BL)
                 _siege_bl = any(bool(e.get("black_laurels")) for e in _siege_entries if isinstance(e, dict))
-                _strat_bl = any(bool(e.get("black_laurels")) for e in _strat_entries if isinstance(e, dict))
+                _term_bl = any(bool(e.get("black_laurels")) for e in _term_entries if isinstance(e, dict))
+                _rec_bl = any(bool(e.get("black_laurels")) for e in _rec_entries if isinstance(e, dict))
+                _strat_bl = bool(_term_entries and _rec_entries and _term_bl and _rec_bl)
                 _has_distinguished = _siege_bl or _strat_bl
-                # Valor: completed on BOTH teams with Black Laurels
-                _has_valor = bool(_siege_entries and _strat_entries and _siege_bl and _strat_bl)
+                # Valor: siege with BL AND (both term AND rec with BL)
+                _has_valor = _siege_bl and _strat_bl
 
                 _herisor_urls = sorted(
                     {
