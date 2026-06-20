@@ -2062,15 +2062,15 @@ _HERISOR_DEFENSE_PROCLAMATION = (
 )
 
 _HERISOR_DEFENSE_DISTINGUISHED_PROCLAMATION = (
-    "To secure Facility Epsilon demanded more than endurance — it demanded dominance. "
-    "Advancing under Black Laurels distinction, **{name}** prosecuted strike and siege operations "
-    "against the Tyranid vanguard until the prototype was secured and the enemy broken."
+    "Not a single brother fell during their time in the Epsilon perimeter — a standard few can meet. "
+    "**{name}** completed the Defense of Herisor without incapacitation, proving their kill team "
+    "was equal to every threat the swarm could send."
 )
 
 _HERISOR_DEFENSE_VALOR_PROCLAMATION = (
-    "Few warriors have bled for Herisor in every theatre of its defense. "
-    "**{name}** prosecuted Hard-Siege against the swarm at the walls *and* led Black Laurels operations "
-    "to decapitate the Tyranid ground command — earning the highest distinction the campaign can confer."
+    "**{name}** bled for Herisor on both fronts — Hard-Siege at the walls and Black Laurels operations "
+    "against the Tyranid command — without a single brother going down on either. "
+    "There is no higher distinction this campaign can confer."
 )
 
 
