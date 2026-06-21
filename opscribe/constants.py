@@ -128,6 +128,8 @@ MILESTONES_INCREMENTS = {
 # ---------------------------------------------------------------------------
 # Black Laurels strict enforcement begins on Jun 1, 2026 at 00:00 UTC
 BLACK_LAURELS_STRICT_ENFORCEMENT_DATE = datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+# Policy patch release anchor for baseline freeze behavior.
+CHALLENGE_POLICY_PATCH_RELEASE_DATE = datetime(2026, 6, 21, 0, 0, 0, tzinfo=timezone.utc)
 # Black Laurels role ID for parsing
 BLACK_LAURELS_ROLE_ID = 1440108298115485716
 # Leviathan Protocol role ID for parsing
@@ -172,8 +174,21 @@ BLACK_LAURELS_REQUIRED_MISSIONS = {
     "disruption",
     "purgation",
 }
+# Per-mission requirement introduction timestamps used for 28-day grace gating.
+BLACK_LAURELS_MISSION_ADD_DATES = {
+    "inferno": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "decapitation": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "vox liberatis": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "ballistic engine": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "exfiltration": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "termination": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "reclamation": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "disruption": datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "purgation": datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+}
 # Dual Vigil required missions — identical to Black Laurels; all 9 missions at Absolute with exactly 2 brothers
 DUAL_VIGIL_REQUIRED_MISSIONS = BLACK_LAURELS_REQUIRED_MISSIONS
+DUAL_VIGIL_MISSION_ADD_DATES = BLACK_LAURELS_MISSION_ADD_DATES
 
 # Grandfathered missions - users who already have the role are assumed to have completed these
 BLACK_LAURELS_GRANDFATHERED_MISSIONS = {
@@ -220,6 +235,21 @@ ORDER_OMEGA_REQUIRED_MISSIONS = {
     "disruption",
     "exfiltration",
     "purgation",
+}
+ORDER_OMEGA_MISSION_ADD_DATES = {
+    "inferno": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "decapitation": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "vox liberatis": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "reliquary": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "fall of atreus": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "ballistic engine": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "termination": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "obelisk": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "vortex": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "reclamation": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "disruption": datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "exfiltration": datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+    "purgation": datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
 }
 
 # Dedicated Master Terminus Slayer role ID constant for terminus_ops auto-award

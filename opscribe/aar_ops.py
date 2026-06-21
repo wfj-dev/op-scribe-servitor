@@ -17,6 +17,7 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
+from .challenge_policy import evaluate_crux_bl_rank_a
 
 
 def _b(name):
@@ -620,8 +621,9 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                             _url = _rec.get("message_url")
                             if _url:
                                 aar_url_set.add(_url)
-                            if (_rec.get("rank") or "A").upper() != "A":
-                                all_rank_a = False
+                        audit = evaluate_crux_bl_rank_a(user_id_str, _g.DATASTORE.iter_records())
+                        all_rank_a = bool(audit.get("all_rank_a"))
+                        saw_any_bl = bool(audit.get("saw_any"))
                     # Gate the auto-award on every Black Laurels AAR being Rank A.
                     if saw_any_bl and all_rank_a:
                         aar_urls = sorted(aar_url_set)
