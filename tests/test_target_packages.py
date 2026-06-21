@@ -31,6 +31,7 @@ def _install_discord_stub():
     discord_stub.Embed = object
     discord_stub.File = object
     discord_stub.Object = object
+    discord_stub.Role = object
     discord_stub.Interaction = object
     discord_stub.AllowedMentions = object
     discord_stub.SelectOption = object
@@ -88,6 +89,8 @@ from opscribe.target_packages_ops import (  # noqa: E402
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_LAPSED,
+    _can_actor_remove_attached_target,
+    _remove_target_from_package,
 )
 
 
@@ -120,6 +123,7 @@ def _make_member(role_names=(), member_id=12345):
         r.id = hash(rn) & 0xFFFFFFFF
         roles.append(r)
     m.roles = roles
+    m.display_name = f"M{member_id}"
     return m
 
 
@@ -128,6 +132,102 @@ def _make_guild(members):
     g.members = members
     g.get_member = lambda uid: next((m for m in members if m.id == uid), None)
     return g
+
+
+def _with_company_role(member, company_name="Watch Company Primus"):
+    r = MagicMock()
+    r.name = company_name
+    r.id = hash(company_name) & 0xFFFFFFFF
+    member.roles = list(member.roles) + [r]
+    return member
+
+
+class TestRemoveAuthority:
+    def test_highcom_no_requirement_self_attached_removable_by_self(self):
+        actor = _make_member(["Watch Techmarine"], member_id=10)
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[],
+            required_roles=[],
+            assigned_specialist_ids=[10],
+        )
+        ok, kinds, _ = _can_actor_remove_attached_target(actor, actor, 10, pkg, _make_guild([actor]))
+        assert ok is True
+        assert "specialist" in kinds
+
+    def test_highcom_no_requirement_self_attached_not_cadre_path(self):
+        actor = _make_member(["Watch Captain"], member_id=1)
+        target = _make_member(["Watch Techmarine"], member_id=2)
+        actor = _with_company_role(actor)
+        target = _with_company_role(target)
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[],
+            required_roles=[],
+            assigned_specialist_ids=[2],
+        )
+        pkg["assigned_company"] = "Watch Company Primus"
+        ok, kinds, _ = _can_actor_remove_attached_target(actor, target, 2, pkg, _make_guild([actor, target]))
+        assert ok is True
+        # Allowed here through company command scope, not specialist-only cadre scope.
+        assert kinds == {"specialist"}
+
+    def test_company_specialist_no_requirement_removable_by_company_command(self):
+        cpt = _with_company_role(_make_member(["Watch Captain"], member_id=11))
+        target = _with_company_role(_make_member(["Watch Techmarine"], member_id=22))
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[22],
+            required_roles=[],
+            assigned_specialist_ids=[],
+        )
+        pkg["assigned_company"] = "Watch Company Primus"
+        ok, kinds, _ = _can_actor_remove_attached_target(cpt, target, 22, pkg, _make_guild([cpt, target]))
+        assert ok is True
+        assert kinds == {"signed"}
+
+    def test_ktc_no_requirement_lord_executioner_not_cadre_override(self):
+        actor = _make_member(["Lord Executioner"], member_id=30)
+        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=31)
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[31],
+            required_roles=[],
+            assigned_specialist_ids=[],
+        )
+        pkg["assigned_kt"] = "Kill Team Alpha"
+        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 31, pkg, _make_guild([actor, target]))
+        assert ok is False
+        assert "not authorized" in reason.lower()
+
+    def test_sgt_own_kt_scope(self):
+        sgt = _make_member(["Watch Sergeant", "Kill Team Alpha"], member_id=40)
+        target = _make_member(["Watch Brother", "Kill Team Alpha"], member_id=41)
+        pkg = _make_pkg(status=STATUS_RECRUITING, signed_up=[41], required_roles=[], assigned_specialist_ids=[])
+        pkg["assigned_kt"] = "Kill Team Alpha"
+        ok, kinds, _ = _can_actor_remove_attached_target(sgt, target, 41, pkg, _make_guild([sgt, target]))
+        assert ok is True
+        assert kinds == {"signed"}
+
+
+class TestRemoveOperation:
+    def test_remove_target_from_package_both_lists(self):
+        target = _make_member(["Watch Techmarine"], member_id=77)
+        pkg = _make_pkg(
+            status=STATUS_DEPLOYED,
+            mode="Hard-Strat",
+            signed_up=[77, 2, 3],
+            required_roles=["Watch Techmarine"],
+            assigned_specialist_ids=[77],
+        )
+        pkg["specialist_assigners"] = {"77": 9001}
+        ok, msg = _remove_target_from_package(pkg, 77, {"signed", "specialist"}, _make_guild([target]))
+        assert ok is True
+        assert "sign-up" in msg.lower() and "specialist" in msg.lower()
+        assert 77 not in pkg["signed_up"]
+        assert 77 not in pkg["assigned_specialist_ids"]
+        assert "77" not in pkg.get("specialist_assigners", {})
+        assert pkg["status"] == STATUS_RECRUITING
 
 
 # ---------------------------------------------------------------------------

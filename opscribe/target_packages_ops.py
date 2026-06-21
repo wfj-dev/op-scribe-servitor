@@ -1578,7 +1578,6 @@ async def submit_package(
         )
         is_signed_up = submitter.id in pkg.get("signed_up", [])
 
-        assigned_kt = pkg.get("assigned_kt")
         assigned_company = pkg.get("assigned_company")
 
         if not (is_signed_up or is_command or submitter_company == assigned_company or is_hc):
@@ -3567,6 +3566,349 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     return True, ""
 
 
+def _attached_kinds_for_target(pkg: dict, target_id: int) -> set[str]:
+    """Return attachment kinds for a target in this package: signed and/or specialist."""
+    kinds: set[str] = set()
+    if int(target_id) in {int(uid) for uid in pkg.get("signed_up", [])}:
+        kinds.add("signed")
+    if int(target_id) in {int(uid) for uid in pkg.get("assigned_specialist_ids", [])}:
+        kinds.add("specialist")
+    return kinds
+
+
+def _can_actor_remove_attached_target(
+    actor: discord.Member,
+    target_member: "discord.Member | None",
+    target_id: int,
+    pkg: dict,
+    guild: "discord.Guild | None",
+) -> tuple[bool, set[str], str]:
+    """Return (allowed, removable_kinds, reason) for actor removing target from package.
+
+    Rules:
+    - Self-removal allowed for current attachments.
+    - SGT command scope: own KT only.
+    - CPT/LT command scope: directives under actor's company command.
+    - Cadre scope: specialist detach only for required cadre roles actor owns.
+    - Admin/Watch Master may remove any attached target.
+    """
+    attached = _attached_kinds_for_target(pkg, target_id)
+    if not attached:
+        return False, set(), "Target is not attached to this directive."
+
+    if int(getattr(actor, "id", 0) or 0) == int(target_id):
+        return True, set(attached), ""
+
+    if _is_admin(actor) or _has_role(actor, "Watch Master"):
+        return True, set(attached), ""
+
+    actor_roles = _member_role_names(actor)
+
+    # Company command can manage members on directives under their assigned company.
+    def _safe_member_company_name(member: discord.Member) -> str | None:
+        try:
+            from .roster_ops import _get_member_company_name as _fn
+            return _fn(member)
+        except Exception:
+            role_names = _member_role_names(member)
+            for rn in (
+                "Watch Company Primus",
+                "Watch Company Secundus",
+                "Watch Company Tertius",
+                "Watch Company Quartus",
+                "Watch Company Quintus",
+                "Dreadnought Cadre",
+            ):
+                if rn in role_names:
+                    return rn
+            return None
+
+    def _safe_member_kt(member: discord.Member) -> str | None:
+        try:
+            from .forge_ops import _resolve_killteam_for_member as _fn
+            return _fn(member)
+        except Exception:
+            role_names = _member_role_names(member)
+            kill_teams = set(_b("KILL_TEAMS") or [])
+            for rn in role_names:
+                if rn in kill_teams:
+                    return rn
+            for rn in role_names:
+                if rn.lower().startswith("kill team "):
+                    return rn
+            return None
+
+    actor_company = _safe_member_company_name(actor)
+    if (
+        ("Watch Captain" in actor_roles or "Watch Lieutenant" in actor_roles)
+        and actor_company
+        and pkg.get("assigned_company")
+        and actor_company == pkg.get("assigned_company")
+    ):
+        return True, set(attached), ""
+
+    # KT command can manage members on their own KT directives.
+    if "Watch Sergeant" in actor_roles:
+        actor_kt = _safe_member_kt(actor)
+        pkg_kt = pkg.get("assigned_kt")
+        if actor_kt and pkg_kt and actor_kt == pkg_kt:
+            if target_member is None:
+                return True, set(attached), ""
+            target_kt = _safe_member_kt(target_member)
+            if target_kt == actor_kt:
+                return True, set(attached), ""
+
+    # Cadre authority path only applies to specialist attachments and only when
+    # this directive explicitly requires a role the cadre leader owns.
+    if "specialist" in attached and target_member is not None and (actor_roles & _CADRE_LEADER_ROLES):
+        owned_required_roles = [
+            r
+            for r in (pkg.get("required_roles", []) or [])
+            if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(actor, r)
+        ]
+        if owned_required_roles:
+            target_roles = _member_role_names(target_member)
+            if any(r in target_roles for r in owned_required_roles):
+                return True, {"specialist"}, ""
+
+    return False, set(), "You are not authorized to remove this member from this directive."
+
+
+def _remove_target_from_package(
+    pkg: dict,
+    target_id: int,
+    removable_kinds: set[str],
+    guild: "discord.Guild | None",
+) -> tuple[bool, str]:
+    """Mutate package in-place and remove allowed attachment kinds for target."""
+    if not removable_kinds:
+        return False, "No removable attachment found for target."
+
+    removed_signed = False
+    removed_specialist = False
+
+    if "signed" in removable_kinds and int(target_id) in {int(uid) for uid in pkg.get("signed_up", [])}:
+        pkg["signed_up"] = [uid for uid in pkg.get("signed_up", []) if int(uid) != int(target_id)]
+        removed_signed = True
+
+    if "specialist" in removable_kinds and int(target_id) in {int(uid) for uid in pkg.get("assigned_specialist_ids", [])}:
+        pkg["assigned_specialist_ids"] = [
+            uid for uid in pkg.get("assigned_specialist_ids", []) if int(uid) != int(target_id)
+        ]
+        pkg.setdefault("specialist_assigners", {})
+        pkg["specialist_assigners"].pop(str(target_id), None)
+        removed_specialist = True
+
+    if not removed_signed and not removed_specialist:
+        return False, "Target is no longer attached to this directive."
+
+    # If readiness breaks after any removal, drop from deployed to recruiting.
+    if pkg.get("status") == STATUS_DEPLOYED and not _check_deployed(pkg, guild):
+        pkg["status"] = STATUS_RECRUITING
+
+    if removed_signed and removed_specialist:
+        return True, "Removed from sign-up roster and specialist attachment."
+    if removed_specialist:
+        return True, "Removed specialist attachment."
+    return True, "Removed from sign-up roster."
+
+
+async def remove_attached_member_from_directive(
+    package_id: str,
+    actor: discord.Member,
+    target_id: int,
+    guild: "discord.Guild | None",
+) -> tuple[bool, str]:
+    """Remove an attached member from a directive roster with scope-aware authority checks."""
+    async with _TP_LOCK:
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id)
+        if not pkg:
+            return False, "Directive not found."
+
+        if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+            return False, (
+                f"Directive `{pkg.get('directive_code') or package_id}` is `{pkg.get('status')}` "
+                "and no longer allows member removal."
+            )
+
+        resolved_guild = guild or _get_guild_from_bot()
+        target_member = resolved_guild.get_member(int(target_id)) if resolved_guild else None
+        allowed, removable_kinds, deny_reason = _can_actor_remove_attached_target(
+            actor,
+            target_member,
+            int(target_id),
+            pkg,
+            resolved_guild,
+        )
+        if not allowed:
+            return False, deny_reason
+
+        success, action_msg = _remove_target_from_package(
+            pkg,
+            int(target_id),
+            removable_kinds,
+            resolved_guild,
+        )
+        if not success:
+            return False, action_msg
+
+        _save_tp(data)
+
+    target_display = target_member.display_name if target_member else str(target_id)
+    return True, f"{target_display}: {action_msg}"
+
+
+def _build_removable_member_options(
+    actor: discord.Member,
+    pkg: dict,
+    guild: "discord.Guild | None",
+) -> tuple[list[discord.SelectOption], str, bool]:
+    """Build options for members actor is authorized to remove from this directive."""
+    target_ids = list(dict.fromkeys([*pkg.get("signed_up", []), *pkg.get("assigned_specialist_ids", [])]))
+    if not target_ids:
+        return [], "No attached members to remove", False
+
+    options: list[discord.SelectOption] = []
+    for uid in target_ids:
+        t_id = int(uid)
+        target_member = guild.get_member(t_id) if guild else None
+        allowed, removable_kinds, _reason = _can_actor_remove_attached_target(
+            actor,
+            target_member,
+            t_id,
+            pkg,
+            guild,
+        )
+        if not allowed:
+            continue
+
+        if removable_kinds == {"signed", "specialist"}:
+            desc = "signed + specialist"
+        elif "specialist" in removable_kinds:
+            desc = "specialist"
+        else:
+            desc = "signed"
+
+        label = (target_member.display_name if target_member else f"Unknown {t_id}")[:100]
+        options.append(discord.SelectOption(label=label, value=str(t_id), description=desc[:100]))
+        if len(options) >= 25:
+            break
+
+    if not options:
+        return [], "No authorized removals available", False
+    return options, "Select attached member to remove…", True
+
+
+async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Guild | None") -> None:
+    """Best-effort refresh of KT signup embed roster/requirements after roster mutation."""
+    try:
+        resolved_guild = guild or _get_guild_from_bot()
+        if not resolved_guild:
+            return
+
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(package_id)
+        if not pkg:
+            return
+
+        signed_up = pkg.get("signed_up", [])
+        specialists = pkg.get("assigned_specialist_ids", [])
+        sp_assigners = pkg.get("specialist_assigners", {})
+        mode = pkg.get("mode", "")
+        total_capacity = 3 if "Hard" in mode else 5
+        count = len(signed_up) + len(specialists)
+
+        signed_names = []
+        for uid in signed_up:
+            m2 = resolved_guild.get_member(uid) if resolved_guild else None
+            signed_names.append(m2.display_name if m2 else str(uid))
+        for uid in specialists:
+            m2 = resolved_guild.get_member(uid) if resolved_guild else None
+            sp_assigner_id = sp_assigners.get(str(uid))
+            sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
+            sp_suffix = f" _(via {sp_a.display_name})_" if (sp_a and int(sp_assigner_id) != int(uid)) else " _(specialist)_"
+            signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
+
+        roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
+        roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
+
+        signup_channel_id = pkg.get("signup_channel_id")
+        signup_message_id = pkg.get("signup_message_id")
+        if not (signup_channel_id and signup_message_id):
+            return
+
+        ch = await _resolve_channel(resolved_guild, int(signup_channel_id))
+        if not ch:
+            return
+        msg = await ch.fetch_message(int(signup_message_id))
+        if not msg.embeds:
+            return
+
+        upd_embed = msg.embeds[0]
+        req_roles = pkg.get("required_roles", [])
+        deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
+        if req_roles and resolved_guild:
+            req_display = _resolve_requirements_display(pkg, resolved_guild)
+            for rl, em, _wh in req_display:
+                deploy_lines.append(f"{em} **{rl}**")
+        elif req_roles:
+            for rl in req_roles:
+                deploy_lines.append(f"🔲 **{rl}**")
+        deploy_lines.append("Press **⚔ Comply** to register for this operation.")
+
+        new_fields = [
+            f for f in upd_embed.fields
+            if not f.name.startswith("▸ Signed Up")
+            and f.name != "▸ Deployment Requirements"
+            and f.name != "▸ Required Ranks"
+        ]
+        upd_embed.clear_fields()
+        for f in new_fields:
+            upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
+        upd_embed.add_field(name="▸ Deployment Requirements", value="\n".join(deploy_lines), inline=False)
+        upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
+        await msg.edit(embed=upd_embed)
+    except Exception as e:
+        _g.logger.debug(f"[TP] Signup embed refresh failed for {package_id}: {e}")
+
+
+class RemoveAttachedMemberView(discord.ui.View):
+    """Ephemeral picker view for authorized leader/member removals."""
+
+    def __init__(self, package_id: str, options: list[discord.SelectOption], placeholder: str):
+        super().__init__(timeout=180)
+        self.package_id = package_id
+        select = discord.ui.Select(
+            placeholder=placeholder,
+            options=options,
+            custom_id="tp_remove_attached_select",
+            disabled=not bool(options),
+        )
+        select.callback = self.on_select
+        self.add_item(select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        selected = (interaction.data.get("values") or [None])[0]
+        if not selected:
+            await interaction.response.send_message("No member selected.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        target_id = int(selected)
+        success, msg = await remove_attached_member_from_directive(
+            self.package_id,
+            interaction.user,
+            target_id,
+            interaction.guild,
+        )
+
+        if success:
+            await _refresh_signup_embed_for_package(self.package_id, interaction.guild)
+
+        await interaction.followup.send(msg, ephemeral=True)
+
+
 async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: discord.Member = None) -> None:
     """Post the KT sign-up embed in the KT's forum thread."""
     from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
@@ -4112,6 +4454,34 @@ class SignUpView(discord.ui.View):
                         await msg.edit(embed=upd_embed)
         except Exception as e:
             _g.logger.debug(f"[TP] Stand Down embed update failed for {self.package_id}: {e}")
+
+    @discord.ui.button(label="Remove Member", style=discord.ButtonStyle.danger, custom_id="tp_remove_attached")
+    async def remove_attached(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(self.package_id)
+        if not pkg:
+            await interaction.response.send_message("Directive not found.", ephemeral=True)
+            return
+
+        if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+            await interaction.response.send_message(
+                f"Directive `{pkg.get('directive_code') or self.package_id}` is `{pkg.get('status')}` and no longer allows member removal.",
+                ephemeral=True,
+            )
+            return
+
+        resolved_guild = interaction.guild or _get_guild_from_bot()
+        options, placeholder, enabled = _build_removable_member_options(interaction.user, pkg, resolved_guild)
+        if not enabled:
+            await interaction.response.send_message(placeholder, ephemeral=True)
+            return
+
+        view = RemoveAttachedMemberView(self.package_id, options, placeholder)
+        await interaction.response.send_message(
+            f"Select a member to remove from `{pkg.get('directive_code') or self.package_id}`:",
+            view=view,
+            ephemeral=True,
+        )
 
 
 class SpecialistAssignView(discord.ui.View):
