@@ -43,25 +43,35 @@ def split_missing_requirements_by_policy(
     required_missions: set[str],
     mission_add_dates: Mapping[str, datetime],
     now: datetime | None = None,
+    user_baseline: datetime | None = None,
 ) -> dict[str, Any]:
-    """Classify missing requirements using patch baseline + per-item grace.
+    """Classify missing requirements using baseline snapshot + per-item grace.
 
-    Users who satisfy all requirements that were already required at patch release
-    are baseline-frozen: only requirements added after patch release can trigger
+    Users who satisfy all requirements that were already required at their baseline
+    are baseline-frozen: only requirements added after their baseline can trigger
     revocation, and only after 28 days per added requirement.
+
+    Args:
+      completed_missions: set of completed mission names
+      required_missions: set of required mission names
+      mission_add_dates: mapping of mission names to their addition dates
+      now: current timestamp (default: now UTC)
+      user_baseline: user's baseline snapshot date (default: CHALLENGE_POLICY_PATCH_RELEASE_DATE)
 
     Returns:
       baseline_frozen: bool
       missing_all: set[str]
-      missing_overdue: set[str]
-      missing_in_grace: set[str]
+      missing_overdue: set[str] (revokable)
+      missing_in_grace: set[str] (protected)
       baseline_required: set[str]
     """
     now_utc = now or datetime.now(timezone.utc)
+    snapshot_date = user_baseline or CHALLENGE_POLICY_PATCH_RELEASE_DATE
+
     baseline_required = {
         m
         for m in required_missions
-        if (mission_add_dates.get(m) or datetime(2000, 1, 1, tzinfo=timezone.utc)) <= CHALLENGE_POLICY_PATCH_RELEASE_DATE
+        if (mission_add_dates.get(m) or datetime(2000, 1, 1, tzinfo=timezone.utc)) <= snapshot_date
     }
 
     missing_all = set(required_missions) - set(completed_missions)
@@ -92,7 +102,7 @@ def split_missing_requirements_by_policy(
         if added_at is None:
             missing_overdue.add(mission)
             continue
-        if added_at <= CHALLENGE_POLICY_PATCH_RELEASE_DATE:
+        if added_at <= snapshot_date:
             missing_overdue.add(mission)
             continue
         if now_utc >= (added_at + timedelta(days=28)):

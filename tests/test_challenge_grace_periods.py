@@ -238,6 +238,20 @@ class TestBlackLaurelsGrace:
         assert result == 0
         bot_member.remove_roles.assert_not_called()
 
+    def test_no_revocation_when_bl_holder_has_no_mission_evidence(self):
+        """Legacy/pre-ingest BL holders should not be revoked on missing evidence."""
+        uid = 312
+        member, guild, _user_bl_missions, tracking, bl_role = self._setup(uid, True, set())
+
+        with (
+            _patch_config({"challenge_grace_periods": {"black_laurels": PAST_DATE}}),
+            patch("discord.utils.get", return_value=bl_role),
+        ):
+            result = _run(_grace(guild, {}, tracking))
+
+        assert result == 0
+        member.remove_roles.assert_not_called()
+
     def test_baseline_frozen_member_not_revoked_while_new_requirement_in_grace(self):
         """If baseline was satisfied at patch, newly-added requirements get 28-day grace."""
         uid = 310
@@ -407,7 +421,7 @@ class TestDualVigilGrace:
                 return MagicMock()
 
             mock_b.side_effect = _b_side
-            result = _run(_grace(guild, {}, {}))
+            result = _run(_grace(guild, {"600": {"inferno"}}, {}))
 
         assert result == 0
         member.remove_roles.assert_not_called()
@@ -458,7 +472,7 @@ class TestCruxGrace:
 
             mock_b.side_effect = _b_side
 
-            result = _run(_grace(guild, {}, {}))
+            result = _run(_grace(guild, {"600": {"inferno"}}, {}))
 
         assert result == 0
         member.remove_roles.assert_not_called()
@@ -526,13 +540,13 @@ class TestCruxGrace:
                 return MagicMock()
 
             mock_b.side_effect = _b_side
-            result = _run(_grace(guild, {}, {}))
+            result = _run(_grace(guild, {str(uid): {"inferno"}}, {}))
 
         assert result == 0
         member.remove_roles.assert_not_called()
 
-    def test_non_grandfathered_post_enforcement_non_a_is_revoked(self):
-        """Non-grandfathered users are still subject to strict post-cutoff rank checks."""
+    def test_non_grandfathered_post_enforcement_non_a_not_revoked_when_roles_met(self):
+        """Crux no longer re-audits BL mission rank history for current holders."""
         crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
         bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
         distinguished_role = _make_role(DISTINGUISHED_PIPEHITTER_ROLE_ID, "Distinguished SOK-G: Pipehitter")
@@ -569,7 +583,80 @@ class TestCruxGrace:
                 return MagicMock()
 
             mock_b.side_effect = _b_side
-            result = _run(_grace(guild, {}, {}))
+            result = _run(_grace(guild, {str(uid): {"inferno"}}, {}))
 
-        assert result == 1
-        member.remove_roles.assert_called_once()
+        assert result == 0
+        member.remove_roles.assert_not_called()
+
+    def test_crux_revokes_when_core_role_requirements_missing(self):
+        """Crux should still revoke when non-BL mission role requirements are missing."""
+        crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
+        bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+
+        members = []
+        for uid in range(700, 705):
+            m = _make_member(uid, [crux_role, bl_role])
+            members.append(m)
+        crux_role.members = members
+
+        guild = _make_guild(members, [crux_role, bl_role])
+        guild.get_role = MagicMock(side_effect=lambda rid: crux_role if rid == CRUX_TERMINATUS_ROLE_ID else None)
+
+        # BL mission map is irrelevant for Crux retention now.
+        user_bl_missions = {
+            str(members[0].id): {"inferno"},
+            str(members[1].id): {"inferno"},
+        }
+
+        with (
+            _patch_config({"challenge_grace_periods": {"crux_terminatus": PAST_DATE}}),
+            _patch_lock(),
+            patch.object(_g_module, "DATASTORE", None),
+            patch("opscribe.roster_ops._b") as mock_b,
+        ):
+            def _b_side(name):
+                if name == "_load_challenge_progress":
+                    return lambda: {}
+                if name == "_save_challenge_progress":
+                    return MagicMock()
+                return MagicMock()
+
+            mock_b.side_effect = _b_side
+            result = _run(_grace(guild, user_bl_missions, {}))
+
+        assert result == 5
+        for member in members:
+            member.remove_roles.assert_called_once()
+
+    def test_crux_no_revocation_when_bl_history_missing_for_holder(self):
+        """Crux should not be revoked solely because BL mission history is absent."""
+        crux_role = _make_role(CRUX_TERMINATUS_ROLE_ID, "Crux Terminatus")
+        bl_role = _make_role(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+        distinguished_role = _make_role(DISTINGUISHED_PIPEHITTER_ROLE_ID, "Distinguished SOK-G: Pipehitter")
+        master_terminus = _make_role(1452803611477147668, "Master Terminus Slayer")
+        assault_terminus = _make_role(1449257352112111646, "Terminus Slayer (Assault)")
+
+        uid = 703
+        member = _make_member(uid, [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        crux_role.members = [member]
+        guild = _make_guild([member], [crux_role, bl_role, distinguished_role, master_terminus, assault_terminus])
+        guild.get_role = MagicMock(side_effect=lambda rid: crux_role if rid == CRUX_TERMINATUS_ROLE_ID else None)
+
+        with (
+            _patch_config({"challenge_grace_periods": {"crux_terminatus": PAST_DATE}}),
+            _patch_lock(),
+            patch.object(_g_module, "DATASTORE", None),
+            patch("opscribe.roster_ops._b") as mock_b,
+        ):
+            def _b_side(name):
+                if name == "_load_challenge_progress":
+                    return lambda: {}
+                if name == "_save_challenge_progress":
+                    return MagicMock()
+                return MagicMock()
+
+            mock_b.side_effect = _b_side
+            result = _run(_grace(guild, {str(uid): set()}, {}))
+
+        assert result == 0
+        member.remove_roles.assert_not_called()

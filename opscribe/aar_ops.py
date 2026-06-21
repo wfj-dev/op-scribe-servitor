@@ -17,7 +17,6 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
-from .challenge_policy import evaluate_crux_bl_rank_a
 
 
 def _b(name):
@@ -604,12 +603,6 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         for m in user_progress.get("crux_bl_aars", [])
                         if m.get("message_url")
                     }
-                    # Crux requires EVERY Black Laurels AAR for this user to be
-                    # Rank A.  Legacy AARs without a rank field are treated as
-                    # Rank A so the audit does not punish records that pre-date
-                    # the rank requirement.
-                    all_rank_a = True
-                    saw_any_bl = False
                     if _g.DATASTORE:
                         for _rec in _g.DATASTORE.iter_records():
                             _bl = _rec.get("black_laurels_in_mission") or _rec.get("black_laurels_in_difficulty")
@@ -617,18 +610,12 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                                 continue
                             if user_id_str not in [str(b) for b in (_rec.get("brother_ids") or [])]:
                                 continue
-                            saw_any_bl = True
                             _url = _rec.get("message_url")
                             if _url:
                                 aar_url_set.add(_url)
-                        audit = evaluate_crux_bl_rank_a(user_id_str, _g.DATASTORE.iter_records())
-                        all_rank_a = bool(audit.get("all_rank_a"))
-                        saw_any_bl = bool(audit.get("saw_any"))
-                    # Gate the auto-award on every Black Laurels AAR being Rank A.
-                    if saw_any_bl and all_rank_a:
-                        aar_urls = sorted(aar_url_set)
-                        notifications.append((user_id_str, "Crux Terminatus", CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", aar_urls))
-                        notified_challenges.append("crux_terminatus")
+                    aar_urls = sorted(aar_url_set)
+                    notifications.append((user_id_str, "Crux Terminatus", CRUX_TERMINATUS_ROLE_ID, "crux_terminatus", aar_urls))
+                    notified_challenges.append("crux_terminatus")
 
             # === The Order Omega tracking ===
             # Track omega difficulty missions with Black Laurels tag (all 12 missions required)
@@ -728,6 +715,11 @@ async def _send_challenge_eligibility_notifications(
                 continue
             try:
                 await member.add_roles(role, reason=f"Auto-award: {challenge_name}")
+                # Record acquisition timestamp for grace-period baseline
+                from datetime import datetime, timezone
+                now_iso = datetime.now(timezone.utc).isoformat()
+                if _g.DATASTORE:
+                    await _g.DATASTORE.set_role_acquisition_date(str(user_id), challenge_name, now_iso)
             except Exception as e:
                 _g.logger.warning(
                     f"Failed to assign {challenge_name} role to {user_id}: {e}"

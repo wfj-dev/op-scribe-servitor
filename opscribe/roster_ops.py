@@ -22,7 +22,7 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
-from .challenge_policy import evaluate_crux_bl_rank_a, split_missing_requirements_by_policy
+from .challenge_policy import split_missing_requirements_by_policy
 
 
 def _b(name):
@@ -1316,11 +1316,30 @@ async def _enforce_challenge_grace_periods(
         for member in role_holders:
             uid = str(member.id)
             completed = user_bl_missions.get(uid, set())
+            if not completed:
+                # Legacy holders may have earned this before ingest coverage.
+                # Do not revoke on missing evidence.
+                _g.logger.warning(
+                    f"Grace period: skipping {role.name} revoke audit for {uid} ({member.display_name}) "
+                    "due to missing BL mission records"
+                )
+                continue
+            # Fetch user's baseline acquisition date for Black Laurels
+            user_baseline_bl = None
+            try:
+                if _g.DATASTORE:
+                    acq_iso = _g.DATASTORE.get_role_acquisition_date(uid, "Black Laurels")
+                    if acq_iso:
+                        user_baseline_bl = datetime.fromisoformat(acq_iso)
+            except Exception as e:
+                _g.logger.debug(f"Grace period: failed to fetch BL baseline for {uid}: {e}")
+            
             policy = split_missing_requirements_by_policy(
                 completed,
                 set(required),
                 BLACK_LAURELS_MISSION_ADD_DATES,
                 now=now_utc,
+                user_baseline=user_baseline_bl,
             )
             missing_overdue = sorted(policy["missing_overdue"])
             if not missing_overdue:
@@ -1369,19 +1388,41 @@ async def _enforce_challenge_grace_periods(
                             if _mission in required:
                                 logged.add(_mission)
                     if challenge_name == "order_omega":
+                        # Fetch user's baseline for Order Omega
+                        user_baseline_oo = None
+                        try:
+                            if _g.DATASTORE:
+                                acq_iso = _g.DATASTORE.get_role_acquisition_date(uid, "The Order Omega")
+                                if acq_iso:
+                                    user_baseline_oo = datetime.fromisoformat(acq_iso)
+                        except Exception as e:
+                            _g.logger.debug(f"Grace period: failed to fetch Order Omega baseline for {uid}: {e}")
+                        
                         policy = split_missing_requirements_by_policy(
                             logged,
                             set(required),
                             ORDER_OMEGA_MISSION_ADD_DATES,
                             now=now_utc,
+                            user_baseline=user_baseline_oo,
                         )
                         missing = sorted(policy["missing_overdue"])
                     elif challenge_name == "dual_vigil":
+                        # Fetch user's baseline for Dual Vigil
+                        user_baseline_dv = None
+                        try:
+                            if _g.DATASTORE:
+                                acq_iso = _g.DATASTORE.get_role_acquisition_date(uid, "Dual Vigil")
+                                if acq_iso:
+                                    user_baseline_dv = datetime.fromisoformat(acq_iso)
+                        except Exception as e:
+                            _g.logger.debug(f"Grace period: failed to fetch Dual Vigil baseline for {uid}: {e}")
+                        
                         policy = split_missing_requirements_by_policy(
                             logged,
                             set(required),
                             DUAL_VIGIL_MISSION_ADD_DATES,
                             now=now_utc,
+                            user_baseline=user_baseline_dv,
                         )
                         missing = sorted(policy["missing_overdue"])
                     else:
@@ -1408,7 +1449,7 @@ async def _enforce_challenge_grace_periods(
             if cp_dirty:
                 _b("_save_challenge_progress")(cp_data)
 
-    # ── Crux Terminatus (role-based + BL Rank A audit) ───────────────────────
+    # ── Crux Terminatus (role-based requirements; BL mission history is not re-audited) ─────────
     if crux_pending:
         crux_role = guild.get_role(CRUX_TERMINATUS_ROLE_ID)
         if crux_role:
@@ -1421,40 +1462,12 @@ async def _enforce_challenge_grace_periods(
                     try:
                         member_role_ids: set[int] = {r.id for r in member.roles}
                         uid = str(member.id)
-                        audit: dict = {}
                         failed: list[str] = []
 
-                        # Req 1: BL role held + all post-enforcement BL AARs are Rank A
-                        # over the user's effective mission baseline.
+                        # Req 1: Black Laurels role held.
                         has_bl = BLACK_LAURELS_ROLE_ID in member_role_ids
                         if not has_bl:
                             failed.append("Black Laurels role not held")
-                        elif _g.DATASTORE:
-                            audit = evaluate_crux_bl_rank_a(uid, _g.DATASTORE.iter_records())
-                            if not audit["all_rank_a"]:
-                                missing_missions = audit.get("missing_missions") or []
-                                non_a_missions = audit.get("non_a_missions") or []
-                                if missing_missions:
-                                    failed.append(
-                                        "Black Laurels — missing required missions: "
-                                        + ", ".join(missing_missions)
-                                    )
-                                elif audit.get("grandfathered"):
-                                    failed.append(
-                                        "Black Laurels — non-Rank A record found on grandfathered baseline after enforcement"
-                                    )
-                                elif audit.get("baseline_frozen"):
-                                    failed.append(
-                                        "Black Laurels — non-Rank A record found on baseline-frozen mission set"
-                                    )
-                                else:
-                                    if non_a_missions:
-                                        failed.append(
-                                            "Black Laurels — non-Rank A missions: "
-                                            + ", ".join(non_a_missions)
-                                        )
-                                    else:
-                                        failed.append("Black Laurels — not all missions completed at Rank A")
 
                         # Req 2: Distinguished SOK-G Pipehitter role
                         if DISTINGUISHED_PIPEHITTER_ROLE_ID not in member_role_ids:
@@ -1477,13 +1490,6 @@ async def _enforce_challenge_grace_periods(
                             user_cp["notified"] = notified_list
                             cp_data[uid] = user_cp
                             cp_dirty = True
-                        _g.logger.info(
-                            "Grace period: Crux audit uid=%s baseline_frozen=%s grandfathered=%s effective=%s",
-                            uid,
-                            audit.get("baseline_frozen") if _g.DATASTORE else None,
-                            audit.get("grandfathered") if _g.DATASTORE else None,
-                            sorted(audit.get("effective_missions", [])) if _g.DATASTORE else [],
-                        )
                         _g.logger.info(f"Grace period: revoked Crux Terminatus from {uid} ({member.display_name})")
                         await _notify_revoked(member, "Crux Terminatus", failed)
 
