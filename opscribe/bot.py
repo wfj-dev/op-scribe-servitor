@@ -741,6 +741,7 @@ from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for s
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
 from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
+from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noqa: E402,F401  # imported for snapshot command registration
 
 # Lines 828-2593 extracted to roster_ops.py
 

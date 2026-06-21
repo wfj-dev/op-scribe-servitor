@@ -169,13 +169,16 @@ class DataStore:
 
     FLUSH_INTERVAL = 60  # seconds between background flushes
 
-    def __init__(self, aar_records_path: str, processed_ids_path: str):
+    def __init__(self, aar_records_path: str, processed_ids_path: str, acquisitions_path: str = None):
         self._aar_records_path = aar_records_path
         self._processed_ids_path = processed_ids_path
+        self._acquisitions_path = acquisitions_path or os.path.join(os.path.dirname(aar_records_path), "challenge_role_acquisitions.json")
         self._records: Dict[str, dict] = {}
         self._processed_ids: set[str] = set()
+        self._acquisitions: Dict[str, Dict[str, str]] = {}  # user_id -> {role_name -> iso8601_timestamp}
         self._dirty_records = False
         self._dirty_ids = False
+        self._dirty_acquisitions = False
         self._lock = asyncio.Lock()
         self._flush_task: Optional[asyncio.Task] = None
         self._shutdown = False
@@ -216,6 +219,16 @@ class DataStore:
                     self._processed_ids = set()
         except Exception:
             self._processed_ids = set()
+        # Load challenge role acquisitions
+        try:
+            with open(self._acquisitions_path, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "by_user" in data:
+                    self._acquisitions = data.get("by_user", {})
+                else:
+                    self._acquisitions = {}
+        except Exception:
+            self._acquisitions = {}
 
     def _build_user_stats_cache(self):
         # Build stats for all users from all records
@@ -329,6 +342,20 @@ class DataStore:
             sorted_ids = sorted(self._processed_ids, key=lambda x: int(x) if x.isdigit() else x)
             self._atomic_write_with_backup(self._processed_ids_path, sorted_ids)
             self._dirty_ids = False
+        # Write acquisitions if dirty
+        if self._dirty_acquisitions:
+            from datetime import datetime
+            acq_data = {
+                "_meta": {
+                    "description": "Per-user baseline snapshot dates for challenge role grace-period enforcement",
+                    "format": "user_id -> {role_name -> iso8601_timestamp}",
+                    "roles": ["Black Laurels", "Order Omega", "Dual Vigil", "Crux Terminatus"],
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                },
+                "by_user": self._acquisitions,
+            }
+            self._atomic_write_with_backup(self._acquisitions_path, acq_data)
+            self._dirty_acquisitions = False
         t1 = time.perf_counter()
         self._last_flush_time = time.time()
         if t1 - t0 > 0.05:
@@ -353,6 +380,38 @@ class DataStore:
             "dirty_ids": self._dirty_ids,
             "last_flush_time": self._last_flush_time,
         }
+
+    def get_role_acquisition_date(self, user_id: str, role_name: str) -> Optional[str]:
+        """Get ISO8601 acquisition timestamp for a user's challenge role, or None if not recorded."""
+        user_acq = self._acquisitions.get(str(user_id), {})
+        return user_acq.get(role_name)
+
+    async def set_role_acquisition_date(self, user_id: str, role_name: str, iso8601_timestamp: str):
+        """Record the acquisition date for a user's challenge role (ISO8601 format)."""
+        async with self._lock:
+            sid = str(user_id)
+            if sid not in self._acquisitions:
+                self._acquisitions[sid] = {}
+            # Only set if not already recorded (acquisition is one-time event)
+            if role_name not in self._acquisitions[sid]:
+                self._acquisitions[sid][role_name] = iso8601_timestamp
+                self._dirty_acquisitions = True
+
+    async def snapshot_role_holders(self, role_holders: Dict[str, str]) -> int:
+        """Snapshot current role holders (user_id -> iso8601_timestamp). Returns count set."""
+        role_name = "manual_snapshot"  # Placeholder; caller specifies actual role
+        async with self._lock:
+            count = 0
+            for user_id, timestamp in role_holders.items():
+                sid = str(user_id)
+                if sid not in self._acquisitions:
+                    self._acquisitions[sid] = {}
+                # Only set if not already recorded
+                if role_name not in self._acquisitions[sid]:
+                    self._acquisitions[sid][role_name] = timestamp
+                    self._dirty_acquisitions = True
+                    count += 1
+            return count
 
     async def _background_flush(self):
         while not self._shutdown:
