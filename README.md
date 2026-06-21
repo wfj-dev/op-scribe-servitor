@@ -31,15 +31,21 @@ Quick notes
 - Message limits: The bot ensures command output fits Discord limits; large outputs are truncated or paginated. The `litany_of_function` help command returns a concise summary kept under 2000 characters.
 
 Examples
+
 - `/tally_deeds brother:@Watch Veteran Moloch`
 - `/tally_deeds killteam:@Kill Team Solomon`
 - `/combat_bonds window:60`
 
+Development
+
+- Contributor onboarding and local development guidance live in `CONTRIBUTING.md`.
+- New developers should start with `ARCHITECTURE.md`, then `CONTRIBUTING.md`, before editing runtime files.
+- Never run local development with the production bot token. Use a separate dev bot token in a dedicated dev guild.
+
 Support
+
 - Config and role mappings live in `config/config.json`.
 - Data files are in the `data/` directory (AAR records, errors, processed IDs, rites).
-
-If you want the README expanded with setup, contributor info, or development notes, open an issue or request the addition.
 
 Detailed command descriptions
 
