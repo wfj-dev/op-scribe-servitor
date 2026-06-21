@@ -22,7 +22,7 @@ from .flavor_text import *  # noqa: F401,F403
 from .permissions import *  # noqa: F401,F403
 from .studs import *  # noqa: F401,F403
 from . import _bot_globals as _g
-from .challenge_policy import evaluate_crux_bl_rank_a
+from .challenge_policy import evaluate_crux_bl_rank_a, split_missing_requirements_by_policy
 
 
 def _b(name):
@@ -1195,7 +1195,8 @@ async def _enforce_challenge_grace_periods(
     if not grace_cfg:
         return 0
 
-    today = datetime.utcnow().date()
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
     general_channel = guild.get_channel(MILESTONES_CHANNEL_ID)
 
     async def _notify_revoked(member: discord.Member, role_name: str, reasons: list[str]) -> None:
@@ -1315,9 +1316,15 @@ async def _enforce_challenge_grace_periods(
         for member in role_holders:
             uid = str(member.id)
             completed = user_bl_missions.get(uid, set())
-            if completed >= required:
+            policy = split_missing_requirements_by_policy(
+                completed,
+                set(required),
+                BLACK_LAURELS_MISSION_ADD_DATES,
+                now=now_utc,
+            )
+            missing_overdue = sorted(policy["missing_overdue"])
+            if not missing_overdue:
                 continue  # member already has all missions
-            missing = sorted(required - completed)
             try:
                 await member.remove_roles(role, reason="Grace period expired: new mission required")
                 total_revoked += 1
@@ -1325,7 +1332,7 @@ async def _enforce_challenge_grace_periods(
                 _g.logger.info(f"Grace period: revoked {role.name} from {uid} ({member.display_name})")
                 await _notify_revoked(
                     member, role.name,
-                    [f"Complete all required missions. Missing: {', '.join(missing)}"]
+                    [f"Complete all required missions. Missing: {', '.join(missing_overdue)}"]
                 )
             except Exception as exc:
                 _g.logger.warning(f"Grace period: failed to revoke {role.name} from {uid}: {exc}")
@@ -1361,9 +1368,27 @@ async def _enforce_challenge_grace_periods(
                             _mission = re.split(r"\s*@", _raw)[0].strip()
                             if _mission in required:
                                 logged.add(_mission)
-                    if logged >= required:
+                    if challenge_name == "order_omega":
+                        policy = split_missing_requirements_by_policy(
+                            logged,
+                            set(required),
+                            ORDER_OMEGA_MISSION_ADD_DATES,
+                            now=now_utc,
+                        )
+                        missing = sorted(policy["missing_overdue"])
+                    elif challenge_name == "dual_vigil":
+                        policy = split_missing_requirements_by_policy(
+                            logged,
+                            set(required),
+                            DUAL_VIGIL_MISSION_ADD_DATES,
+                            now=now_utc,
+                        )
+                        missing = sorted(policy["missing_overdue"])
+                    else:
+                        missing = sorted(required - logged)
+
+                    if not missing:
                         continue  # still fully qualified
-                    missing = sorted(required - logged)
                     try:
                         await member.remove_roles(role, reason="Grace period expired: new mission required")
                         total_revoked += 1
@@ -1396,6 +1421,7 @@ async def _enforce_challenge_grace_periods(
                     try:
                         member_role_ids: set[int] = {r.id for r in member.roles}
                         uid = str(member.id)
+                        audit: dict = {}
                         failed: list[str] = []
 
                         # Req 1: BL role held + all post-enforcement BL AARs are Rank A
@@ -1406,12 +1432,29 @@ async def _enforce_challenge_grace_periods(
                         elif _g.DATASTORE:
                             audit = evaluate_crux_bl_rank_a(uid, _g.DATASTORE.iter_records())
                             if not audit["all_rank_a"]:
-                                if audit["grandfathered"]:
+                                missing_missions = audit.get("missing_missions") or []
+                                non_a_missions = audit.get("non_a_missions") or []
+                                if missing_missions:
+                                    failed.append(
+                                        "Black Laurels — missing required missions: "
+                                        + ", ".join(missing_missions)
+                                    )
+                                elif audit.get("grandfathered"):
                                     failed.append(
                                         "Black Laurels — non-Rank A record found on grandfathered baseline after enforcement"
                                     )
+                                elif audit.get("baseline_frozen"):
+                                    failed.append(
+                                        "Black Laurels — non-Rank A record found on baseline-frozen mission set"
+                                    )
                                 else:
-                                    failed.append("Black Laurels — not all missions completed at Rank A")
+                                    if non_a_missions:
+                                        failed.append(
+                                            "Black Laurels — non-Rank A missions: "
+                                            + ", ".join(non_a_missions)
+                                        )
+                                    else:
+                                        failed.append("Black Laurels — not all missions completed at Rank A")
 
                         # Req 2: Distinguished SOK-G Pipehitter role
                         if DISTINGUISHED_PIPEHITTER_ROLE_ID not in member_role_ids:
@@ -1434,6 +1477,13 @@ async def _enforce_challenge_grace_periods(
                             user_cp["notified"] = notified_list
                             cp_data[uid] = user_cp
                             cp_dirty = True
+                        _g.logger.info(
+                            "Grace period: Crux audit uid=%s baseline_frozen=%s grandfathered=%s effective=%s",
+                            uid,
+                            audit.get("baseline_frozen") if _g.DATASTORE else None,
+                            audit.get("grandfathered") if _g.DATASTORE else None,
+                            sorted(audit.get("effective_missions", [])) if _g.DATASTORE else [],
+                        )
                         _g.logger.info(f"Grace period: revoked Crux Terminatus from {uid} ({member.display_name})")
                         await _notify_revoked(member, "Crux Terminatus", failed)
 

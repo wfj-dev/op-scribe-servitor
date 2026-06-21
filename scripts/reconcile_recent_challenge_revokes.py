@@ -4,8 +4,8 @@ Default behavior is dry-run and writes a manifest without changing Discord roles
 
 Examples:
   python3 scripts/reconcile_recent_challenge_revokes.py
-  python3 scripts/reconcile_recent_challenge_revokes.py --hours 12 --apply
-  python3 scripts/reconcile_recent_challenge_revokes.py --roles "Crux Terminatus" "The Order Omega"
+    python3 scripts/reconcile_recent_challenge_revokes.py --hours 168 --apply
+    python3 scripts/reconcile_recent_challenge_revokes.py --roles "Crux Terminatus" "The Order Omega" "Black Laurels"
 """
 
 from __future__ import annotations
@@ -124,6 +124,24 @@ def _apply_notified_fix(user_ids_by_key: dict[str, set[int]]) -> None:
     print(f"[data] challenge_progress: updated notified entries={changed}")
 
 
+def _apply_black_laurels_tracking_fix(user_ids: set[int]) -> None:
+    pt_path = DATA_DIR / "promotion_tracking.json"
+    tracking = _load_json(pt_path)
+    changed = 0
+
+    for uid in user_ids:
+        uid_str = str(uid)
+        entry = tracking.setdefault(uid_str, {})
+        if not entry.get("black_laurels_notified"):
+            entry["black_laurels_notified"] = True
+            tracking[uid_str] = entry
+            changed += 1
+
+    if changed:
+        _save_json(pt_path, tracking)
+    print(f"[data] promotion_tracking: updated black_laurels_notified={changed}")
+
+
 async def _apply_role_restore(events: list[RevokeEvent], guild_id: int | None) -> None:
     token = __import__("os").environ.get("DISCORD_TOKEN")
     if not token:
@@ -162,6 +180,7 @@ async def _apply_role_restore(events: list[RevokeEvent], guild_id: int | None) -
             missing_member = 0
             failed = 0
             user_ids_by_key: dict[str, set[int]] = {"crux_terminatus": set(), "order_omega": set()}
+            black_laurels_user_ids: set[int] = set()
 
             for ev in sorted(latest.values(), key=lambda x: (x.role_name, x.user_id)):
                 role_id = ROLE_NAME_TO_ID.get(ev.role_name)
@@ -198,25 +217,32 @@ async def _apply_role_restore(events: list[RevokeEvent], guild_id: int | None) -
                 key = ROLE_NAME_TO_NOTIFIED_KEY.get(ev.role_name)
                 if key:
                     user_ids_by_key.setdefault(key, set()).add(ev.user_id)
+                if ev.role_name == "Black Laurels":
+                    black_laurels_user_ids.add(ev.user_id)
 
             _apply_notified_fix(user_ids_by_key)
+            _apply_black_laurels_tracking_fix(black_laurels_user_ids)
             print(
                 "[summary] restored="
                 f"{restored} already={already} missing_member={missing_member} failed={failed}"
             )
         finally:
-            await client.close()
+            if not client.is_closed():
+                await client.close()
 
-    await client.start(token)
+    # Ensure aiohttp sessions/connectors are closed even if login/start fails
+    # before on_ready runs.
+    async with client:
+        await client.start(token)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reconcile recent challenge-role revokes from logs.")
-    parser.add_argument("--hours", type=float, default=12.0, help="Window size in hours (default: 12)")
+    parser.add_argument("--hours", type=float, default=168.0, help="Window size in hours (default: 168)")
     parser.add_argument(
         "--roles",
         nargs="+",
-        default=["Crux Terminatus", "The Order Omega"],
+        default=["Crux Terminatus", "The Order Omega", "Black Laurels"],
         help="Role names to reconcile",
     )
     parser.add_argument("--manifest", default=str(DATA_DIR / "recent_challenge_revokes_manifest.json"))
@@ -237,6 +263,7 @@ def main() -> None:
         return
 
     latest_ts = max(ev.timestamp for ev in all_events)
+    oldest_ts = min(ev.timestamp for ev in all_events)
     window_start = latest_ts - timedelta(hours=args.hours)
     in_window = [ev for ev in all_events if window_start <= ev.timestamp <= latest_ts]
 
@@ -271,7 +298,13 @@ def main() -> None:
         json.dump(manifest, f, indent=2)
 
     print(f"Latest timestamp: {latest_ts}")
+    print(f"Oldest scanned event: {oldest_ts}")
     print(f"Window: {window_start} -> {latest_ts} ({args.hours}h)")
+    if oldest_ts > window_start:
+        print(
+            "[warn] Logs do not appear to cover the full requested window; "
+            "restore includes only evidence available in local log files."
+        )
     print(f"Roles: {', '.join(sorted(role_filter))}")
     print(f"Counts: {counts}")
     print(f"Manifest: {manifest_path}")

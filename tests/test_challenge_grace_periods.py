@@ -14,7 +14,7 @@ Covers:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -25,6 +25,7 @@ from opscribe.constants import (
     BLACK_LAURELS_REQUIRED_MISSIONS,
     THE_ORDER_OMEGA_ROLE_ID,
     ORDER_OMEGA_REQUIRED_MISSIONS,
+    DUAL_VIGIL_AWARD_ROLE_ID,
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
 )
@@ -82,8 +83,6 @@ def _patch_config(cfg: dict):
 
 
 def _patch_lock():
-    import asyncio as _asyncio
-
     class _FakeLock:
         async def __aenter__(self):
             return self
@@ -239,6 +238,50 @@ class TestBlackLaurelsGrace:
         assert result == 0
         bot_member.remove_roles.assert_not_called()
 
+    def test_baseline_frozen_member_not_revoked_while_new_requirement_in_grace(self):
+        """If baseline was satisfied at patch, newly-added requirements get 28-day grace."""
+        uid = 310
+        member, guild, user_bl_missions, tracking, bl_role = self._setup(uid, True, {"inferno"})
+
+        patch_release = datetime.now(timezone.utc) - timedelta(days=6)
+        added_recently = datetime.now(timezone.utc) - timedelta(days=3)
+        required = {"inferno", "new mission"}
+        add_dates = {"inferno": datetime(2000, 1, 1, tzinfo=timezone.utc), "new mission": added_recently}
+
+        with (
+            _patch_config({"challenge_grace_periods": {"black_laurels": PAST_DATE}}),
+            patch("discord.utils.get", return_value=bl_role),
+            patch("opscribe.roster_ops.BLACK_LAURELS_REQUIRED_MISSIONS", required),
+            patch("opscribe.roster_ops.BLACK_LAURELS_MISSION_ADD_DATES", add_dates),
+            patch("opscribe.challenge_policy.CHALLENGE_POLICY_PATCH_RELEASE_DATE", patch_release),
+        ):
+            result = _run(_grace(guild, user_bl_missions, tracking))
+
+        assert result == 0
+        member.remove_roles.assert_not_called()
+
+    def test_baseline_frozen_member_revoked_when_new_requirement_grace_expires(self):
+        """After 28 days, missing newly-added requirements become revocable."""
+        uid = 311
+        member, guild, user_bl_missions, tracking, bl_role = self._setup(uid, True, {"inferno"})
+
+        patch_release = datetime.now(timezone.utc) - timedelta(days=40)
+        added_then = datetime.now(timezone.utc) - timedelta(days=35)
+        required = {"inferno", "new mission"}
+        add_dates = {"inferno": datetime(2000, 1, 1, tzinfo=timezone.utc), "new mission": added_then}
+
+        with (
+            _patch_config({"challenge_grace_periods": {"black_laurels": PAST_DATE}}),
+            patch("discord.utils.get", return_value=bl_role),
+            patch("opscribe.roster_ops.BLACK_LAURELS_REQUIRED_MISSIONS", required),
+            patch("opscribe.roster_ops.BLACK_LAURELS_MISSION_ADD_DATES", add_dates),
+            patch("opscribe.challenge_policy.CHALLENGE_POLICY_PATCH_RELEASE_DATE", patch_release),
+        ):
+            result = _run(_grace(guild, user_bl_missions, tracking))
+
+        assert result == 1
+        member.remove_roles.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Order Omega enforcement (challenge_progress.json path)
@@ -320,6 +363,55 @@ class TestOrderOmegaGrace:
 
         assert result == 0
         member.remove_roles.assert_not_called()
+
+
+class TestDualVigilGrace:
+    def test_dual_vigil_uses_policy_grace_for_new_requirements(self):
+        uid = 550
+        dv_role = _make_role(DUAL_VIGIL_AWARD_ROLE_ID, "Dual Vigil")
+        member = _make_member(uid, [dv_role])
+        guild = _make_guild([member], [dv_role])
+
+        cp_data = {
+            str(uid): {
+                "notified": ["dual_vigil"],
+                "dual_vigil": [
+                    {"mission": "inferno", "aar_id": 1, "message_url": "", "timestamp": ""},
+                ],
+            }
+        }
+
+        patch_release = datetime.now(timezone.utc) - timedelta(days=8)
+        new_req_added = datetime.now(timezone.utc) - timedelta(days=5)
+        required = {"inferno", "new mission"}
+        add_dates = {
+            "inferno": datetime(2000, 1, 1, tzinfo=timezone.utc),
+            "new mission": new_req_added,
+        }
+
+        save_mock = MagicMock()
+        with (
+            _patch_config({"challenge_grace_periods": {"dual_vigil": PAST_DATE}}),
+            _patch_lock(),
+            patch("discord.utils.get", return_value=dv_role),
+            patch("opscribe.roster_ops.DUAL_VIGIL_REQUIRED_MISSIONS", required),
+            patch("opscribe.roster_ops.DUAL_VIGIL_MISSION_ADD_DATES", add_dates),
+            patch("opscribe.challenge_policy.CHALLENGE_POLICY_PATCH_RELEASE_DATE", patch_release),
+            patch("opscribe.roster_ops._b") as mock_b,
+        ):
+            def _b_side(name):
+                if name == "_load_challenge_progress":
+                    return lambda: cp_data
+                if name == "_save_challenge_progress":
+                    return save_mock
+                return MagicMock()
+
+            mock_b.side_effect = _b_side
+            result = _run(_grace(guild, {}, {}))
+
+        assert result == 0
+        member.remove_roles.assert_not_called()
+        save_mock.assert_not_called()
 
 
 class TestCruxGrace:
