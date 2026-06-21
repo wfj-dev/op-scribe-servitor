@@ -3603,6 +3603,22 @@ def _can_actor_remove_attached_target(
         return True, set(attached), ""
 
     actor_roles = _member_role_names(actor)
+    target_roles = _member_role_names(target_member) if target_member is not None else set()
+
+    # Guardrail: if target satisfies a required cadre role for this directive,
+    # only the owning cadre leader may remove them (besides self/admin/Watch Master).
+    required_cadre_roles = [
+        r for r in (pkg.get("required_roles", []) or [])
+        if r in _CADRE_SPECIALIST_ROLES
+    ]
+    matched_required_cadre = [r for r in required_cadre_roles if r in target_roles]
+    if matched_required_cadre:
+        if any(_cadre_leader_owns(actor, r) for r in matched_required_cadre):
+            return True, set(attached), ""
+        return False, set(), (
+            "This member fulfills a required specialist role on this directive and "
+            "can only be removed by the owning cadre leader or by self-removal."
+        )
 
     # Company command can manage members on directives under their assigned company.
     def _safe_member_company_name(member: discord.Member) -> str | None:
@@ -3667,9 +3683,8 @@ def _can_actor_remove_attached_target(
             if r in _CADRE_SPECIALIST_ROLES and _cadre_leader_owns(actor, r)
         ]
         if owned_required_roles:
-            target_roles = _member_role_names(target_member)
             if any(r in target_roles for r in owned_required_roles):
-                return True, {"specialist"}, ""
+                return True, set(attached), ""
 
     return False, set(), "You are not authorized to remove this member from this directive."
 
@@ -3759,45 +3774,9 @@ async def remove_attached_member_from_directive(
     return True, f"{target_display}: {action_msg}"
 
 
-def _build_removable_member_options(
-    actor: discord.Member,
-    pkg: dict,
-    guild: "discord.Guild | None",
-) -> tuple[list[discord.SelectOption], str, bool]:
-    """Build options for members actor is authorized to remove from this directive."""
-    target_ids = list(dict.fromkeys([*pkg.get("signed_up", []), *pkg.get("assigned_specialist_ids", [])]))
-    if not target_ids:
-        return [], "No attached members to remove", False
-
-    options: list[discord.SelectOption] = []
-    for uid in target_ids:
-        t_id = int(uid)
-        target_member = guild.get_member(t_id) if guild else None
-        allowed, removable_kinds, _reason = _can_actor_remove_attached_target(
-            actor,
-            target_member,
-            t_id,
-            pkg,
-            guild,
-        )
-        if not allowed:
-            continue
-
-        if removable_kinds == {"signed", "specialist"}:
-            desc = "signed + specialist"
-        elif "specialist" in removable_kinds:
-            desc = "specialist"
-        else:
-            desc = "signed"
-
-        label = (target_member.display_name if target_member else f"Unknown {t_id}")[:100]
-        options.append(discord.SelectOption(label=label, value=str(t_id), description=desc[:100]))
-        if len(options) >= 25:
-            break
-
-    if not options:
-        return [], "No authorized removals available", False
-    return options, "Select attached member to remove…", True
+def _attached_target_ids(pkg: dict) -> list[int]:
+    """Return attached member IDs in display order (signed first, then specialists)."""
+    return [int(uid) for uid in dict.fromkeys([*pkg.get("signed_up", []), *pkg.get("assigned_specialist_ids", [])])]
 
 
 async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Guild | None") -> None:
@@ -3868,45 +3847,30 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
             upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
         upd_embed.add_field(name="▸ Deployment Requirements", value="\n".join(deploy_lines), inline=False)
         upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-        await msg.edit(embed=upd_embed)
+        await msg.edit(embed=upd_embed, view=SignUpView(package_id=package_id))
     except Exception as e:
         _g.logger.debug(f"[TP] Signup embed refresh failed for {package_id}: {e}")
 
 
-class RemoveAttachedMemberView(discord.ui.View):
-    """Ephemeral picker view for authorized leader/member removals."""
+class _RemoveSlotButton(discord.ui.Button):
+    """Persistent remove button bound to a slot index on SignUpView."""
 
-    def __init__(self, package_id: str, options: list[discord.SelectOption], placeholder: str):
-        super().__init__(timeout=180)
-        self.package_id = package_id
-        select = discord.ui.Select(
-            placeholder=placeholder,
-            options=options,
-            custom_id="tp_remove_attached_select",
-            disabled=not bool(options),
+    def __init__(self, slot_index: int, row: int):
+        super().__init__(
+            label="✖ —",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"tp_remove_slot_{slot_index}",
+            disabled=True,
+            row=row,
         )
-        select.callback = self.on_select
-        self.add_item(select)
+        self.slot_index = slot_index
 
-    async def on_select(self, interaction: discord.Interaction):
-        selected = (interaction.data.get("values") or [None])[0]
-        if not selected:
-            await interaction.response.send_message("No member selected.", ephemeral=True)
+    async def callback(self, interaction: discord.Interaction):
+        parent = self.view
+        if not parent or not hasattr(parent, "remove_attached_slot"):
+            await interaction.response.send_message("Remove control unavailable.", ephemeral=True)
             return
-
-        await interaction.response.defer(ephemeral=True)
-        target_id = int(selected)
-        success, msg = await remove_attached_member_from_directive(
-            self.package_id,
-            interaction.user,
-            target_id,
-            interaction.guild,
-        )
-
-        if success:
-            await _refresh_signup_embed_for_package(self.package_id, interaction.guild)
-
-        await interaction.followup.send(msg, ephemeral=True)
+        await parent.remove_attached_slot(interaction, self.slot_index)
 
 
 async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: discord.Member = None) -> None:
@@ -4200,6 +4164,64 @@ class SignUpView(discord.ui.View):
     def __init__(self, package_id: str):
         super().__init__(timeout=None)
         self.package_id = package_id
+        self._slot_targets: list[int | None] = [None, None, None, None, None]
+        self._slot_buttons: list[_RemoveSlotButton] = []
+
+        # Inline X controls shown on the directive embed itself.
+        for idx in range(5):
+            row = 2 if idx < 3 else 3
+            btn = _RemoveSlotButton(slot_index=idx, row=row)
+            self._slot_buttons.append(btn)
+            self.add_item(btn)
+        self._refresh_remove_slots()
+
+    def _refresh_remove_slots(self) -> None:
+        """Refresh remove-slot labels from latest package roster snapshot."""
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(self.package_id, {})
+        attached_ids = _attached_target_ids(pkg)
+        resolved_guild = _get_guild_from_bot()
+
+        for idx, btn in enumerate(self._slot_buttons):
+            target_id = int(attached_ids[idx]) if idx < len(attached_ids) else None
+            self._slot_targets[idx] = target_id
+            if target_id is None:
+                btn.label = "✖ —"
+                btn.disabled = True
+                continue
+            member = resolved_guild.get_member(target_id) if resolved_guild else None
+            name = member.display_name if member else str(target_id)
+            btn.label = f"✖ {name}"[:80]
+            btn.disabled = False
+
+    async def remove_attached_slot(self, interaction: discord.Interaction, slot_index: int):
+        self._refresh_remove_slots()
+        target_id = self._slot_targets[slot_index] if 0 <= slot_index < len(self._slot_targets) else None
+        data = _load_tp()
+        pkg = data.get("packages", {}).get(self.package_id)
+        if not pkg:
+            await interaction.response.send_message("Directive not found.", ephemeral=True)
+            return
+        if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+            await interaction.response.send_message(
+                f"Directive `{pkg.get('directive_code') or self.package_id}` is `{pkg.get('status')}` and no longer allows member removal.",
+                ephemeral=True,
+            )
+            return
+        if target_id is None:
+            await interaction.response.send_message("No removable member in that slot.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        success, msg = await remove_attached_member_from_directive(
+            self.package_id,
+            interaction.user,
+            int(target_id),
+            interaction.guild,
+        )
+        if success:
+            await _refresh_signup_embed_for_package(self.package_id, interaction.guild)
+        await interaction.followup.send(msg, ephemeral=True)
 
     @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_signup")
     async def sign_up(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -4324,7 +4346,7 @@ class SignUpView(discord.ui.View):
                                 upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
                             upd_embed.add_field(name="▸ Deployment Requirements", value=_new_deploy_value, inline=False)
                             upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-                        await msg.edit(embed=upd_embed)
+                        await msg.edit(embed=upd_embed, view=SignUpView(package_id=self.package_id))
 
             # Update specialist notification embeds
             for sp_msg_ref in pkg2.get("specialist_notification_msgs", []):
@@ -4451,37 +4473,9 @@ class SignUpView(discord.ui.View):
                             upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
                         upd_embed.add_field(name="▸ Deployment Requirements", value=_sd_deploy_value, inline=False)
                         upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-                        await msg.edit(embed=upd_embed)
+                        await msg.edit(embed=upd_embed, view=SignUpView(package_id=self.package_id))
         except Exception as e:
             _g.logger.debug(f"[TP] Stand Down embed update failed for {self.package_id}: {e}")
-
-    @discord.ui.button(label="Remove Member", style=discord.ButtonStyle.danger, custom_id="tp_remove_attached")
-    async def remove_attached(self, interaction: discord.Interaction, button: discord.ui.Button):
-        data = _load_tp()
-        pkg = data.get("packages", {}).get(self.package_id)
-        if not pkg:
-            await interaction.response.send_message("Directive not found.", ephemeral=True)
-            return
-
-        if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
-            await interaction.response.send_message(
-                f"Directive `{pkg.get('directive_code') or self.package_id}` is `{pkg.get('status')}` and no longer allows member removal.",
-                ephemeral=True,
-            )
-            return
-
-        resolved_guild = interaction.guild or _get_guild_from_bot()
-        options, placeholder, enabled = _build_removable_member_options(interaction.user, pkg, resolved_guild)
-        if not enabled:
-            await interaction.response.send_message(placeholder, ephemeral=True)
-            return
-
-        view = RemoveAttachedMemberView(self.package_id, options, placeholder)
-        await interaction.response.send_message(
-            f"Select a member to remove from `{pkg.get('directive_code') or self.package_id}`:",
-            view=view,
-            ephemeral=True,
-        )
 
 
 class SpecialistAssignView(discord.ui.View):

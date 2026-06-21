@@ -209,6 +209,34 @@ class TestRemoveAuthority:
         assert ok is True
         assert kinds == {"signed"}
 
+    def test_forgemaster_cannot_remove_required_ktc(self):
+        actor = _make_member(["Forgemaster"], member_id=50)
+        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=51)
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[51],
+            required_roles=["Kill Team Champion"],
+            assigned_specialist_ids=[],
+        )
+        pkg["assigned_kt"] = "Kill Team Alpha"
+        ok, _kinds, reason = _can_actor_remove_attached_target(actor, target, 51, pkg, _make_guild([actor, target]))
+        assert ok is False
+        assert "required specialist role" in reason.lower()
+
+    def test_lord_executioner_can_remove_required_ktc(self):
+        actor = _make_member(["Lord Executioner"], member_id=52)
+        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=53)
+        pkg = _make_pkg(
+            status=STATUS_RECRUITING,
+            signed_up=[53],
+            required_roles=["Kill Team Champion"],
+            assigned_specialist_ids=[],
+        )
+        pkg["assigned_kt"] = "Kill Team Alpha"
+        ok, kinds, _reason = _can_actor_remove_attached_target(actor, target, 53, pkg, _make_guild([actor, target]))
+        assert ok is True
+        assert "signed" in kinds
+
 
 class TestRemoveOperation:
     def test_remove_target_from_package_both_lists(self):
