@@ -3852,25 +3852,100 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
         _g.logger.debug(f"[TP] Signup embed refresh failed for {package_id}: {e}")
 
 
-class _RemoveSlotButton(discord.ui.Button):
-    """Persistent remove button bound to a slot index on SignUpView."""
+def _get_removable_targets_for_actor(
+    package_id: str,
+    actor: "discord.Member | None",
+    guild: "discord.Guild | None",
+) -> tuple[dict | None, list[tuple[int, str]], str | None]:
+    """Return roster targets this actor is authorized to remove for a directive."""
+    data = _load_tp()
+    pkg = data.get("packages", {}).get(package_id)
+    if not pkg:
+        return None, [], "Directive not found."
+    if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+        return (
+            pkg,
+            [],
+            f"Directive `{pkg.get('directive_code') or package_id}` is `{pkg.get('status')}` and no longer allows member removal.",
+        )
+    if not actor:
+        return pkg, [], "Could not resolve your member context for roster authority checks."
 
-    def __init__(self, slot_index: int, row: int):
+    resolved_guild = guild or _get_guild_from_bot()
+    removable: list[tuple[int, str]] = []
+    for target_id in _attached_target_ids(pkg):
+        target_member = resolved_guild.get_member(int(target_id)) if resolved_guild else None
+        allowed, _kinds, _deny_reason = _can_actor_remove_attached_target(
+            actor,
+            target_member,
+            int(target_id),
+            pkg,
+            resolved_guild,
+        )
+        if not allowed:
+            continue
+        target_name = target_member.display_name if target_member else str(target_id)
+        removable.append((int(target_id), target_name))
+    return pkg, removable, None
+
+
+class _ManageRosterRemoveButton(discord.ui.Button):
+    """Ephemeral remove button bound to a specific attached member ID."""
+
+    def __init__(self, target_id: int, target_name: str, row: int):
         super().__init__(
-            label="✖ —",
+            label=f"✖ {target_name}"[:80],
             style=discord.ButtonStyle.danger,
-            custom_id=f"tp_remove_slot_{slot_index}",
-            disabled=True,
             row=row,
         )
-        self.slot_index = slot_index
+        self.target_id = int(target_id)
 
     async def callback(self, interaction: discord.Interaction):
         parent = self.view
-        if not parent or not hasattr(parent, "remove_attached_slot"):
-            await interaction.response.send_message("Remove control unavailable.", ephemeral=True)
+        if not parent or not hasattr(parent, "remove_target"):
+            await interaction.response.send_message("Roster panel unavailable.", ephemeral=True)
             return
-        await parent.remove_attached_slot(interaction, self.slot_index)
+        await parent.remove_target(interaction, self.target_id)
+
+
+class _ManageRosterView(discord.ui.View):
+    """Ephemeral roster-management panel shown only to the requesting user."""
+
+    def __init__(self, package_id: str, actor_id: int, guild: "discord.Guild | None"):
+        super().__init__(timeout=300)
+        self.package_id = package_id
+        self.actor_id = int(actor_id)
+        self._rebuild(guild)
+
+    def _rebuild(self, guild: "discord.Guild | None") -> None:
+        self.clear_items()
+        resolved_guild = guild or _get_guild_from_bot()
+        actor = resolved_guild.get_member(self.actor_id) if resolved_guild else None
+        _pkg, removable, _err = _get_removable_targets_for_actor(self.package_id, actor, resolved_guild)
+        for idx, (target_id, target_name) in enumerate(removable[:5]):
+            row = 0 if idx < 3 else 1
+            self.add_item(_ManageRosterRemoveButton(target_id=target_id, target_name=target_name, row=row))
+
+    async def remove_target(self, interaction: discord.Interaction, target_id: int):
+        if int(getattr(interaction.user, "id", 0) or 0) != int(self.actor_id):
+            await interaction.response.send_message("This roster panel is bound to the requesting user.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        success, msg = await remove_attached_member_from_directive(
+            self.package_id,
+            interaction.user,
+            int(target_id),
+            interaction.guild,
+        )
+        if success:
+            await _refresh_signup_embed_for_package(self.package_id, interaction.guild)
+
+        self._rebuild(interaction.guild or _get_guild_from_bot())
+        if self.children:
+            await interaction.edit_original_response(content=msg, view=self)
+        else:
+            await interaction.edit_original_response(content=f"{msg}\nNo additional members are removable by you.", view=None)
 
 
 async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: discord.Member = None) -> None:
@@ -4164,64 +4239,32 @@ class SignUpView(discord.ui.View):
     def __init__(self, package_id: str):
         super().__init__(timeout=None)
         self.package_id = package_id
-        self._slot_targets: list[int | None] = [None, None, None, None, None]
-        self._slot_buttons: list[_RemoveSlotButton] = []
 
-        # Inline X controls shown on the directive embed itself.
-        for idx in range(5):
-            row = 2 if idx < 3 else 3
-            btn = _RemoveSlotButton(slot_index=idx, row=row)
-            self._slot_buttons.append(btn)
-            self.add_item(btn)
-        self._refresh_remove_slots()
-
-    def _refresh_remove_slots(self) -> None:
-        """Refresh remove-slot labels from latest package roster snapshot."""
-        data = _load_tp()
-        pkg = data.get("packages", {}).get(self.package_id, {})
-        attached_ids = _attached_target_ids(pkg)
-        resolved_guild = _get_guild_from_bot()
-
-        for idx, btn in enumerate(self._slot_buttons):
-            target_id = int(attached_ids[idx]) if idx < len(attached_ids) else None
-            self._slot_targets[idx] = target_id
-            if target_id is None:
-                btn.label = "✖ —"
-                btn.disabled = True
-                continue
-            member = resolved_guild.get_member(target_id) if resolved_guild else None
-            name = member.display_name if member else str(target_id)
-            btn.label = f"✖ {name}"[:80]
-            btn.disabled = False
-
-    async def remove_attached_slot(self, interaction: discord.Interaction, slot_index: int):
-        self._refresh_remove_slots()
-        target_id = self._slot_targets[slot_index] if 0 <= slot_index < len(self._slot_targets) else None
-        data = _load_tp()
-        pkg = data.get("packages", {}).get(self.package_id)
+    @discord.ui.button(label="Manage Roster", style=discord.ButtonStyle.secondary, custom_id="tp_manage_roster")
+    async def manage_roster(self, interaction: discord.Interaction, button: discord.ui.Button):
+        resolved_guild = interaction.guild or _get_guild_from_bot()
+        actor = resolved_guild.get_member(interaction.user.id) if resolved_guild else None
+        pkg, removable, err = _get_removable_targets_for_actor(self.package_id, actor, resolved_guild)
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
         if not pkg:
             await interaction.response.send_message("Directive not found.", ephemeral=True)
             return
-        if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+        if not removable:
             await interaction.response.send_message(
-                f"Directive `{pkg.get('directive_code') or self.package_id}` is `{pkg.get('status')}` and no longer allows member removal.",
+                "No removable roster entries are available for your authority scope on this directive.",
                 ephemeral=True,
             )
             return
-        if target_id is None:
-            await interaction.response.send_message("No removable member in that slot.", ephemeral=True)
-            return
 
-        await interaction.response.defer(ephemeral=True)
-        success, msg = await remove_attached_member_from_directive(
-            self.package_id,
-            interaction.user,
-            int(target_id),
-            interaction.guild,
+        panel = _ManageRosterView(self.package_id, interaction.user.id, resolved_guild)
+        await interaction.response.send_message(
+            f"Roster controls for `{pkg.get('directive_code') or self.package_id}`. "
+            "These controls are visible only to you.",
+            ephemeral=True,
+            view=panel,
         )
-        if success:
-            await _refresh_signup_embed_for_package(self.package_id, interaction.guild)
-        await interaction.followup.send(msg, ephemeral=True)
 
     @discord.ui.button(label="⚔ Comply", style=discord.ButtonStyle.success, custom_id="tp_signup")
     async def sign_up(self, interaction: discord.Interaction, button: discord.ui.Button):
