@@ -91,10 +91,16 @@ def _normalize_challenge_mission_name(raw_mission: str) -> str:
 
 
 def _normalize_progress_entries(entries: list) -> tuple[list, bool]:
-    """Normalize + de-duplicate mission entries in challenge progress lists."""
+    """Normalize + de-duplicate mission entries in challenge progress lists.
+    
+    De-duplicates by AAR ID (not mission name) to preserve multiple AAR submissions
+    of the same mission type (e.g., multiple Termination runs with different outcomes).
+    This is critical for Herisor medal tracking which requires tracking individual
+    AAR completions with their Black Laurels status.
+    """
     changed = False
     normalized: list = []
-    seen_missions: set[str] = set()
+    seen_aar_ids: set[str] = set()
 
     for entry in entries or []:
         if not isinstance(entry, dict) or "mission" not in entry:
@@ -109,10 +115,14 @@ def _normalize_progress_entries(entries: list) -> tuple[list, bool]:
         new_entry = dict(entry)
         new_entry["mission"] = new_mission
 
-        if new_mission in seen_missions:
+        # De-duplicate by AAR ID, not mission name. This preserves multiple AAR
+        # submissions for the same mission type while removing true duplicates.
+        aar_id_str = str(new_entry.get("aar_id", ""))
+        if aar_id_str and aar_id_str in seen_aar_ids:
             changed = True
             continue
-        seen_missions.add(new_mission)
+        if aar_id_str:
+            seen_aar_ids.add(aar_id_str)
         normalized.append(new_entry)
 
     return normalized, changed
