@@ -4355,13 +4355,12 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         if isinstance(channel, discord.Thread):
             _cls_file = _classification_file(pkg)
             kt_role_mention = ""
-            if guild:
-                _kt_role = discord.utils.find(
-                    lambda r: r.name.lower() == kt_name.lower(),
-                    guild.roles,
-                )
-                if _kt_role:
-                    kt_role_mention = _kt_role.mention
+            _kt_role = discord.utils.find(
+                lambda r: r.name.lower() == kt_name.lower(),
+                guild.roles,
+            )
+            if _kt_role:
+                kt_role_mention = _kt_role.mention
             msg = await _notify_send(
                 channel,
                 guild,
