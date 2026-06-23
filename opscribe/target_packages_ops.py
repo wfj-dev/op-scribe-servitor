@@ -218,6 +218,15 @@ async def _ensure_directive_forum_thread(
         live_pkg = live.get("packages", {}).get(package_id)
         if live_pkg is None:
             return thread
+        already_set = int(live_pkg.get("forum_thread_id") or 0)
+        if already_set and already_set != int(thread.id):
+            _g.logger.warning(
+                f"[TP] Concurrent forum thread creation detected for directive {package_id}; "
+                f"preferring existing thread {already_set} over newly created {thread.id}"
+            )
+            existing = await _resolve_channel(guild, already_set)
+            if isinstance(existing, discord.Thread):
+                return existing
         live_pkg["forum_thread_id"] = int(thread.id)
         live_pkg["forum_parent_id"] = int(getattr(parent, "id", 0) or 0)
         live_pkg["forum_created_at"] = datetime.now(timezone.utc).isoformat()
@@ -4343,7 +4352,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     preferred_thread_id = int(pkg.get("forum_thread_id") or 0)
     if preferred_thread_id and guild:
         channel = await _resolve_channel(guild, preferred_thread_id)
-        if channel:
+        if isinstance(channel, discord.Thread):
             _cls_file = _classification_file(pkg)
             kt_role_mention = ""
             if guild:

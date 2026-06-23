@@ -858,7 +858,7 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
-_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {1433351293103112202, 1458255656682258504}
+_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {1433351293103112202, 1458255656682258504, 1486238369175437342}
 try:
     _forum_parent_cfg = ((CONFIG.get("target_packages") or {}).get("kt_forum_parent_ids") or [])
     ALLOWED_KT_FORUM_PARENT_IDS: set[int] = {int(x) for x in _forum_parent_cfg if x is not None}
