@@ -940,3 +940,109 @@ class TestExpiryWarnings:
         assert len(sent) == 1
         assert sent[0] == f"<@&{tp.WATCH_BROTHER_ROLE_ID}>"
         assert store["cycle"]["last_general_warning_batch_id"] == "BATCH-20260623"
+
+
+class TestDirectiveForumLifecycle:
+    def test_config_company_forum_mapping_includes_primus_and_secundus(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        cfg = {
+            "target_packages": {
+                "directive_forum_parent_by_company": {
+                    "Watch Company Primus": 1433351293103112202,
+                    "Watch Company Secundus": 1458255656682258504,
+                }
+            }
+        }
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        mapping = tp._directive_forum_parent_map()
+        assert mapping["watch company primus"] == 1433351293103112202
+        assert mapping["watch company secundus"] == 1458255656682258504
+        assert "watch company tertius" not in mapping
+
+    def test_resolve_directive_forum_parent_prefers_explicit_mapping(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class FakeForumChannel:
+            def __init__(self, cid):
+                self.id = cid
+
+        monkeypatch.setattr(tp.discord, "ForumChannel", FakeForumChannel, raising=False)
+
+        primus_parent = FakeForumChannel(1433351293103112202)
+        guild = MagicMock()
+        guild.get_channel = lambda cid: primus_parent if int(cid) == 1433351293103112202 else None
+        guild.channels = [primus_parent]
+
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda name: (
+                {
+                    "target_packages": {
+                        "directive_forum_parent_by_company": {
+                            "Watch Company Primus": 1433351293103112202,
+                            "Watch Company Secundus": 1458255656682258504,
+                        }
+                    }
+                }
+                if name == "CONFIG"
+                else ({1433351293103112202, 1458255656682258504} if name == "ALLOWED_KT_FORUM_PARENT_IDS" else None)
+            ),
+        )
+
+        resolved = asyncio.run(tp._resolve_directive_forum_parent(guild, "Watch Company Primus"))
+        assert resolved is primus_parent
+
+    def test_delete_package_messages_deletes_forum_thread_and_clears_fields(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class FakeThread:
+            def __init__(self, tid):
+                self.id = tid
+                self.deleted = False
+
+            async def delete(self):
+                self.deleted = True
+
+        monkeypatch.setattr(tp.discord, "Thread", FakeThread, raising=False)
+
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {"generated_at": None, "total": 0, "completed": 0, "failed": 0, "lapsed": 0},
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "sgt_accept_channel_id": None,
+                    "sgt_accept_message_id": None,
+                    "signup_channel_id": None,
+                    "signup_message_id": None,
+                    "specialist_notification_msgs": [],
+                    "message_refs": [],
+                    "forum_thread_id": 999,
+                    "forum_parent_id": 1433351293103112202,
+                    "forum_created_at": "2026-06-23T00:00:00+00:00",
+                }
+            },
+            "rep_embed_message_id": None,
+        }
+
+        fake_thread = FakeThread(999)
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+
+        async def _fake_resolve(_guild, _channel_id):
+            return fake_thread
+
+        monkeypatch.setattr(tp, "_resolve_channel", _fake_resolve)
+
+        deleted = asyncio.run(tp._delete_package_messages("OX-1", MagicMock()))
+        pkg = store["packages"]["OX-1"]
+
+        assert deleted == 1
+        assert fake_thread.deleted is True
+        assert pkg["forum_thread_id"] is None
+        assert pkg["forum_parent_id"] is None
+        assert pkg["forum_created_at"] is None
