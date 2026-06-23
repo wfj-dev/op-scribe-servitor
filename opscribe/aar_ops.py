@@ -2333,6 +2333,10 @@ async def _run_reparse_records(
         total += 1
         msg_url = rec.get("message_url")
         if not msg_url:
+            _g.logger.warning(
+                f"Reparse skipped AAR {rec.get('aar_id', key)}: missing message_url"
+            )
+            failed += 1
             _print_progress(idx, total_records)
             continue
         try:
@@ -2356,6 +2360,10 @@ async def _run_reparse_records(
             msg = await channel.fetch_message(message_id)
             new_rec = parse_aar(msg)
             if not new_rec:
+                failed += 1
+                _g.logger.warning(
+                    f"Reparse failed for AAR {rec.get('aar_id', key)} (message_url={msg_url}): parse_aar returned no record"
+                )
                 continue
             # Preserve some metadata from existing record
             merged = rec.copy()
@@ -2386,8 +2394,11 @@ async def _run_reparse_records(
                         changes_by_field[field] = changes_by_field.get(field, 0) + 1
                 await _g.DATASTORE.set_record(str(merged.get("aar_id")), merged)
                 updated += 1
-        except Exception:
+        except Exception as e:
             failed += 1
+            _g.logger.warning(
+                f"Reparse failed for AAR {rec.get('aar_id', key)} (message_url={msg_url}): {type(e).__name__}: {e}"
+            )
 
     # Finalize progress output in terminal
     _print_progress(total_records, total_records)
@@ -2422,26 +2433,66 @@ async def reparse_records(
         return
     await interaction.response.defer(thinking=True, ephemeral=True)
 
+    started_at = datetime.now(timezone.utc)
+    outcome = "failed"
+    response_text = None
+    total = updated = failed = 0
+    changes_by_field: dict[str, int] = {}
     _g.logger.info(f"reparse_records: acquiring lock (user={interaction.user.id})")
     async with _g.RECONCILE_LOCK:
         _g.logger.info(f"reparse_records: lock acquired (user={interaction.user.id})")
         try:
             total, updated, failed, changes_by_field = await _run_reparse_records(limit=limit, days=days)
+            outcome = "complete"
         except ValueError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
-            return
-
-        days_info = f" (last {days} days)" if days else ""
-        # Build changes summary
-        if changes_by_field:
-            sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
-            changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
-            changes_line = f"\nFields updated: {changes_summary}"
+            response_text = str(e)
+            _g.logger.warning(
+                f"reparse_records failed for user={interaction.user.id}: {type(e).__name__}: {e}"
+            )
+            try:
+                await interaction.followup.send(response_text, ephemeral=True)
+            except Exception as send_error:
+                _g.logger.warning(
+                    f"reparse_records could not send failure response for user={interaction.user.id}: {type(send_error).__name__}: {send_error}"
+                )
+        except Exception as e:
+            response_text = f"Reparse failed: {type(e).__name__}: {e}"
+            _g.logger.exception(
+                f"reparse_records failed unexpectedly for user={interaction.user.id}: {type(e).__name__}: {e}"
+            )
+            try:
+                await interaction.followup.send(response_text, ephemeral=True)
+            except Exception as send_error:
+                _g.logger.warning(
+                    f"reparse_records could not send failure response for user={interaction.user.id}: {type(send_error).__name__}: {send_error}"
+                )
         else:
-            changes_line = ""
-        await interaction.followup.send(
-            f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}{changes_line}",
-            ephemeral=True,
+            days_info = f" (last {days} days)" if days else ""
+            # Build changes summary
+            if changes_by_field:
+                sorted_changes = sorted(changes_by_field.items(), key=lambda x: -x[1])
+                changes_summary = ", ".join(f"{k}={v}" for k, v in sorted_changes)
+                changes_line = f"\nFields updated: {changes_summary}"
+            else:
+                changes_line = ""
+            response_text = f"Reparse complete{days_info}: processed={total}, updated={updated}, failed={failed}{changes_line}"
+            try:
+                await interaction.followup.send(response_text, ephemeral=True)
+            except Exception as send_error:
+                _g.logger.warning(
+                    f"reparse_records could not send success response for user={interaction.user.id}: {type(send_error).__name__}: {send_error}"
+                )
+
+    duration = (datetime.now(timezone.utc) - started_at).total_seconds()
+    if outcome == "complete":
+        _g.logger.info(
+            f"Complete /reparse_records by user={interaction.user.id} duration={duration:.3f}s processed={total} updated={updated} failed={failed}"
+            + (f" | {response_text}" if response_text else "")
+        )
+    else:
+        _g.logger.info(
+            f"Failed /reparse_records by user={interaction.user.id} duration={duration:.3f}s"
+            + (f" | {response_text}" if response_text else "")
         )
 
 
