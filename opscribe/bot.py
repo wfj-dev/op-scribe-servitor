@@ -858,31 +858,63 @@ DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
 # Kill Team forum/thread configuration
 # Populate `ALLOWED_KT_FORUM_PARENT_IDS` with forum (parent) channel IDs
 # that host Kill Team posts. Example: {123456789012345678, 987654321098765432}
-ALLOWED_KT_FORUM_PARENT_IDS: set[int] = set([1433351293103112202, 1458255656682258504, 1486238369175437342])
+_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS = {1433351293103112202, 1458255656682258504}
+try:
+    _forum_parent_cfg = ((CONFIG.get("target_packages") or {}).get("kt_forum_parent_ids") or [])
+    ALLOWED_KT_FORUM_PARENT_IDS: set[int] = {int(x) for x in _forum_parent_cfg if x is not None}
+    if not ALLOWED_KT_FORUM_PARENT_IDS:
+        ALLOWED_KT_FORUM_PARENT_IDS = set(_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS)
+except Exception:
+    ALLOWED_KT_FORUM_PARENT_IDS = set(_DEFAULT_ALLOWED_KT_FORUM_PARENT_IDS)
+    logger.warning("Invalid target_packages.kt_forum_parent_ids config; using defaults", exc_info=True)
 
 # Hard-coded allowlist of Kill Team role IDs that may be used with
 # /tally_deeds when invoked from Kill Team posts. Populate with ints.
-ALLOWED_KT_ROLE_IDS: set[int] = set(
-    [
-        1458254715942080543,
-        1458254904819974386,
-        1433355179020914688,
-        1444348999401210037,
-        1486476398058012712,
-        1498104968513847386,
-    ]
-)
+_DEFAULT_ALLOWED_KT_ROLE_IDS = {
+    1458254715942080543,
+    1458254904819974386,
+    1433355179020914688,
+    1444348999401210037,
+    1486476398058012712,
+    1498104968513847386,
+}
+try:
+    _kt_role_ids_cfg = ((CONFIG.get("target_packages") or {}).get("kt_role_ids") or [])
+    ALLOWED_KT_ROLE_IDS: set[int] = {int(x) for x in _kt_role_ids_cfg if x is not None}
+    if not ALLOWED_KT_ROLE_IDS:
+        ALLOWED_KT_ROLE_IDS = set(_DEFAULT_ALLOWED_KT_ROLE_IDS)
+except Exception:
+    ALLOWED_KT_ROLE_IDS = set(_DEFAULT_ALLOWED_KT_ROLE_IDS)
+    logger.warning("Invalid target_packages.kt_role_ids config; using defaults", exc_info=True)
 
 # Mapping of Kill Team role ID → that KT's chat channel ID.
 # Used to route auto-award announcements to the member's KT channel.
 # Falls back to the general channel (SERVICE_STUDS_CHANNEL_ID) if not found.
 # Format: {role_id: channel_id}
 # Example: {1458254715942080543: 1234567890123456789}
-KT_ROLE_CHANNEL_MAP: dict[int, int] = {}
+try:
+    _kt_role_channel_cfg = ((CONFIG.get("target_packages") or {}).get("kt_role_channel_map") or {})
+    KT_ROLE_CHANNEL_MAP: dict[int, int] = {
+        int(role_id): int(channel_id)
+        for role_id, channel_id in _kt_role_channel_cfg.items()
+        if role_id is not None and channel_id is not None
+    }
+except Exception:
+    KT_ROLE_CHANNEL_MAP = {}
+    logger.warning("Invalid target_packages.kt_role_channel_map config; using empty map", exc_info=True)
 
 # Optional mapping: forum parent id -> set of company role IDs that own
 # the Kill Teams in that forum. Populate as needed to enable Lt/Captain checks.
-FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {}
+try:
+    _forum_parent_company_cfg = ((CONFIG.get("target_packages") or {}).get("forum_parent_company_role_ids") or {})
+    FORUM_PARENT_COMPANY_ROLE_IDS: dict[int, set[int]] = {
+        int(parent_id): {int(role_id) for role_id in (role_ids or []) if role_id is not None}
+        for parent_id, role_ids in _forum_parent_company_cfg.items()
+        if parent_id is not None
+    }
+except Exception:
+    FORUM_PARENT_COMPANY_ROLE_IDS = {}
+    logger.warning("Invalid target_packages.forum_parent_company_role_ids config; using empty map", exc_info=True)
 
 
 def is_allowed_channel(interaction: discord.Interaction) -> bool:
