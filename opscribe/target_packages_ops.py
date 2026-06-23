@@ -112,6 +112,129 @@ async def _resolve_channel(guild: "discord.Guild | None", channel_id: int):
         return None
 
 
+def _normalize_company_key(company_name: str | None) -> str:
+    return str(company_name or "").strip().lower()
+
+
+def _directive_forum_parent_map() -> dict[str, int]:
+    """Load directive forum parent routing from config.
+
+    Expected config shape:
+      CONFIG["target_packages"]["directive_forum_parent_by_company"] = {
+        "Watch Company Primus": 123,
+        "Watch Company Secundus": 456,
+      }
+    """
+    raw = (((_b("CONFIG") or {}).get("target_packages") or {}).get("directive_forum_parent_by_company") or {})
+    out: dict[str, int] = {}
+    if not isinstance(raw, dict):
+        return out
+    for company_name, parent_id in raw.items():
+        key = _normalize_company_key(str(company_name))
+        if not key:
+            continue
+        try:
+            out[key] = int(parent_id)
+        except Exception:
+            _g.logger.warning(f"[TP] Invalid directive forum parent id for company '{company_name}': {parent_id}")
+    return out
+
+
+async def _resolve_directive_forum_parent(
+    guild: "discord.Guild | None",
+    company_name: str | None,
+) -> "discord.ForumChannel | None":
+    """Resolve directive forum parent by explicit company routing with fallback."""
+    if guild is None:
+        return None
+
+    company_key = _normalize_company_key(company_name)
+    parent_id = _directive_forum_parent_map().get(company_key)
+    allowed_parent_ids = {int(pid) for pid in ((_b("ALLOWED_KT_FORUM_PARENT_IDS") or set())) if pid}
+
+    if parent_id:
+        channel = guild.get_channel(int(parent_id))
+        if channel is None:
+            channel = await _resolve_channel(guild, int(parent_id))
+        if isinstance(channel, discord.ForumChannel):
+            return channel
+        _g.logger.warning(f"[TP] Routed forum parent {parent_id} for {company_name} is unavailable or not a forum channel")
+
+    if company_key:
+        _g.logger.warning(f"[TP] No explicit directive forum mapping for company '{company_name}', using fallback forum scan")
+
+    for ch in getattr(guild, "channels", []):
+        if isinstance(ch, discord.ForumChannel):
+            if not allowed_parent_ids or int(ch.id) in allowed_parent_ids:
+                return ch
+    return None
+
+
+async def _ensure_directive_forum_thread(
+    package_id: str,
+    guild: "discord.Guild | None",
+    pkg: dict | None = None,
+) -> "discord.Thread | None":
+    """Create or resolve the directive forum thread and persist linkage on the package."""
+    if guild is None:
+        return None
+
+    data = _load_tp()
+    pkg_obj = pkg or data.get("packages", {}).get(package_id)
+    if not pkg_obj:
+        return None
+
+    existing_thread_id = int(pkg_obj.get("forum_thread_id") or 0)
+    if existing_thread_id:
+        existing = await _resolve_channel(guild, existing_thread_id)
+        if isinstance(existing, discord.Thread):
+            return existing
+
+    parent = await _resolve_directive_forum_parent(guild, pkg_obj.get("assigned_company"))
+    if not isinstance(parent, discord.ForumChannel):
+        _g.logger.warning(f"[TP] Could not resolve forum parent for directive {package_id}")
+        return None
+
+    thread_title = (pkg_obj.get("directive_name") or pkg_obj.get("directive_code") or package_id or "Strike Directive").strip()
+    if len(thread_title) > 100:
+        thread_title = thread_title[:100]
+
+    code = pkg_obj.get("directive_code") or package_id
+    opener = f"Strike Directive `{code}` thread initialized."
+
+    try:
+        created = await parent.create_thread(name=thread_title, content=opener)
+    except Exception as exc:
+        _g.logger.warning(f"[TP] Failed creating forum thread for directive {package_id}: {exc}")
+        return None
+
+    thread = getattr(created, "thread", None) or created
+    if not isinstance(thread, discord.Thread):
+        _g.logger.warning(f"[TP] Unexpected forum thread create result for directive {package_id}: {type(thread)}")
+        return None
+
+    async with _TP_LOCK:
+        live = _load_tp()
+        live_pkg = live.get("packages", {}).get(package_id)
+        if live_pkg is None:
+            return thread
+        already_set = int(live_pkg.get("forum_thread_id") or 0)
+        if already_set and already_set != int(thread.id):
+            _g.logger.warning(
+                f"[TP] Concurrent forum thread creation detected for directive {package_id}; "
+                f"preferring existing thread {already_set} over newly created {thread.id}"
+            )
+            existing = await _resolve_channel(guild, already_set)
+            if isinstance(existing, discord.Thread):
+                return existing
+        live_pkg["forum_thread_id"] = int(thread.id)
+        live_pkg["forum_parent_id"] = int(getattr(parent, "id", 0) or 0)
+        live_pkg["forum_created_at"] = datetime.now(timezone.utc).isoformat()
+        _save_tp(live)
+
+    return thread
+
+
 async def _track_package_message(package_id: str, msg: "discord.Message | None") -> None:
     """Persist message references so package cleanup can remove all related embeds."""
     if not msg or not package_id:
@@ -148,6 +271,7 @@ async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int
             return 0
 
         refs: set[tuple[int, int]] = set()
+        forum_thread_id = int(pkg.get("forum_thread_id") or 0)
 
         def _add_ref(ch_id, msg_id):
             if ch_id and msg_id:
@@ -181,6 +305,17 @@ async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int
         except Exception as e:
             _g.logger.debug(f"[TP] Failed deleting message {msg_id} in {ch_id} for {package_id}: {e}")
 
+    if forum_thread_id and guild:
+        try:
+            thread = await _resolve_channel(guild, forum_thread_id)
+            if isinstance(thread, discord.Thread):
+                await thread.delete()
+                deleted += 1
+        except (discord.NotFound, discord.Forbidden):
+            pass
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Failed deleting forum thread {forum_thread_id} for {package_id}: {exc}")
+
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data.get("packages", {}).get(package_id)
@@ -191,6 +326,9 @@ async def _delete_package_messages(package_id: str, guild: discord.Guild) -> int
             pkg["signup_channel_id"] = None
             pkg["specialist_notification_msgs"] = []
             pkg["message_refs"] = []
+            pkg["forum_thread_id"] = None
+            pkg["forum_parent_id"] = None
+            pkg["forum_created_at"] = None
             _save_tp(data)
 
     return deleted
@@ -1312,6 +1450,9 @@ def _generate_single_package(
         "sgt_accept_message_id": None,   # message ID of the Sgt accept embed
         "signup_message_id": None,       # message ID of the KT sign-up embed
         "message_refs": [],              # tracked channel/message refs for cleanup
+        "forum_thread_id": None,         # thread ID of directive post inside forum channel
+        "forum_parent_id": None,         # parent forum channel ID used for this directive
+        "forum_created_at": None,        # timestamp when directive forum thread was created
         "generated_at": now.isoformat(),
         "deadline": deadline.isoformat(),
         "completed_at": None,
@@ -4208,6 +4349,36 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             _g.logger.warning(f"[TP] Failed to delete old signup embed {_old_signup_msg}: {exc}")
 
     # Find KT channel via any KT member
+    preferred_thread_id = int(pkg.get("forum_thread_id") or 0)
+    if preferred_thread_id and guild:
+        channel = await _resolve_channel(guild, preferred_thread_id)
+        if isinstance(channel, discord.Thread):
+            _cls_file = _classification_file(pkg)
+            kt_role_mention = ""
+            _kt_role = discord.utils.find(
+                lambda r: r.name.lower() == kt_name.lower(),
+                guild.roles,
+            )
+            if _kt_role:
+                kt_role_mention = _kt_role.mention
+            msg = await _notify_send(
+                channel,
+                guild,
+                content=kt_role_mention or None,
+                embed=embed,
+                view=view,
+                **_file_kwarg(_cls_file),
+            )
+            if msg:
+                async with _TP_LOCK:
+                    data2 = _load_tp()
+                    if package_id in data2["packages"]:
+                        data2["packages"][package_id]["signup_message_id"] = msg.id
+                        data2["packages"][package_id]["signup_channel_id"] = getattr(msg.channel, "id", channel.id)
+                        _save_tp(data2)
+                await _track_package_message(package_id, msg)
+            return
+
     sent = False
     for m in guild.members if guild else []:
         if m.bot or not _is_active(m):
@@ -4390,6 +4561,7 @@ class SgtAcceptView(discord.ui.View):
 
         # Post sign-up embed in KT channel
         guild = interaction.guild or _get_guild_from_bot()
+        await _ensure_directive_forum_thread(self.package_id, guild, pkg=pkg)
         await _post_signup_embed(self.package_id, guild, complier=member)
 
         # Notify cadre leaders if specialists needed

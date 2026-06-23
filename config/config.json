@@ -429,6 +429,25 @@
     "general_channel_id": 1430055064969674777,
     "highcom_role_id": 1452913063970865203,
     "honors_announcement_channel_id": 1430055064969674777,
+    "kt_role_ids": [
+      1458254715942080543,
+      1458254904819974386,
+      1433355179020914688,
+      1444348999401210037,
+      1486476398058012712,
+      1498104968513847386
+    ],
+    "kt_forum_parent_ids": [
+      1433351293103112202,
+      1458255656682258504,
+      1486238369175437342
+    ],
+    "kt_role_channel_map": {},
+    "forum_parent_company_role_ids": {},
+    "directive_forum_parent_by_company": {
+      "Watch Company Primus": 1433351293103112202,
+      "Watch Company Secundus": 1458255656682258504
+    },
     "cadre_channels": {
       "techmarine": 1485797067577102377,
       "librarian": 1482786608137769182,
