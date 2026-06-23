@@ -323,6 +323,7 @@ async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple
         pass
     return key, (updated.get("message_url") or aar_link)
 
+
 GREEK_LETTERS = [
     "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
     "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho",
@@ -377,11 +378,136 @@ _REP_MAX = 60.0
 _REP_NEUTRAL = 30.0
 _REP_SCALE_VERSION = 2
 
+# Strike directive volume by rep band.
+# The multiplier stays integer-only; the band controls the draw weights.
+_PACKAGE_MULTIPLIER_WEIGHTS = [
+    (16.0, [65, 25, 10, 0]),
+    (31.0, [40, 35, 20, 5]),
+    (46.0, [20, 35, 30, 15]),
+    (float("inf"), [10, 20, 35, 35]),
+]
+
 # Generator switch: disable Omega packages temporarily when needed.
 ENABLE_OMEGA_PACKAGES = True
 
-# Chaos-only mission IDs that force Intel Lapse — sourced from operations.json intel_lapse_forced field.
-# Do not hardcode here; the generation code reads directly from the ops data.
+def _format_deadline_dual_region(deadline_iso: str) -> str:
+    """Render a directive deadline using Discord local-time tags for each viewer."""
+    if not deadline_iso:
+        return "Deadline unavailable"
+    try:
+        deadline = datetime.fromisoformat(deadline_iso)
+    except Exception:
+        return deadline_iso
+
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    unix_ts = int(deadline.timestamp())
+    return f"<t:{unix_ts}:F> (<t:{unix_ts}:R>)"
+
+
+def _batch_id_for_package(pkg: dict) -> str:
+    explicit = pkg.get("batch_id")
+    if explicit:
+        return explicit
+    gen_str = pkg.get("generated_at")
+    if gen_str:
+        try:
+            gen = datetime.fromisoformat(gen_str)
+            return f"BATCH-{gen.strftime('%Y%m%d')}"
+        except Exception:
+            pass
+    return "BATCH-UNKNOWN"
+
+
+def _warning_flavor_for_completion_rate(rate: float) -> str:
+    if rate >= 0.75:
+        return "Ordo Xenos reports strong compliance this cycle. Keep pressure on the remaining directives."
+    if rate >= 0.4:
+        return "Progress is mixed. Push assignments and completions before the window closes."
+    return "Compliance remains poor. Ordo Xenos scrutiny is rising; all brothers are expected to respond."
+
+
+def _batch_warning_channel(guild: discord.Guild | None) -> object | None:
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+    channel_id = config_tp.get("general_channel_id")
+    channel = guild.get_channel(int(channel_id)) if guild and channel_id else None
+    if not channel and not _is_debug_mode():
+        return None
+    return channel
+
+
+async def _send_single_batch_warning(
+    guild: discord.Guild,
+    data: dict,
+    reminder_batch_id: str,
+    now: datetime,
+) -> bool:
+    """Send one sparse warning embed in general chat per batch."""
+    channel = _batch_warning_channel(guild)
+    if not channel:
+        return False
+
+    packages = data.get("packages", {})
+    batch_pkgs = [p for p in packages.values() if _batch_id_for_package(p) == reminder_batch_id]
+    if not batch_pkgs:
+        return False
+
+    completed = [p for p in batch_pkgs if p.get("status") == STATUS_COMPLETED]
+    actionable = [
+        p for p in batch_pkgs
+        if p.get("status") in (STATUS_UNASSIGNED, STATUS_DISTRIBUTED, STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
+    ]
+    if not actionable:
+        return False
+
+    completion_rate = len(completed) / len(batch_pkgs) if batch_pkgs else 0.0
+    nearest_deadline = min(
+        (datetime.fromisoformat(p["deadline"]) for p in actionable if p.get("deadline")),
+        default=None,
+    )
+    if nearest_deadline is None:
+        return False
+
+    remaining = nearest_deadline - now
+    hours_left = max(1, int(remaining.total_seconds() // 3600))
+
+    embed = discord.Embed(
+        title=f"{_DW_EMOJI} Strike Directive Reminder {_DW_EMOJI}",
+        color=0xC4A030,
+        description=(
+            f"You have roughly **{hours_left} hour(s)** to assign and complete current Ordo Xenos strike directives.\n"
+            f"{_warning_flavor_for_completion_rate(completion_rate)}"
+        ),
+    )
+    embed.add_field(
+        name="▸ Current Batch",
+        value=(
+            f"Batch: `{reminder_batch_id}`\n"
+            f"Completed: {len(completed)}/{len(batch_pkgs)} ({completion_rate * 100:.0f}%)\n"
+            f"Still Active: {len(actionable)}"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="▸ Earliest Deadline",
+        value=_format_deadline_dual_region(nearest_deadline.isoformat()),
+        inline=False,
+    )
+
+    msg = await _notify_send(channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=embed)
+    if msg is None:
+        return False
+
+    cycle = data.setdefault("cycle", {})
+    cycle["last_general_warning_batch_id"] = reminder_batch_id
+    cycle["last_general_warning_at"] = now.isoformat()
+    _save_tp(data)
+
+    logger = getattr(_g, "logger", None)
+    if logger:
+        logger.info(f"[TP] General batch warning sent for {reminder_batch_id}")
+    return True
+
 
 # Package classification by mission objective type
 _OBJECTIVE_CLASSIFICATION: dict[str, str] = {
@@ -552,6 +678,30 @@ def _rep_delta_for_package(pkg: dict, outcome: str) -> float:
 def _apply_rep_delta(data: dict, delta: float) -> None:
     cur = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
     data["rep"] = max(_REP_MIN, min(_REP_MAX, cur + float(delta or 0.0)))
+
+
+def _select_package_multiplier(rep: float) -> int:
+    """Pick an integer directive-volume multiplier from the current rep band."""
+    rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
+    for upper_bound, weights in _PACKAGE_MULTIPLIER_WEIGHTS:
+        if rep_clamped < upper_bound:
+            return random.choices([1, 2, 3, 4], weights=weights, k=1)[0]
+    return 1
+
+
+def _batch_company_stats(batch_pkgs: list[dict]) -> dict[str, dict[str, int]]:
+    """Compute company stats from the provided batch only."""
+    stats: dict[str, dict[str, int]] = {}
+    for pkg in batch_pkgs:
+        company = pkg.get("assigned_company")
+        if not company:
+            continue
+        company_stats = stats.setdefault(company, {"completed": 0, "failed": 0})
+        if pkg.get("status") == STATUS_COMPLETED:
+            company_stats["completed"] += 1
+        elif pkg.get("status") in (STATUS_FAILED, STATUS_LAPSED):
+            company_stats["failed"] += 1
+    return stats
 
 
 def _load_graph() -> dict:
@@ -1185,7 +1335,7 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         available_roles = _get_active_role_counts(guild)
 
         kt_count = _count_active_kts(guild)
-        multiplier = random.randint(1, 3)
+        multiplier = _select_package_multiplier(rep)
         count = kt_count * multiplier
 
         existing_ids = set(data["packages"].keys())
@@ -2263,7 +2413,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         )
 
         # Per-company
-        company_stats = entity_stats.get("companies", {})
+        company_stats = _batch_company_stats(batch_pkgs)
         if company_stats:
             co_lines = []
             for cname, cdata in sorted(company_stats.items()):
@@ -2516,11 +2666,17 @@ async def expire_packages(guild: discord.Guild) -> None:
         changed = False
         expired_ids: list[str] = []
 
+        cycle = data.setdefault("cycle", {})
+        current_batch_id = cycle.get("batch_id")
+        last_warning_batch = cycle.get("last_general_warning_batch_id")
+        should_send_general_warning = bool(current_batch_id and current_batch_id != last_warning_batch)
+
         for pkg in data["packages"].values():
             if pkg["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED):
                 continue
             deadline = datetime.fromisoformat(pkg["deadline"])
-            if now <= deadline:
+            remaining = deadline - now
+            if remaining > timedelta(0):
                 continue
 
             if pkg["status"] in (STATUS_DEPLOYED, STATUS_RECRUITING, STATUS_PENDING_SGT):
@@ -2548,6 +2704,16 @@ async def expire_packages(guild: discord.Guild) -> None:
 
         if changed:
             _save_tp(data)
+
+    if should_send_general_warning:
+        try:
+            _latest = _load_tp()
+            _now = datetime.now(timezone.utc)
+            await _send_single_batch_warning(guild, _latest, current_batch_id, _now)
+        except Exception as exc:
+            logger = getattr(_g, "logger", None)
+            if logger:
+                logger.debug(f"[TP] General batch warning pass failed: {exc}")
 
     if changed:
         # Delete Discord embeds for all expired directives

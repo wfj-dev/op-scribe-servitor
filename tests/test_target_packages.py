@@ -78,6 +78,9 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _is_eligible_to_sign_up,
     _compute_honors,
     _post_batch_summary,
+    _batch_company_stats,
+    _select_package_multiplier,
+    expire_packages,
     _STRAT_TABLE,
     _CADRE_SPECIALIST_ROLES,
     _REQ_TIER_NO_REQ,
@@ -381,7 +384,7 @@ class TestDrawStrats:
         assert len(debuffs) == neg
 
     def test_rep_3_counts(self):
-        result = _draw_strats(3.0, self.STRATS)
+        result = _draw_strats(60.0, self.STRATS)
         core = result["core"]
         buffs = [s for s in core if s["type"] == "buff"]
         debuffs = [s for s in core if s["type"] == "debuff"]
@@ -835,3 +838,105 @@ class TestPostBatchSummaryBatchSelection:
 
         asyncio.run(_post_batch_summary(None, data))
         assert selected_ids == ["unknown"]
+
+
+class TestStrikeDirectiveMultiplier:
+    def test_low_rep_band_uses_low_weights(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        seen = {}
+
+        def fake_choices(population, weights=None, k=1):
+            seen["population"] = population
+            seen["weights"] = weights
+            return [2]
+
+        monkeypatch.setattr(tp.random, "choices", fake_choices)
+        assert _select_package_multiplier(5.0) == 2
+        assert seen["population"] == [1, 2, 3, 4]
+        assert seen["weights"] == [65, 25, 10, 0]
+
+    def test_high_rep_band_uses_high_weights(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        seen = {}
+
+        def fake_choices(population, weights=None, k=1):
+            seen["population"] = population
+            seen["weights"] = weights
+            return [4]
+
+        monkeypatch.setattr(tp.random, "choices", fake_choices)
+        assert _select_package_multiplier(52.0) == 4
+        assert seen["weights"] == [10, 20, 35, 35]
+
+
+class TestHighcomBatchCompanyStats:
+    def test_company_stats_only_use_current_batch(self):
+        batch_pkgs = [
+            {"assigned_company": "Primus", "status": STATUS_COMPLETED},
+            {"assigned_company": "Primus", "status": STATUS_FAILED},
+            {"assigned_company": "Secundus", "status": STATUS_LAPSED},
+        ]
+        stats = _batch_company_stats(batch_pkgs)
+        assert stats == {
+            "Primus": {"completed": 1, "failed": 1},
+            "Secundus": {"completed": 0, "failed": 1},
+        }
+
+
+class TestExpiryWarnings:
+    def test_warning_sends_once_for_same_package(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        sent = []
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260623",
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "status": "unassigned",
+                    "deadline": (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat(),
+                    "batch_id": "BATCH-20260623",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                }
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda *_args, **_kwargs: {"target_packages": {"general_channel_id": 123}},
+        )
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: True)
+
+        async def fake_notify_send(*args, **kwargs):
+            sent.append(kwargs.get("content"))
+            return object()
+
+        monkeypatch.setattr(tp, "_notify_send", fake_notify_send)
+        monkeypatch.setattr(tp.discord, "Embed", lambda **kwargs: MagicMock())
+        guild = MagicMock()
+        guild.get_channel = lambda _cid: object()
+        guild.roles = []
+
+        asyncio.run(expire_packages(guild))
+        asyncio.run(expire_packages(guild))
+
+        assert len(sent) == 1
+        assert sent[0] == f"<@&{tp.WATCH_BROTHER_ROLE_ID}>"
+        assert store["cycle"]["last_general_warning_batch_id"] == "BATCH-20260623"
