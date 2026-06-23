@@ -406,6 +406,38 @@ def test_process_challenge_tracking_herisor_awards_and_normalized_missions():
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID in award_role_ids
 
 
+def test_process_challenge_tracking_herisor_wave_line_bl_fallback_awards_distinguished():
+    role = SimpleNamespace(id=999003, name="Watch Brother")
+    member = SimpleNamespace(id=889, display_name="Brother889", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    record = {
+        "mission": None,
+        "difficulty_class": "hard_siege",
+        "herisor_defense_in_mission": True,
+        "brother_ids": [str(member.id)],
+        "brother_waves": {str(member.id): 10},
+        "waves": 10,
+        "black_laurels_mentioned_elsewhere": True,
+        "aar_id": "herisor-siege-wave-bl",
+        "message_url": "https://discord.example/aar/5",
+        "timestamp": "2026-06-19T00:04:00Z",
+    }
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        notifications = asyncio.run(_process_challenge_tracking(record, guild))
+
+    award_role_ids = {n[2] for n in notifications}
+    assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
+    assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
+    assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in award_role_ids
+
+
 def _make_black_laurels_exception_message(
     *,
     mission_line: str,

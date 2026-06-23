@@ -154,8 +154,14 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
     pipehitter_mentioned = record.get("pipehitter_mentioned", False)
     leviathan_protocol = record.get("leviathan_protocol_in_mission", False)
     black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
-    # Black Laurels may appear on either the Mission or Difficulty line; treat both as valid.
-    black_laurels = record.get("black_laurels_in_mission", False) or record.get("black_laurels_in_difficulty", False)
+    # Black Laurels may appear on either the Mission or Difficulty line.
+    # Legacy wave-based Herisor reports can also surface the tag via the
+    # parser's fallback flag, so include that for the Herisor award path.
+    black_laurels = (
+        record.get("black_laurels_in_mission", False)
+        or record.get("black_laurels_in_difficulty", False)
+        or record.get("black_laurels_mentioned_elsewhere", False)
+    )
     # Dual Vigil tag must be on the Mission line; tracked separately from Black Laurels.
     dual_vigil = record.get("dual_vigil_in_mission", False)
     # Defense of Herisor tag must be on Mission line (mention-only).
