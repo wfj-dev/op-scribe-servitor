@@ -525,6 +525,8 @@ _PACKAGE_MULTIPLIER_WEIGHTS = [
     (float("inf"), [10, 20, 35, 35]),
 ]
 
+_GENERAL_WARNING_WINDOW = timedelta(hours=24)
+
 # Generator switch: disable Omega packages temporarily when needed.
 ENABLE_OMEGA_PACKAGES = True
 
@@ -555,6 +557,136 @@ def _batch_id_for_package(pkg: dict) -> str:
         except Exception:
             pass
     return "BATCH-UNKNOWN"
+
+
+def _generate_unique_batch_id(data: dict, now: datetime) -> str:
+    """Generate a unique same-day batch id as BATCH-YYYYMMDD-NN."""
+    date_key = now.strftime("%Y%m%d")
+    prefix = f"BATCH-{date_key}"
+    seq = 1
+    pattern = re.compile(rf"^{re.escape(prefix)}(?:-(\d+))?$")
+    for pkg in data.get("packages", {}).values():
+        bid = _batch_id_for_package(pkg)
+        m = pattern.match(bid)
+        if not m:
+            continue
+        n = int(m.group(1)) if m.group(1) else 1
+        if n >= seq:
+            seq = n + 1
+    return f"{prefix}-{seq:02d}"
+
+
+def _batch_warning_sent_at(cycle: dict, batch_id: str) -> str | None:
+    sent_map = cycle.get("general_warning_sent_at", {})
+    if isinstance(sent_map, dict):
+        sent_at = sent_map.get(batch_id)
+        if sent_at:
+            return sent_at
+    if cycle.get("last_general_warning_batch_id") == batch_id:
+        return cycle.get("last_general_warning_at")
+    return None
+
+
+def _mark_batch_warning_sent(cycle: dict, batch_id: str, now: datetime) -> None:
+    sent_map = cycle.setdefault("general_warning_sent_at", {})
+    if not isinstance(sent_map, dict):
+        sent_map = {}
+        cycle["general_warning_sent_at"] = sent_map
+    ts = now.isoformat()
+    sent_map[batch_id] = ts
+    # Legacy mirrors for compatibility.
+    cycle["last_general_warning_batch_id"] = batch_id
+    cycle["last_general_warning_at"] = ts
+
+
+def _is_batch_terminal(data: dict, batch_id: str) -> bool:
+    batch_pkgs = [p for p in data.get("packages", {}).values() if _batch_id_for_package(p) == batch_id]
+    if not batch_pkgs:
+        return False
+    return all(
+        p.get("status") in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
+        for p in batch_pkgs
+    )
+
+
+def _batch_summary_posted_at(cycle: dict, batch_id: str) -> str | None:
+    posted_map = cycle.get("batch_summary_posted_at", {})
+    if not isinstance(posted_map, dict):
+        return None
+    return posted_map.get(batch_id)
+
+
+def _mark_batch_summary_posted(cycle: dict, batch_id: str, now: datetime) -> None:
+    posted_map = cycle.setdefault("batch_summary_posted_at", {})
+    if not isinstance(posted_map, dict):
+        posted_map = {}
+        cycle["batch_summary_posted_at"] = posted_map
+    posted_map[batch_id] = now.isoformat()
+
+
+def _can_request_strike_directives(cycle: dict, now: datetime, max_per_week: int = 2) -> tuple[bool, str]:
+    """Check if the WM can request strike directives based on weekly quota.
+    
+    Returns (can_request: bool, message: str) tuple.
+    """
+    if max_per_week <= 0:
+        return True, ""
+
+    timestamps = cycle.get("batch_generation_timestamps", [])
+    if not isinstance(timestamps, list):
+        timestamps = []
+
+    # Determine whether `now` is timezone-aware so we can normalise comparisons.
+    now_aware = now.tzinfo is not None
+
+    # Filter to batches generated strictly within the past 7 days, parsing
+    # timestamps defensively and normalising naive datetimes to UTC.
+    week_ago = now - timedelta(days=7)
+    recent_parsed: list[datetime] = []
+    for ts in timestamps:
+        if not ts or not isinstance(ts, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            continue
+        # Normalise tzinfo so comparison with `now` is always valid.
+        if now_aware and parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        elif not now_aware and parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        # Use an exclusive boundary so a timestamp exactly 7 days old is pruned.
+        if parsed > week_ago:
+            recent_parsed.append(parsed)
+
+    if len(recent_parsed) < max_per_week:
+        return True, ""
+
+    # Calculate when the oldest recent batch exits the 7-day window.
+    oldest_recent = min(recent_parsed)
+    available_at = oldest_recent + timedelta(days=7)
+
+    # If the quota window has already elapsed, allow the request.
+    if available_at <= now:
+        return True, ""
+
+    time_remaining = available_at - now
+    hours_remaining = max(1, int(time_remaining.total_seconds() / 3600))
+
+    message = (
+        f"Strike directive request quota reached: {max_per_week} per week. "
+        f"Next request available in {hours_remaining} hours."
+    )
+    return False, message
+
+
+def _record_batch_generation_time(cycle: dict, now: datetime) -> None:
+    """Record the timestamp of a newly generated batch."""
+    timestamps = cycle.get("batch_generation_timestamps", [])
+    if not isinstance(timestamps, list):
+        timestamps = []
+        cycle["batch_generation_timestamps"] = timestamps
+    timestamps.append(now.isoformat())
 
 
 def _warning_flavor_for_completion_rate(rate: float) -> str:
@@ -635,11 +767,6 @@ async def _send_single_batch_warning(
     msg = await _notify_send(channel, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=embed)
     if msg is None:
         return False
-
-    cycle = data.setdefault("cycle", {})
-    cycle["last_general_warning_batch_id"] = reminder_batch_id
-    cycle["last_general_warning_at"] = now.isoformat()
-    _save_tp(data)
 
     logger = getattr(_g, "logger", None)
     if logger:
@@ -746,6 +873,9 @@ def _empty_tp_store() -> dict:
             "completed": 0,
             "failed": 0,
             "lapsed": 0,
+            "general_warning_sent_at": {},
+            "batch_summary_posted_at": {},
+            "batch_generation_timestamps": [],
         },
         "entity_stats": {
             "companies": {},
@@ -1254,6 +1384,17 @@ _SLOT_TIER_WEIGHTS = [
     (_REQ_TIER_HC,                10),
 ]
 
+_OMEGA_REQ_TIERS = {
+    _REQ_TIER_COMPANY_COMMAND,
+    _REQ_TIER_HC,
+}
+
+
+def _omega_ranked_requirement_limit(mode: str) -> int | None:
+    if "Omega" not in mode:
+        return None
+    return 2
+
 
 def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") -> tuple:
     """Draw cross-tier role requirements for a package.
@@ -1284,6 +1425,8 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
     chosen: list = []
     chosen_counts: dict = {}  # role -> times already drawn
     hc_count = 0
+    omega_req_count = 0
+    omega_req_limit = _omega_ranked_requirement_limit(mode)
     # Per-role hard caps that override holder count.
     # Default: no duplicate rank requirements. Explicit exceptions can repeat.
     role_caps = {
@@ -1296,6 +1439,8 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
             break
         tier = random.choices(tiers, weights=tier_weights)[0]
         if tier == _REQ_TIER_HC and hc_count >= max_hc:
+            continue
+        if omega_req_limit is not None and tier in _OMEGA_REQ_TIERS and omega_req_count >= omega_req_limit:
             continue
         # A role is available if we haven't drawn it more times than there are holders
         pool = [
@@ -1310,6 +1455,8 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
         chosen_counts[role] = chosen_counts.get(role, 0) + 1
         if tier == _REQ_TIER_HC:
             hc_count += 1
+        if tier in _OMEGA_REQ_TIERS:
+            omega_req_count += 1
 
     if not chosen:
         return (_REQ_TIER_NO_REQ, [])
@@ -1396,7 +1543,7 @@ def _generate_single_package(
     available_roles: set,
     ops_list: list,
 ) -> dict:
-    # Pick random node with eligible missions
+    # Pick random node for narrative context.
     world_type_missions: dict = graph["world_type_missions"]
     eligible_nodes = [
         n for n in graph["nodes"]
@@ -1404,7 +1551,10 @@ def _generate_single_package(
     ]
     node = random.choice(eligible_nodes)
     world_type = node["type"]
-    mission_id = random.choice(world_type_missions[world_type])
+    mission_pool = list(dict.fromkeys(op["id"] for op in ops_list if op.get("id") is not None))
+    if not mission_pool:
+        raise ValueError("No operations with valid IDs are available for package generation.")
+    mission_id = random.choice(mission_pool)
 
     op_data = next((o for o in ops_list if o["id"] == mission_id), {})
     intel_lapse_forced = bool(op_data.get("intel_lapse_forced", False))
@@ -1479,6 +1629,9 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         multiplier = _select_package_multiplier(rep)
         count = kt_count * multiplier
 
+        now_utc = datetime.now(timezone.utc)
+        batch_id = _generate_unique_batch_id(data, now_utc)
+
         existing_ids = set(data["packages"].keys())
         existing_codes = {p.get("directive_code", "") for p in data["packages"].values() if p.get("directive_code")}
         existing_names = {p.get("directive_name", "") for p in data["packages"].values() if p.get("directive_name")}
@@ -1496,14 +1649,13 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             data["packages"][pkg["id"]] = pkg
             data["cycle"]["total"] += 1
             new_packages.append(pkg)
-
-        now_utc = datetime.now(timezone.utc)
-        batch_id = f"BATCH-{now_utc.strftime('%Y%m%d')}"
         data["cycle"]["generated_at"] = now_utc.isoformat()
         data["cycle"]["batch_id"] = batch_id
         # Stamp each package with the batch ID for reliable cycle scoping
         for pkg in new_packages:
             pkg["batch_id"] = batch_id
+        # Record generation timestamp for weekly quota tracking
+        _record_batch_generation_time(data["cycle"], now_utc)
         _save_tp(data)
 
     # Gap 1 — Notify general fortress channel when WM generates packages
@@ -1971,11 +2123,15 @@ async def submit_package(
                 _save_tp(data2)
     await _delete_package_messages(package_id, guild)
 
-    # If this completion made every directive terminal, post batch summary.
+    # If this completion made this batch terminal, post summary for that batch.
     try:
         _final_data = _load_tp()
-        if _all_packages_terminal(_final_data):
-            await _post_batch_summary(guild, _final_data)
+        cycle = _final_data.setdefault("cycle", {})
+        pkg_batch_id = _batch_id_for_package(pkg)
+        if _is_batch_terminal(_final_data, pkg_batch_id) and not _batch_summary_posted_at(cycle, pkg_batch_id):
+            await _post_batch_summary(guild, _final_data, batch_id=pkg_batch_id)
+            _mark_batch_summary_posted(cycle, pkg_batch_id, datetime.now(timezone.utc))
+            _save_tp(_final_data)
     except Exception as exc:
         _g.logger.debug(f"[TP] Batch summary check failed after submission: {exc}")
 
@@ -2256,7 +2412,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     standing_name = _standing_state_name(rep)
 
     # Human-readable batch label for embed headers: "Directive Batch 08 Jun – 15 Jun 2026"
-    _batch_date_str = batch_id.replace("BATCH-", "") if batch_id else ""
+    # Extract only the 8-digit date portion; batch IDs may include a suffix (e.g. BATCH-20260608-01).
+    _batch_date_str = batch_id[6:14] if batch_id and batch_id.startswith("BATCH-") else ""
     try:
         _batch_date = datetime.strptime(_batch_date_str, "%Y%m%d")
         _deadlines = [
@@ -2808,9 +2965,6 @@ async def expire_packages(guild: discord.Guild) -> None:
         expired_ids: list[str] = []
 
         cycle = data.setdefault("cycle", {})
-        current_batch_id = cycle.get("batch_id")
-        last_warning_batch = cycle.get("last_general_warning_batch_id")
-        should_send_general_warning = bool(current_batch_id and current_batch_id != last_warning_batch)
 
         for pkg in data["packages"].values():
             if pkg["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED):
@@ -2846,15 +3000,45 @@ async def expire_packages(guild: discord.Guild) -> None:
         if changed:
             _save_tp(data)
 
-    if should_send_general_warning:
-        try:
-            _latest = _load_tp()
-            _now = datetime.now(timezone.utc)
-            await _send_single_batch_warning(guild, _latest, current_batch_id, _now)
-        except Exception as exc:
-            logger = getattr(_g, "logger", None)
-            if logger:
-                logger.debug(f"[TP] General batch warning pass failed: {exc}")
+    try:
+        _latest = _load_tp()
+        _now = datetime.now(timezone.utc)
+        _cycle = _latest.setdefault("cycle", {})
+        batch_ids = sorted({_batch_id_for_package(p) for p in _latest.get("packages", {}).values()})
+        for bid in batch_ids:
+            if bid == "BATCH-UNKNOWN":
+                continue
+            if _batch_warning_sent_at(_cycle, bid):
+                continue
+            batch_pkgs = [p for p in _latest.get("packages", {}).values() if _batch_id_for_package(p) == bid]
+            actionable = [
+                p for p in batch_pkgs
+                if p.get("status") in (
+                    STATUS_UNASSIGNED,
+                    STATUS_DISTRIBUTED,
+                    STATUS_PENDING_SGT,
+                    STATUS_RECRUITING,
+                    STATUS_DEPLOYED,
+                )
+            ]
+            nearest_deadline = min(
+                (datetime.fromisoformat(p["deadline"]) for p in actionable if p.get("deadline")),
+                default=None,
+            )
+            if nearest_deadline is None:
+                continue
+            if nearest_deadline.tzinfo is None:
+                nearest_deadline = nearest_deadline.replace(tzinfo=timezone.utc)
+            remaining = nearest_deadline - _now
+            if timedelta(0) < remaining <= _GENERAL_WARNING_WINDOW:
+                sent = await _send_single_batch_warning(guild, _latest, bid, _now)
+                if sent:
+                    _mark_batch_warning_sent(_cycle, bid, _now)
+                    _save_tp(_latest)
+    except Exception as exc:
+        logger = getattr(_g, "logger", None)
+        if logger:
+            logger.debug(f"[TP] General batch warning pass failed: {exc}")
 
     if changed:
         # Delete Discord embeds for all expired directives
@@ -2870,11 +3054,20 @@ async def expire_packages(guild: discord.Guild) -> None:
         except Exception as exc:
             _g.logger.debug(f"[TP] Rep embed update failed: {exc}")
 
-        # If expiry made every directive terminal, post batch summary.
+        # If expiry made a batch terminal, post summary for each newly terminal batch.
         try:
             _final_data = _load_tp()
-            if _all_packages_terminal(_final_data):
-                await _post_batch_summary(guild, _final_data)
+            cycle = _final_data.setdefault("cycle", {})
+            batch_ids = sorted({_batch_id_for_package(p) for p in _final_data.get("packages", {}).values()})
+            for bid in batch_ids:
+                if bid == "BATCH-UNKNOWN":
+                    continue
+                if _batch_summary_posted_at(cycle, bid):
+                    continue
+                if _is_batch_terminal(_final_data, bid):
+                    await _post_batch_summary(guild, _final_data, batch_id=bid)
+                    _mark_batch_summary_posted(cycle, bid, datetime.now(timezone.utc))
+                    _save_tp(_final_data)
         except Exception as exc:
             _g.logger.debug(f"[TP] Batch summary check failed after expiry: {exc}")
 
@@ -5794,57 +5987,20 @@ async def request_strike_directives(interaction: discord.Interaction):
         )
         return
 
+    # Check weekly request quota
+    data = _load_tp()
+    cycle = data.get("cycle", {})
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+    max_per_week = config_tp.get("request_strike_directives_max_per_week", 2)
+    
+    now_utc = datetime.now(timezone.utc)
+    can_request, error_msg = _can_request_strike_directives(cycle, now_utc, max_per_week)
+    if not can_request:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
+
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    data = _load_tp()
-    rep = data.get("rep", 0.0)
-
-    # Block new generation while any directives are still active (not yet terminal).
-    # WM must wait until every directive is completed, failed, or lapsed.
-    _active_pkgs = [
-        p for p in data["packages"].values()
-        if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-    ]
-    if _active_pkgs:
-        _unassigned = [p for p in _active_pkgs if p["status"] == STATUS_UNASSIGNED]
-        _distributed = [p for p in _active_pkgs if p["status"] == STATUS_DISTRIBUTED]
-        _in_progress = [p for p in _active_pkgs if p["status"] not in (STATUS_UNASSIGNED, STATUS_DISTRIBUTED)]
-
-        if _unassigned:
-            view = PackagePaginatorView(_unassigned, rep, show_distribute=True, viewer=interaction.user)
-            _pf = view.current_file()
-            await interaction.followup.send(
-                content=(
-                    f"**{len(_unassigned)} directive{'s' if len(_unassigned) != 1 else ''} awaiting distribution.** "
-                    f"All directives must be completed or expired before a new batch can be requested."
-                ),
-                embed=view.current_embed(),
-                view=view,
-                ephemeral=True,
-                **_file_kwarg(_pf),
-            )
-        else:
-            _show_pkgs = _distributed or _in_progress
-            _total = len(_active_pkgs)
-            view = PackagePaginatorView(_show_pkgs, rep, show_distribute=False, viewer=interaction.user)
-            _pf = view.current_file()
-            status_summary = []
-            if _distributed:
-                status_summary.append(f"{len(_distributed)} awaiting captain assignment")
-            if _in_progress:
-                status_summary.append(f"{len(_in_progress)} in-progress with Kill Teams")
-            await interaction.followup.send(
-                content=(
-                    f"**{_total} active directive{'s' if _total != 1 else ''} still outstanding** "
-                    f"({', '.join(status_summary)}). "
-                    f"A new batch cannot be requested until all directives are completed or expired."
-                ),
-                embed=view.current_embed(),
-                view=view,
-                ephemeral=True,
-                **_file_kwarg(_pf),
-            )
-        return
 
     packages = await generate_packages(guild, actor=interaction.user)
     data = _load_tp()
