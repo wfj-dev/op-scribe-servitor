@@ -12,7 +12,6 @@ Tests cover:
 import asyncio
 import sys
 import types
-import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -75,7 +74,6 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _draw_requirements,
     _draw_strats,
     _check_deployed,
-    _is_eligible_to_sign_up,
     _compute_honors,
     _post_batch_summary,
     _batch_company_stats,
@@ -85,7 +83,6 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _CADRE_SPECIALIST_ROLES,
     _REQ_TIER_NO_REQ,
     _REQ_TIER_HC,
-    _REQ_TIER_KT_COMMAND,
     _REQ_TIER_COMPANY_COMMAND,
     STATUS_RECRUITING,
     STATUS_DEPLOYED,
@@ -94,6 +91,9 @@ from opscribe.target_packages_ops import (  # noqa: E402
     STATUS_LAPSED,
     _can_actor_remove_attached_target,
     _remove_target_from_package,
+    _generate_single_package,
+    _TIER_ROLES,
+    _generate_unique_batch_id,
 )
 
 
@@ -294,6 +294,13 @@ class TestDrawRequirements:
             _, roles = _draw_requirements(self.ALL_ROLES, mode="Omega-Strat")
             assert len(roles) <= 5
 
+    def test_omega_strat_max_2_omega_tier_reqs(self):
+        omega_roles = set(_TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC])
+        for _ in range(200):
+            _, roles = _draw_requirements(self.ALL_ROLES_MULTI, mode="Omega-Strat")
+            omega_count = sum(1 for role in roles if role in omega_roles)
+            assert omega_count <= 2
+
     def test_max_1_hc_role(self):
         hc_roles = {
             "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
@@ -409,11 +416,9 @@ class TestDrawStrats:
 
     def test_yolo_allowed_hard_strat(self):
         # YOLO is only excluded in Omega mode; in Hard-Strat it can appear
-        found = False
         for _ in range(100):
             result = _draw_strats(0.0, self.STRATS, mode="Hard-Strat")
             if "You Only Live Once" in [s["name"] for s in result["core"]]:
-                found = True
                 break
         # We just verify it's not force-excluded; it may or may not appear
         assert True  # test is that no exception is raised and YOLO is not in excluded set
@@ -427,6 +432,50 @@ class TestDrawStrats:
             result = _draw_strats(3.0, cat_strats)
             names = [s["name"] for s in result["core"]]
             assert not ("A" in names and "B" in names), "Conflicting strats A and B both drawn"
+
+
+class TestGenerateSinglePackage:
+    def test_mission_selection_uses_global_operations_pool(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        graph = {
+            "nodes": [{"id": "Kastorel", "type": "dead_world"}],
+            "world_type_missions": {"dead_world": [99]},
+        }
+        ops_list = [
+            {"id": 1, "objective_type": "assassination"},
+            {"id": 2, "objective_type": "recon"},
+            {"id": 3, "objective_type": "recovery"},
+        ]
+
+        monkeypatch.setattr(tp, "ENABLE_OMEGA_PACKAGES", False)
+        monkeypatch.setattr(tp, "_draw_requirement_tier", lambda *_args, **_kwargs: (_REQ_TIER_NO_REQ, []))
+        monkeypatch.setattr(tp, "_draw_strats", lambda *_args, **_kwargs: {"core": [], "wildcards": []})
+        monkeypatch.setattr(tp, "_build_briefing", lambda *_args, **_kwargs: "briefing")
+        monkeypatch.setattr(tp, "_generate_package_id", lambda *_args, **_kwargs: "TP-1")
+        monkeypatch.setattr(tp, "_generate_directive_code", lambda *_args, **_kwargs: "OX-1")
+        monkeypatch.setattr(tp, "_generate_directive_name", lambda *_args, **_kwargs: "Directive")
+
+        def choose_last(seq):
+            return seq[-1]
+
+        monkeypatch.setattr(tp.random, "choice", choose_last)
+
+        pkg = _generate_single_package(
+            existing_ids=set(),
+            existing_codes=set(),
+            existing_names=set(),
+            rep=0.0,
+            graph=graph,
+            active_strats=[],
+            templates={},
+            available_roles=set(),
+            ops_list=ops_list,
+        )
+
+        assert pkg["node"] == "Kastorel"
+        assert pkg["world_type"] == "dead_world"
+        assert pkg["mission_id"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -871,6 +920,33 @@ class TestStrikeDirectiveMultiplier:
         assert seen["weights"] == [10, 20, 35, 35]
 
 
+class TestBatchIdGeneration:
+    def test_generate_unique_batch_id_first_of_day(self):
+        now = datetime(2026, 6, 24, 10, 0, 0, tzinfo=timezone.utc)
+        data = {"packages": {}}
+        assert _generate_unique_batch_id(data, now) == "BATCH-20260624-01"
+
+    def test_generate_unique_batch_id_increments_same_day(self):
+        now = datetime(2026, 6, 24, 12, 0, 0, tzinfo=timezone.utc)
+        data = {
+            "packages": {
+                "p1": {"batch_id": "BATCH-20260624-01"},
+                "p2": {"batch_id": "BATCH-20260624-02"},
+            }
+        }
+        assert _generate_unique_batch_id(data, now) == "BATCH-20260624-03"
+
+    def test_generate_unique_batch_id_handles_legacy_unsuffixed(self):
+        now = datetime(2026, 6, 24, 12, 0, 0, tzinfo=timezone.utc)
+        data = {
+            "packages": {
+                "p1": {"batch_id": "BATCH-20260624"},
+                "p2": {"batch_id": "BATCH-20260624-02"},
+            }
+        }
+        assert _generate_unique_batch_id(data, now) == "BATCH-20260624-03"
+
+
 class TestHighcomBatchCompanyStats:
     def test_company_stats_only_use_current_batch(self):
         batch_pkgs = [
@@ -886,7 +962,7 @@ class TestHighcomBatchCompanyStats:
 
 
 class TestExpiryWarnings:
-    def test_warning_sends_once_for_same_package(self, monkeypatch):
+    def test_warning_does_not_send_before_24h_window(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         sent = []
@@ -937,8 +1013,63 @@ class TestExpiryWarnings:
         asyncio.run(expire_packages(guild))
         asyncio.run(expire_packages(guild))
 
+        assert len(sent) == 0
+        assert store["cycle"].get("general_warning_sent_at", {}) == {}
+
+    def test_warning_sends_once_within_24h_window(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        sent = []
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260623",
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "status": "unassigned",
+                    "deadline": (datetime.now(timezone.utc) + timedelta(hours=23)).isoformat(),
+                    "batch_id": "BATCH-20260623",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                }
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda *_args, **_kwargs: {"target_packages": {"general_channel_id": 123}},
+        )
+        monkeypatch.setattr(tp, "_is_debug_mode", lambda: True)
+
+        async def fake_notify_send(*args, **kwargs):
+            sent.append(kwargs.get("content"))
+            return object()
+
+        monkeypatch.setattr(tp, "_notify_send", fake_notify_send)
+        monkeypatch.setattr(tp.discord, "Embed", lambda **kwargs: MagicMock())
+        guild = MagicMock()
+        guild.get_channel = lambda _cid: object()
+        guild.roles = []
+
+        asyncio.run(expire_packages(guild))
+        asyncio.run(expire_packages(guild))
+
         assert len(sent) == 1
         assert sent[0] == f"<@&{tp.WATCH_BROTHER_ROLE_ID}>"
+        assert store["cycle"].get("general_warning_sent_at", {}).get("BATCH-20260623") is not None
         assert store["cycle"]["last_general_warning_batch_id"] == "BATCH-20260623"
 
 
