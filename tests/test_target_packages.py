@@ -1178,3 +1178,149 @@ class TestDirectiveForumLifecycle:
         assert pkg["forum_thread_id"] is None
         assert pkg["forum_parent_id"] is None
         assert pkg["forum_created_at"] is None
+
+
+class TestWeeklyRequestQuota:
+    """Test weekly request quota limiting."""
+
+    def test_can_request_when_no_timestamps(self):
+        """First request should always be allowed."""
+        import opscribe.target_packages_ops as tp
+        cycle = {
+            "batch_generation_timestamps": [],
+        }
+        now = datetime.now(timezone.utc)
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is True
+        assert msg == ""
+
+    def test_can_request_under_quota(self):
+        """Requests under quota should be allowed."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        one_day_ago = (now - timedelta(days=1)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [one_day_ago],
+        }
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is True
+        assert msg == ""
+
+    def test_cannot_request_at_quota_limit(self):
+        """Requests at quota limit should be blocked."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        one_day_ago = (now - timedelta(days=1)).isoformat()
+        two_days_ago = (now - timedelta(days=2)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [two_days_ago, one_day_ago],
+        }
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is False
+        assert "quota reached" in msg.lower()
+        assert "2 per week" in msg
+
+    def test_cannot_request_over_quota(self):
+        """Requests exceeding quota should be blocked."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        one_day_ago = (now - timedelta(days=1)).isoformat()
+        two_days_ago = (now - timedelta(days=2)).isoformat()
+        three_days_ago = (now - timedelta(days=3)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [three_days_ago, two_days_ago, one_day_ago],
+        }
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is False
+        assert "quota reached" in msg.lower()
+
+    def test_quota_reset_after_week(self):
+        """Requests should be allowed after 7+ days."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        eight_days_ago = (now - timedelta(days=8)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [eight_days_ago],
+        }
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is True
+        assert msg == ""
+
+    def test_quota_filters_old_timestamps(self):
+        """Timestamps older than 7 days should not count against quota."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        eight_days_ago = (now - timedelta(days=8)).isoformat()
+        six_days_ago = (now - timedelta(days=6)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [eight_days_ago, six_days_ago],
+        }
+        
+        # Only 1 timestamp in last 7 days, so can request (quota is 2)
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is True
+
+    def test_record_batch_generation_time(self):
+        """Recording a batch generation time should add to the timestamps list."""
+        import opscribe.target_packages_ops as tp
+        cycle = {
+            "batch_generation_timestamps": [],
+        }
+        now = datetime.now(timezone.utc)
+        
+        tp._record_batch_generation_time(cycle, now)
+        
+        assert len(cycle["batch_generation_timestamps"]) == 1
+        assert cycle["batch_generation_timestamps"][0] == now.isoformat()
+
+    def test_custom_quota_limit(self):
+        """Quota limit should be configurable."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        one_day_ago = (now - timedelta(days=1)).isoformat()
+        two_days_ago = (now - timedelta(days=2)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [two_days_ago, one_day_ago],
+        }
+        
+        # With max_per_week=2, 2 requests are at quota (next request blocked)
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        assert can_request is False
+        
+        # With max_per_week=3, 2 requests are under quota (next request allowed)
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=3)
+        assert can_request is True
+
+    def test_error_message_includes_hours_remaining(self):
+        """Error message should include hours remaining until next request."""
+        import opscribe.target_packages_ops as tp
+        now = datetime.now(timezone.utc)
+        one_day_ago = (now - timedelta(days=1)).isoformat()
+        two_days_ago = (now - timedelta(days=2)).isoformat()
+        
+        cycle = {
+            "batch_generation_timestamps": [two_days_ago, one_day_ago],
+        }
+        
+        can_request, msg = tp._can_request_strike_directives(cycle, now, max_per_week=2)
+        
+        assert can_request is False
+        assert "hours" in msg.lower()
+        assert "available" in msg.lower()

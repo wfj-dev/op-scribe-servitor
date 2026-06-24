@@ -624,6 +624,49 @@ def _mark_batch_summary_posted(cycle: dict, batch_id: str, now: datetime) -> Non
     posted_map[batch_id] = now.isoformat()
 
 
+def _can_request_strike_directives(cycle: dict, now: datetime, max_per_week: int = 2) -> tuple[bool, str]:
+    """Check if the WM can request strike directives based on weekly quota.
+    
+    Returns (can_request: bool, message: str) tuple.
+    """
+    timestamps = cycle.get("batch_generation_timestamps", [])
+    if not isinstance(timestamps, list):
+        timestamps = []
+        cycle["batch_generation_timestamps"] = timestamps
+    
+    # Filter to batches generated in the past 7 days
+    week_ago = now - timedelta(days=7)
+    recent_timestamps = [
+        ts for ts in timestamps
+        if ts and isinstance(ts, str)
+        and datetime.fromisoformat(ts) >= week_ago
+    ]
+    
+    if len(recent_timestamps) < max_per_week:
+        return True, ""
+    
+    # Calculate when the next request will be available
+    oldest_recent = min(datetime.fromisoformat(ts) for ts in recent_timestamps)
+    available_at = oldest_recent + timedelta(days=7)
+    time_remaining = available_at - now
+    hours_remaining = int(time_remaining.total_seconds() / 3600)
+    
+    message = (
+        f"Strike directive request quota reached: {max_per_week} per week. "
+        f"Next request available in {hours_remaining} hours."
+    )
+    return False, message
+
+
+def _record_batch_generation_time(cycle: dict, now: datetime) -> None:
+    """Record the timestamp of a newly generated batch."""
+    timestamps = cycle.get("batch_generation_timestamps", [])
+    if not isinstance(timestamps, list):
+        timestamps = []
+        cycle["batch_generation_timestamps"] = timestamps
+    timestamps.append(now.isoformat())
+
+
 def _warning_flavor_for_completion_rate(rate: float) -> str:
     if rate >= 0.75:
         return "Ordo Xenos reports strong compliance this cycle. Keep pressure on the remaining directives."
@@ -810,6 +853,7 @@ def _empty_tp_store() -> dict:
             "lapsed": 0,
             "general_warning_sent_at": {},
             "batch_summary_posted_at": {},
+            "batch_generation_timestamps": [],
         },
         "entity_stats": {
             "companies": {},
@@ -1586,6 +1630,8 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         # Stamp each package with the batch ID for reliable cycle scoping
         for pkg in new_packages:
             pkg["batch_id"] = batch_id
+        # Record generation timestamp for weekly quota tracking
+        _record_batch_generation_time(data["cycle"], now_utc)
         _save_tp(data)
 
     # Gap 1 — Notify general fortress channel when WM generates packages
@@ -5916,10 +5962,20 @@ async def request_strike_directives(interaction: discord.Interaction):
         )
         return
 
+    # Check weekly request quota
+    data = _load_tp()
+    cycle = data.get("cycle", {})
+    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
+    max_per_week = config_tp.get("request_strike_directives_max_per_week", 2)
+    
+    now_utc = datetime.now(timezone.utc)
+    can_request, error_msg = _can_request_strike_directives(cycle, now_utc, max_per_week)
+    if not can_request:
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
+
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    data = _load_tp()
-    rep = data.get("rep", 0.0)
 
     packages = await generate_packages(guild, actor=interaction.user)
     data = _load_tp()
