@@ -308,14 +308,6 @@
     "backup_count": 5
   },
   "debug": false,
-  "cascade_deadline_hours": {
-    "cascade_WM": 12,
-    "cascade_HC": 12,
-    "cascade_Company": 12,
-    "cascade_KT": 12,
-    "cascade_personal": 12
-  },
-  "cascade_warning_minutes": 30,
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,
@@ -435,12 +427,12 @@
       1433355179020914688,
       1444348999401210037,
       1486476398058012712,
-      1498104968513847386
+      1498104968513847386,
+      1519367523764666379
     ],
     "kt_forum_parent_ids": [
       1433351293103112202,
-      1458255656682258504,
-      1486238369175437342
+      1458255656682258504
     ],
     "kt_role_channel_map": {},
     "forum_parent_company_role_ids": {},
@@ -455,6 +447,7 @@
       "chaplain": 1508553227656757308,
       "dreadnought": 1485797067577102377,
       "champion": 1517033967898071100
-    }
+    },
+    "request_strike_directives_max_per_week": 2
   }
 }
