@@ -629,28 +629,50 @@ def _can_request_strike_directives(cycle: dict, now: datetime, max_per_week: int
     
     Returns (can_request: bool, message: str) tuple.
     """
+    if max_per_week <= 0:
+        return True, ""
+
     timestamps = cycle.get("batch_generation_timestamps", [])
     if not isinstance(timestamps, list):
         timestamps = []
-        cycle["batch_generation_timestamps"] = timestamps
-    
-    # Filter to batches generated in the past 7 days
+
+    # Determine whether `now` is timezone-aware so we can normalise comparisons.
+    now_aware = now.tzinfo is not None
+
+    # Filter to batches generated strictly within the past 7 days, parsing
+    # timestamps defensively and normalising naive datetimes to UTC.
     week_ago = now - timedelta(days=7)
-    recent_timestamps = [
-        ts for ts in timestamps
-        if ts and isinstance(ts, str)
-        and datetime.fromisoformat(ts) >= week_ago
-    ]
-    
-    if len(recent_timestamps) < max_per_week:
+    recent_parsed: list[datetime] = []
+    for ts in timestamps:
+        if not ts or not isinstance(ts, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(ts)
+        except (ValueError, TypeError):
+            continue
+        # Normalise tzinfo so comparison with `now` is always valid.
+        if now_aware and parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        elif not now_aware and parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        # Use an exclusive boundary so a timestamp exactly 7 days old is pruned.
+        if parsed > week_ago:
+            recent_parsed.append(parsed)
+
+    if len(recent_parsed) < max_per_week:
         return True, ""
-    
-    # Calculate when the next request will be available
-    oldest_recent = min(datetime.fromisoformat(ts) for ts in recent_timestamps)
+
+    # Calculate when the oldest recent batch exits the 7-day window.
+    oldest_recent = min(recent_parsed)
     available_at = oldest_recent + timedelta(days=7)
+
+    # If the quota window has already elapsed, allow the request.
+    if available_at <= now:
+        return True, ""
+
     time_remaining = available_at - now
-    hours_remaining = int(time_remaining.total_seconds() / 3600)
-    
+    hours_remaining = max(1, int(time_remaining.total_seconds() / 3600))
+
     message = (
         f"Strike directive request quota reached: {max_per_week} per week. "
         f"Next request available in {hours_remaining} hours."
@@ -1530,6 +1552,8 @@ def _generate_single_package(
     node = random.choice(eligible_nodes)
     world_type = node["type"]
     mission_pool = list(dict.fromkeys(op["id"] for op in ops_list if op.get("id") is not None))
+    if not mission_pool:
+        raise ValueError("No operations with valid IDs are available for package generation.")
     mission_id = random.choice(mission_pool)
 
     op_data = next((o for o in ops_list if o["id"] == mission_id), {})
@@ -2388,7 +2412,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     standing_name = _standing_state_name(rep)
 
     # Human-readable batch label for embed headers: "Directive Batch 08 Jun – 15 Jun 2026"
-    _batch_date_str = batch_id.replace("BATCH-", "") if batch_id else ""
+    # Extract only the 8-digit date portion; batch IDs may include a suffix (e.g. BATCH-20260608-01).
+    _batch_date_str = batch_id[6:14] if batch_id and batch_id.startswith("BATCH-") else ""
     try:
         _batch_date = datetime.strptime(_batch_date_str, "%Y%m%d")
         _deadlines = [
