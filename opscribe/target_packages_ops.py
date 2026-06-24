@@ -564,7 +564,7 @@ def _generate_unique_batch_id(data: dict, now: datetime) -> str:
     date_key = now.strftime("%Y%m%d")
     prefix = f"BATCH-{date_key}"
     seq = 1
-    pattern = re.compile(rf"^{re.escape(prefix)}(?:-(\d{{2}}))?$")
+    pattern = re.compile(rf"^{re.escape(prefix)}(?:-(\d+))?$")
     for pkg in data.get("packages", {}).values():
         bid = _batch_id_for_package(pkg)
         m = pattern.match(bid)
@@ -1561,6 +1561,9 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         multiplier = _select_package_multiplier(rep)
         count = kt_count * multiplier
 
+        now_utc = datetime.now(timezone.utc)
+        batch_id = _generate_unique_batch_id(data, now_utc)
+
         existing_ids = set(data["packages"].keys())
         existing_codes = {p.get("directive_code", "") for p in data["packages"].values() if p.get("directive_code")}
         existing_names = {p.get("directive_name", "") for p in data["packages"].values() if p.get("directive_name")}
@@ -1578,9 +1581,6 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
             data["packages"][pkg["id"]] = pkg
             data["cycle"]["total"] += 1
             new_packages.append(pkg)
-
-        now_utc = datetime.now(timezone.utc)
-        batch_id = _generate_unique_batch_id(data, now_utc)
         data["cycle"]["generated_at"] = now_utc.isoformat()
         data["cycle"]["batch_id"] = batch_id
         # Stamp each package with the batch ID for reliable cycle scoping

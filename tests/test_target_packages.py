@@ -416,12 +416,13 @@ class TestDrawStrats:
 
     def test_yolo_allowed_hard_strat(self):
         # YOLO is only excluded in Omega mode; in Hard-Strat it can appear
+        found = False
         for _ in range(100):
             result = _draw_strats(0.0, self.STRATS, mode="Hard-Strat")
             if "You Only Live Once" in [s["name"] for s in result["core"]]:
+                found = True
                 break
-        # We just verify it's not force-excluded; it may or may not appear
-        assert True  # test is that no exception is raised and YOLO is not in excluded set
+        assert found, "You Only Live Once should be drawable in Hard-Strat mode"
 
     def test_conflict_respected(self):
         cat_strats = [
