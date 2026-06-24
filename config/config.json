@@ -447,6 +447,7 @@
       "chaplain": 1508553227656757308,
       "dreadnought": 1485797067577102377,
       "champion": 1517033967898071100
-    }
+    },
+    "request_strike_directives_max_per_week": 2
   }
 }
