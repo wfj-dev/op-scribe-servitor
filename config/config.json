@@ -448,6 +448,10 @@
       "dreadnought": 1485797067577102377,
       "champion": 1517033967898071100
     },
+    "mode_weights": {
+      "hard_strat": 90,
+      "omega_strat": 10
+    },
     "request_strike_directives_max_per_week": 2
   }
 }

@@ -512,23 +512,28 @@ def _load_honors() -> dict:
 _OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
-_HONORS_WINDOW     = 5  # number of tiers to show in the sliding window
+_HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
 def _tier_window(tiers: list, current: str) -> str:
-    """Return a sliding window of 5 tiers centered on current.
+    """Return a sliding window of tiers centered on current.
 
     Current tier is **bold**, others are *italic*.
-    Window shifts left/right at edges to maintain width.
+    Window shifts at edges to maintain width.
     """
     if current not in tiers:
         current = tiers[0]
     idx = tiers.index(current)
-    # 2 behind + current + 2 ahead
-    start = max(0, idx - 2)
-    end   = min(len(tiers), start + _HONORS_WINDOW)
+
+    # Keep current as centered as possible for the configured window size.
+    left = (_HONORS_WINDOW - 1) // 2
+    right = _HONORS_WINDOW - 1 - left
+    start = max(0, idx - left)
+    end = min(len(tiers), idx + right + 1)
+
     if end - start < _HONORS_WINDOW:
         start = max(0, end - _HONORS_WINDOW)
+
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
     return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
