@@ -3783,7 +3783,7 @@ def _build_package_embed(
             split_idx = cut.rfind(" ")
             if split_idx > 260:
                 cut = cut[:split_idx]
-            briefing_out = cut.rstrip(" ,;:") + "..."
+            briefing_out = cut.rstrip(" .,;:") + "..."
         embed.add_field(name="▸ Field Briefing", value=f"> {briefing_out}", inline=False)
 
     # ▸ Stratagems as diff code block

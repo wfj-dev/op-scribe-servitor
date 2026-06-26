@@ -2005,6 +2005,9 @@ def _load_role_integrity_state() -> dict:
 def _save_role_integrity_state(state: dict) -> None:
     path = _role_integrity_state_path()
     try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(state, f, indent=2)
@@ -2291,7 +2294,22 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
     counts = Counter(item.get("code", "unknown") for item in findings)
     summary = "\n".join([f"- {code}: {count}" for code, count in sorted(counts.items())]) or "- no findings"
     highcom_role_id = cfg_tp.get("highcom_role_id")
-    ping = f"<@&{int(highcom_role_id)}>" if highcom_role_id else ""
+    ping = ""
+    if highcom_role_id:
+        if isinstance(highcom_role_id, str):
+            mention = highcom_role_id.strip()
+            if re.fullmatch(r"<@&\d+>", mention):
+                ping = mention
+            else:
+                try:
+                    ping = f"<@&{int(mention)}>"
+                except Exception:
+                    ping = ""
+        else:
+            try:
+                ping = f"<@&{int(highcom_role_id)}>"
+            except Exception:
+                ping = ""
 
     embed = discord.Embed(
         title="Role Integrity Audit Findings",
