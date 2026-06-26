@@ -177,14 +177,14 @@
 
   "strat_tone": {
     "rep_neg1": [
-      "Ordo Xenos notes declining fortress performance — expect reduced operational support.",
-      "Standing with Ordo Xenos is strained; this package reflects their diminished confidence.",
-      "Ordo Xenos has adjusted support allocation downward — conditions will be unforgiving."
+      "Standing with Ordo Xenos is strained; expect reduced operational support.",
+      "Ordo Xenos notes declining fortress performance.",
+      "Watch Fortress support is diminished; conditions will be unforgiving."
     ],
     "rep_neg2": [
-      "Ordo Xenos confidence in Watch Fortress Jericho is critically low — this package is issued under censure.",
-      "Fortress standing with Ordo Xenos has reached a critical low; expect minimal support and maximum adversity.",
-      "Ordo Xenos issues this package under formal censure — the fortress must prove its worth or face sanctions."
+      "Ordo Xenos issues this package under censure.",
+      "Fortress standing with Ordo Xenos has reached critical low.",
+      "This package reflects minimal confidence in Watch Fortress Jericho."
     ]
   }
 }
