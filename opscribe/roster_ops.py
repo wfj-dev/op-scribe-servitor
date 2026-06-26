@@ -2426,6 +2426,30 @@ _CHALLENGE_AWARD_ROLE_MAP: dict[str, tuple[int, str]] = {
     "dual_vigil":                              (DUAL_VIGIL_AWARD_ROLE_ID,                        "dual_vigil"),
 }
 
+_TERMINUS_REQUEUE_AWARD_ROLE_MAP: dict[str, int] = {
+    award_type: role_id for role_id, award_type in TERMINUS_SLAYER_CLASS_AWARD_TYPES.items()
+}
+
+_REQUEUE_AWARD_ROLE_MAP: dict[str, int] = {
+    award_type: role_id for award_type, (role_id, _notified_key) in _CHALLENGE_AWARD_ROLE_MAP.items()
+}
+_REQUEUE_AWARD_ROLE_MAP.update({
+    "watch_veteran": WATCH_VETERAN_ROLE_ID,
+    "ardent_raider": ARDENT_RAIDER_ROLE_ID,
+    "apothecarion_medal": APOTHECARION_SERVICE_MEDAL_ROLE_ID,
+    "crimson_laurels": CRIMSON_LAURELS_ROLE_ID,
+    "master_terminus_slayer": MASTER_TERMINUS_SLAYER_ROLE_ID,
+})
+_REQUEUE_AWARD_ROLE_MAP.update(_TERMINUS_REQUEUE_AWARD_ROLE_MAP)
+
+
+def _get_requeue_award_role_and_notified_key(award_type: str) -> tuple[Optional[int], Optional[str]]:
+    """Resolve the role ID (if any) and challenge-notified key for requeue_award."""
+    role_id = _REQUEUE_AWARD_ROLE_MAP.get(award_type)
+    challenge_info = _CHALLENGE_AWARD_ROLE_MAP.get(award_type)
+    notified_key = challenge_info[1] if challenge_info else None
+    return role_id, notified_key
+
 
 async def _dm_award_failure(item: Dict, reason: str) -> None:
     """DM all admin_user_ids when an award announcement is dropped."""
@@ -2653,10 +2677,9 @@ async def requeue_award(
     )
 
     # --- Role assignment ---
-    role_assigned = False
-    challenge_info = _CHALLENGE_AWARD_ROLE_MAP.get(award_type)
-    if challenge_info:
-        role_id, notified_key = challenge_info
+    role_note = ""
+    role_id, notified_key = _get_requeue_award_role_and_notified_key(award_type)
+    if role_id is not None:
         role = guild.get_role(role_id)
         if role is None:
             await interaction.response.send_message(
@@ -2665,15 +2688,11 @@ async def requeue_award(
             )
             return
         if discord.utils.get(member.roles, id=role_id):
-            await interaction.response.send_message(
-                f"ℹ️ {member.mention} already has the **{role.name}** role. "
-                f"Enqueue anyway? If so, remove the role first and re-run.",
-                ephemeral=True,
-            )
-            return
+            role_note = f" Role **{role.name}** already present."
         try:
-            await member.add_roles(role, reason=f"requeue_award: {award_type} by {interaction.user}")
-            role_assigned = True
+            if not role_note:
+                await member.add_roles(role, reason=f"requeue_award: {award_type} by {interaction.user}")
+                role_note = f" Role **{role.name}** assigned."
         except Exception as exc:
             await interaction.response.send_message(
                 f"❌ Failed to assign **{role.name}** to {member.mention}: `{exc}`",
@@ -2682,20 +2701,21 @@ async def requeue_award(
             return
 
         # --- Mark notified in challenge_progress.json ---
-        try:
-            async with _g.CHALLENGE_PROGRESS_LOCK:
-                cp_data = _b("_load_challenge_progress")()
-                user_entry = cp_data.setdefault(str(member.id), {"notified": []})
-                notified_list = user_entry.setdefault("notified", [])
-                if notified_key not in notified_list:
-                    notified_list.append(notified_key)
-                    user_entry["notified"] = notified_list
-                    _b("_save_challenge_progress")(cp_data)
-        except Exception as exc:
-            if _g.logger:
-                _g.logger.warning(
-                    f"requeue_award: could not mark notified for {member.id} / {notified_key}: {exc}"
-                )
+        if notified_key:
+            try:
+                async with _g.CHALLENGE_PROGRESS_LOCK:
+                    cp_data = _b("_load_challenge_progress")()
+                    user_entry = cp_data.setdefault(str(member.id), {"notified": []})
+                    notified_list = user_entry.setdefault("notified", [])
+                    if notified_key not in notified_list:
+                        notified_list.append(notified_key)
+                        user_entry["notified"] = notified_list
+                        _b("_save_challenge_progress")(cp_data)
+            except Exception as exc:
+                if _g.logger:
+                    _g.logger.warning(
+                        f"requeue_award: could not mark notified for {member.id} / {notified_key}: {exc}"
+                    )
 
     _enqueue_award_announcement(
         str(member.id),
@@ -2705,7 +2725,6 @@ async def requeue_award(
         str(guild.id),
     )
 
-    role_note = f" Role **{role.name}** assigned." if role_assigned else ""
     await interaction.response.send_message(
         f"✅ Enqueued `{award_type}` for {member.mention} → <#{target_channel.id}>.{role_note}\n"
         f"It will be posted within the next dispatch cycle (≤15 min).",
