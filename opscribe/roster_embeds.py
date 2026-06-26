@@ -499,7 +499,7 @@ def _tp_status_for_high_command(
 
 def _fortress_rep_state_name(rep: float) -> str:
     """Resolve fortress standing label from the 0..60 rep bands."""
-    rep_clamped = max(0.0, min(60.0, float(rep or 30.0)))
+    rep_clamped = max(0.0, min(60.0, float(rep if rep is not None and rep != "" else 30.0)))
     if rep_clamped < 10.0:
         return "CENSURED"
     if rep_clamped < 20.0:
@@ -520,7 +520,8 @@ def _fortress_rep_title(tp_data: dict | None = None) -> str:
     rep_value = 30.0
     try:
         if isinstance(tp_data, dict):
-            rep_value = float(tp_data.get("rep", 30.0) or 30.0)
+            raw_rep = tp_data.get("rep")
+            rep_value = float(raw_rep if raw_rep is not None and raw_rep != "" else 30.0)
     except Exception:
         rep_value = 30.0
 
