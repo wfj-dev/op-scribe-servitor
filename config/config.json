@@ -463,31 +463,31 @@
     },
     "strat_modifier_counts_by_rep_tier": {
       "-3": {
-        "positive": 2,
+        "positive": 1,
         "negative": 5
       },
       "-2": {
-        "positive": 2,
+        "positive": 1,
         "negative": 4
       },
       "-1": {
-        "positive": 2,
+        "positive": 1,
         "negative": 3
       },
       "0": {
-        "positive": 2,
+        "positive": 1,
         "negative": 2
       },
       "1": {
-        "positive": 3,
+        "positive": 2,
         "negative": 2
       },
       "2": {
-        "positive": 4,
+        "positive": 3,
         "negative": 2
       },
       "3": {
-        "positive": 5,
+        "positive": 4,
         "negative": 2
       }
     },
