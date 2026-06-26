@@ -2588,7 +2588,7 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
         # 2) True High Command roles resolve to High Command authority.
         highcom_roles = set(_b("HIGH_COMMAND_ROLES")) - {"Watch Captain"}
         if any(r in names for r in highcom_roles):
-                return "Jericho High Command"
+            return "Jericho High Command"
 
         # 3) Company assignment fallback.
         if member_company:

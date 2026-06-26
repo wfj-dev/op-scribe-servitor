@@ -533,6 +533,7 @@ def _tier_window(tiers: list, current: str) -> str:
 
     if end - start < _HONORS_WINDOW:
         start = max(0, end - _HONORS_WINDOW)
+        end = min(len(tiers), start + _HONORS_WINDOW)
 
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
