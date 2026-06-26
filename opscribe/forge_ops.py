@@ -2561,7 +2561,6 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
     """Get authority for attestation: company or High Command only (never chapter)."""
     try:
         roles = getattr(user, "roles", []) or []
-        # 1) Exact company role match (official company roles)
         company_roles = {
             "Watch Company Primus",
             "Watch Company Secundus",
@@ -2569,20 +2568,33 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
             "Watch Company Quartus",
             "Watch Company Quintus",
         }
+        member_company = None
         for r in roles:
             rn = (getattr(r, "name", "") or "").strip()
             if rn in company_roles:
-                return rn
+                member_company = rn
+                break
 
-        # 2) If user is in High Command, return Jericho High Command
+        # 1) Resolve canonical role names once.
         try:
             names = _b("_canonical_role_names")(user)
-            if any(r in names for r in _b("HIGH_COMMAND_ROLES")):
-                return "Jericho High Command"
         except Exception:
-            pass
+            names = set()
 
-        # 3) Final fallback - not in a company or high command
+        # Watch Captains attached to a company should resolve to their company.
+        if member_company and "Watch Captain" in names and "Watch Master" not in names:
+            return member_company
+
+        # 2) True High Command roles resolve to High Command authority.
+        highcom_roles = set(_b("HIGH_COMMAND_ROLES") or []) - {"Watch Captain"}
+        if any(r in names for r in highcom_roles):
+            return "Jericho High Command"
+
+        # 3) Company assignment fallback.
+        if member_company:
+            return member_company
+
+        # 4) Final fallback - not in a company or high command
         return "Watch Fortress Jericho"
     except Exception:
         pass

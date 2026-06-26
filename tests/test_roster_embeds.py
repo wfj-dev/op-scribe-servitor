@@ -211,3 +211,77 @@ def test_load_honors_returns_empty_dict_when_file_missing():
     with patch.object(roster_embeds.os.path, "exists", return_value=False):
         result = roster_embeds._load_honors()
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# _fortress_rep_state_name
+# ---------------------------------------------------------------------------
+
+def test_fortress_rep_state_name_zero_is_censured():
+    """rep=0 must yield CENSURED, not default to NEUTRAL via falsy check."""
+    assert roster_embeds._fortress_rep_state_name(0) == "CENSURED"
+    assert roster_embeds._fortress_rep_state_name(0.0) == "CENSURED"
+
+
+def test_fortress_rep_state_name_bands():
+    assert roster_embeds._fortress_rep_state_name(5.0) == "CENSURED"
+    assert roster_embeds._fortress_rep_state_name(10.0) == "SUSPECT"
+    assert roster_embeds._fortress_rep_state_name(15.0) == "SUSPECT"
+    assert roster_embeds._fortress_rep_state_name(20.0) == "TOLERATED"
+    assert roster_embeds._fortress_rep_state_name(25.0) == "TOLERATED"
+    assert roster_embeds._fortress_rep_state_name(30.0) == "NEUTRAL"
+    assert roster_embeds._fortress_rep_state_name(35.0) == "NEUTRAL"
+    assert roster_embeds._fortress_rep_state_name(40.0) == "FAVOURED"
+    assert roster_embeds._fortress_rep_state_name(45.0) == "FAVOURED"
+    assert roster_embeds._fortress_rep_state_name(50.0) == "ENDORSED"
+    assert roster_embeds._fortress_rep_state_name(55.0) == "ENDORSED"
+    assert roster_embeds._fortress_rep_state_name(58.0) == "MANDATED"
+    assert roster_embeds._fortress_rep_state_name(60.0) == "MANDATED"
+
+
+def test_fortress_rep_state_name_none_defaults_to_neutral():
+    """None should be treated as missing and fall back to 30.0 (NEUTRAL)."""
+    assert roster_embeds._fortress_rep_state_name(None) == "NEUTRAL"
+
+
+def test_fortress_rep_state_name_empty_string_defaults_to_neutral():
+    """Empty string should fall back to 30.0 (NEUTRAL)."""
+    assert roster_embeds._fortress_rep_state_name("") == "NEUTRAL"
+
+
+# ---------------------------------------------------------------------------
+# _fortress_rep_title
+# ---------------------------------------------------------------------------
+
+def test_fortress_rep_title_format():
+    result = roster_embeds._fortress_rep_title({"rep": 30.0})
+    assert "Fortress Standing" in result
+    assert "NEUTRAL" in result
+    assert "30.0/60" in result
+    assert "[" in result and "]" in result
+
+
+def test_fortress_rep_title_rep_zero_is_censured():
+    """Stored rep=0 must render as CENSURED, not default to NEUTRAL."""
+    result = roster_embeds._fortress_rep_title({"rep": 0})
+    assert "CENSURED" in result
+    assert "0.0/60" in result
+
+
+def test_fortress_rep_title_none_tp_data_uses_neutral():
+    result = roster_embeds._fortress_rep_title(None)
+    assert "NEUTRAL" in result
+    assert "30.0/60" in result
+
+
+def test_fortress_rep_title_missing_rep_key_uses_neutral():
+    result = roster_embeds._fortress_rep_title({})
+    assert "NEUTRAL" in result
+    assert "30.0/60" in result
+
+
+def test_fortress_rep_title_none_rep_value_uses_neutral():
+    """Explicit None stored as rep value should fall back to 30.0."""
+    result = roster_embeds._fortress_rep_title({"rep": None})
+    assert "NEUTRAL" in result
+    assert "30.0/60" in result

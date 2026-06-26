@@ -448,6 +448,49 @@
       "dreadnought": 1485797067577102377,
       "champion": 1517033967898071100
     },
+    "mode_weights": {
+      "hard_strat": 90,
+      "omega_strat": 10
+    },
+    "requirement_weights": {
+      "no_requirement_chance": 0.5,
+      "slot_tier": {
+        "veteran_oathsworn": 40,
+        "kt_command": 30,
+        "company_command": 20,
+        "hc": 10
+      }
+    },
+    "strat_modifier_counts_by_rep_tier": {
+      "-3": {
+        "positive": 1,
+        "negative": 5
+      },
+      "-2": {
+        "positive": 1,
+        "negative": 4
+      },
+      "-1": {
+        "positive": 1,
+        "negative": 3
+      },
+      "0": {
+        "positive": 1,
+        "negative": 2
+      },
+      "1": {
+        "positive": 2,
+        "negative": 2
+      },
+      "2": {
+        "positive": 3,
+        "negative": 2
+      },
+      "3": {
+        "positive": 4,
+        "negative": 2
+      }
+    },
     "request_strike_directives_max_per_week": 2
   }
 }

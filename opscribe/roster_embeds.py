@@ -497,6 +497,43 @@ def _tp_status_for_high_command(
         return "-# 🟢 Ready for Deployment"
 
 
+def _fortress_rep_state_name(rep: float) -> str:
+    """Resolve fortress standing label from the 0..60 rep bands."""
+    rep_clamped = max(0.0, min(60.0, float(rep if rep is not None and rep != "" else 30.0)))
+    if rep_clamped < 10.0:
+        return "CENSURED"
+    if rep_clamped < 20.0:
+        return "SUSPECT"
+    if rep_clamped < 30.0:
+        return "TOLERATED"
+    if rep_clamped < 40.0:
+        return "NEUTRAL"
+    if rep_clamped < 50.0:
+        return "FAVOURED"
+    if rep_clamped < 58.0:
+        return "ENDORSED"
+    return "MANDATED"
+
+
+def _fortress_rep_title(tp_data: dict | None = None) -> str:
+    """Return fortress standing title line as a 0..60 progress bar."""
+    rep_value = 30.0
+    try:
+        if isinstance(tp_data, dict):
+            raw_rep = tp_data.get("rep")
+            rep_value = float(raw_rep if raw_rep is not None and raw_rep != "" else 30.0)
+    except Exception:
+        rep_value = 30.0
+
+    rep_clamped = max(0.0, min(60.0, rep_value))
+    bar_width = 12
+    filled = int(round((rep_clamped / 60.0) * bar_width))
+    filled = max(0, min(bar_width, filled))
+    bar = "=" * filled + "-" * (bar_width - filled)
+    state = _fortress_rep_state_name(rep_clamped)
+    return f"-# {_OX_STANDING_EMOJI} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+
+
 def _load_honors() -> dict:
     """Load and return parsed honors.json, or an empty dict on any error."""
     try:
@@ -512,23 +549,29 @@ def _load_honors() -> dict:
 _OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
-_HONORS_WINDOW     = 5  # number of tiers to show in the sliding window
+_HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
 def _tier_window(tiers: list, current: str) -> str:
-    """Return a sliding window of 5 tiers centered on current.
+    """Return a sliding window of tiers centered on current.
 
     Current tier is **bold**, others are *italic*.
-    Window shifts left/right at edges to maintain width.
+    Window shifts at edges to maintain width.
     """
     if current not in tiers:
         current = tiers[0]
     idx = tiers.index(current)
-    # 2 behind + current + 2 ahead
-    start = max(0, idx - 2)
-    end   = min(len(tiers), start + _HONORS_WINDOW)
+
+    # Keep current as centered as possible for the configured window size.
+    left = (_HONORS_WINDOW - 1) // 2
+    right = _HONORS_WINDOW - 1 - left
+    start = max(0, idx - left)
+    end = min(len(tiers), idx + right + 1)
+
     if end - start < _HONORS_WINDOW:
         start = max(0, end - _HONORS_WINDOW)
+        end = min(len(tiers), start + _HONORS_WINDOW)
+
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
     return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
@@ -746,12 +789,14 @@ async def _update_company_roster(
     company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
 
     # Load strike directive data once so status lines can be rendered on all embeds.
+    _tp_data: dict = {}
     _tp_packages: dict | None = None
     try:
         _tp_path = os.path.join("data", "target_packages.json")
         if os.path.exists(_tp_path):
             with open(_tp_path, "r", encoding="utf-8") as _f:
-                _tp_packages = json.load(_f).get("packages", {})
+                _tp_data = json.load(_f) or {}
+                _tp_packages = _tp_data.get("packages", {})
     except Exception:
         pass
 
@@ -767,6 +812,7 @@ async def _update_company_roster(
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
         tp_status=_tp_status_for_high_command(guild, packages=_tp_packages),
+        honors_title=_fortress_rep_title(tp_data=_tp_data),
     )
     hc_msg_id = await _upsert_message(
         channel, company_state.get("hc_message_id"), hc_embed
