@@ -497,6 +497,42 @@ def _tp_status_for_high_command(
         return "-# 🟢 Ready for Deployment"
 
 
+def _fortress_rep_state_name(rep: float) -> str:
+    """Resolve fortress standing label from the 0..60 rep bands."""
+    rep_clamped = max(0.0, min(60.0, float(rep or 30.0)))
+    if rep_clamped < 10.0:
+        return "CENSURED"
+    if rep_clamped < 20.0:
+        return "SUSPECT"
+    if rep_clamped < 30.0:
+        return "TOLERATED"
+    if rep_clamped < 40.0:
+        return "NEUTRAL"
+    if rep_clamped < 50.0:
+        return "FAVOURED"
+    if rep_clamped < 58.0:
+        return "ENDORSED"
+    return "MANDATED"
+
+
+def _fortress_rep_title(tp_data: dict | None = None) -> str:
+    """Return fortress standing title line as a 0..60 progress bar."""
+    rep_value = 30.0
+    try:
+        if isinstance(tp_data, dict):
+            rep_value = float(tp_data.get("rep", 30.0) or 30.0)
+    except Exception:
+        rep_value = 30.0
+
+    rep_clamped = max(0.0, min(60.0, rep_value))
+    bar_width = 12
+    filled = int(round((rep_clamped / 60.0) * bar_width))
+    filled = max(0, min(bar_width, filled))
+    bar = "=" * filled + "-" * (bar_width - filled)
+    state = _fortress_rep_state_name(rep_clamped)
+    return f"-# {_OX_STANDING_EMOJI} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+
+
 def _load_honors() -> dict:
     """Load and return parsed honors.json, or an empty dict on any error."""
     try:
@@ -752,12 +788,14 @@ async def _update_company_roster(
     company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
 
     # Load strike directive data once so status lines can be rendered on all embeds.
+    _tp_data: dict = {}
     _tp_packages: dict | None = None
     try:
         _tp_path = os.path.join("data", "target_packages.json")
         if os.path.exists(_tp_path):
             with open(_tp_path, "r", encoding="utf-8") as _f:
-                _tp_packages = json.load(_f).get("packages", {})
+                _tp_data = json.load(_f) or {}
+                _tp_packages = _tp_data.get("packages", {})
     except Exception:
         pass
 
@@ -773,6 +811,7 @@ async def _update_company_roster(
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
         tp_status=_tp_status_for_high_command(guild, packages=_tp_packages),
+        honors_title=_fortress_rep_title(tp_data=_tp_data),
     )
     hc_msg_id = await _upsert_message(
         channel, company_state.get("hc_message_id"), hc_embed

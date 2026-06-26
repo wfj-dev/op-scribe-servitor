@@ -502,6 +502,93 @@ _STRAT_TABLE = {
      3: (4, 2),
 }
 
+
+def _strat_counts_for_rep_tier(rep_tier: int) -> tuple[int, int]:
+    """Return (positive_count, negative_count) for a rep tier.
+
+    Config supports either fixed counts per tier, or weighted distributions:
+
+      CONFIG["target_packages"]["strat_modifier_counts_by_rep_tier"] = {
+        "-3": {"positive": 1, "negative": 5},
+        "0": {
+          "distribution": [
+            {"positive": 1, "negative": 2, "weight": 70},
+            {"positive": 2, "negative": 2, "weight": 30}
+          ]
+        },
+      }
+    """
+    default = _STRAT_TABLE.get(rep_tier, _STRAT_TABLE[0])
+
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    table_cfg = cfg_tp.get("strat_modifier_counts_by_rep_tier") or {}
+    if not isinstance(table_cfg, dict):
+        return default
+
+    tier_cfg = table_cfg.get(str(rep_tier), table_cfg.get(rep_tier))
+    if not isinstance(tier_cfg, dict):
+        return default
+
+    dist = tier_cfg.get("distribution")
+    if isinstance(dist, list) and dist:
+        parsed: list[tuple[int, int, int]] = []
+        for idx, row in enumerate(dist):
+            if not isinstance(row, dict):
+                _g.logger.warning(
+                    "[TP] Invalid distribution row for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            try:
+                pos = int(row.get("positive", row.get("pos")))
+                neg = int(row.get("negative", row.get("neg")))
+                weight = int(row.get("weight", 0))
+            except Exception:
+                _g.logger.warning(
+                    "[TP] Invalid distribution values for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            if pos < 0 or neg < 0 or weight <= 0:
+                _g.logger.warning(
+                    "[TP] Non-positive distribution values for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            parsed.append((pos, neg, weight))
+
+        choice = random.choices(parsed, weights=[w for _, _, w in parsed], k=1)[0]
+        return choice[0], choice[1]
+
+    try:
+        pos = int(tier_cfg.get("positive", tier_cfg.get("pos")))
+        neg = int(tier_cfg.get("negative", tier_cfg.get("neg")))
+    except Exception:
+        _g.logger.warning(
+            "[TP] Invalid target_packages.strat_modifier_counts_by_rep_tier[%s]=%s; using default %s",
+            rep_tier,
+            tier_cfg,
+            default,
+        )
+        return default
+
+    if pos < 0 or neg < 0:
+        _g.logger.warning(
+            "[TP] Negative strat counts in target_packages.strat_modifier_counts_by_rep_tier[%s]=%s; using default %s",
+            rep_tier,
+            tier_cfg,
+            default,
+        )
+        return default
+
+    return pos, neg
+
 _REP_MIN = 0.0
 _REP_MAX = 60.0
 _REP_NEUTRAL = 30.0
@@ -1396,7 +1483,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
     (intel_lapse is injected later based on mission).
     """
     rep_tier = _rep_tier_for_strat(rep)
-    pos_count, neg_count = _STRAT_TABLE[rep_tier]
+    pos_count, neg_count = _strat_counts_for_rep_tier(rep_tier)
 
     # Omega-Strat: YOLO is redundant (Omega already has 1-life rules)
     omega_excluded = {"You Only Live Once", "Fatality"} if "Omega" in mode else set()
