@@ -635,6 +635,10 @@ try:
         SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = int(schedules_cfg.get("monthly_archive_audit_span_days"))
     if schedules_cfg.get("monthly_archive_audit_hour") is not None:
         SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = int(schedules_cfg.get("monthly_archive_audit_hour"))
+    if "role_integrity_audit_enabled" in schedules_cfg:
+        SCHEDULE_ROLE_INTEGRITY_AUDIT_ENABLED = _is_truthy(schedules_cfg.get("role_integrity_audit_enabled"))
+    if schedules_cfg.get("role_integrity_audit_hour") is not None:
+        SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR = int(schedules_cfg.get("role_integrity_audit_hour"))
 except Exception:
     pass
 
@@ -735,7 +739,10 @@ _g.DEBUG_MODE = DEBUG_MODE
 from .forge_ops import *  # noqa: E402,F401,F403
 from .aar_ops import *  # noqa: E402,F401,F403
 from .roster_ops import *  # noqa: E402,F401,F403
-from .roster_ops import _award_announcement_dispatch_loop  # noqa: E402 - underscore prefix excluded from import *
+from .roster_ops import (  # noqa: E402 - underscore prefix excluded from import *
+    _award_announcement_dispatch_loop,
+    _role_integrity_audit_loop,
+)
 from . import auto_ingest as _auto_ingest  # noqa: E402,F401  # imported for slash command registration side effect
 from . import terminus_ops as _terminus_ops  # noqa: E402,F401  # imported for slash command registration side effect
 from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for slash command + loop registration
@@ -1588,6 +1595,18 @@ async def on_ready():
             logger.info("Award announcement dispatch loop started (15 min interval).")
     except Exception:
         logger.exception("Failed to start award announcement dispatch loop")
+
+    # Start daily role integrity audit loop if enabled
+    try:
+        if SCHEDULE_ROLE_INTEGRITY_AUDIT_ENABLED:
+            if not _role_integrity_audit_loop.is_running():
+                _role_integrity_audit_loop.start()
+                logger.info(
+                    "Role integrity audit loop started "
+                    f"(daily gate, target hour {SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR:02d}:00 UTC)."
+                )
+    except Exception:
+        logger.exception("Failed to start role integrity audit loop")
 
     # Start weekly maintenance loop if enabled (default: enabled)
     try:

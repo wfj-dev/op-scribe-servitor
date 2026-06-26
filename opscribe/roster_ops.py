@@ -15,6 +15,7 @@ import logging
 import random
 import sys as _sys
 import statistics
+from collections import Counter
 
 from .constants import *  # noqa: F401,F403
 from .constants import _strip_display_name
@@ -1973,6 +1974,409 @@ async def _activity_status_check_loop():
         await _check_promotion_milestones()
     except Exception:
         _g.logger.exception("Error running activity status check loop")
+
+
+def _role_integrity_cfg() -> dict:
+    cfg = (_g.CONFIG or {}).get("role_integrity_audit") or {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _role_integrity_state_path() -> str:
+    cfg = _role_integrity_cfg()
+    custom = cfg.get("state_path")
+    if isinstance(custom, str) and custom.strip():
+        return custom.strip()
+    return os.path.join(DATA_DIR, "role_integrity_audit_state.json")
+
+
+def _load_role_integrity_state() -> dict:
+    path = _role_integrity_state_path()
+    try:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        _g.logger.debug("Failed to load role integrity state", exc_info=True)
+    return {}
+
+
+def _save_role_integrity_state(state: dict) -> None:
+    path = _role_integrity_state_path()
+    try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        _g.logger.debug("Failed to save role integrity state", exc_info=True)
+
+
+def _role_name_set(member: discord.Member) -> set[str]:
+    return {getattr(r, "name", "") for r in getattr(member, "roles", []) if getattr(r, "name", None)}
+
+
+def _role_id_set(member: discord.Member) -> set[int]:
+    return {int(getattr(r, "id", 0)) for r in getattr(member, "roles", []) if getattr(r, "id", None)}
+
+
+def _track_missing_prereqs(track_roles: list[str], role_names: set[str]) -> list[str]:
+    present_indices = [i for i, name in enumerate(track_roles) if name in role_names]
+    if not present_indices:
+        return []
+    max_idx = max(present_indices)
+    return [track_roles[i] for i in range(0, max_idx + 1) if track_roles[i] not in role_names]
+
+
+def _schedule_role_audit_hour_utc() -> int:
+    # Prefer runtime-adjusted value from bot.py (applies config overrides).
+    hour = _b("SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR")
+    if isinstance(hour, int):
+        return max(0, min(23, hour))
+    cfg_hour = (_g.CONFIG.get("schedules") or {}).get("role_integrity_audit_hour")
+    try:
+        return max(0, min(23, int(cfg_hour)))
+    except Exception:
+        return 12
+
+
+async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
+    cfg = _role_integrity_cfg()
+    role_ids_cfg = cfg.get("role_ids") or {}
+
+    def _role_name(key: str, fallback: str) -> str:
+        try:
+            role_id = int(role_ids_cfg.get(key) or 0)
+        except Exception:
+            role_id = 0
+        if role_id:
+            role_obj = guild.get_role(role_id)
+            if role_obj and getattr(role_obj, "name", None):
+                return role_obj.name
+        return fallback
+
+    watch_brother = _role_name("watch_brother", "Watch Brother")
+    watch_veteran = _role_name("watch_veteran", "Watch Veteran")
+    oathsworn = _role_name("oathsworn", "Oathsworn")
+    watch_sergeant = _role_name("watch_sergeant", "Watch Sergeant")
+    watch_lieutenant = _role_name("watch_lieutenant", "Watch Lieutenant")
+    watch_captain = _role_name("watch_captain", "Watch Captain")
+    watch_master = _role_name("watch_master", "Watch Master")
+
+    watch_techmarine = _role_name("watch_techmarine", "Watch Techmarine")
+    forgemaster = _role_name("forgemaster", "Forgemaster")
+    watch_librarian = _role_name("watch_librarian", "Watch Librarian")
+    void_warden = _role_name("void_warden", "Void Warden")
+    watch_apothecary = _role_name("watch_apothecary", "Watch Apothecary")
+    chief_apothecary = _role_name("chief_apothecary", "Chief Apothecary")
+    watch_chaplain = _role_name("watch_chaplain", "Watch Chaplain")
+    high_chaplain = _role_name("high_chaplain", "High Chaplain")
+
+    kill_team_champion = _role_name("kill_team_champion", "Kill Team Champion")
+    company_champion = _role_name("company_champion", "Company Champion")
+    lord_executioner = _role_name("lord_executioner", "Lord Executioner")
+
+    honored_dreadnought = _role_name("honored_dreadnought", "Honored Dreadnought")
+    venerable_dreadnought = _role_name("venerable_dreadnought", "Venerable Dreadnought")
+    dreadnought_cadre = _role_name("dreadnought_cadre", "Dreadnought Cadre")
+    deathwatch_specialist = _role_name("deathwatch_specialist", "Deathwatch Specialist")
+
+    high_command_role = _role_name("high_command", "High Command")
+    watch_command_role = _role_name("watch_command", "Watch Command")
+
+    command_track = [watch_brother, watch_veteran, watch_sergeant, watch_lieutenant, watch_captain, watch_master]
+    oathsworn_track = [watch_brother, watch_veteran, oathsworn]
+    champion_track = [watch_brother, watch_veteran, kill_team_champion, company_champion, lord_executioner]
+    dreadnought_track = [watch_brother, watch_veteran, honored_dreadnought, venerable_dreadnought]
+    specialist_tracks = {
+        "techmarine": [watch_brother, watch_veteran, watch_techmarine, forgemaster],
+        "librarian": [watch_brother, watch_veteran, watch_librarian, void_warden],
+        "apothecary": [watch_brother, watch_veteran, watch_apothecary, chief_apothecary],
+        "chaplain": [watch_brother, watch_veteran, watch_chaplain, high_chaplain],
+    }
+
+    company_command_membership = set(
+        (cfg.get("company_command_rank_role_names") or [])
+        or [
+            watch_lieutenant,
+            watch_captain,
+            watch_techmarine,
+            watch_librarian,
+            watch_chaplain,
+            watch_apothecary,
+            company_champion,
+        ]
+    )
+    high_command_required_roles = set(
+        (cfg.get("high_command_required_rank_role_names") or [])
+        or [
+            watch_captain,
+            watch_master,
+            forgemaster,
+            void_warden,
+            chief_apothecary,
+            high_chaplain,
+            lord_executioner,
+            venerable_dreadnought,
+        ]
+    )
+    watch_command_required_roles = set(
+        (cfg.get("watch_command_required_rank_role_names") or [])
+        or [
+            watch_sergeant,
+            watch_lieutenant,
+            watch_captain,
+            watch_master,
+            kill_team_champion,
+            company_champion,
+            lord_executioner,
+            watch_techmarine,
+            forgemaster,
+            watch_librarian,
+            void_warden,
+            watch_apothecary,
+            chief_apothecary,
+            watch_chaplain,
+            high_chaplain,
+            honored_dreadnought,
+            venerable_dreadnought,
+        ]
+    )
+    company_command_or_higher_roles = company_command_membership | high_command_required_roles
+
+    company_cfg = _g.CONFIG.get("companies") or {}
+    company_role_ids: set[int] = set()
+    company_cmd_role_by_company_role: dict[int, int] = {}
+    company_name_by_role_id: dict[int, str] = {}
+    for key, entry in company_cfg.items():
+        try:
+            c_role = int((entry or {}).get("companyRoleId") or 0)
+            cmd_role = int((entry or {}).get("companyCommandRoleId") or 0)
+        except Exception:
+            continue
+        if c_role:
+            company_role_ids.add(c_role)
+            company_name_by_role_id[c_role] = (entry or {}).get("name") or key
+            if cmd_role:
+                company_cmd_role_by_company_role[c_role] = cmd_role
+
+    kt_role_ids = {int(x) for x in (_b("ALLOWED_KT_ROLE_IDS") or set()) if x}
+    findings: list[dict] = []
+
+    def _add(member: discord.Member, code: str, detail: str) -> None:
+        findings.append(
+            {
+                "member_id": int(member.id),
+                "member_name": member.display_name or member.name,
+                "code": code,
+                "detail": detail,
+            }
+        )
+
+    for member in guild.members:
+        if getattr(member, "bot", False):
+            continue
+        role_names = _role_name_set(member)
+        role_ids = _role_id_set(member)
+
+        # Exclusion rules from the audit scope.
+        if "Reserves" in role_names or "Interred Brother" in role_names:
+            continue
+        if watch_brother not in role_names:
+            continue
+
+        company_hits = sorted([rid for rid in company_role_ids if rid in role_ids])
+        kt_hits = sorted([rid for rid in kt_role_ids if rid in role_ids])
+
+        if len(company_hits) > 1:
+            _add(member, "multi_company", "Member holds multiple company roles.")
+        if len(kt_hits) > 1:
+            _add(member, "multi_kill_team", "Member holds multiple kill team roles.")
+
+        # No-skip checks across each declared track.
+        for label, track in (
+            ("command", command_track),
+            ("oathsworn", oathsworn_track),
+            ("champion", champion_track),
+            ("dreadnought", dreadnought_track),
+        ):
+            missing = _track_missing_prereqs(track, role_names)
+            if missing:
+                _add(member, f"{label}_skip", f"Missing track prerequisites: {', '.join(missing)}.")
+
+        specialist_presence = []
+        for label, track in specialist_tracks.items():
+            missing = _track_missing_prereqs(track, role_names)
+            if missing:
+                _add(member, f"{label}_skip", f"Missing track prerequisites: {', '.join(missing)}.")
+            if any(r in role_names for r in track[2:]):
+                specialist_presence.append(label)
+
+        if len(specialist_presence) > 1:
+            _add(
+                member,
+                "cross_specialist",
+                f"Cross-specialist assignment detected: {', '.join(sorted(specialist_presence))}.",
+            )
+
+        has_command_advanced = any(r in role_names for r in [watch_sergeant, watch_lieutenant, watch_captain, watch_master])
+        has_oath = oathsworn in role_names
+        has_champion = any(r in role_names for r in [kill_team_champion, company_champion, lord_executioner])
+        has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
+        has_specialist = len(specialist_presence) > 0
+
+        active_tracks = []
+        if has_oath:
+            active_tracks.append("oathsworn")
+        if has_command_advanced:
+            active_tracks.append("command")
+        if has_champion:
+            active_tracks.append("champion")
+        if has_dread:
+            active_tracks.append("dreadnought")
+        if has_specialist:
+            active_tracks.append("specialist")
+        if len(active_tracks) > 1:
+            _add(member, "track_mixing", f"Conflicting tracks detected: {', '.join(active_tracks)}.")
+
+        if has_oath and has_command_advanced:
+            _add(member, "oathsworn_terminal", "Oathsworn must not coexist with command ranks.")
+
+        if has_specialist and deathwatch_specialist not in role_names:
+            _add(member, "missing_specialist_marker", f"Missing required marker role: {deathwatch_specialist}.")
+        if has_dread and dreadnought_cadre not in role_names:
+            _add(member, "missing_dreadnought_marker", f"Missing required marker role: {dreadnought_cadre}.")
+
+        has_hc_rank = any(r in role_names for r in high_command_required_roles)
+        has_hc_role = high_command_role in role_names
+        if has_hc_rank and not has_hc_role:
+            _add(member, "high_command_missing", f"Expected {high_command_role} role is missing.")
+        if has_hc_role and not has_hc_rank:
+            _add(member, "high_command_excess", f"Has {high_command_role} role without a qualifying rank role.")
+
+        has_watch_command_required = any(r in role_names for r in watch_command_required_roles)
+        has_watch_command = watch_command_role in role_names
+        if has_watch_command_required and not has_watch_command:
+            _add(member, "watch_command_missing", f"Expected {watch_command_role} role is missing.")
+
+        if len(company_hits) == 1 and any(r in role_names for r in company_command_membership):
+            company_role_id = company_hits[0]
+            expected_cmd_role_id = company_cmd_role_by_company_role.get(company_role_id)
+            if expected_cmd_role_id and expected_cmd_role_id not in role_ids:
+                company_name = company_name_by_role_id.get(company_role_id, "company")
+                _add(member, "company_command_missing", f"Missing {company_name} command role.")
+
+        if kt_hits and any(r in role_names for r in company_command_or_higher_roles):
+            _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
+
+    return findings
+
+
+async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dict]) -> bool:
+    cfg_tp = (_g.CONFIG.get("target_packages") or {})
+    channel_id = cfg_tp.get("highcom_audit_channel_id") or cfg_tp.get("highcom_strategium_channel_id")
+    if not channel_id:
+        _g.logger.warning("Role integrity audit: no HighCom report channel configured.")
+        return False
+
+    try:
+        channel = guild.get_channel(int(channel_id)) or await _g.bot.fetch_channel(int(channel_id))
+    except Exception:
+        _g.logger.warning("Role integrity audit: failed to resolve report channel", exc_info=True)
+        return False
+
+    counts = Counter(item.get("code", "unknown") for item in findings)
+    summary = "\n".join([f"- {code}: {count}" for code, count in sorted(counts.items())]) or "- no findings"
+    highcom_role_id = cfg_tp.get("highcom_role_id")
+    ping = ""
+    if highcom_role_id:
+        if isinstance(highcom_role_id, str):
+            mention = highcom_role_id.strip()
+            if re.fullmatch(r"<@&\d+>", mention):
+                ping = mention
+            else:
+                try:
+                    ping = f"<@&{int(mention)}>"
+                except Exception:
+                    ping = ""
+        else:
+            try:
+                ping = f"<@&{int(highcom_role_id)}>"
+            except Exception:
+                ping = ""
+
+    embed = discord.Embed(
+        title="Role Integrity Audit Findings",
+        description=(
+            f"Detected **{len(findings)}** role consistency issue(s).\n"
+            f"{summary}"
+        ),
+        color=0xC0392B,
+    )
+    embed.set_footer(text=f"UTC {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}")
+
+    await channel.send(content=ping or None, embed=embed)
+
+    lines = [f"<@{item['member_id']}> - {item['code']}: {item['detail']}" for item in findings]
+    chunk = ""
+    for line in lines:
+        candidate = (chunk + "\n" + line).strip()
+        if len(candidate) > 1800:
+            await channel.send(chunk)
+            chunk = line
+        else:
+            chunk = candidate
+    if chunk:
+        await channel.send(chunk)
+    return True
+
+
+@tasks.loop(hours=1)
+async def _role_integrity_audit_loop():
+    """Daily role-integrity audit (day-gated, UTC hour-gated) with HighCom reporting."""
+    try:
+        cfg = _role_integrity_cfg()
+        if cfg.get("enabled") is False:
+            return
+
+        now = datetime.now(timezone.utc)
+        hour_gate = _schedule_role_audit_hour_utc()
+        if now.hour < hour_gate:
+            return
+
+        state = _load_role_integrity_state()
+        today = now.strftime("%Y-%m-%d")
+        if state.get("last_run_date") == today:
+            return
+
+        guild = _b("_resolve_notification_guild")()
+        if not guild:
+            return
+
+        findings = await _collect_role_integrity_findings(guild)
+        posted = False
+        if findings:
+            posted = await _post_role_integrity_findings(guild, findings)
+
+        state["last_run_date"] = today
+        state["last_run_at"] = now.isoformat()
+        state["last_findings_count"] = len(findings)
+        state["last_posted"] = bool(posted)
+        _save_role_integrity_state(state)
+    except Exception:
+        _g.logger.exception("Error running role integrity audit loop")
+
+
+@_role_integrity_audit_loop.before_loop
+async def _before_role_integrity_audit_loop():
+    await _g.bot.wait_until_ready()
+    await asyncio.sleep(30)
 
 
 _AWARD_DISPATCH_FN_MAP = {
@@ -7400,6 +7804,7 @@ __all__ = [
     "_send_activity_status_notification",
     "_handle_dreadnought_inactivity",
     "_activity_status_check_loop",
+    "_role_integrity_audit_loop",
     # ── Induction / member helpers ───────────────────────────────────────────
     "_load_induction_overrides",
     "_save_induction_overrides",

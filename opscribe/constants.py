@@ -107,6 +107,10 @@ SCHEDULE_MONTHLY_ARCHIVE_AUDIT_ENABLED = True
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_SPAN_DAYS = 45
 SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = 10
 
+# Daily role integrity audit settings
+SCHEDULE_ROLE_INTEGRITY_AUDIT_ENABLED = False
+SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR = 12
+
 # ---------------------------------------------------------------------------
 # Milestone announcement settings (weekly check)
 # ---------------------------------------------------------------------------
