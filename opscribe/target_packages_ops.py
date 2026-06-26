@@ -529,6 +529,46 @@ _GENERAL_WARNING_WINDOW = timedelta(hours=24)
 
 # Generator switch: disable Omega packages temporarily when needed.
 ENABLE_OMEGA_PACKAGES = True
+_MODE_WEIGHTS_DEFAULT = {"Hard-Strat": 90, "Omega-Strat": 10}
+
+
+def _mode_draw_weights() -> tuple[int, int]:
+    """Return (hard_weight, omega_weight) from config with safe defaults.
+
+    Expected config shape:
+      CONFIG["target_packages"]["mode_weights"] = {
+        "hard_strat": 90,
+        "omega_strat": 10,
+      }
+    """
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    raw = cfg_tp.get("mode_weights") or {}
+    if not isinstance(raw, dict):
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    hard_raw = raw.get("hard_strat", raw.get("Hard-Strat", _MODE_WEIGHTS_DEFAULT["Hard-Strat"]))
+    omega_raw = raw.get("omega_strat", raw.get("Omega-Strat", _MODE_WEIGHTS_DEFAULT["Omega-Strat"]))
+
+    try:
+        hard = int(hard_raw)
+        omega = int(omega_raw)
+    except Exception:
+        _g.logger.warning(
+            "[TP] Invalid target_packages.mode_weights config (%s); using defaults %s",
+            raw,
+            _MODE_WEIGHTS_DEFAULT,
+        )
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    if hard < 0 or omega < 0 or (hard + omega) <= 0:
+        _g.logger.warning(
+            "[TP] Non-positive target_packages.mode_weights config (%s); using defaults %s",
+            raw,
+            _MODE_WEIGHTS_DEFAULT,
+        )
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    return hard, omega
 
 def _format_deadline_dual_region(deadline_iso: str) -> str:
     """Render a directive deadline using Discord local-time tags for each viewer."""
@@ -1562,7 +1602,8 @@ def _generate_single_package(
     classification = _OBJECTIVE_CLASSIFICATION.get(op_data.get("objective_type", ""), "STRIKE")
 
     if ENABLE_OMEGA_PACKAGES:
-        mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[70, 30])[0]
+        hard_weight, omega_weight = _mode_draw_weights()
+        mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[hard_weight, omega_weight])[0]
     else:
         mode = "Hard-Strat"
 
