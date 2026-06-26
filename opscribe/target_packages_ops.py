@@ -1412,7 +1412,8 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
         role_counts = {r: 1 for r in available_roles}
         available_set = set(available_roles)
 
-    max_reqs = 3 if "Hard" in mode else 5
+    # Configured directive caps: Hard-Strat max 3 required roles, Omega-Strat hard max 2.
+    max_reqs = 2 if "Omega" in mode else 3
     max_hc = 1
 
     weights = [2 ** (max_reqs - i) for i in range(1, max_reqs + 1)]
@@ -3775,7 +3776,15 @@ def _build_package_embed(
 
     # ▸ Briefing
     if briefing:
-        embed.add_field(name="▸ Field Briefing", value=f"> {briefing[:380]}", inline=False)
+        max_len = 380
+        briefing_out = briefing
+        if len(briefing_out) > max_len:
+            cut = briefing_out[:max_len]
+            split_idx = cut.rfind(" ")
+            if split_idx > 260:
+                cut = cut[:split_idx]
+            briefing_out = cut.rstrip(" .,;:") + "..."
+        embed.add_field(name="▸ Field Briefing", value=f"> {briefing_out}", inline=False)
 
     # ▸ Stratagems as diff code block
     core_strats = stratagems.get("core", [])
@@ -4563,6 +4572,10 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
                 **_file_kwarg(_cls_file),
             )
             if msg:
+                try:
+                    await msg.pin(reason=f"Pin directive {pkg.get('directive_code') or package_id} for KT coordination")
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    _g.logger.debug(f"[TP] Failed to pin KT directive message {getattr(msg, 'id', '?')} for {package_id}: {exc}")
                 async with _TP_LOCK:
                     data2 = _load_tp()
                     if package_id in data2["packages"]:
