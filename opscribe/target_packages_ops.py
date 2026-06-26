@@ -491,15 +491,6 @@ _TIER_ROLES = {
     ],
 }
 
-# Requirement tier draw weights (must sum to 100)
-_TIER_WEIGHTS = [
-    (_REQ_TIER_NO_REQ, 50),
-    (_REQ_TIER_VETERAN_OATHSWORN, 15),
-    (_REQ_TIER_KT_COMMAND, 20),
-    (_REQ_TIER_COMPANY_COMMAND, 10),
-    (_REQ_TIER_HC, 5),
-]
-
 # Strat table: rep range -> (pos_count, neg_count). Positive count scales 1-4, negative 2-5.
 _STRAT_TABLE = {
     -3: (1, 5),
@@ -510,6 +501,93 @@ _STRAT_TABLE = {
      2: (3, 2),
      3: (4, 2),
 }
+
+
+def _strat_counts_for_rep_tier(rep_tier: int) -> tuple[int, int]:
+    """Return (positive_count, negative_count) for a rep tier.
+
+    Config supports either fixed counts per tier, or weighted distributions:
+
+      CONFIG["target_packages"]["strat_modifier_counts_by_rep_tier"] = {
+        "-3": {"positive": 1, "negative": 5},
+        "0": {
+          "distribution": [
+            {"positive": 1, "negative": 2, "weight": 70},
+            {"positive": 2, "negative": 2, "weight": 30}
+          ]
+        },
+      }
+    """
+    default = _STRAT_TABLE.get(rep_tier, _STRAT_TABLE[0])
+
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    table_cfg = cfg_tp.get("strat_modifier_counts_by_rep_tier") or {}
+    if not isinstance(table_cfg, dict):
+        return default
+
+    tier_cfg = table_cfg.get(str(rep_tier), table_cfg.get(rep_tier))
+    if not isinstance(tier_cfg, dict):
+        return default
+
+    dist = tier_cfg.get("distribution")
+    if isinstance(dist, list) and dist:
+        parsed: list[tuple[int, int, int]] = []
+        for idx, row in enumerate(dist):
+            if not isinstance(row, dict):
+                _g.logger.warning(
+                    "[TP] Invalid distribution row for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            try:
+                pos = int(row.get("positive", row.get("pos")))
+                neg = int(row.get("negative", row.get("neg")))
+                weight = int(row.get("weight", 0))
+            except Exception:
+                _g.logger.warning(
+                    "[TP] Invalid distribution values for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            if pos < 0 or neg < 0 or weight <= 0:
+                _g.logger.warning(
+                    "[TP] Non-positive distribution values for rep tier %s at index %s; using default %s",
+                    rep_tier,
+                    idx,
+                    default,
+                )
+                return default
+            parsed.append((pos, neg, weight))
+
+        choice = random.choices(parsed, weights=[w for _, _, w in parsed], k=1)[0]
+        return choice[0], choice[1]
+
+    try:
+        pos = int(tier_cfg.get("positive", tier_cfg.get("pos")))
+        neg = int(tier_cfg.get("negative", tier_cfg.get("neg")))
+    except Exception:
+        _g.logger.warning(
+            "[TP] Invalid target_packages.strat_modifier_counts_by_rep_tier[%s]=%s; using default %s",
+            rep_tier,
+            tier_cfg,
+            default,
+        )
+        return default
+
+    if pos < 0 or neg < 0:
+        _g.logger.warning(
+            "[TP] Negative strat counts in target_packages.strat_modifier_counts_by_rep_tier[%s]=%s; using default %s",
+            rep_tier,
+            tier_cfg,
+            default,
+        )
+        return default
+
+    return pos, neg
 
 _REP_MIN = 0.0
 _REP_MAX = 60.0
@@ -529,6 +607,120 @@ _GENERAL_WARNING_WINDOW = timedelta(hours=24)
 
 # Generator switch: disable Omega packages temporarily when needed.
 ENABLE_OMEGA_PACKAGES = True
+_MODE_WEIGHTS_DEFAULT = {"Hard-Strat": 90, "Omega-Strat": 10}
+_REQUIREMENT_NO_REQ_CHANCE_DEFAULT = 0.50
+_REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT = {
+    _REQ_TIER_VETERAN_OATHSWORN: 30,
+    _REQ_TIER_KT_COMMAND: 40,
+    _REQ_TIER_COMPANY_COMMAND: 20,
+    _REQ_TIER_HC: 10,
+}
+
+
+def _requirement_no_req_chance() -> float:
+    """Return no-requirement draw chance from config with safe default."""
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    req_cfg = cfg_tp.get("requirement_weights") or {}
+    raw = req_cfg.get("no_requirement_chance", _REQUIREMENT_NO_REQ_CHANCE_DEFAULT)
+    try:
+        chance = float(raw)
+    except Exception:
+        _g.logger.warning(
+            "[TP] Invalid target_packages.requirement_weights.no_requirement_chance (%s); using default %.2f",
+            raw,
+            _REQUIREMENT_NO_REQ_CHANCE_DEFAULT,
+        )
+        return _REQUIREMENT_NO_REQ_CHANCE_DEFAULT
+    if chance < 0.0 or chance > 1.0:
+        _g.logger.warning(
+            "[TP] Out-of-range target_packages.requirement_weights.no_requirement_chance (%s); using default %.2f",
+            raw,
+            _REQUIREMENT_NO_REQ_CHANCE_DEFAULT,
+        )
+        return _REQUIREMENT_NO_REQ_CHANCE_DEFAULT
+    return chance
+
+
+def _requirement_slot_tier_weights() -> list[tuple[str, int]]:
+    """Return per-slot requirement tier draw weights from config with defaults.
+
+    Expected config shape:
+      CONFIG["target_packages"]["requirement_weights"]["slot_tier"] = {
+        "veteran_oathsworn": 30,
+        "kt_command": 40,
+        "company_command": 20,
+        "hc": 10,
+      }
+    """
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    req_cfg = cfg_tp.get("requirement_weights") or {}
+    raw = req_cfg.get("slot_tier") or {}
+
+    if not isinstance(raw, dict):
+        return list(_REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    parsed: dict[str, int] = {}
+    for tier_key, default_weight in _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items():
+        v = raw.get(tier_key, default_weight)
+        try:
+            parsed[tier_key] = int(v)
+        except Exception:
+            _g.logger.warning(
+                "[TP] Invalid target_packages.requirement_weights.slot_tier[%s]=%s; using defaults %s",
+                tier_key,
+                v,
+                _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT,
+            )
+            return list(_REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    if any(w < 0 for w in parsed.values()) or sum(parsed.values()) <= 0:
+        _g.logger.warning(
+            "[TP] Non-positive target_packages.requirement_weights.slot_tier (%s); using defaults %s",
+            parsed,
+            _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT,
+        )
+        return list(_REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    return [(tier, parsed[tier]) for tier in _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.keys()]
+
+
+def _mode_draw_weights() -> tuple[int, int]:
+    """Return (hard_weight, omega_weight) from config with safe defaults.
+
+    Expected config shape:
+      CONFIG["target_packages"]["mode_weights"] = {
+        "hard_strat": 90,
+        "omega_strat": 10,
+      }
+    """
+    cfg_tp = (_b("CONFIG") or {}).get("target_packages") or {}
+    raw = cfg_tp.get("mode_weights") or {}
+    if not isinstance(raw, dict):
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    hard_raw = raw.get("hard_strat", raw.get("Hard-Strat", _MODE_WEIGHTS_DEFAULT["Hard-Strat"]))
+    omega_raw = raw.get("omega_strat", raw.get("Omega-Strat", _MODE_WEIGHTS_DEFAULT["Omega-Strat"]))
+
+    try:
+        hard = int(hard_raw)
+        omega = int(omega_raw)
+    except Exception:
+        _g.logger.warning(
+            "[TP] Invalid target_packages.mode_weights config (%s); using defaults %s",
+            raw,
+            _MODE_WEIGHTS_DEFAULT,
+        )
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    if hard < 0 or omega < 0 or (hard + omega) <= 0:
+        _g.logger.warning(
+            "[TP] Non-positive target_packages.mode_weights config (%s); using defaults %s",
+            raw,
+            _MODE_WEIGHTS_DEFAULT,
+        )
+        return _MODE_WEIGHTS_DEFAULT["Hard-Strat"], _MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    return hard, omega
 
 def _format_deadline_dual_region(deadline_iso: str) -> str:
     """Render a directive deadline using Discord local-time tags for each viewer."""
@@ -1291,7 +1483,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
     (intel_lapse is injected later based on mission).
     """
     rep_tier = _rep_tier_for_strat(rep)
-    pos_count, neg_count = _STRAT_TABLE[rep_tier]
+    pos_count, neg_count = _strat_counts_for_rep_tier(rep_tier)
 
     # Omega-Strat: YOLO is redundant (Omega already has 1-life rules)
     omega_excluded = {"You Only Live Once", "Fatality"} if "Omega" in mode else set()
@@ -1375,15 +1567,6 @@ _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
 ) | {"Kill Team Champion"}
 
-# Per-tier draw probability for a single requirement slot
-# Weights used when independently drawing each slot
-_SLOT_TIER_WEIGHTS = [
-    (_REQ_TIER_VETERAN_OATHSWORN, 30),
-    (_REQ_TIER_KT_COMMAND,        40),
-    (_REQ_TIER_COMPANY_COMMAND,   20),
-    (_REQ_TIER_HC,                10),
-]
-
 _OMEGA_REQ_TIERS = {
     _REQ_TIER_COMPANY_COMMAND,
     _REQ_TIER_HC,
@@ -1417,12 +1600,12 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
     max_hc = 1
 
     weights = [2 ** (max_reqs - i) for i in range(1, max_reqs + 1)]
-    if random.random() < 0.50:
+    if random.random() < _requirement_no_req_chance():
         return (_REQ_TIER_NO_REQ, [])
 
     target_count = random.choices(range(1, max_reqs + 1), weights=weights)[0]
 
-    tiers, tier_weights = zip(*_SLOT_TIER_WEIGHTS)
+    tiers, tier_weights = zip(*_requirement_slot_tier_weights())
     chosen: list = []
     chosen_counts: dict = {}  # role -> times already drawn
     hc_count = 0
@@ -1562,7 +1745,8 @@ def _generate_single_package(
     classification = _OBJECTIVE_CLASSIFICATION.get(op_data.get("objective_type", ""), "STRIKE")
 
     if ENABLE_OMEGA_PACKAGES:
-        mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[70, 30])[0]
+        hard_weight, omega_weight = _mode_draw_weights()
+        mode = random.choices(["Hard-Strat", "Omega-Strat"], weights=[hard_weight, omega_weight])[0]
     else:
         mode = "Hard-Strat"
 

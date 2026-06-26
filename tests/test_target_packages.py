@@ -1324,3 +1324,262 @@ class TestWeeklyRequestQuota:
         assert can_request is False
         assert "hours" in msg.lower()
         assert "available" in msg.lower()
+
+
+class TestConfigWeightHelpers:
+    """Tests for config-driven weight parsing helpers."""
+
+    # ------------------------------------------------------------------
+    # _mode_draw_weights
+    # ------------------------------------------------------------------
+
+    def test_mode_weights_valid_override_applied(self, monkeypatch):
+        """Valid config overrides should change the returned weights."""
+        import opscribe.target_packages_ops as tp
+
+        cfg = {"target_packages": {"mode_weights": {"hard_strat": 70, "omega_strat": 30}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        hard, omega = tp._mode_draw_weights()
+        assert hard == 70
+        assert omega == 30
+
+    def test_mode_weights_invalid_value_falls_back_to_defaults(self, monkeypatch):
+        """Non-numeric values in mode_weights should fall back to defaults."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"mode_weights": {"hard_strat": "not_a_number", "omega_strat": 10}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        hard, omega = tp._mode_draw_weights()
+        assert hard == tp._MODE_WEIGHTS_DEFAULT["Hard-Strat"]
+        assert omega == tp._MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    def test_mode_weights_negative_falls_back_to_defaults(self, monkeypatch):
+        """Negative weight values should fall back to defaults."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"mode_weights": {"hard_strat": -1, "omega_strat": 10}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        hard, omega = tp._mode_draw_weights()
+        assert hard == tp._MODE_WEIGHTS_DEFAULT["Hard-Strat"]
+        assert omega == tp._MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    def test_mode_weights_both_zero_falls_back_to_defaults(self, monkeypatch):
+        """Both weights being zero should fall back to defaults."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"mode_weights": {"hard_strat": 0, "omega_strat": 0}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        hard, omega = tp._mode_draw_weights()
+        assert hard == tp._MODE_WEIGHTS_DEFAULT["Hard-Strat"]
+        assert omega == tp._MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    def test_mode_weights_missing_config_returns_defaults(self, monkeypatch):
+        """Missing target_packages config block should return defaults."""
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp, "_b", lambda name: {} if name == "CONFIG" else None)
+
+        hard, omega = tp._mode_draw_weights()
+        assert hard == tp._MODE_WEIGHTS_DEFAULT["Hard-Strat"]
+        assert omega == tp._MODE_WEIGHTS_DEFAULT["Omega-Strat"]
+
+    # ------------------------------------------------------------------
+    # _requirement_no_req_chance
+    # ------------------------------------------------------------------
+
+    def test_no_req_chance_valid_override_applied(self, monkeypatch):
+        """Valid no_requirement_chance override should be returned."""
+        import opscribe.target_packages_ops as tp
+
+        cfg = {"target_packages": {"requirement_weights": {"no_requirement_chance": 0.25}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        assert tp._requirement_no_req_chance() == 0.25
+
+    def test_no_req_chance_invalid_type_falls_back(self, monkeypatch):
+        """Non-numeric no_requirement_chance should fall back to default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"requirement_weights": {"no_requirement_chance": "bad"}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._requirement_no_req_chance() == tp._REQUIREMENT_NO_REQ_CHANCE_DEFAULT
+
+    def test_no_req_chance_out_of_range_high_falls_back(self, monkeypatch):
+        """no_requirement_chance > 1.0 should fall back to default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"requirement_weights": {"no_requirement_chance": 1.5}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._requirement_no_req_chance() == tp._REQUIREMENT_NO_REQ_CHANCE_DEFAULT
+
+    def test_no_req_chance_out_of_range_low_falls_back(self, monkeypatch):
+        """no_requirement_chance < 0.0 should fall back to default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"requirement_weights": {"no_requirement_chance": -0.1}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._requirement_no_req_chance() == tp._REQUIREMENT_NO_REQ_CHANCE_DEFAULT
+
+    def test_no_req_chance_boundary_values_accepted(self, monkeypatch):
+        """Boundary values 0.0 and 1.0 should be accepted as valid."""
+        import opscribe.target_packages_ops as tp
+
+        for boundary in (0.0, 1.0):
+            monkeypatch.setattr(tp, "_b", lambda name, b=boundary: {"target_packages": {"requirement_weights": {"no_requirement_chance": b}}} if name == "CONFIG" else None)
+            assert tp._requirement_no_req_chance() == boundary
+
+    # ------------------------------------------------------------------
+    # _requirement_slot_tier_weights
+    # ------------------------------------------------------------------
+
+    def test_slot_tier_weights_valid_override_applied(self, monkeypatch):
+        """Valid slot_tier overrides should replace the corresponding defaults."""
+        import opscribe.target_packages_ops as tp
+
+        custom = {k: 10 for k in tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT}
+        cfg = {"target_packages": {"requirement_weights": {"slot_tier": custom}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        result = dict(tp._requirement_slot_tier_weights())
+        for key in tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT:
+            assert result[key] == 10
+
+    def test_slot_tier_weights_invalid_value_falls_back(self, monkeypatch):
+        """Non-integer slot weight should fall back to full defaults."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        first_key = next(iter(tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT))
+        custom = dict(tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT)
+        custom[first_key] = "not_an_int"
+        cfg = {"target_packages": {"requirement_weights": {"slot_tier": custom}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._requirement_slot_tier_weights() == list(tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    def test_slot_tier_weights_all_zero_falls_back(self, monkeypatch):
+        """All-zero slot weights should fall back to defaults."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        custom = {k: 0 for k in tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT}
+        cfg = {"target_packages": {"requirement_weights": {"slot_tier": custom}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._requirement_slot_tier_weights() == list(tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    def test_slot_tier_weights_missing_config_returns_defaults(self, monkeypatch):
+        """Missing config should return defaults."""
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp, "_b", lambda name: {} if name == "CONFIG" else None)
+
+        assert tp._requirement_slot_tier_weights() == list(tp._REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT.items())
+
+    # ------------------------------------------------------------------
+    # _strat_counts_for_rep_tier
+    # ------------------------------------------------------------------
+
+    def test_strat_counts_valid_fixed_override_applied(self, monkeypatch):
+        """Valid fixed-count config override should replace the table default."""
+        import opscribe.target_packages_ops as tp
+
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"positive": 3, "negative": 1}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        pos, neg = tp._strat_counts_for_rep_tier(0)
+        assert pos == 3
+        assert neg == 1
+
+    def test_strat_counts_invalid_type_falls_back(self, monkeypatch):
+        """Non-numeric fixed counts should fall back to the table default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"positive": "bad", "negative": 2}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._strat_counts_for_rep_tier(0) == tp._STRAT_TABLE[0]
+
+    def test_strat_counts_negative_value_falls_back(self, monkeypatch):
+        """Negative strat counts should fall back to the table default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"positive": -1, "negative": 2}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._strat_counts_for_rep_tier(0) == tp._STRAT_TABLE[0]
+
+    def test_strat_counts_missing_config_returns_table_default(self, monkeypatch):
+        """Missing target_packages config block should return table defaults."""
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp, "_b", lambda name: {} if name == "CONFIG" else None)
+
+        assert tp._strat_counts_for_rep_tier(0) == tp._STRAT_TABLE[0]
+
+    def test_strat_counts_distribution_path_returns_valid_pair(self, monkeypatch):
+        """Weighted distribution config should return one of the defined (pos, neg) pairs."""
+        import opscribe.target_packages_ops as tp
+
+        dist = [
+            {"positive": 1, "negative": 2, "weight": 70},
+            {"positive": 2, "negative": 1, "weight": 30},
+        ]
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"distribution": dist}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        for _ in range(30):
+            pos, neg = tp._strat_counts_for_rep_tier(0)
+            assert (pos, neg) in {(1, 2), (2, 1)}
+
+    def test_strat_counts_invalid_distribution_row_falls_back(self, monkeypatch):
+        """A distribution row with bad values should fall back to the table default."""
+        import opscribe.target_packages_ops as tp
+        import opscribe._bot_globals as _g
+
+        dist = [{"positive": "bad", "negative": 2, "weight": 100}]
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"distribution": dist}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+        monkeypatch.setattr(_g, "logger", MagicMock())
+
+        assert tp._strat_counts_for_rep_tier(0) == tp._STRAT_TABLE[0]
+
+    def test_draw_strats_uses_config_override_counts(self, monkeypatch):
+        """_draw_strats should use counts from _strat_counts_for_rep_tier config override."""
+        import opscribe.target_packages_ops as tp
+
+        # Override tier 0 to (3, 1) — distinct from the table default (1, 2)
+        cfg = {"target_packages": {"strat_modifier_counts_by_rep_tier": {"0": {"positive": 3, "negative": 1}}}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        strats = _make_strats()
+        result = _draw_strats(0.0, strats)
+        buffs = [s for s in result["core"] if s["type"] == "buff"]
+        debuffs = [s for s in result["core"] if s["type"] == "debuff"]
+        assert len(buffs) == 3
+        assert len(debuffs) == 1
