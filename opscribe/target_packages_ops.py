@@ -2171,6 +2171,16 @@ async def submit_package(
     guild: discord.Guild,
 ) -> tuple:
     """Submit a completed directive. Returns (success, message)."""
+
+    def _directive_display(_pkg: dict | None, fallback_id: str) -> str:
+        if not isinstance(_pkg, dict):
+            return f"`{fallback_id}`"
+        code = _pkg.get("directive_code") or fallback_id
+        name = str(_pkg.get("directive_name") or "").strip()
+        if name:
+            return f"`{code}` — {name}"
+        return f"`{code}`"
+
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data["packages"].get(package_id)
@@ -2185,13 +2195,15 @@ async def submit_package(
         if not pkg:
             return False, f"Directive `{package_id}` not found."
 
+        directive_display = _directive_display(pkg, package_id)
+
         if pkg["status"] not in (STATUS_DEPLOYED, STATUS_RECRUITING):
-            return False, f"Directive `{package_id}` cannot be submitted (status: `{pkg['status']}`)."
+            return False, f"Directive {directive_display} cannot be submitted (status: `{pkg['status']}`)."
 
         # Check deadline
         deadline = datetime.fromisoformat(pkg["deadline"])
         if datetime.now(timezone.utc) > deadline:
-            return False, f"Directive `{package_id}` has expired (deadline passed)."
+            return False, f"Directive {directive_display} has expired (deadline passed)."
 
         # Submitter must be signed up OR be command of the assigned KT/company
         from .forge_ops import _resolve_killteam_for_member
@@ -2210,7 +2222,7 @@ async def submit_package(
 
         if not (is_signed_up or is_command or submitter_company == assigned_company or is_hc):
             return False, (
-                f"You do not have permission to submit directive `{package_id}`. "
+                f"You do not have permission to submit directive {directive_display}. "
                 f"Submission requires: being signed up, KT command (Sergeant/Champion), "
                 f"same-company membership, or High Command."
             )
@@ -2221,7 +2233,7 @@ async def submit_package(
             min_p = 2 if "Hard" in mode else 3
             signed = len(pkg.get("signed_up", []))
             return False, (
-                f"Directive `{package_id}` is not yet deployed. "
+                f"Directive {directive_display} is not yet deployed. "
                 f"Signed up: {signed}/{min_p} minimum brothers."
             )
 
@@ -2320,7 +2332,7 @@ async def submit_package(
     except Exception as exc:
         _g.logger.debug(f"[TP] Batch summary check failed after submission: {exc}")
 
-    return True, f"Directive `{package_id}` marked completed. Ordo Xenos standing updated."
+    return True, f"Directive {directive_display} marked completed. Ordo Xenos standing updated."
 
 
 def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
