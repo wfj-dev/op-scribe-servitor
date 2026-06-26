@@ -452,6 +452,15 @@
       "hard_strat": 90,
       "omega_strat": 10
     },
+    "requirement_weights": {
+      "no_requirement_chance": 0.5,
+      "slot_tier": {
+        "veteran_oathsworn": 40,
+        "kt_command": 30,
+        "company_command": 20,
+        "hc": 10
+      }
+    },
     "request_strike_directives_max_per_week": 2
   }
 }
