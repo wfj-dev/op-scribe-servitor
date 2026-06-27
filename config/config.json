@@ -464,11 +464,11 @@
     "requirement_weights": {
       "no_requirement_chance": 0.5,
       "slot_tier": {
-        "veteran": 30,
-        "oathsworn": 10,
+        "veteran": 40,
+        "oathsworn": 1,
         "kt_command": 30,
         "company_command": 20,
-        "hc": 10
+        "hc": 9
       }
     },
     "strat_modifier_counts_by_rep_tier": {
@@ -505,6 +505,8 @@
     "strike_queue_backfill_partials_enabled": true,
     "strike_queue_partial_backfill_min_active_queue": 10,
     "strike_queue_single_fill_min_active_queue": 20,
+    "strike_queue_partial_backfill_wait_minutes": 10,
+    "strike_queue_single_fill_wait_minutes": 20,
     "request_strike_directives_max_per_week": 2
   }
 }
