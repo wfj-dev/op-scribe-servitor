@@ -41,6 +41,8 @@ _REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 
 _TP_LOCK = asyncio.Lock()
 _STRIKE_QUEUE_LOCK = asyncio.Lock()
+_STRIKE_QUEUE_MATCH_LOCK = asyncio.Lock()
+_STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT = 12
 
 
 def _get_guild_from_bot() -> "discord.Guild | None":
@@ -1155,7 +1157,17 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
             removed += 1
             continue
 
-        queued_member_ids = [int(uid) for uid in (record.get("queued_member_ids") or [])]
+        raw_queued_member_ids = record.get("queued_member_ids") or []
+        if not isinstance(raw_queued_member_ids, list):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
+        try:
+            queued_member_ids = [int(uid) for uid in raw_queued_member_ids]
+        except (TypeError, ValueError):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
         if not queued_member_ids or any(str(uid) not in active_entry_ids for uid in queued_member_ids):
             announced.pop(package_id, None)
             removed += 1
@@ -1391,6 +1403,7 @@ def _select_queue_members_for_package(
         candidate_members,
         key=lambda m: (-_queue_member_exact_requirement_score(m, pkg), m.id),
     )
+    scored_candidates = scored_candidates[:max(remaining_slots, _STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT)]
 
     best_combo: list[discord.Member] = []
     best_score: tuple | None = None
@@ -1457,7 +1470,6 @@ async def _apply_strike_queue_match(
     pkg: dict,
     matched_members: list[discord.Member],
     guild: discord.Guild,
-    queue_data: dict,
 ) -> dict | None:
     if not matched_members or guild is None:
         return None
@@ -1492,99 +1504,117 @@ async def _apply_strike_queue_match(
         _save_tp(data)
         committed_pkg = dict(live_pkg)
 
-    entries = queue_data.setdefault("entries", {})
-    for member_id in matched_ids:
-        entries.pop(str(member_id), None)
-    queue_data.setdefault("announced_matches", {}).pop(package_id, None)
+    return committed_pkg
 
+
+async def _finalize_strike_queue_match_directive(package_id: str, committed_pkg: dict, guild: discord.Guild) -> None:
     await _ensure_directive_forum_thread(package_id, guild, pkg=committed_pkg)
     if committed_pkg.get("signup_message_id") and committed_pkg.get("signup_channel_id"):
         await _refresh_signup_embed_for_package(package_id, guild)
     else:
         await _post_signup_embed(package_id, guild)
 
-    return committed_pkg
-
 
 async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
     if guild is None:
         return 0
 
-    async with _STRIKE_QUEUE_LOCK:
-        queue_data = _load_strike_queue()
-        queue_data, _ = _prune_strike_queue(queue_data)
-        entries = queue_data.setdefault("entries", {})
-        if not entries:
-            _save_strike_queue(queue_data)
-            return 0
+    async with _STRIKE_QUEUE_MATCH_LOCK:
+        follow_up_actions: list[tuple[str, dict, list[discord.Member], list[str]]] = []
+        async with _STRIKE_QUEUE_LOCK:
+            queue_data = _load_strike_queue()
+            queue_data, _ = _prune_strike_queue(queue_data)
+            entries = queue_data.setdefault("entries", {})
+            if not entries:
+                _save_strike_queue(queue_data)
+                return 0
 
-        data = _load_tp()
-        packages = data.get("packages", {})
-        active_entries: list[tuple[discord.Member, dict]] = []
-        for user_id, entry in entries.items():
-            member = guild.get_member(int(user_id)) if guild else None
-            if not member or member.bot or not _is_active(member):
-                continue
-            active_entries.append((member, entry))
-        active_entry_ids = {str(member.id) for member, _entry in active_entries}
-        queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
-
-        if not active_entries:
-            _save_strike_queue(queue_data)
-            return 0
-
-        candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
-        for pkg in packages.values():
-            if pkg.get("status") != STATUS_RECRUITING:
-                continue
-
-            visible_candidates: list[discord.Member] = []
-            for member, entry in active_entries:
-                if not _strike_mode_matches_preference(pkg, entry.get("mode_preference")):
+            data = _load_tp()
+            packages = data.get("packages", {})
+            active_entries: list[tuple[discord.Member, dict]] = []
+            for user_id, entry in entries.items():
+                try:
+                    member_id = int(user_id)
+                except (TypeError, ValueError):
                     continue
-                visible = _visible_non_deployed_packages_for_member(member, packages)
-                if not any(p.get("id") == pkg.get("id") for p in visible):
+                member = guild.get_member(member_id) if guild else None
+                if not member or not _member_meets_strike_queue_baseline(member):
                     continue
-                eligible, _reason = _is_eligible_to_sign_up(member, pkg, guild)
-                if not eligible:
+                active_entries.append((member, entry))
+            active_entry_ids = {str(member.id) for member, _entry in active_entries}
+            queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
+
+            if not active_entries:
+                _save_strike_queue(queue_data)
+                return 0
+
+            candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
+            for pkg in packages.values():
+                if pkg.get("status") != STATUS_RECRUITING:
                     continue
-                visible_candidates.append(member)
 
-            match_members = _select_queue_members_for_package(pkg, visible_candidates, guild)
-            if not match_members:
-                continue
+                visible_candidates: list[discord.Member] = []
+                for member, entry in active_entries:
+                    if not _strike_mode_matches_preference(pkg, entry.get("mode_preference")):
+                        continue
+                    visible = _visible_non_deployed_packages_for_member(member, packages)
+                    if not any(p.get("id") == pkg.get("id") for p in visible):
+                        continue
+                    eligible, _reason = _is_eligible_to_sign_up(member, pkg, guild)
+                    if not eligible:
+                        continue
+                    visible_candidates.append(member)
 
-            candidate_matches.append((
-                pkg,
-                match_members,
-                _queue_existing_roster_names(pkg, guild),
-                _queue_match_oldest_timestamp(entries, match_members),
-            ))
+                match_members = _select_queue_members_for_package(pkg, visible_candidates, guild)
+                if not match_members:
+                    continue
 
-        if not candidate_matches:
-            _save_strike_queue(queue_data)
-            return 0
+                candidate_matches.append((
+                    pkg,
+                    match_members,
+                    _queue_existing_roster_names(pkg, guild),
+                    _queue_match_oldest_timestamp(entries, match_members),
+                ))
 
-        candidate_matches.sort(key=_queue_match_sort_key)
+            if not candidate_matches:
+                _save_strike_queue(queue_data)
+                return 0
 
-        used_member_ids: set[int] = set()
-        committed = 0
-        for pkg, match_members, existing_names, _oldest_queue in candidate_matches:
-            if any(m.id in used_member_ids for m in match_members):
-                continue
+            candidate_matches.sort(key=_queue_match_sort_key)
 
-            committed_pkg = await _apply_strike_queue_match(pkg, match_members, guild, queue_data)
-            if not committed_pkg:
-                continue
+            used_member_ids: set[int] = set()
+            committed = 0
+            for pkg, match_members, existing_names, _oldest_queue in candidate_matches:
+                if any(m.id in used_member_ids for m in match_members):
+                    continue
 
-            ok = await _post_queue_match_ping(committed_pkg, match_members, guild, existing_names)
-            if not ok:
-                _g.logger.debug(f"[TP] Queue match committed without forum ping for {pkg.get('id')}")
+                try:
+                    committed_pkg = await _apply_strike_queue_match(pkg, match_members, guild)
+                except Exception as exc:
+                    _g.logger.error(f"[TP] Queue match commit failed for {pkg.get('id')}: {exc}")
+                    continue
+                if not committed_pkg:
+                    continue
 
-            used_member_ids.update(m.id for m in match_members)
-            committed += 1
+                package_id = str(committed_pkg.get("id") or pkg.get("id") or "").strip()
+                for member_id in [m.id for m in match_members]:
+                    entries.pop(str(member_id), None)
+                queue_data.setdefault("announced_matches", {}).pop(package_id, None)
+                _save_strike_queue(queue_data)
 
-        _save_strike_queue(queue_data)
+                used_member_ids.update(m.id for m in match_members)
+                committed += 1
+                follow_up_actions.append((package_id, committed_pkg, match_members, existing_names))
+
+        for package_id, committed_pkg, match_members, existing_names in follow_up_actions:
+            try:
+                await _finalize_strike_queue_match_directive(package_id, committed_pkg, guild)
+                ok = await _post_queue_match_ping(committed_pkg, match_members, guild, existing_names)
+                if not ok:
+                    _g.logger.debug(f"[TP] Queue match committed without forum ping for {package_id}")
+            except Exception as exc:
+                _g.logger.error(f"[TP] Queue match follow-up failed for {package_id}: {exc}")
+
         return committed
 
 
@@ -6887,7 +6917,7 @@ async def queue_strike(
     guild = interaction.guild
     await interaction.response.defer(ephemeral=True)
 
-    if member.bot or not _is_active(member):
+    if not _member_meets_strike_queue_baseline(member):
         await interaction.followup.send("Only active brothers may join the strike queue.", ephemeral=True)
         return
 
@@ -6900,6 +6930,9 @@ async def queue_strike(
         "", "any", "hard", "hard-strat", "hard_strat", "omega", "omega-strat", "omega_strat"
     }:
         await interaction.followup.send("Mode preference must be one of: any, hard, omega.", ephemeral=True)
+        return
+    if normalized_mode == "omega" and not _tp_get_player_platform(member):
+        await interaction.followup.send("Omega queueing requires a PC or Console role.", ephemeral=True)
         return
 
     data = _load_tp()

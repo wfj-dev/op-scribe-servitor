@@ -12,6 +12,7 @@ Tests cover:
 import asyncio
 import sys
 import types
+from itertools import combinations as itertools_combinations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -146,6 +147,20 @@ def _with_company_role(member, company_name="Watch Company Primus"):
     r.id = hash(company_name) & 0xFFFFFFFF
     member.roles = list(member.roles) + [r]
     return member
+
+
+def _make_interaction(member, guild):
+    calls = []
+
+    class _Response:
+        async def defer(self, ephemeral=False):
+            calls.append(("defer", ephemeral))
+
+    class _Followup:
+        async def send(self, content, ephemeral=False):
+            calls.append(("send", content, ephemeral))
+
+    return types.SimpleNamespace(user=member, guild=guild, response=_Response(), followup=_Followup(), calls=calls)
 
 
 class TestRemoveAuthority:
@@ -1624,6 +1639,25 @@ class TestStrikeQueueMatching:
         assert removed == 1
         assert pruned["announced_matches"] == {}
 
+    def test_prune_announced_match_when_queued_member_ids_are_invalid(self):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        data = {
+            "entries": {"1": {}, "2": {}},
+            "announced_matches": {
+                pkg["id"]: {
+                    "signature": "invalid",
+                    "queued_member_ids": ["1", "bad"],
+                }
+            },
+        }
+
+        pruned, removed = tp._prune_announced_strike_queue_matches(data, {pkg["id"]: pkg}, {"1", "2"})
+
+        assert removed == 1
+        assert pruned["announced_matches"] == {}
+
     def test_reconcile_member_queue_entry_removes_inactive_member(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -1867,6 +1901,37 @@ class TestStrikeQueueMatching:
         assert posted == 0
         assert thread.messages == []
 
+    def test_evaluate_queue_matches_ignores_members_that_fail_baseline(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda member: member.id != 3)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert queue_data["entries"] == {
+            "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+        }
+
     def test_evaluate_queue_matches_commits_roster_and_cleans_queue(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -1952,6 +2017,46 @@ class TestStrikeQueueMatching:
         assert posted == 0
         assert queue_data["entries"]
 
+    def test_evaluate_queue_matches_saves_queue_before_ping_failure(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        tp._g.logger = MagicMock()
+
+        async def _fake_finalize(*_args, **_kwargs):
+            return None
+
+        async def _fake_ping(*_args, **_kwargs):
+            assert tp._STRIKE_QUEUE_LOCK.locked() is False
+            raise RuntimeError("ping failed")
+
+        monkeypatch.setattr(tp, "_finalize_strike_queue_match_directive", _fake_finalize)
+        monkeypatch.setattr(tp, "_post_queue_match_ping", _fake_ping)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 1
+        assert tp_data["packages"][pkg["id"]]["signed_up"] == [1, 2, 3]
+        assert queue_data["entries"] == {}
+
     def test_queue_match_sort_prefers_older_queue_when_other_factors_tie(self):
         import opscribe.target_packages_ops as tp
 
@@ -1967,3 +2072,55 @@ class TestStrikeQueueMatching:
         newer_key = tp._queue_match_sort_key((pkg, [newer], [], tp._queue_match_oldest_timestamp(entry_map, [newer])))
 
         assert older_key < newer_key
+
+    def test_select_queue_members_bounds_candidate_pool(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        members = [_make_member(["Watch Brother"], member_id=i) for i in range(1, 25)]
+        guild = _make_guild(members)
+        seen = {}
+
+        def _capture(items, choose_count):
+            items = list(items)
+            seen["count"] = len(items)
+            return itertools_combinations(items, choose_count)
+
+        monkeypatch.setattr(tp, "combinations", _capture)
+        monkeypatch.setattr(tp, "_check_deployed", lambda *_args, **_kwargs: True)
+
+        selected = tp._select_queue_members_for_package(pkg, members, guild)
+
+        assert len(selected) == 3
+        assert seen["count"] == tp._STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT
+
+    def test_queue_strike_uses_shared_baseline_check(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: False)
+
+        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="any"))
+
+        assert interaction.calls == [
+            ("defer", True),
+            ("send", "Only active brothers may join the strike queue.", True),
+        ]
+
+    def test_queue_strike_rejects_omega_without_platform(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: None)
+
+        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="omega"))
+
+        assert interaction.calls == [
+            ("defer", True),
+            ("send", "Omega queueing requires a PC or Console role.", True),
+        ]
