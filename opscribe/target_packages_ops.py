@@ -1556,6 +1556,9 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
             for pkg in packages.values():
                 if pkg.get("status") != STATUS_RECRUITING:
                     continue
+                # Queue auto-matching only seeds fully open directives.
+                if (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+                    continue
 
                 visible_candidates: list[discord.Member] = []
                 for member, entry in active_entries:

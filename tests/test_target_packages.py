@@ -2177,6 +2177,33 @@ class TestStrikeQueueMatching:
         assert posted == 0
         assert queue_data["entries"]
 
+    def test_evaluate_queue_matches_ignores_non_fully_open_recruiting_directive(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        # Recruiting, but not fully open because one member is already attached.
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert pkg["signed_up"] == [1]
+        assert queue_data["entries"]
+
     def test_evaluate_queue_matches_saves_queue_before_ping_failure(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
