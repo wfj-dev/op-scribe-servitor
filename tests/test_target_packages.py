@@ -2311,3 +2311,69 @@ class TestStrikeQueueMatching:
             ("defer", True),
             ("send", "Omega queueing requires a PC or Console role.", True),
         ]
+
+    def test_queue_strike_reports_fully_open_queue_eligible_count(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+        queue_data = {"entries": {}, "announced_matches": {}}
+        p_open = _make_pkg(mode="Hard-Strat", signed_up=[])
+        p_open["id"] = "p_open"
+        p_partial = _make_pkg(mode="Hard-Strat", signed_up=[99])
+        p_partial["id"] = "p_partial"
+        p_omega = _make_pkg(mode="Omega-Strat", signed_up=[])
+        p_omega["id"] = "p_omega"
+        packages = {p["id"]: p for p in [p_open, p_partial, p_omega]}
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [p_open, p_partial, p_omega])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+
+        async def _fake_eval(_guild):
+            return 0
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+
+        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="hard"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "Current fully-open directives eligible for queue matching: **1**." in interaction.calls[1][1]
+
+    def test_strike_queue_status_uses_mode_filtered_queue_eligible_count(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+        queue_data = {
+            "entries": {
+                "1": {
+                    "mode_preference": "omega",
+                    "expires_at": "2099-01-01T00:00:00+00:00",
+                }
+            },
+            "announced_matches": {},
+        }
+        p_open_hard = _make_pkg(mode="Hard-Strat", signed_up=[])
+        p_open_hard["id"] = "p_open_hard"
+        p_open_omega = _make_pkg(mode="Omega-Strat", signed_up=[])
+        p_open_omega["id"] = "p_open_omega"
+        p_partial_omega = _make_pkg(mode="Omega-Strat", signed_up=[7])
+        p_partial_omega["id"] = "p_partial_omega"
+        packages = {p["id"]: p for p in [p_open_hard, p_open_omega, p_partial_omega]}
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [p_open_hard, p_open_omega, p_partial_omega])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+
+        asyncio.run(tp.strike_queue_status(interaction))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "Mode preference: **OMEGA**." in interaction.calls[1][1]
+        assert "Current fully-open directives eligible for queue matching: **1**." in interaction.calls[1][1]

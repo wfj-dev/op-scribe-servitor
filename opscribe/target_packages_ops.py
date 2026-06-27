@@ -1338,6 +1338,35 @@ def _strike_mode_matches_preference(pkg: dict, preference: str) -> bool:
     return True
 
 
+def _queue_eligible_packages_for_member(
+    member: discord.Member,
+    packages: dict,
+    mode_preference: str,
+    guild: "discord.Guild | None",
+) -> list[dict]:
+    """Return recruiting directives this member can actually be queue-matched into."""
+    visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
+    visible_ids = {str(p.get("id")) for p in visible_non_deployed}
+
+    eligible_packages: list[dict] = []
+    for pkg in packages.values():
+        if pkg.get("status") != STATUS_RECRUITING:
+            continue
+        if str(pkg.get("id")) not in visible_ids:
+            continue
+        # Queue auto-matching only seeds fully open directives.
+        if (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+            continue
+        if not _strike_mode_matches_preference(pkg, mode_preference):
+            continue
+        eligible, _reason = _is_eligible_to_sign_up(member, pkg, guild)
+        if not eligible:
+            continue
+        eligible_packages.append(pkg)
+
+    return eligible_packages
+
+
 def _queue_member_exact_requirement_score(member: discord.Member, pkg: dict) -> int:
     roles = _member_role_names(member)
     req_roles = pkg.get("required_roles", []) or []
@@ -6958,7 +6987,7 @@ async def queue_strike(
 
     data = _load_tp()
     packages = data.get("packages", {})
-    visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
+    queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
 
     async with _STRIKE_QUEUE_LOCK:
         queue_data = _load_strike_queue()
@@ -6975,7 +7004,7 @@ async def queue_strike(
 
     match_count = await _evaluate_strike_queue_matches(guild)
 
-    visible_count = len(visible_non_deployed)
+    queue_eligible_count = len(queue_eligible)
     mode_text = normalized_mode.upper() if normalized_mode != "any" else "ANY"
     match_text = ""
     if match_count > 0:
@@ -6985,7 +7014,7 @@ async def queue_strike(
         (
             f"You are queued for strike directives for the next **{minutes}** minutes. "
             f"Mode preference: **{mode_text}**. "
-            f"Current non-deployed directives in your natural scope: **{visible_count}**."
+            f"Current fully-open directives eligible for queue matching: **{queue_eligible_count}**."
             f"{match_text}"
         ),
         ephemeral=True,
@@ -7018,11 +7047,11 @@ async def leave_strike_queue(interaction: discord.Interaction):
 )
 async def strike_queue_status(interaction: discord.Interaction):
     member = interaction.user
+    guild = interaction.guild
     await interaction.response.defer(ephemeral=True)
 
     data = _load_tp()
     packages = data.get("packages", {})
-    visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
 
     async with _STRIKE_QUEUE_LOCK:
         queue_data = _load_strike_queue()
@@ -7031,8 +7060,9 @@ async def strike_queue_status(interaction: discord.Interaction):
         entry = queue_data.setdefault("entries", {}).get(str(member.id))
 
     if not entry:
+        queue_eligible = _queue_eligible_packages_for_member(member, packages, "any", guild)
         await interaction.followup.send(
-            f"You are not queued. Current non-deployed directives in your natural scope: **{len(visible_non_deployed)}**.",
+            f"You are not queued. Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**.",
             ephemeral=True,
         )
         return
@@ -7048,11 +7078,12 @@ async def strike_queue_status(interaction: discord.Interaction):
         pass
 
     mode_text = str(entry.get("mode_preference") or "any").upper()
+    queue_eligible = _queue_eligible_packages_for_member(member, packages, str(entry.get("mode_preference") or "any"), guild)
     await interaction.followup.send(
         (
             f"You are currently queued. Mode preference: **{mode_text}**. "
             f"Queue expires {expiry_text}. "
-            f"Current non-deployed directives in your natural scope: **{len(visible_non_deployed)}**."
+            f"Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**."
         ),
         ephemeral=True,
     )
