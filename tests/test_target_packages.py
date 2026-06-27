@@ -25,10 +25,21 @@ def _install_discord_stub():
     if "discord" in sys.modules:
         return
     discord_stub = types.ModuleType("discord")
+
+    class _StubEmbed:
+        def __init__(self, *, title=None, description=None, color=None):
+            self.title = title
+            self.description = description
+            self.color = color
+            self.fields = []
+
+        def add_field(self, *, name, value, inline=True):
+            self.fields.append(types.SimpleNamespace(name=name, value=value, inline=inline))
+
     discord_stub.Member = object
     discord_stub.User = object
     discord_stub.Guild = object
-    discord_stub.Embed = object
+    discord_stub.Embed = _StubEmbed
     discord_stub.File = object
     discord_stub.Object = object
     discord_stub.Role = object
@@ -2003,9 +2014,11 @@ class TestStrikeQueueMatching:
         class FakeThread(tp.discord.Thread):
             def __init__(self):
                 self.messages = []
+                self.embeds = []
 
-            async def send(self, content=None, **_kwargs):
+            async def send(self, content=None, embed=None, **_kwargs):
                 self.messages.append(content)
+                self.embeds.append(embed)
 
         thread = FakeThread()
         queue_data = {
@@ -2077,9 +2090,11 @@ class TestStrikeQueueMatching:
         class FakeThread(tp.discord.Thread):
             def __init__(self):
                 self.messages = []
+                self.embeds = []
 
-            async def send(self, content=None, **_kwargs):
+            async def send(self, content=None, embed=None, **_kwargs):
                 self.messages.append(content)
+                self.embeds.append(embed)
 
         thread = FakeThread()
         queue_data = {
@@ -2123,7 +2138,13 @@ class TestStrikeQueueMatching:
 
         assert first == 1
         assert len(thread.messages) == 1
-        assert "Astropathic concurrence achieved" in thread.messages[0]
+        assert "<@1>" in thread.messages[0]
+        assert "<@2>" in thread.messages[0]
+        assert "<@3>" in thread.messages[0]
+        assert len(thread.embeds) == 1
+        assert thread.embeds[0] is not None
+        assert "Astropathic concurrence achieved" in (thread.embeds[0].description or "")
+        assert "Queue cleared for matched brothers" in (thread.embeds[0].description or "")
         assert tp_data["packages"][pkg["id"]]["signed_up"] == [1, 2, 3]
         assert tp_data["packages"][pkg["id"]]["status"] == tp.STATUS_DEPLOYED
         assert queue_data["entries"] == {}
