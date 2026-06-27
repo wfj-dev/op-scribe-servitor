@@ -474,7 +474,8 @@ GREEK_LETTERS = [
 ]
 
 # Requirement tier keys used in briefing_templates.json
-_REQ_TIER_VETERAN_OATHSWORN = "veteran_oathsworn"
+_REQ_TIER_VETERAN = "veteran"
+_REQ_TIER_OATHSWORN = "oathsworn"
 _REQ_TIER_KT_COMMAND = "kt_command"
 _REQ_TIER_COMPANY_COMMAND = "company_command"
 _REQ_TIER_HC = "hc"
@@ -482,7 +483,8 @@ _REQ_TIER_NO_REQ = "no_req"
 
 # Role name sets per requirement tier
 _TIER_ROLES = {
-    _REQ_TIER_VETERAN_OATHSWORN: ["Watch Veteran", "Oathsworn"],
+    _REQ_TIER_VETERAN: ["Watch Veteran"],
+    _REQ_TIER_OATHSWORN: ["Oathsworn"],
     _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Kill Team Champion"],
     _REQ_TIER_COMPANY_COMMAND: [
         "Watch Captain", "Watch Lieutenant", "Company Champion",
@@ -615,7 +617,8 @@ ENABLE_OMEGA_PACKAGES = True
 _MODE_WEIGHTS_DEFAULT = {"Hard-Strat": 90, "Omega-Strat": 10}
 _REQUIREMENT_NO_REQ_CHANCE_DEFAULT = 0.50
 _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT = {
-    _REQ_TIER_VETERAN_OATHSWORN: 30,
+    _REQ_TIER_VETERAN: 30,
+    _REQ_TIER_OATHSWORN: 10,
     _REQ_TIER_KT_COMMAND: 40,
     _REQ_TIER_COMPANY_COMMAND: 20,
     _REQ_TIER_HC: 10,
@@ -651,7 +654,8 @@ def _requirement_slot_tier_weights() -> list[tuple[str, int]]:
 
     Expected config shape:
       CONFIG["target_packages"]["requirement_weights"]["slot_tier"] = {
-        "veteran_oathsworn": 30,
+        "veteran": 30,
+                "oathsworn": 10,
         "kt_command": 40,
         "company_command": 20,
         "hc": 10,
@@ -2328,12 +2332,18 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
         return (_REQ_TIER_NO_REQ, [])
 
     # Determine highest tier for briefing template selection
-    tier_order = [_REQ_TIER_VETERAN_OATHSWORN, _REQ_TIER_KT_COMMAND, _REQ_TIER_COMPANY_COMMAND, _REQ_TIER_HC]
+    tier_order = [
+        _REQ_TIER_VETERAN,
+        _REQ_TIER_OATHSWORN,
+        _REQ_TIER_KT_COMMAND,
+        _REQ_TIER_COMPANY_COMMAND,
+        _REQ_TIER_HC,
+    ]
     role_to_tier = {}
     for t in tier_order:
         for r in _TIER_ROLES[t]:
             role_to_tier[r] = t
-    highest = max(chosen, key=lambda r: tier_order.index(role_to_tier.get(r, _REQ_TIER_VETERAN_OATHSWORN)))
+    highest = max(chosen, key=lambda r: tier_order.index(role_to_tier.get(r, _REQ_TIER_VETERAN)))
     highest_tier = role_to_tier.get(highest, _REQ_TIER_KT_COMMAND)
 
     return (highest_tier, chosen)

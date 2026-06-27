@@ -80,10 +80,15 @@
       "Standard deployment authorization applies.",
       "No specialist attachment required; all brothers are cleared to proceed."
     ],
-    "veteran_oathsworn": [
+    "veteran": [
       "This package demands the experience of {rank}.",
       "Ordo Xenos requires {rank} lead this engagement.",
       "{rank} is required to authorize and execute this package."
+    ],
+    "oathsworn": [
+      "This package demands an Oathsworn hand; {rank} is required.",
+      "Ordo Xenos calls for sworn resolve; {rank} must lead this engagement.",
+      "By oath and seal, {rank} is required to execute this package."
     ],
     "kt_command": [
       "{rank} is required to direct this operation.",
