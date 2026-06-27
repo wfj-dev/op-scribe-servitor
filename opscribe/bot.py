@@ -1699,6 +1699,16 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start strike directives expiry loop")
 
+    # Start strike queue matchmaking sweep loop
+    try:
+        if not _target_packages_ops._strike_queue_match_sweep_loop.is_running():
+            sweep_minutes = _target_packages_ops._strike_queue_match_sweep_minutes()
+            _target_packages_ops._strike_queue_match_sweep_loop.change_interval(minutes=sweep_minutes)
+            _target_packages_ops._strike_queue_match_sweep_loop.start()
+            logger.info(f"Strike queue match sweep loop started ({sweep_minutes}min interval).")
+    except Exception:
+        logger.exception("Failed to start strike queue match sweep loop")
+
     # Start LOA expiry loop
     try:
         if not _loa_ops._loa_expiry_loop.is_running():
@@ -1755,10 +1765,41 @@ def _extract_args_from_interaction_data(data: dict) -> dict:
     return out
 
 
+async def _record_spirit_released(user_id: int, spirit: str, age_days: int) -> None:
+    """Best-effort chronicle append for a released machine spirit.
+
+    This tolerates older extracts where forge chronicle helpers are not
+    re-exported into this module.
+    """
+    try:
+        load_fn = globals().get("_load_forge_chronicle")
+        save_fn = globals().get("_save_forge_chronicle")
+        if not callable(load_fn) or not callable(save_fn):
+            return
+
+        chronicle = load_fn() or {}
+        history = chronicle.setdefault("spirit_releases", [])
+        history.append(
+            {
+                "user_id": str(user_id),
+                "spirit": str(spirit),
+                "age_days": int(age_days),
+                "released_at": datetime.utcnow().isoformat(),
+            }
+        )
+        if len(history) > 500:
+            del history[:-500]
+        save_fn(chronicle)
+    except Exception as exc:
+        logger.debug(f"Failed to record released machine spirit for {user_id}: {exc}")
+
+
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     """Handle member role changes - release spirit when member goes inactive."""
     try:
+        roles_changed = {r.id for r in before.roles} != {r.id for r in after.roles}
+
         # Check if Reserves role was added
         before_role_ids = {r.id for r in before.roles}
         after_role_ids = {r.id for r in after.roles}
@@ -1783,12 +1824,26 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     age_days = (datetime.utcnow() - bound_dt).days
                 except Exception:
                     pass
-            
+
             spirit = await _delete_machine_spirit(after.id)
             if spirit:
                 # Record the release in the chronicle with age
                 await _record_spirit_released(after.id, spirit, age_days)
                 logger.info(f"Released machine spirit {spirit} for {after.display_name} (went inactive, age: {age_days}d)")
+
+        if roles_changed:
+            removed_from_packages = await _target_packages_ops._reconcile_member_directive_attachments(after, after.guild)
+            if removed_from_packages:
+                logger.info(
+                    "Removed %s from directives after role change: %s",
+                    after.display_name,
+                    ", ".join(removed_from_packages),
+                )
+            still_queued = await _target_packages_ops._reconcile_member_strike_queue_entry(after)
+            if not still_queued:
+                logger.debug(f"Strike queue entry removed or absent for {after.display_name} after role change.")
+            if after.guild:
+                await _target_packages_ops._evaluate_strike_queue_matches(after.guild)
     except Exception as e:
         logger.debug(f"Error in on_member_update: {e}")
 

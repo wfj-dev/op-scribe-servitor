@@ -43,6 +43,15 @@
     "view_strike_directives": {
       "min_rank": "Watch Sergeant"
     },
+    "queue_strike": {
+      "min_rank": "Watch Brother"
+    },
+    "leave_strike_queue": {
+      "min_rank": "Watch Brother"
+    },
+    "strike_queue_status": {
+      "min_rank": "Watch Brother"
+    },
     "log_strike_report": {
       "min_rank": "Watch Brother"
     },
@@ -491,6 +500,7 @@
         "negative": 2
       }
     },
+    "strike_queue_match_sweep_minutes": 5,
     "request_strike_directives_max_per_week": 2
   }
 }
