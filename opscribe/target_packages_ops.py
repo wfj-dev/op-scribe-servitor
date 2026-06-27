@@ -1403,7 +1403,8 @@ def _select_queue_members_for_package(
         candidate_members,
         key=lambda m: (-_queue_member_exact_requirement_score(m, pkg), m.id),
     )
-    scored_candidates = scored_candidates[:max(remaining_slots, _STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT)]
+    candidate_limit = max(remaining_slots, _STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT)
+    scored_candidates = scored_candidates[:candidate_limit]
 
     best_combo: list[discord.Member] = []
     best_score: tuple | None = None
