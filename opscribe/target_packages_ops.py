@@ -1453,16 +1453,20 @@ async def _post_queue_match_ping(
     classification = str(pkg.get("classification") or "STRIKE").title()
     roster_mentions = " ".join(m.mention for m in matched_members)
     matched_names = ", ".join(m.display_name for m in matched_members)
-    existing_line = f"Existing roster: {', '.join(existing_roster_names)}\n" if existing_roster_names else ""
+    existing_line = f"Existing roster: {', '.join(existing_roster_names)}" if existing_roster_names else "None"
     directive_line = f"`{code}` — {name}" if name else f"`{code}`"
-    content = (
-        f"{roster_mentions}\n"
-        f"**Astropathic concurrence achieved.** {classification} directive {directive_line} has a ready strike element now.\n"
-        f"{existing_line}"
-        f"Queued brothers available now: {matched_names}\n"
-        f"Required strike strength: **{capacity}**. Muster and execute with all haste."
+    embed = discord.Embed(
+        title="Strike Team Readied",
+        description=(
+            f"**Astropathic concurrence achieved.** {classification} directive {directive_line} has a ready strike element now.\n\n"
+            f"Queued brothers available now: {matched_names}\n"
+            f"Required strike strength: **{capacity}**\n"
+            f"Queue cleared for matched brothers."
+        ),
+        color=0xA31919,
     )
-    await thread.send(content=content)
+    embed.add_field(name="Existing Roster", value=existing_line, inline=False)
+    await thread.send(content=roster_mentions, embed=embed)
     return True
 
 
