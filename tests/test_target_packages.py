@@ -279,6 +279,145 @@ class TestRemoveOperation:
         assert pkg["status"] == STATUS_RECRUITING
 
 
+class TestHighCommandVisibility:
+    def test_forgemaster_sees_all_active_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Forgemaster"], member_id=501), company_name="Watch Company Primus")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Serze"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        pkgs = {
+            "p_company": {
+                "id": "p_company",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": "Kill Team Solaire",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_kt": {
+                "id": "p_kt",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": "Kill Team Serze",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_other": {
+                "id": "p_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": "Kill Team Duke",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_completed": {
+                "id": "p_completed",
+                "status": STATUS_COMPLETED,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": "Kill Team Duke",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert "p_company" in visible_ids
+        assert "p_kt" in visible_ids
+        assert "p_other" in visible_ids
+        assert "p_completed" not in visible_ids
+
+    def test_forgemaster_still_sees_owned_cadre_requirement_outside_company(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Forgemaster"], member_id=502), company_name="Watch Company Primus")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Serze"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        pkgs = {
+            "p_cadre": {
+                "id": "p_cadre",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": "Kill Team Duke",
+                "required_roles": ["Watch Techmarine"],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            }
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert "p_cadre" in visible_ids
+
+    def test_watch_captain_scope_remains_company_limited_even_if_also_high_command(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(
+            _make_member(["Watch Captain", "Forgemaster"], member_id=503),
+            company_name="Watch Company Primus",
+        )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        pkgs = {
+            "p_company": {
+                "id": "p_company",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": "Kill Team Solaire",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_other": {
+                "id": "p_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": "Kill Team Duke",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert "p_company" in visible_ids
+        assert "p_other" not in visible_ids
+
+
 # ---------------------------------------------------------------------------
 # _draw_requirements
 # ---------------------------------------------------------------------------
