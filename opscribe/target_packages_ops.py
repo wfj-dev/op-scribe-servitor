@@ -1651,6 +1651,11 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
             or _is_personally_attached(p)
         ]
 
+    # High Command visibility mirrors signup eligibility: global active pool.
+    # Captain/Lieutenant company scope is intentionally handled above.
+    if any(role_name in HIGH_COMMAND_RANKS for role_name in _mroles):
+        return _active()
+
     if _mroles & _CADRE_LEADER_ROLES:
         cadre_pkgs = [
             p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
