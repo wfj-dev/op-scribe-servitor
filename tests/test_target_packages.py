@@ -34,6 +34,8 @@ def _install_discord_stub():
     discord_stub.Interaction = object
     discord_stub.AllowedMentions = object
     discord_stub.SelectOption = object
+    discord_stub.Thread = type("Thread", (), {})
+    discord_stub.ForumChannel = type("ForumChannel", (), {})
     discord_stub.Forbidden = Exception
     discord_stub.NotFound = Exception
     discord_stub.utils = types.ModuleType("discord.utils")
@@ -127,6 +129,7 @@ def _make_member(role_names=(), member_id=12345):
         roles.append(r)
     m.roles = roles
     m.display_name = f"M{member_id}"
+    m.mention = f"<@{member_id}>"
     return m
 
 
@@ -1583,3 +1586,384 @@ class TestConfigWeightHelpers:
         debuffs = [s for s in result["core"] if s["type"] == "debuff"]
         assert len(buffs) == 3
         assert len(debuffs) == 1
+
+
+class TestStrikeQueueMatching:
+    def test_strike_queue_match_sweep_minutes_uses_valid_config(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        cfg = {"target_packages": {"strike_queue_match_sweep_minutes": 20}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        assert tp._strike_queue_match_sweep_minutes() == 20
+
+    def test_strike_queue_match_sweep_minutes_invalid_config_falls_back(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        cfg = {"target_packages": {"strike_queue_match_sweep_minutes": 2}}
+        monkeypatch.setattr(tp, "_b", lambda name: cfg if name == "CONFIG" else None)
+
+        assert tp._strike_queue_match_sweep_minutes() == 15
+
+    def test_prune_announced_match_when_queued_member_is_gone(self):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        data = {
+            "entries": {"1": {}, "2": {}},
+            "announced_matches": {
+                pkg["id"]: {
+                    "signature": tp._queue_match_signature(pkg, [1, 2, 3]),
+                    "queued_member_ids": [1, 2, 3],
+                }
+            },
+        }
+
+        pruned, removed = tp._prune_announced_strike_queue_matches(data, {pkg["id"]: pkg}, {"1", "2"})
+
+        assert removed == 1
+        assert pruned["announced_matches"] == {}
+
+    def test_reconcile_member_queue_entry_removes_inactive_member(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {
+                    "queued_at": "2026-01-01T00:00:00+00:00",
+                    "expires_at": "2099-01-01T00:00:00+00:00",
+                    "mode_preference": "any",
+                }
+            },
+            "announced_matches": {},
+        }
+        member = _make_member(["Watch Brother"], member_id=1)
+        reserves = MagicMock()
+        reserves.name = "Reserves"
+        reserves.id = 999
+        member.roles.append(reserves)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: False)
+
+        kept = asyncio.run(tp._reconcile_member_strike_queue_entry(member))
+
+        assert kept is False
+        assert queue_data["entries"] == {}
+
+    def test_reconcile_member_queue_entry_removes_omega_without_platform(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {
+                    "queued_at": "2026-01-01T00:00:00+00:00",
+                    "expires_at": "2099-01-01T00:00:00+00:00",
+                    "mode_preference": "omega",
+                }
+            },
+            "announced_matches": {},
+        }
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: None)
+
+        kept = asyncio.run(tp._reconcile_member_strike_queue_entry(member))
+
+        assert kept is False
+        assert queue_data["entries"] == {}
+
+    def test_reconcile_member_queue_entry_updates_platform_and_keeps_member(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {
+                    "queued_at": "2026-01-01T00:00:00+00:00",
+                    "expires_at": "2099-01-01T00:00:00+00:00",
+                    "mode_preference": "any",
+                    "platform": "console",
+                }
+            },
+            "announced_matches": {},
+        }
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        kept = asyncio.run(tp._reconcile_member_strike_queue_entry(member))
+
+        assert kept is True
+        assert queue_data["entries"]["1"]["platform"] == "pc"
+
+    def test_assign_specialist_clears_queue_and_refreshes_embed(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(required_roles=["Watch Apothecary"], assigned_specialist_ids=[])
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        specialist = _with_company_role(_make_member(["Watch Brother", "Watch Apothecary"], member_id=77))
+        leader = _with_company_role(_make_member(["Watch Apothecary"], member_id=9001))
+        guild = _make_guild([specialist, leader])
+
+        removed_from_queue = []
+        refreshed = []
+        notified = []
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_check_deployed", lambda *_args, **_kwargs: False)
+        monkeypatch.setattr(tp, "_cadre_leader_owns", lambda _leader, role_name: role_name == "Watch Apothecary")
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+
+        async def _fake_remove_from_queue(user_id):
+            removed_from_queue.append(user_id)
+            return True
+
+        async def _fake_refresh(package_id, _guild):
+            refreshed.append(package_id)
+
+        async def _fake_notify(member, package_id, _pkg, _guild, cadre_leader=None):
+            notified.append((member.id, package_id, cadre_leader.id if cadre_leader else None))
+
+        monkeypatch.setattr(tp, "_remove_member_from_strike_queue", _fake_remove_from_queue)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_notify_specialist_assigned", _fake_notify)
+
+        ok, _msg = asyncio.run(tp.assign_specialist(pkg["id"], specialist, leader, guild))
+
+        assert ok is True
+        assert pkg["assigned_specialist_ids"] == [77]
+        assert removed_from_queue == [77]
+        assert refreshed == [pkg["id"]]
+        assert notified == [(77, pkg["id"], 9001)]
+
+    def test_reconcile_member_directive_attachments_removes_signed_member_after_scope_change(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(status=tp.STATUS_PENDING_SGT, signed_up=[1])
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        member = _make_member(["Watch Brother"], member_id=1)
+        guild = _make_guild([member])
+        refreshed = []
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_check_deployed", lambda *_args, **_kwargs: False)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Secundus"),
+        )
+
+        async def _fake_refresh(package_id, _guild):
+            refreshed.append(package_id)
+
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+
+        removed = asyncio.run(tp._reconcile_member_directive_attachments(member, guild))
+
+        assert removed == [pkg["id"]]
+        assert pkg["signed_up"] == []
+        assert refreshed == [pkg["id"]]
+
+    def test_reconcile_member_directive_attachments_removes_specialist_who_lost_role(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(required_roles=["Watch Apothecary"], assigned_specialist_ids=[2])
+        pkg["specialist_assigners"] = {"2": 9001}
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=2))
+        guild = _make_guild([member])
+        refreshed = []
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_check_deployed", lambda *_args, **_kwargs: False)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+
+        async def _fake_refresh(package_id, _guild):
+            refreshed.append(package_id)
+
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+
+        removed = asyncio.run(tp._reconcile_member_directive_attachments(member, guild))
+
+        assert removed == [pkg["id"]]
+        assert pkg["assigned_specialist_ids"] == []
+        assert "2" not in pkg.get("specialist_assigners", {})
+        assert refreshed == [pkg["id"]]
+
+    def test_evaluate_queue_matches_requires_full_legal_team(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class FakeThread(tp.discord.Thread):
+            def __init__(self):
+                self.messages = []
+
+            async def send(self, content=None, **_kwargs):
+                self.messages.append(content)
+
+        thread = FakeThread()
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["directive_code"] = "OX-1"
+        pkg["directive_name"] = "Test Directive"
+        pkg["classification"] = "strike"
+
+        m1 = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        m2 = _with_company_role(_make_member(["Watch Brother"], member_id=2))
+        guild = _make_guild([m1, m2])
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+
+        async def _fake_thread(*_args, **_kwargs):
+            return thread
+
+        monkeypatch.setattr(tp, "_ensure_directive_forum_thread", _fake_thread)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert thread.messages == []
+
+    def test_evaluate_queue_matches_commits_roster_and_cleans_queue(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class FakeThread(tp.discord.Thread):
+            def __init__(self):
+                self.messages = []
+
+            async def send(self, content=None, **_kwargs):
+                self.messages.append(content)
+
+        thread = FakeThread()
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["directive_code"] = "OX-1"
+        pkg["directive_name"] = "Test Directive"
+        pkg["classification"] = "strike"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+        refresh_calls = []
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", lambda package_id, guild: refresh_calls.append((package_id, guild)))
+
+        async def _fake_thread(*_args, **_kwargs):
+            return thread
+
+        monkeypatch.setattr(tp, "_ensure_directive_forum_thread", _fake_thread)
+        async def _fake_post_signup_embed(package_id, guild, complier=None):
+            refresh_calls.append((package_id, guild, complier))
+            tp_data["packages"][package_id]["signup_message_id"] = 111
+            tp_data["packages"][package_id]["signup_channel_id"] = 222
+
+        monkeypatch.setattr(tp, "_post_signup_embed", _fake_post_signup_embed)
+
+        first = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert first == 1
+        assert len(thread.messages) == 1
+        assert "Astropathic concurrence achieved" in thread.messages[0]
+        assert tp_data["packages"][pkg["id"]]["signed_up"] == [1, 2, 3]
+        assert tp_data["packages"][pkg["id"]]["status"] == tp.STATUS_DEPLOYED
+        assert queue_data["entries"] == {}
+        assert refresh_calls
+
+    def test_evaluate_queue_matches_does_not_use_pending_sgt_directive(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg["status"] = tp.STATUS_PENDING_SGT
+        pkg["directive_code"] = "OX-1"
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert queue_data["entries"]
+
+    def test_queue_match_sort_prefers_older_queue_when_other_factors_tie(self):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        newer = _make_member(["Watch Brother"], member_id=20)
+        older = _make_member(["Watch Brother"], member_id=10)
+        entry_map = {
+            "10": {"queued_at": "2026-01-01T00:00:00+00:00"},
+            "20": {"queued_at": "2026-01-01T00:05:00+00:00"},
+        }
+
+        older_key = tp._queue_match_sort_key((pkg, [older], [], tp._queue_match_oldest_timestamp(entry_map, [older])))
+        newer_key = tp._queue_match_sort_key((pkg, [newer], [], tp._queue_match_oldest_timestamp(entry_map, [newer])))
+
+        assert older_key < newer_key

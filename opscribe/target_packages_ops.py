@@ -12,6 +12,7 @@ import string
 import asyncio
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from itertools import combinations
 from typing import Optional
 import sys as _sys
 import re
@@ -35,9 +36,11 @@ def _b(name):
 
 
 TARGET_PACKAGES_PATH = os.path.join(DATA_DIR, "target_packages.json")
+STRIKE_QUEUE_PATH = os.path.join(DATA_DIR, "strike_directive_queue.json")
 _REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference")
 
 _TP_LOCK = asyncio.Lock()
+_STRIKE_QUEUE_LOCK = asyncio.Lock()
 
 
 def _get_guild_from_bot() -> "discord.Guild | None":
@@ -1046,6 +1049,605 @@ def _load_tp() -> dict:
         return _empty_tp_store()
 
 
+def _empty_strike_queue_store() -> dict:
+    return {"entries": {}, "announced_matches": {}}
+
+
+def _load_strike_queue() -> dict:
+    try:
+        if not os.path.exists(STRIKE_QUEUE_PATH):
+            return _empty_strike_queue_store()
+        with open(STRIKE_QUEUE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or _empty_strike_queue_store()
+        if not isinstance(data, dict):
+            return _empty_strike_queue_store()
+        entries = data.get("entries")
+        if not isinstance(entries, dict):
+            data["entries"] = {}
+        announced = data.get("announced_matches")
+        if not isinstance(announced, dict):
+            data["announced_matches"] = {}
+        return data
+    except Exception:
+        return _empty_strike_queue_store()
+
+
+def _save_strike_queue(data: dict) -> None:
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = STRIKE_QUEUE_PATH + ".tmp"
+        bak = STRIKE_QUEUE_PATH + ".bak"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        if os.path.exists(STRIKE_QUEUE_PATH):
+            try:
+                os.replace(STRIKE_QUEUE_PATH, bak)
+            except Exception:
+                pass
+        os.replace(tmp, STRIKE_QUEUE_PATH)
+    except Exception as e:
+        _g.logger.error(f"[TP] Failed to save strike_directive_queue.json: {e}")
+
+
+def _normalize_strike_queue_mode(mode: str | None) -> str:
+    raw = str(mode or "any").strip().lower()
+    if raw in {"hard", "hard-strat", "hard_strat"}:
+        return "hard"
+    if raw in {"omega", "omega-strat", "omega_strat"}:
+        return "omega"
+    return "any"
+
+
+def _strike_queue_entry_expired(entry: dict, now: datetime | None = None) -> bool:
+    expires_at = str((entry or {}).get("expires_at") or "").strip()
+    if not expires_at:
+        return True
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+    except Exception:
+        return True
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    ref = now or datetime.now(timezone.utc)
+    return expiry <= ref
+
+
+def _prune_strike_queue(data: dict, now: datetime | None = None) -> tuple[dict, int]:
+    ref = now or datetime.now(timezone.utc)
+    entries = data.setdefault("entries", {})
+    removed = 0
+    for user_id in list(entries.keys()):
+        entry = entries.get(user_id)
+        if not isinstance(entry, dict) or _strike_queue_entry_expired(entry, ref):
+            entries.pop(user_id, None)
+            removed += 1
+    return data, removed
+
+
+def _strike_queue_match_sweep_minutes() -> int:
+    cfg = (_b("CONFIG") or {}).get("target_packages", {})
+    try:
+        minutes = int(cfg.get("strike_queue_match_sweep_minutes", 15))
+    except Exception:
+        return 15
+    if 5 <= minutes <= 120:
+        return minutes
+    return 15
+
+
+def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_entry_ids: set[str]) -> tuple[dict, int]:
+    announced = data.setdefault("announced_matches", {})
+    removed = 0
+    for package_id in list(announced.keys()):
+        record = announced.get(package_id)
+        pkg = packages.get(package_id)
+        if not isinstance(record, dict) or not isinstance(pkg, dict):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
+        if pkg.get("status") in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED, STATUS_DEPLOYED):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
+
+        queued_member_ids = [int(uid) for uid in (record.get("queued_member_ids") or [])]
+        if not queued_member_ids or any(str(uid) not in active_entry_ids for uid in queued_member_ids):
+            announced.pop(package_id, None)
+            removed += 1
+            continue
+
+        signature = str(record.get("signature") or "")
+        if signature != _queue_match_signature(pkg, queued_member_ids):
+            announced.pop(package_id, None)
+            removed += 1
+    return data, removed
+
+
+def _member_meets_strike_queue_baseline(member: discord.Member) -> bool:
+    if member.bot or not _is_active(member):
+        return False
+    member_roles = _member_role_names(member)
+    min_idx = _RANK_SENIORITY_MAP.get("Watch Brother", 0)
+    member_max = max((_RANK_SENIORITY_MAP.get(r, -1) for r in member_roles), default=-1)
+    return member_max >= min_idx
+
+
+async def _remove_member_from_strike_queue(user_id: int) -> bool:
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        removed = queue_data.setdefault("entries", {}).pop(str(int(user_id)), None)
+        if removed is not None:
+            _save_strike_queue(queue_data)
+            return True
+        _save_strike_queue(queue_data)
+        return False
+
+
+async def _reconcile_member_strike_queue_entry(member: discord.Member) -> bool:
+    """Reconcile one member's queue entry after a role/status change.
+
+    Returns True if the member remains queued after reconciliation.
+    """
+    if member is None:
+        return False
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        entries = queue_data.setdefault("entries", {})
+        entry = entries.get(str(member.id))
+        if not isinstance(entry, dict):
+            _save_strike_queue(queue_data)
+            return False
+
+        if not _member_meets_strike_queue_baseline(member):
+            entries.pop(str(member.id), None)
+            _save_strike_queue(queue_data)
+            return False
+
+        normalized_mode = _normalize_strike_queue_mode(entry.get("mode_preference"))
+        current_platform = _tp_get_player_platform(member)
+        if normalized_mode == "omega" and not current_platform:
+            entries.pop(str(member.id), None)
+            _save_strike_queue(queue_data)
+            return False
+
+        entry["platform"] = current_platform
+        entry["mode_preference"] = normalized_mode
+        _save_strike_queue(queue_data)
+        return True
+
+
+def _member_can_remain_attached_to_directive(
+    member: discord.Member,
+    pkg: dict,
+    guild: "discord.Guild | None",
+    attachment_kind: str,
+) -> tuple[bool, str]:
+    """Validate that a member still meets baseline/scope requirements for a directive attachment."""
+    if member is None:
+        return False, "Member not found."
+
+    if _is_debug_mode() and _is_admin(member):
+        return True, ""
+
+    if not _member_meets_strike_queue_baseline(member):
+        return False, "Member is no longer active or eligible."
+
+    member_roles = _member_role_names(member)
+    from .forge_ops import _resolve_killteam_for_member
+    from .roster_ops import _get_member_company_name
+
+    member_kt = _resolve_killteam_for_member(member)
+    member_company = _get_member_company_name(member)
+    is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
+    assigned_kt = pkg.get("assigned_kt")
+    assigned_company = pkg.get("assigned_company")
+    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
+        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
+
+    mode = str(pkg.get("mode") or "")
+    if "Omega" in mode and not _tp_get_player_platform(member):
+        return False, "Omega directives require a PC/Console role."
+
+    if attachment_kind == "specialist":
+        required_specialist_roles = [
+            role_name
+            for role_name in (pkg.get("required_roles", []) or [])
+            if role_name in _CADRE_SPECIALIST_ROLES
+        ]
+        if required_specialist_roles and not any(role_name in member_roles for role_name in required_specialist_roles):
+            return False, "Member no longer holds a required specialist role for this directive."
+
+    return True, ""
+
+
+async def _reconcile_member_directive_attachments(
+    member: discord.Member,
+    guild: "discord.Guild | None",
+) -> list[str]:
+    """Remove a member from directives they no longer qualify to remain attached to.
+
+    Returns the package IDs that were changed.
+    """
+    if member is None:
+        return []
+
+    resolved_guild = guild or getattr(member, "guild", None) or _get_guild_from_bot()
+    refreshed_package_ids: list[str] = []
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        changed = False
+        for package_id, pkg in (data.get("packages") or {}).items():
+            if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+                continue
+
+            removable_kinds: set[str] = set()
+            if int(member.id) in {int(uid) for uid in pkg.get("signed_up", [])}:
+                allowed, _reason = _member_can_remain_attached_to_directive(member, pkg, resolved_guild, "signed")
+                if not allowed:
+                    removable_kinds.add("signed")
+
+            if int(member.id) in {int(uid) for uid in pkg.get("assigned_specialist_ids", [])}:
+                allowed, _reason = _member_can_remain_attached_to_directive(member, pkg, resolved_guild, "specialist")
+                if not allowed:
+                    removable_kinds.add("specialist")
+
+            if not removable_kinds:
+                continue
+
+            removed, _message = _remove_target_from_package(pkg, int(member.id), removable_kinds, resolved_guild)
+            if removed:
+                changed = True
+                refreshed_package_ids.append(package_id)
+
+        if changed:
+            _save_tp(data)
+
+    for package_id in refreshed_package_ids:
+        await _refresh_signup_embed_for_package(package_id, resolved_guild)
+    return refreshed_package_ids
+
+
+def _strike_mode_matches_preference(pkg: dict, preference: str) -> bool:
+    normalized = _normalize_strike_queue_mode(preference)
+    mode = str(pkg.get("mode") or "")
+    if normalized == "hard":
+        return "Hard" in mode
+    if normalized == "omega":
+        return "Omega" in mode
+    return True
+
+
+def _queue_member_exact_requirement_score(member: discord.Member, pkg: dict) -> int:
+    roles = _member_role_names(member)
+    req_roles = pkg.get("required_roles", []) or []
+    return sum(1 for req in req_roles if req in roles)
+
+
+def _queue_existing_roster_names(pkg: dict, guild: discord.Guild) -> list[str]:
+    names: list[str] = []
+    for uid in list(dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))):
+        m = guild.get_member(int(uid)) if guild else None
+        names.append(m.display_name if m else str(uid))
+    return names
+
+
+def _queue_match_signature(pkg: dict, queued_member_ids: list[int]) -> str:
+    existing_ids = sorted(int(uid) for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or [])))
+    queued_ids = sorted(int(uid) for uid in queued_member_ids)
+    return f"{pkg.get('id')}|existing:{','.join(map(str, existing_ids))}|queued:{','.join(map(str, queued_ids))}"
+
+
+def _queue_match_oldest_timestamp(entry_map: dict[str, dict], members: list[discord.Member]) -> datetime:
+    oldest = datetime.max.replace(tzinfo=timezone.utc)
+    for member in members:
+        queued_at = str((entry_map.get(str(member.id)) or {}).get("queued_at") or "").strip()
+        try:
+            parsed = datetime.fromisoformat(queued_at)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+        except Exception:
+            parsed = datetime.max.replace(tzinfo=timezone.utc)
+        if parsed < oldest:
+            oldest = parsed
+    return oldest
+
+
+def _queue_match_sort_key(item: tuple[dict, list[discord.Member], list[str], datetime]) -> tuple:
+    pkg, members, _existing_names, oldest_queue = item
+    current_count = len(pkg.get("signed_up", []) or []) + len(pkg.get("assigned_specialist_ids", []) or [])
+    mode = str(pkg.get("mode") or "")
+    capacity = 3 if "Hard" in mode else 5
+    requirement_score = sum(_queue_member_exact_requirement_score(m, pkg) for m in members)
+    return (current_count, capacity, -requirement_score, oldest_queue)
+
+
+def _select_queue_members_for_package(
+    pkg: dict,
+    candidate_members: list[discord.Member],
+    guild: discord.Guild,
+) -> list[discord.Member]:
+    mode = str(pkg.get("mode") or "")
+    capacity = 3 if "Hard" in mode else 5
+    existing_signed = list(pkg.get("signed_up", []) or [])
+    existing_specialists = list(pkg.get("assigned_specialist_ids", []) or [])
+    current_count = len(existing_signed) + len(existing_specialists)
+    remaining_slots = capacity - current_count
+    if remaining_slots <= 0:
+        return []
+
+    if len(candidate_members) < remaining_slots:
+        return []
+
+    scored_candidates = sorted(
+        candidate_members,
+        key=lambda m: (-_queue_member_exact_requirement_score(m, pkg), m.id),
+    )
+
+    best_combo: list[discord.Member] = []
+    best_score: tuple | None = None
+    for combo in combinations(scored_candidates, remaining_slots):
+        projected_pkg = dict(pkg)
+        projected_pkg["signed_up"] = existing_signed + [m.id for m in combo]
+        projected_pkg["assigned_specialist_ids"] = existing_specialists
+
+        if "Omega" in mode:
+            console_count = 0
+            for uid in projected_pkg["signed_up"] + projected_pkg["assigned_specialist_ids"]:
+                m = guild.get_member(int(uid)) if guild else None
+                if m and _tp_get_player_platform(m) == "console":
+                    console_count += 1
+            if console_count > 2:
+                continue
+
+        if not _check_deployed(projected_pkg, guild):
+            continue
+
+        exact_score = sum(_queue_member_exact_requirement_score(m, pkg) for m in combo)
+        combo_score = (-exact_score, sorted(m.id for m in combo))
+        if best_score is None or combo_score < best_score:
+            best_score = combo_score
+            best_combo = list(combo)
+
+    return best_combo
+
+
+async def _post_queue_match_ping(
+    pkg: dict,
+    matched_members: list[discord.Member],
+    guild: discord.Guild,
+    existing_roster_names: list[str],
+) -> bool:
+    if not matched_members or guild is None:
+        return False
+
+    thread = await _ensure_directive_forum_thread(pkg.get("id"), guild, pkg=pkg)
+    if not isinstance(thread, discord.Thread):
+        return False
+
+    code = pkg.get("directive_code") or pkg.get("id") or "UNKNOWN"
+    name = str(pkg.get("directive_name") or "").strip()
+    mode = str(pkg.get("mode") or "")
+    capacity = 3 if "Hard" in mode else 5
+    classification = str(pkg.get("classification") or "STRIKE").title()
+    roster_mentions = " ".join(m.mention for m in matched_members)
+    matched_names = ", ".join(m.display_name for m in matched_members)
+    existing_line = f"Existing roster: {', '.join(existing_roster_names)}\n" if existing_roster_names else ""
+    directive_line = f"`{code}` — {name}" if name else f"`{code}`"
+    content = (
+        f"{roster_mentions}\n"
+        f"**Astropathic concurrence achieved.** {classification} directive {directive_line} has a ready strike element now.\n"
+        f"{existing_line}"
+        f"Queued brothers available now: {matched_names}\n"
+        f"Required strike strength: **{capacity}**. Muster and execute with all haste."
+    )
+    await thread.send(content=content)
+    return True
+
+
+async def _apply_strike_queue_match(
+    pkg: dict,
+    matched_members: list[discord.Member],
+    guild: discord.Guild,
+    queue_data: dict,
+) -> dict | None:
+    if not matched_members or guild is None:
+        return None
+
+    package_id = str(pkg.get("id") or "").strip()
+    if not package_id:
+        return None
+
+    matched_ids = [int(member.id) for member in matched_members]
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        live_pkg = (data.get("packages", {}) or {}).get(package_id)
+        if not isinstance(live_pkg, dict):
+            return None
+        if live_pkg.get("status") != STATUS_RECRUITING:
+            return None
+
+        for member in matched_members:
+            eligible, _reason = _is_eligible_to_sign_up(member, live_pkg, guild)
+            if not eligible:
+                return None
+
+        live_pkg.setdefault("signed_up", [])
+        for member_id in matched_ids:
+            if member_id not in live_pkg["signed_up"]:
+                live_pkg["signed_up"].append(member_id)
+
+        if _check_deployed(live_pkg, guild):
+            live_pkg["status"] = STATUS_DEPLOYED
+
+        _save_tp(data)
+        committed_pkg = dict(live_pkg)
+
+    entries = queue_data.setdefault("entries", {})
+    for member_id in matched_ids:
+        entries.pop(str(member_id), None)
+    queue_data.setdefault("announced_matches", {}).pop(package_id, None)
+
+    await _ensure_directive_forum_thread(package_id, guild, pkg=committed_pkg)
+    if committed_pkg.get("signup_message_id") and committed_pkg.get("signup_channel_id"):
+        await _refresh_signup_embed_for_package(package_id, guild)
+    else:
+        await _post_signup_embed(package_id, guild)
+
+    return committed_pkg
+
+
+async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
+    if guild is None:
+        return 0
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        entries = queue_data.setdefault("entries", {})
+        if not entries:
+            _save_strike_queue(queue_data)
+            return 0
+
+        data = _load_tp()
+        packages = data.get("packages", {})
+        active_entries: list[tuple[discord.Member, dict]] = []
+        for user_id, entry in entries.items():
+            member = guild.get_member(int(user_id)) if guild else None
+            if not member or member.bot or not _is_active(member):
+                continue
+            active_entries.append((member, entry))
+        active_entry_ids = {str(member.id) for member, _entry in active_entries}
+        queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
+
+        if not active_entries:
+            _save_strike_queue(queue_data)
+            return 0
+
+        candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
+        for pkg in packages.values():
+            if pkg.get("status") != STATUS_RECRUITING:
+                continue
+
+            visible_candidates: list[discord.Member] = []
+            for member, entry in active_entries:
+                if not _strike_mode_matches_preference(pkg, entry.get("mode_preference")):
+                    continue
+                visible = _visible_non_deployed_packages_for_member(member, packages)
+                if not any(p.get("id") == pkg.get("id") for p in visible):
+                    continue
+                eligible, _reason = _is_eligible_to_sign_up(member, pkg, guild)
+                if not eligible:
+                    continue
+                visible_candidates.append(member)
+
+            match_members = _select_queue_members_for_package(pkg, visible_candidates, guild)
+            if not match_members:
+                continue
+
+            candidate_matches.append((
+                pkg,
+                match_members,
+                _queue_existing_roster_names(pkg, guild),
+                _queue_match_oldest_timestamp(entries, match_members),
+            ))
+
+        if not candidate_matches:
+            _save_strike_queue(queue_data)
+            return 0
+
+        candidate_matches.sort(key=_queue_match_sort_key)
+
+        used_member_ids: set[int] = set()
+        committed = 0
+        for pkg, match_members, existing_names, _oldest_queue in candidate_matches:
+            if any(m.id in used_member_ids for m in match_members):
+                continue
+
+            committed_pkg = await _apply_strike_queue_match(pkg, match_members, guild, queue_data)
+            if not committed_pkg:
+                continue
+
+            ok = await _post_queue_match_ping(committed_pkg, match_members, guild, existing_names)
+            if not ok:
+                _g.logger.debug(f"[TP] Queue match committed without forum ping for {pkg.get('id')}")
+
+            used_member_ids.update(m.id for m in match_members)
+            committed += 1
+
+        _save_strike_queue(queue_data)
+        return committed
+
+
+def _visible_active_packages_for_member(member: discord.Member, packages: dict) -> list[dict]:
+    """Return the active directive pool naturally visible to a member today."""
+
+    def _active(statuses=None):
+        return [
+            p for p in packages.values()
+            if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
+            and (statuses is None or p["status"] in statuses)
+        ]
+
+    def _is_personally_attached(p: dict) -> bool:
+        return (
+            member.id in p.get("signed_up", [])
+            or member.id in p.get("assigned_specialist_ids", [])
+        )
+
+    _mroles = _member_role_names(member)
+    if "Watch Master" in _mroles:
+        return _active()
+
+    if "Watch Captain" in _mroles or "Watch Lieutenant" in _mroles:
+        from .roster_ops import _get_member_company_name
+        company = _get_member_company_name(member)
+        return [
+            p for p in _active()
+            if p["status"] == STATUS_DISTRIBUTED
+            or (
+                p.get("assigned_company") == company
+                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
+            )
+            or _is_personally_attached(p)
+        ]
+
+    if _mroles & _CADRE_LEADER_ROLES:
+        cadre_pkgs = [
+            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
+            if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
+        ]
+        attached_pkgs = [p for p in _active() if _is_personally_attached(p)]
+        merged_by_id = {p.get("id"): p for p in cadre_pkgs}
+        for p in attached_pkgs:
+            merged_by_id[p.get("id")] = p
+        return list(merged_by_id.values())
+
+    if _is_debug_mode() and _is_admin(member):
+        return _active()
+
+    from .forge_ops import _resolve_killteam_for_member
+    kt = _resolve_killteam_for_member(member)
+    if kt:
+        return [
+            p for p in _active()
+            if p.get("assigned_kt") == kt or _is_personally_attached(p)
+        ]
+    return [p for p in _active() if _is_personally_attached(p)]
+
+
+def _visible_non_deployed_packages_for_member(member: discord.Member, packages: dict) -> list[dict]:
+    return [p for p in _visible_active_packages_for_member(member, packages) if p.get("status") != STATUS_DEPLOYED]
+
 def _save_tp(data: dict) -> None:
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -2003,6 +2605,15 @@ async def assign_specialist(
             if sp_platform == "console" and _tp_console_count(pkg, resolved_guild) >= 2:
                 return False, "This Omega directive already has the maximum 2 console players."
 
+        eligible, reason = _member_can_remain_attached_to_directive(
+            specialist_member,
+            pkg,
+            guild,
+            "specialist",
+        )
+        if not eligible:
+            return False, reason
+
         # Check specialist not already locked on another package
         active_statuses = {STATUS_RECRUITING, STATUS_DEPLOYED}
         for p in data["packages"].values():
@@ -2079,6 +2690,9 @@ async def assign_specialist(
             pkg["status"] = STATUS_DEPLOYED
 
         _save_tp(data)
+
+    await _remove_member_from_strike_queue(specialist_member.id)
+    await _refresh_signup_embed_for_package(package_id, guild)
 
     # Gap 2 — Ping specialist in their cadre channel
     await _notify_specialist_assigned(specialist_member, package_id, pkg, guild, cadre_leader=cadre_leader)
@@ -2549,10 +3163,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     dates for legacy packages that predate the batch_id field.
     """
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
-
     packages = data.get("packages", {})
     rep = data.get("rep", _REP_NEUTRAL)
-    entity_stats = data.get("entity_stats", {})
 
     # Resolve which batch to report on.
     if not batch_id:
@@ -3441,7 +4053,6 @@ async def _notify_specialist_assigned(
 ) -> None:
     """Post a lightweight assignment notification with a link to the KT directive embed."""
     specialist_roles = _member_role_names(specialist_member)
-    config_tp = (_b("CONFIG") or {}).get("target_packages", {})
 
     signup_channel_id = pkg.get("signup_channel_id")
     signup_message_id = pkg.get("signup_message_id")
@@ -3896,7 +4507,6 @@ def _build_package_embed(
     mission_id = pkg.get("mission_id")
     mode = pkg.get("mode", "")
     status = pkg.get("status", "")
-    req_roles = pkg.get("required_roles", [])
     briefing = pkg.get("briefing", "")
     stratagems = pkg.get("stratagems", {})
     intel_lapse = pkg.get("intel_lapse", False)
@@ -5053,6 +5663,8 @@ class SignUpView(discord.ui.View):
                 pkg2["status"] = STATUS_DEPLOYED
 
             _save_tp(data2)
+
+        await _remove_member_from_strike_queue(member.id)
 
         signed_up = pkg2.get("signed_up", [])
         _specialists_su = pkg2.get("assigned_specialist_ids", [])
@@ -6242,80 +6854,7 @@ async def view_strike_directives(interaction: discord.Interaction):
     data = _load_tp()
     rep = data.get("rep", 0.0)
     packages = data.get("packages", {})
-
-    def _active(statuses=None):
-        return [
-            p for p in packages.values()
-            if p["status"] not in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-            and (statuses is None or p["status"] in statuses)
-        ]
-
-    def _is_personally_attached(p: dict) -> bool:
-        return (
-            member.id in p.get("signed_up", [])
-            or member.id in p.get("assigned_specialist_ids", [])
-        )
-
-    # Role checks use actual Discord roles first so that admins with a specific
-    # rank (e.g. Forgemaster) get the view appropriate to that rank rather than
-    # the catch-all WM view that the admin override would otherwise trigger.
-    _mroles = _member_role_names(member)
-
-    # Watch Master role (true role, not admin override)
-    if "Watch Master" in _mroles:
-        pkgs = _active()
-
-    # Captain / Lieutenant — distributed (awaiting assignment) + company packages
-    # already in-flight (recruiting/deployed for tracking); exclude pending_sgt since
-    # the captain already acted and the Sgt needs to accept.
-    elif "Watch Captain" in _mroles or "Watch Lieutenant" in _mroles:
-        from .roster_ops import _get_member_company_name
-        company = _get_member_company_name(member)
-        pkgs = [
-            p for p in _active()
-            if p["status"] == STATUS_DISTRIBUTED
-            or (
-                p.get("assigned_company") == company
-                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
-            )
-            or _is_personally_attached(p)
-        ]
-
-    # Cadre leader — directives where their cadre's specialist is required,
-    # plus any directive they are personally attached to as a specialist.
-    elif _mroles & _CADRE_LEADER_ROLES:
-        cadre_pkgs = [
-            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
-            if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
-        ]
-        attached_pkgs = [
-            p for p in _active()
-            if _is_personally_attached(p)
-        ]
-        merged_by_id = {p.get("id"): p for p in cadre_pkgs}
-        for p in attached_pkgs:
-            merged_by_id[p.get("id")] = p
-        pkgs = list(merged_by_id.values())
-
-    # Admin fallback in debug mode only — see everything, same as WM
-    elif _is_debug_mode() and _is_admin(member):
-        pkgs = _active()
-
-    # Everyone else — packages assigned to their KT
-    else:
-        from .forge_ops import _resolve_killteam_for_member
-        kt = _resolve_killteam_for_member(member)
-        pkgs = [
-            p for p in _active()
-            if p.get("assigned_kt") == kt
-            or _is_personally_attached(p)
-        ] if kt else []
-
-        if not kt:
-            pkgs = [
-                p for p in _active()
-                if _is_personally_attached(p)
-            ]
+    pkgs = _visible_active_packages_for_member(member, packages)
 
     if not pkgs:
         await interaction.followup.send("No active strike directives for your role.", ephemeral=True)
@@ -6328,6 +6867,140 @@ async def view_strike_directives(interaction: discord.Interaction):
         view=view,
         ephemeral=True,
         **_file_kwarg(_pf),
+    )
+
+
+@app_commands.command(
+    name="queue_strike",
+    description="Mark yourself ready for eligible strike directives for a limited time.",
+)
+@app_commands.describe(
+    minutes="How long to remain queued, in minutes.",
+    mode_preference="Directive preference: any, hard, or omega.",
+)
+async def queue_strike(
+    interaction: discord.Interaction,
+    minutes: int = 60,
+    mode_preference: str = "any",
+):
+    member = interaction.user
+    guild = interaction.guild
+    await interaction.response.defer(ephemeral=True)
+
+    if member.bot or not _is_active(member):
+        await interaction.followup.send("Only active brothers may join the strike queue.", ephemeral=True)
+        return
+
+    if minutes < 5 or minutes > 240:
+        await interaction.followup.send("Queue duration must be between 5 and 240 minutes.", ephemeral=True)
+        return
+
+    normalized_mode = _normalize_strike_queue_mode(mode_preference)
+    if str(mode_preference or "").strip().lower() not in {
+        "", "any", "hard", "hard-strat", "hard_strat", "omega", "omega-strat", "omega_strat"
+    }:
+        await interaction.followup.send("Mode preference must be one of: any, hard, omega.", ephemeral=True)
+        return
+
+    data = _load_tp()
+    packages = data.get("packages", {})
+    visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        queue_data.setdefault("entries", {})[str(member.id)] = {
+            "user_id": int(member.id),
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(),
+            "requested_minutes": int(minutes),
+            "mode_preference": normalized_mode,
+            "platform": _tp_get_player_platform(member),
+        }
+        _save_strike_queue(queue_data)
+
+    match_count = await _evaluate_strike_queue_matches(guild)
+
+    visible_count = len(visible_non_deployed)
+    mode_text = normalized_mode.upper() if normalized_mode != "any" else "ANY"
+    match_text = ""
+    if match_count > 0:
+        noun = "directive" if match_count == 1 else "directives"
+        match_text = f" A full strike element was committed for **{match_count}** {noun}; the queue was cleared and the directive roster updated."
+    await interaction.followup.send(
+        (
+            f"You are queued for strike directives for the next **{minutes}** minutes. "
+            f"Mode preference: **{mode_text}**. "
+            f"Current non-deployed directives in your natural scope: **{visible_count}**."
+            f"{match_text}"
+        ),
+        ephemeral=True,
+    )
+
+
+@app_commands.command(
+    name="leave_strike_queue",
+    description="Remove yourself from the strike directive queue.",
+)
+async def leave_strike_queue(interaction: discord.Interaction):
+    member = interaction.user
+    await interaction.response.defer(ephemeral=True)
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        removed = queue_data.setdefault("entries", {}).pop(str(member.id), None)
+        _save_strike_queue(queue_data)
+
+    if removed:
+        await interaction.followup.send("You have been removed from the strike queue.", ephemeral=True)
+        return
+    await interaction.followup.send("You are not currently in the strike queue.", ephemeral=True)
+
+
+@app_commands.command(
+    name="strike_queue_status",
+    description="View your current strike queue status.",
+)
+async def strike_queue_status(interaction: discord.Interaction):
+    member = interaction.user
+    await interaction.response.defer(ephemeral=True)
+
+    data = _load_tp()
+    packages = data.get("packages", {})
+    visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        _save_strike_queue(queue_data)
+        entry = queue_data.setdefault("entries", {}).get(str(member.id))
+
+    if not entry:
+        await interaction.followup.send(
+            f"You are not queued. Current non-deployed directives in your natural scope: **{len(visible_non_deployed)}**.",
+            ephemeral=True,
+        )
+        return
+
+    expires_at = str(entry.get("expires_at") or "").strip()
+    expiry_text = expires_at
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        expiry_text = f"<t:{int(expiry.timestamp())}:R>"
+    except Exception:
+        pass
+
+    mode_text = str(entry.get("mode_preference") or "any").upper()
+    await interaction.followup.send(
+        (
+            f"You are currently queued. Mode preference: **{mode_text}**. "
+            f"Queue expires {expiry_text}. "
+            f"Current non-deployed directives in your natural scope: **{len(visible_non_deployed)}**."
+        ),
+        ephemeral=True,
     )
 
 
@@ -6648,6 +7321,9 @@ def _register_commands(tree: app_commands.CommandTree) -> None:
     for cmd in (
         request_strike_directives,
         view_strike_directives,
+        queue_strike,
+        leave_strike_queue,
+        strike_queue_status,
         log_strike_report,
         strike_directive_status,
         repost_directive_embed,
@@ -6676,6 +7352,26 @@ async def _tp_expiry_loop():
                 await expire_packages(guild)
     except Exception as e:
         _g.logger.error(f"[TP] Expiry loop error: {e}")
+
+
+@_tasks.loop(minutes=15)
+async def _strike_queue_match_sweep_loop():
+    """Periodically re-check queued brothers against current directive state."""
+    try:
+        m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
+        bot = getattr(m, "bot", None) if m else None
+        if not bot:
+            return
+        guild_id = _b("CONFIG") and (_b("CONFIG") or {}).get("guild_id")
+        if not guild_id:
+            for guild in bot.guilds:
+                await _evaluate_strike_queue_matches(guild)
+        else:
+            guild = bot.get_guild(int(guild_id))
+            if guild:
+                await _evaluate_strike_queue_matches(guild)
+    except Exception as e:
+        _g.logger.error(f"[TP] Strike queue sweep loop error: {e}")
 
 
 
