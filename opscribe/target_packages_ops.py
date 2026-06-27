@@ -1147,6 +1147,36 @@ def _strike_queue_match_sweep_minutes() -> int:
     return 15
 
 
+def _strike_queue_backfill_partials_enabled() -> bool:
+    cfg = (_b("CONFIG") or {}).get("target_packages", {})
+    raw = cfg.get("strike_queue_backfill_partials_enabled", False)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _strike_queue_partial_backfill_min_active_queue() -> int:
+    cfg = (_b("CONFIG") or {}).get("target_packages", {})
+    try:
+        n = int(cfg.get("strike_queue_partial_backfill_min_active_queue", 4))
+    except Exception:
+        return 4
+    return max(1, n)
+
+
+def _strike_queue_single_fill_min_active_queue() -> int:
+    cfg = (_b("CONFIG") or {}).get("target_packages", {})
+    try:
+        n = int(cfg.get("strike_queue_single_fill_min_active_queue", 7))
+    except Exception:
+        return 7
+    return max(1, n)
+
+
 def _strike_queue_announced_ttl_minutes() -> int:
     # Keep tentative groups short-lived and tied to sweep cadence.
     return max(15, min(60, _strike_queue_match_sweep_minutes() * 2))
@@ -1205,6 +1235,19 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
                 announced.pop(package_id, None)
                 removed += 1
     return data, removed
+
+
+def _member_active_directive_commitment(member_id: int, data: dict) -> tuple[str, bool] | None:
+    active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
+    for pkg in (data.get("packages", {}) or {}).values():
+        if pkg.get("status") not in active_statuses:
+            continue
+        code = str(pkg.get("directive_code") or pkg.get("id") or "UNKNOWN")
+        if int(member_id) in {int(uid) for uid in (pkg.get("signed_up", []) or [])}:
+            return code, False
+        if int(member_id) in {int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or [])}:
+            return code, True
+    return None
 
 
 def _queue_entry_sort_key(item: tuple[str, dict]) -> tuple[datetime, int]:
@@ -1492,6 +1535,7 @@ def _queue_eligible_packages_for_member(
     """Return recruiting directives this member can actually be queue-matched into."""
     visible_non_deployed = _visible_non_deployed_packages_for_member(member, packages)
     visible_ids = {str(p.get("id")) for p in visible_non_deployed}
+    backfill_partials = _strike_queue_backfill_partials_enabled()
 
     eligible_packages: list[dict] = []
     for pkg in packages.values():
@@ -1499,8 +1543,9 @@ def _queue_eligible_packages_for_member(
             continue
         if str(pkg.get("id")) not in visible_ids:
             continue
-        # Queue auto-matching only seeds fully open directives.
-        if (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+        # Default behavior: only seed fully open directives.
+        # Optional behavior: allow queue backfill for partially-filled directives.
+        if (not backfill_partials) and (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
             continue
         if not _strike_mode_matches_preference(pkg, mode_preference):
             continue
@@ -1548,12 +1593,35 @@ def _queue_match_oldest_timestamp(entry_map: dict[str, dict], members: list[disc
 
 
 def _queue_match_sort_key(item: tuple[dict, list[discord.Member], list[str], datetime]) -> tuple:
-    pkg, members, _existing_names, oldest_queue = item
+    pkg, members, _existing_names, oldest_queue = item[:4]
+    quality_tier = _queue_match_quality_tier(pkg, len(members))
     current_count = len(pkg.get("signed_up", []) or []) + len(pkg.get("assigned_specialist_ids", []) or [])
     mode = str(pkg.get("mode") or "")
     capacity = 3 if "Hard" in mode else 5
     requirement_score = sum(_queue_member_exact_requirement_score(m, pkg) for m in members)
-    return (current_count, capacity, -requirement_score, oldest_queue)
+    return (quality_tier, current_count, capacity, -requirement_score, oldest_queue)
+
+
+def _queue_match_quality_tier(pkg: dict, matched_count: int) -> int:
+    """Rank candidate match quality (lower is better).
+
+    0: Fully-open directive filled by a full queued team (best)
+    1: Partially-filled directive completed by 2+ queued brothers
+    2: Single queued brother fills the last slot on a directive (last resort)
+    3: Any other catch-all shape (should be rare)
+    """
+    current_count = len(pkg.get("signed_up", []) or []) + len(pkg.get("assigned_specialist_ids", []) or [])
+    mode = str(pkg.get("mode") or "")
+    capacity = 3 if "Hard" in mode else 5
+    remaining_slots = max(0, capacity - current_count)
+
+    if current_count == 0 and matched_count == capacity and remaining_slots == capacity:
+        return 0
+    if current_count > 0 and matched_count >= 2 and remaining_slots >= 2:
+        return 1
+    if current_count > 0 and matched_count == 1 and remaining_slots == 1:
+        return 2
+    return 3
 
 
 def _select_queue_members_for_package(
@@ -1727,11 +1795,14 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 return 0
 
             candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
+            backfill_partials = _strike_queue_backfill_partials_enabled()
+            active_queue_size = len(active_entries)
+            partial_threshold = _strike_queue_partial_backfill_min_active_queue()
+            single_threshold = _strike_queue_single_fill_min_active_queue()
             for pkg in packages.values():
                 if pkg.get("status") != STATUS_RECRUITING:
                     continue
-                # Queue auto-matching only seeds fully open directives.
-                if (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+                if (not backfill_partials) and (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
                     continue
 
                 visible_candidates: list[discord.Member] = []
@@ -1748,6 +1819,12 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
                 match_members = _select_queue_members_for_package(pkg, visible_candidates, guild)
                 if not match_members:
+                    continue
+
+                quality_tier = _queue_match_quality_tier(pkg, len(match_members))
+                if quality_tier == 1 and active_queue_size < partial_threshold:
+                    continue
+                if quality_tier == 2 and active_queue_size < single_threshold:
                     continue
 
                 candidate_matches.append((
@@ -7150,6 +7227,21 @@ async def queue_strike(
 
     data = _load_tp()
     packages = data.get("packages", {})
+    commitment = _member_active_directive_commitment(member.id, data)
+    if commitment is not None:
+        directive_code, is_specialist = commitment
+        if is_specialist:
+            await interaction.followup.send(
+                f"You are already committed as a specialist to directive `{directive_code}`. Complete that operation first.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"You are already committed to directive `{directive_code}`. Complete that operation first.",
+            ephemeral=True,
+        )
+        return
+
     queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
 
     async with _STRIKE_QUEUE_LOCK:

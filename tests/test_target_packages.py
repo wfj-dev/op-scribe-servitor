@@ -2235,6 +2235,102 @@ class TestStrikeQueueMatching:
         assert pkg["signed_up"] == [1]
         assert queue_data["entries"]
 
+    def test_evaluate_queue_matches_can_backfill_partial_when_enabled(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 2)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
+
+        async def _fake_finalize(*_args, **_kwargs):
+            return None
+
+        async def _fake_ping(*_args, **_kwargs):
+            return True
+
+        monkeypatch.setattr(tp, "_finalize_strike_queue_match_directive", _fake_finalize)
+        monkeypatch.setattr(tp, "_post_queue_match_ping", _fake_ping)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 1
+        assert sorted(tp_data["packages"][pkg["id"]]["signed_up"]) == [1, 2, 3]
+        assert queue_data["entries"] == {}
+
+    def test_evaluate_queue_matches_partial_backfill_respects_threshold(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 3)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 3)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert queue_data["entries"]
+
+    def test_evaluate_queue_matches_single_fill_respects_threshold(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+        # Hard directive with two already attached means one slot remains.
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1, 2])
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 1)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 0
+        assert queue_data["entries"]
+
     def test_evaluate_queue_matches_saves_queue_before_ping_failure(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -2378,6 +2474,23 @@ class TestStrikeQueueMatching:
             ("send", "Omega queueing requires a PC or Console role.", True),
         ]
 
+    def test_queue_strike_rejects_when_already_committed_to_active_directive(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        pkg["directive_code"] = "OX-EXISTING"
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+
+        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="any"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "already committed to directive `OX-EXISTING`" in interaction.calls[1][1]
+
     def test_queue_strike_reports_fully_open_queue_eligible_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -2409,6 +2522,37 @@ class TestStrikeQueueMatching:
 
         assert interaction.calls[0] == ("defer", True)
         assert "Current fully-open directives eligible for queue matching: **1**." in interaction.calls[1][1]
+
+    def test_queue_strike_backfill_enabled_counts_partial_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+        queue_data = {"entries": {}, "announced_matches": {}}
+        p_open = _make_pkg(mode="Hard-Strat", signed_up=[])
+        p_open["id"] = "p_open"
+        p_partial = _make_pkg(mode="Hard-Strat", signed_up=[99])
+        p_partial["id"] = "p_partial"
+        packages = {p["id"]: p for p in [p_open, p_partial]}
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": packages})
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [p_open, p_partial])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+        monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
+
+        async def _fake_eval(_guild):
+            return 0
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+
+        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="hard"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "Current fully-open directives eligible for queue matching: **2**." in interaction.calls[1][1]
 
     def test_strike_queue_status_uses_mode_filtered_queue_eligible_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp
