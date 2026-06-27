@@ -10,6 +10,7 @@ import json
 import random
 import string
 import asyncio
+import math
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
@@ -1146,9 +1147,16 @@ def _strike_queue_match_sweep_minutes() -> int:
     return 15
 
 
+def _strike_queue_announced_ttl_minutes() -> int:
+    # Keep tentative groups short-lived and tied to sweep cadence.
+    return max(15, min(60, _strike_queue_match_sweep_minutes() * 2))
+
+
 def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_entry_ids: set[str]) -> tuple[dict, int]:
     announced = data.setdefault("announced_matches", {})
     removed = 0
+    now = datetime.now(timezone.utc)
+    ttl_minutes = _strike_queue_announced_ttl_minutes()
     for package_id in list(announced.keys()):
         record = announced.get(package_id)
         pkg = packages.get(package_id)
@@ -1181,7 +1189,140 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
         if signature != _queue_match_signature(pkg, queued_member_ids):
             announced.pop(package_id, None)
             removed += 1
+            continue
+
+        announced_at = str(record.get("announced_at") or "").strip()
+        if announced_at:
+            try:
+                announced_dt = datetime.fromisoformat(announced_at)
+                if announced_dt.tzinfo is None:
+                    announced_dt = announced_dt.replace(tzinfo=timezone.utc)
+                if now - announced_dt > timedelta(minutes=ttl_minutes):
+                    announced.pop(package_id, None)
+                    removed += 1
+                    continue
+            except Exception:
+                announced.pop(package_id, None)
+                removed += 1
     return data, removed
+
+
+def _queue_entry_sort_key(item: tuple[str, dict]) -> tuple[datetime, int]:
+    user_id_str, entry = item
+    queued_at = str((entry or {}).get("queued_at") or "").strip()
+    try:
+        queued_dt = datetime.fromisoformat(queued_at)
+        if queued_dt.tzinfo is None:
+            queued_dt = queued_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        queued_dt = datetime.max.replace(tzinfo=timezone.utc)
+    try:
+        uid = int(user_id_str)
+    except Exception:
+        uid = 0
+    return queued_dt, uid
+
+
+def _ordered_queue_entries(entries: dict) -> list[tuple[str, dict]]:
+    return sorted(((uid, e) for uid, e in (entries or {}).items() if isinstance(e, dict)), key=_queue_entry_sort_key)
+
+
+def _queue_member_display(guild: "discord.Guild | None", user_id: int) -> str:
+    member = guild.get_member(int(user_id)) if guild else None
+    if member is not None:
+        return member.display_name
+    return f"Brother {user_id}"
+
+
+def _queue_eta_window_text(position: int, seats_per_sweep: int, sweep_minutes: int) -> str:
+    return _queue_eta_window_text_with_context(position, seats_per_sweep, sweep_minutes, [], [])
+
+
+def _queue_eta_window_text_with_context(
+    position: int,
+    seats_per_sweep: int,
+    sweep_minutes: int,
+    eligible_packages: list[dict],
+    tentative_codes: list[str],
+) -> str:
+    if tentative_codes:
+        shown = ", ".join(f"`{c}`" for c in tentative_codes[:2])
+        if len(tentative_codes) > 2:
+            shown += f", +{len(tentative_codes) - 2} more"
+        low = sweep_minutes
+        high = sweep_minutes * 2
+        return (
+            f"You are in a tentative strike group ({shown}). "
+            f"Likely window: **{low}-{high} min**."
+        )
+
+    if position <= 0 or seats_per_sweep <= 0:
+        return "No ETA yet - waiting for an eligible full strike composition."
+
+    pkg_count = len(eligible_packages)
+    constrained_count = sum(1 for p in eligible_packages if (p.get("required_roles") or []))
+    omega_count = sum(1 for p in eligible_packages if "Omega" in str(p.get("mode") or ""))
+    if pkg_count > 0:
+        penalty = min(0.55, (0.35 * (constrained_count / pkg_count)) + (0.15 * (omega_count / pkg_count)))
+    else:
+        penalty = 0.0
+
+    effective_seats = max(1, int(math.floor(seats_per_sweep * (1.0 - penalty))))
+    waves = max(1, math.ceil(position / effective_seats))
+    low = max(1, waves) * sweep_minutes
+    high = (waves + 1) * sweep_minutes
+    suffix = ""
+    if constrained_count > 0:
+        suffix = " Role-gated directives may increase wait."
+    return f"Approximately **{low}-{high} min** (heuristic).{suffix}"
+
+
+def _tentative_groups_for_status(
+    queue_data: dict,
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> list[str]:
+    groups: list[str] = []
+    announced = queue_data.get("announced_matches") or {}
+    if not isinstance(announced, dict):
+        return groups
+    for package_id, record in announced.items():
+        if not isinstance(record, dict):
+            continue
+        pkg = packages.get(package_id) or {}
+        code = str((pkg or {}).get("directive_code") or package_id)
+        queued_member_ids = record.get("queued_member_ids") or []
+        try:
+            queued_ids = [int(uid) for uid in queued_member_ids]
+        except Exception:
+            continue
+        names = [_queue_member_display(guild, uid) for uid in queued_ids]
+        if len(names) > 5:
+            names_text = ", ".join(names[:5]) + f", +{len(names) - 5} more"
+        else:
+            names_text = ", ".join(names) if names else "None"
+        groups.append(f"`{code}`: {names_text}")
+    return groups
+
+
+def _member_tentative_codes(queue_data: dict, packages: dict, member_id: int) -> list[str]:
+    codes: list[str] = []
+    announced = queue_data.get("announced_matches") or {}
+    if not isinstance(announced, dict):
+        return codes
+    for package_id, record in announced.items():
+        if not isinstance(record, dict):
+            continue
+        queued_member_ids = record.get("queued_member_ids") or []
+        try:
+            queued_ids = {int(uid) for uid in queued_member_ids}
+        except Exception:
+            continue
+        if int(member_id) not in queued_ids:
+            continue
+        pkg = packages.get(package_id) or {}
+        codes.append(str((pkg or {}).get("directive_code") or package_id))
+    return codes
 
 
 def _member_meets_strike_queue_baseline(member: discord.Member) -> bool:
@@ -1628,6 +1769,18 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 if any(m.id in used_member_ids for m in match_members):
                     continue
 
+                package_id = str(pkg.get("id") or "").strip()
+                if not package_id:
+                    continue
+
+                matched_ids = [int(m.id) for m in match_members]
+                queue_data.setdefault("announced_matches", {})[package_id] = {
+                    "signature": _queue_match_signature(pkg, matched_ids),
+                    "queued_member_ids": matched_ids,
+                    "announced_at": datetime.now(timezone.utc).isoformat(),
+                }
+                _save_strike_queue(queue_data)
+
                 try:
                     committed_pkg = await _apply_strike_queue_match(pkg, match_members, guild)
                 except Exception as exc:
@@ -1636,7 +1789,7 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 if not committed_pkg:
                     continue
 
-                package_id = str(committed_pkg.get("id") or pkg.get("id") or "").strip()
+                package_id = str(committed_pkg.get("id") or package_id or "").strip()
                 for member_id in [m.id for m in match_members]:
                     entries.pop(str(member_id), None)
                 queue_data.setdefault("announced_matches", {}).pop(package_id, None)
@@ -7066,16 +7219,35 @@ async def strike_queue_status(interaction: discord.Interaction):
     async with _STRIKE_QUEUE_LOCK:
         queue_data = _load_strike_queue()
         queue_data, _ = _prune_strike_queue(queue_data)
+        active_entries = queue_data.setdefault("entries", {})
+        active_entry_ids = set(active_entries.keys())
+        queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
         _save_strike_queue(queue_data)
-        entry = queue_data.setdefault("entries", {}).get(str(member.id))
+        entry = active_entries.get(str(member.id))
+        ordered_entries = _ordered_queue_entries(active_entries)
 
     if not entry:
         queue_eligible = _queue_eligible_packages_for_member(member, packages, "any", guild)
-        await interaction.followup.send(
-            f"You are not queued. Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**.",
-            ephemeral=True,
+        embed = discord.Embed(title="Strike Queue Status", color=0xA31919)
+        embed.description = (
+            "You are not currently queued. "
+            f"Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**."
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
+
+    queue_position = next((idx + 1 for idx, (uid, _e) in enumerate(ordered_entries) if uid == str(member.id)), 1)
+    queue_total = len(ordered_entries)
+
+    queued_at = str(entry.get("queued_at") or "").strip()
+    queued_at_text = queued_at
+    try:
+        queued_dt = datetime.fromisoformat(queued_at)
+        if queued_dt.tzinfo is None:
+            queued_dt = queued_dt.replace(tzinfo=timezone.utc)
+        queued_at_text = f"<t:{int(queued_dt.timestamp())}:R>"
+    except Exception:
+        pass
 
     expires_at = str(entry.get("expires_at") or "").strip()
     expiry_text = expires_at
@@ -7087,16 +7259,67 @@ async def strike_queue_status(interaction: discord.Interaction):
     except Exception:
         pass
 
-    mode_text = str(entry.get("mode_preference") or "any").upper()
-    queue_eligible = _queue_eligible_packages_for_member(member, packages, str(entry.get("mode_preference") or "any"), guild)
-    await interaction.followup.send(
-        (
-            f"You are currently queued. Mode preference: **{mode_text}**. "
-            f"Queue expires {expiry_text}. "
-            f"Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**."
-        ),
-        ephemeral=True,
+    normalized_mode = str(entry.get("mode_preference") or "any")
+    mode_text = normalized_mode.upper()
+    queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
+    seats_per_sweep = sum(3 if "Hard" in str(pkg.get("mode") or "") else 5 for pkg in queue_eligible)
+    sweep_minutes = _strike_queue_match_sweep_minutes()
+    member_tentative_codes = _member_tentative_codes(queue_data, packages, int(member.id))
+    eta_text = _queue_eta_window_text_with_context(
+        queue_position,
+        seats_per_sweep,
+        sweep_minutes,
+        queue_eligible,
+        member_tentative_codes,
     )
+
+    queue_names = []
+    for uid, _e in ordered_entries:
+        try:
+            name = _queue_member_display(guild, int(uid))
+        except Exception:
+            name = f"Brother {uid}"
+        if uid == str(member.id):
+            name = f"{name} (you)"
+        queue_names.append(name)
+
+    queue_preview_cap = 10
+    queue_preview = queue_names[:queue_preview_cap]
+    queue_preview_text = "\n".join(f"{idx + 1}. {name}" for idx, name in enumerate(queue_preview))
+    if queue_total > queue_preview_cap:
+        queue_preview_text += f"\n+{queue_total - queue_preview_cap} more"
+
+    tentative_groups = _tentative_groups_for_status(queue_data, packages, guild)
+    tentative_cap = 3
+    tentative_preview = tentative_groups[:tentative_cap]
+    tentative_text = "\n".join(tentative_preview) if tentative_preview else "No tentative groups currently tracked."
+    if len(tentative_groups) > tentative_cap:
+        tentative_text += f"\n+{len(tentative_groups) - tentative_cap} more"
+
+    embed = discord.Embed(title="Strike Queue Status", color=0xA31919)
+    embed.add_field(
+        name="Your Queue Status",
+        value=(
+            f"Mode: **{mode_text}**\n"
+            f"Position: **{queue_position}/{queue_total}**\n"
+            f"Queued: {queued_at_text}\n"
+            f"Expires: {expiry_text}"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Estimated Wait",
+        value=(
+            f"{eta_text}\n"
+            f"Sweep cadence: every **{sweep_minutes} min**\n"
+            f"Eligible fully-open directives now: **{len(queue_eligible)}**"
+        ),
+        inline=False,
+    )
+    embed.add_field(name="Brothers In Queue", value=queue_preview_text or "No queued brothers.", inline=False)
+    embed.add_field(name="Tentative Groups", value=tentative_text, inline=False)
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # /log_strike_report
