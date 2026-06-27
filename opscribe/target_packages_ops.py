@@ -2773,9 +2773,9 @@ async def generate_packages(guild: discord.Guild, actor: discord.Member = None) 
         if general_channel or _is_debug_mode():
             count = len(new_packages)
             wm_flavor = [
-                "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.",
-                "Astropathic relay inbound. Ordo Xenos has transmitted new strike directives to Watch Fortress Jericho. Stand ready, brothers.",
-                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike directives. Deployment briefings to follow.",
+                "The Watch Master has received intelligence packets from Ordo Xenos. Await your orders \u2014 prepare for deployment.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
+                "Astropathic relay inbound. Ordo Xenos has transmitted new strike directives to Watch Fortress Jericho. Stand ready, brothers.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
+                "Orders inbound from Ordo Xenos. The Watch Master is reviewing strike directives. Deployment briefings to follow.\n -# **Faster way:** Use `/queue_strike` to skip the planning and get auto-assigned to a directive ready for immediate deployment.",
             ]
             wm_embed = discord.Embed(
                 title=f"{_DW_EMOJI} ᴏʀᴅᴏ xᴇɴᴏs ᴛʀᴀɴsᴍɪssɪᴏɴ {_DW_EMOJI}",
