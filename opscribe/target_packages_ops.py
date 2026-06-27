@@ -1651,14 +1651,28 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
             or _is_personally_attached(p)
         ]
 
+    # High Command visibility mirrors signup eligibility: global active pool.
+    # Captain/Lieutenant company scope is intentionally handled above.
+    if any(role_name in HIGH_COMMAND_RANKS for role_name in _mroles):
+        return _active()
+
     if _mroles & _CADRE_LEADER_ROLES:
         cadre_pkgs = [
             p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
             if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
         ]
         attached_pkgs = [p for p in _active() if _is_personally_attached(p)]
+        from .roster_ops import _get_member_company_name
+        from .forge_ops import _resolve_killteam_for_member
+
+        company = _get_member_company_name(member)
+        kt = _resolve_killteam_for_member(member)
+        baseline_pkgs = [
+            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
+            if p.get("assigned_company") == company or p.get("assigned_kt") == kt
+        ]
         merged_by_id = {p.get("id"): p for p in cadre_pkgs}
-        for p in attached_pkgs:
+        for p in baseline_pkgs + attached_pkgs:
             merged_by_id[p.get("id")] = p
         return list(merged_by_id.values())
 
