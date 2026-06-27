@@ -181,7 +181,8 @@ Up to 3 neutral wildcards (`special`/`enemy_modifier` types) drawn alongside cor
 | Tier | Chance | Roles |
 |------|--------|-------|
 | None (Watch Brother+) | 50% | Anyone active |
-| Watch Veteran / Oathsworn | 15% | Watch Veteran, Oathsworn |
+| Watch Veteran | 10% | Watch Veteran |
+| Oathsworn | 5% | Oathsworn |
 | KT command/specialist | 20% | Watch Sergeant, Kill Team Champion, Judiciar |
 | Company command/specialist | 10% | Watch Captain, LT, Company Champion, Techmarine, Apothecary, Chaplain, Librarian, Keeper, Honored Dreadnought |
 | HC | 5% | Watch Master, Lord Executioner, Forgemaster, Chief Apothecary, High Chaplain, Huntmaster, Void Warden, Castellan, Venerable Dreadnought |
