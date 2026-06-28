@@ -419,6 +419,32 @@ def test_collect_role_integrity_findings_requires_company_command_for_captain(mo
     assert "company_command_missing" in codes
 
 
+def test_collect_role_integrity_findings_requires_company_role_for_company_champion(monkeypatch):
+    member = _make_member(13, ["Watch Brother", "Watch Veteran", "Company Champion", "Watch Command"])
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "company_role_missing" in codes
+
+
+def test_collect_role_integrity_findings_does_not_require_company_role_for_lord_executioner(monkeypatch):
+    member = _make_member(14, ["Watch Brother", "Watch Veteran", "Company Champion", "Lord Executioner", "Watch Command"])
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "company_role_missing" not in codes
+
+
 def test_collect_role_integrity_findings_flags_company_command_for_specialists(monkeypatch):
     member = _make_member(12, ["Watch Brother", "Watch Apothecary", "Watch Company Primus", "Primus Command"])
     guild = SimpleNamespace(members=[member], get_role=lambda rid: SimpleNamespace(id=rid, name="Primus Command" if rid == 2002 else "Watch Company Primus"))

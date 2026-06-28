@@ -445,6 +445,25 @@ def _get_company_command_members(
     return sorted(result, key=_sort_key_for_member)
 
 
+def _get_company_champion_members(
+    guild: discord.Guild, company_name: str
+) -> List[discord.Member]:
+    """Return Company Champion members for a given company, sorted."""
+    result = []
+    for m in guild.members:
+        if m.bot:
+            continue
+        if _is_in_reserves(m):
+            continue
+        role_names = _member_role_names(m)
+        if company_name not in role_names:
+            continue
+        if "Company Champion" not in role_names:
+            continue
+        result.append(m)
+    return sorted(result, key=_sort_key_for_member)
+
+
 def _get_kill_teams_for_company(
     guild: discord.Guild, company_name: str
 ) -> List[Tuple[str, int, List[discord.Member]]]:
@@ -1052,10 +1071,26 @@ async def _update_company_roster(
 
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
+    champion_members = _get_company_champion_members(guild, company_name)
+    champion_role = discord.utils.get(getattr(guild, "roles", []), name="Company Champion")
+    champion_role_mention = _role_mention(
+        getattr(champion_role, "id", None),
+        fallback=_mention_style_label("Company Champion"),
+    )
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     cmd_embed = _build_sectioned_embed(
         _fmt_title(company_role_mention, cmd_emoji),
-        [(_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention])] + [
+        [
+            (_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention]),
+            (
+                _EMPTY_FIELD_NAME,
+                champion_members,
+                [
+                    champion_role_mention,
+                    _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
+                ],
+            ),
+        ] + [
             (
                 _EMPTY_FIELD_NAME,
                 kt_members,
