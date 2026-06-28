@@ -2140,7 +2140,6 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             watch_lieutenant,
             watch_captain,
             watch_master,
-            kill_team_champion,
             company_champion,
             lord_executioner,
             watch_techmarine,
@@ -2275,10 +2274,25 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if has_hc_role and not has_hc_rank:
             _add(member, "high_command_excess", f"Has {high_command_role} role without a qualifying rank role.")
 
+        is_ktc_only_champion = (kill_team_champion in role_names) and not any(
+            r in role_names for r in [company_champion, lord_executioner]
+        )
         has_watch_command_required = any(r in role_names for r in watch_command_required_roles)
         has_watch_command = watch_command_role in role_names
         if has_watch_command_required and not has_watch_command:
             _add(member, "watch_command_missing", f"Expected {watch_command_role} role is missing.")
+        if is_ktc_only_champion and has_watch_command:
+            _add(
+                member,
+                "watch_command_excess",
+                f"Has {watch_command_role} role at Kill Team Champion without Company Champion/Lord Executioner.",
+            )
+        if is_ktc_only_champion and has_hc_role:
+            _add(
+                member,
+                "high_command_excess",
+                f"Has {high_command_role} role at Kill Team Champion without Company Champion/Lord Executioner.",
+            )
 
         if len(company_hits) == 1 and any(r in role_names for r in company_command_membership):
             company_role_id = company_hits[0]
@@ -6912,13 +6926,15 @@ def _validate_high_command_roles(
 ) -> Tuple[bool, set[str], set[str]]:
     """Validate High Command member roles.
 
-    Required: High Command role + title/position role.
-    Most High Command positions also require Watch Command, but Kill Team
-    Champion is intentionally excluded from that extra requirement.
+    Required: title/position role.
+    Most High Command positions also require High Command + Watch Command.
+    Kill Team Champion is intentionally excluded from both command-role
+    requirements.
     Returns (is_valid, missing_roles, extra_roles).
     """
-    expected = set(expected_position_roles) | {"High Command"}
+    expected = set(expected_position_roles)
     if "Kill Team Champion" not in expected_position_roles:
+        expected.add("High Command")
         expected.add("Watch Command")
     missing = expected - actual_roles
     extra = set()
