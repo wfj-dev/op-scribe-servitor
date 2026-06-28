@@ -447,3 +447,10 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
     assert embed.fields[0].name == "▸ Company Captain & Lieutenant"
     assert "<@1>" in embed.fields[0].value
     assert "<@2>" in embed.fields[0].value
+
+
+def test_lord_executioner_specialist_group_contains_both_champion_roles():
+    groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
+    assert "Lord Executioner's Specialists" in groups
+    assert "Company Champion" in groups["Lord Executioner's Specialists"]
+    assert "Kill Team Champion" in groups["Lord Executioner's Specialists"]
