@@ -464,11 +464,11 @@
     "requirement_weights": {
       "no_requirement_chance": 0.5,
       "slot_tier": {
-        "veteran": 40,
-        "oathsworn": 1,
+        "veteran": 30,
+        "oathsworn": 10,
         "kt_command": 30,
         "company_command": 20,
-        "hc": 9
+        "hc": 10
       }
     },
     "strat_modifier_counts_by_rep_tier": {
