@@ -9,9 +9,7 @@ from unittest.mock import AsyncMock
 
 
 def _install_discord_stub():
-    if "discord" in sys.modules:
-        return
-    discord_stub = types.ModuleType("discord")
+    discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
 
     class _StubEmbed:
         def __init__(self, *, color=None, title=None, description=None):
