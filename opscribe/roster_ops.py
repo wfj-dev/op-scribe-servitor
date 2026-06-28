@@ -2159,6 +2159,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
     company_cfg = _g.CONFIG.get("companies") or {}
     company_role_ids: set[int] = set()
     company_cmd_role_by_company_role: dict[int, int] = {}
+    company_cmd_role_ids: set[int] = set()
     company_name_by_role_id: dict[int, str] = {}
     for key, entry in company_cfg.items():
         try:
@@ -2171,6 +2172,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             company_name_by_role_id[c_role] = (entry or {}).get("name") or key
             if cmd_role:
                 company_cmd_role_by_company_role[c_role] = cmd_role
+                company_cmd_role_ids.add(cmd_role)
 
     kt_role_ids = {int(x) for x in (_b("ALLOWED_KT_ROLE_IDS") or set()) if x}
     findings: list[dict] = []
@@ -2300,6 +2302,9 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             if expected_cmd_role_id and expected_cmd_role_id not in role_ids:
                 company_name = company_name_by_role_id.get(company_role_id, "company")
                 _add(member, "company_command_missing", f"Missing {company_name} command role.")
+
+        if has_specialist and any(rid in role_ids for rid in company_cmd_role_ids):
+            _add(member, "company_command_excess", "Specialists must not hold company command roles.")
 
         if kt_hits and any(r in role_names for r in company_command_or_higher_roles):
             _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
