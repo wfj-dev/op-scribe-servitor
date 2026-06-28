@@ -777,6 +777,90 @@ class TestIsEligibleToSignUp:
             tp._is_debug_mode = orig_debug
             tp._is_admin = orig_admin
 
+    def test_unscoped_member_can_signup_any_directive(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        pkg = self._base_pkg()
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71001)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is True
+        assert reason == ""
+
+    def test_scoped_member_must_match_kt_or_company(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Beta"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Secundus"),
+        )
+
+        pkg = self._base_pkg()
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71002)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is False
+        assert "not part" in reason.lower()
+
+    def test_high_command_does_not_override_structural_scope(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Beta"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Secundus"),
+        )
+
+        pkg = self._base_pkg()
+        member = _make_member(["Watch Master"], member_id=71003)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is False
+        assert "not part" in reason.lower()
+
+    def test_company_match_allows_signup_without_kt_match(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Primus"),
+        )
+
+        pkg = self._base_pkg()
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71004)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is True
+        assert reason == ""
+
 
 # ---------------------------------------------------------------------------
 # LOA expiry logic (loa_ops)
