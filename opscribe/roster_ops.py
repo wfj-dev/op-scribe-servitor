@@ -2086,6 +2086,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
     venerable_dreadnought = _role_name("venerable_dreadnought", "Venerable Dreadnought")
     dreadnought_cadre = _role_name("dreadnought_cadre", "Dreadnought Cadre")
     deathwatch_specialist = _role_name("deathwatch_specialist", "Deathwatch Specialist")
+    huntmaster = _role_name("huntmaster", "Huntmaster")
 
     high_command_role = _role_name("high_command", "High Command")
     watch_command_role = _role_name("watch_command", "Watch Command")
@@ -2100,6 +2101,17 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         "apothecary": [watch_brother, watch_veteran, watch_apothecary, chief_apothecary],
         "chaplain": [watch_brother, watch_veteran, watch_chaplain, high_chaplain],
     }
+    huntmaster_track = (
+        (cfg.get("huntmaster_required_rank_role_names") or [])
+        or [
+            watch_brother,
+            watch_veteran,
+            deathwatch_specialist,
+            watch_command_role,
+            high_command_role,
+            huntmaster,
+        ]
+    )
 
     company_command_membership = set(
         (cfg.get("company_command_rank_role_names") or [])
@@ -2205,6 +2217,11 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             if missing:
                 _add(member, f"{label}_skip", f"Missing track prerequisites: {', '.join(missing)}.")
 
+        if huntmaster in role_names:
+            missing = _track_missing_prereqs(huntmaster_track, role_names)
+            if missing:
+                _add(member, "huntmaster_skip", f"Missing track prerequisites: {', '.join(missing)}.")
+
         specialist_presence = []
         for label, track in specialist_tracks.items():
             missing = _track_missing_prereqs(track, role_names)
@@ -2224,6 +2241,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         has_oath = oathsworn in role_names
         has_champion = any(r in role_names for r in [kill_team_champion, company_champion, lord_executioner])
         has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
+        has_huntmaster = huntmaster in role_names
         has_specialist = len(specialist_presence) > 0
 
         active_tracks = []
@@ -2235,6 +2253,8 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             active_tracks.append("champion")
         if has_dread:
             active_tracks.append("dreadnought")
+        if has_huntmaster:
+            active_tracks.append("huntmaster")
         if has_specialist:
             active_tracks.append("specialist")
         if len(active_tracks) > 1:

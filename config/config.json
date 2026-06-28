@@ -317,6 +317,27 @@
     "backup_count": 5
   },
   "debug": false,
+  "role_integrity_audit": {
+    "high_command_required_rank_role_names": [
+      "Watch Captain",
+      "Watch Master",
+      "Forgemaster",
+      "Void Warden",
+      "Chief Apothecary",
+      "High Chaplain",
+      "Lord Executioner",
+      "Venerable Dreadnought",
+      "Huntmaster"
+    ],
+    "huntmaster_required_rank_role_names": [
+      "Watch Brother",
+      "Watch Veteran",
+      "Deathwatch Specialist",
+      "Watch Command",
+      "High Command",
+      "Huntmaster"
+    ]
+  },
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,

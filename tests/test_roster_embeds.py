@@ -449,11 +449,34 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
     assert "<@2>" in embed.fields[0].value
 
 
+def test_sectioned_embed_supports_watch_master_and_cadre_leaders_fields():
+    watch_master = _member(member_id=3, display_name="Watch Master", roles=[])
+    captain = _member(member_id=1, display_name="Captain One", roles=[])
+    lieutenant = _member(member_id=2, display_name="Lieutenant Two", roles=[])
+    embed = roster_embeds._build_sectioned_embed(
+        "<@&123>",
+        [
+            ("Watch Master", [watch_master]),
+            ("Cadre Leaders", [captain, lieutenant]),
+        ],
+        guild=SimpleNamespace(members=[watch_master, captain, lieutenant]),
+        image_url=None,
+        description_lines=["Honor line"],
+    )
+
+    assert [field.name for field in embed.fields] == ["▸ Watch Master", "▸ Cadre Leaders"]
+    assert "<@3>" in embed.fields[0].value
+    assert "<@1>" in embed.fields[1].value
+    assert "<@2>" in embed.fields[1].value
+
+
 def test_lord_executioner_specialist_group_contains_both_champion_roles():
     groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
     assert "Champion Hall" in groups
     assert "Company Champion" in groups["Champion Hall"]
     assert "Kill Team Champion" in groups["Champion Hall"]
+    assert "Hunting Grounds" in groups
+    assert "Huntmaster" in groups["Hunting Grounds"]
 
 
 def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():
