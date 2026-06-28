@@ -1017,6 +1017,115 @@ _TELEMETRY_COUNTERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Phase 1: Cadre-Based Specialist Migration - Config Loading
+# ---------------------------------------------------------------------------
+
+def _load_cadre_ownership_config() -> dict:
+    """Load cadre ownership mappings from config/config.json.
+
+    Returns dict mapping cadre role names to ownership info:
+    {
+        "Forgemaster": {
+            "id": 1436505765073653860,
+            "members": [
+                {"name": "Watch Techmarine", "id": 1429342203251265576},
+                ...
+            ],
+            "scope": "fortress"
+        },
+        ...
+    }
+
+    Falls back gracefully to empty dict if config absent (Phase 1 safe mode).
+    """
+    try:
+        config = _b("CONFIG") or {}
+        cadres_config = (config.get("target_packages") or {}).get("cadres") or {}
+        
+        result = {}
+        for cadre_key, cadre_data in cadres_config.items():
+            if not cadre_data or not isinstance(cadre_data, dict):
+                _g.logger.warning(f"[TP Phase1] Invalid cadre config for '{cadre_key}': missing or malformed")
+                continue
+            
+            leader_role_name = cadre_data.get("leader_role_name")
+            leader_role_id = cadre_data.get("leader_role_id")
+            member_roles = cadre_data.get("member_roles", [])
+            scope = cadre_data.get("scope", "fortress")
+            
+            if not leader_role_name or not leader_role_id:
+                _g.logger.warning(f"[TP Phase1] Cadre '{cadre_key}' missing leader role name or ID")
+                continue
+            
+            # Normalize member_roles to list of dicts
+            normalized_members = []
+            for member in member_roles:
+                if isinstance(member, dict) and member.get("name") and member.get("id"):
+                    normalized_members.append(member)
+                elif isinstance(member, str):
+                    # Legacy: convert string role name to dict
+                    normalized_members.append({"name": member, "id": None})
+            
+            result[leader_role_name] = {
+                "id": leader_role_id,
+                "members": normalized_members,
+                "scope": scope,
+                "cadre_key": cadre_key,  # For logging/debugging
+            }
+        
+        if result:
+            _g.logger.info(f"[TP Phase1] Loaded cadre ownership config: {len(result)} cadres")
+        
+        return result
+    except Exception as e:
+        _g.logger.warning(f"[TP Phase1] Failed to load cadre ownership config: {e}")
+        return {}
+
+
+def _get_cadre_ownership_mapping() -> dict:
+    """Get cadre ownership mapping with fallback to hardcoded values.
+
+    This function implements Phase 1 dual-read pattern:
+    1. Try config-backed cadre ownership (new)
+    2. Fall back to hardcoded _CADRE_OWNERSHIP (existing, Phase 1-2 compatibility)
+
+    Returns dict mapping leader role ID → set of owned specialist role IDs.
+    """
+    config_mapping = _load_cadre_ownership_config()
+    
+    if config_mapping:
+        # Convert config format to internal format
+        result = {}
+        for leader_role_name, cadre_info in config_mapping.items():
+            leader_id = cadre_info["id"]
+            member_ids = {m["id"] for m in cadre_info["members"] if m.get("id")}
+            if member_ids:
+                result[leader_id] = member_ids
+        return result
+    
+    # Fallback to hardcoded mapping (existing code)
+    # Will be removed in Phase 2 when config is required
+    return _get_cadre_ownership_mapping_hardcoded()
+
+
+def _get_cadre_ownership_mapping_hardcoded() -> dict:
+    """Hardcoded cadre ownership mapping (Phase 1 fallback, will be removed Phase 2+).
+
+    Maps leader role name → set of owned specialist role names.
+    This is the fallback when config is not available.
+    """
+    return {
+        "Lord Executioner": {"Kill Team Champion", "Company Champion"},
+        "Huntmaster": {"Huntmaster"},
+        "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
+        "Chief Apothecary": {"Watch Apothecary"},
+        "High Chaplain": {"Watch Chaplain"},
+        "Void Warden": {"Watch Librarian"},
+        "Castellan": {"Watch Keeper"},
+    }
+
+
 async def _notify_send(
     channel,
     guild: discord.Guild,
@@ -7144,20 +7253,28 @@ def _is_cadre_leader(member: discord.Member) -> bool:
 def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bool:
     """Return True if the cadre leader has authority over the given specialist role.
     
+    Phase 1: Try config-backed mapping first, fall back to hardcoded if not available.
     Cadre leaders can assign themselves only if they personally hold the required role.
     Forgemaster manages Dreadnoughts administratively but cannot self-assign as one.
     """
-    _CADRE_OWNERSHIP = {
-        "Lord Executioner": {"Kill Team Champion", "Company Champion"},
-        "Huntmaster": {"Huntmaster"},
-        "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
-        "Chief Apothecary": {"Watch Apothecary"},
-        "High Chaplain": {"Watch Chaplain"},
-        "Void Warden": {"Watch Librarian"},
-        "Castellan": {"Watch Keeper"},
-    }
+    # Try config-backed mapping first (Phase 1+)
+    try:
+        config_mapping = _load_cadre_ownership_config()
+        if config_mapping:
+            cl_roles = _member_role_names(cadre_leader)
+            for cl_role, cadre_info in config_mapping.items():
+                if cl_role in cl_roles:
+                    # Check if specialist_role is in owned members
+                    member_names = {m.get("name") for m in cadre_info["members"] if m.get("name")}
+                    if specialist_role in member_names:
+                        return True
+    except Exception as e:
+        _g.logger.warning(f"[TP Phase1] Error checking config cadre ownership: {e}")
+    
+    # Fallback to hardcoded mapping (Phase 1 compatibility)
+    hardcoded_mapping = _get_cadre_ownership_mapping_hardcoded()
     cl_roles = _member_role_names(cadre_leader)
-    for cl_role, owned in _CADRE_OWNERSHIP.items():
+    for cl_role, owned in hardcoded_mapping.items():
         if cl_role in cl_roles and specialist_role in owned:
             return True
     return False
