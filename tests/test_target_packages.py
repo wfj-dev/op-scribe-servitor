@@ -1771,6 +1771,48 @@ class TestStrikeQueueMatching:
 
         assert tp._strike_queue_match_sweep_minutes() == 15
 
+    def test_member_queue_wait_time_minutes_treats_naive_timestamps_as_utc(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc)
+
+        class _DateTimeProxy:
+            @staticmethod
+            def fromisoformat(value):
+                return datetime.fromisoformat(value)
+
+            @staticmethod
+            def now(_tz=None):
+                return now
+
+        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
+
+        wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T12:00:00"})
+
+        assert wait == 30.0
+
+    def test_member_queue_wait_time_minutes_accepts_z_suffix_and_clamps_future_timestamps(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc)
+
+        class _DateTimeProxy:
+            @staticmethod
+            def fromisoformat(value):
+                return datetime.fromisoformat(value)
+
+            @staticmethod
+            def now(_tz=None):
+                return now
+
+        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
+
+        wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T12:00:00Z"})
+        future_wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T13:00:00Z"})
+
+        assert wait == 30.0
+        assert future_wait == 0.0
+
     def test_prune_announced_match_when_queued_member_is_gone(self):
         import opscribe.target_packages_ops as tp
 
@@ -2257,8 +2299,8 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 2)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 0.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 0.0)
 
         async def _fake_finalize(*_args, **_kwargs):
             return None
@@ -2295,8 +2337,10 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 3)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 3)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 80.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
+        # Queue has an oldest waiter (id=2) and a newer waiter (id=3); the newer one drags the match below 80%.
+        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda m, _entry: 100.0 if m.id == 2 else 10.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
 
@@ -2323,8 +2367,9 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 1)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 100.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
+        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda *_args, **_kwargs: 0.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
 
