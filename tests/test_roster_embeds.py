@@ -451,9 +451,9 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
 
 def test_lord_executioner_specialist_group_contains_both_champion_roles():
     groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
-    assert "Champions" in groups
-    assert "Company Champion" in groups["Champions"]
-    assert "Kill Team Champion" in groups["Champions"]
+    assert "Champion Hall" in groups
+    assert "Company Champion" in groups["Champion Hall"]
+    assert "Kill Team Champion" in groups["Champion Hall"]
 
 
 def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():
