@@ -5,7 +5,7 @@ Embeds are posted once via /roster_post (Forgemaster only) and then edited
 in-place by a daily task and by /roster_refresh (Watch Command+).
 
 Embed layout per company channel:
-    1. HIGH COMMAND               — Watch Master plus High Command members
+    1. HIGH COMMAND               — Cadre leaders only
     2. DEATHWATCH SPECIALIST      — one field per specialist cadre
     3. COMPANY ROSTER             — company captain/lieutenant plus one field per Kill Team
 
@@ -1000,7 +1000,6 @@ async def _update_company_roster(
 
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
-    watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
     high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
     specialist_sections: list[tuple[str, list[discord.Member], list[str]]] = []
     for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
@@ -1021,7 +1020,7 @@ async def _update_company_roster(
 
     hc_embed = _build_sectioned_embed(
         _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        [("Watch Master", watch_master_members), ("High Command", high_command_members)],
+        [("Cadre Leaders", high_command_members)],
         guild,
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
