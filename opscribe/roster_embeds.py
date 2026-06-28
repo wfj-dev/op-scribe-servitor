@@ -92,10 +92,10 @@ _EMPTY_FIELD_NAME = "\u200b"
 _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
-    ("Forge Cadre", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
+    ("The Forge", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Apothecarion", {"Watch Apothecary"}),
     ("Reclusiam", {"Watch Chaplain"}),
-    ("Executioner Cadre", {"Company Champion", "Kill Team Champion"}),
+    ("Champions", {"Company Champion", "Kill Team Champion"}),
     ("Librarius", {"Watch Librarian"}),
 )
 
