@@ -1787,6 +1787,23 @@ def _queue_wait_percent_of_oldest(wait_minutes: float, max_wait_minutes: float) 
     return max(0.0, min(100.0, (wait_minutes / max_wait_minutes) * 100.0))
 
 
+def _queue_match_wait_percent(
+    entry_map: dict[str, dict],
+    match_members: list[discord.Member],
+    max_wait_minutes: float,
+) -> float:
+    """Return the shortest relative wait percent among matched members."""
+    if not match_members:
+        return 0.0
+    return min(
+        _queue_wait_percent_of_oldest(
+            _member_queue_wait_time_minutes(member, entry_map.get(str(member.id), {})),
+            max_wait_minutes,
+        )
+        for member in match_members
+    )
+
+
 async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
     if guild is None:
         return 0
@@ -1855,24 +1872,12 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
                 # Gate backfill tiers by relative queue age, not fixed minutes.
                 if quality_tier == 1:
-                    match_wait_percent = min(
-                        _queue_wait_percent_of_oldest(
-                            _member_queue_wait_time_minutes(m, entries.get(str(m.id), {})),
-                            max_wait_minutes,
-                        )
-                        for m in match_members
-                    ) if match_members else 0.0
+                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
                     if match_wait_percent < partial_wait_threshold:
                         continue
 
                 if quality_tier == 2:
-                    match_wait_percent = min(
-                        _queue_wait_percent_of_oldest(
-                            _member_queue_wait_time_minutes(m, entries.get(str(m.id), {})),
-                            max_wait_minutes,
-                        )
-                        for m in match_members
-                    ) if match_members else 0.0
+                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
                     if match_wait_percent < single_wait_threshold:
                         continue
 
