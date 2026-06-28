@@ -139,6 +139,7 @@ import opscribe.roster_embeds as roster_embeds
 def _member(*, member_id=1, nick=None, display_name=None, name=None, roles=None):
     return SimpleNamespace(
         id=member_id,
+        bot=False,
         nick=nick,
         display_name=display_name,
         name=name,
@@ -477,6 +478,30 @@ def test_lord_executioner_specialist_group_contains_both_champion_roles():
     assert "Kill Team Champion" in groups["Champion Hall"]
     assert "Hunting Grounds" in groups
     assert "Huntmaster" in groups["Hunting Grounds"]
+
+
+def test_get_company_champion_members_filters_by_company_and_role():
+    champion_primus = _member(
+        member_id=20,
+        display_name="Champion Primus",
+        roles=[_role(1, "Watch Company Primus"), _role(2, "Company Champion")],
+    )
+    champion_other_company = _member(
+        member_id=21,
+        display_name="Champion Secundus",
+        roles=[_role(3, "Watch Company Secundus"), _role(4, "Company Champion")],
+    )
+    not_champion = _member(
+        member_id=22,
+        display_name="Captain Primus",
+        roles=[_role(5, "Watch Company Primus"), _role(6, "Watch Captain")],
+    )
+
+    guild = SimpleNamespace(members=[champion_primus, champion_other_company, not_champion])
+
+    members = roster_embeds._get_company_champion_members(guild, "Watch Company Primus")
+
+    assert [m.id for m in members] == [20]
 
 
 def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():

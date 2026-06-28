@@ -2207,6 +2207,9 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if len(kt_hits) > 1:
             _add(member, "multi_kill_team", "Member holds multiple kill team roles.")
 
+        if company_champion in role_names and lord_executioner not in role_names and len(company_hits) == 0:
+            _add(member, "company_role_missing", "Company Champion must hold a company role.")
+
         # No-skip checks across each declared track.
         for label, track in (
             ("command", command_track),

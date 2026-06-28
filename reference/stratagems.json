@@ -59,7 +59,7 @@
       "name": "Atrophy",
       "description": "Incapacitation reduces max Health by 25% (floor: 10% of base) instead of killing.",
       "type": "debuff",
-      "excluded": false,
+      "excluded": true,
       "pools": [
         "apothecary"
       ],
