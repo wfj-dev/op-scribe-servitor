@@ -1572,8 +1572,6 @@ def _member_can_remain_attached_to_directive(
     is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
     assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
-    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
-        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
 
     mode = str(pkg.get("mode") or "")
     if "Omega" in mode and not _tp_get_player_platform(member):
@@ -1585,8 +1583,14 @@ def _member_can_remain_attached_to_directive(
             for role_name in (pkg.get("required_roles", []) or [])
             if role_name in _CADRE_SPECIALIST_ROLES
         ]
-        if required_specialist_roles and not any(role_name in member_roles for role_name in required_specialist_roles):
+        if required_specialist_roles and any(role_name in member_roles for role_name in required_specialist_roles):
+            return True, ""
+        if required_specialist_roles:
             return False, "Member no longer holds a required specialist role for this directive."
+        return False, "This directive does not require a specialist attachment."
+
+    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
+        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
 
     return True, ""
 
@@ -2100,17 +2104,8 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
             if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
         ]
         attached_pkgs = [p for p in _active() if _is_personally_attached(p)]
-        from .roster_ops import _get_member_company_name
-        from .forge_ops import _resolve_killteam_for_member
-
-        company = _get_member_company_name(member)
-        kt = _resolve_killteam_for_member(member)
-        baseline_pkgs = [
-            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
-            if p.get("assigned_company") == company or p.get("assigned_kt") == kt
-        ]
         merged_by_id = {p.get("id"): p for p in cadre_pkgs}
-        for p in baseline_pkgs + attached_pkgs:
+        for p in attached_pkgs:
             merged_by_id[p.get("id")] = p
         return list(merged_by_id.values())
 
@@ -2473,36 +2468,14 @@ def _count_active_kts(guild: discord.Guild) -> int:
 def _get_active_roles_in_guild(guild: discord.Guild) -> set:
     """Return set of role names held by at least one active non-LOA member.
 
-    Roles are excluded when:
-    - A cadre leader (Forgemaster, Chief Apothecary, etc.) is on LOA — all roles
-      they administer are removed.
-    - A specialist role has no remaining non-LOA, non-Reserves holder.
+    Availability is driven only by active non-LOA members. Specialist roles no
+    longer cascade-exclude when a cadre leader is on LOA.
     """
-    _CADRE_ADMIN_ROLES = {
-        "Forgemaster": {"Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought", "Forgemaster"},
-        "Chief Apothecary": {"Watch Apothecary", "Chief Apothecary"},
-        "High Chaplain": {"Watch Chaplain", "High Chaplain"},
-        "Void Warden": {"Watch Librarian", "Void Warden"},
-        "Castellan": {"Watch Keeper", "Castellan"},
-        "Lord Executioner": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
-        "Huntmaster": {"Huntmaster"},
-    }
-
     def _is_loa(m: discord.Member) -> bool:
         return any(getattr(r, "id", 0) == LOA_ROLE_ID for r in getattr(m, "roles", []))
 
     active = _active_members(guild)  # already excludes Reserves
     present: set = set()
-    excluded: set = set()
-
-    # Check cadre leaders on LOA — remove their entire cadre from available roles
-    for m in active:
-        if not _is_loa(m):
-            continue
-        roles = _member_role_names(m)
-        for leader_role, admin_set in _CADRE_ADMIN_ROLES.items():
-            if leader_role in roles:
-                excluded.update(admin_set)
 
     # Build available roles from non-LOA active members
     for m in active:
@@ -2510,10 +2483,7 @@ def _get_active_roles_in_guild(guild: discord.Guild) -> set:
             continue
         present.update(_member_role_names(m))
 
-    # For specialist roles not already excluded via cadre leaders: remove if no non-LOA holder
-    # (present already only contains non-LOA roles, so this is implicit)
-
-    return present - excluded
+    return present
 
 
 def _get_active_role_counts(guild: discord.Guild) -> dict:
@@ -2521,38 +2491,17 @@ def _get_active_role_counts(guild: discord.Guild) -> dict:
 
     Counts how many eligible members hold each role. Used by _draw_requirements
     to allow duplicate role requirements up to the number of available holders.
-    Roles excluded by LOA cadre-leader logic are omitted entirely.
+    Only roles held by active non-LOA members are counted.
     """
-    excluded = _get_active_roles_in_guild.__wrapped__(guild)[1] if hasattr(_get_active_roles_in_guild, '__wrapped__') else set()
-    # Recompute excluded set inline (same logic as _get_active_roles_in_guild)
-    _CADRE_ADMIN_ROLES = {
-        "Forgemaster": {"Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought", "Forgemaster"},
-        "Chief Apothecary": {"Watch Apothecary", "Chief Apothecary"},
-        "High Chaplain": {"Watch Chaplain", "High Chaplain"},
-        "Void Warden": {"Watch Librarian", "Void Warden"},
-        "Castellan": {"Watch Keeper", "Castellan"},
-        "Lord Executioner": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
-        "Huntmaster": {"Huntmaster"},
-    }
     def _is_loa(m: discord.Member) -> bool:
         return any(getattr(r, "id", 0) == LOA_ROLE_ID for r in getattr(m, "roles", []))
     active = _active_members(guild)
-    excluded: set = set()
-    for m in active:
-        if not _is_loa(m):
-            continue
-        roles = _member_role_names(m)
-        for leader_role, admin_set in _CADRE_ADMIN_ROLES.items():
-            if leader_role in roles:
-                excluded.update(admin_set)
-
     counts: dict = {}
     for m in active:
         if _is_loa(m):
             continue
         for rn in _member_role_names(m):
-            if rn not in excluded:
-                counts[rn] = counts.get(rn, 0) + 1
+            counts[rn] = counts.get(rn, 0) + 1
     return counts
 
 
