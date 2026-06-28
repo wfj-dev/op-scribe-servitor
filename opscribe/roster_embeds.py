@@ -5,8 +5,9 @@ Embeds are posted once via /roster_post (Forgemaster only) and then edited
 in-place by a daily task and by /roster_refresh (Watch Command+).
 
 Embed layout per company channel:
-    1. HIGH COMMAND + SPECIALISTS — HC members plus one field per cadre specialist group
-    2. COMPANY ROSTER             — company captain/lieutenant plus one field per Kill Team
+    1. HIGH COMMAND               — Watch Master plus High Command members
+    2. DEATHWATCH SPECIALIST      — one field per specialist cadre
+    3. COMPANY ROSTER             — company captain/lieutenant plus one field per Kill Team
 
 Members in Reserves are excluded from all embeds.
 """
@@ -87,12 +88,14 @@ _HONOUR_LABELS = {
 }
 
 _ROSTER_FIELD_CHAR_LIMIT = 1024
+_EMPTY_FIELD_NAME = "\u200b"
+_DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
     ("Forge Cadre", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Apothecarion", {"Watch Apothecary"}),
     ("Reclusiam", {"Watch Chaplain"}),
-    ("Champion Cadre", {"Company Champion", "Kill Team Champion"}),
+    ("Executioner Cadre", {"Company Champion", "Kill Team Champion"}),
     ("Librarius", {"Watch Librarian"}),
 )
 
@@ -167,6 +170,7 @@ def _load_roster_state() -> dict:
             "Watch Company Primus": {
                 "channel_id": 1433351509722267658,
                 "hc_message_id": null,
+                "specialist_message_id": null,
                 "command_message_id": null,
                 "killteam_message_ids": {"Kill Team Alpha": 123456}
             },
@@ -177,6 +181,7 @@ def _load_roster_state() -> dict:
         company: {
             "channel_id": channel_id,
             "hc_message_id": None,
+            "specialist_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
         }
@@ -196,6 +201,7 @@ def _load_roster_state() -> dict:
                     merged_state[company] = {
                         "channel_id": existing_company_state.get("channel_id", default_company_state["channel_id"]),
                         "hc_message_id": existing_company_state.get("hc_message_id"),
+                        "specialist_message_id": existing_company_state.get("specialist_message_id"),
                         "command_message_id": existing_company_state.get("command_message_id"),
                         "killteam_message_ids": (
                             existing_company_state.get("killteam_message_ids")
@@ -365,8 +371,9 @@ def _build_sectioned_embed(
             lead_lines = None
         else:
             section_name, members, lead_lines = section
+        field_name = section_name if section_name == _EMPTY_FIELD_NAME else f"▸ {section_name}"
         embed.add_field(
-            name=f"▸ {section_name}",
+            name=field_name,
             value=_render_member_block(
                 guild,
                 members,
@@ -503,6 +510,17 @@ def _mention_style_label(name: str) -> str:
     return clean if clean.startswith("@") else f"@{clean}"
 
 
+def _role_mention(role_id: int | None, fallback: str = "") -> str:
+    """Return a real Discord role mention when an ID is available."""
+    try:
+        resolved = int(role_id or 0)
+    except Exception:
+        resolved = 0
+    if resolved:
+        return f"<@&{resolved}>"
+    return fallback
+
+
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     """Render a single roster line: ``:chapteremoji: | @mention``."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
@@ -590,6 +608,35 @@ def _tp_status_for_company(
         if any(p.get("status") == "deployed" for p in company_pkgs):
             return f"-# 🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
         return f"-# 🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+    except Exception:
+        return "-# 🟢 Ready for Deployment"
+
+
+def _tp_status_for_members(
+    member_ids: set[int],
+    packages: dict | None = None,
+) -> str:
+    """Return active directive status for an arbitrary member set."""
+    try:
+        if packages is None:
+            path = os.path.join("data", "target_packages.json")
+            if not os.path.exists(path):
+                return "-# 🟢 Ready for Deployment"
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            packages = data.get("packages", {})
+
+        active_statuses = {"pending_sgt", "recruiting", "deployed"}
+        relevant_pkgs = [
+            p for p in packages.values()
+            if p.get("status") in active_statuses and bool(_package_member_ids(p) & member_ids)
+        ]
+
+        if not relevant_pkgs:
+            return "-# 🟢 Ready for Deployment"
+        if any(p.get("status") == "deployed" for p in relevant_pkgs):
+            return f"-# 🔴 Deployed ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
+        return f"-# 🟡 Assigned ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
     except Exception:
         return "-# 🟢 Ready for Deployment"
 
@@ -927,6 +974,12 @@ async def _update_company_roster(
     # Resolve company role mention for the company roster banner.
     company_role = discord.utils.get(guild.roles, name=company_name)
     company_role_mention = f"<@&{company_role.id}>" if company_role else company_name
+    company_key = company_name.replace("Watch Company", "").strip().lower()
+    company_cfg = ((_g.CONFIG or {}).get("companies") or {}).get(company_key) or {}
+    company_command_role_mention = _role_mention(
+        company_cfg.get("companyCommandRoleId"),
+        fallback="Company Command",
+    )
 
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
@@ -943,22 +996,32 @@ async def _update_company_roster(
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
 
-    # ── Embed 1: High Command + Specialists ─────────────────────────────────
+    cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
+
+    # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
     high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
-    specialist_sections: list[tuple[str, list[discord.Member]]] = []
+    specialist_sections: list[tuple[str, list[discord.Member], list[str]]] = []
     for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
         specialist_members = _collect_members_with_roles(
             guild,
             set(role_names),
             exclude_roles={"Watch Master"},
         )
-        specialist_sections.append((section_name, specialist_members))
+        specialist_sections.append(
+            (
+                section_name,
+                specialist_members,
+                [
+                    _tp_status_for_members({m.id for m in specialist_members}, packages=_tp_packages),
+                ],
+            )
+        )
 
     hc_embed = _build_sectioned_embed(
         _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        [("Watch Master", watch_master_members), ("High Command", high_command_members)] + specialist_sections,
+        [("Watch Master", watch_master_members), ("High Command", high_command_members)],
         guild,
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
@@ -972,22 +1035,38 @@ async def _update_company_roster(
     )
     company_state["hc_message_id"] = hc_msg_id
 
-    # ── Embed 2: Company roster (command + Kill Teams) ───────────────────────
+    # ── Embed 2: Deathwatch Specialist cadres ───────────────────────────────
+    specialist_embed = _build_sectioned_embed(
+        _fmt_title(f"<@&{_DEATHWATCH_SPECIALIST_ROLE_ID}>", cmd_emoji),
+        specialist_sections,
+        guild,
+        last_updated=now,
+        image_url=cmd_image,
+        description_lines=[
+            _fortress_rep_title(tp_data=_tp_data),
+        ],
+    )
+    specialist_msg_id = await _upsert_message(
+        channel, company_state.get("specialist_message_id"), specialist_embed
+    )
+    company_state["specialist_message_id"] = specialist_msg_id
+
+    # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
-    cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     cmd_embed = _build_sectioned_embed(
         _fmt_title(company_role_mention, cmd_emoji),
-        [("Company Command", cmd_members)] + [
+        [(_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention])] + [
             (
-                _mention_style_label(kt_name),
+                _EMPTY_FIELD_NAME,
                 kt_members,
                 [
+                    _role_mention(kt_role_id, fallback=_mention_style_label(kt_name)),
                     _tp_status_for_kt(kt_name, packages=_tp_packages),
                     _honors_title_for_kt(kt_name, honors=_honors_data),
                 ],
             )
-            for kt_name, _kt_role_id, kt_members in kill_teams
+            for kt_name, kt_role_id, kt_members in kill_teams
         ],
         guild,
         last_updated=now,

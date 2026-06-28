@@ -6663,8 +6663,9 @@ async def _find_roster_messages(
 
     - Skip first 4 messages (newest)
     - 5th message (index 4) = High Command
-    - 6th message (index 5) = Company Command
-    - 7th+ (index 6+) = Kill Teams (multiple messages possible)
+    - 6th message (index 5) = Deathwatch Specialist
+    - 7th message (index 6) = Company Command
+    - 8th+ (index 7+) = Kill Teams (multiple messages possible)
 
     Returns (high_command_msg, company_command_msg, kill_teams_msgs_list).
     """
@@ -6677,6 +6678,7 @@ async def _find_roster_messages(
         company_state = _load_roster_state_for_channel(roster_channel_id)
         if company_state:
             hc_message_id = int(company_state.get("hc_message_id", 0) or 0)
+            specialist_message_id = int(company_state.get("specialist_message_id", 0) or 0)
             cmd_message_id = int(company_state.get("command_message_id", 0) or 0)
             kt_state = company_state.get("killteam_message_ids") or {}
 
@@ -6689,6 +6691,7 @@ async def _find_roster_messages(
                     return None
 
             high_cmd = await _fetch_if_set(hc_message_id)
+            _specialist = await _fetch_if_set(specialist_message_id)
             company_cmd = await _fetch_if_set(cmd_message_id)
             kill_teams = []
             if isinstance(kt_state, dict):
@@ -6700,7 +6703,7 @@ async def _find_roster_messages(
                     if fetched is not None:
                         kill_teams.append(fetched)
 
-            if high_cmd is not None or company_cmd is not None or kill_teams:
+            if high_cmd is not None or _specialist is not None or company_cmd is not None or kill_teams:
                 return high_cmd, company_cmd, kill_teams
 
         # Fetch messages (returns in reverse chronological order - newest first)
@@ -6717,11 +6720,11 @@ async def _find_roster_messages(
 
         # Extract based on position
         high_cmd = messages[4] if len(messages) > 4 else None
-        company_cmd = messages[5] if len(messages) > 5 else None
-        kill_teams = messages[6:] if len(messages) > 6 else []
+        company_cmd = messages[6] if len(messages) > 6 else None
+        kill_teams = messages[7:] if len(messages) > 7 else []
 
         _g.logger.debug(f"Found {len(messages)} messages in roster channel")
-        _g.logger.debug(f"HC: msg {4}, CC: msg {5}, KTs: msgs {6}+")
+        _g.logger.debug(f"HC: msg {4}, Specialist: msg {5}, CC: msg {6}, KTs: msgs {7}+")
 
         return high_cmd, company_cmd, kill_teams
     except Exception:
