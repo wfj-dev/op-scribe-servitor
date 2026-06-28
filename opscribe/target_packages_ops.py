@@ -1828,7 +1828,7 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 (_member_queue_wait_time_minutes(member, entry) for member, entry in active_entries),
                 default=0.0,
             )
-            
+
             for pkg in packages.values():
                 if pkg.get("status") != STATUS_RECRUITING:
                     continue
@@ -1852,7 +1852,7 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                     continue
 
                 quality_tier = _queue_match_quality_tier(pkg, len(match_members))
-                
+
                 # Gate backfill tiers by relative queue age, not fixed minutes.
                 if quality_tier == 1:
                     match_wait_percent = min(
@@ -1868,8 +1868,7 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                 if quality_tier == 2:
                     match_wait_percent = min(
                         _queue_wait_percent_of_oldest(
-                        _member_queue_wait_time_minutes(m, entries.get(str(m.id), {}))
-                            ,
+                            _member_queue_wait_time_minutes(m, entries.get(str(m.id), {})),
                             max_wait_minutes,
                         )
                         for m in match_members
@@ -1890,8 +1889,8 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
             candidate_matches.sort(key=_queue_match_sort_key)
 
-            committed = 0
             used_member_ids: set[int] = set()
+            committed = 0
             for pkg, match_members, existing_names, _oldest_queue in candidate_matches:
                 if any(m.id in used_member_ids for m in match_members):
                     continue
