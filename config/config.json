@@ -320,6 +320,8 @@
   "schedules": {
     "daily_audit_enabled": false,
     "daily_audit_span_days": 1,
+    "role_integrity_audit_enabled": true,
+    "role_integrity_audit_hour": 12,
     "weekly_maintenance_enabled": true,
     "weekly_maintenance_day": 1,
     "weekly_maintenance_hour": 3,
