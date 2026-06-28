@@ -1968,6 +1968,59 @@ class TestStrikeQueueMatching:
         assert refreshed == [pkg["id"]]
         assert notified == [(77, pkg["id"], 9001)]
 
+    def test_assign_specialist_allows_cross_company_attachment(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(required_roles=["Watch Apothecary"], assigned_specialist_ids=[])
+        pkg["assigned_company"] = "Watch Company Primus"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        specialist = _with_company_role(_make_member(["Watch Brother", "Watch Apothecary"], member_id=78), company_name="Watch Company Secundus")
+        leader = _with_company_role(_make_member(["Chief Apothecary"], member_id=9002), company_name="Watch Company Primus")
+        guild = _make_guild([specialist, leader])
+
+        removed_from_queue = []
+        refreshed = []
+        notified = []
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_check_deployed", lambda *_args, **_kwargs: False)
+        monkeypatch.setattr(tp, "_cadre_leader_owns", lambda _leader, role_name: role_name == "Watch Apothecary")
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda member: "Watch Company Secundus" if member.id == 78 else "Watch Company Primus"),
+        )
+
+        async def _fake_remove_from_queue(user_id):
+            removed_from_queue.append(user_id)
+            return True
+
+        async def _fake_refresh(package_id, _guild):
+            refreshed.append(package_id)
+
+        async def _fake_notify(member, package_id, _pkg, _guild, cadre_leader=None):
+            notified.append((member.id, package_id, cadre_leader.id if cadre_leader else None))
+
+        monkeypatch.setattr(tp, "_remove_member_from_strike_queue", _fake_remove_from_queue)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_notify_specialist_assigned", _fake_notify)
+
+        ok, _msg = asyncio.run(tp.assign_specialist(pkg["id"], specialist, leader, guild))
+
+        assert ok is True
+        assert pkg["assigned_specialist_ids"] == [78]
+        assert pkg["specialist_assigners"]["78"] == 9002
+        assert removed_from_queue == [78]
+        assert refreshed == [pkg["id"]]
+        assert notified == [(78, pkg["id"], 9002)]
+
     def test_reconcile_member_directive_attachments_removes_signed_member_after_scope_change(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 

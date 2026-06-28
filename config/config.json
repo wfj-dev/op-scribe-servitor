@@ -528,7 +528,7 @@
           ],
           "scope": "fortress"
         },
-        "apothecary": {
+        "apothecarion": {
           "version": 1,
           "leader_role_name": "Chief Apothecary",
           "leader_role_id": 1455224397387272363,
@@ -540,7 +540,7 @@
           ],
           "scope": "fortress"
         },
-        "chapel": {
+        "reclusiam": {
           "version": 1,
           "leader_role_name": "High Chaplain",
           "leader_role_id": 1436506654458904576,
@@ -552,7 +552,7 @@
           ],
           "scope": "fortress"
         },
-        "execution": {
+        "champion": {
           "version": 1,
           "leader_role_name": "Lord Executioner",
           "leader_role_id": 1435341811886588154,
@@ -570,7 +570,7 @@
           "scope": "fortress",
           "notes": "Kill Team Champion remains tied to Kill Team scope despite Lord Executioner ownership (fortress-wide authority only)"
         },
-        "librarium": {
+        "librarius": {
           "version": 1,
           "leader_role_name": "Void Warden",
           "leader_role_id": 1455226254897975389,
