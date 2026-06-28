@@ -12,7 +12,6 @@ Tests cover:
 import asyncio
 import sys
 import types
-import random
 from itertools import combinations as itertools_combinations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
@@ -2730,7 +2729,7 @@ class TestPhase0Regression:
         # Draw requirements with empty available roles
         req_tier, requirements = _draw_requirements(set(), mode="Hard-Strat")
         # Should return a valid tier and a list of requirements
-        assert req_tier in (_REQ_TIER_NO_REQ, _REQ_TIER_HC, _REQ_TIER_COMPANY_COMMAND) or req_tier is not None
+        assert req_tier in _TIER_ROLES or req_tier == _REQ_TIER_NO_REQ
         assert isinstance(requirements, list)
 
     def test_draw_requirements_with_available_roles(self):

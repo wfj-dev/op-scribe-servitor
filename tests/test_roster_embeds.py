@@ -5,10 +5,7 @@ from unittest.mock import patch
 
 
 def _install_discord_stub():
-    if "discord" in sys.modules:
-        return
-
-    discord_stub = types.ModuleType("discord")
+    discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
 
     class _StubEmbed:
         def __init__(self, *, color=None, title=None, description=None):
@@ -322,11 +319,10 @@ def test_honors_title_for_kt_returns_empty_for_unproven():
 
 
 def test_honors_title_for_kt_returns_formatted_tier():
-    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Stalwart"}}, "companies": {}}
+    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Initiated"}}, "companies": {}}
     result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
-    # Unknown tier values fall back to the first configured tier.
     assert result.startswith("-# ")
-    assert "**Unproven**" in result
+    assert "**Initiated**" in result
 
 
 def test_honors_title_for_company_returns_empty_for_unrecorded():
@@ -344,11 +340,10 @@ def test_honors_title_for_company_returns_empty_for_unknown_company():
 
 
 def test_honors_title_for_company_returns_formatted_tier():
-    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Renowned"}}}
+    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Marked"}}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
-    # Unknown tier values fall back to the first configured tier.
     assert result.startswith("-# ")
-    assert "**Unrecorded**" in result
+    assert "**Marked**" in result
 
 
 def test_load_honors_returns_empty_dict_when_file_missing():
