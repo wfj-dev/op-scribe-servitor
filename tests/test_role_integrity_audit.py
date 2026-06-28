@@ -164,10 +164,10 @@ def test_post_role_integrity_findings_accepts_preformatted_role_mention(monkeypa
     assert sent_messages[0]["content"] == "<@&456>"
 
 
-def test_validate_high_command_roles_does_not_require_watch_command_for_ktc():
+def test_validate_high_command_roles_does_not_require_command_roles_for_ktc():
     is_valid, missing, extra = ro._validate_high_command_roles(
         ["Kill Team Champion"],
-        {"High Command", "Kill Team Champion"},
+        {"Kill Team Champion"},
     )
 
     assert is_valid is True
@@ -200,6 +200,36 @@ def test_collect_role_integrity_findings_reports_track_and_prereq_conflicts(monk
     assert "oathsworn_skip" in codes
     assert "track_mixing" in codes
     assert "oathsworn_terminal" in codes
+
+
+def test_collect_role_integrity_findings_does_not_require_watch_command_for_ktc_only(monkeypatch):
+    member = _make_member(10, ["Watch Brother", "Watch Veteran", "Kill Team Champion"])
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "watch_command_missing" not in codes
+
+
+def test_collect_role_integrity_findings_flags_watch_and_high_command_for_ktc_only(monkeypatch):
+    member = _make_member(
+        11,
+        ["Watch Brother", "Watch Veteran", "Kill Team Champion", "Watch Command", "High Command"],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = [f["code"] for f in findings]
+
+    assert "watch_command_excess" in codes
+    assert "high_command_excess" in codes
 
 
 def test_collect_role_integrity_findings_treats_huntmaster_as_high_command(monkeypatch):
