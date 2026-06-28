@@ -2106,11 +2106,6 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         or [
             watch_lieutenant,
             watch_captain,
-            watch_techmarine,
-            watch_librarian,
-            watch_chaplain,
-            watch_apothecary,
-            company_champion,
         ]
     )
     high_command_required_roles = set(
@@ -2337,38 +2332,50 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
     return True
 
 
+async def _run_role_integrity_audit_once(*, force: bool = False) -> bool:
+    """Execute one role-integrity audit pass.
+
+    Returns True when an audit pass was executed, False when skipped by config/gates.
+    When force=True, hour/day gates are bypassed (used for startup immediate run).
+    """
+    cfg = _role_integrity_cfg()
+    if cfg.get("enabled") is False:
+        return False
+
+    now = datetime.now(timezone.utc)
+    if not force:
+        hour_gate = _schedule_role_audit_hour_utc()
+        if now.hour < hour_gate:
+            return False
+
+    state = _load_role_integrity_state()
+    today = now.strftime("%Y-%m-%d")
+    if (not force) and state.get("last_run_date") == today:
+        return False
+
+    guild = _b("_resolve_notification_guild")()
+    if not guild:
+        return False
+
+    findings = await _collect_role_integrity_findings(guild)
+    posted = False
+    if findings:
+        posted = await _post_role_integrity_findings(guild, findings)
+
+    state["last_run_date"] = today
+    state["last_run_at"] = now.isoformat()
+    state["last_findings_count"] = len(findings)
+    state["last_posted"] = bool(posted)
+    state["last_forced"] = bool(force)
+    _save_role_integrity_state(state)
+    return True
+
+
 @tasks.loop(hours=1)
 async def _role_integrity_audit_loop():
     """Daily role-integrity audit (day-gated, UTC hour-gated) with HighCom reporting."""
     try:
-        cfg = _role_integrity_cfg()
-        if cfg.get("enabled") is False:
-            return
-
-        now = datetime.now(timezone.utc)
-        hour_gate = _schedule_role_audit_hour_utc()
-        if now.hour < hour_gate:
-            return
-
-        state = _load_role_integrity_state()
-        today = now.strftime("%Y-%m-%d")
-        if state.get("last_run_date") == today:
-            return
-
-        guild = _b("_resolve_notification_guild")()
-        if not guild:
-            return
-
-        findings = await _collect_role_integrity_findings(guild)
-        posted = False
-        if findings:
-            posted = await _post_role_integrity_findings(guild, findings)
-
-        state["last_run_date"] = today
-        state["last_run_at"] = now.isoformat()
-        state["last_findings_count"] = len(findings)
-        state["last_posted"] = bool(posted)
-        _save_role_integrity_state(state)
+        await _run_role_integrity_audit_once(force=False)
     except Exception:
         _g.logger.exception("Error running role integrity audit loop")
 
@@ -6584,6 +6591,71 @@ def _extract_position_label(line: str) -> Optional[str]:
     return None
 
 
+def _load_roster_state_for_channel(roster_channel_id: int) -> dict:
+    """Return roster state entry for a channel, or empty dict when unavailable."""
+    try:
+        if not os.path.exists(ROSTER_STATE_PATH):
+            return {}
+        with open(ROSTER_STATE_PATH, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {}
+        for company_state in data.values():
+            if not isinstance(company_state, dict):
+                continue
+            try:
+                ch_id = int(company_state.get("channel_id", 0) or 0)
+            except Exception:
+                ch_id = 0
+            if ch_id == int(roster_channel_id):
+                return company_state
+    except Exception:
+        _g.logger.exception("Error loading roster state")
+    return {}
+
+
+def _iter_roster_text_blocks(source: any) -> List[Tuple[str, str]]:
+    """Yield ``(section_name, text)`` pairs from string/message/embed sources."""
+    blocks: List[Tuple[str, str]] = []
+    if isinstance(source, str):
+        return [("", source)]
+
+    content = getattr(source, "content", None)
+    if isinstance(content, str) and content.strip():
+        blocks.append(("", content))
+
+    for embed in (getattr(source, "embeds", None) or []):
+        for field in (getattr(embed, "fields", None) or []):
+            name = (getattr(field, "name", "") or "").strip()
+            if name.startswith("▸"):
+                name = name[1:].strip()
+            value = getattr(field, "value", "") or ""
+            if isinstance(value, str) and value.strip():
+                blocks.append((name, value))
+    return blocks
+
+
+def _resolve_kill_team_role_id(guild: Optional[discord.Guild], team_name: str) -> Optional[int]:
+    """Resolve kill-team role ID by role name constrained to allowed KT role IDs."""
+    if guild is None:
+        return None
+    allowed_ids = set(_b("ALLOWED_KT_ROLE_IDS") or set())
+    normalized = (team_name or "").strip().lower()
+    if not normalized:
+        return None
+    try:
+        for role in getattr(guild, "roles", []) or []:
+            rid = getattr(role, "id", 0)
+            rname = (getattr(role, "name", "") or "").strip().lower()
+            if allowed_ids and rid not in allowed_ids:
+                continue
+            if rname == normalized or rname in normalized or normalized in rname:
+                return rid
+    except Exception:
+        pass
+    return None
+
+
 async def _find_roster_messages(
     guild: discord.Guild, roster_channel_id: int
 ) -> Tuple[Optional[discord.Message], Optional[discord.Message], List[discord.Message]]:
@@ -6600,6 +6672,36 @@ async def _find_roster_messages(
         channel = guild.get_channel(roster_channel_id)
         if not channel:
             return None, None, []
+
+        # Preferred source: tracked message IDs from roster_state.json
+        company_state = _load_roster_state_for_channel(roster_channel_id)
+        if company_state:
+            hc_message_id = int(company_state.get("hc_message_id", 0) or 0)
+            cmd_message_id = int(company_state.get("command_message_id", 0) or 0)
+            kt_state = company_state.get("killteam_message_ids") or {}
+
+            async def _fetch_if_set(message_id: int):
+                if not message_id:
+                    return None
+                try:
+                    return await channel.fetch_message(message_id)
+                except Exception:
+                    return None
+
+            high_cmd = await _fetch_if_set(hc_message_id)
+            company_cmd = await _fetch_if_set(cmd_message_id)
+            kill_teams = []
+            if isinstance(kt_state, dict):
+                for message_id in kt_state.values():
+                    try:
+                        fetched = await _fetch_if_set(int(message_id or 0))
+                    except Exception:
+                        fetched = None
+                    if fetched is not None:
+                        kill_teams.append(fetched)
+
+            if high_cmd is not None or company_cmd is not None or kill_teams:
+                return high_cmd, company_cmd, kill_teams
 
         # Fetch messages (returns in reverse chronological order - newest first)
         messages = []
@@ -6633,32 +6735,62 @@ def _parse_roster_section(content: str) -> Dict[int, List[str]]:
     Returns dict: user_id -> list of role names extracted from position label."""
     members = {}
     try:
-        lines = content.split("\n")
-        for line in lines:
-            # Skip vacant, separators, headers, and empty lines
-            if not line.strip() or "[Vacant]" in line or "###" in line or "⎯" in line or "__" in line:
+        include_sections: Optional[set[str]] = None
+        source = content
+        if isinstance(content, tuple) and len(content) == 2:
+            # compatibility guard (unused currently)
+            source = content[0]
+            include_sections = content[1]
+
+        blocks = _iter_roster_text_blocks(source)
+        for section_name, block_text in blocks:
+            if include_sections is not None and section_name not in include_sections:
                 continue
 
-            # Extract position label from emoji code
-            label = _extract_position_label(line)
-            position_role = POSITION_LABEL_MAP.get(label) if label else None
+            lines = block_text.split("\n")
+            for line in lines:
+                # Skip vacant, separators, headers, and empty lines
+                if not line.strip() or "[Vacant]" in line or "###" in line or "⎯" in line or "__" in line:
+                    continue
 
-            # Extract user mention from end of line
-            user_ids = _extract_mentions_from_text(line)
+                # Extract position label from emoji code
+                label = _extract_position_label(line)
+                position_role = POSITION_LABEL_MAP.get(label) if label else None
 
-            if user_ids:
-                for user_id in user_ids:
-                    if user_id not in members:
-                        members[user_id] = []
-                    if position_role and position_role not in members[user_id]:
-                        members[user_id].append(position_role)
+                # Extract user mention from end of line
+                user_ids = _extract_mentions_from_text(line)
+
+                if user_ids:
+                    for user_id in user_ids:
+                        if user_id not in members:
+                            members[user_id] = []
+                        if position_role and position_role not in members[user_id]:
+                            members[user_id].append(position_role)
     except Exception:
         _g.logger.exception("Error parsing roster section")
 
     return members
 
 
-def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any]]]:
+def _parse_roster_section_from_source(source: any, include_sections: Optional[set[str]] = None) -> Dict[int, List[str]]:
+    """Parse roster users from a string/message/embed source with optional section filter."""
+    members = {}
+    try:
+        for section_name, block_text in _iter_roster_text_blocks(source):
+            if include_sections is not None and section_name not in include_sections:
+                continue
+            parsed = _parse_roster_section(block_text)
+            for user_id, roles in parsed.items():
+                existing = members.setdefault(user_id, [])
+                for role_name in roles:
+                    if role_name not in existing:
+                        existing.append(role_name)
+    except Exception:
+        _g.logger.exception("Error parsing roster source")
+    return members
+
+
+def _parse_kill_teams_section(content: str, guild: Optional[discord.Guild] = None) -> Dict[int, Dict[int, Dict[str, any]]]:
     """Parse Kill Teams section (all teams in one message).
 
     Format:
@@ -6673,81 +6805,68 @@ def _parse_kill_teams_section(content: str) -> Dict[int, Dict[int, Dict[str, any
     """
     kill_teams = {}
     try:
-        lines = content.split("\n")
-        _g.logger.debug(f"Parsing {len(lines)} lines from kill teams section")
-        _g.logger.debug(f"Content preview: {content[:300]}")
-        current_kt_role_id = None
-        current_kt_members = {}
-        current_rank = "Member"  # Default rank for unlabeled members
+        blocks = _iter_roster_text_blocks(content)
+        if not blocks and isinstance(content, str):
+            blocks = [("", content)]
 
-        for line_num, line in enumerate(lines):
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
+        for section_name, block_text in blocks:
+            section_label = (section_name or "").strip()
+            lines = block_text.split("\n")
+            current_kt_role_id = None
+            current_kt_members = {}
+            current_rank = "Member"  # Default rank for unlabeled members
 
-            # Check if this is a Kill Team header (contains "###" and a role mention like <@&ID>)
-            if "###" in line and "<@&" in line:
-                _g.logger.debug(f"Line {line_num}: Possible KT header: {line[:100]}")
-                # Extract role mention for kill team
-                role_id = _extract_role_mention_from_text(line)
-                if role_id:
-                    _g.logger.info(f"Found KT role ID: {role_id} from line: {line[:80]}")
-                    # Save previous team if exists
-                    if current_kt_role_id is not None and current_kt_members:
-                        kill_teams[current_kt_role_id] = current_kt_members
-                    # Start new team
-                    current_kt_role_id = role_id
-                    current_kt_members = {}
-                    current_rank = "Member"
+            # Field-based layout: KT role comes from section title.
+            if section_label.lower().startswith("kill team"):
+                resolved = _resolve_kill_team_role_id(guild, section_label)
+                if resolved:
+                    current_kt_role_id = resolved
+                    current_rank = "Unknown"
+
+            for line_num, line in enumerate(lines):
+                line_stripped = line.strip()
+                if not line_stripped:
                     continue
-                else:
-                    _g.logger.debug(f"Could not extract role ID from line: {line[:80]}")
 
-            # Check if this is a rank marker (e.g., "**Sergeant:**" or "**Champion:**")
-            if "**Sergeant:**" in line:
-                current_rank = "Sergeant"
-                _g.logger.debug(f"Line {line_num}: Switching to Sergeant rank (applies to next member only)")
-                continue
-            elif "**Champion:**" in line:
-                current_rank = "Champion"
-                _g.logger.debug(f"Line {line_num}: Switching to Champion rank (applies to next member only)")
-                continue
+                # Legacy text layout KT header handling.
+                if current_kt_role_id is None and "###" in line and "<@&" in line:
+                    role_id = _extract_role_mention_from_text(line)
+                    if role_id:
+                        if current_kt_role_id is not None and current_kt_members:
+                            kill_teams[current_kt_role_id] = current_kt_members
+                        current_kt_role_id = role_id
+                        current_kt_members = {}
+                        current_rank = "Member"
+                        continue
 
-            # Skip separators and headers
-            if "###" in line or "⎯" in line or "__" in line:
-                continue
+                # Legacy rank markers.
+                if "**Sergeant:**" in line:
+                    current_rank = "Sergeant"
+                    continue
+                elif "**Champion:**" in line:
+                    current_rank = "Champion"
+                    continue
 
-            # If we have a current kill team, parse members
-            if current_kt_role_id is not None:
-                # Check if this is an empty member slot (just "- " with no mentions)
-                user_ids = _extract_mentions_from_text(line)
+                if "###" in line or "⎯" in line or "__" in line:
+                    continue
 
-                if user_ids:
-                    # Has members - apply current rank and then reset to Member for next lines
-                    _g.logger.debug(
-                        f"Line {line_num}: Found {len(user_ids)} users with rank {current_rank}: {line[:80]}"
-                    )
-                    for user_id in user_ids:
-                        if user_id not in current_kt_members:
-                            current_kt_members[user_id] = {"rank": current_rank}
-                        else:
-                            # Update rank if this is the first time we're seeing this user with a rank
-                            if current_rank != "Member":
+                if current_kt_role_id is not None:
+                    user_ids = _extract_mentions_from_text(line)
+
+                    if user_ids:
+                        for user_id in user_ids:
+                            if user_id not in current_kt_members:
+                                current_kt_members[user_id] = {"rank": current_rank}
+                            elif current_rank != "Member":
                                 current_kt_members[user_id]["rank"] = current_rank
-                    # Reset to Member for next lines (rank labels only apply to immediate next member)
-                    current_rank = "Member"
-                elif line.strip().startswith("-"):
-                    # Empty slot (just "- " with nothing) - reset rank to Member
-                    _g.logger.debug(f"Line {line_num}: Empty rank slot, resetting to Member")
-                    current_rank = "Member"
+                        # Keep unknown rank for field-based layout; reset only legacy member markers.
+                        if current_rank != "Unknown":
+                            current_rank = "Member"
+                    elif line.strip().startswith("-") and current_rank != "Unknown":
+                        current_rank = "Member"
 
-        # Save last team
-        if current_kt_role_id is not None and current_kt_members:
-            kill_teams[current_kt_role_id] = current_kt_members
-            _g.logger.info(f"Saved KT {current_kt_role_id} with {len(current_kt_members)} members")
-        _g.logger.debug(f"Finished parsing kill teams: {len(kill_teams)} teams found")
-        if not kill_teams:
-            _g.logger.debug("No kill teams found - checking if we ever entered a KT block")
+            if current_kt_role_id is not None and current_kt_members:
+                kill_teams[current_kt_role_id] = current_kt_members
     except Exception:
         _g.logger.exception("Error parsing kill teams section")
 
@@ -6852,7 +6971,7 @@ async def _validate_kill_team_member_roles(
         expected.add("Watch Sergeant")
     elif rank == "Champion":
         expected.add("Kill Team Champion")
-    else:  # Member
+    elif rank == "Member":
         member_ranks = {"Watch Brother", "Watch Veteran", "Oathsworn"}
         # At least one member rank required
         if not (member_ranks & actual_roles):
@@ -6905,12 +7024,21 @@ async def _audit_company_roster(
         _g.logger.info(f"Kill Teams Messages: {len(kill_teams_msgs)} found")
 
         # Parse Company Command and Kill Teams (High Command is passed in as shared)
-        company_cmd_roster = _parse_roster_section(company_cmd_msg.content) if company_cmd_msg else {}
+        company_cmd_roster = (
+            _parse_roster_section_from_source(
+                company_cmd_msg,
+                include_sections={"Company Captain & Lieutenant"},
+            )
+            if company_cmd_msg
+            else {}
+        )
 
         # Parse all kill team messages and merge
         kill_teams_roster = {}
+        if company_cmd_msg:
+            kill_teams_roster.update(_parse_kill_teams_section(company_cmd_msg, guild=guild))
         for kt_msg in kill_teams_msgs:
-            kt_data = _parse_kill_teams_section(kt_msg.content)
+            kt_data = _parse_kill_teams_section(kt_msg, guild=guild)
             kill_teams_roster.update(kt_data)
 
         # Debug logging
@@ -7824,6 +7952,7 @@ __all__ = [
     "_handle_dreadnought_inactivity",
     "_activity_status_check_loop",
     "_role_integrity_audit_loop",
+    "_run_role_integrity_audit_once",
     # ── Induction / member helpers ───────────────────────────────────────────
     "_load_induction_overrides",
     "_save_induction_overrides",

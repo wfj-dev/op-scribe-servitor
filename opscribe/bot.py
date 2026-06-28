@@ -1605,6 +1605,14 @@ async def on_ready():
                     "Role integrity audit loop started "
                     f"(daily gate, target hour {SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR:02d}:00 UTC)."
                 )
+            try:
+                ran = await _run_role_integrity_audit_once(force=True)
+                if ran:
+                    logger.info("Role integrity audit executed on startup (forced run).")
+                else:
+                    logger.info("Role integrity audit startup run skipped (disabled or guild unavailable).")
+            except Exception:
+                logger.exception("Failed to execute startup role integrity audit")
     except Exception:
         logger.exception("Failed to start role integrity audit loop")
 

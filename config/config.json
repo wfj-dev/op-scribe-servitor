@@ -505,6 +505,82 @@
     "strike_queue_backfill_partials_enabled": true,
     "strike_queue_partial_backfill_wait_percent": 35,
     "strike_queue_single_fill_wait_percent": 70,
-    "request_strike_directives_max_per_week": 2
+    "request_strike_directives_max_per_week": 2,
+    "cadres": {
+      "forge": {
+        "version": 1,
+        "leader_role_name": "Forgemaster",
+        "leader_role_id": 1436505765073653860,
+        "member_roles": [
+          {
+            "name": "Watch Techmarine",
+            "id": 1429342203251265576
+          },
+          {
+            "name": "Venerable Dreadnought",
+            "id": 1436522565110726686
+          },
+          {
+            "name": "Honored Dreadnought",
+            "id": 1497089446833819658
+          }
+        ],
+        "scope": "fortress"
+      },
+      "apothecarion": {
+        "version": 1,
+        "leader_role_name": "Chief Apothecary",
+        "leader_role_id": 1455224397387272363,
+        "member_roles": [
+          {
+            "name": "Watch Apothecary",
+            "id": 1429342815170855003
+          }
+        ],
+        "scope": "fortress"
+      },
+      "reclusiam": {
+        "version": 1,
+        "leader_role_name": "High Chaplain",
+        "leader_role_id": 1436506654458904576,
+        "member_roles": [
+          {
+            "name": "Watch Chaplain",
+            "id": 1429343484543762482
+          }
+        ],
+        "scope": "fortress"
+      },
+      "champion": {
+        "version": 1,
+        "leader_role_name": "Lord Executioner",
+        "leader_role_id": 1435341811886588154,
+        "member_roles": [
+          {
+            "name": "Company Champion",
+            "id": 1434222022489145424
+          },
+          {
+            "name": "Kill Team Champion",
+            "id": 1434218776210964690,
+            "scope_exception": "kill_team"
+          }
+        ],
+        "scope": "fortress",
+        "notes": "Kill Team Champion remains tied to Kill Team scope despite Lord Executioner ownership (fortress-wide authority only)"
+      },
+      "librarius": {
+        "version": 1,
+        "leader_role_name": "Void Warden",
+        "leader_role_id": 1455226254897975389,
+        "member_roles": [
+          {
+            "name": "Watch Librarian",
+            "id": 1429343212421644479
+          }
+        ],
+        "scope": "fortress"
+      }
+    }
   }
 }

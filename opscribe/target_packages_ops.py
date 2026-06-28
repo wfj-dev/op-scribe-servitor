@@ -1004,6 +1004,127 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"                  # Assigned, deadline passed without submission
 STATUS_LAPSED = "lapsed"                  # Distributed, never fully assigned, deadline passed
 
+# Feature flags (Phase 0: Cadre-Based Specialist Migration)
+MIGRATION_CADRE_SPECIALIST_ENABLED = False  # Disabled by default; controls specialist scope (company vs cadre)
+
+# Telemetry counters for migration rollout safety (Phase 0)
+_TELEMETRY_COUNTERS = {
+    "specialist_assign_success": 0,         # Successful specialist assignments
+    "specialist_assign_fail_authority": 0,  # Failed: insufficient authority
+    "specialist_assign_fail_scope": 0,      # Failed: company scope violation
+    "cross_company_specialist_assign": 0,   # Cross-company specialist assignments
+    "specialist_removal_reconcile": 0,      # Removals during reconciliation
+}
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Cadre-Based Specialist Migration - Config Loading
+# ---------------------------------------------------------------------------
+
+def _load_cadre_ownership_config() -> dict:
+    """Load cadre ownership mappings from config/config.json.
+
+    Returns dict mapping cadre role names to ownership info:
+    {
+        "Forgemaster": {
+            "id": 1436505765073653860,
+            "members": [
+                {"name": "Watch Techmarine", "id": 1429342203251265576},
+                ...
+            ],
+            "scope": "fortress"
+        },
+        ...
+    }
+
+    Falls back gracefully to empty dict if config absent (Phase 1 safe mode).
+    """
+    try:
+        config = _b("CONFIG") or {}
+        cadres_config = (config.get("target_packages") or {}).get("cadres") or {}
+        
+        result = {}
+        for cadre_key, cadre_data in cadres_config.items():
+            if not cadre_data or not isinstance(cadre_data, dict):
+                _g.logger.warning(f"[TP Phase1] Invalid cadre config for '{cadre_key}': missing or malformed")
+                continue
+            
+            leader_role_name = cadre_data.get("leader_role_name")
+            leader_role_id = cadre_data.get("leader_role_id")
+            member_roles = cadre_data.get("member_roles", [])
+            scope = cadre_data.get("scope", "fortress")
+            
+            if not leader_role_name or not leader_role_id:
+                _g.logger.warning(f"[TP Phase1] Cadre '{cadre_key}' missing leader role name or ID")
+                continue
+            
+            # Normalize member_roles to list of dicts
+            normalized_members = []
+            for member in member_roles:
+                if isinstance(member, dict) and member.get("name") and member.get("id"):
+                    normalized_members.append(member)
+                elif isinstance(member, str):
+                    # Legacy: convert string role name to dict
+                    normalized_members.append({"name": member, "id": None})
+            
+            result[leader_role_name] = {
+                "id": leader_role_id,
+                "members": normalized_members,
+                "scope": scope,
+                "cadre_key": cadre_key,  # For logging/debugging
+            }
+        
+        if result:
+            _g.logger.info(f"[TP Phase1] Loaded cadre ownership config: {len(result)} cadres")
+        
+        return result
+    except Exception as e:
+        _g.logger.warning(f"[TP Phase1] Failed to load cadre ownership config: {e}")
+        return {}
+
+
+def _get_cadre_ownership_mapping() -> dict:
+    """Get cadre ownership mapping with fallback to hardcoded values.
+
+    This function implements Phase 1 dual-read pattern:
+    1. Try config-backed cadre ownership (new)
+    2. Fall back to hardcoded _CADRE_OWNERSHIP (existing, Phase 1-2 compatibility)
+
+    Returns dict mapping leader role ID → set of owned specialist role IDs.
+    """
+    config_mapping = _load_cadre_ownership_config()
+    
+    if config_mapping:
+        # Convert config format to internal format
+        result = {}
+        for leader_role_name, cadre_info in config_mapping.items():
+            leader_id = cadre_info["id"]
+            member_ids = {m["id"] for m in cadre_info["members"] if m.get("id")}
+            if member_ids:
+                result[leader_id] = member_ids
+        return result
+    
+    # Fallback to hardcoded mapping (existing code)
+    # Will be removed in Phase 2 when config is required
+    return _get_cadre_ownership_mapping_hardcoded()
+
+
+def _get_cadre_ownership_mapping_hardcoded() -> dict:
+    """Hardcoded cadre ownership mapping (Phase 1 fallback, will be removed Phase 2+).
+
+    Maps leader role name → set of owned specialist role names.
+    This is the fallback when config is not available.
+    """
+    return {
+        "Lord Executioner": {"Kill Team Champion", "Company Champion"},
+        "Huntmaster": {"Huntmaster"},
+        "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
+        "Chief Apothecary": {"Watch Apothecary"},
+        "High Chaplain": {"Watch Chaplain"},
+        "Void Warden": {"Watch Librarian"},
+        "Castellan": {"Watch Keeper"},
+    }
+
 
 async def _notify_send(
     channel,
@@ -1451,8 +1572,6 @@ def _member_can_remain_attached_to_directive(
     is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
     assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
-    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
-        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
 
     mode = str(pkg.get("mode") or "")
     if "Omega" in mode and not _tp_get_player_platform(member):
@@ -1464,8 +1583,14 @@ def _member_can_remain_attached_to_directive(
             for role_name in (pkg.get("required_roles", []) or [])
             if role_name in _CADRE_SPECIALIST_ROLES
         ]
-        if required_specialist_roles and not any(role_name in member_roles for role_name in required_specialist_roles):
+        if required_specialist_roles and any(role_name in member_roles for role_name in required_specialist_roles):
+            return True, ""
+        if required_specialist_roles:
             return False, "Member no longer holds a required specialist role for this directive."
+        return False, "This directive does not require a specialist attachment."
+
+    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
+        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
 
     return True, ""
 
@@ -1986,17 +2111,8 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
             if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
         ]
         attached_pkgs = [p for p in _active() if _is_personally_attached(p)]
-        from .roster_ops import _get_member_company_name
-        from .forge_ops import _resolve_killteam_for_member
-
-        company = _get_member_company_name(member)
-        kt = _resolve_killteam_for_member(member)
-        baseline_pkgs = [
-            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
-            if p.get("assigned_company") == company or p.get("assigned_kt") == kt
-        ]
         merged_by_id = {p.get("id"): p for p in cadre_pkgs}
-        for p in baseline_pkgs + attached_pkgs:
+        for p in attached_pkgs:
             merged_by_id[p.get("id")] = p
         return list(merged_by_id.values())
 
@@ -2359,36 +2475,14 @@ def _count_active_kts(guild: discord.Guild) -> int:
 def _get_active_roles_in_guild(guild: discord.Guild) -> set:
     """Return set of role names held by at least one active non-LOA member.
 
-    Roles are excluded when:
-    - A cadre leader (Forgemaster, Chief Apothecary, etc.) is on LOA — all roles
-      they administer are removed.
-    - A specialist role has no remaining non-LOA, non-Reserves holder.
+    Availability is driven only by active non-LOA members. Specialist roles no
+    longer cascade-exclude when a cadre leader is on LOA.
     """
-    _CADRE_ADMIN_ROLES = {
-        "Forgemaster": {"Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought", "Forgemaster"},
-        "Chief Apothecary": {"Watch Apothecary", "Chief Apothecary"},
-        "High Chaplain": {"Watch Chaplain", "High Chaplain"},
-        "Void Warden": {"Watch Librarian", "Void Warden"},
-        "Castellan": {"Watch Keeper", "Castellan"},
-        "Lord Executioner": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
-        "Huntmaster": {"Huntmaster"},
-    }
-
     def _is_loa(m: discord.Member) -> bool:
         return any(getattr(r, "id", 0) == LOA_ROLE_ID for r in getattr(m, "roles", []))
 
     active = _active_members(guild)  # already excludes Reserves
     present: set = set()
-    excluded: set = set()
-
-    # Check cadre leaders on LOA — remove their entire cadre from available roles
-    for m in active:
-        if not _is_loa(m):
-            continue
-        roles = _member_role_names(m)
-        for leader_role, admin_set in _CADRE_ADMIN_ROLES.items():
-            if leader_role in roles:
-                excluded.update(admin_set)
 
     # Build available roles from non-LOA active members
     for m in active:
@@ -2396,10 +2490,7 @@ def _get_active_roles_in_guild(guild: discord.Guild) -> set:
             continue
         present.update(_member_role_names(m))
 
-    # For specialist roles not already excluded via cadre leaders: remove if no non-LOA holder
-    # (present already only contains non-LOA roles, so this is implicit)
-
-    return present - excluded
+    return present
 
 
 def _get_active_role_counts(guild: discord.Guild) -> dict:
@@ -2407,38 +2498,17 @@ def _get_active_role_counts(guild: discord.Guild) -> dict:
 
     Counts how many eligible members hold each role. Used by _draw_requirements
     to allow duplicate role requirements up to the number of available holders.
-    Roles excluded by LOA cadre-leader logic are omitted entirely.
+    Only roles held by active non-LOA members are counted.
     """
-    excluded = _get_active_roles_in_guild.__wrapped__(guild)[1] if hasattr(_get_active_roles_in_guild, '__wrapped__') else set()
-    # Recompute excluded set inline (same logic as _get_active_roles_in_guild)
-    _CADRE_ADMIN_ROLES = {
-        "Forgemaster": {"Watch Techmarine", "Honored Dreadnought", "Venerable Dreadnought", "Forgemaster"},
-        "Chief Apothecary": {"Watch Apothecary", "Chief Apothecary"},
-        "High Chaplain": {"Watch Chaplain", "High Chaplain"},
-        "Void Warden": {"Watch Librarian", "Void Warden"},
-        "Castellan": {"Watch Keeper", "Castellan"},
-        "Lord Executioner": {"Kill Team Champion", "Company Champion", "Lord Executioner"},
-        "Huntmaster": {"Huntmaster"},
-    }
     def _is_loa(m: discord.Member) -> bool:
         return any(getattr(r, "id", 0) == LOA_ROLE_ID for r in getattr(m, "roles", []))
     active = _active_members(guild)
-    excluded: set = set()
-    for m in active:
-        if not _is_loa(m):
-            continue
-        roles = _member_role_names(m)
-        for leader_role, admin_set in _CADRE_ADMIN_ROLES.items():
-            if leader_role in roles:
-                excluded.update(admin_set)
-
     counts: dict = {}
     for m in active:
         if _is_loa(m):
             continue
         for rn in _member_role_names(m):
-            if rn not in excluded:
-                counts[rn] = counts.get(rn, 0) + 1
+            counts[rn] = counts.get(rn, 0) + 1
     return counts
 
 
@@ -7139,20 +7209,28 @@ def _is_cadre_leader(member: discord.Member) -> bool:
 def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bool:
     """Return True if the cadre leader has authority over the given specialist role.
     
+    Phase 1: Try config-backed mapping first, fall back to hardcoded if not available.
     Cadre leaders can assign themselves only if they personally hold the required role.
     Forgemaster manages Dreadnoughts administratively but cannot self-assign as one.
     """
-    _CADRE_OWNERSHIP = {
-        "Lord Executioner": {"Kill Team Champion", "Company Champion"},
-        "Huntmaster": {"Huntmaster"},
-        "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
-        "Chief Apothecary": {"Watch Apothecary"},
-        "High Chaplain": {"Watch Chaplain"},
-        "Void Warden": {"Watch Librarian"},
-        "Castellan": {"Watch Keeper"},
-    }
+    # Try config-backed mapping first (Phase 1+)
+    try:
+        config_mapping = _load_cadre_ownership_config()
+        if config_mapping:
+            cl_roles = _member_role_names(cadre_leader)
+            for cl_role, cadre_info in config_mapping.items():
+                if cl_role in cl_roles:
+                    # Check if specialist_role is in owned members
+                    member_names = {m.get("name") for m in cadre_info["members"] if m.get("name")}
+                    if specialist_role in member_names:
+                        return True
+    except Exception as e:
+        _g.logger.warning(f"[TP Phase1] Error checking config cadre ownership: {e}")
+    
+    # Fallback to hardcoded mapping (Phase 1 compatibility)
+    hardcoded_mapping = _get_cadre_ownership_mapping_hardcoded()
     cl_roles = _member_role_names(cadre_leader)
-    for cl_role, owned in _CADRE_OWNERSHIP.items():
+    for cl_role, owned in hardcoded_mapping.items():
         if cl_role in cl_roles and specialist_role in owned:
             return True
     return False

@@ -1,7 +1,138 @@
+import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import opscribe.bot  # noqa: F401 – initialises _g.bot before forge_ops is imported
+
+def _install_discord_stub():
+    discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
+
+    class _StubEmbed:
+        def __init__(self, *, color=None, title=None, description=None):
+            self.color = color
+            self.title = title
+            self.description = description
+            self.fields = []
+            self.footer = None
+            self.image = None
+
+        def add_field(self, *, name, value, inline=True):
+            self.fields.append(SimpleNamespace(name=name, value=value, inline=inline))
+
+        def set_footer(self, *, text=None):
+            self.footer = SimpleNamespace(text=text)
+
+        def set_image(self, *, url=None):
+            self.image = SimpleNamespace(url=url)
+
+    discord_stub.Embed = _StubEmbed
+    discord_stub.Intents = type("Intents", (), {"default": classmethod(lambda cls: SimpleNamespace(message_content=False, members=False))})
+    discord_stub.Client = type("Client", (), {"__init__": lambda self, *args, **kwargs: None})
+    discord_stub.Member = object
+    discord_stub.User = object
+    discord_stub.Guild = object
+    discord_stub.Role = object
+    discord_stub.TextChannel = object
+    discord_stub.Emoji = object
+    discord_stub.Interaction = object
+    discord_stub.AllowedMentions = object
+    discord_stub.SelectOption = object
+    discord_stub.Thread = type("Thread", (), {})
+    discord_stub.ForumChannel = type("ForumChannel", (), {})
+    discord_stub.File = object
+    discord_stub.Object = object
+    discord_stub.Color = type("Color", (), {"from_rgb": classmethod(lambda cls, *args, **kwargs: cls())})
+    discord_stub.NotFound = Exception
+    discord_stub.Forbidden = Exception
+    discord_stub.utils = types.SimpleNamespace(get=lambda items, **kwargs: next((item for item in items if all(getattr(item, key, None) == value for key, value in kwargs.items())), None))
+
+    app_commands_mod = types.ModuleType("discord.app_commands")
+    app_commands_mod.CommandTree = type("CommandTree", (), {"__init__": lambda self, bot: None})
+    app_commands_mod.command = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.choices = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.autocomplete = lambda **_kwargs: (lambda func: func)
+    _fallback_type = type(
+        "_FallbackType",
+        (),
+        {
+            "__init__": lambda self, *args, **kwargs: None,
+            "__class_getitem__": classmethod(lambda cls, _item: cls),
+        },
+    )
+    app_commands_mod.Choice = _fallback_type
+    app_commands_mod.__getattr__ = lambda name: type(
+        name,
+        (),
+        {
+            "__init__": lambda self, *args, **kwargs: None,
+            "__class_getitem__": classmethod(lambda cls, _item: cls),
+        },
+    )
+    discord_stub.app_commands = app_commands_mod
+
+    ui_mod = types.ModuleType("discord.ui")
+    ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
+    ui_mod.Button = object
+    ui_mod.Select = object
+    ui_mod.UserSelect = object
+    ui_mod.RoleSelect = object
+    ui_mod.button = lambda **_kwargs: (lambda func: func)
+    ui_mod.select = lambda **_kwargs: (lambda func: func)
+    discord_stub.ui = ui_mod
+    discord_stub.ButtonStyle = types.SimpleNamespace(secondary=2, success=3, danger=4, primary=1)
+    discord_stub.abc = types.SimpleNamespace(Messageable=object, GuildChannel=object, MessageableChannel=object)
+    discord_stub.__getattr__ = lambda name: type(name, (), {})
+
+    class _LoopStub:
+        def __init__(self, func):
+            self.func = func
+
+        def before_loop(self, _func):
+            return _func
+
+        def after_loop(self, _func):
+            return _func
+
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+    tasks_mod = types.ModuleType("discord.ext.tasks")
+    tasks_mod.loop = lambda **_kwargs: (lambda func: _LoopStub(func))
+
+    ext_mod = types.ModuleType("discord.ext")
+    ext_mod.tasks = tasks_mod
+
+    discord_stub.ext = ext_mod
+
+    sys.modules["discord"] = discord_stub
+    sys.modules["discord.app_commands"] = app_commands_mod
+    sys.modules["discord.ext"] = ext_mod
+    sys.modules["discord.ext.tasks"] = tasks_mod
+    sys.modules["discord.ui"] = ui_mod
+
+
+_install_discord_stub()
+
+bot_stub = types.ModuleType("opscribe.bot")
+bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
+bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
+bot_stub.tree = SimpleNamespace()
+bot_stub.CONFIG = {}
+bot_stub.DEBUG_MODE = False
+bot_stub.RANK_ROLES_PRIORITY = [
+    "Watch Master",
+    "Watch Captain",
+    "Watch Lieutenant",
+    "Watch Sergeant",
+    "Watch Brother",
+]
+sys.modules["opscribe.bot"] = bot_stub
+sys.modules["bot"] = bot_stub
+
+import opscribe._bot_globals as _g  # noqa: E402
+_g.bot = bot_stub.bot
+
 import opscribe.roster_embeds as roster_embeds
 
 
@@ -11,6 +142,7 @@ def _member(*, member_id=1, nick=None, display_name=None, name=None, roles=None)
         nick=nick,
         display_name=display_name,
         name=name,
+        mention=f"<@{member_id}>",
         roles=roles or [],
     )
 
@@ -125,25 +257,25 @@ def _make_pkg(kt_name, status, pkg_id="pkg1"):
 
 def test_tp_status_for_kt_no_packages_returns_ready():
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages={})
-    assert result == "🟢 Ready for Deployment"
+    assert result == "-# 🟢 Ready for Deployment"
 
 
 def test_tp_status_for_kt_pending_sgt_shows_assigned():
     packages = _make_pkg("Kill Team Alpha", "pending_sgt")
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
-    assert result == "🟡 Assigned (1 pkg)"
+    assert result == "-# 🟡 Assigned (1 directive)"
 
 
 def test_tp_status_for_kt_recruiting_shows_assigned():
     packages = _make_pkg("Kill Team Alpha", "recruiting")
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
-    assert result == "🟡 Assigned (1 pkg)"
+    assert result == "-# 🟡 Assigned (1 directive)"
 
 
 def test_tp_status_for_kt_deployed_shows_deployed():
     packages = _make_pkg("Kill Team Alpha", "deployed")
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
-    assert result == "🔴 Deployed (1 pkg)"
+    assert result == "-# 🔴 Deployed (1 directive)"
 
 
 def test_tp_status_for_kt_multiple_packages_plural():
@@ -152,13 +284,13 @@ def test_tp_status_for_kt_multiple_packages_plural():
         "pkg2": {"id": "pkg2", "assigned_kt": "Kill Team Alpha", "status": "recruiting"},
     }
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
-    assert result == "🔴 Deployed (2 pkgs)"
+    assert result == "-# 🔴 Deployed (2 directives)"
 
 
 def test_tp_status_for_kt_ignores_other_kts():
     packages = _make_pkg("Kill Team Bravo", "deployed")
     result = roster_embeds._tp_status_for_kt("Kill Team Alpha", packages=packages)
-    assert result == "🟢 Ready for Deployment"
+    assert result == "-# 🟢 Ready for Deployment"
 
 
 # ---------------------------------------------------------------------------
@@ -168,43 +300,50 @@ def test_tp_status_for_kt_ignores_other_kts():
 def test_honors_title_for_kt_returns_empty_when_no_honors_file():
     with patch.object(roster_embeds.os.path, "exists", return_value=False):
         result = roster_embeds._honors_title_for_kt("Kill Team Alpha")
-    assert result == ""
+    assert result.startswith("-# ")
+    assert "**Unproven**" in result
 
 
 def test_honors_title_for_kt_returns_empty_for_unknown_kt():
     honors = {"kill_teams": {}, "companies": {}}
     result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
-    assert result == ""
+    assert result.startswith("-# ")
+    assert "**Unproven**" in result
 
 
 def test_honors_title_for_kt_returns_empty_for_unproven():
     honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Unproven"}}, "companies": {}}
     result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
-    assert result == ""
+    assert result.startswith("-# ")
+    assert "**Unproven**" in result
 
 
 def test_honors_title_for_kt_returns_formatted_tier():
-    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Stalwart"}}, "companies": {}}
+    honors = {"kill_teams": {"Kill Team Alpha": {"tier": "Initiated"}}, "companies": {}}
     result = roster_embeds._honors_title_for_kt("Kill Team Alpha", honors=honors)
-    assert result == "🎖 **Stalwart**"
+    assert result.startswith("-# ")
+    assert "**Initiated**" in result
 
 
 def test_honors_title_for_company_returns_empty_for_unrecorded():
     honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Unrecorded"}}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
-    assert result == ""
+    assert result.startswith("-# ")
+    assert "**Unrecorded**" in result
 
 
 def test_honors_title_for_company_returns_empty_for_unknown_company():
     honors = {"kill_teams": {}, "companies": {}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
-    assert result == ""
+    assert result.startswith("-# ")
+    assert "**Unrecorded**" in result
 
 
 def test_honors_title_for_company_returns_formatted_tier():
-    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Renowned"}}}
+    honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Marked"}}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
-    assert result == "🏅 **Renowned**"
+    assert result.startswith("-# ")
+    assert "**Marked**" in result
 
 
 def test_load_honors_returns_empty_dict_when_file_missing():
@@ -285,3 +424,28 @@ def test_fortress_rep_title_none_rep_value_uses_neutral():
     result = roster_embeds._fortress_rep_title({"rep": None})
     assert "NEUTRAL" in result
     assert "30.0/60" in result
+
+
+def test_sectioned_embed_builds_field_sections_and_description_lines():
+    captain = _member(member_id=1, display_name="Captain One", roles=[])
+    lieutenant = _member(member_id=2, display_name="Lieutenant Two", roles=[])
+    embed = roster_embeds._build_sectioned_embed(
+        "<@&123>",
+        [("Company Captain & Lieutenant", [captain, lieutenant])],
+        guild=SimpleNamespace(members=[captain, lieutenant]),
+        image_url=None,
+        description_lines=["Status line", "Honor line"],
+    )
+
+    assert embed.description == "<@&123>\nStatus line\nHonor line"
+    assert len(embed.fields) == 1
+    assert embed.fields[0].name == "▸ Company Captain & Lieutenant"
+    assert "<@1>" in embed.fields[0].value
+    assert "<@2>" in embed.fields[0].value
+
+
+def test_lord_executioner_specialist_group_contains_both_champion_roles():
+    groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
+    assert "Lord Executioner's Specialists" in groups
+    assert "Company Champion" in groups["Lord Executioner's Specialists"]
+    assert "Kill Team Champion" in groups["Lord Executioner's Specialists"]
