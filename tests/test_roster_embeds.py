@@ -191,12 +191,14 @@ def test_load_roster_state_returns_defaults_when_file_missing():
         "Watch Company Primus": {
             "channel_id": 11,
             "hc_message_id": None,
+            "specialist_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
+            "specialist_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
         },
@@ -221,12 +223,14 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
         "Watch Company Primus": {
             "channel_id": 999,
             "hc_message_id": 101,
+            "specialist_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {"Kill Team Alpha": 202},
         },
         "Watch Company Secundus": {
             "channel_id": 22,
             "hc_message_id": None,
+            "specialist_message_id": None,
             "command_message_id": None,
             "killteam_message_ids": {},
         },
@@ -431,7 +435,7 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
     lieutenant = _member(member_id=2, display_name="Lieutenant Two", roles=[])
     embed = roster_embeds._build_sectioned_embed(
         "<@&123>",
-        [("Company Command", [captain, lieutenant], ["Status line"])],
+        [(roster_embeds._EMPTY_FIELD_NAME, [captain, lieutenant], ["<@&456>", "Status line"])],
         guild=SimpleNamespace(members=[captain, lieutenant]),
         image_url=None,
         description_lines=["Honor line"],
@@ -439,19 +443,32 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
 
     assert embed.description == "<@&123>\nHonor line"
     assert len(embed.fields) == 1
-    assert embed.fields[0].name == "▸ Company Command"
-    assert embed.fields[0].value.startswith("Status line\n**2 Brothers Assigned**")
+    assert embed.fields[0].name == roster_embeds._EMPTY_FIELD_NAME
+    assert embed.fields[0].value.startswith("<@&456>\nStatus line\n**2 Brothers Assigned**")
     assert "<@1>" in embed.fields[0].value
     assert "<@2>" in embed.fields[0].value
 
 
 def test_lord_executioner_specialist_group_contains_both_champion_roles():
     groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
-    assert "Champion Cadre" in groups
-    assert "Company Champion" in groups["Champion Cadre"]
-    assert "Kill Team Champion" in groups["Champion Cadre"]
+    assert "Executioner Cadre" in groups
+    assert "Company Champion" in groups["Executioner Cadre"]
+    assert "Kill Team Champion" in groups["Executioner Cadre"]
 
 
 def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():
     assert roster_embeds._mention_style_label("Kill Team Jason") == "@Kill Team Jason"
     assert roster_embeds._mention_style_label("@Kill Team Jason") == "@Kill Team Jason"
+
+
+def test_role_mention_uses_role_id_when_available_and_fallback_otherwise():
+    assert roster_embeds._role_mention(12345, fallback="ignored") == "<@&12345>"
+    assert roster_embeds._role_mention(None, fallback="@Kill Team Jason") == "@Kill Team Jason"
+
+
+def test_tp_status_for_members_aggregates_active_directives():
+    packages = {
+        "pkg1": {"id": "pkg1", "status": "deployed", "signed_up": [10]},
+        "pkg2": {"id": "pkg2", "status": "recruiting", "assigned_specialist_ids": [10]},
+    }
+    assert roster_embeds._tp_status_for_members({10}, packages=packages) == "-# 🔴 Deployed (2 directives)"
