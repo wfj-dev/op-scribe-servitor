@@ -503,10 +503,8 @@
     },
     "strike_queue_match_sweep_minutes": 5,
     "strike_queue_backfill_partials_enabled": true,
-    "strike_queue_partial_backfill_min_active_queue": 10,
-    "strike_queue_single_fill_min_active_queue": 20,
-    "strike_queue_partial_backfill_wait_minutes": 10,
-    "strike_queue_single_fill_wait_minutes": 20,
+    "strike_queue_partial_backfill_wait_percent": 35,
+    "strike_queue_single_fill_wait_percent": 70,
     "request_strike_directives_max_per_week": 2
   }
 }
