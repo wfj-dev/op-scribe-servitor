@@ -1119,7 +1119,7 @@
       "name": "Shockwave Plating",
       "description": "Nearby explosions restore Armour.",
       "type": "buff",
-      "excluded": false,
+      "excluded": true,
       "pools": [
         "techmarine",
         "dreadnought"
@@ -1193,7 +1193,7 @@
       "name": "Suboptimal State",
       "description": "Maximum Health reduced by 50%.",
       "type": "debuff",
-      "excluded": false,
+      "excluded": true,
       "pools": [],
       "tags": [
         "health",

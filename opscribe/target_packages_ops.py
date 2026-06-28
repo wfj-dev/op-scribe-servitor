@@ -1004,6 +1004,18 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"                  # Assigned, deadline passed without submission
 STATUS_LAPSED = "lapsed"                  # Distributed, never fully assigned, deadline passed
 
+# Feature flags (Phase 0: Cadre-Based Specialist Migration)
+MIGRATION_CADRE_SPECIALIST_ENABLED = False  # Disabled by default; controls specialist scope (company vs cadre)
+
+# Telemetry counters for migration rollout safety (Phase 0)
+_TELEMETRY_COUNTERS = {
+    "specialist_assign_success": 0,         # Successful specialist assignments
+    "specialist_assign_fail_authority": 0,  # Failed: insufficient authority
+    "specialist_assign_fail_scope": 0,      # Failed: company scope violation
+    "cross_company_specialist_assign": 0,   # Cross-company specialist assignments
+    "specialist_removal_reconcile": 0,      # Removals during reconciliation
+}
+
 
 async def _notify_send(
     channel,
