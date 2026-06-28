@@ -1159,22 +1159,24 @@ def _strike_queue_backfill_partials_enabled() -> bool:
     return False
 
 
-def _strike_queue_partial_backfill_min_active_queue() -> int:
+def _strike_queue_partial_backfill_wait_percent() -> float:
+    """Minimum relative wait percent before allowing tier-1 partial backfill."""
     cfg = (_b("CONFIG") or {}).get("target_packages", {})
     try:
-        n = int(cfg.get("strike_queue_partial_backfill_min_active_queue", 4))
+        n = float(cfg.get("strike_queue_partial_backfill_wait_percent", 35))
     except Exception:
-        return 4
-    return max(1, n)
+        return 35.0
+    return max(0.0, min(100.0, n))
 
 
-def _strike_queue_single_fill_min_active_queue() -> int:
+def _strike_queue_single_fill_wait_percent() -> float:
+    """Minimum relative wait percent before allowing tier-2 single-slot backfill."""
     cfg = (_b("CONFIG") or {}).get("target_packages", {})
     try:
-        n = int(cfg.get("strike_queue_single_fill_min_active_queue", 7))
+        n = float(cfg.get("strike_queue_single_fill_wait_percent", 70))
     except Exception:
-        return 7
-    return max(1, n)
+        return 70.0
+    return max(0.0, min(100.0, n))
 
 
 def _strike_queue_announced_ttl_minutes() -> int:
@@ -1761,6 +1763,47 @@ async def _finalize_strike_queue_match_directive(package_id: str, committed_pkg:
         await _post_signup_embed(package_id, guild)
 
 
+def _member_queue_wait_time_minutes(member: discord.Member, entry: dict) -> float:
+    """Calculate how many minutes a member has been waiting in queue."""
+    queued_at_iso = str((entry or {}).get("queued_at") or "").strip()
+    if not queued_at_iso:
+        return 0.0
+    try:
+        queued_at_iso = queued_at_iso.replace("Z", "+00:00")
+        queued_at = datetime.fromisoformat(queued_at_iso)
+        if queued_at.tzinfo is None:
+            queued_at = queued_at.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - queued_at
+        return max(0.0, delta.total_seconds() / 60.0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _queue_wait_percent_of_oldest(wait_minutes: float, max_wait_minutes: float) -> float:
+    """Convert a member wait into a queue-relative percentage of current oldest wait."""
+    if max_wait_minutes <= 0:
+        return 0.0
+    return max(0.0, min(100.0, (wait_minutes / max_wait_minutes) * 100.0))
+
+
+def _queue_match_wait_percent(
+    entry_map: dict[str, dict],
+    match_members: list[discord.Member],
+    max_wait_minutes: float,
+) -> float:
+    """Return the shortest relative wait percent among matched members."""
+    if not match_members:
+        return 0.0
+    return min(
+        _queue_wait_percent_of_oldest(
+            _member_queue_wait_time_minutes(member, entry_map.get(str(member.id), {})),
+            max_wait_minutes,
+        )
+        for member in match_members
+    )
+
+
 async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
     if guild is None:
         return 0
@@ -1796,9 +1839,13 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
             candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
             backfill_partials = _strike_queue_backfill_partials_enabled()
-            active_queue_size = len(active_entries)
-            partial_threshold = _strike_queue_partial_backfill_min_active_queue()
-            single_threshold = _strike_queue_single_fill_min_active_queue()
+            partial_wait_threshold = _strike_queue_partial_backfill_wait_percent()
+            single_wait_threshold = _strike_queue_single_fill_wait_percent()
+            max_wait_minutes = max(
+                (_member_queue_wait_time_minutes(member, entry) for member, entry in active_entries),
+                default=0.0,
+            )
+
             for pkg in packages.values():
                 if pkg.get("status") != STATUS_RECRUITING:
                     continue
@@ -1822,10 +1869,17 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
                     continue
 
                 quality_tier = _queue_match_quality_tier(pkg, len(match_members))
-                if quality_tier == 1 and active_queue_size < partial_threshold:
-                    continue
-                if quality_tier == 2 and active_queue_size < single_threshold:
-                    continue
+
+                # Gate backfill tiers by relative queue age, not fixed minutes.
+                if quality_tier == 1:
+                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
+                    if match_wait_percent < partial_wait_threshold:
+                        continue
+
+                if quality_tier == 2:
+                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
+                    if match_wait_percent < single_wait_threshold:
+                        continue
 
                 candidate_matches.append((
                     pkg,
