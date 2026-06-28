@@ -2257,8 +2257,8 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 2)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 0.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 0.0)
 
         async def _fake_finalize(*_args, **_kwargs):
             return None
@@ -2295,14 +2295,10 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        # Old queue-size thresholds (no longer used, but kept for config reading)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 3)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 3)
-        # New wait-time thresholds
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_minutes", lambda: 100.0)  # 100 minutes
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_minutes", lambda: 200.0)
-        # Mock wait time to be very small so threshold is not met
-        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda *_args, **_kwargs: 5.0)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 80.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
+        # Queue has an oldest waiter (id=2) and a newer waiter (id=3); the newer one drags the match below 80%.
+        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda m, _entry: 100.0 if m.id == 2 else 10.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
 
@@ -2329,14 +2325,9 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        # Old queue-size thresholds (no longer used, but kept for config reading)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_active_queue", lambda: 1)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_active_queue", lambda: 2)
-        # New wait-time thresholds - set high so they won't be met
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_minutes", lambda: 100.0)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_minutes", lambda: 100.0)
-        # Mock wait time to be very small so threshold is not met
-        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda *_args, **_kwargs: 5.0)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 100.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
+        monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda *_args, **_kwargs: 0.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
 
