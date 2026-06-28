@@ -1771,6 +1771,48 @@ class TestStrikeQueueMatching:
 
         assert tp._strike_queue_match_sweep_minutes() == 15
 
+    def test_member_queue_wait_time_minutes_treats_naive_timestamps_as_utc(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc)
+
+        class _DateTimeProxy:
+            @staticmethod
+            def fromisoformat(value):
+                return datetime.fromisoformat(value)
+
+            @staticmethod
+            def now(_tz=None):
+                return now
+
+        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
+
+        wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T12:00:00"})
+
+        assert wait == 30.0
+
+    def test_member_queue_wait_time_minutes_accepts_z_suffix_and_clamps_future_timestamps(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc)
+
+        class _DateTimeProxy:
+            @staticmethod
+            def fromisoformat(value):
+                return datetime.fromisoformat(value)
+
+            @staticmethod
+            def now(_tz=None):
+                return now
+
+        monkeypatch.setattr(tp, "datetime", _DateTimeProxy)
+
+        wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T12:00:00Z"})
+        future_wait = tp._member_queue_wait_time_minutes(_make_member([], member_id=1), {"queued_at": "2026-01-01T13:00:00Z"})
+
+        assert wait == 30.0
+        assert future_wait == 0.0
+
     def test_prune_announced_match_when_queued_member_is_gone(self):
         import opscribe.target_packages_ops as tp
 

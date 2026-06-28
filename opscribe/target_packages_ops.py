@@ -1765,14 +1765,17 @@ async def _finalize_strike_queue_match_directive(package_id: str, committed_pkg:
 
 def _member_queue_wait_time_minutes(member: discord.Member, entry: dict) -> float:
     """Calculate how many minutes a member has been waiting in queue."""
-    queued_at_iso = entry.get("queued_at")
+    queued_at_iso = str((entry or {}).get("queued_at") or "").strip()
     if not queued_at_iso:
         return 0.0
     try:
+        queued_at_iso = queued_at_iso.replace("Z", "+00:00")
         queued_at = datetime.fromisoformat(queued_at_iso)
+        if queued_at.tzinfo is None:
+            queued_at = queued_at.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         delta = now - queued_at
-        return delta.total_seconds() / 60.0
+        return max(0.0, delta.total_seconds() / 60.0)
     except (ValueError, TypeError):
         return 0.0
 
