@@ -6912,10 +6912,14 @@ def _validate_high_command_roles(
 ) -> Tuple[bool, set[str], set[str]]:
     """Validate High Command member roles.
 
-    Required: High Command role + Watch Command role + title/position role
+    Required: High Command role + title/position role.
+    Most High Command positions also require Watch Command, but Kill Team
+    Champion is intentionally excluded from that extra requirement.
     Returns (is_valid, missing_roles, extra_roles).
     """
-    expected = set(expected_position_roles) | {"High Command", "Watch Command"}
+    expected = set(expected_position_roles) | {"High Command"}
+    if "Kill Team Champion" not in expected_position_roles:
+        expected.add("Watch Command")
     missing = expected - actual_roles
     extra = set()
 

@@ -164,6 +164,28 @@ def test_post_role_integrity_findings_accepts_preformatted_role_mention(monkeypa
     assert sent_messages[0]["content"] == "<@&456>"
 
 
+def test_validate_high_command_roles_does_not_require_watch_command_for_ktc():
+    is_valid, missing, extra = ro._validate_high_command_roles(
+        ["Kill Team Champion"],
+        {"High Command", "Kill Team Champion"},
+    )
+
+    assert is_valid is True
+    assert missing == set()
+    assert extra == set()
+
+
+def test_validate_high_command_roles_still_requires_watch_command_for_other_positions():
+    is_valid, missing, extra = ro._validate_high_command_roles(
+        ["Watch Master"],
+        {"High Command", "Watch Master"},
+    )
+
+    assert is_valid is False
+    assert "Watch Command" in missing
+    assert extra == set()
+
+
 def test_collect_role_integrity_findings_reports_track_and_prereq_conflicts(monkeypatch):
     member = _make_member(7, ["Watch Brother", "Watch Captain", "Oathsworn"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
