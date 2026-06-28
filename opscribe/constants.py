@@ -436,19 +436,11 @@ ROSTER_COMPANY_CHANNELS: dict[str, int] = {
     "Watch Company Secundus": 1458255466189684999,
 }
 
-# Ranks that appear in the Company Command embed (in addition to members
-# whose highest rank is one of these AND who hold the company role).
-# Honored Dreadnought is included here per server rules.
+# Ranks that appear in the Company Command roster section.
+# Specialists now live in the dedicated HC + Specialists embed.
 ROSTER_COMPANY_COMMAND_RANKS: set[str] = {
     "Watch Captain",
     "Watch Lieutenant",
-    "Company Champion",
-    "Watch Techmarine",
-    "Watch Apothecary",
-    "Watch Chaplain",
-    "Watch Librarian",
-    "Watch Keeper",
-    "Honored Dreadnought",
 }
 
 # Maximum characters to use inside a single roster embed description
