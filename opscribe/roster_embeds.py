@@ -34,8 +34,6 @@ from .constants import (
     ROSTER_IMAGE_COMPANY_COMMAND,
     ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY,
     ROSTER_IMAGE_HIGH_COMMAND,
-    ROSTER_IMAGE_KILLTEAM,
-    ROSTER_IMAGE_KILLTEAM_BY_COMPANY,
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
@@ -91,11 +89,11 @@ _HONOUR_LABELS = {
 _ROSTER_FIELD_CHAR_LIMIT = 1024
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
-    ("Forgemaster's Specialists", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
-    ("Chief Apothecary's Specialists", {"Watch Apothecary"}),
-    ("High Chaplain's Specialists", {"Watch Chaplain"}),
-    ("Lord Executioner's Specialists", {"Company Champion", "Kill Team Champion"}),
-    ("Void Warden's Specialists", {"Watch Librarian"}),
+    ("Forge Cadre", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
+    ("Apothecarion", {"Watch Apothecary"}),
+    ("Reclusiam", {"Watch Chaplain"}),
+    ("Champion Cadre", {"Company Champion", "Kill Team Champion"}),
+    ("Librarius", {"Watch Librarian"}),
 )
 
 
@@ -305,18 +303,21 @@ def _render_member_block(
     members: List[discord.Member],
     *,
     max_chars: int,
+    lead_lines: Optional[List[str]] = None,
 ) -> str:
     """Render a compact member block for an embed field."""
     count = len(members)
     noun = "Brother" if count == 1 else "Brothers"
     header = f"**{count} {noun} Assigned**"
+    prefix_lines = [line for line in (lead_lines or []) if line]
+    block_header = "\n".join(prefix_lines + [header]) if prefix_lines else header
 
     if not members:
-        return f"{header}\n*No members currently assigned.*"
+        return f"{block_header}\n*No members currently assigned.*"
 
     lines: List[str] = []
     truncated_count = 0
-    running_len = len(header) + 1
+    running_len = len(block_header) + 1
 
     for member in members:
         try:
@@ -333,7 +334,7 @@ def _render_member_block(
         lines.append(line)
         running_len += len(line) + 1
 
-    block = header + "\n" + "\n".join(lines)
+    block = block_header + "\n" + "\n".join(lines)
     if truncated_count:
         block += f"\n*…and {truncated_count} more not shown (embed limit reached)*"
         _log().warning(
@@ -344,7 +345,7 @@ def _render_member_block(
 
 def _build_sectioned_embed(
     title: str,
-    sections: List[Tuple[str, List[discord.Member]]],
+    sections: List[Tuple[str, List[discord.Member]] | Tuple[str, List[discord.Member], List[str]]],
     guild: discord.Guild,
     *,
     image_url: Optional[str] = None,
@@ -358,10 +359,20 @@ def _build_sectioned_embed(
     if image_url:
         embed.set_image(url=image_url)
 
-    for section_name, members in sections:
+    for section in sections:
+        if len(section) == 2:
+            section_name, members = section
+            lead_lines = None
+        else:
+            section_name, members, lead_lines = section
         embed.add_field(
             name=f"▸ {section_name}",
-            value=_render_member_block(guild, members, max_chars=_ROSTER_FIELD_CHAR_LIMIT),
+            value=_render_member_block(
+                guild,
+                members,
+                max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+                lead_lines=lead_lines,
+            ),
             inline=False,
         )
 
@@ -478,6 +489,18 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
     if emoji_str:
         return f"{emoji_str} {text} {emoji_str}"
     return f"\u16ed\u22c5 {text} \u22c5\u16ed"  # ᛭⋅ … ⋅᛭ fallback
+
+
+def _mention_style_label(name: str) -> str:
+    """Return a stable, mention-like display label for embed field names.
+
+    Discord does not reliably render real mentions inside embed field names, so
+    use an @-prefixed plain-text label instead.
+    """
+    clean = str(name or "").strip()
+    if not clean:
+        return "@Unknown"
+    return clean if clean.startswith("@") else f"@{clean}"
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
@@ -879,8 +902,6 @@ async def _update_company_roster(
                 f"Cannot access roster channel {channel_id} for '{company_name}': {exc}"
             ) from exc
 
-    short_name = company_name.replace("Watch Company", "").strip()  # "Primus" etc.
-
     # Fetch guild emojis fresh from the API so we don't depend on the cache.
     try:
         _fetched_emojis: list[discord.Emoji] = await guild.fetch_emojis()
@@ -903,12 +924,9 @@ async def _update_company_roster(
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
     cmd_emoji = _te("WatchCommand")     # :WatchCommand:
-    company_emoji = _te(short_name)     # :Primus: / :Secundus: / etc.
-
-    # Resolve role IDs for mentions (fallback to plain text if role not found)
-    # Company Command embed uses "@Primus Command" / "@Secundus Command" role
-    cmd_role = discord.utils.get(guild.roles, name=f"{short_name} Command")
-    company_role_mention = f"<@&{cmd_role.id}>" if cmd_role else f"{short_name} Command"
+    # Resolve company role mention for the company roster banner.
+    company_role = discord.utils.get(guild.roles, name=company_name)
+    company_role_mention = f"<@&{company_role.id}>" if company_role else company_name
 
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
@@ -927,6 +945,8 @@ async def _update_company_roster(
 
     # ── Embed 1: High Command + Specialists ─────────────────────────────────
     hc_members = _get_hc_members(guild)
+    watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
+    high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
     specialist_sections: list[tuple[str, list[discord.Member]]] = []
     for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
         specialist_members = _collect_members_with_roles(
@@ -938,7 +958,7 @@ async def _update_company_roster(
 
     hc_embed = _build_sectioned_embed(
         _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        [("High Command", hc_members)] + specialist_sections,
+        [("Watch Master", watch_master_members), ("High Command", high_command_members)] + specialist_sections,
         guild,
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
@@ -958,14 +978,21 @@ async def _update_company_roster(
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     cmd_embed = _build_sectioned_embed(
         _fmt_title(company_role_mention, cmd_emoji),
-        [("Company Captain & Lieutenant", cmd_members)] + [
-            (kt_name, kt_members) for kt_name, _kt_role_id, kt_members in kill_teams
+        [("Company Command", cmd_members)] + [
+            (
+                _mention_style_label(kt_name),
+                kt_members,
+                [
+                    _tp_status_for_kt(kt_name, packages=_tp_packages),
+                    _honors_title_for_kt(kt_name, honors=_honors_data),
+                ],
+            )
+            for kt_name, _kt_role_id, kt_members in kill_teams
         ],
         guild,
         last_updated=now,
         image_url=cmd_image,
         description_lines=[
-            _tp_status_for_company(guild, company_name, packages=_tp_packages),
             _honors_title_for_company(company_name, honors=_honors_data),
         ],
     )

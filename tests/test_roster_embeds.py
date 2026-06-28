@@ -431,21 +431,27 @@ def test_sectioned_embed_builds_field_sections_and_description_lines():
     lieutenant = _member(member_id=2, display_name="Lieutenant Two", roles=[])
     embed = roster_embeds._build_sectioned_embed(
         "<@&123>",
-        [("Company Captain & Lieutenant", [captain, lieutenant])],
+        [("Company Command", [captain, lieutenant], ["Status line"])],
         guild=SimpleNamespace(members=[captain, lieutenant]),
         image_url=None,
-        description_lines=["Status line", "Honor line"],
+        description_lines=["Honor line"],
     )
 
-    assert embed.description == "<@&123>\nStatus line\nHonor line"
+    assert embed.description == "<@&123>\nHonor line"
     assert len(embed.fields) == 1
-    assert embed.fields[0].name == "▸ Company Captain & Lieutenant"
+    assert embed.fields[0].name == "▸ Company Command"
+    assert embed.fields[0].value.startswith("Status line\n**2 Brothers Assigned**")
     assert "<@1>" in embed.fields[0].value
     assert "<@2>" in embed.fields[0].value
 
 
 def test_lord_executioner_specialist_group_contains_both_champion_roles():
     groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
-    assert "Lord Executioner's Specialists" in groups
-    assert "Company Champion" in groups["Lord Executioner's Specialists"]
-    assert "Kill Team Champion" in groups["Lord Executioner's Specialists"]
+    assert "Champion Cadre" in groups
+    assert "Company Champion" in groups["Champion Cadre"]
+    assert "Kill Team Champion" in groups["Champion Cadre"]
+
+
+def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():
+    assert roster_embeds._mention_style_label("Kill Team Jason") == "@Kill Team Jason"
+    assert roster_embeds._mention_style_label("@Kill Team Jason") == "@Kill Team Jason"
