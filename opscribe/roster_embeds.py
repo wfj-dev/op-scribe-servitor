@@ -5,9 +5,8 @@ Embeds are posted once via /roster_post (Forgemaster only) and then edited
 in-place by a daily task and by /roster_refresh (Watch Command+).
 
 Embed layout per company channel:
-  1. HIGH COMMAND          — members with HC role, excluding Watch Captains
-  2. COMPANY COMMAND       — captain, lieutenant, specialists, honored dreads
-  3–6. KILL TEAM <name>    — one per KT role linked to that company (up to 4)
+    1. HIGH COMMAND + SPECIALISTS — HC members plus one field per cadre specialist group
+    2. COMPANY ROSTER             — company captain/lieutenant plus one field per Kill Team
 
 Members in Reserves are excluded from all embeds.
 """
@@ -88,6 +87,16 @@ _HONOUR_LABELS = {
     "kt_honour_stalwart": "Stalwart",
     "co_honour_stalwart": "Stalwart",
 }
+
+_ROSTER_FIELD_CHAR_LIMIT = 1024
+
+_SPECIALIST_SECTION_ROLE_GROUPS = (
+    ("Forgemaster's Specialists", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
+    ("Chief Apothecary's Specialists", {"Watch Apothecary"}),
+    ("High Chaplain's Specialists", {"Watch Chaplain"}),
+    ("Lord Executioner's Specialists", {"Company Champion", "Kill Team Champion"}),
+    ("Void Warden's Specialists", {"Watch Librarian"}),
+)
 
 
 def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional[discord.Guild]) -> Optional[str]:
@@ -266,6 +275,102 @@ def _sort_key_for_member(member: discord.Member) -> Tuple[int, str]:
     return (best, _clean_roster_name(member).lower())
 
 
+def _collect_members_with_roles(
+    guild: discord.Guild,
+    role_names: set[str],
+    *,
+    exclude_roles: set[str] | None = None,
+) -> List[discord.Member]:
+    """Return sorted members who hold any requested roles and none of the excluded roles."""
+    exclude_roles = exclude_roles or set()
+    result: list[discord.Member] = []
+    seen_ids: set[int] = set()
+    for member in guild.members:
+        if member.bot or _is_in_reserves(member):
+            continue
+        member_role_names = _member_role_names(member)
+        if not (member_role_names & role_names):
+            continue
+        if member_role_names & exclude_roles:
+            continue
+        if member.id in seen_ids:
+            continue
+        seen_ids.add(member.id)
+        result.append(member)
+    return sorted(result, key=_sort_key_for_member)
+
+
+def _render_member_block(
+    guild: discord.Guild,
+    members: List[discord.Member],
+    *,
+    max_chars: int,
+) -> str:
+    """Render a compact member block for an embed field."""
+    count = len(members)
+    noun = "Brother" if count == 1 else "Brothers"
+    header = f"**{count} {noun} Assigned**"
+
+    if not members:
+        return f"{header}\n*No members currently assigned.*"
+
+    lines: List[str] = []
+    truncated_count = 0
+    running_len = len(header) + 1
+
+    for member in members:
+        try:
+            line = _render_member_line(guild, member)
+        except Exception as exc:
+            _log().warning(
+                f"Roster: failed to render line for {getattr(member, 'id', '?')}: {exc}"
+            )
+            line = f"*[render error: {getattr(member, 'id', '?')}]*"
+
+        if running_len + len(line) + 1 > max_chars:
+            truncated_count = len(members) - len(lines)
+            break
+        lines.append(line)
+        running_len += len(line) + 1
+
+    block = header + "\n" + "\n".join(lines)
+    if truncated_count:
+        block += f"\n*…and {truncated_count} more not shown (embed limit reached)*"
+        _log().warning(
+            f"Roster: field truncated — {truncated_count} member(s) omitted to stay within embed field limit"
+        )
+    return block
+
+
+def _build_sectioned_embed(
+    title: str,
+    sections: List[Tuple[str, List[discord.Member]]],
+    guild: discord.Guild,
+    *,
+    image_url: Optional[str] = None,
+    description_lines: Optional[List[str]] = None,
+    last_updated: Optional[datetime] = None,
+) -> discord.Embed:
+    """Build a roster embed with add_field() sections."""
+    ts = last_updated or datetime.now(timezone.utc)
+    embed = discord.Embed(color=_EMBED_COLOR)
+    embed.description = "\n".join([line for line in ([title] + (description_lines or [])) if line])
+    if image_url:
+        embed.set_image(url=image_url)
+
+    for section_name, members in sections:
+        embed.add_field(
+            name=f"▸ {section_name}",
+            value=_render_member_block(guild, members, max_chars=_ROSTER_FIELD_CHAR_LIMIT),
+            inline=False,
+        )
+
+    embed.set_footer(
+        text=f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
+    )
+    return embed
+
+
 def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
     """Return HC-role members excluding Watch Captains and Reserves, sorted."""
     result = []
@@ -293,10 +398,9 @@ def _get_company_command_members(
 ) -> List[discord.Member]:
     """Return Company Command members for a given company, sorted.
 
-    Includes anyone who has the company role AND at least one
-    ROSTER_COMPANY_COMMAND_RANKS rank (Watch Captain, Watch Lieutenant,
-    Company Champion, Specialists, Honored Dreadnought).
-    Excludes Reserves.
+    In the Phase 3 roster layout this is intentionally limited to Watch Captain
+    and Watch Lieutenant; specialists are rendered in the dedicated HC +
+    Specialists embed.
     """
     result = []
     for m in guild.members:
@@ -724,6 +828,24 @@ async def _upsert_message(
     return msg.id
 
 
+async def _delete_message_if_exists(
+    channel: discord.TextChannel,
+    message_id: Optional[int],
+) -> None:
+    """Delete a roster message if it still exists."""
+    if not message_id:
+        return
+    try:
+        msg = await channel.fetch_message(message_id)
+        await msg.delete()
+    except discord.NotFound:
+        _log().info(f"Roster: message {message_id} not found in {channel.id} — already gone")
+    except discord.Forbidden:
+        _log().warning(f"Roster: missing permissions to delete message {message_id} in {channel.id}")
+    except Exception as exc:
+        _log().warning(f"Roster: delete failed for message {message_id} ({exc})")
+
+
 # ---------------------------------------------------------------------------
 # Core update logic
 # ---------------------------------------------------------------------------
@@ -803,69 +925,61 @@ async def _update_company_roster(
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
 
-    # ── Embed 1: High Command ────────────────────────────────────────────────
+    # ── Embed 1: High Command + Specialists ─────────────────────────────────
     hc_members = _get_hc_members(guild)
-    hc_embed = _build_embed(
+    specialist_sections: list[tuple[str, list[discord.Member]]] = []
+    for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
+        specialist_members = _collect_members_with_roles(
+            guild,
+            set(role_names),
+            exclude_roles={"Watch Master"},
+        )
+        specialist_sections.append((section_name, specialist_members))
+
+    hc_embed = _build_sectioned_embed(
         _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        hc_members,
+        [("High Command", hc_members)] + specialist_sections,
         guild,
         last_updated=now,
         image_url=ROSTER_IMAGE_HIGH_COMMAND,
-        tp_status=_tp_status_for_high_command(guild, packages=_tp_packages),
-        honors_title=_fortress_rep_title(tp_data=_tp_data),
+        description_lines=[
+            _tp_status_for_high_command(guild, packages=_tp_packages),
+            _fortress_rep_title(tp_data=_tp_data),
+        ],
     )
     hc_msg_id = await _upsert_message(
         channel, company_state.get("hc_message_id"), hc_embed
     )
     company_state["hc_message_id"] = hc_msg_id
 
-    # ── Embed 2: Company Command ─────────────────────────────────────────────
+    # ── Embed 2: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
-    cmd_embed = _build_embed(
+    kill_teams = _get_kill_teams_for_company(guild, company_name)
+    cmd_embed = _build_sectioned_embed(
         _fmt_title(company_role_mention, cmd_emoji),
-        cmd_members,
+        [("Company Captain & Lieutenant", cmd_members)] + [
+            (kt_name, kt_members) for kt_name, _kt_role_id, kt_members in kill_teams
+        ],
         guild,
         last_updated=now,
         image_url=cmd_image,
-        tp_status=_tp_status_for_company(guild, company_name, packages=_tp_packages),
-        honors_title=_honors_title_for_company(company_name, honors=_honors_data),
+        description_lines=[
+            _tp_status_for_company(guild, company_name, packages=_tp_packages),
+            _honors_title_for_company(company_name, honors=_honors_data),
+        ],
     )
     cmd_msg_id = await _upsert_message(
         channel, company_state.get("command_message_id"), cmd_embed
     )
     company_state["command_message_id"] = cmd_msg_id
 
-    # ── Embeds 3–6: Kill Teams ───────────────────────────────────────────────
-    kill_teams = _get_kill_teams_for_company(guild, company_name)
     kt_message_ids: dict = dict(company_state.get("killteam_message_ids") or {})
 
-    # Track which KT names are still active so we can clean up stale IDs
-    active_kt_names = {kt_name for kt_name, _, __ in kill_teams}
-    # Remove stale entries (KT disbanded / no longer has members in this company)
-    for stale_kt in list(kt_message_ids.keys()):
-        if stale_kt not in active_kt_names:
-            _log().info(
-                f"Roster: KT '{stale_kt}' no longer active for {company_name} — removing tracked message ID"
-            )
-            del kt_message_ids[stale_kt]
-
-    kt_image = ROSTER_IMAGE_KILLTEAM_BY_COMPANY.get(company_name, ROSTER_IMAGE_KILLTEAM)
-    for kt_name, kt_role_id, kt_members in kill_teams:
-        tp_status_line = _tp_status_for_kt(kt_name, packages=_tp_packages)
-        kt_embed = _build_embed(
-            _fmt_title(f"<@&{kt_role_id}>", company_emoji),
-            kt_members,
-            guild,
-            last_updated=now,
-            image_url=kt_image,
-            tp_status=tp_status_line,
-            honors_title=_honors_title_for_kt(kt_name, honors=_honors_data),
-        )
-        kt_msg_id = await _upsert_message(
-            channel, kt_message_ids.get(kt_name), kt_embed
-        )
-        kt_message_ids[kt_name] = kt_msg_id
+    # Legacy KT embeds are removed in this layout. Clean up any tracked posts.
+    for stale_message_id in kt_message_ids.values():
+        await _delete_message_if_exists(channel, stale_message_id)
+    kt_message_ids = {}
 
     company_state["killteam_message_ids"] = kt_message_ids
     state[company_name] = company_state
