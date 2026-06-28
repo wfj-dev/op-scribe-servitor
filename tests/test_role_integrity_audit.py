@@ -180,6 +180,100 @@ def test_collect_role_integrity_findings_reports_track_and_prereq_conflicts(monk
     assert "oathsworn_terminal" in codes
 
 
+def test_collect_role_integrity_findings_treats_huntmaster_as_high_command(monkeypatch):
+    member = _make_member(
+        8,
+        [
+            "Watch Brother",
+            "Watch Veteran",
+            "Deathwatch Specialist",
+            "Watch Command",
+            "High Command",
+            "Huntmaster",
+        ],
+    )
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {
+            "role_integrity_audit": {
+                "high_command_required_rank_role_names": [
+                    "Watch Captain",
+                    "Watch Master",
+                    "Forgemaster",
+                    "Void Warden",
+                    "Chief Apothecary",
+                    "High Chaplain",
+                    "Lord Executioner",
+                    "Venerable Dreadnought",
+                    "Huntmaster",
+                ],
+                "huntmaster_required_rank_role_names": [
+                    "Watch Brother",
+                    "Watch Veteran",
+                    "Deathwatch Specialist",
+                    "Watch Command",
+                    "High Command",
+                    "Huntmaster",
+                ]
+            },
+            "companies": {},
+        },
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "high_command_excess" not in codes
+    assert "high_command_missing" not in codes
+    assert "missing_specialist_marker" not in codes
+    assert "huntmaster_skip" not in codes
+
+
+def test_collect_role_integrity_findings_reports_huntmaster_prereq_gaps(monkeypatch):
+    member = _make_member(9, ["Watch Brother", "Huntmaster"])
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {
+            "role_integrity_audit": {
+                "high_command_required_rank_role_names": [
+                    "Watch Captain",
+                    "Watch Master",
+                    "Forgemaster",
+                    "Void Warden",
+                    "Chief Apothecary",
+                    "High Chaplain",
+                    "Lord Executioner",
+                    "Venerable Dreadnought",
+                    "Huntmaster",
+                ],
+                "huntmaster_required_rank_role_names": [
+                    "Watch Brother",
+                    "Watch Veteran",
+                    "Deathwatch Specialist",
+                    "Watch Command",
+                    "High Command",
+                    "Huntmaster",
+                ],
+            },
+            "companies": {},
+        },
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+
+    assert "huntmaster_skip" in codes
+    assert "high_command_missing" in codes
+
+
 def test_role_integrity_audit_loop_respects_hour_gate(monkeypatch):
     now = datetime(2026, 6, 26, 9, 0, tzinfo=timezone.utc)
 
