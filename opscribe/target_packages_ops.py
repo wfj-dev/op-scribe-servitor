@@ -1569,7 +1569,6 @@ def _member_can_remain_attached_to_directive(
 
     member_kt = _resolve_killteam_for_member(member)
     member_company = _get_member_company_name(member)
-    is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
     assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
 
@@ -1589,7 +1588,9 @@ def _member_can_remain_attached_to_directive(
             return False, "Member no longer holds a required specialist role for this directive."
         return False, "This directive does not require a specialist attachment."
 
-    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
+    if _member_has_structural_scope(member_kt, member_company) and not (
+        member_kt == assigned_kt or member_company == assigned_company
+    ):
         return False, f"Member is no longer part of {assigned_kt or assigned_company}."
 
     return True, ""
@@ -5222,6 +5223,11 @@ def _specialist_slots_allowed(pkg: dict) -> int:
     return len([r for r in req_roles if r in _CADRE_SPECIALIST_ROLES])
 
 
+def _member_has_structural_scope(member_kt: str | None, member_company: str | None) -> bool:
+    """Return True when a member is structurally attached to a KT and/or company."""
+    return bool(member_kt or member_company)
+
+
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
     """Return (eligible, reason). Watch Brother+ check, unit scope, not already signed up."""
     if member.bot or not _is_active(member):
@@ -5255,16 +5261,18 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     if member_max < min_idx:
         return False, "You must be at least Watch Brother to sign up."
 
-    # Must be in the assigned KT, company, or HC
+    # Structural scope is determined only by KT/company attachment.
+    # Members without KT/company attachment are considered unscoped.
     from .forge_ops import _resolve_killteam_for_member
     from .roster_ops import _get_member_company_name
     member_kt = _resolve_killteam_for_member(member)
     member_company = _get_member_company_name(member)
-    is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
     assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
 
-    if not (member_kt == assigned_kt or member_company == assigned_company or is_hc):
+    if _member_has_structural_scope(member_kt, member_company) and not (
+        member_kt == assigned_kt or member_company == assigned_company
+    ):
         return False, f"You are not part of {assigned_kt or assigned_company}."
 
     # Must not already be signed up on another active package
