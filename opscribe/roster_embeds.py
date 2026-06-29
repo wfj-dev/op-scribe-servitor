@@ -98,7 +98,7 @@ _SPECIALIST_SECTION_ROLE_GROUPS = (
 )
 
 _SPECIALIST_IMAGE_BY_SECTION = {
-    "Champion Hall": "Champion_Hall.png",
+    "Champion Hall": "Hall of Champions.png",
     "Librarius": "Librarius.png",
     "Watch Armory": "Armory.png",
     "Reclusiam": "Reclusiam.png",
@@ -106,8 +106,8 @@ _SPECIALIST_IMAGE_BY_SECTION = {
 }
 
 _COMPANY_COMMAND_IMAGE_BY_COMPANY = {
-    "Watch Company Primus": "Primus_Command.png",
-    "Watch Company Secundus": "Secundus_Command.png",
+    "Watch Company Primus": "Primus Command.png",
+    "Watch Company Secundus": "Secundus Command.png",
 }
 
 
@@ -128,8 +128,8 @@ def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[
 
 
 def _kill_team_image_filename(kt_name: str) -> str:
-    # e.g. "Kill Team Devito" -> "Kill_Team_Devito.png"
-    return f"{kt_name.replace(' ', '_')}.png"
+    # e.g. "Kill Team Devito" -> "Kill Team Devito.png"
+    return f"{kt_name}.png"
 
 
 def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional[discord.Guild]) -> Optional[str]:
@@ -396,15 +396,11 @@ def _build_container_view(
     last_updated: Optional[datetime] = None,
 ) -> discord.ui.LayoutView:
     """Build a compact roster container using one TextDisplay component."""
-    ts = last_updated or datetime.now(timezone.utc)
-    footer = f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
-
     lines: List[str] = []
     if title:
         lines.append(title)
     lines.extend([line for line in (description_lines or []) if line])
     lines.extend([block for block in body_blocks if block])
-    lines.append(footer)
 
     full_text = "\n".join([line for line in lines if line])
     if len(full_text) > _CONTAINER_TEXT_LIMIT:
@@ -574,7 +570,14 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     return f"{left} | {display_name}"
 
 
-def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
+def _tp_status_for_kt(
+    kt_name: str,
+    packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
+) -> str:
     """Return a TP deployment status line for a KT. Empty string if no data.
 
     ``packages`` may be a pre-loaded dict from ``target_packages.json`` to avoid
@@ -594,10 +597,10 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
             if p.get("assigned_kt") == kt_name and p["status"] in active_statuses
         ]
         if not kt_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p["status"] == "deployed" for p in kt_pkgs):
-            return f"-# 🔴 Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
     except Exception:
         return ""
 
@@ -622,6 +625,10 @@ def _tp_status_for_company(
     guild: discord.Guild,
     company_name: str,
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return company-command status based on member participation in active packages."""
     try:
@@ -642,17 +649,21 @@ def _tp_status_for_company(
         ]
 
         if not company_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in company_pkgs):
-            return f"-# 🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _tp_status_for_members(
     member_ids: set[int],
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return active directive status for an arbitrary member set."""
     try:
@@ -671,17 +682,21 @@ def _tp_status_for_members(
         ]
 
         if not relevant_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in relevant_pkgs):
-            return f"-# 🔴 Deployed ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _tp_status_for_high_command(
     guild: discord.Guild,
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return high-command status based on member participation in active packages."""
     try:
@@ -701,12 +716,12 @@ def _tp_status_for_high_command(
         ]
 
         if not hc_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in hc_pkgs):
-            return f"-# 🔴 Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _fortress_rep_state_name(rep: float) -> str:
@@ -727,7 +742,7 @@ def _fortress_rep_state_name(rep: float) -> str:
     return "MANDATED"
 
 
-def _fortress_rep_title(tp_data: dict | None = None) -> str:
+def _fortress_rep_title(tp_data: dict | None = None, *, standing_emoji: str = "⚖️") -> str:
     """Return fortress standing title line as a 0..60 progress bar."""
     rep_value = 30.0
     try:
@@ -743,7 +758,7 @@ def _fortress_rep_title(tp_data: dict | None = None) -> str:
     filled = max(0, min(bar_width, filled))
     bar = "=" * filled + "-" * (bar_width - filled)
     state = _fortress_rep_state_name(rep_clamped)
-    return f"-# {_OX_STANDING_EMOJI} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+    return f"-# {standing_emoji} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
 
 
 def _load_honors() -> dict:
@@ -758,13 +773,12 @@ def _load_honors() -> dict:
         return {}
 
 
-_OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
 _HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
-def _tier_window(tiers: list, current: str) -> str:
+def _tier_window(tiers: list, current: str, *, standing_emoji: str = "⚖️") -> str:
     """Return a sliding window of tiers centered on current.
 
     Current tier is **bold**, others are *italic*.
@@ -786,10 +800,15 @@ def _tier_window(tiers: list, current: str) -> str:
 
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
-    return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
+    return f"-# {standing_emoji} " + " · ".join(parts)
 
 
-def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
+def _honors_title_for_kt(
+    kt_name: str,
+    honors: dict | None = None,
+    *,
+    standing_emoji: str = "⚖️",
+) -> str:
     """Return formatted sliding-window honor title line for a KT.
 
     Args:
@@ -804,10 +823,15 @@ def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
     tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "Unproven")
     if not tier:
         tier = "Unproven"
-    return _tier_window(_KT_TITLE_TIERS, tier)
+    return _tier_window(_KT_TITLE_TIERS, tier, standing_emoji=standing_emoji)
 
 
-def _honors_title_for_company(company_name: str, honors: dict | None = None) -> str:
+def _honors_title_for_company(
+    company_name: str,
+    honors: dict | None = None,
+    *,
+    standing_emoji: str = "⚖️",
+) -> str:
     """Return formatted sliding-window honor title line for a company.
 
     Args:
@@ -822,7 +846,7 @@ def _honors_title_for_company(company_name: str, honors: dict | None = None) -> 
     tier = honors.get("companies", {}).get(company_name, {}).get("tier", "Unrecorded")
     if not tier:
         tier = "Unrecorded"
-    return _tier_window(_CO_TITLE_TIERS, tier)
+    return _tier_window(_CO_TITLE_TIERS, tier, standing_emoji=standing_emoji)
 
 
 def _build_embed(
@@ -1033,8 +1057,6 @@ async def _update_company_roster(
         company_state["killteam_message_ids"] = {}
         _log().info(f"Roster: force re-post reset completed for '{company_name}' ({len(tracked_ids)} tracked message(s))")
 
-    company_command_role_label = "Company Command"
-
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
     _tp_packages: dict | None = None
@@ -1052,33 +1074,38 @@ async def _update_company_roster(
     cmd_image_url, cmd_image_file = _resolve_asset_image(
         _COMPANY_COMMAND_IMAGE_BY_COMPANY.get(company_name)
     )
-    hc_image_url, hc_file = _resolve_asset_image("High_Command.png")
+    hc_image_url, hc_file = _resolve_asset_image("High Command.png")
+
+    ready_icon = _get_emoji_by_name(guild, "Ready") or "🟢"
+    deployed_icon = _get_emoji_by_name(guild, "Deployed") or "🔴"
+    assigned_icon = "🟡"
+    standing_emoji = (
+        _get_emoji_by_name(guild, "OrdoStanding")
+        or _get_emoji_by_name(guild, "OrdoXenosStanding")
+        or "⚖️"
+    )
 
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
-    watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
-    high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
-    hc_watch_master_block = _render_member_block(
+    hc_block = _render_member_block(
         guild,
-        watch_master_members,
-        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-    )
-    hc_cadre_block = _render_member_block(
-        guild,
-        high_command_members,
+        hc_members,
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
     )
     hc_view = _build_container_view(
         None,
-        body_blocks=[
-            f"Watch Master\n{hc_watch_master_block}",
-            f"Cadre Leaders\n{hc_cadre_block}",
-        ],
+        body_blocks=[hc_block],
         image_url=hc_image_url,
         last_updated=now,
         description_lines=[
-            _tp_status_for_high_command(guild, packages=_tp_packages),
-            _fortress_rep_title(tp_data=_tp_data),
+            _tp_status_for_high_command(
+                guild,
+                packages=_tp_packages,
+                ready_icon=ready_icon,
+                deployed_icon=deployed_icon,
+                assigned_icon=assigned_icon,
+            ),
+            _fortress_rep_title(tp_data=_tp_data, standing_emoji=standing_emoji),
         ],
     )
     hc_msg_id = await _upsert_message(
@@ -1108,7 +1135,13 @@ async def _update_company_roster(
             specialist_members,
             max_chars=_ROSTER_FIELD_CHAR_LIMIT,
             lead_lines=[
-                _tp_status_for_members({m.id for m in specialist_members}, packages=_tp_packages),
+                _tp_status_for_members(
+                    {m.id for m in specialist_members},
+                    packages=_tp_packages,
+                    ready_icon=ready_icon,
+                    deployed_icon=deployed_icon,
+                    assigned_icon=assigned_icon,
+                ),
             ],
         )
         specialist_view = _build_container_view(
@@ -1143,21 +1176,25 @@ async def _update_company_roster(
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     champion_members = _get_company_champion_members(guild, company_name)
-    champion_role_label = "Company Champion"
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     cmd_members_block = _render_member_block(
         guild,
         cmd_members,
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-        lead_lines=[company_command_role_label],
+        lead_lines=[],
     )
     champion_block = _render_member_block(
         guild,
         champion_members,
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
         lead_lines=[
-            champion_role_label,
-            _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
+            _tp_status_for_members(
+                {m.id for m in champion_members},
+                packages=_tp_packages,
+                ready_icon=ready_icon,
+                deployed_icon=deployed_icon,
+                assigned_icon=assigned_icon,
+            ),
         ],
     )
     cmd_view = _build_container_view(
@@ -1169,7 +1206,11 @@ async def _update_company_roster(
         image_url=cmd_image_url,
         last_updated=now,
         description_lines=[
-            _honors_title_for_company(company_name, honors=_honors_data),
+            _honors_title_for_company(
+                company_name,
+                honors=_honors_data,
+                standing_emoji=standing_emoji,
+            ),
         ],
     )
     cmd_msg_id = await _upsert_message(
@@ -1190,8 +1231,18 @@ async def _update_company_roster(
             kt_members,
             max_chars=_ROSTER_FIELD_CHAR_LIMIT,
             lead_lines=[
-                _tp_status_for_kt(kt_name, packages=_tp_packages),
-                _honors_title_for_kt(kt_name, honors=_honors_data),
+                _tp_status_for_kt(
+                    kt_name,
+                    packages=_tp_packages,
+                    ready_icon=ready_icon,
+                    deployed_icon=deployed_icon,
+                    assigned_icon=assigned_icon,
+                ),
+                _honors_title_for_kt(
+                    kt_name,
+                    honors=_honors_data,
+                    standing_emoji=standing_emoji,
+                ),
             ],
         )
         kt_view = _build_container_view(
