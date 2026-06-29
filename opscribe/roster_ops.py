@@ -2332,20 +2332,20 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
     unique_members = len({int(item.get("member_id")) for item in findings if item.get("member_id") is not None})
 
     code_labels = {
-        "multi_company": "CO-conflict",
-        "multi_kill_team": "KT-conflict",
-        "company_role_missing": "CO-miss",
-        "huntmaster_skip": "TRK-miss",
-        "track_mixing": "TRK-conflict",
+        "multi_company": "Company-conflict",
+        "multi_kill_team": "KillTeam-conflict",
+        "company_role_missing": "Company-missing",
+        "huntmaster_skip": "Track-missing",
+        "track_mixing": "Track-conflict",
         "oathsworn_terminal": "OATH-conflict",
-        "missing_specialist_marker": "SPEC-mark-miss",
-        "missing_dreadnought_marker": "DREAD-mark-miss",
-        "high_command_missing": "HC-miss",
-        "high_command_excess": "HC-excess",
-        "watch_command_missing": "WC-miss",
-        "company_command_missing": "CC-miss",
-        "company_command_excess": "CC-excess",
-        "kt_assignment_invalid": "KT-invalid",
+        "missing_specialist_marker": "Specialist-marker-missing",
+        "missing_dreadnought_marker": "Dread-marker-missing",
+        "high_command_missing": "HighCmd-missing",
+        "high_command_excess": "HighCmd-excess",
+        "watch_command_missing": "WatchCmd-missing",
+        "company_command_missing": "CoCmd-missing",
+        "company_command_excess": "CoCmd-excess",
+        "kt_assignment_invalid": "KillTeam-invalid",
     }
 
     role_by_name = {r.name.lower(): r for r in guild.roles}
