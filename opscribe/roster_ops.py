@@ -2439,7 +2439,7 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         joined = " | ".join(deduped)
         lines.append(f"- {member_mention} {joined}")
 
-    summary = f"F:{len(findings)} · M:{unique_members} · T:{len(counts)}"
+    summary = f"Findings:{len(findings)} · Members:{unique_members} · IssueTypes:{len(counts)}"
     max_desc = 4000
     desc = summary + "\n"
     shown = 0
