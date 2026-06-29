@@ -2328,78 +2328,68 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         _g.logger.warning("Role integrity audit: failed to resolve report channel", exc_info=True)
         return False
 
-    code_labels = {
-        "multi_company": "Multi-company Membership",
-        "multi_kill_team": "Multi kill-team Membership",
-        "company_role_missing": "Missing Company Role",
-        "huntmaster_skip": "Track Prerequisite Gap",
-        "track_mixing": "Conflicting Track Roles",
-        "oathsworn_terminal": "Invalid Oathsworn Combination",
-        "missing_specialist_marker": "Missing Specialist Marker",
-        "missing_dreadnought_marker": "Missing Dreadnought Marker",
-        "high_command_missing": "Missing High Command Role",
-        "high_command_excess": "Excess High Command Role",
-        "watch_command_missing": "Missing Watch Command Role",
-        "company_command_missing": "Missing Company Command Role",
-        "company_command_excess": "Excess Company Command Role",
-        "kt_assignment_invalid": "Invalid Kill Team Assignment",
-    }
-
-    severity_for_code = {
-        "high_command_missing": "critical",
-        "high_command_excess": "high",
-        "watch_command_missing": "high",
-        "company_command_missing": "high",
-        "company_command_excess": "high",
-        "kt_assignment_invalid": "high",
-        "missing_specialist_marker": "medium",
-        "missing_dreadnought_marker": "medium",
-    }
-
-    severity_weight = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     counts = Counter(item.get("code", "unknown") for item in findings)
     unique_members = len({int(item.get("member_id")) for item in findings if item.get("member_id") is not None})
 
-    by_code: dict[str, list[dict]] = {}
-    for item in findings:
-        code = item.get("code", "unknown")
-        by_code.setdefault(code, []).append(item)
+    code_phrases = {
+        "multi_company": "has conflicting company roles",
+        "multi_kill_team": "has conflicting kill-team roles",
+        "company_role_missing": "is missing a required company role",
+        "huntmaster_skip": "is missing required track roles",
+        "track_mixing": "has conflicting track roles",
+        "oathsworn_terminal": "has an invalid Oathsworn/command role combination",
+        "missing_specialist_marker": "is missing specialist marker role",
+        "missing_dreadnought_marker": "is missing dreadnought marker role",
+        "high_command_missing": "is missing required high command role",
+        "high_command_excess": "has high command role without qualifying rank",
+        "watch_command_missing": "is missing required watch command role",
+        "company_command_missing": "is missing required company command role",
+        "company_command_excess": "has company command role while marked specialist",
+        "kt_assignment_invalid": "has company-command-or-higher role while assigned to a kill team",
+    }
 
-    def _overview_lines() -> list[str]:
-        lines = [
-            f"- Total findings: {len(findings)}",
-            f"- Affected members: {unique_members}",
-            f"- Distinct issue types: {len(counts)}",
-        ]
-        return lines
+    role_by_name = {r.name.lower(): r for r in guild.roles}
 
-    def _sort_codes(codes: list[str]) -> list[str]:
-        return sorted(
-            codes,
-            key=lambda c: (
-                severity_weight.get(severity_for_code.get(c, "low"), 3),
-                -counts.get(c, 0),
-                code_labels.get(c, c).lower(),
-            ),
-        )
+    def _extract_role_names(detail: str) -> list[str]:
+        txt = (detail or "").strip()
+        names: list[str] = []
 
-    def _field_chunks(lines: list[str], limit: int = 1024) -> list[str]:
-        chunks: list[str] = []
-        current = ""
-        for line in lines:
-            candidate = (current + "\n" + line).strip()
-            if len(candidate) > limit:
-                if current:
-                    chunks.append(current)
-                    current = line
-                else:
-                    chunks.append(line[:limit])
-                    current = ""
-            else:
-                current = candidate
-        if current:
-            chunks.append(current)
-        return chunks
+        m = re.search(r"Missing track prerequisites:\s*(.+?)\\.?$", txt)
+        if m:
+            names.extend([p.strip() for p in m.group(1).split(",") if p.strip()])
+
+        m = re.search(r"Conflicting tracks detected:\s*(.+?)\\.?$", txt)
+        if m:
+            names.extend([p.strip() for p in m.group(1).split(",") if p.strip()])
+
+        for pat in [
+            r"Expected (.+?) role is missing",
+            r"Has (.+?) role",
+            r"Missing (.+?) command role",
+            r"Missing required marker role:\s*(.+?)\\.?$",
+        ]:
+            m = re.search(pat, txt)
+            if m:
+                names.append(m.group(1).strip())
+
+        out: list[str] = []
+        seen: set[str] = set()
+        for n in names:
+            key = n.lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(n)
+        return out
+
+    def _role_list_fragment(detail: str) -> str:
+        role_names = _extract_role_names(detail)
+        if not role_names:
+            return ""
+        tokens = []
+        for rn in role_names:
+            role_obj = role_by_name.get(rn.lower())
+            tokens.append(role_obj.mention if role_obj else rn)
+        return f": [{' '.join(tokens)}]"
     highcom_role_id = cfg_tp.get("highcom_role_id")
     ping = ""
     if highcom_role_id:
@@ -2418,82 +2408,53 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
             except Exception:
                 ping = ""
 
+    sorted_findings = sorted(
+        findings,
+        key=lambda item: (
+            int(item.get("member_id") or 0),
+            str(item.get("code") or ""),
+            str(item.get("detail") or ""),
+        ),
+    )
+
+    lines: list[str] = []
+    for item in sorted_findings:
+        member_id = item.get("member_id")
+        member_mention = f"<@{member_id}>" if member_id is not None else "(unknown member)"
+        code = str(item.get("code") or "unknown")
+        phrase = code_phrases.get(code, "has a role integrity issue")
+        detail = str(item.get("detail") or "")
+        lines.append(f"- {member_mention} {phrase}{_role_list_fragment(detail)}")
+
+    header = [
+        f"Findings: **{len(findings)}**",
+        f"Members affected: **{unique_members}**",
+        "",
+    ]
+    max_desc = 4000
+    desc = "\n".join(header)
+    shown = 0
+    for line in lines:
+        candidate = desc + line + "\n"
+        if len(candidate) > max_desc:
+            break
+        desc = candidate
+        shown += 1
+    remaining = len(lines) - shown
+    if remaining > 0:
+        tail = f"… and {remaining} more finding(s)."
+        if len(desc) + len(tail) + 1 <= 4096:
+            desc += tail
+
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    embeds: list[discord.Embed] = []
-
-    head = discord.Embed(
-        title="Role Integrity Audit Findings",
-        description="Structured role consistency report for HighCom review.",
+    embed = discord.Embed(
+        title="Role Integrity Audit",
+        description=desc.strip() or "No findings.",
         color=0xC0392B,
     )
-    head.add_field(name="Summary", value="\n".join(_overview_lines()), inline=False)
+    embed.set_footer(text=f"UTC {stamp} · Types: {len(counts)}")
 
-    summary_lines = []
-    for code in _sort_codes(list(counts.keys())):
-        sev = severity_for_code.get(code, "low").upper()
-        label = code_labels.get(code, code)
-        summary_lines.append(f"- [{sev}] {label}: {counts[code]}")
-    summary_chunks = _field_chunks(summary_lines)
-    if summary_chunks:
-        head.add_field(name="Issue Types", value=summary_chunks[0], inline=False)
-    for idx, extra in enumerate(summary_chunks[1:], start=2):
-        head.add_field(name=f"Issue Types (cont. {idx})", value=extra, inline=False)
-
-    head.set_footer(text=f"UTC {stamp}")
-    embeds.append(head)
-
-    detail_embed = discord.Embed(
-        title="Role Integrity Audit Details",
-        description="Findings grouped by issue type.",
-        color=0xC0392B,
-    )
-
-    for code in _sort_codes(list(by_code.keys())):
-        label = code_labels.get(code, code)
-        sev = severity_for_code.get(code, "low").upper()
-        items = by_code.get(code, [])
-        lines = []
-        for item in items:
-            member_id = item.get("member_id")
-            mention = f"<@{member_id}>" if member_id is not None else "(unknown member)"
-            detail = (item.get("detail") or "No detail.").strip()
-            lines.append(f"- {mention}: {detail}")
-
-        chunks = _field_chunks(lines)
-        if not chunks:
-            continue
-
-        first_name = f"[{sev}] {label} ({len(items)})"
-        if len(detail_embed.fields) >= 25:
-            detail_embed.set_footer(text=f"UTC {stamp}")
-            embeds.append(detail_embed)
-            detail_embed = discord.Embed(
-                title="Role Integrity Audit Details (cont.)",
-                description="Findings grouped by issue type.",
-                color=0xC0392B,
-            )
-        detail_embed.add_field(name=first_name, value=chunks[0], inline=False)
-
-        for part_idx, extra in enumerate(chunks[1:], start=2):
-            if len(detail_embed.fields) >= 25:
-                detail_embed.set_footer(text=f"UTC {stamp}")
-                embeds.append(detail_embed)
-                detail_embed = discord.Embed(
-                    title="Role Integrity Audit Details (cont.)",
-                    description="Findings grouped by issue type.",
-                    color=0xC0392B,
-                )
-            detail_embed.add_field(
-                name=f"[{sev}] {label} (cont. {part_idx})",
-                value=extra,
-                inline=False,
-            )
-
-    detail_embed.set_footer(text=f"UTC {stamp}")
-    embeds.append(detail_embed)
-
-    for idx, report_embed in enumerate(embeds):
-        await channel.send(content=(ping if idx == 0 else None), embed=report_embed)
+    await channel.send(content=ping or None, embed=embed)
     return True
 
 
