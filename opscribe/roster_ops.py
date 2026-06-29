@@ -2331,21 +2331,21 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
     counts = Counter(item.get("code", "unknown") for item in findings)
     unique_members = len({int(item.get("member_id")) for item in findings if item.get("member_id") is not None})
 
-    code_phrases = {
-        "multi_company": "has conflicting company roles",
-        "multi_kill_team": "has conflicting kill-team roles",
-        "company_role_missing": "is missing a required company role",
-        "huntmaster_skip": "is missing required track roles",
-        "track_mixing": "has conflicting track roles",
-        "oathsworn_terminal": "has an invalid Oathsworn/command role combination",
-        "missing_specialist_marker": "is missing specialist marker role",
-        "missing_dreadnought_marker": "is missing dreadnought marker role",
-        "high_command_missing": "is missing required high command role",
-        "high_command_excess": "has high command role without qualifying rank",
-        "watch_command_missing": "is missing required watch command role",
-        "company_command_missing": "is missing required company command role",
-        "company_command_excess": "has company command role while marked specialist",
-        "kt_assignment_invalid": "has company-command-or-higher role while assigned to a kill team",
+    code_labels = {
+        "multi_company": "CO-conflict",
+        "multi_kill_team": "KT-conflict",
+        "company_role_missing": "CO-miss",
+        "huntmaster_skip": "TRK-miss",
+        "track_mixing": "TRK-conflict",
+        "oathsworn_terminal": "OATH-conflict",
+        "missing_specialist_marker": "SPEC-mark-miss",
+        "missing_dreadnought_marker": "DREAD-mark-miss",
+        "high_command_missing": "HC-miss",
+        "high_command_excess": "HC-excess",
+        "watch_command_missing": "WC-miss",
+        "company_command_missing": "CC-miss",
+        "company_command_excess": "CC-excess",
+        "kt_assignment_invalid": "KT-invalid",
     }
 
     role_by_name = {r.name.lower(): r for r in guild.roles}
@@ -2389,7 +2389,7 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         for rn in role_names:
             role_obj = role_by_name.get(rn.lower())
             tokens.append(role_obj.mention if role_obj else rn)
-        return f": [{' '.join(tokens)}]"
+        return f" [{' '.join(tokens)}]"
     highcom_role_id = cfg_tp.get("highcom_role_id")
     ping = ""
     if highcom_role_id:
@@ -2417,22 +2417,31 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         ),
     )
 
-    lines: list[str] = []
+    by_member: dict[int | None, list[str]] = {}
     for item in sorted_findings:
         member_id = item.get("member_id")
-        member_mention = f"<@{member_id}>" if member_id is not None else "(unknown member)"
         code = str(item.get("code") or "unknown")
-        phrase = code_phrases.get(code, "has a role integrity issue")
         detail = str(item.get("detail") or "")
-        lines.append(f"- {member_mention} {phrase}{_role_list_fragment(detail)}")
+        label = code_labels.get(code, "role issue")
+        frag = f"{label}{_role_list_fragment(detail)}"
+        by_member.setdefault(member_id, []).append(frag)
 
-    header = [
-        f"Findings: **{len(findings)}**",
-        f"Members affected: **{unique_members}**",
-        "",
-    ]
+    lines: list[str] = []
+    for member_id, issues in sorted(by_member.items(), key=lambda kv: int(kv[0] or 0)):
+        member_mention = f"<@{member_id}>" if member_id is not None else "(unknown member)"
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for issue in issues:
+            k = issue.lower()
+            if k not in seen:
+                seen.add(k)
+                deduped.append(issue)
+        joined = " | ".join(deduped)
+        lines.append(f"- {member_mention} {joined}")
+
+    summary = f"F:{len(findings)} · M:{unique_members} · T:{len(counts)}"
     max_desc = 4000
-    desc = "\n".join(header)
+    desc = summary + "\n"
     shown = 0
     for line in lines:
         candidate = desc + line + "\n"
@@ -2442,17 +2451,17 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         shown += 1
     remaining = len(lines) - shown
     if remaining > 0:
-        tail = f"… and {remaining} more finding(s)."
+        tail = f"… +{remaining} more"
         if len(desc) + len(tail) + 1 <= 4096:
             desc += tail
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     embed = discord.Embed(
-        title="Role Integrity Audit",
+        title="Role Audit",
         description=desc.strip() or "No findings.",
         color=0xC0392B,
     )
-    embed.set_footer(text=f"UTC {stamp} · Types: {len(counts)}")
+    embed.set_footer(text=f"UTC {stamp}")
 
     await channel.send(content=ping or None, embed=embed)
     return True
