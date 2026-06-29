@@ -32,9 +32,6 @@ from .constants import (
     ROSTER_COMPANY_CHANNELS,
     ROSTER_COMPANY_COMMAND_RANKS,
     ROSTER_EMBED_DESC_LIMIT,
-    ROSTER_IMAGE_COMPANY_COMMAND,
-    ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY,
-    ROSTER_IMAGE_HIGH_COMMAND,
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
@@ -184,6 +181,7 @@ def _load_roster_state() -> dict:
             "channel_id": channel_id,
             "hc_message_id": None,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {},
         }
@@ -204,6 +202,11 @@ def _load_roster_state() -> dict:
                         "channel_id": existing_company_state.get("channel_id", default_company_state["channel_id"]),
                         "hc_message_id": existing_company_state.get("hc_message_id"),
                         "specialist_message_id": existing_company_state.get("specialist_message_id"),
+                        "specialist_message_ids": (
+                            existing_company_state.get("specialist_message_ids")
+                            if isinstance(existing_company_state.get("specialist_message_ids"), dict)
+                            else {}
+                        ),
                         "command_message_id": existing_company_state.get("command_message_id"),
                         "killteam_message_ids": (
                             existing_company_state.get("killteam_message_ids")
@@ -351,52 +354,27 @@ def _render_member_block(
     return block
 
 
-def _build_sectioned_container_view(
+def _build_container_view(
     title: str,
-    sections: List[Tuple[str, List[discord.Member]] | Tuple[str, List[discord.Member], List[str]]],
-    guild: discord.Guild,
     *,
-    image_url: Optional[str] = None,
+    body_blocks: List[str],
     description_lines: Optional[List[str]] = None,
     last_updated: Optional[datetime] = None,
 ) -> discord.ui.LayoutView:
-    """Build a roster container view using Discord UI Kit v2 components.
-
-    Notes:
-    - UI text displays are limited to 4000 total chars per view.
-    - This builder composes all roster sections into one TextDisplay payload and
-      truncates with a warning note when needed.
-    """
+    """Build a compact roster container using one TextDisplay component."""
     ts = last_updated or datetime.now(timezone.utc)
     footer = f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
-    parts: List[str] = []
-    header = "\n".join([line for line in ([title] + (description_lines or [])) if line])
-    if header:
-        parts.append(header)
 
-    for section in sections:
-        if len(section) == 2:
-            section_name, members = section
-            lead_lines = None
-        else:
-            section_name, members, lead_lines = section
-        block = _render_member_block(
-            guild,
-            members,
-            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-            lead_lines=lead_lines,
-        )
-        if section_name != _EMPTY_FIELD_NAME:
-            parts.append(f"## {section_name}\n{block}")
-        else:
-            parts.append(block)
+    lines: List[str] = [title]
+    lines.extend([line for line in (description_lines or []) if line])
+    lines.extend([block for block in body_blocks if block])
+    lines.append(footer)
 
-    parts.append(footer)
-    full_text = "\n\n".join([p for p in parts if p])
+    full_text = "\n".join([line for line in lines if line])
     if len(full_text) > _CONTAINER_TEXT_LIMIT:
-        reserve = len("\n\n*...truncated for container character limit.*")
+        reserve = len("\n*...truncated for container character limit.*")
         full_text = full_text[: max(0, _CONTAINER_TEXT_LIMIT - reserve)]
-        full_text += "\n\n*...truncated for container character limit.*"
+        full_text += "\n*...truncated for container character limit.*"
         _log().warning("Roster container text truncated to stay within 4000-char LayoutView limit")
 
     view = discord.ui.LayoutView(timeout=None)
@@ -1049,35 +1027,27 @@ async def _update_company_roster(
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
 
-    cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
-
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
     high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
-    specialist_sections: list[tuple[str, list[discord.Member], list[str]]] = []
-    for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
-        specialist_members = _collect_members_with_roles(
-            guild,
-            set(role_names),
-            exclude_roles={"Watch Master"},
-        )
-        specialist_sections.append(
-            (
-                section_name,
-                specialist_members,
-                [
-                    _tp_status_for_members({m.id for m in specialist_members}, packages=_tp_packages),
-                ],
-            )
-        )
-
-    hc_view = _build_sectioned_container_view(
-        _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        [("Watch Master", watch_master_members), ("Cadre Leaders", high_command_members)],
+    hc_watch_master_block = _render_member_block(
         guild,
+        watch_master_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+    )
+    hc_cadre_block = _render_member_block(
+        guild,
+        high_command_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+    )
+    hc_view = _build_container_view(
+        _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
+        body_blocks=[
+            f"Watch Master\n{hc_watch_master_block}",
+            f"Cadre Leaders\n{hc_cadre_block}",
+        ],
         last_updated=now,
-        image_url=ROSTER_IMAGE_HIGH_COMMAND,
         description_lines=[
             _tp_status_for_high_command(guild, packages=_tp_packages),
             _fortress_rep_title(tp_data=_tp_data),
@@ -1086,19 +1056,47 @@ async def _update_company_roster(
     hc_msg_id = await _upsert_message(channel, company_state.get("hc_message_id"), view=hc_view)
     company_state["hc_message_id"] = hc_msg_id
 
-    # ── Embed 2: Deathwatch Specialist cadres ───────────────────────────────
-    specialist_view = _build_sectioned_container_view(
-        _fmt_title(f"<@&{_DEATHWATCH_SPECIALIST_ROLE_ID}>", cmd_emoji),
-        specialist_sections,
-        guild,
-        last_updated=now,
-        image_url=cmd_image,
-        description_lines=[],
-    )
-    specialist_msg_id = await _upsert_message(
-        channel, company_state.get("specialist_message_id"), view=specialist_view
-    )
-    company_state["specialist_message_id"] = specialist_msg_id
+    # ── Specialist cadres: one container message per cadre ───────────────────
+    specialist_message_ids: dict[str, int] = dict(company_state.get("specialist_message_ids") or {})
+    legacy_specialist_message_id = company_state.get("specialist_message_id")
+    new_specialist_message_ids: dict[str, int] = {}
+
+    for idx, (section_name, role_names) in enumerate(_SPECIALIST_SECTION_ROLE_GROUPS):
+        specialist_members = _collect_members_with_roles(
+            guild,
+            set(role_names),
+            exclude_roles={"Watch Master"},
+        )
+        specialist_block = _render_member_block(
+            guild,
+            specialist_members,
+            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+            lead_lines=[
+                _tp_status_for_members({m.id for m in specialist_members}, packages=_tp_packages),
+            ],
+        )
+        specialist_view = _build_container_view(
+            _fmt_title(section_name.upper(), cmd_emoji),
+            body_blocks=[specialist_block],
+            last_updated=now,
+            description_lines=[_role_mention(_DEATHWATCH_SPECIALIST_ROLE_ID, fallback="")],
+        )
+
+        seed_message_id = specialist_message_ids.get(section_name)
+        if seed_message_id is None and idx == 0 and legacy_specialist_message_id:
+            seed_message_id = legacy_specialist_message_id
+        specialist_msg_id = await _upsert_message(channel, seed_message_id, view=specialist_view)
+        new_specialist_message_ids[section_name] = specialist_msg_id
+
+    stale_specialist_ids = set(specialist_message_ids.values())
+    if legacy_specialist_message_id:
+        stale_specialist_ids.add(legacy_specialist_message_id)
+    stale_specialist_ids -= set(new_specialist_message_ids.values())
+    for stale_message_id in stale_specialist_ids:
+        await _delete_message_if_exists(channel, stale_message_id)
+
+    company_state["specialist_message_ids"] = new_specialist_message_ids
+    company_state["specialist_message_id"] = None
 
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
@@ -1109,33 +1107,28 @@ async def _update_company_roster(
         fallback=_mention_style_label("Company Champion"),
     )
     kill_teams = _get_kill_teams_for_company(guild, company_name)
-    cmd_view = _build_sectioned_container_view(
-        _fmt_title(company_role_mention, cmd_emoji),
-        [
-            (_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention]),
-            (
-                _EMPTY_FIELD_NAME,
-                champion_members,
-                [
-                    champion_role_mention,
-                    _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
-                ],
-            ),
-        ] + [
-            (
-                _EMPTY_FIELD_NAME,
-                kt_members,
-                [
-                    _role_mention(kt_role_id, fallback=_mention_style_label(kt_name)),
-                    _tp_status_for_kt(kt_name, packages=_tp_packages),
-                    _honors_title_for_kt(kt_name, honors=_honors_data),
-                ],
-            )
-            for kt_name, kt_role_id, kt_members in kill_teams
-        ],
+    cmd_members_block = _render_member_block(
         guild,
+        cmd_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+        lead_lines=[company_command_role_mention],
+    )
+    champion_block = _render_member_block(
+        guild,
+        champion_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+        lead_lines=[
+            champion_role_mention,
+            _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
+        ],
+    )
+    cmd_view = _build_container_view(
+        _fmt_title(company_role_mention, cmd_emoji),
+        body_blocks=[
+            f"Company Command\n{cmd_members_block}",
+            f"Company Champion\n{champion_block}",
+        ],
         last_updated=now,
-        image_url=cmd_image,
         description_lines=[
             _honors_title_for_company(company_name, honors=_honors_data),
         ],
@@ -1145,12 +1138,31 @@ async def _update_company_roster(
     )
     company_state["command_message_id"] = cmd_msg_id
 
-    kt_message_ids: dict = dict(company_state.get("killteam_message_ids") or {})
+    kt_message_ids: dict[str, int] = dict(company_state.get("killteam_message_ids") or {})
+    new_kt_message_ids: dict[str, int] = {}
 
-    # Legacy KT embeds are removed in this layout. Clean up any tracked posts.
-    for stale_message_id in kt_message_ids.values():
+    for kt_name, kt_role_id, kt_members in kill_teams:
+        kt_block = _render_member_block(
+            guild,
+            kt_members,
+            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+            lead_lines=[
+                _tp_status_for_kt(kt_name, packages=_tp_packages),
+                _honors_title_for_kt(kt_name, honors=_honors_data),
+            ],
+        )
+        kt_view = _build_container_view(
+            _fmt_title(_role_mention(kt_role_id, fallback=_mention_style_label(kt_name)), cmd_emoji),
+            body_blocks=[kt_block],
+            last_updated=now,
+        )
+        kt_message_id = await _upsert_message(channel, kt_message_ids.get(kt_name), view=kt_view)
+        new_kt_message_ids[kt_name] = kt_message_id
+
+    stale_kt_ids = set(kt_message_ids.values()) - set(new_kt_message_ids.values())
+    for stale_message_id in stale_kt_ids:
         await _delete_message_if_exists(channel, stale_message_id)
-    kt_message_ids = {}
+    kt_message_ids = new_kt_message_ids
 
     company_state["killteam_message_ids"] = kt_message_ids
     state[company_name] = company_state
