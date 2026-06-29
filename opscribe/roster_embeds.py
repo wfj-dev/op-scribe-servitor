@@ -758,7 +758,7 @@ def _fortress_rep_title(tp_data: dict | None = None, *, standing_prefix: str = "
     filled = max(0, min(bar_width, filled))
     bar = "=" * filled + "-" * (bar_width - filled)
     state = _fortress_rep_state_name(rep_clamped)
-    return f"-# {standing_prefix} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+    return f"-# {standing_prefix} [{bar}] `{rep_clamped:.1f}/60` **{state}**"
 
 
 def _load_honors() -> dict:
