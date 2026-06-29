@@ -511,31 +511,8 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
     return f"\u16ed\u22c5 {text} \u22c5\u16ed"  # ᛭⋅ … ⋅᛭ fallback
 
 
-def _mention_style_label(name: str) -> str:
-    """Return a stable, mention-like display label for embed field names.
-
-    Discord does not reliably render real mentions inside embed field names, so
-    use an @-prefixed plain-text label instead.
-    """
-    clean = str(name or "").strip()
-    if not clean:
-        return "@Unknown"
-    return clean if clean.startswith("@") else f"@{clean}"
-
-
-def _role_mention(role_id: int | None, fallback: str = "") -> str:
-    """Return a real Discord role mention when an ID is available."""
-    try:
-        resolved = int(role_id or 0)
-    except Exception:
-        resolved = 0
-    if resolved:
-        return f"<@&{resolved}>"
-    return fallback
-
-
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:chapteremoji: | @mention``."""
+    """Render a single roster line: ``:chapteremoji: | @display_name`` (plain text)."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     role_names = _member_role_names(member)
     chapter_emoji_str = ""
@@ -544,9 +521,9 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
-    mention = member.mention
+    display_name = _clean_roster_name(member)
     left = chapter_emoji_str or "·"
-    return f"{left} | {mention}"
+    return f"{left} | @{display_name}"
 
 
 def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
@@ -1002,15 +979,7 @@ async def _update_company_roster(
 
     hc_emoji = _te("Deathwatch")        # :Deathwatch:
     cmd_emoji = _te("WatchCommand")     # :WatchCommand:
-    # Resolve company role mention for the company roster banner.
-    company_role = discord.utils.get(guild.roles, name=company_name)
-    company_role_mention = f"<@&{company_role.id}>" if company_role else company_name
-    company_key = company_name.replace("Watch Company", "").strip().lower()
-    company_cfg = ((_g.CONFIG or {}).get("companies") or {}).get(company_key) or {}
-    company_command_role_mention = _role_mention(
-        company_cfg.get("companyCommandRoleId"),
-        fallback="Company Command",
-    )
+    company_command_role_label = "Company Command"
 
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
@@ -1042,7 +1011,7 @@ async def _update_company_roster(
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
     )
     hc_view = _build_container_view(
-        _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
+        _fmt_title("HIGH COMMAND", hc_emoji),
         body_blocks=[
             f"Watch Master\n{hc_watch_master_block}",
             f"Cadre Leaders\n{hc_cadre_block}",
@@ -1079,7 +1048,7 @@ async def _update_company_roster(
             _fmt_title(section_name.upper(), cmd_emoji),
             body_blocks=[specialist_block],
             last_updated=now,
-            description_lines=[_role_mention(_DEATHWATCH_SPECIALIST_ROLE_ID, fallback="")],
+            description_lines=[],
         )
 
         seed_message_id = specialist_message_ids.get(section_name)
@@ -1101,29 +1070,25 @@ async def _update_company_roster(
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     champion_members = _get_company_champion_members(guild, company_name)
-    champion_role = discord.utils.get(getattr(guild, "roles", []), name="Company Champion")
-    champion_role_mention = _role_mention(
-        getattr(champion_role, "id", None),
-        fallback=_mention_style_label("Company Champion"),
-    )
+    champion_role_label = "Company Champion"
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     cmd_members_block = _render_member_block(
         guild,
         cmd_members,
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-        lead_lines=[company_command_role_mention],
+        lead_lines=[company_command_role_label],
     )
     champion_block = _render_member_block(
         guild,
         champion_members,
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
         lead_lines=[
-            champion_role_mention,
+            champion_role_label,
             _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
         ],
     )
     cmd_view = _build_container_view(
-        _fmt_title(company_role_mention, cmd_emoji),
+        _fmt_title(company_name.upper(), cmd_emoji),
         body_blocks=[
             f"Company Command\n{cmd_members_block}",
             f"Company Champion\n{champion_block}",
@@ -1141,7 +1106,7 @@ async def _update_company_roster(
     kt_message_ids: dict[str, int] = dict(company_state.get("killteam_message_ids") or {})
     new_kt_message_ids: dict[str, int] = {}
 
-    for kt_name, kt_role_id, kt_members in kill_teams:
+    for kt_name, _kt_role_id, kt_members in kill_teams:
         kt_block = _render_member_block(
             guild,
             kt_members,
@@ -1152,7 +1117,7 @@ async def _update_company_roster(
             ],
         )
         kt_view = _build_container_view(
-            _fmt_title(_role_mention(kt_role_id, fallback=_mention_style_label(kt_name)), cmd_emoji),
+            _fmt_title(kt_name.upper(), cmd_emoji),
             body_blocks=[kt_block],
             last_updated=now,
         )
