@@ -4815,6 +4815,140 @@ def _strat_line(strat: dict) -> str:
     return f"{prefix} {strat['name']}"
 
 
+# Canonical embed ordering for strike-directive stratagems.
+_POSITIVE_MODIFIER_ORDER = [
+    "Combat Mastery",
+    "Point Blank",
+    "Sharpshooter",
+    "Larraman Cells",
+    "Technological Revolution",
+    "Deep Pockets",
+    "Harvest of Vitae",
+    "Rhythm of Carnage",
+    "Unleashed Fury",
+    "Camaraderie",
+    "Imperial Fervour",
+    "Pointed Attack",
+    "Avenger",
+    "Enemy Sighted",
+    "Unshaken",
+    "Surgical Strike",
+    "We Stand as One",
+    "Migraine",
+    "Astra Militarum",
+    "Beset",
+    "Intelligence Lapse",
+    "Surplus",
+    "Come Prepared",
+    "The Emperor Protects",
+    "Doomed Offensive",
+    "Butcher's Gifts",
+    "Measured Mercy",
+    "Temporal Boosts",
+    "Hallowed Relic",
+    "Shockwave Plating",
+]
+
+_NEGATIVE_MODIFIER_ORDER = [
+    "Suboptimal State",
+    "Maintain Distance",
+    "Close In",
+    "Backup Plan",
+    "Heavy Calibre",
+    "Hyperopia",
+    "Myopia",
+    "Survival Training",
+    "You Only Live Once",
+    "Fatality",
+    "Corrosion",
+    "No Delays",
+    "Tactical Weakness",
+    "Aggravated Assault",
+    "Fallen Vanguard",
+    "Bleary Sniper",
+    "Heavy Burden",
+    "Broken Bulwark",
+    "Buffed Enemies",
+    "Hardened Skins",
+    "Supremacy of the Strong",
+    "Empathy",
+    "Great Responsibility",
+    "Killer Instinct",
+    "Strike Out",
+    "Reinforced Cranium",
+    "Extreme Challenge",
+    "Major Challenge",
+    "Meat for the Slaughter",
+    "Hunted",
+    "Mine Field",
+    "Summoner",
+    "Effective Taunt",
+    "Tsunami",
+    "Clever Foe",
+    "Coordinated Calls",
+    "Depleted Armour",
+    "Scavenger",
+    "Rationing",
+    "Equipment Malfunction",
+    "No Apothecaries",
+    "Detonation Risk",
+    "Press the Attack",
+    "Squad Unity",
+    "Split Up",
+    "Atrophy",
+    "On the Clock",
+    "Hazardous Environment",
+    "Armour Malfunction",
+    "Suspicious Behaviour",
+    "Booby Trap",
+    "Warp Storm",
+    "Shadow of the Warp",
+    "Microreactor Breach",
+    "Enduring Foes",
+    "Fatal Contamination",
+    "Battlefield Instincts",
+    "Spoils of War",
+    "Corrupted Relic",
+    "Twice the Foe",
+    "Coordinated Elimination",
+    "Posthumous Proliferation",
+    "Personal Quarry",
+]
+
+_MODIFIER_NAME_ALIASES = {
+    "Enemy Sighter": "Enemy Sighted",
+    "Imperial Fevour": "Imperial Fervour",
+    "Heavy Caliber": "Heavy Calibre",
+    "Hazardous Encironment": "Hazardous Environment",
+    "Suspicious Behavior": "Suspicious Behaviour",
+    "Microreaptor Breach": "Microreactor Breach",
+}
+
+_POSITIVE_MODIFIER_RANK = {name: idx for idx, name in enumerate(_POSITIVE_MODIFIER_ORDER)}
+_NEGATIVE_MODIFIER_RANK = {name: idx for idx, name in enumerate(_NEGATIVE_MODIFIER_ORDER)}
+
+
+def _normalize_modifier_name(name: str) -> str:
+    return _MODIFIER_NAME_ALIASES.get(name, name)
+
+
+def _ordered_modifier_lines(strats: list[dict], positive: bool) -> list[str]:
+    rank_map = _POSITIVE_MODIFIER_RANK if positive else _NEGATIVE_MODIFIER_RANK
+    filtered = []
+    for s in strats:
+        stype = (s.get("type") or "").lower()
+        if positive and stype != "buff":
+            continue
+        if not positive and stype != "debuff":
+            continue
+        raw_name = (s.get("name") or "").replace(" (forced)", "").strip()
+        norm_name = _normalize_modifier_name(raw_name)
+        filtered.append(norm_name)
+
+    filtered.sort(key=lambda n: (rank_map.get(n, 10_000), n.lower()))
+    return [f"• {name}" for name in filtered]
+
+
 
 def _resolve_requirements_display(pkg: dict, guild: "discord.Guild | None") -> list[tuple[str, str, str]]:
     """Greedy assignment of required roles to participants.
@@ -5037,18 +5171,30 @@ def _build_package_embed(
             briefing_out = cut.rstrip(" .,;:") + "..."
         embed.add_field(name="▸ Field Briefing", value=f"> {briefing_out}", inline=False)
 
-    # ▸ Stratagems as diff code block
+    # ▸ Stratagem modifiers in canonical positive/negative order
     core_strats = stratagems.get("core", [])
     wildcards = stratagems.get("wildcards", [])
     all_strats = core_strats + wildcards
     if intel_lapse:
         all_strats.append({"name": "Intelligence Lapse (forced)", "type": "special"})
     if all_strats:
-        strat_lines = [_strat_line(s) for s in all_strats]
-        strat_block = "```diff\n" + "\n".join(strat_lines) + "\n```"
-        if len(strat_block) > 1024:
-            strat_block = "```diff\n" + "\n".join(strat_lines)[:990] + "\n…\n```"
-        embed.add_field(name="▸ Operational Stratagems", value=strat_block, inline=False)
+        positive_lines = _ordered_modifier_lines(all_strats, positive=True)
+        negative_lines = _ordered_modifier_lines(all_strats, positive=False)
+
+        if intel_lapse and "• Intelligence Lapse" not in positive_lines:
+            positive_lines.append("• Intelligence Lapse")
+
+        if positive_lines:
+            pos_value = "\n".join(positive_lines)
+            if len(pos_value) > 1024:
+                pos_value = pos_value[:1020] + "…"
+            embed.add_field(name="▸ Positive Modifiers", value=pos_value, inline=False)
+
+        if negative_lines:
+            neg_value = "\n".join(negative_lines)
+            if len(neg_value) > 1024:
+                neg_value = neg_value[:1020] + "…"
+            embed.add_field(name="▸ Negative Modifiers", value=neg_value, inline=False)
 
     embed.set_footer(
         text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {rep:.2f}",
