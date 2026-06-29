@@ -742,7 +742,7 @@ def _fortress_rep_state_name(rep: float) -> str:
     return "MANDATED"
 
 
-def _fortress_rep_title(tp_data: dict | None = None, *, standing_emoji: str = "⚖️") -> str:
+def _fortress_rep_title(tp_data: dict | None = None, *, standing_prefix: str = "⚖️") -> str:
     """Return fortress standing title line as a 0..60 progress bar."""
     rep_value = 30.0
     try:
@@ -758,7 +758,7 @@ def _fortress_rep_title(tp_data: dict | None = None, *, standing_emoji: str = "�
     filled = max(0, min(bar_width, filled))
     bar = "=" * filled + "-" * (bar_width - filled)
     state = _fortress_rep_state_name(rep_clamped)
-    return f"-# {standing_emoji} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+    return f"-# {standing_prefix} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
 
 
 def _load_honors() -> dict:
@@ -778,7 +778,7 @@ _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted"
 _HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
-def _tier_window(tiers: list, current: str, *, standing_emoji: str = "⚖️") -> str:
+def _tier_window(tiers: list, current: str, *, standing_prefix: str = "⚖️") -> str:
     """Return a sliding window of tiers centered on current.
 
     Current tier is **bold**, others are *italic*.
@@ -800,14 +800,14 @@ def _tier_window(tiers: list, current: str, *, standing_emoji: str = "⚖️") -
 
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
-    return f"-# {standing_emoji} " + " · ".join(parts)
+    return f"-# {standing_prefix} " + " · ".join(parts)
 
 
 def _honors_title_for_kt(
     kt_name: str,
     honors: dict | None = None,
     *,
-    standing_emoji: str = "⚖️",
+    standing_prefix: str = "⚖️",
 ) -> str:
     """Return formatted sliding-window honor title line for a KT.
 
@@ -823,14 +823,14 @@ def _honors_title_for_kt(
     tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "Unproven")
     if not tier:
         tier = "Unproven"
-    return _tier_window(_KT_TITLE_TIERS, tier, standing_emoji=standing_emoji)
+    return _tier_window(_KT_TITLE_TIERS, tier, standing_prefix=standing_prefix)
 
 
 def _honors_title_for_company(
     company_name: str,
     honors: dict | None = None,
     *,
-    standing_emoji: str = "⚖️",
+    standing_prefix: str = "⚖️",
 ) -> str:
     """Return formatted sliding-window honor title line for a company.
 
@@ -846,7 +846,7 @@ def _honors_title_for_company(
     tier = honors.get("companies", {}).get(company_name, {}).get("tier", "Unrecorded")
     if not tier:
         tier = "Unrecorded"
-    return _tier_window(_CO_TITLE_TIERS, tier, standing_emoji=standing_emoji)
+    return _tier_window(_CO_TITLE_TIERS, tier, standing_prefix=standing_prefix)
 
 
 def _build_embed(
@@ -1078,12 +1078,9 @@ async def _update_company_roster(
 
     ready_icon = _get_emoji_by_name(guild, "Ready") or "🟢"
     deployed_icon = _get_emoji_by_name(guild, "Deployed") or "🔴"
-    assigned_icon = "🟡"
-    standing_emoji = (
-        _get_emoji_by_name(guild, "OrdoStanding")
-        or _get_emoji_by_name(guild, "OrdoXenosStanding")
-        or "⚖️"
-    )
+    assigned_icon = deployed_icon
+    renown_prefix = "`ʀᴇɴᴏᴡɴ`"
+    fortress_prefix = "`1. ᴏʀᴅᴏ sᴛᴀɴᴅɪɴɢ`"
 
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
@@ -1105,7 +1102,7 @@ async def _update_company_roster(
                 deployed_icon=deployed_icon,
                 assigned_icon=assigned_icon,
             ),
-            _fortress_rep_title(tp_data=_tp_data, standing_emoji=standing_emoji),
+            _fortress_rep_title(tp_data=_tp_data, standing_prefix=fortress_prefix),
         ],
     )
     hc_msg_id = await _upsert_message(
@@ -1209,7 +1206,7 @@ async def _update_company_roster(
             _honors_title_for_company(
                 company_name,
                 honors=_honors_data,
-                standing_emoji=standing_emoji,
+                standing_prefix=renown_prefix,
             ),
         ],
     )
@@ -1241,7 +1238,7 @@ async def _update_company_roster(
                 _honors_title_for_kt(
                     kt_name,
                     honors=_honors_data,
-                    standing_emoji=standing_emoji,
+                    standing_prefix=renown_prefix,
                 ),
             ],
         )
