@@ -88,6 +88,7 @@ _HONOUR_LABELS = {
 }
 
 _ROSTER_FIELD_CHAR_LIMIT = 1024
+_CONTAINER_TEXT_LIMIT = 4000
 _EMPTY_FIELD_NAME = "\u200b"
 _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
@@ -350,7 +351,7 @@ def _render_member_block(
     return block
 
 
-def _build_sectioned_embed(
+def _build_sectioned_container_view(
     title: str,
     sections: List[Tuple[str, List[discord.Member]] | Tuple[str, List[discord.Member], List[str]]],
     guild: discord.Guild,
@@ -358,13 +359,20 @@ def _build_sectioned_embed(
     image_url: Optional[str] = None,
     description_lines: Optional[List[str]] = None,
     last_updated: Optional[datetime] = None,
-) -> discord.Embed:
-    """Build a roster embed with add_field() sections."""
+) -> discord.ui.LayoutView:
+    """Build a roster container view using Discord UI Kit v2 components.
+
+    Notes:
+    - UI text displays are limited to 4000 total chars per view.
+    - This builder composes all roster sections into one TextDisplay payload and
+      truncates with a warning note when needed.
+    """
     ts = last_updated or datetime.now(timezone.utc)
-    embed = discord.Embed(color=_EMBED_COLOR)
-    embed.description = "\n".join([line for line in ([title] + (description_lines or [])) if line])
-    if image_url:
-        embed.set_image(url=image_url)
+    footer = f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
+    parts: List[str] = []
+    header = "\n".join([line for line in ([title] + (description_lines or [])) if line])
+    if header:
+        parts.append(header)
 
     for section in sections:
         if len(section) == 2:
@@ -372,22 +380,29 @@ def _build_sectioned_embed(
             lead_lines = None
         else:
             section_name, members, lead_lines = section
-        field_name = section_name if section_name == _EMPTY_FIELD_NAME else f"▸ {section_name}"
-        embed.add_field(
-            name=field_name,
-            value=_render_member_block(
-                guild,
-                members,
-                max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-                lead_lines=lead_lines,
-            ),
-            inline=False,
+        block = _render_member_block(
+            guild,
+            members,
+            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+            lead_lines=lead_lines,
         )
+        if section_name != _EMPTY_FIELD_NAME:
+            parts.append(f"## {section_name}\n{block}")
+        else:
+            parts.append(block)
 
-    embed.set_footer(
-        text=f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
-    )
-    return embed
+    parts.append(footer)
+    full_text = "\n\n".join([p for p in parts if p])
+    if len(full_text) > _CONTAINER_TEXT_LIMIT:
+        reserve = len("\n\n*...truncated for container character limit.*")
+        full_text = full_text[: max(0, _CONTAINER_TEXT_LIMIT - reserve)]
+        full_text += "\n\n*...truncated for container character limit.*"
+        _log().warning("Roster container text truncated to stay within 4000-char LayoutView limit")
+
+    view = discord.ui.LayoutView(timeout=None)
+    container = discord.ui.Container(discord.ui.TextDisplay(full_text), accent_color=None)
+    view.add_item(container)
+    return view
 
 
 def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
@@ -888,17 +903,32 @@ def _build_embed(
 async def _upsert_message(
     channel: discord.TextChannel,
     message_id: Optional[int],
-    embed: discord.Embed,
+    *,
+    embed: Optional[discord.Embed] = None,
+    view: Optional[discord.ui.LayoutView] = None,
 ) -> int:
     """Edit an existing message or post a new one.
 
     Returns the message ID (existing or newly created).
     Raises on failure so callers can decide how to handle.
     """
+    if embed is None and view is None:
+        raise ValueError("_upsert_message requires either an embed or a container view")
+
     if message_id:
         try:
             msg = await channel.fetch_message(message_id)
-            await msg.edit(embed=embed)
+            if view is not None:
+                # Required when transitioning a message to LayoutView/v2 components.
+                await msg.edit(
+                    content=None,
+                    embed=None,
+                    embeds=None,
+                    attachments=None,
+                    view=view,
+                )
+            else:
+                await msg.edit(embed=embed)
             return msg.id
         except discord.NotFound:
             _log().info(
@@ -914,7 +944,10 @@ async def _upsert_message(
             )
 
     # Post fresh
-    msg = await channel.send(embed=embed)
+    if view is not None:
+        msg = await channel.send(view=view)
+    else:
+        msg = await channel.send(embed=embed)
     return msg.id
 
 
@@ -1039,7 +1072,7 @@ async def _update_company_roster(
             )
         )
 
-    hc_embed = _build_sectioned_embed(
+    hc_view = _build_sectioned_container_view(
         _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
         [("Watch Master", watch_master_members), ("Cadre Leaders", high_command_members)],
         guild,
@@ -1050,13 +1083,11 @@ async def _update_company_roster(
             _fortress_rep_title(tp_data=_tp_data),
         ],
     )
-    hc_msg_id = await _upsert_message(
-        channel, company_state.get("hc_message_id"), hc_embed
-    )
+    hc_msg_id = await _upsert_message(channel, company_state.get("hc_message_id"), view=hc_view)
     company_state["hc_message_id"] = hc_msg_id
 
     # ── Embed 2: Deathwatch Specialist cadres ───────────────────────────────
-    specialist_embed = _build_sectioned_embed(
+    specialist_view = _build_sectioned_container_view(
         _fmt_title(f"<@&{_DEATHWATCH_SPECIALIST_ROLE_ID}>", cmd_emoji),
         specialist_sections,
         guild,
@@ -1065,7 +1096,7 @@ async def _update_company_roster(
         description_lines=[],
     )
     specialist_msg_id = await _upsert_message(
-        channel, company_state.get("specialist_message_id"), specialist_embed
+        channel, company_state.get("specialist_message_id"), view=specialist_view
     )
     company_state["specialist_message_id"] = specialist_msg_id
 
@@ -1078,7 +1109,7 @@ async def _update_company_roster(
         fallback=_mention_style_label("Company Champion"),
     )
     kill_teams = _get_kill_teams_for_company(guild, company_name)
-    cmd_embed = _build_sectioned_embed(
+    cmd_view = _build_sectioned_container_view(
         _fmt_title(company_role_mention, cmd_emoji),
         [
             (_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention]),
@@ -1110,7 +1141,7 @@ async def _update_company_roster(
         ],
     )
     cmd_msg_id = await _upsert_message(
-        channel, company_state.get("command_message_id"), cmd_embed
+        channel, company_state.get("command_message_id"), view=cmd_view
     )
     company_state["command_message_id"] = cmd_msg_id
 
