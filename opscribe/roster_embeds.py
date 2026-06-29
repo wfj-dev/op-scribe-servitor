@@ -936,6 +936,7 @@ async def _update_company_roster(
     state: dict,
     *,
     now: Optional[datetime] = None,
+    force_repost: bool = False,
 ) -> None:
     """Refresh all roster embeds for one company.
 
@@ -958,6 +959,29 @@ async def _update_company_roster(
             raise RuntimeError(
                 f"Cannot access roster channel {channel_id} for '{company_name}': {exc}"
             ) from exc
+
+    if force_repost:
+        tracked_ids: set[int] = set()
+        for key in ("hc_message_id", "specialist_message_id", "command_message_id"):
+            mid = company_state.get(key)
+            if mid:
+                tracked_ids.add(int(mid))
+        for mid in (company_state.get("specialist_message_ids") or {}).values():
+            if mid:
+                tracked_ids.add(int(mid))
+        for mid in (company_state.get("killteam_message_ids") or {}).values():
+            if mid:
+                tracked_ids.add(int(mid))
+
+        for tracked_id in tracked_ids:
+            await _delete_message_if_exists(channel, tracked_id)
+
+        company_state["hc_message_id"] = None
+        company_state["specialist_message_id"] = None
+        company_state["specialist_message_ids"] = {}
+        company_state["command_message_id"] = None
+        company_state["killteam_message_ids"] = {}
+        _log().info(f"Roster: force re-post reset completed for '{company_name}' ({len(tracked_ids)} tracked message(s))")
 
     # Fetch guild emojis fresh from the API so we don't depend on the cache.
     try:
@@ -1135,7 +1159,7 @@ async def _update_company_roster(
     state[company_name] = company_state
 
 
-async def _update_all_rosters(guild: discord.Guild) -> dict[str, str]:
+async def _update_all_rosters(guild: discord.Guild, *, force_repost: bool = False) -> dict[str, str]:
     """Refresh roster embeds for every configured company.
 
     Returns a dict of ``{company_name: "ok" | error_message}``.
@@ -1148,7 +1172,13 @@ async def _update_all_rosters(guild: discord.Guild) -> dict[str, str]:
 
         for company_name in ROSTER_COMPANY_CHANNELS:
             try:
-                await _update_company_roster(guild, company_name, state, now=now)
+                await _update_company_roster(
+                    guild,
+                    company_name,
+                    state,
+                    now=now,
+                    force_repost=force_repost,
+                )
                 results[company_name] = "ok"
                 _log().info(f"Roster: updated '{company_name}' successfully")
             except Exception as exc:
@@ -1216,7 +1246,7 @@ async def roster_post(interaction: discord.Interaction) -> None:
         await interaction.followup.send("Must be used in a server.", ephemeral=True)
         return
 
-    results = await _update_all_rosters(guild)
+    results = await _update_all_rosters(guild, force_repost=True)
 
     lines = ["**Roster embed status:**"]
     for company, result in results.items():
@@ -1246,7 +1276,7 @@ async def roster_refresh(interaction: discord.Interaction) -> None:
         await interaction.followup.send("Must be used in a server.", ephemeral=True)
         return
 
-    results = await _update_all_rosters(guild)
+    results = await _update_all_rosters(guild, force_repost=False)
 
     lines = ["**Roster refresh complete:**"]
     any_error = False
