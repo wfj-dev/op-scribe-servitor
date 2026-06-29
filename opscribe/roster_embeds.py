@@ -503,7 +503,7 @@ def _get_kill_teams_for_company(
 # Embed rendering
 # ---------------------------------------------------------------------------
 
-_EMBED_COLOR = discord.Color.from_rgb(96, 125, 139)  # Deathwatch steel blue-grey
+_EMBED_COLOR = None  # No left accent color for roster embeds
 
 
 def _fmt_title(text: str, emoji_str: str = "") -> str:
