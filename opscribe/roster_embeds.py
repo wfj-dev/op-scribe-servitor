@@ -95,8 +95,41 @@ _SPECIALIST_SECTION_ROLE_GROUPS = (
     ("Watch Armory", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Reclusiam", {"Watch Chaplain"}),
     ("Apothecarion", {"Watch Apothecary"}),
-    ("Hunting Grounds", {"Huntmaster"}),
 )
+
+_SPECIALIST_IMAGE_BY_SECTION = {
+    "Champion Hall": "Champion_Hall.png",
+    "Librarius": "Librarius.png",
+    "Watch Armory": "Armory.png",
+    "Reclusiam": "Reclusiam.png",
+    "Apothecarion": "Apothecarion.png",
+}
+
+_COMPANY_COMMAND_IMAGE_BY_COMPANY = {
+    "Watch Company Primus": "Primus_Command.png",
+    "Watch Company Secundus": "Secundus_Command.png",
+}
+
+
+def _asset_path(filename: str) -> str:
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+    return os.path.join(base, filename)
+
+
+def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[discord.File]]:
+    """Resolve a local asset image to an attachment URL + file payload."""
+    if not filename:
+        return None, None
+    path = _asset_path(filename)
+    if not os.path.exists(path):
+        _log().warning(f"Roster: image asset missing: {path}")
+        return None, None
+    return f"attachment://{filename}", discord.File(path, filename=filename)
+
+
+def _kill_team_image_filename(kt_name: str) -> str:
+    # e.g. "Kill Team Devito" -> "Kill_Team_Devito.png"
+    return f"{kt_name.replace(' ', '_')}.png"
 
 
 def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional[discord.Guild]) -> Optional[str]:
@@ -355,9 +388,10 @@ def _render_member_block(
 
 
 def _build_container_view(
-    title: str,
+    title: Optional[str],
     *,
     body_blocks: List[str],
+    image_url: Optional[str] = None,
     description_lines: Optional[List[str]] = None,
     last_updated: Optional[datetime] = None,
 ) -> discord.ui.LayoutView:
@@ -365,7 +399,9 @@ def _build_container_view(
     ts = last_updated or datetime.now(timezone.utc)
     footer = f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
 
-    lines: List[str] = [title]
+    lines: List[str] = []
+    if title:
+        lines.append(title)
     lines.extend([line for line in (description_lines or []) if line])
     lines.extend([block for block in body_blocks if block])
     lines.append(footer)
@@ -378,7 +414,13 @@ def _build_container_view(
         _log().warning("Roster container text truncated to stay within 4000-char LayoutView limit")
 
     view = discord.ui.LayoutView(timeout=None)
-    container = discord.ui.Container(discord.ui.TextDisplay(full_text), accent_color=None)
+    children: list[discord.ui.Item] = []
+    if image_url:
+        gallery = discord.ui.MediaGallery()
+        gallery.add_item(media=image_url)
+        children.append(gallery)
+    children.append(discord.ui.TextDisplay(full_text))
+    container = discord.ui.Container(*children, accent_color=None)
     view.add_item(container)
     return view
 
@@ -395,7 +437,11 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
         role_ids = _member_role_ids(m)
         # Watch Master must always appear in High Command, even if HC role ID
         # was not applied or is temporarily missing.
-        is_high_command = HIGH_COMMAND_ROLE_ID in role_ids or "Watch Master" in role_names
+        is_high_command = (
+            HIGH_COMMAND_ROLE_ID in role_ids
+            or "Watch Master" in role_names
+            or "Huntmaster" in role_names
+        )
         if not is_high_command:
             continue
         # Watch Captains belong in Company Command, not HC, except Watch Master.
@@ -863,6 +909,7 @@ async def _upsert_message(
     *,
     embed: Optional[discord.Embed] = None,
     view: Optional[discord.ui.LayoutView] = None,
+    files: Optional[list[discord.File]] = None,
 ) -> int:
     """Edit an existing message or post a new one.
 
@@ -881,7 +928,7 @@ async def _upsert_message(
                     content=None,
                     embed=None,
                     embeds=None,
-                    attachments=None,
+                    attachments=files or [],
                     view=view,
                 )
             else:
@@ -902,7 +949,10 @@ async def _upsert_message(
 
     # Post fresh
     if view is not None:
-        msg = await channel.send(view=view)
+        if files:
+            msg = await channel.send(view=view, files=files)
+        else:
+            msg = await channel.send(view=view)
     else:
         msg = await channel.send(embed=embed)
     return msg.id
@@ -983,28 +1033,6 @@ async def _update_company_roster(
         company_state["killteam_message_ids"] = {}
         _log().info(f"Roster: force re-post reset completed for '{company_name}' ({len(tracked_ids)} tracked message(s))")
 
-    # Fetch guild emojis fresh from the API so we don't depend on the cache.
-    try:
-        _fetched_emojis: list[discord.Emoji] = await guild.fetch_emojis()
-        _log().debug(f"Roster: fetched {len(_fetched_emojis)} emojis from guild {guild.id}")
-    except Exception as _fe:
-        _fetched_emojis = list(guild.emojis)
-        _log().warning(f"Roster: fetch_emojis() failed ({_fe}), falling back to cache ({len(_fetched_emojis)} emojis)")
-
-    def _te(name: str) -> str:
-        normalized = name.replace(" ", "").replace("-", "").replace("'", "").lower()
-        for emoji in _fetched_emojis:
-            if emoji.name.lower() == normalized:
-                return str(emoji)
-        all_names = sorted(e.name for e in _fetched_emojis)
-        _log().warning(
-            f"Roster: emoji '{name}' not found in guild {guild.id}. "
-            f"All {len(all_names)} emoji names: {all_names}"
-        )
-        return ""
-
-    hc_emoji = _te("Deathwatch")        # :Deathwatch:
-    cmd_emoji = _te("WatchCommand")     # :WatchCommand:
     company_command_role_label = "Company Command"
 
     # Load strike directive data once so status lines can be rendered on all embeds.
@@ -1021,6 +1049,10 @@ async def _update_company_roster(
 
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
+    cmd_image_url, cmd_image_file = _resolve_asset_image(
+        _COMPANY_COMMAND_IMAGE_BY_COMPANY.get(company_name)
+    )
+    hc_image_url, hc_file = _resolve_asset_image("High_Command.png")
 
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
@@ -1037,18 +1069,24 @@ async def _update_company_roster(
         max_chars=_ROSTER_FIELD_CHAR_LIMIT,
     )
     hc_view = _build_container_view(
-        _fmt_title("HIGH COMMAND", hc_emoji),
+        None,
         body_blocks=[
             f"Watch Master\n{hc_watch_master_block}",
             f"Cadre Leaders\n{hc_cadre_block}",
         ],
+        image_url=hc_image_url,
         last_updated=now,
         description_lines=[
             _tp_status_for_high_command(guild, packages=_tp_packages),
             _fortress_rep_title(tp_data=_tp_data),
         ],
     )
-    hc_msg_id = await _upsert_message(channel, company_state.get("hc_message_id"), view=hc_view)
+    hc_msg_id = await _upsert_message(
+        channel,
+        company_state.get("hc_message_id"),
+        view=hc_view,
+        files=[hc_file] if hc_file else None,
+    )
     company_state["hc_message_id"] = hc_msg_id
 
     # ── Specialist cadres: one container message per cadre ───────────────────
@@ -1057,6 +1095,9 @@ async def _update_company_roster(
     new_specialist_message_ids: dict[str, int] = {}
 
     for idx, (section_name, role_names) in enumerate(_SPECIALIST_SECTION_ROLE_GROUPS):
+        specialist_image_url, specialist_file = _resolve_asset_image(
+            _SPECIALIST_IMAGE_BY_SECTION.get(section_name)
+        )
         specialist_members = _collect_members_with_roles(
             guild,
             set(role_names),
@@ -1071,8 +1112,9 @@ async def _update_company_roster(
             ],
         )
         specialist_view = _build_container_view(
-            _fmt_title(section_name.upper(), cmd_emoji),
+            None,
             body_blocks=[specialist_block],
+            image_url=specialist_image_url,
             last_updated=now,
             description_lines=[],
         )
@@ -1080,7 +1122,12 @@ async def _update_company_roster(
         seed_message_id = specialist_message_ids.get(section_name)
         if seed_message_id is None and idx == 0 and legacy_specialist_message_id:
             seed_message_id = legacy_specialist_message_id
-        specialist_msg_id = await _upsert_message(channel, seed_message_id, view=specialist_view)
+        specialist_msg_id = await _upsert_message(
+            channel,
+            seed_message_id,
+            view=specialist_view,
+            files=[specialist_file] if specialist_file else None,
+        )
         new_specialist_message_ids[section_name] = specialist_msg_id
 
     stale_specialist_ids = set(specialist_message_ids.values())
@@ -1114,18 +1161,22 @@ async def _update_company_roster(
         ],
     )
     cmd_view = _build_container_view(
-        _fmt_title(company_name.upper(), cmd_emoji),
+        None,
         body_blocks=[
             f"Company Command\n{cmd_members_block}",
             f"Company Champion\n{champion_block}",
         ],
+        image_url=cmd_image_url,
         last_updated=now,
         description_lines=[
             _honors_title_for_company(company_name, honors=_honors_data),
         ],
     )
     cmd_msg_id = await _upsert_message(
-        channel, company_state.get("command_message_id"), view=cmd_view
+        channel,
+        company_state.get("command_message_id"),
+        view=cmd_view,
+        files=[cmd_image_file] if cmd_image_file else None,
     )
     company_state["command_message_id"] = cmd_msg_id
 
@@ -1133,6 +1184,7 @@ async def _update_company_roster(
     new_kt_message_ids: dict[str, int] = {}
 
     for kt_name, _kt_role_id, kt_members in kill_teams:
+        kt_image_url, kt_image_file = _resolve_asset_image(_kill_team_image_filename(kt_name))
         kt_block = _render_member_block(
             guild,
             kt_members,
@@ -1143,11 +1195,17 @@ async def _update_company_roster(
             ],
         )
         kt_view = _build_container_view(
-            _fmt_title(kt_name.upper(), cmd_emoji),
+            None,
             body_blocks=[kt_block],
+            image_url=kt_image_url,
             last_updated=now,
         )
-        kt_message_id = await _upsert_message(channel, kt_message_ids.get(kt_name), view=kt_view)
+        kt_message_id = await _upsert_message(
+            channel,
+            kt_message_ids.get(kt_name),
+            view=kt_view,
+            files=[kt_image_file] if kt_image_file else None,
+        )
         new_kt_message_ids[kt_name] = kt_message_id
 
     stale_kt_ids = set(kt_message_ids.values()) - set(new_kt_message_ids.values())
