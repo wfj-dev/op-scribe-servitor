@@ -512,7 +512,7 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
 
 
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:chapteremoji: | @display_name`` (plain text)."""
+    """Render a single roster line: ``:chapteremoji: | display_name`` (plain text)."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     role_names = _member_role_names(member)
     chapter_emoji_str = ""
@@ -521,9 +521,11 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
-    display_name = _clean_roster_name(member)
+    # Use server display name (nickname-aware), normalized to plain readable text.
+    display_name = _normalize_display_name(getattr(member, "display_name", "") or getattr(member, "name", ""))
+    display_name = re.sub(r"\s+", " ", display_name).strip() or str(getattr(member, "id", "?"))
     left = chapter_emoji_str or "·"
-    return f"{left} | @{display_name}"
+    return f"{left} | {display_name}"
 
 
 def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
