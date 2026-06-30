@@ -32,9 +32,6 @@ from .constants import (
     ROSTER_COMPANY_CHANNELS,
     ROSTER_COMPANY_COMMAND_RANKS,
     ROSTER_EMBED_DESC_LIMIT,
-    ROSTER_IMAGE_COMPANY_COMMAND,
-    ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY,
-    ROSTER_IMAGE_HIGH_COMMAND,
     ROSTER_STATE_PATH,
     _normalize_display_name,
 )
@@ -88,6 +85,7 @@ _HONOUR_LABELS = {
 }
 
 _ROSTER_FIELD_CHAR_LIMIT = 1024
+_CONTAINER_TEXT_LIMIT = 4000
 _EMPTY_FIELD_NAME = "\u200b"
 _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
@@ -97,8 +95,45 @@ _SPECIALIST_SECTION_ROLE_GROUPS = (
     ("Watch Armory", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Reclusiam", {"Watch Chaplain"}),
     ("Apothecarion", {"Watch Apothecary"}),
-    ("Hunting Grounds", {"Huntmaster"}),
 )
+
+_SPECIALIST_IMAGE_BY_SECTION = {
+    "Champion Hall": "Hall of Champions.png",
+    "Librarius": "Librarius.png",
+    "Watch Armory": "Armory.png",
+    "Reclusiam": "Reclusiam.png",
+    "Apothecarion": "Apothecarion.png",
+}
+
+_COMPANY_COMMAND_IMAGE_BY_COMPANY = {
+    "Watch Company Primus": "Primus Command.png",
+    "Watch Company Secundus": "Secundus Command.png",
+}
+
+
+def _asset_path(filename: str) -> str:
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+    name = str(filename or "")
+    if "/" in name or "\\" in name or ".." in name:
+        _log().warning(f"Roster: invalid asset filename (path traversal blocked): {name!r}")
+        return os.path.join(base, "__invalid__")
+    return os.path.join(base, name)
+
+
+def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[discord.File]]:
+    """Resolve a local asset image to an attachment URL + file payload."""
+    if not filename:
+        return None, None
+    path = _asset_path(filename)
+    if not os.path.exists(path):
+        _log().warning(f"Roster: image asset missing: {path}")
+        return None, None
+    return f"attachment://{filename}", discord.File(path, filename=filename)
+
+
+def _kill_team_image_filename(kt_name: str) -> str:
+    # e.g. "Kill Team Devito" -> "Kill Team Devito.png"
+    return f"{kt_name}.png"
 
 
 def _resolve_kt_role_name(sgt_id: str, kt_member_ids: list[str], guild: Optional[discord.Guild]) -> Optional[str]:
@@ -183,6 +218,7 @@ def _load_roster_state() -> dict:
             "channel_id": channel_id,
             "hc_message_id": None,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {},
         }
@@ -203,6 +239,11 @@ def _load_roster_state() -> dict:
                         "channel_id": existing_company_state.get("channel_id", default_company_state["channel_id"]),
                         "hc_message_id": existing_company_state.get("hc_message_id"),
                         "specialist_message_id": existing_company_state.get("specialist_message_id"),
+                        "specialist_message_ids": (
+                            existing_company_state.get("specialist_message_ids")
+                            if isinstance(existing_company_state.get("specialist_message_ids"), dict)
+                            else {}
+                        ),
                         "command_message_id": existing_company_state.get("command_message_id"),
                         "killteam_message_ids": (
                             existing_company_state.get("killteam_message_ids")
@@ -350,44 +391,38 @@ def _render_member_block(
     return block
 
 
-def _build_sectioned_embed(
-    title: str,
-    sections: List[Tuple[str, List[discord.Member]] | Tuple[str, List[discord.Member], List[str]]],
-    guild: discord.Guild,
+def _build_container_view(
+    title: Optional[str],
     *,
+    body_blocks: List[str],
     image_url: Optional[str] = None,
     description_lines: Optional[List[str]] = None,
     last_updated: Optional[datetime] = None,
-) -> discord.Embed:
-    """Build a roster embed with add_field() sections."""
-    ts = last_updated or datetime.now(timezone.utc)
-    embed = discord.Embed(color=_EMBED_COLOR)
-    embed.description = "\n".join([line for line in ([title] + (description_lines or [])) if line])
+) -> discord.ui.LayoutView:
+    """Build a compact roster container using one TextDisplay component."""
+    lines: List[str] = []
+    if title:
+        lines.append(title)
+    lines.extend([line for line in (description_lines or []) if line])
+    lines.extend([block for block in body_blocks if block])
+
+    full_text = "\n".join([line for line in lines if line])
+    if len(full_text) > _CONTAINER_TEXT_LIMIT:
+        reserve = len("\n*...truncated for container character limit.*")
+        full_text = full_text[: max(0, _CONTAINER_TEXT_LIMIT - reserve)]
+        full_text += "\n*...truncated for container character limit.*"
+        _log().warning("Roster container text truncated to stay within 4000-char LayoutView limit")
+
+    view = discord.ui.LayoutView(timeout=None)
+    children: list[discord.ui.Item] = []
     if image_url:
-        embed.set_image(url=image_url)
-
-    for section in sections:
-        if len(section) == 2:
-            section_name, members = section
-            lead_lines = None
-        else:
-            section_name, members, lead_lines = section
-        field_name = section_name if section_name == _EMPTY_FIELD_NAME else f"▸ {section_name}"
-        embed.add_field(
-            name=field_name,
-            value=_render_member_block(
-                guild,
-                members,
-                max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-                lead_lines=lead_lines,
-            ),
-            inline=False,
-        )
-
-    embed.set_footer(
-        text=f"Recorded by decree of Watch Command  ·  {ts.strftime('%Y-%m-%d %H:%M UTC')}"
-    )
-    return embed
+        gallery = discord.ui.MediaGallery()
+        gallery.add_item(media=image_url)
+        children.append(gallery)
+    children.append(discord.ui.TextDisplay(full_text))
+    container = discord.ui.Container(*children, accent_color=None)
+    view.add_item(container)
+    return view
 
 
 def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
@@ -402,7 +437,11 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
         role_ids = _member_role_ids(m)
         # Watch Master must always appear in High Command, even if HC role ID
         # was not applied or is temporarily missing.
-        is_high_command = HIGH_COMMAND_ROLE_ID in role_ids or "Watch Master" in role_names
+        is_high_command = (
+            HIGH_COMMAND_ROLE_ID in role_ids
+            or "Watch Master" in role_names
+            or "Huntmaster" in role_names
+        )
         if not is_high_command:
             continue
         # Watch Captains belong in Company Command, not HC, except Watch Master.
@@ -518,31 +557,8 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
     return f"\u16ed\u22c5 {text} \u22c5\u16ed"  # ᛭⋅ … ⋅᛭ fallback
 
 
-def _mention_style_label(name: str) -> str:
-    """Return a stable, mention-like display label for embed field names.
-
-    Discord does not reliably render real mentions inside embed field names, so
-    use an @-prefixed plain-text label instead.
-    """
-    clean = str(name or "").strip()
-    if not clean:
-        return "@Unknown"
-    return clean if clean.startswith("@") else f"@{clean}"
-
-
-def _role_mention(role_id: int | None, fallback: str = "") -> str:
-    """Return a real Discord role mention when an ID is available."""
-    try:
-        resolved = int(role_id or 0)
-    except Exception:
-        resolved = 0
-    if resolved:
-        return f"<@&{resolved}>"
-    return fallback
-
-
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
-    """Render a single roster line: ``:chapteremoji: | @mention``."""
+    """Render a single roster line: ``:chapteremoji: | display_name`` (plain text)."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     role_names = _member_role_names(member)
     chapter_emoji_str = ""
@@ -551,12 +567,21 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
-    mention = member.mention
+    # Use server display name (nickname-aware), normalized to plain readable text.
+    display_name = _normalize_display_name(getattr(member, "display_name", "") or getattr(member, "name", ""))
+    display_name = re.sub(r"\s+", " ", display_name).strip() or str(getattr(member, "id", "?"))
     left = chapter_emoji_str or "·"
-    return f"{left} | {mention}"
+    return f"{left} | {display_name}"
 
 
-def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
+def _tp_status_for_kt(
+    kt_name: str,
+    packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
+) -> str:
     """Return a TP deployment status line for a KT. Empty string if no data.
 
     ``packages`` may be a pre-loaded dict from ``target_packages.json`` to avoid
@@ -576,10 +601,10 @@ def _tp_status_for_kt(kt_name: str, packages: dict | None = None) -> str:
             if p.get("assigned_kt") == kt_name and p["status"] in active_statuses
         ]
         if not kt_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p["status"] == "deployed" for p in kt_pkgs):
-            return f"-# 🔴 Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(kt_pkgs)} directive{'s' if len(kt_pkgs) > 1 else ''})"
     except Exception:
         return ""
 
@@ -604,6 +629,10 @@ def _tp_status_for_company(
     guild: discord.Guild,
     company_name: str,
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return company-command status based on member participation in active packages."""
     try:
@@ -624,17 +653,21 @@ def _tp_status_for_company(
         ]
 
         if not company_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in company_pkgs):
-            return f"-# 🔴 Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(company_pkgs)} directive{'s' if len(company_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _tp_status_for_members(
     member_ids: set[int],
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return active directive status for an arbitrary member set."""
     try:
@@ -653,17 +686,21 @@ def _tp_status_for_members(
         ]
 
         if not relevant_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in relevant_pkgs):
-            return f"-# 🔴 Deployed ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(relevant_pkgs)} directive{'s' if len(relevant_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _tp_status_for_high_command(
     guild: discord.Guild,
     packages: dict | None = None,
+    *,
+    ready_icon: str = "🟢",
+    deployed_icon: str = "🔴",
+    assigned_icon: str = "🟡",
 ) -> str:
     """Return high-command status based on member participation in active packages."""
     try:
@@ -683,12 +720,12 @@ def _tp_status_for_high_command(
         ]
 
         if not hc_pkgs:
-            return "-# 🟢 Ready for Deployment"
+            return f"-# {ready_icon} Ready for Deployment"
         if any(p.get("status") == "deployed" for p in hc_pkgs):
-            return f"-# 🔴 Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
-        return f"-# 🟡 Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+            return f"-# {deployed_icon} Deployed ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
+        return f"-# {assigned_icon} Assigned ({len(hc_pkgs)} directive{'s' if len(hc_pkgs) > 1 else ''})"
     except Exception:
-        return "-# 🟢 Ready for Deployment"
+        return f"-# {ready_icon} Ready for Deployment"
 
 
 def _fortress_rep_state_name(rep: float) -> str:
@@ -709,8 +746,8 @@ def _fortress_rep_state_name(rep: float) -> str:
     return "MANDATED"
 
 
-def _fortress_rep_title(tp_data: dict | None = None) -> str:
-    """Return fortress standing title line as a 0..60 progress bar."""
+def _fortress_rep_title(tp_data: dict | None = None, *, standing_prefix: str = "⚖️") -> str:
+    """Return fortress standing progress-bar line (0..60); caller controls the label via standing_prefix."""
     rep_value = 30.0
     try:
         if isinstance(tp_data, dict):
@@ -725,7 +762,7 @@ def _fortress_rep_title(tp_data: dict | None = None) -> str:
     filled = max(0, min(bar_width, filled))
     bar = "=" * filled + "-" * (bar_width - filled)
     state = _fortress_rep_state_name(rep_clamped)
-    return f"-# {_OX_STANDING_EMOJI} Fortress Standing [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+    return f"-# {standing_prefix} [{bar}] `{rep_clamped:.1f}/60` **{state}**"
 
 
 def _load_honors() -> dict:
@@ -740,13 +777,12 @@ def _load_honors() -> dict:
         return {}
 
 
-_OX_STANDING_EMOJI = "<:OrdoXenosStanding:1513298514913005568>"
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
 _HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
-def _tier_window(tiers: list, current: str) -> str:
+def _tier_window(tiers: list, current: str, *, standing_prefix: str = "⚖️") -> str:
     """Return a sliding window of tiers centered on current.
 
     Current tier is **bold**, others are *italic*.
@@ -768,10 +804,15 @@ def _tier_window(tiers: list, current: str) -> str:
 
     window = tiers[start:end]
     parts = [f"**{t}**" if t == current else f"*{t}*" for t in window]
-    return f"-# {_OX_STANDING_EMOJI} " + " · ".join(parts)
+    return f"-# {standing_prefix} " + " · ".join(parts)
 
 
-def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
+def _honors_title_for_kt(
+    kt_name: str,
+    honors: dict | None = None,
+    *,
+    standing_prefix: str = "⚖️",
+) -> str:
     """Return formatted sliding-window honor title line for a KT.
 
     Args:
@@ -786,10 +827,15 @@ def _honors_title_for_kt(kt_name: str, honors: dict | None = None) -> str:
     tier = honors.get("kill_teams", {}).get(kt_name, {}).get("tier", "Unproven")
     if not tier:
         tier = "Unproven"
-    return _tier_window(_KT_TITLE_TIERS, tier)
+    return _tier_window(_KT_TITLE_TIERS, tier, standing_prefix=standing_prefix)
 
 
-def _honors_title_for_company(company_name: str, honors: dict | None = None) -> str:
+def _honors_title_for_company(
+    company_name: str,
+    honors: dict | None = None,
+    *,
+    standing_prefix: str = "⚖️",
+) -> str:
     """Return formatted sliding-window honor title line for a company.
 
     Args:
@@ -804,7 +850,7 @@ def _honors_title_for_company(company_name: str, honors: dict | None = None) -> 
     tier = honors.get("companies", {}).get(company_name, {}).get("tier", "Unrecorded")
     if not tier:
         tier = "Unrecorded"
-    return _tier_window(_CO_TITLE_TIERS, tier)
+    return _tier_window(_CO_TITLE_TIERS, tier, standing_prefix=standing_prefix)
 
 
 def _build_embed(
@@ -888,17 +934,33 @@ def _build_embed(
 async def _upsert_message(
     channel: discord.TextChannel,
     message_id: Optional[int],
-    embed: discord.Embed,
+    *,
+    embed: Optional[discord.Embed] = None,
+    view: Optional[discord.ui.LayoutView] = None,
+    files: Optional[list[discord.File]] = None,
 ) -> int:
     """Edit an existing message or post a new one.
 
     Returns the message ID (existing or newly created).
     Raises on failure so callers can decide how to handle.
     """
+    if embed is None and view is None:
+        raise ValueError("_upsert_message requires either an embed or a container view")
+
     if message_id:
         try:
             msg = await channel.fetch_message(message_id)
-            await msg.edit(embed=embed)
+            if view is not None:
+                # Required when transitioning a message to LayoutView/v2 components.
+                await msg.edit(
+                    content=None,
+                    embed=None,
+                    embeds=None,
+                    attachments=files or [],
+                    view=view,
+                )
+            else:
+                await msg.edit(embed=embed)
             return msg.id
         except discord.NotFound:
             _log().info(
@@ -909,12 +971,18 @@ async def _upsert_message(
                 f"Missing permissions to edit message {message_id} in channel {channel.id}"
             )
         except Exception as exc:
-            _log().warning(
-                f"Roster: edit failed for message {message_id} ({exc}) — will repost"
+            raise RuntimeError(
+                f"Roster edit failed for message {message_id} in channel {channel.id}: {exc}"
             )
 
     # Post fresh
-    msg = await channel.send(embed=embed)
+    if view is not None:
+        if files:
+            msg = await channel.send(view=view, files=files)
+        else:
+            msg = await channel.send(view=view)
+    else:
+        msg = await channel.send(embed=embed)
     return msg.id
 
 
@@ -946,6 +1014,7 @@ async def _update_company_roster(
     state: dict,
     *,
     now: Optional[datetime] = None,
+    force_repost: bool = False,
 ) -> None:
     """Refresh all roster embeds for one company.
 
@@ -969,37 +1038,28 @@ async def _update_company_roster(
                 f"Cannot access roster channel {channel_id} for '{company_name}': {exc}"
             ) from exc
 
-    # Fetch guild emojis fresh from the API so we don't depend on the cache.
-    try:
-        _fetched_emojis: list[discord.Emoji] = await guild.fetch_emojis()
-        _log().debug(f"Roster: fetched {len(_fetched_emojis)} emojis from guild {guild.id}")
-    except Exception as _fe:
-        _fetched_emojis = list(guild.emojis)
-        _log().warning(f"Roster: fetch_emojis() failed ({_fe}), falling back to cache ({len(_fetched_emojis)} emojis)")
+    if force_repost:
+        tracked_ids: set[int] = set()
+        for key in ("hc_message_id", "specialist_message_id", "command_message_id"):
+            mid = company_state.get(key)
+            if mid:
+                tracked_ids.add(int(mid))
+        for mid in (company_state.get("specialist_message_ids") or {}).values():
+            if mid:
+                tracked_ids.add(int(mid))
+        for mid in (company_state.get("killteam_message_ids") or {}).values():
+            if mid:
+                tracked_ids.add(int(mid))
 
-    def _te(name: str) -> str:
-        normalized = name.replace(" ", "").replace("-", "").replace("'", "").lower()
-        for emoji in _fetched_emojis:
-            if emoji.name.lower() == normalized:
-                return str(emoji)
-        all_names = sorted(e.name for e in _fetched_emojis)
-        _log().warning(
-            f"Roster: emoji '{name}' not found in guild {guild.id}. "
-            f"All {len(all_names)} emoji names: {all_names}"
-        )
-        return ""
+        for tracked_id in tracked_ids:
+            await _delete_message_if_exists(channel, tracked_id)
 
-    hc_emoji = _te("Deathwatch")        # :Deathwatch:
-    cmd_emoji = _te("WatchCommand")     # :WatchCommand:
-    # Resolve company role mention for the company roster banner.
-    company_role = discord.utils.get(guild.roles, name=company_name)
-    company_role_mention = f"<@&{company_role.id}>" if company_role else company_name
-    company_key = company_name.replace("Watch Company", "").strip().lower()
-    company_cfg = ((_g.CONFIG or {}).get("companies") or {}).get(company_key) or {}
-    company_command_role_mention = _role_mention(
-        company_cfg.get("companyCommandRoleId"),
-        fallback="Company Command",
-    )
+        company_state["hc_message_id"] = None
+        company_state["specialist_message_id"] = None
+        company_state["specialist_message_ids"] = {}
+        company_state["command_message_id"] = None
+        company_state["killteam_message_ids"] = {}
+        _log().info(f"Roster: force re-post reset completed for '{company_name}' ({len(tracked_ids)} tracked message(s))")
 
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
@@ -1015,117 +1075,195 @@ async def _update_company_roster(
 
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
+    cmd_image_url, cmd_image_file = _resolve_asset_image(
+        _COMPANY_COMMAND_IMAGE_BY_COMPANY.get(company_name)
+    )
+    hc_image_url, hc_file = _resolve_asset_image("High Command.png")
 
-    cmd_image = ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY.get(company_name, ROSTER_IMAGE_COMPANY_COMMAND)
+    ready_icon = _get_emoji_by_name(guild, "Ready") or "🟢"
+    deployed_icon = _get_emoji_by_name(guild, "Deployed") or "🔴"
+    assigned_icon = deployed_icon
+    renown_prefix = "`ʀᴇɴᴏᴡɴ`"
+    fortress_prefix = "`1. ᴏʀᴅᴏ sᴛᴀɴᴅɪɴɢ`"
 
     # ── Embed 1: High Command ───────────────────────────────────────────────
     hc_members = _get_hc_members(guild)
-    watch_master_members = [m for m in hc_members if "Watch Master" in _member_role_names(m)]
-    high_command_members = [m for m in hc_members if "Watch Master" not in _member_role_names(m)]
-    specialist_sections: list[tuple[str, list[discord.Member], list[str]]] = []
-    for section_name, role_names in _SPECIALIST_SECTION_ROLE_GROUPS:
+    hc_block = _render_member_block(
+        guild,
+        hc_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+    )
+    hc_view = _build_container_view(
+        None,
+        body_blocks=[hc_block],
+        image_url=hc_image_url,
+        last_updated=now,
+        description_lines=[
+            _tp_status_for_high_command(
+                guild,
+                packages=_tp_packages,
+                ready_icon=ready_icon,
+                deployed_icon=deployed_icon,
+                assigned_icon=assigned_icon,
+            ),
+            _fortress_rep_title(tp_data=_tp_data, standing_prefix=fortress_prefix),
+        ],
+    )
+    hc_msg_id = await _upsert_message(
+        channel,
+        company_state.get("hc_message_id"),
+        view=hc_view,
+        files=[hc_file] if hc_file else None,
+    )
+    company_state["hc_message_id"] = hc_msg_id
+
+    # ── Specialist cadres: one container message per cadre ───────────────────
+    specialist_message_ids: dict[str, int] = dict(company_state.get("specialist_message_ids") or {})
+    legacy_specialist_message_id = company_state.get("specialist_message_id")
+    new_specialist_message_ids: dict[str, int] = {}
+
+    for idx, (section_name, role_names) in enumerate(_SPECIALIST_SECTION_ROLE_GROUPS):
+        specialist_image_url, specialist_file = _resolve_asset_image(
+            _SPECIALIST_IMAGE_BY_SECTION.get(section_name)
+        )
         specialist_members = _collect_members_with_roles(
             guild,
             set(role_names),
             exclude_roles={"Watch Master"},
         )
-        specialist_sections.append(
-            (
-                section_name,
-                specialist_members,
-                [
-                    _tp_status_for_members({m.id for m in specialist_members}, packages=_tp_packages),
-                ],
-            )
+        specialist_block = _render_member_block(
+            guild,
+            specialist_members,
+            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+            lead_lines=[
+                _tp_status_for_members(
+                    {m.id for m in specialist_members},
+                    packages=_tp_packages,
+                    ready_icon=ready_icon,
+                    deployed_icon=deployed_icon,
+                    assigned_icon=assigned_icon,
+                ),
+            ],
+        )
+        specialist_view = _build_container_view(
+            None,
+            body_blocks=[specialist_block],
+            image_url=specialist_image_url,
+            last_updated=now,
+            description_lines=[],
         )
 
-    hc_embed = _build_sectioned_embed(
-        _fmt_title(f"<@&{HIGH_COMMAND_ROLE_ID}>", hc_emoji),
-        [("Watch Master", watch_master_members), ("Cadre Leaders", high_command_members)],
-        guild,
-        last_updated=now,
-        image_url=ROSTER_IMAGE_HIGH_COMMAND,
-        description_lines=[
-            _tp_status_for_high_command(guild, packages=_tp_packages),
-            _fortress_rep_title(tp_data=_tp_data),
-        ],
-    )
-    hc_msg_id = await _upsert_message(
-        channel, company_state.get("hc_message_id"), hc_embed
-    )
-    company_state["hc_message_id"] = hc_msg_id
+        seed_message_id = specialist_message_ids.get(section_name)
+        if seed_message_id is None and idx == 0 and legacy_specialist_message_id:
+            seed_message_id = legacy_specialist_message_id
+        specialist_msg_id = await _upsert_message(
+            channel,
+            seed_message_id,
+            view=specialist_view,
+            files=[specialist_file] if specialist_file else None,
+        )
+        new_specialist_message_ids[section_name] = specialist_msg_id
 
-    # ── Embed 2: Deathwatch Specialist cadres ───────────────────────────────
-    specialist_embed = _build_sectioned_embed(
-        _fmt_title(f"<@&{_DEATHWATCH_SPECIALIST_ROLE_ID}>", cmd_emoji),
-        specialist_sections,
-        guild,
-        last_updated=now,
-        image_url=cmd_image,
-        description_lines=[],
-    )
-    specialist_msg_id = await _upsert_message(
-        channel, company_state.get("specialist_message_id"), specialist_embed
-    )
-    company_state["specialist_message_id"] = specialist_msg_id
+    stale_specialist_ids = set(specialist_message_ids.values())
+    if legacy_specialist_message_id:
+        stale_specialist_ids.add(legacy_specialist_message_id)
+    stale_specialist_ids -= set(new_specialist_message_ids.values())
+    for stale_message_id in stale_specialist_ids:
+        await _delete_message_if_exists(channel, stale_message_id)
+
+    company_state["specialist_message_ids"] = new_specialist_message_ids
+    company_state["specialist_message_id"] = None
 
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     champion_members = _get_company_champion_members(guild, company_name)
-    champion_role = discord.utils.get(getattr(guild, "roles", []), name="Company Champion")
-    champion_role_mention = _role_mention(
-        getattr(champion_role, "id", None),
-        fallback=_mention_style_label("Company Champion"),
-    )
     kill_teams = _get_kill_teams_for_company(guild, company_name)
-    cmd_embed = _build_sectioned_embed(
-        _fmt_title(company_role_mention, cmd_emoji),
-        [
-            (_EMPTY_FIELD_NAME, cmd_members, [company_command_role_mention]),
-            (
-                _EMPTY_FIELD_NAME,
-                champion_members,
-                [
-                    champion_role_mention,
-                    _tp_status_for_members({m.id for m in champion_members}, packages=_tp_packages),
-                ],
-            ),
-        ] + [
-            (
-                _EMPTY_FIELD_NAME,
-                kt_members,
-                [
-                    _role_mention(kt_role_id, fallback=_mention_style_label(kt_name)),
-                    _tp_status_for_kt(kt_name, packages=_tp_packages),
-                    _honors_title_for_kt(kt_name, honors=_honors_data),
-                ],
-            )
-            for kt_name, kt_role_id, kt_members in kill_teams
-        ],
+    combined_cmd_members = sorted(
+        [*cmd_members, *champion_members],
+        key=_sort_key_for_member,
+    )
+    combined_cmd_block = _render_member_block(
         guild,
-        last_updated=now,
-        image_url=cmd_image,
-        description_lines=[
-            _honors_title_for_company(company_name, honors=_honors_data),
+        combined_cmd_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+        lead_lines=[
+            _tp_status_for_members(
+                {m.id for m in combined_cmd_members},
+                packages=_tp_packages,
+                ready_icon=ready_icon,
+                deployed_icon=deployed_icon,
+                assigned_icon=assigned_icon,
+            ),
+            _honors_title_for_company(
+                company_name,
+                honors=_honors_data,
+                standing_prefix=renown_prefix,
+            ),
         ],
+    )
+    cmd_view = _build_container_view(
+        None,
+        body_blocks=[combined_cmd_block],
+        image_url=cmd_image_url,
+        last_updated=now,
+        description_lines=[],
     )
     cmd_msg_id = await _upsert_message(
-        channel, company_state.get("command_message_id"), cmd_embed
+        channel,
+        company_state.get("command_message_id"),
+        view=cmd_view,
+        files=[cmd_image_file] if cmd_image_file else None,
     )
     company_state["command_message_id"] = cmd_msg_id
 
-    kt_message_ids: dict = dict(company_state.get("killteam_message_ids") or {})
+    kt_message_ids: dict[str, int] = dict(company_state.get("killteam_message_ids") or {})
+    new_kt_message_ids: dict[str, int] = {}
 
-    # Legacy KT embeds are removed in this layout. Clean up any tracked posts.
-    for stale_message_id in kt_message_ids.values():
+    for kt_name, _kt_role_id, kt_members in kill_teams:
+        kt_image_url, kt_image_file = _resolve_asset_image(_kill_team_image_filename(kt_name))
+        kt_block = _render_member_block(
+            guild,
+            kt_members,
+            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+            lead_lines=[
+                _tp_status_for_kt(
+                    kt_name,
+                    packages=_tp_packages,
+                    ready_icon=ready_icon,
+                    deployed_icon=deployed_icon,
+                    assigned_icon=assigned_icon,
+                ),
+                _honors_title_for_kt(
+                    kt_name,
+                    honors=_honors_data,
+                    standing_prefix=renown_prefix,
+                ),
+            ],
+        )
+        kt_view = _build_container_view(
+            None,
+            body_blocks=[kt_block],
+            image_url=kt_image_url,
+            last_updated=now,
+        )
+        kt_message_id = await _upsert_message(
+            channel,
+            kt_message_ids.get(kt_name),
+            view=kt_view,
+            files=[kt_image_file] if kt_image_file else None,
+        )
+        new_kt_message_ids[kt_name] = kt_message_id
+
+    stale_kt_ids = set(kt_message_ids.values()) - set(new_kt_message_ids.values())
+    for stale_message_id in stale_kt_ids:
         await _delete_message_if_exists(channel, stale_message_id)
-    kt_message_ids = {}
+    kt_message_ids = new_kt_message_ids
 
     company_state["killteam_message_ids"] = kt_message_ids
     state[company_name] = company_state
 
 
-async def _update_all_rosters(guild: discord.Guild) -> dict[str, str]:
+async def _update_all_rosters(guild: discord.Guild, *, force_repost: bool = False) -> dict[str, str]:
     """Refresh roster embeds for every configured company.
 
     Returns a dict of ``{company_name: "ok" | error_message}``.
@@ -1138,7 +1276,13 @@ async def _update_all_rosters(guild: discord.Guild) -> dict[str, str]:
 
         for company_name in ROSTER_COMPANY_CHANNELS:
             try:
-                await _update_company_roster(guild, company_name, state, now=now)
+                await _update_company_roster(
+                    guild,
+                    company_name,
+                    state,
+                    now=now,
+                    force_repost=force_repost,
+                )
                 results[company_name] = "ok"
                 _log().info(f"Roster: updated '{company_name}' successfully")
             except Exception as exc:
@@ -1206,7 +1350,7 @@ async def roster_post(interaction: discord.Interaction) -> None:
         await interaction.followup.send("Must be used in a server.", ephemeral=True)
         return
 
-    results = await _update_all_rosters(guild)
+    results = await _update_all_rosters(guild, force_repost=True)
 
     lines = ["**Roster embed status:**"]
     for company, result in results.items():
@@ -1236,7 +1380,7 @@ async def roster_refresh(interaction: discord.Interaction) -> None:
         await interaction.followup.send("Must be used in a server.", ephemeral=True)
         return
 
-    results = await _update_all_rosters(guild)
+    results = await _update_all_rosters(guild, force_repost=False)
 
     lines = ["**Roster refresh complete:**"]
     any_error = False
