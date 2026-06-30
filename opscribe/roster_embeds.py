@@ -113,7 +113,11 @@ _COMPANY_COMMAND_IMAGE_BY_COMPANY = {
 
 def _asset_path(filename: str) -> str:
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
-    return os.path.join(base, filename)
+    name = str(filename or "")
+    if "/" in name or "\\" in name or ".." in name:
+        _log().warning(f"Roster: invalid asset filename (path traversal blocked): {name!r}")
+        return os.path.join(base, "__invalid__")
+    return os.path.join(base, name)
 
 
 def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[discord.File]]:
