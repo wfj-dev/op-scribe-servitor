@@ -1174,74 +1174,36 @@ async def _update_company_roster(
     cmd_members = _get_company_command_members(guild, company_name)
     champion_members = _get_company_champion_members(guild, company_name)
     kill_teams = _get_kill_teams_for_company(guild, company_name)
-    if company_name == "Watch Company Primus":
-        combined_cmd_members = sorted(
-            [*cmd_members, *champion_members],
-            key=_sort_key_for_member,
-        )
-        combined_cmd_block = _render_member_block(
-            guild,
-            combined_cmd_members,
-            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-            lead_lines=[
-                _tp_status_for_members(
-                    {m.id for m in combined_cmd_members},
-                    packages=_tp_packages,
-                    ready_icon=ready_icon,
-                    deployed_icon=deployed_icon,
-                    assigned_icon=assigned_icon,
-                ),
-                _honors_title_for_company(
-                    company_name,
-                    honors=_honors_data,
-                    standing_prefix=renown_prefix,
-                ),
-            ],
-        )
-        cmd_view = _build_container_view(
-            None,
-            body_blocks=[combined_cmd_block],
-            image_url=cmd_image_url,
-            last_updated=now,
-            description_lines=[],
-        )
-    else:
-        cmd_members_block = _render_member_block(
-            guild,
-            cmd_members,
-            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-            lead_lines=[],
-        )
-        champion_block = _render_member_block(
-            guild,
-            champion_members,
-            max_chars=_ROSTER_FIELD_CHAR_LIMIT,
-            lead_lines=[
-                _tp_status_for_members(
-                    {m.id for m in champion_members},
-                    packages=_tp_packages,
-                    ready_icon=ready_icon,
-                    deployed_icon=deployed_icon,
-                    assigned_icon=assigned_icon,
-                ),
-            ],
-        )
-        cmd_view = _build_container_view(
-            None,
-            body_blocks=[
-                f"Company Command\n{cmd_members_block}",
-                f"Company Champion\n{champion_block}",
-            ],
-            image_url=cmd_image_url,
-            last_updated=now,
-            description_lines=[
-                _honors_title_for_company(
-                    company_name,
-                    honors=_honors_data,
-                    standing_prefix=renown_prefix,
-                ),
-            ],
-        )
+    combined_cmd_members = sorted(
+        [*cmd_members, *champion_members],
+        key=_sort_key_for_member,
+    )
+    combined_cmd_block = _render_member_block(
+        guild,
+        combined_cmd_members,
+        max_chars=_ROSTER_FIELD_CHAR_LIMIT,
+        lead_lines=[
+            _tp_status_for_members(
+                {m.id for m in combined_cmd_members},
+                packages=_tp_packages,
+                ready_icon=ready_icon,
+                deployed_icon=deployed_icon,
+                assigned_icon=assigned_icon,
+            ),
+            _honors_title_for_company(
+                company_name,
+                honors=_honors_data,
+                standing_prefix=renown_prefix,
+            ),
+        ],
+    )
+    cmd_view = _build_container_view(
+        None,
+        body_blocks=[combined_cmd_block],
+        image_url=cmd_image_url,
+        last_updated=now,
+        description_lines=[],
+    )
     cmd_msg_id = await _upsert_message(
         channel,
         company_state.get("command_message_id"),
