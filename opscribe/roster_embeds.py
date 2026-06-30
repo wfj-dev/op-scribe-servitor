@@ -967,8 +967,8 @@ async def _upsert_message(
                 f"Missing permissions to edit message {message_id} in channel {channel.id}"
             )
         except Exception as exc:
-            _log().warning(
-                f"Roster: edit failed for message {message_id} ({exc}) — will repost"
+            raise RuntimeError(
+                f"Roster edit failed for message {message_id} in channel {channel.id}: {exc}"
             )
 
     # Post fresh
