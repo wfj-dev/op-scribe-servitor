@@ -747,7 +747,7 @@ def _fortress_rep_state_name(rep: float) -> str:
 
 
 def _fortress_rep_title(tp_data: dict | None = None, *, standing_prefix: str = "⚖️") -> str:
-    """Return fortress standing title line as a 0..60 progress bar."""
+    """Return fortress standing progress-bar line (0..60); caller controls the label via standing_prefix."""
     rep_value = 30.0
     try:
         if isinstance(tp_data, dict):
