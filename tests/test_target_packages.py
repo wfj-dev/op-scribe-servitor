@@ -1329,6 +1329,20 @@ class TestExpiryWarnings:
 
 
 class TestCycleReportIdempotencyAndScope:
+    def test_batch_recency_prefers_suffixed_same_day_batch(self):
+        import opscribe.target_packages_ops as tp
+
+        assert tp._batch_recency_key("BATCH-20260624") < tp._batch_recency_key("BATCH-20260624-01")
+        assert tp._resolve_summary_batch_id(
+            {
+                "cycle": {},
+                "packages": {
+                    "legacy": {"id": "legacy", "status": STATUS_COMPLETED, "batch_id": "BATCH-20260624"},
+                    "newer": {"id": "newer", "status": STATUS_COMPLETED, "batch_id": "BATCH-20260624-01"},
+                },
+            }
+        ) == "BATCH-20260624-01"
+
     def test_manual_post_cycle_reports_allows_repost_of_marked_batch(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -1358,6 +1372,7 @@ class TestCycleReportIdempotencyAndScope:
 
         async def fake_post_batch_summary(_guild, _data, batch_id=None):
             posted_batches.append(batch_id)
+            return True
 
         monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
 
@@ -1372,6 +1387,76 @@ class TestCycleReportIdempotencyAndScope:
         sends = [c for c in interaction.calls if c[0] == "send"]
         assert sends
         assert "cycle reports posted" in sends[-1][1].lower()
+
+    def test_manual_post_cycle_reports_does_not_mark_nonterminal_batch_posted(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        saved = []
+        store = {
+            "rep": 30.0,
+            "cycle": {"batch_id": "BATCH-20260624", "batch_summary_posted_at": {}},
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "status": STATUS_RECRUITING,
+                    "batch_id": "BATCH-20260624",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: saved.append(True))
+        monkeypatch.setattr(tp, "_b", lambda name: (lambda *_a, **_k: True) if name == "check_command_permission" else {})
+
+        async def fake_post_batch_summary(*_args, **_kwargs):
+            return True
+
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        actor = _make_member(["Watch Master"], member_id=9001)
+        guild = _make_guild([actor])
+        interaction = _make_interaction(actor, guild)
+
+        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+
+        assert saved == []
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is None
+
+    def test_manual_post_cycle_reports_does_not_mark_batch_when_nothing_posted(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        saved = []
+        store = {
+            "rep": 30.0,
+            "cycle": {"batch_id": "BATCH-20260624", "batch_summary_posted_at": {}},
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260624",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: saved.append(True))
+        monkeypatch.setattr(tp, "_b", lambda name: (lambda *_a, **_k: True) if name == "check_command_permission" else {})
+
+        async def fake_post_batch_summary(*_args, **_kwargs):
+            return False
+
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        actor = _make_member(["Watch Master"], member_id=9001)
+        guild = _make_guild([actor])
+        interaction = _make_interaction(actor, guild)
+
+        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+
+        assert saved == []
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is None
 
     def test_expire_packages_auto_post_ignores_old_terminal_batches(self, monkeypatch):
         import opscribe.target_packages_ops as tp
