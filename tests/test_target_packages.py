@@ -108,6 +108,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _generate_single_package,
     _TIER_ROLES,
     _generate_unique_batch_id,
+    post_cycle_reports,
 )
 
 
@@ -1325,6 +1326,175 @@ class TestExpiryWarnings:
         assert sent[0] == f"<@&{tp.WATCH_BROTHER_ROLE_ID}>"
         assert store["cycle"].get("general_warning_sent_at", {}).get("BATCH-20260623") is not None
         assert store["cycle"]["last_general_warning_batch_id"] == "BATCH-20260623"
+
+
+class TestCycleReportIdempotencyAndScope:
+    def test_manual_post_cycle_reports_allows_repost_of_marked_batch(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        posted_batches = []
+        saved = []
+        store = {
+            "rep": 30.0,
+            "cycle": {
+                "batch_id": "BATCH-20260624",
+                "batch_summary_posted_at": {
+                    "BATCH-20260624": datetime.now(timezone.utc).isoformat(),
+                },
+            },
+            "packages": {
+                "OX-1": {
+                    "id": "OX-1",
+                    "status": STATUS_COMPLETED,
+                    "batch_id": "BATCH-20260624",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: saved.append(True))
+        monkeypatch.setattr(tp, "_b", lambda name: (lambda *_a, **_k: True) if name == "check_command_permission" else {})
+
+        async def fake_post_batch_summary(_guild, _data, batch_id=None):
+            posted_batches.append(batch_id)
+
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        actor = _make_member(["Watch Master"], member_id=9001)
+        guild = _make_guild([actor])
+        interaction = _make_interaction(actor, guild)
+
+        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+
+        assert posted_batches == ["BATCH-20260624"]
+        assert saved == [True]
+        sends = [c for c in interaction.calls if c[0] == "send"]
+        assert sends
+        assert "cycle reports posted" in sends[-1][1].lower()
+
+    def test_expire_packages_auto_post_ignores_old_terminal_batches(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        posted_batches = []
+        now = datetime.now(timezone.utc)
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260624",
+                "batch_summary_posted_at": {},
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "OLD-1": {
+                    "id": "OLD-1",
+                    "status": STATUS_COMPLETED,
+                    "deadline": (now - timedelta(days=5)).isoformat(),
+                    "batch_id": "BATCH-20260608",
+                    "assigned_kt": "Kill Team Alpha",
+                    "assigned_company": "Watch Company Primus",
+                },
+                "NEW-1": {
+                    "id": "NEW-1",
+                    "status": STATUS_RECRUITING,
+                    "deadline": (now - timedelta(minutes=5)).isoformat(),
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": "Kill Team Alpha",
+                    "assigned_company": "Watch Company Primus",
+                },
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(tp, "_apply_rep_delta", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(tp, "_send_single_batch_warning", lambda *_args, **_kwargs: False)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        async def fake_post_batch_summary(_guild, _data, batch_id=None):
+            posted_batches.append(batch_id)
+
+        monkeypatch.setattr(tp, "_delete_package_messages", _noop)
+        monkeypatch.setattr(tp, "_update_ox_rep_embed", _noop)
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        guild = _make_guild([])
+        asyncio.run(expire_packages(guild))
+
+        assert posted_batches == ["BATCH-20260624"]
+        assert "BATCH-20260608" not in posted_batches
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
+        assert store["packages"]["NEW-1"]["status"] == STATUS_FAILED
+
+    def test_expire_packages_posts_only_newest_touched_terminal_batch(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        posted_batches = []
+        now = datetime.now(timezone.utc)
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260624",
+                "batch_summary_posted_at": {},
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "P-OLD": {
+                    "id": "P-OLD",
+                    "status": STATUS_RECRUITING,
+                    "deadline": (now - timedelta(minutes=10)).isoformat(),
+                    "batch_id": "BATCH-20260623",
+                    "assigned_kt": "Kill Team Alpha",
+                    "assigned_company": "Watch Company Primus",
+                },
+                "P-NEW": {
+                    "id": "P-NEW",
+                    "status": STATUS_RECRUITING,
+                    "deadline": (now - timedelta(minutes=10)).isoformat(),
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": "Kill Team Alpha",
+                    "assigned_company": "Watch Company Primus",
+                },
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(tp, "_apply_rep_delta", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(tp, "_send_single_batch_warning", lambda *_args, **_kwargs: False)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        async def fake_post_batch_summary(_guild, _data, batch_id=None):
+            posted_batches.append(batch_id)
+
+        monkeypatch.setattr(tp, "_delete_package_messages", _noop)
+        monkeypatch.setattr(tp, "_update_ox_rep_embed", _noop)
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        guild = _make_guild([])
+        asyncio.run(expire_packages(guild))
+
+        assert posted_batches == ["BATCH-20260624"]
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260623") is None
 
 
 class TestDirectiveForumLifecycle:

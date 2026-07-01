@@ -761,6 +761,59 @@ def _batch_id_for_package(pkg: dict) -> str:
     return "BATCH-UNKNOWN"
 
 
+_BATCH_ID_RE = re.compile(r"^BATCH-(\d{8})(?:-(\d+))?$")
+
+
+def _batch_recency_key(batch_id: str) -> tuple[int, int]:
+    """Return a sortable recency key for batch IDs.
+
+    Higher values are newer batches. Unknown/malformed IDs sort oldest.
+    """
+    m = _BATCH_ID_RE.match(batch_id or "")
+    if not m:
+        return (0, 0)
+    date_part = int(m.group(1))
+    seq = int(m.group(2)) if m.group(2) else 1
+    return (date_part, seq)
+
+
+def _resolve_summary_batch_id(data: dict, requested_batch_id: str | None = None) -> str | None:
+    """Resolve the target batch ID for cycle summary posting.
+
+    Priority:
+    1) Explicit requested batch.
+    2) cycle.batch_id.
+    3) Newest known batch from package records.
+    4) BATCH-UNKNOWN if that is all that exists.
+    """
+    if requested_batch_id:
+        return requested_batch_id
+
+    cycle_batch_id = (data.get("cycle") or {}).get("batch_id")
+    if cycle_batch_id:
+        return cycle_batch_id
+
+    packages = data.get("packages", {})
+    if not packages:
+        return None
+    all_batch_ids = {_batch_id_for_package(p) for p in packages.values()}
+    known_batch_ids = [bid for bid in all_batch_ids if bid != "BATCH-UNKNOWN"]
+    if known_batch_ids:
+        return max(known_batch_ids, key=_batch_recency_key)
+    if all_batch_ids:
+        return "BATCH-UNKNOWN"
+    return None
+
+
+def _should_post_batch_summary(data: dict, batch_id: str | None) -> bool:
+    if not batch_id or batch_id == "BATCH-UNKNOWN":
+        return False
+    cycle = data.setdefault("cycle", {})
+    if _batch_summary_posted_at(cycle, batch_id):
+        return False
+    return _is_batch_terminal(data, batch_id)
+
+
 def _generate_unique_batch_id(data: dict, now: datetime) -> str:
     """Generate a unique same-day batch id as BATCH-YYYYMMDD-NN."""
     date_key = now.strftime("%Y%m%d")
@@ -3384,7 +3437,7 @@ async def submit_package(
         _final_data = _load_tp()
         cycle = _final_data.setdefault("cycle", {})
         pkg_batch_id = _batch_id_for_package(pkg)
-        if _is_batch_terminal(_final_data, pkg_batch_id) and not _batch_summary_posted_at(cycle, pkg_batch_id):
+        if _should_post_batch_summary(_final_data, pkg_batch_id):
             await _post_batch_summary(guild, _final_data, batch_id=pkg_batch_id)
             _mark_batch_summary_posted(cycle, pkg_batch_id, datetime.now(timezone.utc))
             _save_tp(_final_data)
@@ -3611,33 +3664,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     packages = data.get("packages", {})
     rep = data.get("rep", _REP_NEUTRAL)
 
-    # Resolve which batch to report on.
+    batch_id = _resolve_summary_batch_id(data, batch_id)
     if not batch_id:
-        batch_id = data.get("cycle", {}).get("batch_id")
+        return
 
-    # For legacy packages without a batch_id field, derive it from generated_at date.
-    # Group packages by their date-derived batch key so we can scope correctly.
-    def _pkg_batch_id(pkg: dict) -> str:
-        explicit = pkg.get("batch_id")
-        if explicit:
-            return explicit
-        gen_str = pkg.get("generated_at")
-        if gen_str:
-            try:
-                gen = datetime.fromisoformat(gen_str)
-                return f"BATCH-{gen.strftime('%Y%m%d')}"
-            except Exception:
-                pass
-        return "BATCH-UNKNOWN"
-
-    # If still no batch_id resolved, pick the most recent non-UNKNOWN batch in the file.
-    # Fall back to UNKNOWN only when that's all that exists.
-    if not batch_id:
-        all_batch_ids = sorted({_pkg_batch_id(p) for p in packages.values()}, reverse=True)
-        known_batch_ids = [bid for bid in all_batch_ids if bid != "BATCH-UNKNOWN"]
-        batch_id = (known_batch_ids[0] if known_batch_ids else (all_batch_ids[0] if all_batch_ids else "BATCH-UNKNOWN"))
-
-    batch_pkgs = [p for p in packages.values() if _pkg_batch_id(p) == batch_id]
+    batch_pkgs = [p for p in packages.values() if _batch_id_for_package(p) == batch_id]
     if not batch_pkgs:
         return
 
@@ -4217,6 +4248,7 @@ async def expire_packages(guild: discord.Guild) -> None:
         now = datetime.now(timezone.utc)
         changed = False
         expired_ids: list[str] = []
+        touched_batch_ids: set[str] = set()
 
         cycle = data.setdefault("cycle", {})
 
@@ -4243,6 +4275,7 @@ async def expire_packages(guild: discord.Guild) -> None:
                     data["entity_stats"]["companies"][company]["failed"] += 1
                 changed = True
                 expired_ids.append(pkg["id"])
+                touched_batch_ids.add(_batch_id_for_package(pkg))
 
             elif pkg["status"] == STATUS_DISTRIBUTED:
                 pkg["status"] = STATUS_LAPSED
@@ -4250,6 +4283,7 @@ async def expire_packages(guild: discord.Guild) -> None:
                 _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_LAPSED))
                 changed = True
                 expired_ids.append(pkg["id"])
+                touched_batch_ids.add(_batch_id_for_package(pkg))
 
         if changed:
             _save_tp(data)
@@ -4308,20 +4342,19 @@ async def expire_packages(guild: discord.Guild) -> None:
         except Exception as exc:
             _g.logger.debug(f"[TP] Rep embed update failed: {exc}")
 
-        # If expiry made a batch terminal, post summary for each newly terminal batch.
+        # If expiry made batches terminal, post only the newest touched terminal batch.
         try:
             _final_data = _load_tp()
             cycle = _final_data.setdefault("cycle", {})
-            batch_ids = sorted({_batch_id_for_package(p) for p in _final_data.get("packages", {}).values()})
-            for bid in batch_ids:
-                if bid == "BATCH-UNKNOWN":
-                    continue
-                if _batch_summary_posted_at(cycle, bid):
-                    continue
-                if _is_batch_terminal(_final_data, bid):
-                    await _post_batch_summary(guild, _final_data, batch_id=bid)
-                    _mark_batch_summary_posted(cycle, bid, datetime.now(timezone.utc))
-                    _save_tp(_final_data)
+            candidate_batches = [
+                bid for bid in touched_batch_ids
+                if _should_post_batch_summary(_final_data, bid)
+            ]
+            if candidate_batches:
+                bid = max(candidate_batches, key=_batch_recency_key)
+                await _post_batch_summary(guild, _final_data, batch_id=bid)
+                _mark_batch_summary_posted(cycle, bid, datetime.now(timezone.utc))
+                _save_tp(_final_data)
         except Exception as exc:
             _g.logger.debug(f"[TP] Batch summary check failed after expiry: {exc}")
 
@@ -7980,32 +8013,27 @@ async def post_cycle_reports(interaction: discord.Interaction, batch: Optional[s
         cleaned = batch.strip().upper().replace("BATCH-", "")
         resolved_batch_id = f"BATCH-{cleaned}"
         # Verify at least one package matches
-        def _pkg_batch_id_check(pkg: dict) -> str:
-            b = pkg.get("batch_id")
-            if b:
-                return b
-            gen_str = pkg.get("generated_at")
-            if gen_str:
-                try:
-                    gen = datetime.fromisoformat(gen_str)
-                    return f"BATCH-{gen.strftime('%Y%m%d')}"
-                except Exception:
-                    pass
-            return "BATCH-UNKNOWN"
-        matching = [p for p in data["packages"].values() if _pkg_batch_id_check(p) == resolved_batch_id]
+        matching = [p for p in data["packages"].values() if _batch_id_for_package(p) == resolved_batch_id]
         if not matching:
             await interaction.followup.send(
                 f"No directives found for batch `{resolved_batch_id}`. "
-                f"Available batches: {', '.join(sorted({_pkg_batch_id_check(p) for p in data['packages'].values()}, reverse=True))}",
+                f"Available batches: {', '.join(sorted({_batch_id_for_package(p) for p in data['packages'].values()}, reverse=True))}",
                 ephemeral=True,
             )
             return
 
+    target_batch_id = _resolve_summary_batch_id(data, resolved_batch_id)
+    if not target_batch_id:
+        await interaction.followup.send("No directive batch could be resolved for reporting.", ephemeral=True)
+        return
+
     try:
-        await _post_batch_summary(guild, data, batch_id=resolved_batch_id)
-        label = resolved_batch_id or data.get("cycle", {}).get("batch_id") or "current batch"
+        await _post_batch_summary(guild, data, batch_id=target_batch_id)
+        cycle = data.setdefault("cycle", {})
+        _mark_batch_summary_posted(cycle, target_batch_id, datetime.now(timezone.utc))
+        _save_tp(data)
         await interaction.followup.send(
-            f"Cycle reports posted for `{label}`: fortress-wide, per-KT, highcom, and honors announcement.",
+            f"Cycle reports posted for `{target_batch_id}`: fortress-wide, per-KT, and highcom.",
             ephemeral=True,
         )
     except Exception as exc:
