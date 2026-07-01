@@ -773,7 +773,7 @@ def _batch_recency_key(batch_id: str) -> tuple[int, int]:
     if not m:
         return (0, 0)
     date_part = int(m.group(1))
-    seq = int(m.group(2)) if m.group(2) else 1
+    seq = int(m.group(2)) if m.group(2) else 0
     return (date_part, seq)
 
 
@@ -3653,7 +3653,7 @@ def _all_packages_terminal(data: dict) -> bool:
 # Cycle-close reports (three scopes) + honors
 # ---------------------------------------------------------------------------
 
-async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Optional[str] = None) -> None:
+async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Optional[str] = None) -> bool:
     """Post cycle-close reports to three channels and update KT/company honors.
 
     batch_id: "BATCH-YYYYMMDD" to report on a specific batch. If None, uses the
@@ -3666,11 +3666,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
 
     batch_id = _resolve_summary_batch_id(data, batch_id)
     if not batch_id:
-        return
+        return False
 
     batch_pkgs = [p for p in packages.values() if _batch_id_for_package(p) == batch_id]
     if not batch_pkgs:
-        return
+        return False
+
+    posted_any = False
 
     total = len(batch_pkgs)
     completed = [p for p in batch_pkgs if p["status"] == STATUS_COMPLETED]
@@ -3834,6 +3836,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 fw_embed.set_image(url=f"attachment://{_fw_img_name}")
             try:
                 await _notify_send(gen_ch, guild, content=f"<@&{WATCH_BROTHER_ROLE_ID}>", embed=fw_embed, **_file_kwarg(_fw_img))
+                posted_any = True
                 _g.logger.info("[TP] Fortress-wide cycle report posted.")
             except Exception as exc:
                 _g.logger.warning(f"[TP] Fortress-wide report send failed: {exc}")
@@ -3955,6 +3958,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 if _kt_img and _kt_img_name:
                     kt_embed.set_image(url=f"attachment://{_kt_img_name}")
                 await _notify_send(kt_ch, guild, content=kt_role_mention or None, embed=kt_embed, **_file_kwarg(_kt_img))
+                posted_any = True
             except Exception as exc:
                 _g.logger.warning(f"[TP] KT report send failed for {kt_name}: {exc}")
 
@@ -4061,6 +4065,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         hc_ping = f"<@&{highcom_role_id}>" if highcom_role_id else f"<@&{WATCH_MASTER_ROLE_ID}>"
         try:
             await _notify_send(hc_ch, guild, content=hc_ping, embed=hc_embed, **_file_kwarg(_hc_img))
+            posted_any = True
             _g.logger.info("[TP] Highcom command audit posted.")
         except Exception as exc:
             _g.logger.warning(f"[TP] Highcom report send failed: {exc}")
@@ -4185,12 +4190,15 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             ping_str = " ".join(unique_pings) if unique_pings else None
             try:
                 await _notify_send(cadre_ch, guild, content=ping_str, embed=c_embed, **_file_kwarg(_c_img))
+                posted_any = True
                 _g.logger.info(f"[TP] Cadre report posted for {section_label}.")
             except Exception as exc:
                 _g.logger.warning(f"[TP] Cadre report send failed for {section_label}: {exc}")
         cadre_ch_id = cadre_cfg.get(cadre_key)
         if not cadre_ch_id:
             continue  # channel not configured yet (e.g. champion)
+
+    return posted_any
 
 
 async def _update_ox_rep_embed(guild: discord.Guild) -> None:
@@ -8028,10 +8036,11 @@ async def post_cycle_reports(interaction: discord.Interaction, batch: Optional[s
         return
 
     try:
-        await _post_batch_summary(guild, data, batch_id=target_batch_id)
-        cycle = data.setdefault("cycle", {})
-        _mark_batch_summary_posted(cycle, target_batch_id, datetime.now(timezone.utc))
-        _save_tp(data)
+        posted = await _post_batch_summary(guild, data, batch_id=target_batch_id)
+        if posted and _is_batch_terminal(data, target_batch_id):
+            cycle = data.setdefault("cycle", {})
+            _mark_batch_summary_posted(cycle, target_batch_id, datetime.now(timezone.utc))
+            _save_tp(data)
         await interaction.followup.send(
             f"Cycle reports posted for `{target_batch_id}`: fortress-wide, per-KT, and highcom.",
             ephemeral=True,
