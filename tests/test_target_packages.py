@@ -1346,6 +1346,7 @@ class TestCycleReportIdempotencyAndScope:
     def test_manual_post_cycle_reports_allows_repost_of_marked_batch(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
+        fixed_now = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
         posted_batches = []
         saved = []
         store = {
@@ -1353,7 +1354,7 @@ class TestCycleReportIdempotencyAndScope:
             "cycle": {
                 "batch_id": "BATCH-20260624",
                 "batch_summary_posted_at": {
-                    "BATCH-20260624": datetime.now(timezone.utc).isoformat(),
+                    "BATCH-20260624": fixed_now.isoformat(),
                 },
             },
             "packages": {
@@ -1361,7 +1362,7 @@ class TestCycleReportIdempotencyAndScope:
                     "id": "OX-1",
                     "status": STATUS_COMPLETED,
                     "batch_id": "BATCH-20260624",
-                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "generated_at": fixed_now.isoformat(),
                 }
             },
         }
@@ -1391,6 +1392,7 @@ class TestCycleReportIdempotencyAndScope:
     def test_manual_post_cycle_reports_does_not_mark_nonterminal_batch_posted(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
+        fixed_now = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
         saved = []
         store = {
             "rep": 30.0,
@@ -1400,7 +1402,7 @@ class TestCycleReportIdempotencyAndScope:
                     "id": "OX-1",
                     "status": STATUS_RECRUITING,
                     "batch_id": "BATCH-20260624",
-                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "generated_at": fixed_now.isoformat(),
                 }
             },
         }
@@ -1426,6 +1428,7 @@ class TestCycleReportIdempotencyAndScope:
     def test_manual_post_cycle_reports_does_not_mark_batch_when_nothing_posted(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
+        fixed_now = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
         saved = []
         store = {
             "rep": 30.0,
@@ -1435,7 +1438,7 @@ class TestCycleReportIdempotencyAndScope:
                     "id": "OX-1",
                     "status": STATUS_COMPLETED,
                     "batch_id": "BATCH-20260624",
-                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "generated_at": fixed_now.isoformat(),
                 }
             },
         }
