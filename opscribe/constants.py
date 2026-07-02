@@ -371,6 +371,9 @@ VERIFIER_TIER_THRESHOLDS = [
 # Hours before an unverified kill log triggers a reminder ping
 KILL_LOG_REMINDER_HOURS = 72
 
+# Minutes before non-apothecary verifiers may verify/deny a submitted kill log
+KILL_LOG_REVIEW_DELAY_MINUTES = 2
+
 # ---------------------------------------------------------------------------
 # Challenge roles for /completed_challenges command
 # Each entry is (role_id, display_name, emoji_hint)
