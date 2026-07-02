@@ -43,6 +43,7 @@ from .constants import (  # noqa: F401
     KADAKU_CAMPAIGN_REQUIRED_MISSIONS,
     KILL_LOG_CHANNEL_ID,
     KILL_LOG_CLASS_ROLES,
+    KILL_LOG_REVIEW_DELAY_MINUTES,
     KILL_LOG_REMINDER_HOURS,
     MASTER_TERMINUS_SLAYER_ROLE_ID,
     ORDER_OMEGA_REQUIRED_MISSIONS,
@@ -626,10 +627,13 @@ async def _handle_verify(interaction: discord.Interaction, kill_log_id: str) -> 
             error_msg = f"This entry is no longer pending (status: {entry['status']})."
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
-        ) < timedelta(minutes=5):
+        ) < timedelta(minutes=KILL_LOG_REVIEW_DELAY_MINUTES):
             vet_id = str(interaction.user.id)
             if _verifier_in_aar(vet_id, entry):
-                error_msg = "Kill log entries cannot be verified until 5 minutes after submission."
+                error_msg = (
+                    "Kill log entries cannot be verified until "
+                    f"{KILL_LOG_REVIEW_DELAY_MINUTES} minutes after submission."
+                )
             else:
                 shame_msg = (
                     f"\N{EYES} {interaction.user.mention} is trying to **VERIFY** a kill log "
@@ -715,10 +719,13 @@ async def _handle_deny(interaction: discord.Interaction, kill_log_id: str, reaso
             error_msg = f"This entry is no longer pending (status: {entry['status']})."
         elif not _is_apothecary(interaction.user) and (
             datetime.now(timezone.utc) - _parse_dt(entry["submitted_at"])
-        ) < timedelta(minutes=5):
+        ) < timedelta(minutes=KILL_LOG_REVIEW_DELAY_MINUTES):
             vet_id = str(interaction.user.id)
             if _verifier_in_aar(vet_id, entry):
-                error_msg = "Kill log entries cannot be denied until 5 minutes after submission."
+                error_msg = (
+                    "Kill log entries cannot be denied until "
+                    f"{KILL_LOG_REVIEW_DELAY_MINUTES} minutes after submission."
+                )
             else:
                 shame_msg = (
                     f"\N{EYES} {interaction.user.mention} is trying to **DENY** a kill log "
