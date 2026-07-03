@@ -718,11 +718,11 @@ def _extract_killteam_name(name: str) -> str:
     Handles optional separators like ':', '-', and varying whitespace/case.
     Also handles forum channel format 'Kill-Team X' (hyphen between Kill and Team).
     If no match, returns the original name (or 'Unknown' if empty).
-    Ignores role names like 'Bladeguard' that aren't actual kill teams.
+    Ignores legacy rank role names like 'Kill Team Champion'.
     """
     try:
-        # Skip non-KT role names that start with "Kill Team"
-        if name and name.lower().strip() == "bladeguard":
+        # Skip legacy rank role names that are not actual kill teams.
+        if name and name.lower().strip() == "kill team champion":
             return name or "Unknown"
         # Match 'Kill Team X', 'Kill-Team X', 'KillTeam X', etc.
         m = re.match(r"(?i)\s*kill[\s\-]*team\s*[:\-]?\s*(.+)", (name or ""))

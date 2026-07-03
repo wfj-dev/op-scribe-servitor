@@ -490,7 +490,8 @@ def _get_company_champion_members(
     """Deprecated compatibility helper for legacy tests/callers.
 
     First Blade is no longer structurally company-bound in policy; this helper is
-    retained only to avoid breaking imports and legacy test fixtures.
+    retained only to avoid breaking imports and legacy test fixtures, and
+    intentionally preserves the legacy company-scoped filtering behavior.
     """
     result = []
     for m in guild.members:
