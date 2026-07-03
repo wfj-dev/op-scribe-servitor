@@ -90,7 +90,7 @@ _EMPTY_FIELD_NAME = "\u200b"
 _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
-    ("Champion Hall", {"Company Champion", "Kill Team Champion"}),
+    ("Blade Hall", {"First Blade", "Bladeguard"}),
     ("Librarius", {"Watch Librarian"}),
     ("Watch Armory", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Reclusiam", {"Watch Chaplain"}),
@@ -98,7 +98,7 @@ _SPECIALIST_SECTION_ROLE_GROUPS = (
 )
 
 _SPECIALIST_IMAGE_BY_SECTION = {
-    "Champion Hall": "Hall of Champions.png",
+    "Blade Hall": "Hall of Champions.png",
     "Librarius": "Librarius.png",
     "Watch Armory": "Armory.png",
     "Reclusiam": "Reclusiam.png",
@@ -487,7 +487,11 @@ def _get_company_command_members(
 def _get_company_champion_members(
     guild: discord.Guild, company_name: str
 ) -> List[discord.Member]:
-    """Return Company Champion members for a given company, sorted."""
+    """Deprecated compatibility helper for legacy tests/callers.
+
+    First Blade is no longer structurally company-bound in policy; this helper is
+    retained only to avoid breaking imports and legacy test fixtures.
+    """
     result = []
     for m in guild.members:
         if m.bot:
@@ -497,7 +501,7 @@ def _get_company_champion_members(
         role_names = _member_role_names(m)
         if company_name not in role_names:
             continue
-        if "Company Champion" not in role_names:
+        if "First Blade" not in role_names:
             continue
         result.append(m)
     return sorted(result, key=_sort_key_for_member)
@@ -529,6 +533,10 @@ def _get_kill_teams_for_company(
                 continue
             role_names = _member_role_names(m)
             if company_name not in role_names:
+                continue
+            # Blade track is rendered exclusively in the Blade Hall specialist
+            # container and should not duplicate into KT roster containers.
+            if "First Blade" in role_names or "Bladeguard" in role_names:
                 continue
             members.append(m)
         if members:
@@ -779,6 +787,20 @@ def _load_honors() -> dict:
 
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_CADRE_TITLE_TIERS = {
+    "Blades": ["Unblooded", "Keen-Edged", "Honed Arsenal", "Master of Blades", "Relic Weapon Adepts", "Living Arsenal"],
+    "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
+    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Guarded", "Sanguine Stewards", "Vitae Keepers", "Apothecarion Ascendant"],
+    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Lexicanum Exemplars", "Oracular Ascendant"],
+    "Reclusiam": ["Unanointed", "Catechized", "Zeal-Bound", "Crozius Proven", "Litany Exemplars", "Voice of the Emperor"],
+}
+_CADRE_BY_SPECIALIST_SECTION = {
+    "Blade Hall": "Blades",
+    "Watch Armory": "Armory",
+    "Apothecarion": "Apothecarion",
+    "Librarius": "Librarius",
+    "Reclusiam": "Reclusiam",
+}
 _HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
 
 
@@ -851,6 +873,27 @@ def _honors_title_for_company(
     if not tier:
         tier = "Unrecorded"
     return _tier_window(_CO_TITLE_TIERS, tier, standing_prefix=standing_prefix)
+
+
+def _honors_title_for_cadre(
+    section_name: str,
+    honors: dict | None = None,
+    *,
+    standing_prefix: str = "⚖️",
+) -> str | None:
+    """Return formatted sliding-window honor title line for a specialist cadre section."""
+    cadre_name = _CADRE_BY_SPECIALIST_SECTION.get(section_name)
+    if not cadre_name:
+        return None
+    tiers = _CADRE_TITLE_TIERS.get(cadre_name)
+    if not tiers:
+        return None
+    if honors is None:
+        honors = _load_honors()
+    tier = honors.get("cadres", {}).get(cadre_name, {}).get("tier", tiers[0])
+    if not tier:
+        tier = tiers[0]
+    return _tier_window(tiers, tier, standing_prefix=standing_prefix)
 
 
 def _build_embed(
@@ -1143,6 +1186,11 @@ async def _update_company_roster(
                     deployed_icon=deployed_icon,
                     assigned_icon=assigned_icon,
                 ),
+                _honors_title_for_cadre(
+                    section_name,
+                    honors=_honors_data,
+                    standing_prefix=renown_prefix,
+                ) or "",
             ],
         )
         specialist_view = _build_container_view(
@@ -1176,12 +1224,8 @@ async def _update_company_roster(
 
     # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
-    champion_members = _get_company_champion_members(guild, company_name)
     kill_teams = _get_kill_teams_for_company(guild, company_name)
-    combined_cmd_members = sorted(
-        [*cmd_members, *champion_members],
-        key=_sort_key_for_member,
-    )
+    combined_cmd_members = sorted(cmd_members, key=_sort_key_for_member)
     combined_cmd_block = _render_member_block(
         guild,
         combined_cmd_members,
