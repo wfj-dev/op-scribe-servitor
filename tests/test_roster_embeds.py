@@ -471,25 +471,23 @@ def test_sectioned_embed_supports_watch_master_and_cadre_leaders_fields():
     assert "<@2>" in embed.fields[1].value
 
 
-def test_lord_executioner_specialist_group_contains_both_champion_roles():
+def test_blademaster_specialist_group_contains_both_blade_roles():
     groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
-    assert "Champion Hall" in groups
-    assert "Company Champion" in groups["Champion Hall"]
-    assert "Kill Team Champion" in groups["Champion Hall"]
-    assert "Hunting Grounds" in groups
-    assert "Huntmaster" in groups["Hunting Grounds"]
+    assert "Blade Hall" in groups
+    assert "First Blade" in groups["Blade Hall"]
+    assert "Bladeguard" in groups["Blade Hall"]
 
 
 def test_get_company_champion_members_filters_by_company_and_role():
     champion_primus = _member(
         member_id=20,
         display_name="Champion Primus",
-        roles=[_role(1, "Watch Company Primus"), _role(2, "Company Champion")],
+        roles=[_role(1, "Watch Company Primus"), _role(2, "First Blade")],
     )
     champion_other_company = _member(
         member_id=21,
         display_name="Champion Secundus",
-        roles=[_role(3, "Watch Company Secundus"), _role(4, "Company Champion")],
+        roles=[_role(3, "Watch Company Secundus"), _role(4, "First Blade")],
     )
     not_champion = _member(
         member_id=22,

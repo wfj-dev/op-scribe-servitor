@@ -718,10 +718,11 @@ def _extract_killteam_name(name: str) -> str:
     Handles optional separators like ':', '-', and varying whitespace/case.
     Also handles forum channel format 'Kill-Team X' (hyphen between Kill and Team).
     If no match, returns the original name (or 'Unknown' if empty).
-    Ignores role names like 'Kill Team Champion' that aren't actual kill teams.
+    Ignores legacy rank role names like 'Kill Team Champion' for backward
+    compatibility with historical role data.
     """
     try:
-        # Skip non-KT role names that start with "Kill Team"
+        # Skip legacy rank role names from historical data, not actual kill teams.
         if name and name.lower().strip() == "kill team champion":
             return name or "Unknown"
         # Match 'Kill Team X', 'Kill-Team X', 'KillTeam X', etc.
@@ -918,8 +919,8 @@ def _get_rank_emoji(guild: discord.Guild, rank_name: str) -> str:
     """Get rank emoji or fallback to just the rank name."""
     # Special mappings where emoji name differs from role name
     RANK_EMOJI_OVERRIDES = {
-        "Company Champion": "WatchChampion",
-        "Kill Team Champion": "KillteamChampion",
+        "First Blade": "WatchChampion",
+        "Bladeguard": "KillteamChampion",
         "Venerable Dreadnought": "Venerable",
     }
     emoji_name = RANK_EMOJI_OVERRIDES.get(rank_name, rank_name)
@@ -958,7 +959,7 @@ def _get_rank_category_for_blend(rank_name: str) -> str:
     company_cmd_roles = {
         "Watch Captain",
         "Watch Lieutenant",
-        "Company Champion",
+        "First Blade",
         "Honored Dreadnought",  # Honored warriors, company command level
     }
     if rank_name in company_cmd_roles:
@@ -1112,7 +1113,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
         "High Chaplain",
         "Chief Apothecary",
         "Void Warden",
-        "Lord Executioner",
+        "Blademaster",
         "Forgemaster",
         "Castellan",
     }
@@ -1255,7 +1256,7 @@ def _get_service_studs_announcement(
 
     # Bearer field with rank emoji (exactly matching forge_rite format)
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blademaster")
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
@@ -1413,7 +1414,7 @@ def _get_oathsworn_announcement(
 
     # Candidate field (same format as Bearer in service studs/forge_rite)
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Lord Executioner")
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blademaster")
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
@@ -2412,8 +2413,8 @@ def _get_bearer_rank_and_title(
     matched_rank = None
     for rank_name, hon in RANK_HONORIFICS.items():
         if rank_name.lower() in role_names_set:
-            # Handle dynamic Lord Executioner honorific
-            if rank_name == "Lord Executioner":
+            # Handle dynamic Blademaster honorific
+            if rank_name == "Blademaster":
                 # Find the Watch Master and use their name
                 guild = getattr(member, "guild", None)
                 watchmaster_name = None
@@ -2431,16 +2432,16 @@ def _get_bearer_rank_and_title(
                     except Exception:
                         pass
                 if watchmaster_name:
-                    honorific = f"Blade of {watchmaster_name}, Lord Executioner"
+                    honorific = f"Blade of {watchmaster_name}, Blademaster"
                 else:
                     # Fallback to fortress
-                    honorific = "Blade of the Fortress, Lord Executioner"
+                    honorific = "Blade of the Fortress, Blademaster"
             # Handle dynamic champion honorifics
-            elif rank_name == "Kill Team Champion" and kill_team:
+            elif rank_name == "Bladeguard" and kill_team:
                 # Extract KT short name: "Kill Team Falcon" -> "Falcon"
                 kt_short = _extract_killteam_name(kill_team)
                 honorific = f"Blade of {kt_short}, Champion"
-            elif rank_name == "Company Champion" and company:
+            elif rank_name == "First Blade" and company:
                 # Find the captain of this company and use their name
                 guild = getattr(member, "guild", None)
                 captain_name = None
@@ -2511,7 +2512,7 @@ def _get_bearer_rank_and_title(
         "Void Warden",
         "Forgemaster",
         "Champion",
-        "Lord Executioner",
+        "Blademaster",
     ]
     for prefix in honorific_prefixes:
         if display_name.lower().startswith(prefix.lower()):

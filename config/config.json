@@ -487,10 +487,10 @@
     "requirement_weights": {
       "no_requirement_chance": 0.5,
       "slot_tier": {
-        "veteran": 30,
-        "oathsworn": 10,
-        "kt_command": 30,
-        "company_command": 20,
+        "veteran": 33,
+        "oathsworn": 1,
+        "kt_command": 33,
+        "company_command": 23,
         "hc": 10
       }
     },

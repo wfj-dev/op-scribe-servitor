@@ -164,10 +164,10 @@ def test_post_role_integrity_findings_accepts_preformatted_role_mention(monkeypa
     assert sent_messages[0]["content"] == "<@&456>"
 
 
-def test_validate_high_command_roles_does_not_require_command_roles_for_ktc():
+def test_validate_high_command_roles_does_not_require_command_roles_for_bladeguard():
     is_valid, missing, extra = ro._validate_high_command_roles(
-        ["Kill Team Champion"],
-        {"Kill Team Champion"},
+        ["Bladeguard"],
+        {"Bladeguard"},
     )
 
     assert is_valid is True
@@ -202,8 +202,8 @@ def test_collect_role_integrity_findings_reports_track_and_prereq_conflicts(monk
     assert "oathsworn_terminal" in codes
 
 
-def test_collect_role_integrity_findings_does_not_require_watch_command_for_ktc_only(monkeypatch):
-    member = _make_member(10, ["Watch Brother", "Watch Veteran", "Kill Team Champion"])
+def test_collect_role_integrity_findings_does_not_require_watch_command_for_bladeguard_only(monkeypatch):
+    member = _make_member(10, ["Watch Brother", "Watch Veteran", "Bladeguard"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
     monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
@@ -215,10 +215,10 @@ def test_collect_role_integrity_findings_does_not_require_watch_command_for_ktc_
     assert "watch_command_missing" not in codes
 
 
-def test_collect_role_integrity_findings_flags_watch_and_high_command_for_ktc_only(monkeypatch):
+def test_collect_role_integrity_findings_flags_watch_and_high_command_for_bladeguard_only(monkeypatch):
     member = _make_member(
         11,
-        ["Watch Brother", "Watch Veteran", "Kill Team Champion", "Watch Command", "High Command"],
+        ["Watch Brother", "Watch Veteran", "Bladeguard", "Watch Command", "High Command"],
     )
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
@@ -258,7 +258,7 @@ def test_collect_role_integrity_findings_treats_huntmaster_as_high_command(monke
                     "Void Warden",
                     "Chief Apothecary",
                     "High Chaplain",
-                    "Lord Executioner",
+                    "Blademaster",
                     "Venerable Dreadnought",
                     "Huntmaster",
                 ],
@@ -301,7 +301,7 @@ def test_collect_role_integrity_findings_reports_huntmaster_prereq_gaps(monkeypa
                     "Void Warden",
                     "Chief Apothecary",
                     "High Chaplain",
-                    "Lord Executioner",
+                    "Blademaster",
                     "Venerable Dreadnought",
                     "Huntmaster",
                 ],
@@ -419,8 +419,8 @@ def test_collect_role_integrity_findings_requires_company_command_for_captain(mo
     assert "company_command_missing" in codes
 
 
-def test_collect_role_integrity_findings_requires_company_role_for_company_champion(monkeypatch):
-    member = _make_member(13, ["Watch Brother", "Watch Veteran", "Company Champion", "Watch Command"])
+def test_collect_role_integrity_findings_does_not_require_company_role_for_first_blade(monkeypatch):
+    member = _make_member(13, ["Watch Brother", "Watch Veteran", "First Blade", "Watch Command"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
     monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
@@ -429,11 +429,11 @@ def test_collect_role_integrity_findings_requires_company_role_for_company_champ
     findings = _run(ro._collect_role_integrity_findings(guild))
     codes = {f["code"] for f in findings}
 
-    assert "company_role_missing" in codes
+    assert "company_role_missing" not in codes
 
 
-def test_collect_role_integrity_findings_does_not_require_company_role_for_lord_executioner(monkeypatch):
-    member = _make_member(14, ["Watch Brother", "Watch Veteran", "Company Champion", "Lord Executioner", "Watch Command"])
+def test_collect_role_integrity_findings_does_not_require_company_role_for_blademaster(monkeypatch):
+    member = _make_member(14, ["Watch Brother", "Watch Veteran", "First Blade", "Blademaster", "Watch Command"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
     monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})

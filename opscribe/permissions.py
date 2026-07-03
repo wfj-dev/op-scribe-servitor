@@ -1,6 +1,6 @@
 """Permission track data tables extracted from bot.py.
 
-Three rank tracks (Battle Line, Champion, Specialist), High Command, and
+Three rank tracks (Battle Line, Blade, Specialist), High Command, and
 Watch Command convenience groups. Pure literal data only — no runtime
 dependencies. bot.py re-exports everything via ``from permissions import *``
 so existing references and tests keep working unchanged.
@@ -12,7 +12,7 @@ so existing references and tests keep working unchanged.
 # Three tracks exist:
 #   1. Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
 #                   → Watch Lieutenant → Watch Captain
-#   2. Champion: Kill Team Champion → Company Champion → Lord Executioner
+#   2. Blade: Bladeguard -> First Blade -> Blademaster
 #   3. Specialist (4 sub-tracks, each leading to High Command):
 #        Chaplain → High Chaplain, Apothecary → Chief Apothecary,
 #        Librarian → Void Warden, Techmarine → Forgemaster
@@ -53,17 +53,17 @@ BATTLE_LINE_RANKS = {
     "Watch Captain",
 }
 
-# Champion track (linear progression)
+# Blade track (linear progression)
 CHAMPION_TRACK = {
-    "Kill Team Champion": {
-        "Kill Team Champion",
-        "Company Champion",
-        "Lord Executioner",
+    "Bladeguard": {
+        "Bladeguard",
+        "First Blade",
+        "Blademaster",
     },
-    "Company Champion": {"Company Champion", "Lord Executioner"},
-    "Lord Executioner": {"Lord Executioner"},
+    "First Blade": {"First Blade", "Blademaster"},
+    "Blademaster": {"Blademaster"},
 }
-CHAMPION_RANKS = {"Kill Team Champion", "Company Champion", "Lord Executioner"}
+CHAMPION_RANKS = {"Bladeguard", "First Blade", "Blademaster"}
 
 # Specialist tracks: each sub-track is independent, leads to High Command
 SPECIALIST_TRACKS = {
@@ -90,20 +90,20 @@ HIGH_COMMAND_RANKS = {
     "Watch Master",
     "Venerable Dreadnought",
     "Watch Captain",
-    "Lord Executioner",
+    "Blademaster",
     "Huntmaster",
 }
 
-# Watch Command = Sergeant+ from Battle Line, Company Champion+ from champion track, all Specialists, High Command
+# Watch Command = Sergeant+ from Battle Line, First Blade+ from blade track, all Specialists, High Command
 # This is a convenience group for "everyone who isn't a line brother"
 WATCH_COMMAND_ROLES = {
     # Battle Line (Sergeant+)
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
-    # Champion track (Company Champion+)
-    "Company Champion",
-    "Lord Executioner",
+    # Blade track (First Blade+)
+    "First Blade",
+    "Blademaster",
     "Huntmaster",
     # Specialist track (all)
     "Watch Chaplain",
