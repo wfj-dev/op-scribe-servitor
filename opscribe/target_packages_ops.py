@@ -122,6 +122,60 @@ def _normalize_company_key(company_name: str | None) -> str:
     return str(company_name or "").strip().lower()
 
 
+def _normalize_company_label(company_name: str | None) -> str:
+    """Normalize company labels for role/config matching.
+
+    Examples:
+      "Watch Company Primus" -> "primus"
+      "primus" -> "primus"
+    """
+    raw = _normalize_company_key(company_name)
+    if raw.startswith("watch company "):
+        return raw.replace("watch company ", "", 1).strip()
+    return raw
+
+
+def _resolve_company_role_mention(guild: "discord.Guild | None", company_name: str | None) -> str:
+    """Resolve assigned company role mention for directive notifications."""
+    if guild is None:
+        return ""
+
+    company_label = _normalize_company_label(company_name)
+    if not company_label:
+        return ""
+
+    companies_cfg = ((_b("CONFIG") or {}).get("companies") or {})
+    if isinstance(companies_cfg, dict):
+        for entry in companies_cfg.values():
+            if not isinstance(entry, dict):
+                continue
+            entry_name = _normalize_company_label(entry.get("name"))
+            if entry_name != company_label:
+                continue
+            try:
+                role_id = int(entry.get("companyRoleId") or 0)
+            except Exception:
+                role_id = 0
+            if role_id:
+                role_obj = guild.get_role(role_id)
+                if role_obj:
+                    return role_obj.mention
+
+    candidates = [
+        str(company_name or "").strip(),
+        f"Watch Company {company_label.capitalize()}",
+        company_label.capitalize(),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        role_obj = discord.utils.get(getattr(guild, "roles", []), name=candidate)
+        if role_obj:
+            return role_obj.mention
+
+    return ""
+
+
 def _directive_forum_parent_map() -> dict[str, int]:
     """Load directive forum parent routing from config.
 
@@ -486,14 +540,14 @@ _REQ_TIER_NO_REQ = "no_req"
 _TIER_ROLES = {
     _REQ_TIER_VETERAN: ["Watch Veteran"],
     _REQ_TIER_OATHSWORN: ["Oathsworn"],
-    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Kill Team Champion"],
+    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Bladeguard"],
     _REQ_TIER_COMPANY_COMMAND: [
-        "Watch Captain", "Watch Lieutenant", "Company Champion",
+        "Watch Captain", "Watch Lieutenant", "First Blade",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
         "Watch Librarian", "Watch Keeper", "Honored Dreadnought",
     ],
     _REQ_TIER_HC: [
-        "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
+        "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
         "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
         "Venerable Dreadnought",
     ],
@@ -1050,7 +1104,7 @@ _OBJECTIVE_CLASSIFICATION: dict[str, str] = {
 # Package statuses
 STATUS_UNASSIGNED = "unassigned"          # Generated, WM hasn't distributed
 STATUS_DISTRIBUTED = "distributed"        # Sent to Captain, not yet assigned to KT
-STATUS_PENDING_SGT = "pending_sgt"        # Captain assigned KT, awaiting Sgt acceptance
+STATUS_PENDING_SGT = "pending_sgt"        # Legacy status kept for migration compatibility
 STATUS_RECRUITING = "recruiting"          # Sgt accepted, sign-up open in KT channel
 STATUS_DEPLOYED = "deployed"              # Min brothers signed up + all reqs filled
 STATUS_COMPLETED = "completed"
@@ -1169,7 +1223,7 @@ def _get_cadre_ownership_mapping_hardcoded() -> dict:
     This is the fallback when config is not available.
     """
     return {
-        "Lord Executioner": {"Kill Team Champion", "Company Champion"},
+        "Blademaster": {"Bladeguard", "First Blade"},
         "Huntmaster": {"Huntmaster"},
         "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
         "Chief Apothecary": {"Watch Apothecary"},
@@ -1223,6 +1277,8 @@ def _load_tp() -> dict:
         with open(TARGET_PACKAGES_PATH, "r", encoding="utf-8") as f:
             data = json.load(f) or _empty_tp_store()
         migrated = _migrate_rep_scale_if_needed(data)
+        migrated = _migrate_pending_sgt_flow_if_needed(data) or migrated
+        migrated = _ensure_entity_stats_schema(data) or migrated
         if migrated:
             _save_tp(data)
         return data
@@ -2219,6 +2275,33 @@ def _empty_tp_store() -> dict:
     }
 
 
+def _migrate_pending_sgt_flow_if_needed(data: dict) -> bool:
+    """Migrate legacy pending_sgt directives to recruiting sign-up flow."""
+    changed = False
+    for pkg in (data.get("packages", {}) or {}).values():
+        if pkg.get("status") == STATUS_PENDING_SGT:
+            pkg["status"] = STATUS_RECRUITING
+            pkg["sgt_accept_message_id"] = None
+            pkg["sgt_accept_channel_id"] = None
+            changed = True
+    return changed
+
+
+def _ensure_entity_stats_schema(data: dict) -> bool:
+    """Ensure entity stats buckets exist and carry rep_earned counters."""
+    changed = False
+    stats = data.setdefault("entity_stats", {})
+    for bucket in ("companies", "kill_teams", "cadres"):
+        if bucket not in stats or not isinstance(stats.get(bucket), dict):
+            stats[bucket] = {}
+            changed = True
+        for _, row in stats[bucket].items():
+            if "rep_earned" not in row:
+                row["rep_earned"] = 0.0
+                changed = True
+    return changed
+
+
 def _legacy_rep_to_new(rep_value: float) -> float:
     """Convert legacy -3..3 rep to new 0..60 scale."""
     legacy = max(-3.0, min(3.0, float(rep_value or 0.0)))
@@ -2261,23 +2344,221 @@ def _rep_tier_for_strat(rep: float) -> int:
 
 def _rep_delta_for_package(pkg: dict, outcome: str) -> float:
     """Return rep delta for a directive outcome under the 0..60 model."""
+    mode = str(pkg.get("mode", "") or "")
+    is_omega = "Omega" in mode
     if outcome == STATUS_COMPLETED:
-        mode = str(pkg.get("mode", "") or "")
         req_roles = pkg.get("required_roles", []) or []
-        delta = 2.0 if "Omega" in mode else 1.0
+        delta = 5.0 if is_omega else 3.0
         if req_roles:
             delta += 1.0
         return delta
     if outcome == STATUS_FAILED:
-        return -2.0
+        return -3.0 if is_omega else -2.0
     if outcome == STATUS_LAPSED:
-        return -1.0
+        return -2.0 if is_omega else -1.0
     return 0.0
 
 
 def _apply_rep_delta(data: dict, delta: float) -> None:
     cur = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
     data["rep"] = max(_REP_MIN, min(_REP_MAX, cur + float(delta or 0.0)))
+
+
+def _specialist_rep_bucket(member: "discord.Member") -> str | None:
+    roles = _member_role_names(member)
+    if roles & {"Watch Apothecary", "Chief Apothecary"}:
+        return "Apothecarion"
+    if roles & {"Watch Techmarine", "Forgemaster", "Honored Dreadnought", "Venerable Dreadnought"}:
+        return "Armory"
+    if roles & {"Watch Chaplain", "High Chaplain"}:
+        return "Reclusiam"
+    if roles & {"Watch Librarian", "Void Warden"}:
+        return "Librarius"
+    if roles & {"Bladeguard", "First Blade", "Blademaster"}:
+        return "Blades"
+    return None
+
+
+def _compute_participation_rep_allocations(pkg: dict, guild: "discord.Guild | None", total_rep: float) -> dict:
+    """Split directive completion rep across participating KTs and specialist cadres.
+
+    Captain/Lieutenant participants are intentionally excluded from split attribution;
+    their contribution is represented in full via company rep.
+    """
+    result = {"kill_teams": {}, "cadres": {}}
+    total = float(total_rep or 0.0)
+    if total <= 0:
+        return result
+
+    signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
+    specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
+    specialist_id_set = set(specialist_ids)
+    participant_ids = list(dict.fromkeys(signed_ids + specialist_ids))
+    if not participant_ids:
+        return result
+
+    from .forge_ops import _resolve_killteam_for_member
+
+    contributor_keys: set[tuple[str, str]] = set()
+    for uid in participant_ids:
+        member = guild.get_member(uid) if guild else None
+        if not member:
+            continue
+
+        roles = _member_role_names(member)
+        if "Watch Captain" in roles or "Watch Lieutenant" in roles:
+            continue
+
+        if uid in specialist_id_set:
+            cadre_bucket = _specialist_rep_bucket(member)
+            if cadre_bucket:
+                contributor_keys.add(("cadres", cadre_bucket))
+                continue
+
+        kt_name = _resolve_killteam_for_member(member)
+        if kt_name:
+            contributor_keys.add(("kill_teams", kt_name))
+
+    if not contributor_keys:
+        return result
+
+    ordered = sorted(contributor_keys, key=lambda item: (item[0], item[1]))
+    cents_total = int(round(total * 100.0))
+    base = cents_total // len(ordered)
+    remainder = cents_total % len(ordered)
+    for idx, (bucket, name) in enumerate(ordered):
+        share_cents = base + (1 if idx < remainder else 0)
+        result[bucket][name] = round(share_cents / 100.0, 2)
+
+    return result
+
+
+def _compute_company_command_bonus(pkg: dict, guild: "discord.Guild | None") -> float:
+    """Return company-only bonus rep from participating command members.
+
+    Each participating Watch Captain or Watch Lieutenant contributes +1.0 company
+    rep on completion. This bonus does not flow to KT/cadre split allocations.
+    """
+    assigned_company = pkg.get("assigned_company")
+    if not assigned_company:
+        return 0.0
+
+    participant_ids = [
+        int(uid)
+        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
+        if str(uid).strip()
+    ]
+    if not participant_ids or guild is None:
+        return 0.0
+
+    bonus = 0.0
+    for uid in participant_ids:
+        member = guild.get_member(uid) if guild else None
+        if not member:
+            continue
+        roles = _member_role_names(member)
+        if "Watch Captain" in roles or "Watch Lieutenant" in roles:
+            bonus += 1.0
+    return bonus
+
+
+def _compute_fortress_command_bonus(pkg: dict, guild: "discord.Guild | None") -> float:
+    """Return fortress-only bonus rep from participating high command members.
+
+    Watch Master and Huntmaster contribute +1.0 fortress rep each when they
+    participate in a completed directive.
+    """
+    participant_ids = [
+        int(uid)
+        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
+        if str(uid).strip()
+    ]
+    if not participant_ids or guild is None:
+        return 0.0
+
+    bonus = 0.0
+    for uid in participant_ids:
+        member = guild.get_member(uid) if guild else None
+        if not member:
+            continue
+        roles = _member_role_names(member)
+        if "Watch Master" in roles or "Huntmaster" in roles:
+            bonus += 1.0
+    return bonus
+
+
+_CADRE_LEADER_BONUS_BY_ROLE = {
+    "Blademaster": "Blades",
+    "Forgemaster": "Armory",
+    "Chief Apothecary": "Apothecarion",
+    "High Chaplain": "Reclusiam",
+    "Void Warden": "Librarius",
+}
+
+
+def _compute_cadre_leader_bonus_allocations(pkg: dict, guild: "discord.Guild | None") -> dict[str, float]:
+    """Return cadre-only bonus rep from participating cadre leaders.
+
+    Each participating cadre leader contributes +0.5 rep to their cadre bucket.
+    Huntmaster is intentionally excluded and contributes to fortress bonus only.
+    """
+    participant_ids = [
+        int(uid)
+        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
+        if str(uid).strip()
+    ]
+    if not participant_ids or guild is None:
+        return {}
+
+    bonus: dict[str, float] = {}
+    for uid in participant_ids:
+        member = guild.get_member(uid) if guild else None
+        if not member:
+            continue
+        roles = _member_role_names(member)
+        for role_name, cadre_bucket in _CADRE_LEADER_BONUS_BY_ROLE.items():
+            if role_name in roles:
+                bonus[cadre_bucket] = round(float(bonus.get(cadre_bucket, 0.0)) + 0.5, 2)
+                break
+    return bonus
+
+
+def _apply_entity_rep_allocations(
+    data: dict,
+    pkg: dict,
+    allocations: dict,
+    total_rep: float,
+    company_bonus: float = 0.0,
+    cadre_bonus_allocations: dict | None = None,
+) -> None:
+    """Apply split participation rep to KT/cadre stats and company rep credit.
+
+    Company credit = full directive rep + command participation bonus.
+    """
+    stats = data.setdefault("entity_stats", {})
+    kt_stats = stats.setdefault("kill_teams", {})
+    company_stats = stats.setdefault("companies", {})
+    cadre_stats = stats.setdefault("cadres", {})
+
+    for kt_name, delta in (allocations.get("kill_teams", {}) or {}).items():
+        row = kt_stats.setdefault(kt_name, {"completed": 0, "failed": 0, "rep_earned": 0.0})
+        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(delta or 0.0), 2)
+
+    merged_cadre_allocations: dict[str, float] = {}
+    for cadre_name, delta in (allocations.get("cadres", {}) or {}).items():
+        merged_cadre_allocations[cadre_name] = float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0)
+    for cadre_name, delta in (cadre_bonus_allocations or {}).items():
+        merged_cadre_allocations[cadre_name] = float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0)
+
+    for cadre_name, delta in merged_cadre_allocations.items():
+        row = cadre_stats.setdefault(cadre_name, {"completed": 0, "failed": 0, "rep_earned": 0.0})
+        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(delta or 0.0), 2)
+
+    assigned_company = pkg.get("assigned_company")
+    if assigned_company:
+        row = company_stats.setdefault(assigned_company, {"completed": 0, "failed": 0, "rep_earned": 0.0})
+        company_delta = float(total_rep or 0.0) + float(company_bonus or 0.0)
+        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + company_delta, 2)
 
 
 def _select_package_multiplier(rep: float) -> int:
@@ -2656,10 +2937,10 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 # ---------------------------------------------------------------------------
 
 # Roles that require formal cadre assignment (not naturally present in a KT)
-# Kill Team Champion is KT-command tier but still requires Lord Executioner assignment
+# Bladeguard is KT-command tier but still requires Blademaster assignment
 _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
-) | {"Kill Team Champion"}
+) | {"Bladeguard"}
 
 _OMEGA_REQ_TIERS = {
     _REQ_TIER_COMPANY_COMMAND,
@@ -2709,7 +2990,7 @@ def _draw_requirements(available_roles: "set | dict", mode: str = "Hard-Strat") 
     # Default: no duplicate rank requirements. Explicit exceptions can repeat.
     role_caps = {
         "Watch Veteran": 2,
-        "Kill Team Champion": 2,
+        "Bladeguard": 2,
     }
 
     for _ in range(target_count * 5):
@@ -3030,7 +3311,19 @@ async def assign_package_to_kt(
     captain_member: discord.Member,
     guild: discord.Guild,
 ) -> tuple:
-    """Assign a directive to a KT. Returns (success: bool, message: str)."""
+    """Accept a distributed directive for a captain/lieutenant's company.
+
+    Legacy call sites may pass ``kt_name``; it is ignored in the company-scoped
+    acceptance flow.
+    """
+    from .roster_ops import _get_member_company_name
+
+    actor_company = _get_member_company_name(captain_member) or company_name
+    if not actor_company:
+        return False, "You must have a company role to accept strike directives."
+    if not _is_captain_or_lt(captain_member):
+        return False, "Only Watch Captains or Watch Lieutenants may accept strike directives for a company."
+
     async with _TP_LOCK:
         data = _load_tp()
         pkg = data["packages"].get(package_id)
@@ -3039,41 +3332,35 @@ async def assign_package_to_kt(
         if pkg["status"] not in (STATUS_DISTRIBUTED,):
             return False, f"Directive `{package_id}` is not available for assignment (status: {pkg['status']})."
 
-        # Check KT package cap (max 3)
-        kt_active = [
-            p for p in data["packages"].values()
-            if p.get("assigned_kt") == kt_name
-            and p["status"] in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED)
-        ]
-        if len(kt_active) >= 3:
-            return False, f"{kt_name} already has 3 active directives. Cannot assign more until one is completed."
+        new_status = STATUS_RECRUITING
 
-        # Determine if a cadre specialist needs formal attachment
-        # Line ranks (Veteran, Oathsworn, Sgt, KT Champion) are validated
-        # at submission from KT membership — no formal attach needed.
-
-        new_status = STATUS_PENDING_SGT
-
-        pkg["assigned_kt"] = kt_name
-        pkg["assigned_company"] = company_name
+        pkg["assigned_kt"] = None
+        pkg["assigned_company"] = actor_company
         pkg["assigned_captain_id"] = captain_member.id
         pkg["status"] = new_status
+        pkg["sgt_accept_message_id"] = None
+        pkg["sgt_accept_channel_id"] = None
 
         # Init entity stats
         stats = data["entity_stats"]
-        if kt_name not in stats["kill_teams"]:
-            stats["kill_teams"][kt_name] = {"completed": 0, "failed": 0}
-        if company_name and company_name not in stats["companies"]:
-            stats["companies"][company_name] = {"completed": 0, "failed": 0}
+        if actor_company not in stats["companies"]:
+            stats["companies"][actor_company] = {"completed": 0, "failed": 0, "rep_earned": 0.0}
 
         _save_tp(data)
 
-    # Notify KT channel
-    await _notify_kt_assigned(package_id, kt_name, pkg, guild, fully_active=False, captain=captain_member)
+    # Notify command channel with assignment order mention.
+    await _notify_kt_assigned(package_id, "", pkg, guild, fully_active=False, captain=captain_member)
 
-    # Cadre leader pings fire after Sgt complies (in SgtAcceptView), not here
+    # New lifecycle: assignment directly opens recruitment in the KT thread.
+    await _ensure_directive_forum_thread(package_id, guild, pkg=pkg)
+    await _post_signup_embed(package_id, guild, complier=captain_member)
 
-    return True, f"Directive `{package_id}` assigned to {kt_name}."
+    req_roles = pkg.get("required_roles", [])
+    cadre_reqs = [r for r in req_roles if r in _CADRE_SPECIALIST_ROLES]
+    if cadre_reqs:
+        await _notify_cadre_leaders_needed(package_id, cadre_reqs, guild)
+
+    return True, f"Directive `{package_id}` accepted for {actor_company}; recruitment is now active."
 
 
 async def assign_specialist(
@@ -3326,16 +3613,18 @@ async def submit_package(
         is_hc = any(r in HIGH_COMMAND_RANKS for r in submitter_roles)
         is_command = (
             submitter_kt == pkg.get("assigned_kt")
-            and (_has_role(submitter, "Watch Sergeant") or _has_role(submitter, "Kill Team Champion"))
+            and (_has_role(submitter, "Watch Sergeant") or _has_role(submitter, "Bladeguard"))
         )
         is_signed_up = submitter.id in pkg.get("signed_up", [])
+        is_specialist_attached = submitter.id in pkg.get("assigned_specialist_ids", [])
+        is_rostered_participant = is_signed_up or is_specialist_attached
 
         assigned_company = pkg.get("assigned_company")
 
-        if not (is_signed_up or is_command or submitter_company == assigned_company or is_hc):
+        if not (is_rostered_participant or is_command or submitter_company == assigned_company or is_hc):
             return False, (
                 f"You do not have permission to submit directive {directive_display}. "
-                f"Submission requires: being signed up, KT command (Sergeant/Champion), "
+                f"Submission requires: being signed up or attached as a specialist, KT command (Sergeant/Bladeguard), "
                 f"same-company membership, or High Command."
             )
 
@@ -3402,18 +3691,48 @@ async def submit_package(
         kt = pkg.get("assigned_kt")
         company = pkg.get("assigned_company")
         if kt:
-            stats["kill_teams"].setdefault(kt, {"completed": 0, "failed": 0})
+            stats["kill_teams"].setdefault(kt, {"completed": 0, "failed": 0, "rep_earned": 0.0})
             stats["kill_teams"][kt]["completed"] += 1
         if company:
-            stats["companies"].setdefault(company, {"completed": 0, "failed": 0})
+            stats["companies"].setdefault(company, {"completed": 0, "failed": 0, "rep_earned": 0.0})
             stats["companies"][company]["completed"] += 1
 
         data["cycle"]["completed"] += 1
         rep_before = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
-        _apply_rep_delta(data, _rep_delta_for_package(pkg, STATUS_COMPLETED))
+        completion_rep_delta = _rep_delta_for_package(pkg, STATUS_COMPLETED)
+        fortress_command_bonus = _compute_fortress_command_bonus(pkg, guild)
+        _apply_rep_delta(data, completion_rep_delta + fortress_command_bonus)
         rep_after = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
         pkg["rep_before"] = rep_before
         pkg["rep_after"] = rep_after
+
+        split_allocations = _compute_participation_rep_allocations(pkg, guild, completion_rep_delta)
+        company_bonus = _compute_company_command_bonus(pkg, guild)
+        cadre_bonus_allocations = _compute_cadre_leader_bonus_allocations(pkg, guild)
+        _apply_entity_rep_allocations(
+            data,
+            pkg,
+            split_allocations,
+            completion_rep_delta,
+            company_bonus=company_bonus,
+            cadre_bonus_allocations=cadre_bonus_allocations,
+        )
+        merged_cadre_allocations = dict(split_allocations.get("cadres", {}) or {})
+        for cadre_name, delta in (cadre_bonus_allocations or {}).items():
+            merged_cadre_allocations[cadre_name] = round(
+                float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0),
+                2,
+            )
+        pkg["rep_allocations"] = {
+            "kill_teams": split_allocations.get("kill_teams", {}),
+            "cadres": merged_cadre_allocations,
+            "companies": (
+                {company: round(float(completion_rep_delta) + float(company_bonus), 2)}
+                if company else {}
+            ),
+            "fortress_bonus": round(float(fortress_command_bonus), 2),
+        }
+
         _save_tp(data)
 
     await _update_ox_rep_embed(guild)
@@ -3500,6 +3819,13 @@ _HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
 # ---------------------------------------------------------------------------
 _KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _COMPANY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_CADRE_TITLE_TIERS = {
+    "Blades": ["Unblooded", "Keen-Edged", "Honed Arsenal", "Master of Blades", "Relic Weapon Adepts", "Living Arsenal"],
+    "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
+    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Guarded", "Sanguine Stewards", "Vitae Keepers", "Apothecarion Ascendant"],
+    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Lexicanum Exemplars", "Oracular Ascendant"],
+    "Reclusiam": ["Unanointed", "Catechized", "Zeal-Bound", "Crozius Proven", "Litany Exemplars", "Voice of the Emperor"],
+}
 
 # Cadre sections for highcom report: (section_name, [role_names_in_cadre])
 # Castellan omitted by design. Huntmaster not a cadre.
@@ -3508,18 +3834,22 @@ _CADRE_SECTIONS = [
     ("Apothecarion Interventions", ["Watch Apothecary"]),
     ("Reclusiam Attachments",    ["Watch Chaplain"]),
     ("Librarius Operations",     ["Watch Librarian"]),
-    ("Champion Detachments",     ["Kill Team Champion", "Company Champion"]),
+    ("Blade Detachments",        ["Bladeguard", "First Blade"]),
 ]
 
 
 def _load_honors() -> dict:
     try:
         if not os.path.exists(_HONORS_PATH):
-            return {"kill_teams": {}, "companies": {}}
+            return {"kill_teams": {}, "companies": {}, "cadres": {}}
         with open(_HONORS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            payload = json.load(f)
+            payload.setdefault("kill_teams", {})
+            payload.setdefault("companies", {})
+            payload.setdefault("cadres", {})
+            return payload
     except Exception:
-        return {"kill_teams": {}, "companies": {}}
+        return {"kill_teams": {}, "companies": {}, "cadres": {}}
 
 
 def _save_honors(data: dict) -> None:
@@ -3532,7 +3862,7 @@ def _save_honors(data: dict) -> None:
 
 
 def _compute_honors(tp_data: dict) -> dict:
-    """Compute current KT and company title tiers from the rolling 28-day window.
+    """Compute current KT, company, and cadre title tiers from the rolling 28-day window.
 
     Scoring (dual metric, rep-weighted):
       rep_index   (0-5): based on net rep delta earned in window
@@ -3546,13 +3876,20 @@ def _compute_honors(tp_data: dict) -> dict:
     cutoff = now - timedelta(days=28)
 
     # KT thresholds: (min_rep_delta, min_completions) → index
-    _KT_REP_THRESHOLDS  = [0.0, 1.0, 4.0, 8.0, 14.0, 20.0]   # index 0-5
+    _KT_REP_THRESHOLDS  = [0.0, 2.0, 8.0, 15.0, 27.0, 38.0]   # index 0-5
     _KT_COMP_THRESHOLDS = [0,   1,   3,   6,   9,    12]       # index 0-5
     # Company thresholds
-    _CO_REP_THRESHOLDS  = [0.0, 2.0, 6.0, 11.0, 16.0, 22.0]
+    _CO_REP_THRESHOLDS  = [0.0, 5.0, 13.0, 23.0, 33.0, 46.0]
     _CO_COMP_THRESHOLDS = [0,   3,   6,   10,   14,   18]
     # Company KT contributor gates per tier index (minimum distinct KTs)
     _CO_KT_GATES = [0, 1, 2, 3, 4, 4]
+    _CADRE_REP_THRESHOLDS = {
+        "Blades": [0.0, 4.0, 11.0, 20.0, 31.0, 44.0],
+        "Armory": [0.0, 3.0, 8.0, 15.0, 23.0, 33.0],
+        "Apothecarion": [0.0, 2.0, 6.0, 11.0, 17.0, 25.0],
+        "Librarius": [0.0, 2.0, 6.0, 11.0, 17.0, 25.0],
+        "Reclusiam": [0.0, 2.0, 6.0, 11.0, 17.0, 25.0],
+    }
 
     def _rep_index(delta: float, thresholds: list) -> int:
         idx = 0
@@ -3574,6 +3911,8 @@ def _compute_honors(tp_data: dict) -> dict:
     co_completions: dict[str, int] = {}
     co_rep_earned:  dict[str, float] = {}
     co_kt_contributors: dict[str, set] = {}
+    cadre_completions: dict[str, int] = {}
+    cadre_rep_earned: dict[str, float] = {}
 
     for pkg in tp_data.get("packages", {}).values():
         if pkg.get("status") != STATUS_COMPLETED:
@@ -3593,15 +3932,36 @@ def _compute_honors(tp_data: dict) -> dict:
         kt = pkg.get("assigned_kt")
         company = pkg.get("assigned_company")
         rep_delta = float(pkg.get("rep_after", 0.0) or 0.0) - float(pkg.get("rep_before", 0.0) or 0.0)
+        rep_alloc = pkg.get("rep_allocations") or {}
+        kt_alloc = rep_alloc.get("kill_teams") if isinstance(rep_alloc, dict) else {}
+        company_alloc = rep_alloc.get("companies") if isinstance(rep_alloc, dict) else {}
+        cadre_alloc = rep_alloc.get("cadres") if isinstance(rep_alloc, dict) else {}
 
         if kt:
             kt_completions[kt] = kt_completions.get(kt, 0) + 1
+        if isinstance(kt_alloc, dict) and kt_alloc:
+            for kt_name, delta in kt_alloc.items():
+                kt_rep_earned[kt_name] = kt_rep_earned.get(kt_name, 0.0) + max(float(delta or 0.0), 0.0)
+        elif kt:
             kt_rep_earned[kt] = kt_rep_earned.get(kt, 0.0) + max(rep_delta, 0.0)
+
         if company:
             co_completions[company] = co_completions.get(company, 0) + 1
-            co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(rep_delta, 0.0)
-            if kt:
+            if isinstance(company_alloc, dict) and company in company_alloc:
+                co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(float(company_alloc.get(company) or 0.0), 0.0)
+            else:
+                co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(rep_delta, 0.0)
+
+            if isinstance(kt_alloc, dict) and kt_alloc:
+                co_kt_contributors.setdefault(company, set()).update(str(name) for name in kt_alloc.keys())
+            elif kt:
                 co_kt_contributors.setdefault(company, set()).add(kt)
+
+        if isinstance(cadre_alloc, dict) and cadre_alloc:
+            for cadre_name, delta in cadre_alloc.items():
+                bucket = str(cadre_name)
+                cadre_rep_earned[bucket] = cadre_rep_earned.get(bucket, 0.0) + max(float(delta or 0.0), 0.0)
+                cadre_completions[bucket] = cadre_completions.get(bucket, 0) + 1
 
     # Score KTs
     kt_results: dict[str, dict] = {}
@@ -3638,7 +3998,26 @@ def _compute_honors(tp_data: dict) -> dict:
             "last_evaluated": now.isoformat(),
         }
 
-    return {"kill_teams": kt_results, "companies": co_results}
+    # Score cadres
+    cadre_results: dict[str, dict] = {}
+    all_cadres = set(cadre_completions) | set(cadre_rep_earned)
+    for cadre_name in all_cadres:
+        thresholds = _CADRE_REP_THRESHOLDS.get(cadre_name)
+        titles = _CADRE_TITLE_TIERS.get(cadre_name)
+        if not thresholds or not titles:
+            continue
+        ri = _rep_index(cadre_rep_earned.get(cadre_name, 0.0), thresholds)
+        ci = _comp_index(cadre_completions.get(cadre_name, 0), _KT_COMP_THRESHOLDS)
+        final = min(5, round(0.75 * ri + 0.25 * ci))
+        cadre_results[cadre_name] = {
+            "tier": titles[final],
+            "tier_index": final,
+            "completions_28d": cadre_completions.get(cadre_name, 0),
+            "rep_earned_28d": round(cadre_rep_earned.get(cadre_name, 0.0), 2),
+            "last_evaluated": now.isoformat(),
+        }
+
+    return {"kill_teams": kt_results, "companies": co_results, "cadres": cadre_results}
 
 
 def _all_packages_terminal(data: dict) -> bool:
@@ -3717,6 +4096,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
     # ── HONORS EVALUATION (done first so results can be appended to fw_embed) ──
     _honors_kt_changes:  list[str] = []
     _honors_co_changes:  list[str] = []
+    _honors_cadre_changes: list[str] = []
     try:
         old_honors = _load_honors()
         _new_honors = _compute_honors(data)
@@ -3746,6 +4126,20 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 continue  # no change — skip
             verb = "reached" if new_idx > old_idx else "dropped to"
             _honors_co_changes.append(f"**{co_name}** {verb} **{new_tier}**")
+
+        for cadre_name, new_data in sorted((_new_honors.get("cadres") or {}).items()):
+            old_data = old_honors.get("cadres", {}).get(cadre_name, {})
+            old_tier = old_data.get("tier", (_CADRE_TITLE_TIERS.get(cadre_name) or [new_data["tier"]])[0])
+            titles = _CADRE_TITLE_TIERS.get(cadre_name)
+            if not titles:
+                continue
+            new_tier = new_data["tier"]
+            old_idx = titles.index(old_tier) if old_tier in titles else 0
+            new_idx = new_data["tier_index"]
+            if new_idx == old_idx:
+                continue
+            verb = "reached" if new_idx > old_idx else "dropped to"
+            _honors_cadre_changes.append(f"**{cadre_name}** {verb} **{new_tier}**")
 
         _save_honors(_new_honors)
     except Exception as exc:
@@ -3831,6 +4225,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 if len(co_hon_block) > 1024:
                     co_hon_block = co_hon_block[:1020] + "\n…"
                 fw_embed.add_field(name="▸ Company Honours", value=co_hon_block, inline=False)
+            if _honors_cadre_changes:
+                cadre_hon_block = "\n".join(_honors_cadre_changes)
+                if len(cadre_hon_block) > 1024:
+                    cadre_hon_block = cadre_hon_block[:1020] + "\n…"
+                fw_embed.add_field(name="▸ Cadre Honours", value=cadre_hon_block, inline=False)
             _fw_img, _fw_img_name = _random_strike_image_file("fortress")
             if _fw_img and _fw_img_name:
                 fw_embed.set_image(url=f"attachment://{_fw_img_name}")
@@ -3868,7 +4267,9 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             continue  # nothing terminal to report for this KT
 
         kt_rep_contributed = sum(
-            float(p.get("rep_after", 0.0) or 0.0) - float(p.get("rep_before", 0.0) or 0.0)
+            float(((p.get("rep_allocations") or {}).get("kill_teams", {}) or {}).get(kt_name, 0.0) or 0.0)
+            if ((p.get("rep_allocations") or {}).get("kill_teams", {}) or {}).get(kt_name) is not None
+            else (float(p.get("rep_after", 0.0) or 0.0) - float(p.get("rep_before", 0.0) or 0.0))
             for p in kt_completed
         )
         kt_rate = len(kt_completed) / len(kt_batch) if kt_batch else 0
@@ -4086,8 +4487,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
          ["High Chaplain"], "Reclusiam Attachments"),
         ("librarian",   ["Watch Librarian"],
          ["Void Warden"], "Librarius Operations"),
-        ("champion",    ["Kill Team Champion", "Company Champion"],
-         ["Lord Executioner"], "Champion Detachments"),
+        ("champion",    ["Bladeguard", "First Blade"],
+         ["Blademaster"], "Blade Detachments"),
     ]
     cadre_cfg = config_tp.get("cadre_channels", {})
     for cadre_key, cadre_member_roles, cadre_leader_roles, section_label in _CADRE_REPORT_DEFS:
@@ -4276,10 +4677,10 @@ async def expire_packages(guild: discord.Guild) -> None:
                 kt = pkg.get("assigned_kt")
                 company = pkg.get("assigned_company")
                 if kt:
-                    data["entity_stats"]["kill_teams"].setdefault(kt, {"completed": 0, "failed": 0})
+                    data["entity_stats"]["kill_teams"].setdefault(kt, {"completed": 0, "failed": 0, "rep_earned": 0.0})
                     data["entity_stats"]["kill_teams"][kt]["failed"] += 1
                 if company:
-                    data["entity_stats"]["companies"].setdefault(company, {"completed": 0, "failed": 0})
+                    data["entity_stats"]["companies"].setdefault(company, {"completed": 0, "failed": 0, "rep_earned": 0.0})
                     data["entity_stats"]["companies"][company]["failed"] += 1
                 changed = True
                 expired_ids.append(pkg["id"])
@@ -4410,9 +4811,9 @@ _CADRE_FLAVOR = {
         "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Strike Directive `{pid}`. Castellan — designate your operative.\nUse `/view_strike_directives` to assign.",
         "Castellan, your intelligence cadre is needed by {kt}. Strike Directive `{pid}` awaits Watch Keeper attachment.\nUse `/view_strike_directives` to assign.",
     ],
-    "Lord Executioner": [
-        "Champion requisition raised. {kt} of {company} requires a Champion on Strike Directive `{pid}`. Lord Executioner — designate as required.\nUse `/view_strike_directives` to assign.",
-        "Lord Executioner, {kt} needs martial authority on Strike Directive `{pid}`. Champion assignment required before deployment.\nUse `/view_strike_directives` to assign.",
+    "Blademaster": [
+        "Blade requisition raised. {kt} of {company} requires a Blade role on Strike Directive `{pid}`. Blademaster — designate as required.\nUse `/view_strike_directives` to assign.",
+        "Blademaster, {kt} needs martial authority on Strike Directive `{pid}`. Blade assignment required before deployment.\nUse `/view_strike_directives` to assign.",
     ],
     "Huntmaster": [
         "Huntmaster, {kt} of {company} requires your personal engagement on Strike Directive `{pid}`. Your direct participation is demanded.\nUse `/view_strike_directives` to assign yourself.",
@@ -4428,7 +4829,7 @@ _CADRE_DEFAULT_FLAVOR = [
 async def _notify_kt_assigned(
     package_id: str, kt_name: str, pkg: dict, guild: discord.Guild, fully_active: bool = False, captain: discord.Member = None
 ) -> None:
-    """Post persistent Sgt accept embed in the watch command strategium channel."""
+    """Post assignment notice in watch command strategium channel."""
     config_tp = (_b("CONFIG") or {}).get("target_packages", {})
     strategium_channel_id = config_tp.get("watch_command_deployment_channel_id")
     if not strategium_channel_id:
@@ -4439,7 +4840,7 @@ async def _notify_kt_assigned(
         return
 
     leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
-    leader_mention = leader_member.mention if leader_member else ""
+    company_mention = _resolve_company_role_mention(guild, pkg.get("assigned_company"))
 
     data = _load_tp()
     rep = data.get("rep", 0.0)
@@ -4456,7 +4857,6 @@ async def _notify_kt_assigned(
         )
     req_roles = pkg.get("required_roles", [])
     if req_roles:
-        # Sgt accept view should explicitly show required ranks before KT signup starts.
         req_counts = Counter(req_roles)
         req_lines = []
         for role_name, cnt in req_counts.items():
@@ -4468,22 +4868,22 @@ async def _notify_kt_assigned(
         )
     embed.add_field(
         name="▸ Orders",
-        value=f"{leader_role or 'Watch Sergeant'} — press **⚔ Comply** to accept these orders.",
+        value=(
+            f"Accepted by {captain.mention if captain else 'command'} for {pkg.get('assigned_company') or 'assigned company'}. "
+            "Company recruitment is now active."
+        ),
         inline=False,
     )
 
-    view = SgtAcceptView(package_id=package_id, kt_name=kt_name)
     _cls_file = _classification_file(pkg)
-    msg = await _notify_send(channel, guild, content=leader_mention or None, embed=embed, view=view, **_file_kwarg(_cls_file))
-
-    # Store message ID for later editing
+    msg = await _notify_send(
+        channel,
+        guild,
+        content=company_mention or (leader_member.mention if leader_member else None),
+        embed=embed,
+        **_file_kwarg(_cls_file),
+    )
     if msg:
-        async with _TP_LOCK:
-            data = _load_tp()
-            if package_id in data["packages"]:
-                data["packages"][package_id]["sgt_accept_message_id"] = msg.id
-                data["packages"][package_id]["sgt_accept_channel_id"] = getattr(msg.channel, "id", None)
-                _save_tp(data)
         await _track_package_message(package_id, msg)
 
 
@@ -4499,9 +4899,9 @@ _ROLE_TO_CADRE_KEY: dict[str, str] = {
     "Chief Apothecary": "apothecary",
     "Watch Chaplain": "chaplain",
     "High Chaplain": "chaplain",
-    "Kill Team Champion": "champion",
-    "Company Champion": "champion",
-    "Lord Executioner": "champion",
+    "Bladeguard": "champion",
+    "First Blade": "champion",
+    "Blademaster": "champion",
 }
 
 # Fallback constants if not set in config
@@ -4550,11 +4950,11 @@ async def _notify_specialist_assigned(
             f"{int(signup_channel_id)}/{int(signup_message_id)}"
         )
 
-    # Determine the right channel for this specialist — all cadres including champions
-    # route through _get_cadre_channel_id. Kill Team Champion is an exception: they
+    # Determine the right channel for this specialist — all cadres including blades
+    # route through _get_cadre_channel_id. Bladeguard is an exception: they
     # get pinged in their KT's signup channel since they operate at KT level.
     cadre_channel_id = None
-    if "Kill Team Champion" in specialist_roles:
+    if "Bladeguard" in specialist_roles:
         cadre_channel_id = signup_channel_id
     else:
         for role in specialist_roles:
@@ -4693,8 +5093,8 @@ async def _notify_cadre_leaders_needed(
         "Watch Chaplain": "High Chaplain",
         "Watch Librarian": "Void Warden",
         "Watch Keeper": "Castellan",
-        "Kill Team Champion": "Lord Executioner",
-        "Company Champion": "Lord Executioner",
+        "Bladeguard": "Blademaster",
+        "First Blade": "Blademaster",
         "Huntmaster": "Huntmaster",
     }
 
@@ -5298,13 +5698,13 @@ _RANK_SENIORITY: list[str] = [
     "Watch Veteran",
     "Oathsworn",
     "Watch Sergeant",
-    "Kill Team Champion",
+    "Bladeguard",
     "Watch Lieutenant",
     "Watch Captain",
-    "Company Champion",
+    "First Blade",
     "Watch Techmarine", "Watch Apothecary", "Watch Chaplain", "Watch Librarian", "Watch Keeper",
     "Honored Dreadnought",
-    "Lord Executioner",
+    "Blademaster",
     "Forgemaster", "Chief Apothecary", "High Chaplain", "Void Warden", "Castellan", "Huntmaster",
     "Venerable Dreadnought",
     "Watch Master",
@@ -5332,7 +5732,7 @@ def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dic
     is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
 
     # Line ranks and KT command: same KT only
-    if required_role in ("Watch Veteran", "Oathsworn", "Watch Sergeant", "Kill Team Champion"):
+    if required_role in ("Watch Veteran", "Oathsworn", "Watch Sergeant", "Bladeguard"):
         return member_kt == assigned_kt or is_hc
 
     # Company command / specialists: same company or HC
@@ -5578,35 +5978,41 @@ def _can_actor_remove_attached_target(
     def _safe_member_company_name(member: discord.Member) -> str | None:
         try:
             from .roster_ops import _get_member_company_name as _fn
-            return _fn(member)
+            resolved = _fn(member)
+            if resolved:
+                return resolved
         except Exception:
-            role_names = _member_role_names(member)
-            for rn in (
-                "Watch Company Primus",
-                "Watch Company Secundus",
-                "Watch Company Tertius",
-                "Watch Company Quartus",
-                "Watch Company Quintus",
-                "Dreadnought Cadre",
-            ):
-                if rn in role_names:
-                    return rn
-            return None
+            pass
+        role_names = _member_role_names(member)
+        for rn in (
+            "Watch Company Primus",
+            "Watch Company Secundus",
+            "Watch Company Tertius",
+            "Watch Company Quartus",
+            "Watch Company Quintus",
+            "Dreadnought Cadre",
+        ):
+            if rn in role_names:
+                return rn
+        return None
 
     def _safe_member_kt(member: discord.Member) -> str | None:
         try:
             from .forge_ops import _resolve_killteam_for_member as _fn
-            return _fn(member)
+            resolved = _fn(member)
+            if resolved:
+                return resolved
         except Exception:
-            role_names = _member_role_names(member)
-            kill_teams = set(_b("KILL_TEAMS") or [])
-            for rn in role_names:
-                if rn in kill_teams:
-                    return rn
-            for rn in role_names:
-                if rn.lower().startswith("kill team "):
-                    return rn
-            return None
+            pass
+        role_names = _member_role_names(member)
+        kill_teams = set(_b("KILL_TEAMS") or [])
+        for rn in role_names:
+            if rn in kill_teams:
+                return rn
+        for rn in role_names:
+            if rn.lower().startswith("kill team "):
+                return rn
+        return None
 
     actor_company = _safe_member_company_name(actor)
     if (
@@ -5912,6 +6318,7 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         return
 
     kt_name = pkg.get("assigned_kt", "")
+    company_mention = _resolve_company_role_mention(guild, pkg.get("assigned_company"))
     mode = pkg.get("mode", "")
     req_roles = pkg.get("required_roles", [])
 
@@ -6001,17 +6408,10 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         channel = await _resolve_channel(guild, preferred_thread_id)
         if isinstance(channel, discord.Thread):
             _cls_file = _classification_file(pkg)
-            kt_role_mention = ""
-            _kt_role = discord.utils.find(
-                lambda r: r.name.lower() == kt_name.lower(),
-                guild.roles,
-            )
-            if _kt_role:
-                kt_role_mention = _kt_role.mention
             msg = await _notify_send(
                 channel,
                 guild,
-                content=kt_role_mention or None,
+                content=company_mention or None,
                 embed=embed,
                 view=view,
                 **_file_kwarg(_cls_file),
@@ -6038,18 +6438,9 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             channel = await _get_award_announcement_channel(m, guild)
             if channel:
                 _cls_file = _classification_file(pkg)
-                # Mention the KT role so the whole team sees the deployment embed
-                kt_role_mention = ""
-                if guild:
-                    _kt_role = discord.utils.find(
-                        lambda r: r.name.lower() == kt_name.lower(),
-                        guild.roles,
-                    )
-                    if _kt_role:
-                        kt_role_mention = _kt_role.mention
                 msg = await _notify_send(
                     channel, guild,
-                    content=kt_role_mention or None,
+                    content=company_mention or None,
                     embed=embed,
                     view=view,
                     **_file_kwarg(_cls_file),
@@ -6755,7 +7146,6 @@ class PackagePaginatorView(discord.ui.View):
         self.index = 0
         self.show_distribute = show_distribute
         self.viewer = viewer
-        self.selected_kt: str | None = None
 
         if show_distribute:
             distribute_btn = discord.ui.Button(
@@ -6766,22 +7156,13 @@ class PackagePaginatorView(discord.ui.View):
             distribute_btn.callback = self.distribute_all
             self.add_item(distribute_btn)
 
-        # Captain: inline KT select + green Assign button (never show to cadre leaders/admins)
+        # Captain/LT: company acceptance button (no KT assignment selection)
         if not show_distribute and viewer and (_has_role(viewer, "Watch Captain") or _has_role(viewer, "Watch Lieutenant")):
-            kt_options = self._build_kt_options(viewer)
-            if kt_options:
-                kt_select = discord.ui.Select(
-                    placeholder="Select Kill Team…",
-                    options=kt_options,
-                    custom_id="tp_kt_select_inline",
-                )
-                kt_select.callback = self.on_kt_select
-                self.add_item(kt_select)
             assign_btn = discord.ui.Button(
-                label="Assign",
+                label="Accept for Company",
                 style=discord.ButtonStyle.success,
                 custom_id="tp_assign_kt",
-                disabled=True,  # enabled once a KT is selected
+                disabled=False,
             )
             assign_btn.callback = self.assign_to_kt
             self.add_item(assign_btn)
@@ -6904,27 +7285,6 @@ class PackagePaginatorView(discord.ui.View):
                     if kt not in at_capacity
                 ]
         return options[:25]
-
-    def _sync_kt_select_state(self) -> None:
-        """Keep KT select UI aligned with current selection."""
-        for item in self.children:
-            if getattr(item, "custom_id", None) != "tp_kt_select_inline":
-                continue
-            options = getattr(item, "options", None)
-            if not options:
-                continue
-
-            has_selected = False
-            for opt in options:
-                opt.default = bool(self.selected_kt and opt.value == self.selected_kt)
-                if opt.default:
-                    has_selected = True
-
-            if self.selected_kt and not has_selected:
-                self.selected_kt = None
-
-            item.placeholder = f"Kill Team: {self.selected_kt}" if self.selected_kt else "Select Kill Team…"
-            break
 
     def _build_specialist_options(self, viewer: discord.Member) -> tuple[list, str, bool]:
         """Build inline specialist options for a cadre leader on the current directive."""
@@ -7063,11 +7423,6 @@ class PackagePaginatorView(discord.ui.View):
             return [], "No assigned specialists from your cadre", False
         return options, "Select specialist to detach…", True
 
-    async def on_kt_select(self, interaction: discord.Interaction):
-        self.selected_kt = interaction.data["values"][0]
-        self._refresh_assign_btn()
-        await interaction.response.edit_message(view=self)
-
     async def on_specialist_select(self, interaction: discord.Interaction):
         pkg = self._refresh_current_package_snapshot()
         req_roles = pkg.get("required_roles", []) if pkg else []
@@ -7156,17 +7511,17 @@ class PackagePaginatorView(discord.ui.View):
         pkg = self._refresh_current_package_snapshot()
         if pkg["status"] != STATUS_DISTRIBUTED:
             await interaction.response.send_message(
-                f"Directive `{pkg.get('directive_code') or pkg['id']}` is `{pkg['status']}` — cannot assign.", ephemeral=True
+                f"Directive `{pkg.get('directive_code') or pkg['id']}` is `{pkg['status']}` — cannot accept.", ephemeral=True
             )
-            return
-        if not self.selected_kt:
-            await interaction.response.send_message("Select a Kill Team first.", ephemeral=True)
             return
         member = interaction.user
         from .roster_ops import _get_member_company_name
         company = _get_member_company_name(member) or ("Debug" if _is_debug_mode() else None)
+        if not company:
+            await interaction.response.send_message("You must have a company role to accept directives.", ephemeral=True)
+            return
         success, msg = await assign_package_to_kt(
-            pkg["id"], self.selected_kt, company, member, interaction.guild or _get_guild_from_bot()
+            pkg["id"], "", company, member, interaction.guild or _get_guild_from_bot()
         )
         if not success:
             await interaction.response.send_message(msg, ephemeral=True)
@@ -7174,10 +7529,8 @@ class PackagePaginatorView(discord.ui.View):
 
         await interaction.response.defer()
         assigned_pid = pkg["id"]
-        self.selected_kt = None
 
-        # Live-update the current captain/LT paginator view so assigned package disappears.
-        # For captain/LT views, once assigned it moves to pending_sgt and should no longer appear.
+        # Live-update the current captain/LT paginator view so accepted package disappears.
         if self.viewer and _is_captain_or_lt(self.viewer):
             self.packages = [p for p in self.packages if p.get("id") != assigned_pid]
             if not self.packages:
@@ -7276,17 +7629,13 @@ class PackagePaginatorView(discord.ui.View):
             item.disabled = not enabled
 
     def _refresh_assign_btn(self) -> None:
-        """Disable Assign button when package not DISTRIBUTED or no KT selected."""
+        """Disable company-accept button when package is not DISTRIBUTED."""
         pkg = self._refresh_current_package_snapshot()
-        can_assign = pkg.get("status") == STATUS_DISTRIBUTED and bool(self.selected_kt)
+        can_assign = pkg.get("status") == STATUS_DISTRIBUTED
         for item in self.children:
             if getattr(item, "custom_id", None) == "tp_assign_kt":
                 item.disabled = not can_assign
                 break
-        # Also reset selection when navigating away from a DISTRIBUTED package
-        if pkg.get("status") != STATUS_DISTRIBUTED:
-            self.selected_kt = None
-        self._sync_kt_select_state()
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
     async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -7379,17 +7728,17 @@ def _is_captain_or_lt(member: discord.Member) -> bool:
 
 
 _CADRE_LEADER_ROLES = {
-    "Lord Executioner", "Forgemaster", "Chief Apothecary",
+    "Blademaster", "Forgemaster", "Chief Apothecary",
     "High Chaplain", "Void Warden", "Castellan", "Huntmaster",
 }
 
 _HC_ROLES = {
-    "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
+    "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
     "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
     "Venerable Dreadnought",
 }
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"} | _CADRE_LEADER_ROLES
-_KT_COMMAND_ROLES = {"Watch Sergeant", "Kill Team Champion"}
+_KT_COMMAND_ROLES = {"Watch Sergeant", "Bladeguard"}
 
 
 def _is_cadre_leader(member: discord.Member) -> bool:
@@ -7932,7 +8281,7 @@ async def strike_directive_status(
 # /repost_directive_embed — WM/admin only
 @app_commands.command(
     name="repost_directive_embed",
-    description="[Watch Master/Forgemaster] Re-post a directive embed (Sgt accept or sign-up) to the correct channel.",
+    description="[Watch Master/Forgemaster] Re-post a directive sign-up embed to the correct channel.",
 )
 @app_commands.describe(directive_id="The directive code (e.g. 542-CHI) or internal ID")
 async def repost_directive_embed(interaction: discord.Interaction, directive_id: str):
@@ -7957,35 +8306,28 @@ async def repost_directive_embed(interaction: discord.Interaction, directive_id:
 
     if pkg["status"] not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
         await interaction.followup.send(
-            f"Directive is `{pkg['status']}` — can only repost for PENDING_SGT, RECRUITING, or DEPLOYED directives.",
+            f"Directive is `{pkg['status']}` — can only repost for RECRUITING or DEPLOYED directives.",
             ephemeral=True,
         )
         return
 
     guild = interaction.guild or _get_guild_from_bot()
     if pkg["status"] == STATUS_PENDING_SGT:
-        # Best-effort cleanup of old accept embed if it still exists.
-        _old_ch_id = pkg.get("sgt_accept_channel_id")
-        _old_msg_id = pkg.get("sgt_accept_message_id")
-        if _old_ch_id and _old_msg_id and guild:
-            try:
-                _old_ch = await _resolve_channel(guild, int(_old_ch_id))
-                if _old_ch:
-                    _old_msg = await _old_ch.fetch_message(int(_old_msg_id))
-                    await _old_msg.delete()
-            except Exception:
-                pass
+        async with _TP_LOCK:
+            latest = _load_tp()
+            if pkg_id in latest.get("packages", {}):
+                latest["packages"][pkg_id]["status"] = STATUS_RECRUITING
+                latest["packages"][pkg_id]["sgt_accept_message_id"] = None
+                latest["packages"][pkg_id]["sgt_accept_channel_id"] = None
+                _save_tp(latest)
+                pkg = latest["packages"][pkg_id]
 
-        _captain = guild.get_member(pkg.get("assigned_captain_id")) if guild and pkg.get("assigned_captain_id") else None
-        await _notify_kt_assigned(pkg_id, pkg.get("assigned_kt", ""), pkg, guild, fully_active=False, captain=_captain)
-    else:
-        await _post_signup_embed(pkg_id, guild)
+    await _post_signup_embed(pkg_id, guild)
 
     code = pkg.get("directive_code") or pkg_id
     name = pkg.get("directive_name", "")
-    _kind = "Sgt-accept" if pkg.get("status") == STATUS_PENDING_SGT else "sign-up"
     await interaction.followup.send(
-        f"{_kind} embed reposted for `{code}`{': ' + name if name else ''}.",
+        f"sign-up embed reposted for `{code}`{': ' + name if name else ''}.",
         ephemeral=True,
     )
 
@@ -8111,26 +8453,16 @@ async def _strike_queue_match_sweep_loop():
 async def register_persistent_views() -> None:
     """Call from on_ready to restore TP persistent views after a bot restart.
 
-    Each active package's SgtAcceptView and SignUpView are re-registered scoped
-    to their original message IDs so instance state (package_id / kt_name) is
-    correctly restored.
+    Each active package's SignUpView is re-registered scoped to its message ID.
     """
     try:
         data = _load_tp()
-        sgt_count = 0
         signup_count = 0
         for package_id, pkg in data.get("packages", {}).items():
             status = pkg.get("status")
-            kt_name = pkg.get("assigned_kt", "")
-
             if status == STATUS_PENDING_SGT:
-                msg_id = pkg.get("sgt_accept_message_id")
-                if msg_id:
-                    _g.bot.add_view(
-                        SgtAcceptView(package_id=package_id, kt_name=kt_name),
-                        message_id=msg_id,
-                    )
-                    sgt_count += 1
+                # Legacy state: normalize into recruiting so the sign-up view model is used.
+                status = STATUS_RECRUITING
 
             if status in (STATUS_RECRUITING, STATUS_DEPLOYED):
                 msg_id = pkg.get("signup_message_id")
@@ -8143,8 +8475,7 @@ async def register_persistent_views() -> None:
 
         if _g.logger:
             _g.logger.info(
-                f"target_packages_ops: registered {sgt_count} SgtAccept + "
-                f"{signup_count} SignUp persistent views"
+                f"target_packages_ops: registered {signup_count} SignUp persistent views"
             )
     except Exception as exc:
         if _g.logger:

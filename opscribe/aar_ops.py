@@ -256,13 +256,13 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     or any(
                         r in _rn
                         for r in (
-                            "Watch Veteran", "Oathsworn", "Kill Team Champion",
+                            "Watch Veteran", "Oathsworn", "Bladeguard",
                             "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
                             "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
-                            "Company Champion", "Watch Lieutenant", "Watch Captain",
+                            "First Blade", "Watch Lieutenant", "Watch Captain",
                             "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
                             "Void Warden", "High Chaplain", "Chief Apothecary",
-                            "Castellan", "Lord Executioner", "Watch Master",
+                            "Castellan", "Blademaster", "Watch Master",
                         )
                     )
                 )
@@ -772,13 +772,13 @@ async def _send_challenge_eligibility_notifications(
 
 _WATCH_BROTHER_OR_HIGHER = {
     "Watch Brother", "Watch Sister",
-    "Watch Veteran", "Oathsworn", "Kill Team Champion",
+    "Watch Veteran", "Oathsworn", "Bladeguard",
     "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
     "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
-    "Company Champion", "Watch Lieutenant", "Watch Captain",
+    "First Blade", "Watch Lieutenant", "Watch Captain",
     "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
     "Void Warden", "High Chaplain", "Chief Apothecary",
-    "Castellan", "Lord Executioner", "Watch Master",
+    "Castellan", "Blademaster", "Watch Master",
 }
 
 # Map of challenge_key → (required_missions_set, award_role_id, display_name, award_type, notified_key)

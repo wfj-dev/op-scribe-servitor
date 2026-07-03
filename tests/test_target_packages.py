@@ -45,6 +45,7 @@ def _install_discord_stub():
     discord_stub.Role = object
     discord_stub.Interaction = object
     discord_stub.AllowedMentions = object
+    discord_stub.Poll = object
     discord_stub.SelectOption = object
     discord_stub.Thread = type("Thread", (), {})
     discord_stub.ForumChannel = type("ForumChannel", (), {})
@@ -109,6 +110,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _TIER_ROLES,
     _generate_unique_batch_id,
     post_cycle_reports,
+    submit_package,
 )
 
 
@@ -176,6 +178,12 @@ def _make_interaction(member, guild):
     return types.SimpleNamespace(user=member, guild=guild, response=_Response(), followup=_Followup(), calls=calls)
 
 
+def _invoke_command(cmd, *args, **kwargs):
+    """Invoke a command that may be a raw coroutine function or app Command object."""
+    target = getattr(cmd, "callback", cmd)
+    return target(*args, **kwargs)
+
+
 class TestRemoveAuthority:
     def test_highcom_no_requirement_self_attached_removable_by_self(self):
         actor = _make_member(["Watch Techmarine"], member_id=10)
@@ -220,9 +228,9 @@ class TestRemoveAuthority:
         assert ok is True
         assert kinds == {"signed"}
 
-    def test_ktc_no_requirement_lord_executioner_not_cadre_override(self):
-        actor = _make_member(["Lord Executioner"], member_id=30)
-        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=31)
+    def test_bladeguard_no_requirement_blademaster_not_cadre_override(self):
+        actor = _make_member(["Blademaster"], member_id=30)
+        target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=31)
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
             signed_up=[31],
@@ -245,11 +253,11 @@ class TestRemoveAuthority:
 
     def test_forgemaster_cannot_remove_required_ktc(self):
         actor = _make_member(["Forgemaster"], member_id=50)
-        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=51)
+        target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=51)
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
             signed_up=[51],
-            required_roles=["Kill Team Champion"],
+            required_roles=["Bladeguard"],
             assigned_specialist_ids=[],
         )
         pkg["assigned_kt"] = "Kill Team Alpha"
@@ -257,13 +265,13 @@ class TestRemoveAuthority:
         assert ok is False
         assert "required specialist role" in reason.lower()
 
-    def test_lord_executioner_can_remove_required_ktc(self):
-        actor = _make_member(["Lord Executioner"], member_id=52)
-        target = _make_member(["Kill Team Champion", "Kill Team Alpha"], member_id=53)
+    def test_blademaster_can_remove_required_bladeguard(self):
+        actor = _make_member(["Blademaster"], member_id=52)
+        target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=53)
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
             signed_up=[53],
-            required_roles=["Kill Team Champion"],
+            required_roles=["Bladeguard"],
             assigned_specialist_ids=[],
         )
         pkg["assigned_kt"] = "Kill Team Alpha"
@@ -437,11 +445,11 @@ class TestHighCommandVisibility:
 
 class TestDrawRequirements:
     ALL_ROLES = {
-        "Watch Veteran", "Oathsworn", "Watch Sergeant", "Kill Team Champion",
-        "Watch Captain", "Watch Lieutenant", "Company Champion",
+        "Watch Veteran", "Oathsworn", "Watch Sergeant", "Bladeguard",
+        "Watch Captain", "Watch Lieutenant", "First Blade",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
         "Watch Librarian", "Watch Keeper", "Honored Dreadnought",
-        "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
+        "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
         "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
         "Venerable Dreadnought",
     }
@@ -473,7 +481,7 @@ class TestDrawRequirements:
 
     def test_max_1_hc_role(self):
         hc_roles = {
-            "Watch Master", "Lord Executioner", "Forgemaster", "Chief Apothecary",
+            "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
             "High Chaplain", "Huntmaster", "Void Warden", "Castellan", "Venerable Dreadnought",
         }
         for _ in range(200):
@@ -917,11 +925,11 @@ class TestCadreSpecialistRoles:
     def test_watch_apothecary_is_cadre(self):
         assert "Watch Apothecary" in _CADRE_SPECIALIST_ROLES
 
-    def test_ktc_is_cadre(self):
-        assert "Kill Team Champion" in _CADRE_SPECIALIST_ROLES
+    def test_bladeguard_is_cadre(self):
+        assert "Bladeguard" in _CADRE_SPECIALIST_ROLES
 
-    def test_company_champion_is_cadre(self):
-        assert "Company Champion" in _CADRE_SPECIALIST_ROLES
+    def test_first_blade_is_cadre(self):
+        assert "First Blade" in _CADRE_SPECIALIST_ROLES
 
     def test_forgemaster_is_cadre(self):
         assert "Forgemaster" in _CADRE_SPECIALIST_ROLES
@@ -935,6 +943,138 @@ class TestCadreSpecialistRoles:
 
     def test_watch_sergeant_not_cadre(self):
         assert "Watch Sergeant" not in _CADRE_SPECIALIST_ROLES
+
+
+class TestParticipationRepAccounting:
+    def test_rep_delta_for_package_uses_mode_specific_values(self):
+        import opscribe.target_packages_ops as tp
+
+        hard_no_req = {"mode": "Hard-Strat", "required_roles": []}
+        hard_with_req = {"mode": "Hard-Strat", "required_roles": ["Watch Veteran"]}
+        omega_no_req = {"mode": "Omega-Strat", "required_roles": []}
+        omega_with_req = {"mode": "Omega-Strat", "required_roles": ["Watch Veteran"]}
+
+        assert tp._rep_delta_for_package(hard_no_req, STATUS_COMPLETED) == 3.0
+        assert tp._rep_delta_for_package(hard_with_req, STATUS_COMPLETED) == 4.0
+        assert tp._rep_delta_for_package(omega_no_req, STATUS_COMPLETED) == 5.0
+        assert tp._rep_delta_for_package(omega_with_req, STATUS_COMPLETED) == 6.0
+
+        assert tp._rep_delta_for_package(hard_no_req, STATUS_FAILED) == -2.0
+        assert tp._rep_delta_for_package(omega_no_req, STATUS_FAILED) == -3.0
+        assert tp._rep_delta_for_package(hard_no_req, STATUS_LAPSED) == -1.0
+        assert tp._rep_delta_for_package(omega_no_req, STATUS_LAPSED) == -2.0
+
+    def test_split_allocations_across_kts_and_apothecarion(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(signed_up=[1, 2], assigned_specialist_ids=[3])
+        m1 = _make_member(["Watch Brother", "Kill Team A"], member_id=1)
+        m2 = _make_member(["Watch Brother", "Kill Team B"], member_id=2)
+        m3 = _make_member(["Watch Apothecary"], member_id=3)
+        guild = _make_guild([m1, m2, m3])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _resolve_killteam_for_member=lambda member: "Kill Team A" if member.id == 1 else ("Kill Team B" if member.id == 2 else None)
+            ),
+        )
+
+        allocations = tp._compute_participation_rep_allocations(pkg, guild, 3.0)
+
+        assert allocations["kill_teams"] == {"Kill Team A": 1.0, "Kill Team B": 1.0}
+        assert allocations["cadres"] == {"Apothecarion": 1.0}
+
+    def test_split_allocations_exclude_captain_and_lieutenant(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        pkg = _make_pkg(signed_up=[10, 11], assigned_specialist_ids=[12])
+        captain = _make_member(["Watch Captain", "Kill Team A"], member_id=10)
+        lieutenant = _make_member(["Watch Lieutenant", "Kill Team B"], member_id=11)
+        specialist = _make_member(["Watch Apothecary"], member_id=12)
+        guild = _make_guild([captain, lieutenant, specialist])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+
+        allocations = tp._compute_participation_rep_allocations(pkg, guild, 2.0)
+
+        assert allocations["kill_teams"] == {}
+        assert allocations["cadres"] == {"Apothecarion": 2.0}
+
+    def test_company_gets_full_rep_even_when_split(self):
+        import opscribe.target_packages_ops as tp
+
+        data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
+        pkg = {"assigned_company": "Watch Company Primus"}
+        allocations = {
+            "kill_teams": {"Kill Team A": 1.0, "Kill Team B": 1.0},
+            "cadres": {"Apothecarion": 1.0},
+        }
+
+        tp._apply_entity_rep_allocations(data, pkg, allocations, 3.0)
+
+        assert data["entity_stats"]["kill_teams"]["Kill Team A"]["rep_earned"] == 1.0
+        assert data["entity_stats"]["kill_teams"]["Kill Team B"]["rep_earned"] == 1.0
+        assert data["entity_stats"]["cadres"]["Apothecarion"]["rep_earned"] == 1.0
+        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 3.0
+
+    def test_company_gets_command_bonus_on_top_of_full_completion_rep(self):
+        import opscribe.target_packages_ops as tp
+
+        data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
+        pkg = {
+            "assigned_company": "Watch Company Primus",
+            "signed_up": [10, 11],
+            "assigned_specialist_ids": [12],
+        }
+        captain = _make_member(["Watch Captain"], member_id=10)
+        lieutenant = _make_member(["Watch Lieutenant"], member_id=11)
+        specialist = _make_member(["Watch Apothecary"], member_id=12)
+        guild = _make_guild([captain, lieutenant, specialist])
+
+        bonus = tp._compute_company_command_bonus(pkg, guild)
+        assert bonus == 2.0
+
+        allocations = {"kill_teams": {}, "cadres": {"Apothecarion": 3.0}}
+        tp._apply_entity_rep_allocations(data, pkg, allocations, 3.0, company_bonus=bonus)
+
+        assert data["entity_stats"]["cadres"]["Apothecarion"]["rep_earned"] == 3.0
+        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 5.0
+
+    def test_fortress_bonus_includes_watch_master_and_huntmaster(self):
+        import opscribe.target_packages_ops as tp
+
+        pkg = {
+            "signed_up": [10, 11, 12],
+            "assigned_specialist_ids": [],
+        }
+        wm = _make_member(["Watch Master"], member_id=10)
+        huntmaster = _make_member(["Huntmaster"], member_id=11)
+        brother = _make_member(["Watch Brother"], member_id=12)
+        guild = _make_guild([wm, huntmaster, brother])
+
+        assert tp._compute_fortress_command_bonus(pkg, guild) == 2.0
+
+    def test_cadre_leader_bonus_allocations(self):
+        import opscribe.target_packages_ops as tp
+
+        pkg = {
+            "signed_up": [21, 22, 23],
+            "assigned_specialist_ids": [],
+        }
+        blademaster = _make_member(["Blademaster"], member_id=21)
+        high_chaplain = _make_member(["High Chaplain"], member_id=22)
+        huntmaster = _make_member(["Huntmaster"], member_id=23)
+        guild = _make_guild([blademaster, high_chaplain, huntmaster])
+
+        bonuses = tp._compute_cadre_leader_bonus_allocations(pkg, guild)
+
+        assert bonuses == {"Blades": 0.5, "Reclusiam": 0.5}
 
 
 # ---------------------------------------------------------------------------
@@ -974,7 +1114,7 @@ class TestComputeHonors:
 
     def test_empty_data_returns_empty_dicts(self):
         result = self._call({})
-        assert result == {"kill_teams": {}, "companies": {}}
+        assert result == {"kill_teams": {}, "companies": {}, "cadres": {}}
 
     def test_failed_and_lapsed_packages_ignored(self):
         """Failed/lapsed directives don't contribute to honors scoring."""
@@ -1024,38 +1164,38 @@ class TestComputeHonors:
         assert result["companies"] == {}
 
     def test_kt_one_completion_low_rep_gives_initiated(self):
-        """1 completion with rep_delta < 4 → Initiated (tier index 1)."""
-        # rep delta = 1.0 → ri = 1 (≥1.0 threshold), ci = 1 (1 completion)
-        # final = round(0.75*1 + 0.25*1) = round(1.0) = 1 → "Initiated"
+        """1 completion with rep_delta 1.0 remains at baseline under new thresholds."""
+        # rep delta = 1.0 → ri = 0 (<2.0 threshold), ci = 1 (1 completion)
+        # final = round(0.75*0 + 0.25*1) = 0 → "Unproven"
         pkgs = {
             "p1": _make_completed_pkg("p1", "Alpha", "Primus", 10.0, 11.0, self._WITHIN),
         }
         result = self._call(pkgs)
-        assert result["kill_teams"]["Alpha"]["tier"] == "Initiated"
+        assert result["kill_teams"]["Alpha"]["tier"] == "Unproven"
         assert result["kill_teams"]["Alpha"]["completions_28d"] == 1
 
     def test_kt_high_rep_and_completions_gives_higher_tier(self):
         """Many completions with high rep delta escalates the tier."""
         # 6 completions, rep_delta 2 each = 12 total
-        # ri: 12 >= 8.0 → index 3; ci: 6 completions >= 6 → index 3
-        # final = round(0.75*3 + 0.25*3) = 3 → "Sworn"
+        # ri: 12 >= 8.0 but < 15.0 → index 2; ci: 6 completions >= 6 → index 3
+        # final = round(0.75*2 + 0.25*3) = 2 → "Vigilant"
         pkgs = {
             f"p{i}": _make_completed_pkg(f"p{i}", "Bravo", "Secundus", float(10 + i*2), float(12 + i*2), self._WITHIN)
             for i in range(6)
         }
         result = self._call(pkgs)
-        assert result["kill_teams"]["Bravo"]["tier_index"] == 3
-        assert result["kill_teams"]["Bravo"]["tier"] == "Sworn"
+        assert result["kill_teams"]["Bravo"]["tier_index"] == 2
+        assert result["kill_teams"]["Bravo"]["tier"] == "Vigilant"
 
     def test_company_contributor_gate_caps_tier(self):
         """Company tier is capped when too few distinct KTs contributed."""
-        # 3 completions each contributing 2 rep → co_rep=6, co_comp=3
-        # ri: 6 >= 6.0 → index 2; ci: 3 >= 3 → index 2
-        # raw_final = round(0.75*2 + 0.25*2) = 2 → "Recognized"
+        # 3 completions each contributing 5 rep → co_rep=15, co_comp=3
+        # ri: 15 >= 13.0 → index 2; ci: 3 >= 3 → index 1
+        # raw_final = round(0.75*2 + 0.25*1) = 2
         # Tier index 2 needs _CO_KT_GATES[2] = 2 distinct KTs.
         # Only 1 KT contributed → gate triggers → raw_final drops to 1 → "Marked"
         pkgs = {
-            f"p{i}": _make_completed_pkg(f"p{i}", "Alpha", "Primus", float(i*2), float(i*2+2), self._WITHIN)
+            f"p{i}": _make_completed_pkg(f"p{i}", "Alpha", "Primus", float(i*5), float(i*5+5), self._WITHIN)
             for i in range(3)
         }
         result = self._call(pkgs)
@@ -1065,15 +1205,15 @@ class TestComputeHonors:
 
     def test_company_multi_kt_unlocks_higher_tier(self):
         """Two contributing KTs satisfy the gate for tier index 2."""
-        # Same total stats as test_company_contributor_gate_caps_tier but split across 2 KTs
+        # Same total stats as gate-capped case but split across 2 KTs.
         pkgs = {
-            "p0": _make_completed_pkg("p0", "Alpha", "Primus", 0.0, 2.0, self._WITHIN),
-            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 2.0, 4.0, self._WITHIN),
-            "p2": _make_completed_pkg("p2", "Bravo", "Primus", 4.0, 6.0, self._WITHIN),
+            "p0": _make_completed_pkg("p0", "Alpha", "Primus", 0.0, 5.0, self._WITHIN),
+            "p1": _make_completed_pkg("p1", "Alpha", "Primus", 5.0, 10.0, self._WITHIN),
+            "p2": _make_completed_pkg("p2", "Bravo", "Primus", 10.0, 15.0, self._WITHIN),
         }
         result = self._call(pkgs)
         assert result["companies"]["Primus"]["contributing_kts"] == 2
-        assert result["companies"]["Primus"]["tier_index"] >= 2
+        assert result["companies"]["Primus"]["tier_index"] == 2
 
 
 class TestPostBatchSummaryBatchSelection:
@@ -1381,7 +1521,7 @@ class TestCycleReportIdempotencyAndScope:
         guild = _make_guild([actor])
         interaction = _make_interaction(actor, guild)
 
-        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+        asyncio.run(_invoke_command(post_cycle_reports, interaction, batch="20260624"))
 
         assert posted_batches == ["BATCH-20260624"]
         assert saved == [True]
@@ -1420,7 +1560,7 @@ class TestCycleReportIdempotencyAndScope:
         guild = _make_guild([actor])
         interaction = _make_interaction(actor, guild)
 
-        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+        asyncio.run(_invoke_command(post_cycle_reports, interaction, batch="20260624"))
 
         assert saved == []
         assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is None
@@ -1456,7 +1596,7 @@ class TestCycleReportIdempotencyAndScope:
         guild = _make_guild([actor])
         interaction = _make_interaction(actor, guild)
 
-        asyncio.run(post_cycle_reports(interaction, batch="20260624"))
+        asyncio.run(_invoke_command(post_cycle_reports, interaction, batch="20260624"))
 
         assert saved == []
         assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is None
@@ -1522,6 +1662,128 @@ class TestCycleReportIdempotencyAndScope:
         assert "BATCH-20260608" not in posted_batches
         assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
         assert store["packages"]["NEW-1"]["status"] == STATUS_FAILED
+
+class TestSubmitPackagePermissions:
+    def test_company_member_can_submit_without_assigned_kt(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        pkg = {
+            "id": "PKG-1",
+            "directive_code": "DX-001",
+            "directive_name": "Company Trial",
+            "status": STATUS_RECRUITING,
+            "deadline": (now + timedelta(hours=2)).isoformat(),
+            "assigned_kt": None,
+            "assigned_company": "Watch Company Primus",
+            "signed_up": [],
+            "assigned_specialist_ids": [],
+            "mode": "Hard-Strat",
+            "mission_id": 1,
+            "required_roles": [],
+        }
+        store = {"packages": {"PKG-1": pkg}}
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        # Company match should pass permission gating, then fail later because not deployed.
+        submitter = _with_company_role(_make_member(["Watch Brother"], member_id=777), "Watch Company Primus")
+        guild = _make_guild([submitter])
+
+        ok, msg = asyncio.run(submit_package("PKG-1", "https://example.invalid/aar", submitter, guild))
+
+        assert ok is False
+        assert "not yet deployed" in msg.lower()
+        assert "permission" not in msg.lower()
+
+    def test_attached_specialist_without_company_role_can_submit(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        pkg = {
+            "id": "PKG-2",
+            "directive_code": "DX-002",
+            "directive_name": "Specialist Trial",
+            "status": STATUS_RECRUITING,
+            "deadline": (now + timedelta(hours=2)).isoformat(),
+            "assigned_kt": None,
+            "assigned_company": "Watch Company Primus",
+            "signed_up": [],
+            "assigned_specialist_ids": [888],
+            "mode": "Hard-Strat",
+            "mission_id": 1,
+            "required_roles": ["Watch Apothecary"],
+        }
+        store = {"packages": {"PKG-2": pkg}}
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        specialist = _make_member(["Watch Apothecary"], member_id=888)
+        guild = _make_guild([specialist])
+
+        ok, msg = asyncio.run(submit_package("PKG-2", "https://example.invalid/aar", specialist, guild))
+
+        assert ok is False
+        assert "not yet deployed" in msg.lower()
+        assert "permission" not in msg.lower()
+
+    def test_signed_up_member_without_company_role_can_submit(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        pkg = {
+            "id": "PKG-3",
+            "directive_code": "DX-003",
+            "directive_name": "Roster Trial",
+            "status": STATUS_RECRUITING,
+            "deadline": (now + timedelta(hours=2)).isoformat(),
+            "assigned_kt": None,
+            "assigned_company": "Watch Company Primus",
+            "signed_up": [999],
+            "assigned_specialist_ids": [],
+            "mode": "Hard-Strat",
+            "mission_id": 1,
+            "required_roles": [],
+        }
+        store = {"packages": {"PKG-3": pkg}}
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        submitter = _make_member(["Watch Brother"], member_id=999)
+        guild = _make_guild([submitter])
+
+        ok, msg = asyncio.run(submit_package("PKG-3", "https://example.invalid/aar", submitter, guild))
+
+        assert ok is False
+        assert "not yet deployed" in msg.lower()
+        assert "permission" not in msg.lower()
 
     def test_expire_packages_posts_only_newest_touched_terminal_batch(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -2891,7 +3153,7 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: False)
 
-        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="any"))
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls == [
             ("defer", True),
@@ -2907,7 +3169,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
         monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: None)
 
-        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="omega"))
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="omega"))
 
         assert interaction.calls == [
             ("defer", True),
@@ -2926,7 +3188,7 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
         monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
 
-        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="any"))
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
         assert "already committed to directive `OX-EXISTING`" in interaction.calls[1][1]
@@ -2958,7 +3220,7 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
 
-        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="hard"))
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="hard"))
 
         assert interaction.calls[0] == ("defer", True)
         assert "Current fully-open directives eligible for queue matching: **1**." in interaction.calls[1][1]
@@ -2989,7 +3251,7 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
 
-        asyncio.run(tp.queue_strike(interaction, minutes=60, mode_preference="hard"))
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="hard"))
 
         assert interaction.calls[0] == ("defer", True)
         assert "Current fully-open directives eligible for queue matching: **2**." in interaction.calls[1][1]
@@ -3105,7 +3367,7 @@ class TestPhase0Regression:
     - Non-specialist sign-ups require only role membership, not company scope
     - Requirement drawing works independently of specialist availability
     - HC roles and company command roles are properly distinguished
-    - Kill Team Champion is tied to Kill Team, not company
+    - Bladeguard is tied to Kill Team, not company
     """
 
     def test_draw_requirements_basic_stability(self):
@@ -3151,10 +3413,10 @@ class TestPhase0Regression:
         # During Phase 0-2, specialists are still in company command
         # Phase 3 will remove them; this test freezes current state
 
-    def test_kt_champion_is_specialist_role(self):
-        """Kill Team Champion should be recognized as specialist role."""
-        # KTC is in _CADRE_SPECIALIST_ROLES (will be used in Phase 2 for scope handling)
-        assert "Kill Team Champion" in _CADRE_SPECIALIST_ROLES
+    def test_bladeguard_is_specialist_role(self):
+        """Bladeguard should be recognized as specialist role."""
+        # Bladeguard is in _CADRE_SPECIALIST_ROLES (will be used in scope handling)
+        assert "Bladeguard" in _CADRE_SPECIALIST_ROLES
 
     def test_ktc_removable_by_sergeant(self):
         """Sergeant should be able to remove regular signed-up members from own KT."""

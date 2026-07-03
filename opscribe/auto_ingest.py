@@ -1,23 +1,19 @@
-"""Auto-AAR-ingest: pressure-driven ingestion loop.
+"""Auto-AAR-ingest: cadence- and backlog-driven ingestion loop.
 
 Design summary
 --------------
 Every ``check_interval_minutes`` the loop:
 
-1. Computes aggregate cadre pressure (see ``pressure_registry``).
-2. Counts the AAR backlog (messages newer than the latest processed id).
-3. Decides one of four outcomes:
-   * **READY**  — mean cadre score < READY_THRESHOLD and no hard blocker.
-                  Runs ``_run_ingest_new``, posts a public report.
-   * **FORCED** — backlog or staleness exceed their thresholds, ingest
-                  anyway with a "forced" flavor.
-   * **COOLDOWN** — last ingest was too recent; do nothing this tick.
-   * **BLOCKED** — pressure too high. Post a Tier 1 channel notice
-                   identifying blocker cadres; after ``escalation_hours``
-                   of continued blocking, DM the Forgemaster (Tier 2).
+1. Counts the AAR backlog (messages newer than the latest processed id).
+2. Decides one of three outcomes:
+    * **READY**  — not in cooldown and not forced. Runs ``_run_ingest_new``
+                        when backlog exists.
+    * **FORCED** — backlog or staleness exceed their thresholds, ingest
+                        anyway with a "forced" flavor.
+    * **COOLDOWN** — last ingest was too recent; do nothing this tick.
 
-State is persisted in ``data/auto_ingest_state.json`` so escalation
-timestamps and cooldown survive restarts.
+State is persisted in ``data/auto_ingest_state.json`` so cooldown and last
+decision data survive restarts.
 
 All Forgemaster-only commands (status, set, force) live in this module.
 """
