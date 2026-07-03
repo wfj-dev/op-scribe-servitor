@@ -341,9 +341,9 @@ TERMINUS_TYPES = ["Neurothrope", "Carnifex", "Helbrute"]
 TERMINUS_VERIFIER_RANKS = {
     "Watch Veteran",
     "Oathsworn",
-    "Kill Team Champion",
-    "Company Champion",
-    "Lord Executioner",
+    "Bladeguard",
+    "First Blade",
+    "Blademaster",
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",

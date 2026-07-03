@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import opscribe.bot as bot_module
 from opscribe import auto_ingest as ai
-from opscribe.pressure_registry import CadrePressure, PressureSnapshot
 
 
 def _make_state(**overrides):
@@ -12,20 +11,7 @@ def _make_state(**overrides):
     return state
 
 
-def _blocked_snapshot() -> PressureSnapshot:
-    return PressureSnapshot(
-        cadres=[
-            CadrePressure(
-                cadre_id="techmarine",
-                display_name="Techmarines",
-                demand=1,
-                supply=1,  # score == 1.0 => blocker
-            )
-        ]
-    )
-
-
-def _setup_tick_common(state, snapshot, backlog):
+def _setup_tick_common(state, backlog):
     assert bot_module is not None
     aar_channel = MagicMock()
     guild = MagicMock()
@@ -33,11 +19,11 @@ def _setup_tick_common(state, snapshot, backlog):
     run_ingest = AsyncMock(return_value="ok")
     return (
         patch.object(ai, "_enabled_in_config", return_value=True),
-        patch.object(ai, "evaluate_all", new=AsyncMock(return_value=snapshot)),
         patch.object(ai, "_count_backlog", new=AsyncMock(return_value=backlog)),
         patch.object(ai, "_run_ingest", new=run_ingest),
         patch("opscribe.bot._resolve_notification_guild", return_value=guild),
         patch.object(ai.AutoIngestState, "load", return_value=state),
+        patch.object(ai._g, "DEBUG_MODE", False, create=True),
     ), run_ingest
 
 
@@ -70,8 +56,7 @@ def test_in_cooldown_when_last_ingest_recent():
 
 def test_tick_ready_with_zero_backlog_skips_ingest():
     state = _make_state()
-    snapshot = PressureSnapshot(cadres=[])
-    patches, run_ingest = _setup_tick_common(state, snapshot, backlog=0)
+    patches, run_ingest = _setup_tick_common(state, backlog=0)
     with (
         patches[0],
         patches[1],
@@ -88,10 +73,29 @@ def test_tick_ready_with_zero_backlog_skips_ingest():
     state.save.assert_called_once()
 
 
-def test_tick_blocked_posts_tier1_notice_on_first_block():
+def test_tick_forced_runs_ingest_and_updates_state():
     state = _make_state()
-    snapshot = _blocked_snapshot()
-    patches, _ = _setup_tick_common(state, snapshot, backlog=3)
+    patches, run_ingest = _setup_tick_common(state, backlog=3)
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patch.object(ai, "_in_cooldown", return_value=False),
+        patch.object(ai, "_is_forced", return_value=True),
+    ):
+        asyncio.run(ai._tick())
+    assert state.last_check_outcome == "FORCED"
+    assert state.last_ingest_mode == "forced"
+    run_ingest.assert_called_once()
+    state.save.assert_called_once()
+
+
+def test_tick_ready_with_backlog_runs_ingest():
+    state = _make_state()
+    patches, run_ingest = _setup_tick_common(state, backlog=4)
     with (
         patches[0],
         patches[1],
@@ -101,24 +105,17 @@ def test_tick_blocked_posts_tier1_notice_on_first_block():
         patches[5],
         patch.object(ai, "_in_cooldown", return_value=False),
         patch.object(ai, "_is_forced", return_value=False),
-        patch.object(ai, "_post_tier1_blocker_notice", new=AsyncMock()) as post_tier1,
-        patch.object(ai, "_dm_forgemaster_tier2", new=AsyncMock()),
-        patch.object(ai, "_hours_since", return_value=0.0),
     ):
         asyncio.run(ai._tick())
-    assert state.last_check_outcome == "BLOCKED"
-    assert state.blocked_since is not None
-    post_tier1.assert_called_once()
+    assert state.last_check_outcome == "READY"
+    assert state.last_ingest_mode == "ready"
+    run_ingest.assert_called_once()
+    state.save.assert_called_once()
 
 
-def test_tick_blocked_does_not_repost_tier1_for_same_blockers():
-    state = _make_state(
-        blocked_since="2024-01-01T00:00:00+00:00",
-        last_blocker_notice_at="2024-01-01T00:00:00+00:00",
-        last_blocker_set=["techmarine"],
-    )
-    snapshot = _blocked_snapshot()
-    patches, _ = _setup_tick_common(state, snapshot, backlog=3)
+def test_tick_cooldown_skips_ingest():
+    state = _make_state(last_ingest_at="2024-01-01T00:00:00+00:00")
+    patches, run_ingest = _setup_tick_common(state, backlog=5)
     with (
         patches[0],
         patches[1],
@@ -126,33 +123,9 @@ def test_tick_blocked_does_not_repost_tier1_for_same_blockers():
         patches[3],
         patches[4],
         patches[5],
-        patch.object(ai, "_in_cooldown", return_value=False),
-        patch.object(ai, "_is_forced", return_value=False),
-        patch.object(ai, "_post_tier1_blocker_notice", new=AsyncMock()) as post_tier1,
-        patch.object(ai, "_dm_forgemaster_tier2", new=AsyncMock()),
-        patch.object(ai, "_hours_since", return_value=0.0),
+        patch.object(ai, "_in_cooldown", return_value=True),
     ):
         asyncio.run(ai._tick())
-    post_tier1.assert_not_called()
-
-
-def test_tick_blocked_escalates_dm_after_escalation_window():
-    state = _make_state(blocked_since="2024-01-01T00:00:00+00:00")
-    snapshot = _blocked_snapshot()
-    patches, _ = _setup_tick_common(state, snapshot, backlog=3)
-    with (
-        patches[0],
-        patches[1],
-        patches[2],
-        patches[3],
-        patches[4],
-        patches[5],
-        patch.object(ai, "_in_cooldown", return_value=False),
-        patch.object(ai, "_is_forced", return_value=False),
-        patch.object(ai, "_post_tier1_blocker_notice", new=AsyncMock()),
-        patch.object(ai, "_dm_forgemaster_tier2", new=AsyncMock()) as dm_tier2,
-        patch.object(ai, "_hours_since", return_value=49.0),
-        patch.object(ai, "_escalation_hours", return_value=48.0),
-    ):
-        asyncio.run(ai._tick())
-    dm_tier2.assert_called_once_with(snapshot, state, 3)
+    assert state.last_check_outcome == "COOLDOWN"
+    run_ingest.assert_not_called()
+    state.save.assert_called_once()
