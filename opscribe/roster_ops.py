@@ -2305,13 +2305,13 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
                 _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
         if is_specialist_track_member and company_hits:
-            _add(member, "company_role_excess", "Specialists must not hold company membership roles.")
+            _add(member, "company_role_excess", "Specialist-track members must not hold company membership roles.")
 
         if is_specialist_track_member and any(rid in role_ids for rid in company_cmd_role_ids):
-            _add(member, "company_command_excess", "Specialists must not hold company command roles.")
+            _add(member, "company_command_excess", "Specialist-track members must not hold company command roles.")
 
         if is_specialist_track_member and kt_hits:
-            _add(member, "kt_assignment_invalid", "Specialists must not be assigned to a kill team.")
+            _add(member, "kt_assignment_invalid", "Specialist-track members must not be assigned to a kill team.")
         elif kt_hits and any(r in role_names for r in company_command_or_higher_roles):
             _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
 
