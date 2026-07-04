@@ -3352,6 +3352,197 @@ class TestStrikeQueueMatching:
         assert "`OX-HARD`: M1, M2, M3" in field_map.get("Tentative Groups", "")
 
 
+class TestStrikeQueueBoard:
+    class _FakeMessage:
+        def __init__(self, message_id):
+            self.id = message_id
+            self.deleted = False
+            self.edits = []
+
+        async def edit(self, **kwargs):
+            self.edits.append(kwargs)
+
+        async def delete(self):
+            self.deleted = True
+
+    class _FakeChannel:
+        def __init__(self, channel_id=1429942816741523570):
+            self.id = channel_id
+            self.sent = []
+            self.messages = {}
+            self.next_id = 5000
+
+        async def send(self, **kwargs):
+            msg = TestStrikeQueueBoard._FakeMessage(self.next_id)
+            self.next_id += 1
+            self.messages[msg.id] = msg
+            self.sent.append(kwargs)
+            return msg
+
+        async def fetch_message(self, message_id):
+            if message_id not in self.messages:
+                raise Exception("missing message")
+            return self.messages[message_id]
+
+    def test_empty_strike_queue_store_has_board_metadata(self):
+        import opscribe.target_packages_ops as tp
+
+        data = tp._empty_strike_queue_store()
+
+        assert isinstance(data.get("board"), dict)
+        assert data["board"]["channel_id"] is None
+        assert data["board"]["message_id"] is None
+        assert data["board"]["last_bump_at"] is None
+        assert data["board"]["last_rendered_at"] is None
+
+    def test_queued_member_fit_tags_maps_and_caps(self):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(
+            [
+                "Watch Veteran",
+                "Oathsworn",
+                "Watch Sergeant",
+                "Watch Techmarine",
+                "Watch Apothecary",
+                "Watch Brother",
+            ],
+            member_id=707,
+        )
+
+        tags = tp._queued_member_fit_tags(member)
+
+        assert tags == ["Veteran", "Oathsworn", "Sergeant", "Techmarine"]
+
+    def test_reconcile_board_creates_message_when_queue_becomes_non_empty(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = tp._empty_strike_queue_store()
+        queue_data["entries"] = {
+            "1": {
+                "user_id": 1,
+                "queued_at": "2026-01-01T00:00:00+00:00",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "mode_preference": "hard",
+                "platform": "pc",
+            }
+        }
+        member = _with_company_role(_make_member(["Watch Brother", "Watch Veteran"], member_id=1))
+        guild = _make_guild([member])
+        channel = self._FakeChannel()
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {}})
+        monkeypatch.setattr(tp, "_resolve_channel", lambda *_args, **_kwargs: channel)
+
+        asyncio.run(tp._reconcile_strike_queue_board(guild, force_bump=True))
+
+        assert len(channel.sent) == 1
+        assert queue_data["board"]["message_id"] == 5000
+        assert queue_data["board"]["channel_id"] == channel.id
+        assert queue_data["board"]["last_bump_at"] is not None
+
+    def test_reconcile_board_edits_existing_message_without_bump(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = tp._empty_strike_queue_store()
+        queue_data["entries"] = {
+            "1": {
+                "user_id": 1,
+                "queued_at": "2026-01-01T00:00:00+00:00",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "mode_preference": "hard",
+                "platform": "pc",
+            }
+        }
+        queue_data["board"] = {
+            "channel_id": 1429942816741523570,
+            "message_id": 7001,
+            "last_bump_at": datetime.now(timezone.utc).isoformat(),
+            "last_rendered_at": None,
+        }
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        guild = _make_guild([member])
+        channel = self._FakeChannel()
+        existing = self._FakeMessage(7001)
+        channel.messages[7001] = existing
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {}})
+        monkeypatch.setattr(tp, "_resolve_channel", lambda *_args, **_kwargs: channel)
+
+        asyncio.run(tp._reconcile_strike_queue_board(guild, major_change=False, force_bump=False))
+
+        assert len(channel.sent) == 0
+        assert len(existing.edits) == 1
+        assert queue_data["board"]["message_id"] == 7001
+        assert queue_data["board"]["last_rendered_at"] is not None
+
+    def test_reconcile_board_bumps_existing_message_on_major_change_after_ttl(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = tp._empty_strike_queue_store()
+        queue_data["entries"] = {
+            "1": {
+                "user_id": 1,
+                "queued_at": "2026-01-01T00:00:00+00:00",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "mode_preference": "hard",
+                "platform": "pc",
+            }
+        }
+        queue_data["board"] = {
+            "channel_id": 1429942816741523570,
+            "message_id": 7101,
+            "last_bump_at": "2026-01-01T00:00:00+00:00",
+            "last_rendered_at": None,
+        }
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        guild = _make_guild([member])
+        channel = self._FakeChannel()
+        existing = self._FakeMessage(7101)
+        channel.messages[7101] = existing
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {}})
+        monkeypatch.setattr(tp, "_resolve_channel", lambda *_args, **_kwargs: channel)
+
+        asyncio.run(tp._reconcile_strike_queue_board(guild, major_change=True, force_bump=False))
+
+        assert len(channel.sent) == 1
+        assert existing.deleted is True
+        assert queue_data["board"]["message_id"] == 5000
+
+    def test_reconcile_board_deletes_message_when_queue_empties(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = tp._empty_strike_queue_store()
+        queue_data["board"] = {
+            "channel_id": 1429942816741523570,
+            "message_id": 7201,
+            "last_bump_at": datetime.now(timezone.utc).isoformat(),
+            "last_rendered_at": datetime.now(timezone.utc).isoformat(),
+        }
+        guild = _make_guild([])
+        channel = self._FakeChannel()
+        existing = self._FakeMessage(7201)
+        channel.messages[7201] = existing
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {}})
+        monkeypatch.setattr(tp, "_resolve_channel", lambda *_args, **_kwargs: channel)
+
+        asyncio.run(tp._reconcile_strike_queue_board(guild))
+
+        assert existing.deleted is True
+        assert queue_data["board"]["message_id"] is None
+        assert queue_data["board"]["channel_id"] is None
+
+
 # ---------------------------------------------------------------------------
 # Phase 0: Baseline and guardrails (regression tests freezing non-specialist behavior)
 # ---------------------------------------------------------------------------
