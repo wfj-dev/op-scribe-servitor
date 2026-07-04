@@ -802,3 +802,45 @@ MASTER_TERMINUS_SLAYER_RANK_LINES: Dict[str, str] = {
     "Watch Brother": "A Watch Brother bearing the Master Terminus Slayer title has built a foundation that most warriors retire without ever approaching. What follows will be extraordinary.",
 }
 
+
+_BLADE_ROLE_ALIASES: Dict[str, str] = {
+    "Lord Executioner": "Blademaster",
+    "Company Champion": "First Blade",
+    "Kill Team Champion": "Bladeguard",
+}
+
+
+def _apply_blade_role_aliases(mapping: Dict[str, object]) -> None:
+    """Copy legacy blade-role flavor to champion-track aliases when absent."""
+    for alias_role, canonical_role in _BLADE_ROLE_ALIASES.items():
+        if alias_role in mapping:
+            continue
+        if canonical_role in mapping:
+            mapping[alias_role] = mapping[canonical_role]
+
+
+for _rank_mapping in (
+    RANK_HONORIFICS,
+    TECHMARINE_RANK_ACKNOWLEDGMENTS,
+    RANK_PRESTIGE_WEIGHTS,
+    RANK_STUDS_COMMENTARY,
+    SOK_G_PIPEHITTER_RANK_LINES,
+    DISTINGUISHED_PIPEHITTER_RANK_LINES,
+    BLACK_LAURELS_RANK_LINES,
+    CRUX_TERMINATUS_RANK_LINES,
+    KADAKU_CAMPAIGN_RANK_LINES,
+    BLACK_REEF_CAMPAIGN_RANK_LINES,
+    DISTINGUISHED_BLACK_REEF_RANK_LINES,
+    ORDER_OMEGA_RANK_LINES,
+    DUAL_VIGIL_RANK_LINES,
+    TERMINUS_SLAYER_ASSAULT_RANK_LINES,
+    TERMINUS_SLAYER_BULWARK_RANK_LINES,
+    TERMINUS_SLAYER_HEAVY_RANK_LINES,
+    TERMINUS_SLAYER_SNIPER_RANK_LINES,
+    TERMINUS_SLAYER_TACTICAL_RANK_LINES,
+    TERMINUS_SLAYER_TECHMARINE_RANK_LINES,
+    TERMINUS_SLAYER_VANGUARD_RANK_LINES,
+    MASTER_TERMINUS_SLAYER_RANK_LINES,
+):
+    _apply_blade_role_aliases(_rank_mapping)
+

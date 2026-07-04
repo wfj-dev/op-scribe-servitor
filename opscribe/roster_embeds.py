@@ -322,6 +322,31 @@ def _sort_key_for_member(member: discord.Member) -> Tuple[int, str]:
     return (best, _clean_roster_name(member).lower())
 
 
+_BLADE_HALL_ROLE_BANDS: tuple[set[str], ...] = (
+    {"Lord Executioner", "Blademaster"},
+    {"Company Champion", "First Blade"},
+    {"Kill Team Champion", "Bladeguard"},
+)
+
+
+def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, str]:
+    """Sort Blade Hall by champion band, then normal roster rank/name ordering.
+
+    Desired band order:
+    1) Lord Executioner / Blademaster
+    2) Company Champion / First Blade
+    3) Kill Team Champion / Bladeguard
+    """
+    role_names = _member_role_names(member)
+    band = len(_BLADE_HALL_ROLE_BANDS)
+    for idx, band_roles in enumerate(_BLADE_HALL_ROLE_BANDS):
+        if role_names & band_roles:
+            band = idx
+            break
+    rank_idx, name_key = _sort_key_for_member(member)
+    return (band, rank_idx, name_key)
+
+
 def _collect_members_with_roles(
     guild: discord.Guild,
     role_names: set[str],
@@ -1173,6 +1198,8 @@ async def _update_company_roster(
             set(role_names),
             exclude_roles={"Watch Master"},
         )
+        if section_name == "Blade Hall":
+            specialist_members = sorted(specialist_members, key=_blade_hall_sort_key)
         specialist_block = _render_member_block(
             guild,
             specialist_members,
