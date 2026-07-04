@@ -654,16 +654,16 @@ def _strat_counts_for_rep_tier(rep_tier: int) -> tuple[int, int]:
     return pos, neg
 
 _REP_MIN = 0.0
-_REP_MAX = 60.0
-_REP_NEUTRAL = 30.0
-_REP_SCALE_VERSION = 2
+_REP_MAX = 100.0
+_REP_NEUTRAL = 50.0
+_REP_SCALE_VERSION = 3
 
 # Strike directive volume by rep band.
 # The multiplier stays integer-only; the band controls the draw weights.
 _PACKAGE_MULTIPLIER_WEIGHTS = [
-    (16.0, [65, 25, 10, 0]),
-    (31.0, [40, 35, 20, 5]),
-    (46.0, [20, 35, 30, 15]),
+    (27.0, [65, 25, 10, 0]),
+    (52.0, [40, 35, 20, 5]),
+    (77.0, [20, 35, 30, 15]),
     (float("inf"), [10, 20, 35, 35]),
 ]
 
@@ -1651,23 +1651,23 @@ def _queued_member_fit_tags(member: "discord.Member | None") -> list[str]:
     if member is None:
         return []
     roles = _member_role_names(member)
+    ordered_requirement_roles: list[str] = []
+    for tier in (
+        _REQ_TIER_VETERAN,
+        _REQ_TIER_OATHSWORN,
+        _REQ_TIER_KT_COMMAND,
+        _REQ_TIER_COMPANY_COMMAND,
+        _REQ_TIER_HC,
+    ):
+        for role_name in _TIER_ROLES.get(tier, []):
+            if role_name not in ordered_requirement_roles:
+                ordered_requirement_roles.append(role_name)
+
     tags: list[str] = []
-    mapping = [
-        ("Watch Veteran", "Veteran"),
-        ("Oathsworn", "Oathsworn"),
-        ("Watch Sergeant", "Sergeant"),
-        ("Bladeguard", "Bladeguard"),
-        ("Watch Techmarine", "Techmarine"),
-        ("Watch Apothecary", "Apothecary"),
-        ("Watch Chaplain", "Chaplain"),
-        ("Watch Librarian", "Librarian"),
-        ("Watch Keeper", "Keeper"),
-        ("First Blade", "First Blade"),
-    ]
-    for role_name, label in mapping:
+    for role_name in ordered_requirement_roles:
         if role_name in roles:
-            tags.append(label)
-    return tags[:4]
+            tags.append(role_name)
+    return tags
 
 
 def _strike_queue_mode_breakdown(entries: dict) -> tuple[int, int, int]:
@@ -1700,7 +1700,11 @@ def _build_strike_queue_board_embed(
 
     embed = discord.Embed(
         title="Strike Matchmaking Queue",
-        description="Live queue board. Join via buttons below or `/queue_strike`.",
+        description=(
+            "```\nꜱᴛʀɪᴋᴇ ᴍᴀᴛᴄʜᴍᴀᴋɪɴɢ ǫᴜᴇᴜᴇ · ʟɪᴠᴇ\n```\n"
+            "-# Join via buttons below or `/queue_strike`.\n"
+            "-# Board clears automatically when the queue is empty."
+        ),
         color=0xA31919,
     )
     embed.add_field(
@@ -2746,47 +2750,62 @@ def _ensure_entity_stats_schema(data: dict) -> bool:
 
 
 def _legacy_rep_to_new(rep_value: float) -> float:
-    """Convert legacy -3..3 rep to new 0..60 scale."""
+    """Convert legacy -3..3 rep to new 0..100 scale."""
     legacy = max(-3.0, min(3.0, float(rep_value or 0.0)))
-    return float(round((legacy + 3.0) * 10.0, 4))
+    return float(round(((legacy + 3.0) / 6.0) * 100.0, 4))
+
+
+def _rep_v2_to_v3(rep_value: float) -> float:
+    """Convert prior 0..60 reputation values to the 0..100 scale."""
+    v2 = max(0.0, min(60.0, float(rep_value or 0.0)))
+    return float(round((v2 / 60.0) * 100.0, 4))
 
 
 def _migrate_rep_scale_if_needed(data: dict) -> bool:
-    """One-time migration for target_packages.json rep values to 0..60 scale."""
-    if int(data.get("rep_scale_version", 1) or 1) >= _REP_SCALE_VERSION:
+    """One-time migration for target_packages.json rep values to current scale."""
+    current_version = int(data.get("rep_scale_version", 1) or 1)
+    if current_version >= _REP_SCALE_VERSION:
         return False
 
-    data["rep"] = _legacy_rep_to_new(data.get("rep", 0.0))
-    for pkg in (data.get("packages", {}) or {}).values():
-        if "rep_before" in pkg:
-            pkg["rep_before"] = _legacy_rep_to_new(pkg.get("rep_before", 0.0))
-        if "rep_after" in pkg:
-            pkg["rep_after"] = _legacy_rep_to_new(pkg.get("rep_after", 0.0))
+    if current_version <= 1:
+        data["rep"] = _legacy_rep_to_new(data.get("rep", 0.0))
+        for pkg in (data.get("packages", {}) or {}).values():
+            if "rep_before" in pkg:
+                pkg["rep_before"] = _legacy_rep_to_new(pkg.get("rep_before", 0.0))
+            if "rep_after" in pkg:
+                pkg["rep_after"] = _legacy_rep_to_new(pkg.get("rep_after", 0.0))
+    elif current_version == 2:
+        data["rep"] = _rep_v2_to_v3(data.get("rep", _REP_NEUTRAL))
+        for pkg in (data.get("packages", {}) or {}).values():
+            if "rep_before" in pkg:
+                pkg["rep_before"] = _rep_v2_to_v3(pkg.get("rep_before", 0.0))
+            if "rep_after" in pkg:
+                pkg["rep_after"] = _rep_v2_to_v3(pkg.get("rep_after", 0.0))
 
     data["rep_scale_version"] = _REP_SCALE_VERSION
     return True
 
 
 def _rep_tier_for_strat(rep: float) -> int:
-    """Map 0..60 reputation to legacy strat tiers -3..+3."""
+    """Map 0..100 reputation to legacy strat tiers -3..+3."""
     rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
-    if rep_clamped < 10:
+    if rep_clamped < 17:
         return -3
-    if rep_clamped < 20:
+    if rep_clamped < 34:
         return -2
-    if rep_clamped < 30:
-        return -1
-    if rep_clamped < 40:
-        return 0
     if rep_clamped < 50:
+        return -1
+    if rep_clamped < 67:
+        return 0
+    if rep_clamped < 84:
         return 1
-    if rep_clamped < 58:
+    if rep_clamped < 97:
         return 2
     return 3
 
 
 def _rep_delta_for_package(pkg: dict, outcome: str) -> float:
-    """Return rep delta for a directive outcome under the 0..60 model."""
+    """Return rep delta for a directive outcome under the 0..100 model."""
     mode = str(pkg.get("mode", "") or "")
     is_omega = "Omega" in mode
     if outcome == STATUS_COMPLETED:
@@ -4263,10 +4282,10 @@ _HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
 _KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _COMPANY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
 _CADRE_TITLE_TIERS = {
-    "Blades": ["Unblooded", "Keen-Edged", "Honed Arsenal", "Master of Blades", "Relic Weapon Adepts", "Living Arsenal"],
+    "Blades": ["Unblooded", "Duel-Sworn", "Edge Consecrated", "Execution Masters", "Relic Edge Conclave", "Headsman's Ascendant"],
     "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
-    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Guarded", "Sanguine Stewards", "Vitae Keepers", "Apothecarion Ascendant"],
-    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Lexicanum Exemplars", "Oracular Ascendant"],
+    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Locked Stewards", "Sanguine Custodians", "Vitae Keepers", "Apothecarion Ascendant"],
+    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Hexagrammic Savants", "Oracular Ascendant"],
     "Reclusiam": ["Unanointed", "Catechized", "Zeal-Bound", "Crozius Proven", "Litany Exemplars", "Voice of the Emperor"],
 }
 
@@ -5643,47 +5662,47 @@ def _rep_display(rep: float) -> str:
 def _standing_skull_bar(rep: float) -> str:
     """Render compact standing icons.
 
-    0-60 scale:
+    0-100 scale:
     - Censured/Suspect/Tolerated use 3/2/1 heresy icons.
     - Neutral uses no icons.
     - Favoured/Endorsed/Mandated use 1/2/3 Ordo Xenos skulls.
     """
     rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
-    if rep_clamped >= 58.0:
+    if rep_clamped >= 97.0:
         count = 3
         return " ".join([_OX_STANDING_EMOJI] * count)
-    if rep_clamped >= 50.0:
+    if rep_clamped >= 84.0:
         count = 2
         return " ".join([_OX_STANDING_EMOJI] * count)
-    if rep_clamped >= 40.0:
+    if rep_clamped >= 67.0:
         count = 1
         return " ".join([_OX_STANDING_EMOJI] * count)
-    if rep_clamped < 10.0:
+    if rep_clamped < 17.0:
         count = 3
         return " ".join([_HERESY_EMOJI] * count)
-    if rep_clamped < 20.0:
+    if rep_clamped < 34.0:
         count = 2
         return " ".join([_HERESY_EMOJI] * count)
-    if rep_clamped < 30.0:
+    if rep_clamped < 50.0:
         count = 1
         return " ".join([_HERESY_EMOJI] * count)
     return ""
 
 
 def _standing_state_name(rep: float) -> str:
-    """Resolve named standing state from 0..60 bands."""
+    """Resolve named standing state from 0..100 bands."""
     rep_clamped = max(_REP_MIN, min(_REP_MAX, float(rep or _REP_NEUTRAL)))
-    if rep_clamped < 10.0:
+    if rep_clamped < 17.0:
         return _REP_TIER_LABELS["censured"]
-    if rep_clamped < 20.0:
+    if rep_clamped < 34.0:
         return _REP_TIER_LABELS["suspect"]
-    if rep_clamped < 30.0:
-        return _REP_TIER_LABELS["tolerated"]
-    if rep_clamped < 40.0:
-        return _REP_TIER_LABELS["neutral"]
     if rep_clamped < 50.0:
+        return _REP_TIER_LABELS["tolerated"]
+    if rep_clamped < 67.0:
+        return _REP_TIER_LABELS["neutral"]
+    if rep_clamped < 84.0:
         return _REP_TIER_LABELS["favoured"]
-    if rep_clamped < 58.0:
+    if rep_clamped < 97.0:
         return _REP_TIER_LABELS["endorsed"]
     return _REP_TIER_LABELS["mandated"]
 

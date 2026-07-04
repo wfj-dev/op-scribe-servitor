@@ -369,27 +369,27 @@ def test_fortress_rep_state_name_zero_is_censured():
 
 def test_fortress_rep_state_name_bands():
     assert roster_embeds._fortress_rep_state_name(5.0) == "CENSURED"
-    assert roster_embeds._fortress_rep_state_name(10.0) == "SUSPECT"
-    assert roster_embeds._fortress_rep_state_name(15.0) == "SUSPECT"
-    assert roster_embeds._fortress_rep_state_name(20.0) == "TOLERATED"
-    assert roster_embeds._fortress_rep_state_name(25.0) == "TOLERATED"
-    assert roster_embeds._fortress_rep_state_name(30.0) == "NEUTRAL"
-    assert roster_embeds._fortress_rep_state_name(35.0) == "NEUTRAL"
-    assert roster_embeds._fortress_rep_state_name(40.0) == "FAVOURED"
-    assert roster_embeds._fortress_rep_state_name(45.0) == "FAVOURED"
-    assert roster_embeds._fortress_rep_state_name(50.0) == "ENDORSED"
-    assert roster_embeds._fortress_rep_state_name(55.0) == "ENDORSED"
-    assert roster_embeds._fortress_rep_state_name(58.0) == "MANDATED"
-    assert roster_embeds._fortress_rep_state_name(60.0) == "MANDATED"
+    assert roster_embeds._fortress_rep_state_name(17.0) == "SUSPECT"
+    assert roster_embeds._fortress_rep_state_name(30.0) == "SUSPECT"
+    assert roster_embeds._fortress_rep_state_name(34.0) == "TOLERATED"
+    assert roster_embeds._fortress_rep_state_name(45.0) == "TOLERATED"
+    assert roster_embeds._fortress_rep_state_name(50.0) == "NEUTRAL"
+    assert roster_embeds._fortress_rep_state_name(60.0) == "NEUTRAL"
+    assert roster_embeds._fortress_rep_state_name(67.0) == "FAVOURED"
+    assert roster_embeds._fortress_rep_state_name(80.0) == "FAVOURED"
+    assert roster_embeds._fortress_rep_state_name(84.0) == "ENDORSED"
+    assert roster_embeds._fortress_rep_state_name(95.0) == "ENDORSED"
+    assert roster_embeds._fortress_rep_state_name(97.0) == "MANDATED"
+    assert roster_embeds._fortress_rep_state_name(100.0) == "MANDATED"
 
 
 def test_fortress_rep_state_name_none_defaults_to_neutral():
-    """None should be treated as missing and fall back to 30.0 (NEUTRAL)."""
+    """None should be treated as missing and fall back to 50.0 (NEUTRAL)."""
     assert roster_embeds._fortress_rep_state_name(None) == "NEUTRAL"
 
 
 def test_fortress_rep_state_name_empty_string_defaults_to_neutral():
-    """Empty string should fall back to 30.0 (NEUTRAL)."""
+    """Empty string should fall back to 50.0 (NEUTRAL)."""
     assert roster_embeds._fortress_rep_state_name("") == "NEUTRAL"
 
 
@@ -398,10 +398,10 @@ def test_fortress_rep_state_name_empty_string_defaults_to_neutral():
 # ---------------------------------------------------------------------------
 
 def test_fortress_rep_title_format():
-    result = roster_embeds._fortress_rep_title({"rep": 30.0})
+    result = roster_embeds._fortress_rep_title({"rep": 50.0})
     assert "Fortress Standing" in result
     assert "NEUTRAL" in result
-    assert "30.0/60" in result
+    assert "50.0/100" in result
     assert "[" in result and "]" in result
 
 
@@ -409,26 +409,26 @@ def test_fortress_rep_title_rep_zero_is_censured():
     """Stored rep=0 must render as CENSURED, not default to NEUTRAL."""
     result = roster_embeds._fortress_rep_title({"rep": 0})
     assert "CENSURED" in result
-    assert "0.0/60" in result
+    assert "0.0/100" in result
 
 
 def test_fortress_rep_title_none_tp_data_uses_neutral():
     result = roster_embeds._fortress_rep_title(None)
     assert "NEUTRAL" in result
-    assert "30.0/60" in result
+    assert "50.0/100" in result
 
 
 def test_fortress_rep_title_missing_rep_key_uses_neutral():
     result = roster_embeds._fortress_rep_title({})
     assert "NEUTRAL" in result
-    assert "30.0/60" in result
+    assert "50.0/100" in result
 
 
 def test_fortress_rep_title_none_rep_value_uses_neutral():
-    """Explicit None stored as rep value should fall back to 30.0."""
+    """Explicit None stored as rep value should fall back to 50.0."""
     result = roster_embeds._fortress_rep_title({"rep": None})
     assert "NEUTRAL" in result
-    assert "30.0/60" in result
+    assert "50.0/100" in result
 
 
 def test_sectioned_embed_builds_field_sections_and_description_lines():
@@ -476,6 +476,49 @@ def test_blademaster_specialist_group_contains_both_blade_roles():
     assert "Blade Hall" in groups
     assert "First Blade" in groups["Blade Hall"]
     assert "Bladeguard" in groups["Blade Hall"]
+
+
+def test_blade_hall_specialist_group_supports_champion_track_roles():
+    groups = dict(roster_embeds._SPECIALIST_SECTION_ROLE_GROUPS)
+    blade_hall = groups["Blade Hall"]
+    assert "Company Champion" in blade_hall
+    assert "Kill Team Champion" in blade_hall
+    assert "Lord Executioner" in blade_hall
+
+
+def test_get_hc_members_includes_watch_captain_and_excludes_reserves():
+    captain = _member(
+        member_id=30,
+        display_name="Captain Primus",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(2, "Watch Captain"),
+        ],
+    )
+    watch_master = _member(
+        member_id=31,
+        display_name="Watch Master",
+        roles=[_role(3, "Watch Master")],
+    )
+    reserve_captain = _member(
+        member_id=32,
+        display_name="Reserve Captain",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(4, "Watch Captain"),
+            _role(roster_embeds.RESERVES_ROLE_ID, "Reserves"),
+        ],
+    )
+    non_hc = _member(
+        member_id=33,
+        display_name="Line Brother",
+        roles=[_role(5, "Watch Brother")],
+    )
+    guild = SimpleNamespace(members=[captain, watch_master, reserve_captain, non_hc])
+
+    members = roster_embeds._get_hc_members(guild)
+
+    assert [m.id for m in members] == [31, 30]
 
 
 def test_get_company_champion_members_filters_by_company_and_role():

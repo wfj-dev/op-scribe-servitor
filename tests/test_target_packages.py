@@ -3412,7 +3412,32 @@ class TestStrikeQueueBoard:
 
         tags = tp._queued_member_fit_tags(member)
 
-        assert tags == ["Veteran", "Oathsworn", "Sergeant", "Techmarine"]
+        assert tags == [
+            "Watch Veteran",
+            "Oathsworn",
+            "Watch Sergeant",
+            "Watch Techmarine",
+            "Watch Apothecary",
+        ]
+
+    def test_queued_member_fit_tags_includes_forgemaster(self):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Watch Veteran", "Forgemaster"], member_id=708)
+
+        tags = tp._queued_member_fit_tags(member)
+
+        assert "Forgemaster" in tags
+
+    def test_queued_member_fit_tags_includes_high_command_requirement_roles(self):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Huntmaster", "Venerable Dreadnought"], member_id=709)
+
+        tags = tp._queued_member_fit_tags(member)
+
+        assert "Huntmaster" in tags
+        assert "Venerable Dreadnought" in tags
 
     def test_reconcile_board_creates_message_when_queue_becomes_non_empty(self, monkeypatch):
         import opscribe.target_packages_ops as tp

@@ -90,7 +90,8 @@ _EMPTY_FIELD_NAME = "\u200b"
 _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
-    ("Blade Hall", {"First Blade", "Bladeguard"}),
+    # Blade Hall supports both legacy blade-track names and champion-track naming.
+    ("Blade Hall", {"First Blade", "Bladeguard", "Blademaster", "Company Champion", "Kill Team Champion", "Lord Executioner"}),
     ("Librarius", {"Watch Librarian"}),
     ("Watch Armory", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Reclusiam", {"Watch Chaplain"}),
@@ -426,7 +427,7 @@ def _build_container_view(
 
 
 def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
-    """Return HC-role members excluding Watch Captains and Reserves, sorted."""
+    """Return high-command members (including Watch Captains), excluding Reserves."""
     result = []
     for m in guild.members:
         if m.bot:
@@ -443,9 +444,6 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
             or "Huntmaster" in role_names
         )
         if not is_high_command:
-            continue
-        # Watch Captains belong in Company Command, not HC, except Watch Master.
-        if "Watch Captain" in role_names and "Watch Master" not in role_names:
             continue
         result.append(m)
     return sorted(result, key=_sort_key_for_member)
@@ -738,40 +736,40 @@ def _tp_status_for_high_command(
 
 
 def _fortress_rep_state_name(rep: float) -> str:
-    """Resolve fortress standing label from the 0..60 rep bands."""
-    rep_clamped = max(0.0, min(60.0, float(rep if rep is not None and rep != "" else 30.0)))
-    if rep_clamped < 10.0:
+    """Resolve fortress standing label from the 0..100 rep bands."""
+    rep_clamped = max(0.0, min(100.0, float(rep if rep is not None and rep != "" else 50.0)))
+    if rep_clamped < 17.0:
         return "CENSURED"
-    if rep_clamped < 20.0:
+    if rep_clamped < 34.0:
         return "SUSPECT"
-    if rep_clamped < 30.0:
-        return "TOLERATED"
-    if rep_clamped < 40.0:
-        return "NEUTRAL"
     if rep_clamped < 50.0:
+        return "TOLERATED"
+    if rep_clamped < 67.0:
+        return "NEUTRAL"
+    if rep_clamped < 84.0:
         return "FAVOURED"
-    if rep_clamped < 58.0:
+    if rep_clamped < 97.0:
         return "ENDORSED"
     return "MANDATED"
 
 
 def _fortress_rep_title(tp_data: dict | None = None, *, standing_prefix: str = "⚖️") -> str:
-    """Return fortress standing progress-bar line (0..60); caller controls the label via standing_prefix."""
-    rep_value = 30.0
+    """Return fortress standing progress-bar line (0..100); caller controls the label via standing_prefix."""
+    rep_value = 50.0
     try:
         if isinstance(tp_data, dict):
             raw_rep = tp_data.get("rep")
-            rep_value = float(raw_rep if raw_rep is not None and raw_rep != "" else 30.0)
+            rep_value = float(raw_rep if raw_rep is not None and raw_rep != "" else 50.0)
     except Exception:
-        rep_value = 30.0
+        rep_value = 50.0
 
-    rep_clamped = max(0.0, min(60.0, rep_value))
+    rep_clamped = max(0.0, min(100.0, rep_value))
     bar_width = 12
-    filled = int(round((rep_clamped / 60.0) * bar_width))
+    filled = int(round((rep_clamped / 100.0) * bar_width))
     filled = max(0, min(bar_width, filled))
     bar = "=" * filled + "-" * (bar_width - filled)
     state = _fortress_rep_state_name(rep_clamped)
-    return f"-# {standing_prefix} [{bar}] `{rep_clamped:.1f}/60` **{state}**"
+    return f"-# {standing_prefix} [{bar}] `{rep_clamped:.1f}/100` **{state}**"
 
 
 def _load_honors() -> dict:
@@ -789,10 +787,10 @@ def _load_honors() -> dict:
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
 _CADRE_TITLE_TIERS = {
-    "Blades": ["Unblooded", "Keen-Edged", "Honed Arsenal", "Master of Blades", "Relic Weapon Adepts", "Living Arsenal"],
+    "Blades": ["Unblooded", "Duel-Sworn", "Edge Consecrated", "Execution Masters", "Relic Edge Conclave", "Headsman's Ascendant"],
     "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
-    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Guarded", "Sanguine Stewards", "Vitae Keepers", "Apothecarion Ascendant"],
-    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Lexicanum Exemplars", "Oracular Ascendant"],
+    "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Locked Stewards", "Sanguine Custodians", "Vitae Keepers", "Apothecarion Ascendant"],
+    "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Hexagrammic Savants", "Oracular Ascendant"],
     "Reclusiam": ["Unanointed", "Catechized", "Zeal-Bound", "Crozius Proven", "Litany Exemplars", "Voice of the Emperor"],
 }
 _CADRE_BY_SPECIALIST_SECTION = {
