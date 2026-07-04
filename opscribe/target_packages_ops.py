@@ -2958,6 +2958,8 @@ def _specialist_rep_bucket(member: "discord.Member") -> str | None:
     roles = _member_role_names(member)
 
     configured_map = _cadre_rep_bucket_role_map()
+    # If multiple cadre roles match, select the bucket for the alphabetically
+    # first matching role name.
     for role_name in sorted(roles):
         bucket = configured_map.get(role_name)
         if bucket:
@@ -3057,6 +3059,8 @@ def _split_cents_by_weights(total_cents: int, weighted_buckets: list[tuple[str, 
 
     leftover = total_cents - allocated
     if leftover > 0:
+        # Highest fractional remainder receives first priority; ties break by bucket
+        # name so per-bucket rounding stays deterministic across runs.
         for _frac, name in sorted(remainders, key=lambda item: (-item[0], item[1]))[:leftover]:
             allocations[name] = allocations.get(name, 0) + 1
 
@@ -3149,7 +3153,11 @@ def _apply_entity_rep_allocations(
     #   _apply_entity_rep_allocations(data, pkg, allocs, total_rep, company_bonus=...)
     # and optional cadre bonus map at position 5.
     if len(legacy_args) > 2:
-        raise TypeError("_apply_entity_rep_allocations() accepts at most two legacy positional args")
+        raise TypeError(
+            "_apply_entity_rep_allocations() accepts at most two legacy positional args "
+            "(legacy_total_rep, legacy_cadre_bonus); pass other values via keyword args, "
+            f"got {len(legacy_args)}"
+        )
     if legacy_args:
         legacy_total_rep = float(legacy_args[0] or 0.0)
         if legacy_total_rep:
