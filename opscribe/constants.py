@@ -343,7 +343,7 @@ TERMINUS_VERIFIER_RANKS = {
     "Oathsworn",
     "Bladeguard",
     "First Blade",
-    "Blademaster",
+    "Blade Master",
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",

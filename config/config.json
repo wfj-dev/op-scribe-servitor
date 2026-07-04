@@ -325,7 +325,7 @@
       "Void Warden",
       "Chief Apothecary",
       "High Chaplain",
-      "Blademaster",
+      "Blade Master",
       "Venerable Dreadnought",
       "Huntmaster"
     ],
@@ -602,7 +602,7 @@
       },
       "champion": {
         "version": 1,
-        "leader_role_name": "Blademaster",
+        "leader_role_name": "Blade Master",
         "leader_role_id": 1435341811886588154,
         "rep_bucket": "Blades",
         "rep_role_aliases": [
@@ -621,7 +621,7 @@
           }
         ],
         "scope": "fortress",
-        "notes": "Bladeguard and First Blade are fortress-scoped specialist assignments under Blademaster authority."
+        "notes": "Bladeguard and First Blade are fortress-scoped specialist assignments under Blade Master authority."
       },
       "librarius": {
         "version": 1,

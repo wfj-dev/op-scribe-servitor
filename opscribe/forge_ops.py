@@ -1113,7 +1113,7 @@ def _get_stud_marking_recipients(member: discord.Member, guild: discord.Guild) -
         "High Chaplain",
         "Chief Apothecary",
         "Void Warden",
-        "Blademaster",
+        "Blade Master",
         "Forgemaster",
         "Castellan",
     }
@@ -1256,7 +1256,7 @@ def _get_service_studs_announcement(
 
     # Bearer field with rank emoji (exactly matching forge_rite format)
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blademaster")
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blade Master")
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
@@ -1414,7 +1414,7 @@ def _get_oathsworn_announcement(
 
     # Candidate field (same format as Bearer in service studs/forge_rite)
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
-    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blademaster")
+    # Split honorific if it contains a comma (e.g., "Blade of the Fortress, Blade Master")
     # to put title on one line and rank + name on the next
     if ", " in rank_honorific:
         title_part, rank_part = rank_honorific.rsplit(", ", 1)
@@ -2413,8 +2413,8 @@ def _get_bearer_rank_and_title(
     matched_rank = None
     for rank_name, hon in RANK_HONORIFICS.items():
         if rank_name.lower() in role_names_set:
-            # Handle dynamic Blademaster honorific
-            if rank_name == "Blademaster":
+            # Handle dynamic Blade Master honorific
+            if rank_name == "Blade Master":
                 # Find the Watch Master and use their name
                 guild = getattr(member, "guild", None)
                 watchmaster_name = None
@@ -2432,10 +2432,10 @@ def _get_bearer_rank_and_title(
                     except Exception:
                         pass
                 if watchmaster_name:
-                    honorific = f"Blade of {watchmaster_name}, Blademaster"
+                    honorific = f"Blade of {watchmaster_name}, Blade Master"
                 else:
                     # Fallback to fortress
-                    honorific = "Blade of the Fortress, Blademaster"
+                    honorific = "Blade of the Fortress, Blade Master"
             # Handle dynamic champion honorifics
             elif rank_name == "Bladeguard" and kill_team:
                 # Extract KT short name: "Kill Team Falcon" -> "Falcon"
@@ -2512,7 +2512,7 @@ def _get_bearer_rank_and_title(
         "Void Warden",
         "Forgemaster",
         "Champion",
-        "Blademaster",
+        "Blade Master",
     ]
     for prefix in honorific_prefixes:
         if display_name.lower().startswith(prefix.lower()):

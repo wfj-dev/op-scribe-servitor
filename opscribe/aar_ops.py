@@ -262,7 +262,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                             "First Blade", "Watch Lieutenant", "Watch Captain",
                             "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
                             "Void Warden", "High Chaplain", "Chief Apothecary",
-                            "Castellan", "Blademaster", "Watch Master",
+                            "Castellan", "Blade Master", "Watch Master",
                         )
                     )
                 )
@@ -778,7 +778,7 @@ _WATCH_BROTHER_OR_HIGHER = {
     "First Blade", "Watch Lieutenant", "Watch Captain",
     "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
     "Void Warden", "High Chaplain", "Chief Apothecary",
-    "Castellan", "Blademaster", "Watch Master",
+    "Castellan", "Blade Master", "Watch Master",
 }
 
 # Map of challenge_key → (required_missions_set, award_role_id, display_name, award_type, notified_key)

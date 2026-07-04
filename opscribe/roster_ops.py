@@ -1001,7 +1001,7 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                     "High Chaplain",
                     "Chief Apothecary",
                     "Castellan",
-                    "Blademaster",
+                    "Blade Master",
                     "Huntmaster",
                     "Watch Master",
                 ]
@@ -1628,7 +1628,7 @@ async def _check_promotion_milestones():
                         "High Chaplain",
                         "Chief Apothecary",
                         "Castellan",
-                        "Blademaster",
+                        "Blade Master",
                         "Huntmaster",
                         "Watch Master",
                     ]
@@ -1896,7 +1896,7 @@ async def _check_promotion_milestones():
                             "High Chaplain",
                             "Chief Apothecary",
                             "Castellan",
-                            "Blademaster",
+                            "Blade Master",
                             "Huntmaster",
                             "Watch Master",
                         ]
@@ -2080,7 +2080,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
     bladeguard = _role_name("bladeguard", "Bladeguard")
     first_blade = _role_name("first_blade", "First Blade")
-    blademaster = _role_name("blademaster", "Blademaster")
+    blademaster = _role_name("blademaster", "Blade Master")
 
     honored_dreadnought = _role_name("honored_dreadnought", "Honored Dreadnought")
     venerable_dreadnought = _role_name("venerable_dreadnought", "Venerable Dreadnought")
@@ -2288,13 +2288,13 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             _add(
                 member,
                 "watch_command_excess",
-                f"Has {watch_command_role} role at Bladeguard without First Blade/Blademaster.",
+                f"Has {watch_command_role} role at Bladeguard without First Blade/Blade Master.",
             )
         if is_bladeguard_only and has_hc_role:
             _add(
                 member,
                 "high_command_excess",
-                f"Has {high_command_role} role at Bladeguard without First Blade/Blademaster.",
+                f"Has {high_command_role} role at Bladeguard without First Blade/Blade Master.",
             )
 
         if len(company_hits) == 1 and any(r in role_names for r in company_command_membership):
@@ -3523,9 +3523,9 @@ async def tally_deeds(
                     "watch apothecary": "Chief Apothecary",
                     "watch chaplain": "High Chaplain",
                     # Champions: include champion members plus their head
-                    "kill team champion": "Blademaster",
-                    "company champion": "Blademaster",
-                    # Blademaster is a head role; mapping to itself is unnecessary
+                    "kill team champion": "Blade Master",
+                    "company champion": "Blade Master",
+                    # Blade Master is a head role; mapping to itself is unnecessary
                 }
                 rn = (getattr(killteam, "name", "") or "").strip().lower()
                 leader = spec_map.get(rn)
@@ -3783,7 +3783,7 @@ async def tally_deeds(
             # High command ranks that should NOT show Company
             high_command = {
                 "Watch Master",
-                "Blademaster",
+                "Blade Master",
                 "Huntmaster",
                 "Forgemaster",
                 "Void Warden",
@@ -3966,7 +3966,7 @@ async def tally_deeds(
                 # Explicit priority mapping (lower is higher priority)
                 if "Watch Master" in names:
                     return 0
-                if "Blademaster" in names:
+                if "Blade Master" in names:
                     return 1
                 # High-command specialists
                 high_specs = {
@@ -5816,7 +5816,7 @@ BATTLE_LINE_ORDER = [
     "Watch Lieutenant",
     "Watch Captain",
 ]
-CHAMPION_ROLES = {"Bladeguard", "First Blade", "Blademaster"}
+CHAMPION_ROLES = {"Bladeguard", "First Blade", "Blade Master"}
 SPECIALIST_ROLES = {
     "Watch Chaplain",
     "Watch Apothecary",
@@ -5826,7 +5826,7 @@ SPECIALIST_ROLES = {
 HIGH_COMMAND_ROLES = {
     "Watch Master",
     "Watch Captain",
-    "Blademaster",
+    "Blade Master",
     "Huntmaster",
     "High Chaplain",
     "Chief Apothecary",
@@ -6658,7 +6658,7 @@ async def _scheduled_milestone_check():
 # Static mappings for position labels to required roles
 POSITION_LABEL_MAP = {
     "WatchMaster": "Watch Master",
-    "LordExecutioner": "Blademaster",
+    "LordExecutioner": "Blade Master",
     "Huntmaster": "Huntmaster",
     "ChiefApothecary": "Chief Apothecary",
     "HighChaplain": "High Chaplain",
@@ -7560,7 +7560,7 @@ async def promotion_queue(interaction: discord.Interaction):
         "Void Warden",
         "High Chaplain",
         "Chief Apothecary",
-        "Blademaster",
+        "Blade Master",
         "Huntmaster",
         "Watch Master",
     }

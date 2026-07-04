@@ -258,7 +258,7 @@ def test_collect_role_integrity_findings_treats_huntmaster_as_high_command(monke
                     "Void Warden",
                     "Chief Apothecary",
                     "High Chaplain",
-                    "Blademaster",
+                    "Blade Master",
                     "Venerable Dreadnought",
                     "Huntmaster",
                 ],
@@ -301,7 +301,7 @@ def test_collect_role_integrity_findings_reports_huntmaster_prereq_gaps(monkeypa
                     "Void Warden",
                     "Chief Apothecary",
                     "High Chaplain",
-                    "Blademaster",
+                    "Blade Master",
                     "Venerable Dreadnought",
                     "Huntmaster",
                 ],
@@ -433,7 +433,7 @@ def test_collect_role_integrity_findings_does_not_require_company_role_for_first
 
 
 def test_collect_role_integrity_findings_does_not_require_company_role_for_blademaster(monkeypatch):
-    member = _make_member(14, ["Watch Brother", "Watch Veteran", "First Blade", "Blademaster", "Watch Command"])
+    member = _make_member(14, ["Watch Brother", "Watch Veteran", "First Blade", "Blade Master", "Watch Command"])
     guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
 
     monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})

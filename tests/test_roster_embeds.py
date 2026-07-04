@@ -547,10 +547,10 @@ def test_get_hc_members_orders_watch_master_then_captains_by_company_then_remain
     )
     blademaster = _member(
         member_id=4,
-        display_name="Blademaster",
+        display_name="Blade Master",
         roles=[
             _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
-            _role(105, "Blademaster"),
+            _role(105, "Blade Master"),
         ],
     )
     first_blade = _member(
@@ -571,7 +571,7 @@ def test_get_hc_members_orders_watch_master_then_captains_by_company_then_remain
 def test_blade_hall_sort_key_orders_role_bands_top_mid_bottom():
     bladeguard = _member(member_id=1, display_name="Bladeguard", roles=[_role(10, "Bladeguard")])
     first_blade = _member(member_id=2, display_name="First Blade", roles=[_role(11, "First Blade")])
-    blademaster = _member(member_id=3, display_name="Blademaster", roles=[_role(12, "Blademaster")])
+    blademaster = _member(member_id=3, display_name="Blade Master", roles=[_role(12, "Blade Master")])
     company_champion = _member(member_id=4, display_name="Company Champion", roles=[_role(13, "Company Champion")])
     kt_champion = _member(member_id=5, display_name="Kill Team Champion", roles=[_role(14, "Kill Team Champion")])
     lord_executioner = _member(member_id=6, display_name="Lord Executioner", roles=[_role(15, "Lord Executioner")])
@@ -590,11 +590,20 @@ def test_blade_hall_sort_key_orders_role_bands_top_mid_bottom():
 
 def test_blade_hall_sort_key_keeps_blademaster_before_first_blade():
     first_blade = _member(member_id=21, display_name="First Blade", roles=[_role(201, "First Blade")])
-    blademaster = _member(member_id=22, display_name="Blademaster", roles=[_role(202, "Blademaster")])
+    blademaster = _member(member_id=22, display_name="Blade Master", roles=[_role(202, "Blade Master")])
 
     ordered = sorted([first_blade, blademaster], key=roster_embeds._blade_hall_sort_key)
 
     assert [m.id for m in ordered] == [22, 21]
+
+
+def test_blade_hall_sort_key_treats_blade_master_alias_as_top_tier():
+    first_blade = _member(member_id=31, display_name="First Blade", roles=[_role(301, "First Blade")])
+    blade_master = _member(member_id=32, display_name="Blade Master", roles=[_role(302, "Blade Master")])
+
+    ordered = sorted([first_blade, blade_master], key=roster_embeds._blade_hall_sort_key)
+
+    assert [m.id for m in ordered] == [32, 31]
 
 
 def test_get_company_champion_members_filters_by_company_and_role():

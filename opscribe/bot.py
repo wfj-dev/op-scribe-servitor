@@ -755,7 +755,7 @@ from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noq
 # Global rank priority list (highest -> lowest)
 RANK_ROLES_PRIORITY = [
     "Watch Master",
-    "Blademaster",
+    "Blade Master",
     "Chief Apothecary",
     "High Chaplain",
     "Forgemaster",
@@ -1324,7 +1324,7 @@ def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
     """Check if user meets a min_rank requirement based on track logic.
 
     - Battle Line: linear hierarchy (Sergeant+ means Sergeant, Lt, Captain)
-    - Champion: KT Champion → First Blade → Blademaster
+    - Champion: KT Champion → First Blade → Blade Master
     - Specialist: each of the 4 sub-tracks leads to its High Command role
 
     Watch Master always qualifies for everything.
@@ -1366,7 +1366,7 @@ def check_command_permission(user: discord.User | discord.Member, command_name: 
     Three tracks:
       - Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
                      → Watch Lieutenant → Watch Captain
-      - Champion: Bladeguard → First Blade → Blademaster
+      - Champion: Bladeguard → First Blade → Blade Master
       - Specialist (4 sub-tracks): Techmarine→Forgemaster, Librarian→Void Warden, etc.
 
     Each track is independent. Watch Master has access to everything.
