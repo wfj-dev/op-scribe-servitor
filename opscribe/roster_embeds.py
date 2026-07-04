@@ -328,8 +328,17 @@ _BLADE_HALL_ROLE_BANDS: tuple[set[str], ...] = (
     {"Kill Team Champion", "Bladeguard"},
 )
 
+_BLADE_HALL_ROLE_ORDER: tuple[str, ...] = (
+    "Lord Executioner",
+    "Blademaster",
+    "Company Champion",
+    "First Blade",
+    "Kill Team Champion",
+    "Bladeguard",
+)
 
-def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, str]:
+
+def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, int, str]:
     """Sort Blade Hall by champion band, then normal roster rank/name ordering.
 
     Desired band order:
@@ -338,13 +347,40 @@ def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, str]:
     3) Kill Team Champion / Bladeguard
     """
     role_names = _member_role_names(member)
+    role_rank = len(_BLADE_HALL_ROLE_ORDER)
+    for idx, role_name in enumerate(_BLADE_HALL_ROLE_ORDER):
+        if role_name in role_names:
+            role_rank = idx
+            break
     band = len(_BLADE_HALL_ROLE_BANDS)
     for idx, band_roles in enumerate(_BLADE_HALL_ROLE_BANDS):
         if role_names & band_roles:
             band = idx
             break
     rank_idx, name_key = _sort_key_for_member(member)
-    return (band, rank_idx, name_key)
+    return (band, role_rank, rank_idx, name_key)
+
+
+def _company_order_index_for_member(member: discord.Member) -> int:
+    """Return configured company order index for a member, or fallback at end."""
+    role_names = _member_role_names(member)
+    company_names = list(ROSTER_COMPANY_CHANNELS.keys())
+    for idx, company_name in enumerate(company_names):
+        if company_name in role_names:
+            return idx
+    return len(company_names)
+
+
+def _high_command_sort_key(member: discord.Member) -> tuple[int, int, int, str]:
+    """Sort HC as: Watch Master, company captains, then remaining HC members."""
+    role_names = _member_role_names(member)
+    rank_idx, name_key = _sort_key_for_member(member)
+
+    if "Watch Master" in role_names:
+        return (0, 0, 0, name_key)
+    if "Watch Captain" in role_names:
+        return (1, _company_order_index_for_member(member), rank_idx, name_key)
+    return (2, rank_idx, 0, name_key)
 
 
 def _collect_members_with_roles(
@@ -471,7 +507,7 @@ def _get_hc_members(guild: discord.Guild) -> List[discord.Member]:
         if not is_high_command:
             continue
         result.append(m)
-    return sorted(result, key=_sort_key_for_member)
+    return sorted(result, key=_high_command_sort_key)
 
 
 def _get_company_command_members(
