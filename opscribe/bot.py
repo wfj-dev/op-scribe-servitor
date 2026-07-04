@@ -825,6 +825,7 @@ HOME_CHAPTERS = [
     "Red Scorpions",
     "Red Templars",
     "Salamanders",
+    "Sable Knights",
     "Scythes of the Emperor",
     "Sons of Medusa",
     "Space Wolves",
