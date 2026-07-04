@@ -91,7 +91,7 @@ _DEATHWATCH_SPECIALIST_ROLE_ID = 1509921744712896724
 
 _SPECIALIST_SECTION_ROLE_GROUPS = (
     # Blade Hall supports both legacy blade-track names and champion-track naming.
-    ("Blade Hall", {"First Blade", "Bladeguard", "Blademaster", "Company Champion", "Kill Team Champion", "Lord Executioner"}),
+    ("Blade Hall", {"First Blade", "Bladeguard", "Blade Master", "Company Champion", "Kill Team Champion", "Lord Executioner"}),
     ("Librarius", {"Watch Librarian"}),
     ("Watch Armory", {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"}),
     ("Reclusiam", {"Watch Chaplain"}),
@@ -323,14 +323,14 @@ def _sort_key_for_member(member: discord.Member) -> Tuple[int, str]:
 
 
 _BLADE_HALL_ROLE_BANDS: tuple[set[str], ...] = (
-    {"Lord Executioner", "Blademaster"},
+    {"Lord Executioner", "Blade Master"},
     {"Company Champion", "First Blade"},
     {"Kill Team Champion", "Bladeguard"},
 )
 
 _BLADE_HALL_ROLE_ORDER: tuple[str, ...] = (
     "Lord Executioner",
-    "Blademaster",
+    "Blade Master",
     "Company Champion",
     "First Blade",
     "Kill Team Champion",
@@ -342,7 +342,7 @@ def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, int, str]:
     """Sort Blade Hall by champion band, then normal roster rank/name ordering.
 
     Desired band order:
-    1) Lord Executioner / Blademaster
+    1) Lord Executioner / Blade Master
     2) Company Champion / First Blade
     3) Kill Team Champion / Bladeguard
     """

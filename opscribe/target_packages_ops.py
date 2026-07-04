@@ -610,7 +610,7 @@ _TIER_ROLES = {
         "Watch Librarian", "Watch Keeper", "Honored Dreadnought",
     ],
     _REQ_TIER_HC: [
-        "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
+        "Watch Master", "Blade Master", "Forgemaster", "Chief Apothecary",
         "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
         "Venerable Dreadnought",
     ],
@@ -1298,7 +1298,7 @@ def _get_cadre_ownership_mapping_hardcoded() -> dict:
     This is the fallback when config is not available.
     """
     return {
-        "Blademaster": {"Bladeguard", "First Blade"},
+        "Blade Master": {"Bladeguard", "First Blade"},
         "Huntmaster": {"Huntmaster"},
         "Forgemaster": {"Watch Techmarine", "Venerable Dreadnought", "Honored Dreadnought"},
         "Chief Apothecary": {"Watch Apothecary"},
@@ -3567,7 +3567,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 # ---------------------------------------------------------------------------
 
 # Roles that require formal cadre assignment (not naturally present in a KT)
-# Bladeguard is KT-command tier but still requires Blademaster assignment
+# Bladeguard is KT-command tier but still requires Blade Master assignment
 _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
 ) | {"Bladeguard"}
@@ -5106,7 +5106,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         ("librarian",   ["Watch Librarian"],
          ["Void Warden"], "Librarius Operations"),
         ("champion",    ["Bladeguard", "First Blade"],
-         ["Blademaster"], "Blade Detachments"),
+         ["Blade Master"], "Blade Detachments"),
     ]
     cadre_cfg = config_tp.get("cadre_channels", {})
     for cadre_key, cadre_member_roles, cadre_leader_roles, section_label in _CADRE_REPORT_DEFS:
@@ -5429,9 +5429,9 @@ _CADRE_FLAVOR = {
         "Watch Keeper requisition flagged. {kt} of {company} requires a Keeper on Strike Directive `{pid}`. Castellan — designate your operative.\nUse `/view_strike_directives` to assign.",
         "Castellan, your intelligence cadre is needed by {kt}. Strike Directive `{pid}` awaits Watch Keeper attachment.\nUse `/view_strike_directives` to assign.",
     ],
-    "Blademaster": [
-        "Blade requisition raised. {kt} of {company} requires a Blade role on Strike Directive `{pid}`. Blademaster — designate as required.\nUse `/view_strike_directives` to assign.",
-        "Blademaster, {kt} needs martial authority on Strike Directive `{pid}`. Blade assignment required before deployment.\nUse `/view_strike_directives` to assign.",
+    "Blade Master": [
+        "Blade requisition raised. {kt} of {company} requires a Blade role on Strike Directive `{pid}`. Blade Master — designate as required.\nUse `/view_strike_directives` to assign.",
+        "Blade Master, {kt} needs martial authority on Strike Directive `{pid}`. Blade assignment required before deployment.\nUse `/view_strike_directives` to assign.",
     ],
     "Huntmaster": [
         "Huntmaster, {kt} of {company} requires your personal engagement on Strike Directive `{pid}`. Your direct participation is demanded.\nUse `/view_strike_directives` to assign yourself.",
@@ -5519,7 +5519,7 @@ _ROLE_TO_CADRE_KEY: dict[str, str] = {
     "High Chaplain": "chaplain",
     "Bladeguard": "champion",
     "First Blade": "champion",
-    "Blademaster": "champion",
+    "Blade Master": "champion",
 }
 
 # Fallback constants if not set in config
@@ -5711,8 +5711,8 @@ async def _notify_cadre_leaders_needed(
         "Watch Chaplain": "High Chaplain",
         "Watch Librarian": "Void Warden",
         "Watch Keeper": "Castellan",
-        "Bladeguard": "Blademaster",
-        "First Blade": "Blademaster",
+        "Bladeguard": "Blade Master",
+        "First Blade": "Blade Master",
         "Huntmaster": "Huntmaster",
     }
 
@@ -6342,7 +6342,7 @@ _RANK_SENIORITY: list[str] = [
     "First Blade",
     "Watch Techmarine", "Watch Apothecary", "Watch Chaplain", "Watch Librarian", "Watch Keeper",
     "Honored Dreadnought",
-    "Blademaster",
+    "Blade Master",
     "Forgemaster", "Chief Apothecary", "High Chaplain", "Void Warden", "Castellan", "Huntmaster",
     "Venerable Dreadnought",
     "Watch Master",
@@ -8366,12 +8366,12 @@ def _is_captain_or_lt(member: discord.Member) -> bool:
 
 
 _CADRE_LEADER_ROLES = {
-    "Blademaster", "Forgemaster", "Chief Apothecary",
+    "Blade Master", "Forgemaster", "Chief Apothecary",
     "High Chaplain", "Void Warden", "Castellan", "Huntmaster",
 }
 
 _HC_ROLES = {
-    "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
+    "Watch Master", "Blade Master", "Forgemaster", "Chief Apothecary",
     "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
     "Venerable Dreadnought",
 }

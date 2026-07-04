@@ -232,7 +232,7 @@ class TestRemoveAuthority:
         assert kinds == {"signed"}
 
     def test_bladeguard_no_requirement_blademaster_not_cadre_override(self):
-        actor = _make_member(["Blademaster"], member_id=30)
+        actor = _make_member(["Blade Master"], member_id=30)
         target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=31)
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
@@ -269,7 +269,7 @@ class TestRemoveAuthority:
         assert "required specialist role" in reason.lower()
 
     def test_blademaster_can_remove_required_bladeguard(self):
-        actor = _make_member(["Blademaster"], member_id=52)
+        actor = _make_member(["Blade Master"], member_id=52)
         target = _make_member(["Bladeguard", "Kill Team Alpha"], member_id=53)
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
@@ -452,7 +452,7 @@ class TestDrawRequirements:
         "Watch Captain", "Watch Lieutenant", "First Blade",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
         "Watch Librarian", "Watch Keeper", "Honored Dreadnought",
-        "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
+        "Watch Master", "Blade Master", "Forgemaster", "Chief Apothecary",
         "High Chaplain", "Huntmaster", "Void Warden", "Castellan",
         "Venerable Dreadnought",
     }
@@ -484,7 +484,7 @@ class TestDrawRequirements:
 
     def test_max_1_hc_role(self):
         hc_roles = {
-            "Watch Master", "Blademaster", "Forgemaster", "Chief Apothecary",
+            "Watch Master", "Blade Master", "Forgemaster", "Chief Apothecary",
             "High Chaplain", "Huntmaster", "Void Warden", "Castellan", "Venerable Dreadnought",
         }
         for _ in range(200):
@@ -965,7 +965,7 @@ class TestParticipationRepAccounting:
         monkeypatch.setattr(
             tp,
             "_b",
-            lambda name: {"target_packages": {"cadres": {"x": {"leader_role_name": "Blademaster"}}}} if name == "CONFIG" else None,
+            lambda name: {"target_packages": {"cadres": {"x": {"leader_role_name": "Blade Master"}}}} if name == "CONFIG" else None,
         )
 
         tp._target_packages_config()
@@ -1040,12 +1040,12 @@ class TestParticipationRepAccounting:
     def test_specialist_rep_bucket_selection_is_deterministic(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
-        member = _make_member(["Watch Apothecary", "Blademaster"], member_id=999)
-        reversed_member = _make_member(["Blademaster", "Watch Apothecary"], member_id=1000)
+        member = _make_member(["Watch Apothecary", "Blade Master"], member_id=999)
+        reversed_member = _make_member(["Blade Master", "Watch Apothecary"], member_id=1000)
         monkeypatch.setattr(
             tp,
             "_cadre_rep_bucket_role_map",
-            lambda: {"Watch Apothecary": "Apothecarion", "Blademaster": "Blades"},
+            lambda: {"Watch Apothecary": "Apothecarion", "Blade Master": "Blades"},
         )
 
         assert tp._specialist_rep_bucket(member) == "Blades"
@@ -1112,7 +1112,7 @@ class TestParticipationRepAccounting:
             "assigned_specialist_ids": [],
             "assigned_company": "Watch Company Primus",
         }
-        blademaster = _make_member(["Blademaster"], member_id=21)
+        blademaster = _make_member(["Blade Master"], member_id=21)
         high_chaplain = _make_member(["High Chaplain"], member_id=22)
         huntmaster = _make_member(["Huntmaster"], member_id=23)
         guild = _make_guild([blademaster, high_chaplain, huntmaster])
