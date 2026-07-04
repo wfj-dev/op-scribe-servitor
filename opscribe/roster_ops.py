@@ -2244,6 +2244,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
         has_huntmaster = huntmaster in role_names
         has_specialist = len(specialist_presence) > 0
+        is_specialist_track_member = has_specialist or has_champion or has_dread
 
         active_tracks = []
         if has_oath:
@@ -2303,10 +2304,15 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
                 company_name = company_name_by_role_id.get(company_role_id, "company")
                 _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
-        if has_specialist and any(rid in role_ids for rid in company_cmd_role_ids):
-            _add(member, "company_command_excess", "Specialists must not hold company command roles.")
+        if is_specialist_track_member and company_hits:
+            _add(member, "company_role_excess", "Specialist-track members must not hold company membership roles.")
 
-        if kt_hits and any(r in role_names for r in company_command_or_higher_roles):
+        if is_specialist_track_member and any(rid in role_ids for rid in company_cmd_role_ids):
+            _add(member, "company_command_excess", "Specialist-track members must not hold company command roles.")
+
+        if is_specialist_track_member and kt_hits:
+            _add(member, "kt_assignment_invalid", "Specialist-track members must not be assigned to a kill team.")
+        elif kt_hits and any(r in role_names for r in company_command_or_higher_roles):
             _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
 
     return findings
@@ -2340,6 +2346,7 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         "high_command_missing": "HighCmd-missing",
         "high_command_excess": "HighCmd-excess",
         "watch_command_missing": "WatchCmd-missing",
+        "company_role_excess": "Company-excess",
         "company_command_missing": "CoCmd-missing",
         "company_command_excess": "CoCmd-excess",
         "kt_assignment_invalid": "KillTeam-invalid",
