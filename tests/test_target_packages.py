@@ -10,11 +10,14 @@ Tests cover:
 """
 
 import asyncio
+import io
 import sys
 import types
 from itertools import combinations as itertools_combinations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
+
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -946,6 +949,30 @@ class TestCadreSpecialistRoles:
 
 
 class TestParticipationRepAccounting:
+    def test_target_packages_config_file_loaded_once_when_live_config_present(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        calls = {"open": 0}
+
+        def _fake_open(*_args, **_kwargs):
+            calls["open"] += 1
+            return io.StringIO('{"target_packages": {"cadres": {"x": {"rep_bucket": "Blades"}}}}')
+
+        monkeypatch.setattr("builtins.open", _fake_open)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_CACHE", None)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_FILE_CACHE", None)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED", False)
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda name: {"target_packages": {"cadres": {"x": {"leader_role_name": "Blademaster"}}}} if name == "CONFIG" else None,
+        )
+
+        tp._target_packages_config()
+        tp._target_packages_config()
+
+        assert calls["open"] == 1
+
     def test_rep_delta_for_package_uses_mode_specific_values(self):
         import opscribe.target_packages_ops as tp
 
@@ -1009,6 +1036,18 @@ class TestParticipationRepAccounting:
         assert allocations["cadres"] == {"Apothecarion": 0.46}
         assert allocations["companies"] == {"Primus": 0.94}
         assert allocations["fortress"] == 0.6
+
+    def test_specialist_rep_bucket_selection_is_deterministic(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Watch Apothecary", "Blademaster"], member_id=999)
+        monkeypatch.setattr(
+            tp,
+            "_cadre_rep_bucket_role_map",
+            lambda: {"Watch Apothecary": "Apothecarion", "Blademaster": "Blades"},
+        )
+
+        assert tp._specialist_rep_bucket(member) == "Blades"
 
     def test_company_gets_split_plus_base_award(self):
         import opscribe.target_packages_ops as tp
@@ -1087,6 +1126,16 @@ class TestParticipationRepAccounting:
         assert allocations["kill_teams"] == {}
         assert allocations["cadres"] == {"Blades": 0.7, "Reclusiam": 0.7}
         assert allocations["fortress"] == 1.6
+
+    def test_apply_entity_rep_allocations_rejects_unexpected_legacy_args(self):
+        import opscribe.target_packages_ops as tp
+
+        data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
+        pkg = {"assigned_company": "Watch Company Primus"}
+        allocations = {"kill_teams": {}, "cadres": {}, "companies": {}}
+
+        with pytest.raises(TypeError, match="at most two legacy positional args"):
+            tp._apply_entity_rep_allocations(data, pkg, allocations, 1.0, {"Apothecarion": 0.2}, "unexpected")
 
 
 # ---------------------------------------------------------------------------

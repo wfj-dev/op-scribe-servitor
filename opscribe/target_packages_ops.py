@@ -48,17 +48,25 @@ _STRIKE_QUEUE_BOARD_FALLBACK_CHANNEL_ID = 1429942816741523570
 _STRIKE_QUEUE_BOARD_BUMP_MINUTES = 25
 
 _CONFIG_TARGET_PACKAGES_CACHE: dict | None = None
+_CONFIG_TARGET_PACKAGES_FILE_CACHE: dict | None = None
+_CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED = False
 
 
 def _target_packages_config_from_file() -> dict:
+    global _CONFIG_TARGET_PACKAGES_FILE_CACHE, _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED
+    if _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED:
+        return _CONFIG_TARGET_PACKAGES_FILE_CACHE or {}
+
     try:
         cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "config.json")
         with open(cfg_path, "r", encoding="utf-8") as f:
             raw = json.load(f) or {}
         tp_cfg = (raw.get("target_packages") or {}) if isinstance(raw, dict) else {}
-        return tp_cfg if isinstance(tp_cfg, dict) else {}
+        _CONFIG_TARGET_PACKAGES_FILE_CACHE = tp_cfg if isinstance(tp_cfg, dict) else {}
     except Exception:
-        return {}
+        _CONFIG_TARGET_PACKAGES_FILE_CACHE = {}
+    _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED = True
+    return _CONFIG_TARGET_PACKAGES_FILE_CACHE or {}
 
 
 def _get_guild_from_bot() -> "discord.Guild | None":
@@ -2950,7 +2958,7 @@ def _specialist_rep_bucket(member: "discord.Member") -> str | None:
     roles = _member_role_names(member)
 
     configured_map = _cadre_rep_bucket_role_map()
-    for role_name in roles:
+    for role_name in sorted(roles):
         bucket = configured_map.get(role_name)
         if bucket:
             return bucket
@@ -3140,6 +3148,8 @@ def _apply_entity_rep_allocations(
     # Backward compatibility for legacy callsites/tests:
     #   _apply_entity_rep_allocations(data, pkg, allocs, total_rep, company_bonus=...)
     # and optional cadre bonus map at position 5.
+    if len(legacy_args) > 2:
+        raise TypeError("_apply_entity_rep_allocations() accepts at most two legacy positional args")
     if legacy_args:
         legacy_total_rep = float(legacy_args[0] or 0.0)
         if legacy_total_rep:
