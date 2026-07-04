@@ -1794,12 +1794,24 @@ async def _reconcile_strike_queue_board(
         queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
         board = _strike_queue_board_state(queue_data)
         entries = queue_data.get("entries", {}) or {}
-        board_channel_id = int(board.get("channel_id") or _strike_queue_board_channel_id() or 0)
+        stored_channel_id = int(board.get("channel_id") or 0)
+        configured_channel_id = _strike_queue_board_channel_id()
+        board_channel_id = stored_channel_id or configured_channel_id
         board_channel_result = _resolve_channel(guild, board_channel_id)
         if asyncio.iscoroutine(board_channel_result):
             board_channel = await board_channel_result
         else:
             board_channel = board_channel_result
+
+        # If the stored channel ID no longer resolves, fall back to the configured channel ID
+        if not board_channel and stored_channel_id and stored_channel_id != configured_channel_id:
+            board["channel_id"] = None
+            board_channel_id = configured_channel_id
+            board_channel_result = _resolve_channel(guild, board_channel_id)
+            if asyncio.iscoroutine(board_channel_result):
+                board_channel = await board_channel_result
+            else:
+                board_channel = board_channel_result
 
         if not entries:
             old_message_id = int(board.get("message_id") or 0)
