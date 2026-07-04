@@ -521,6 +521,53 @@ def test_get_hc_members_includes_watch_captain_and_excludes_reserves():
     assert [m.id for m in members] == [31, 30]
 
 
+def test_get_hc_members_orders_watch_master_then_captains_by_company_then_remaining_hc():
+    watch_master = _member(
+        member_id=1,
+        display_name="Watch Master",
+        roles=[_role(100, "Watch Master")],
+    )
+    captain_secundus = _member(
+        member_id=2,
+        display_name="Captain Secundus",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(101, "Watch Captain"),
+            _role(102, "Watch Company Secundus"),
+        ],
+    )
+    captain_primus = _member(
+        member_id=3,
+        display_name="Captain Primus",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(103, "Watch Captain"),
+            _role(104, "Watch Company Primus"),
+        ],
+    )
+    blademaster = _member(
+        member_id=4,
+        display_name="Blademaster",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(105, "Blademaster"),
+        ],
+    )
+    first_blade = _member(
+        member_id=5,
+        display_name="First Blade",
+        roles=[
+            _role(roster_embeds.HIGH_COMMAND_ROLE_ID, "High Command"),
+            _role(106, "First Blade"),
+        ],
+    )
+    guild = SimpleNamespace(members=[first_blade, captain_secundus, watch_master, blademaster, captain_primus])
+
+    members = roster_embeds._get_hc_members(guild)
+
+    assert [m.id for m in members] == [1, 3, 2, 4, 5]
+
+
 def test_blade_hall_sort_key_orders_role_bands_top_mid_bottom():
     bladeguard = _member(member_id=1, display_name="Bladeguard", roles=[_role(10, "Bladeguard")])
     first_blade = _member(member_id=2, display_name="First Blade", roles=[_role(11, "First Blade")])
@@ -539,6 +586,15 @@ def test_blade_hall_sort_key_orders_role_bands_top_mid_bottom():
     assert top_ids == {3, 6}
     assert mid_ids == {2, 4}
     assert bottom_ids == {1, 5}
+
+
+def test_blade_hall_sort_key_keeps_blademaster_before_first_blade():
+    first_blade = _member(member_id=21, display_name="First Blade", roles=[_role(201, "First Blade")])
+    blademaster = _member(member_id=22, display_name="Blademaster", roles=[_role(202, "Blademaster")])
+
+    ordered = sorted([first_blade, blademaster], key=roster_embeds._blade_hall_sort_key)
+
+    assert [m.id for m in ordered] == [22, 21]
 
 
 def test_get_company_champion_members_filters_by_company_and_role():
