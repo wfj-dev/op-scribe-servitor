@@ -17,7 +17,7 @@
     1511441138165485798,
     1459606044509606032,
     1512146866165383410,
-    1512819170025410621,
+    1522774471243726888,
     1429318686447108300,
     1512929774970998945,
     1512929565239152671,
@@ -445,7 +445,8 @@
   },
   "target_packages": {
     "highcom_strategium_channel_id": 1512929774970998945,
-    "highcom_audit_channel_id": 1512819170025410621,
+    "highcom_audit_channel_id": 1522774471243726888,
+    "strike_queue_board_channel_id": 1429942816741523570,
     "watch_command_deployment_channel_id": 1512929565239152671,
     "strike_report_channel_id": 1429318686447108300,
     "company_champion_channel_id": 1512929565239152671,
