@@ -44,6 +44,8 @@ _TP_LOCK = asyncio.Lock()
 _STRIKE_QUEUE_LOCK = asyncio.Lock()
 _STRIKE_QUEUE_MATCH_LOCK = asyncio.Lock()
 _STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT = 12
+_STRIKE_QUEUE_BOARD_FALLBACK_CHANNEL_ID = 1429942816741523570
+_STRIKE_QUEUE_BOARD_BUMP_MINUTES = 25
 
 
 def _get_guild_from_bot() -> "discord.Guild | None":
@@ -1287,7 +1289,16 @@ def _load_tp() -> dict:
 
 
 def _empty_strike_queue_store() -> dict:
-    return {"entries": {}, "announced_matches": {}}
+    return {
+        "entries": {},
+        "announced_matches": {},
+        "board": {
+            "channel_id": None,
+            "message_id": None,
+            "last_bump_at": None,
+            "last_rendered_at": None,
+        },
+    }
 
 
 def _load_strike_queue() -> dict:
@@ -1304,6 +1315,14 @@ def _load_strike_queue() -> dict:
         announced = data.get("announced_matches")
         if not isinstance(announced, dict):
             data["announced_matches"] = {}
+        board = data.get("board")
+        if not isinstance(board, dict):
+            board = {}
+            data["board"] = board
+        board.setdefault("channel_id", None)
+        board.setdefault("message_id", None)
+        board.setdefault("last_bump_at", None)
+        board.setdefault("last_rendered_at", None)
         return data
     except Exception:
         return _empty_strike_queue_store()
@@ -1598,6 +1617,430 @@ def _member_tentative_codes(queue_data: dict, packages: dict, member_id: int) ->
         pkg = packages.get(package_id) or {}
         codes.append(str((pkg or {}).get("directive_code") or package_id))
     return codes
+
+
+def _strike_queue_board_state(queue_data: dict) -> dict:
+    board = queue_data.setdefault("board", {})
+    board.setdefault("channel_id", None)
+    board.setdefault("message_id", None)
+    board.setdefault("last_bump_at", None)
+    board.setdefault("last_rendered_at", None)
+    return board
+
+
+def _strike_queue_board_channel_id() -> int:
+    cfg = (_b("CONFIG") or {}).get("target_packages", {})
+    raw = cfg.get("strike_queue_board_channel_id")
+    if raw:
+        try:
+            return int(raw)
+        except Exception:
+            pass
+    return int(_STRIKE_QUEUE_BOARD_FALLBACK_CHANNEL_ID)
+
+
+def _clear_strike_queue_board_state(queue_data: dict) -> None:
+    board = _strike_queue_board_state(queue_data)
+    board["channel_id"] = None
+    board["message_id"] = None
+    board["last_bump_at"] = None
+    board["last_rendered_at"] = None
+
+
+def _queued_member_fit_tags(member: "discord.Member | None") -> list[str]:
+    if member is None:
+        return []
+    roles = _member_role_names(member)
+    tags: list[str] = []
+    mapping = [
+        ("Watch Veteran", "Veteran"),
+        ("Oathsworn", "Oathsworn"),
+        ("Watch Sergeant", "Sergeant"),
+        ("Bladeguard", "Bladeguard"),
+        ("Watch Techmarine", "Techmarine"),
+        ("Watch Apothecary", "Apothecary"),
+        ("Watch Chaplain", "Chaplain"),
+        ("Watch Librarian", "Librarian"),
+        ("Watch Keeper", "Keeper"),
+        ("First Blade", "First Blade"),
+    ]
+    for role_name, label in mapping:
+        if role_name in roles:
+            tags.append(label)
+    return tags[:4]
+
+
+def _strike_queue_mode_breakdown(entries: dict) -> tuple[int, int, int]:
+    hard_count = 0
+    omega_count = 0
+    any_count = 0
+    for _uid, entry in _ordered_queue_entries(entries):
+        mode = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
+        if mode == "hard":
+            hard_count += 1
+        elif mode == "omega":
+            omega_count += 1
+        else:
+            any_count += 1
+    return hard_count, omega_count, any_count
+
+
+def _build_strike_queue_board_embed(
+    queue_data: dict,
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> discord.Embed:
+    entries = queue_data.get("entries", {}) or {}
+    ordered_entries = _ordered_queue_entries(entries)
+    total = len(ordered_entries)
+    hard_count, omega_count, any_count = _strike_queue_mode_breakdown(entries)
+    pc_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "pc")
+    console_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "console")
+    unknown_platform_count = max(0, total - pc_count - console_count)
+
+    embed = discord.Embed(
+        title="Strike Matchmaking Queue",
+        description="Live queue board. Join via buttons below or `/queue_strike`.",
+        color=0xA31919,
+    )
+    embed.add_field(
+        name="Queue Snapshot",
+        value=(
+            f"Total: **{total}**\n"
+            f"Modes: Hard **{hard_count}** | Omega **{omega_count}** | Any **{any_count}**\n"
+            f"Platforms: PC **{pc_count}** | Console **{console_count}**"
+            + (f" | Unknown **{unknown_platform_count}**" if unknown_platform_count else "")
+        ),
+        inline=False,
+    )
+
+    roster_lines: list[str] = []
+    for idx, (uid, entry) in enumerate(ordered_entries[:12], start=1):
+        try:
+            member_id = int(uid)
+        except Exception:
+            member_id = 0
+        member = guild.get_member(member_id) if guild and member_id else None
+        name = member.display_name if member else f"Brother {uid}"
+        mode = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
+        mode_text = "ANY" if mode == "any" else mode.upper()
+        queued_at = str((entry or {}).get("queued_at") or "").strip()
+        wait_text = "unknown wait"
+        if queued_at:
+            try:
+                queued_dt = datetime.fromisoformat(queued_at)
+                if queued_dt.tzinfo is None:
+                    queued_dt = queued_dt.replace(tzinfo=timezone.utc)
+                wait_text = f"<t:{int(queued_dt.timestamp())}:R>"
+            except Exception:
+                pass
+        tags = _queued_member_fit_tags(member)
+        tag_text = ", ".join(tags) if tags else "General"
+        roster_lines.append(f"{idx}. **{name}** [{mode_text}] · {wait_text} · {tag_text}")
+    if total > 12:
+        roster_lines.append(f"+{total - 12} more")
+
+    embed.add_field(
+        name="Queued Brothers",
+        value="\n".join(roster_lines) if roster_lines else "No queued brothers.",
+        inline=False,
+    )
+
+    tentative_groups = _tentative_groups_for_status(queue_data, packages, guild)
+    tentative_preview = tentative_groups[:4]
+    tentative_text = "\n".join(tentative_preview) if tentative_preview else "No tentative groups currently tracked."
+    if len(tentative_groups) > 4:
+        tentative_text += f"\n+{len(tentative_groups) - 4} more"
+    embed.add_field(name="Tentative Groups", value=tentative_text, inline=False)
+
+    sweep_minutes = _strike_queue_match_sweep_minutes()
+    if hasattr(embed, "set_footer"):
+        embed.set_footer(text=f"Sweep cadence: every {sweep_minutes} min | Queue board auto-updates")
+    return embed
+
+
+def _should_bump_strike_queue_board(board: dict, *, force_bump: bool, major_change: bool) -> bool:
+    if force_bump:
+        return True
+    if not major_change:
+        return False
+    last_bump_raw = str(board.get("last_bump_at") or "").strip()
+    if not last_bump_raw:
+        return True
+    try:
+        last_bump = datetime.fromisoformat(last_bump_raw)
+        if last_bump.tzinfo is None:
+            last_bump = last_bump.replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+    return datetime.now(timezone.utc) - last_bump >= timedelta(minutes=_STRIKE_QUEUE_BOARD_BUMP_MINUTES)
+
+
+async def _reconcile_strike_queue_board(
+    guild: "discord.Guild | None",
+    *,
+    major_change: bool = False,
+    force_bump: bool = False,
+) -> None:
+    if guild is None:
+        return
+
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        data = _load_tp()
+        packages = data.get("packages", {})
+        active_entry_ids = set((queue_data.get("entries") or {}).keys())
+        queue_data, _ = _prune_announced_strike_queue_matches(queue_data, packages, active_entry_ids)
+        board = _strike_queue_board_state(queue_data)
+        entries = queue_data.get("entries", {}) or {}
+        stored_channel_id = int(board.get("channel_id") or 0)
+        configured_channel_id = _strike_queue_board_channel_id()
+        board_channel_id = stored_channel_id or configured_channel_id
+        board_channel_result = _resolve_channel(guild, board_channel_id)
+        if asyncio.iscoroutine(board_channel_result):
+            board_channel = await board_channel_result
+        else:
+            board_channel = board_channel_result
+
+        # If the stored channel ID no longer resolves, fall back to the configured channel ID
+        if not board_channel and stored_channel_id and stored_channel_id != configured_channel_id:
+            board["channel_id"] = None
+            board_channel_id = configured_channel_id
+            board_channel_result = _resolve_channel(guild, board_channel_id)
+            if asyncio.iscoroutine(board_channel_result):
+                board_channel = await board_channel_result
+            else:
+                board_channel = board_channel_result
+
+        if not entries:
+            old_message_id = int(board.get("message_id") or 0)
+            if board_channel and old_message_id:
+                try:
+                    old_msg = await board_channel.fetch_message(old_message_id)
+                    await old_msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+                except Exception as exc:
+                    _g.logger.debug(f"[TP] Failed deleting strike queue board message {old_message_id}: {exc}")
+            _clear_strike_queue_board_state(queue_data)
+            _save_strike_queue(queue_data)
+            return
+
+        if not board_channel:
+            _g.logger.warning("[TP] Strike queue board channel is unavailable; skipping board refresh")
+            _save_strike_queue(queue_data)
+            return
+        send_fn = getattr(board_channel, "send", None)
+        if not callable(send_fn) or not asyncio.iscoroutinefunction(send_fn):
+            _save_strike_queue(queue_data)
+            return
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        embed = _build_strike_queue_board_embed(queue_data, packages, guild)
+        view = StrikeQueueBoardView()
+
+        old_message_id = int(board.get("message_id") or 0)
+        should_bump = _should_bump_strike_queue_board(board, force_bump=force_bump, major_change=major_change)
+
+        if old_message_id and not should_bump:
+            try:
+                old_msg = await board_channel.fetch_message(old_message_id)
+                await old_msg.edit(embed=embed, view=view)
+                board["channel_id"] = int(getattr(board_channel, "id", board_channel_id))
+                board["message_id"] = int(old_msg.id)
+                board["last_rendered_at"] = now_iso
+                _save_strike_queue(queue_data)
+                return
+            except (discord.NotFound, discord.Forbidden):
+                old_message_id = 0
+            except Exception as exc:
+                _g.logger.debug(f"[TP] Failed editing strike queue board message {old_message_id}: {exc}")
+
+        new_msg = await board_channel.send(embed=embed, view=view)
+        if old_message_id:
+            try:
+                old_msg = await board_channel.fetch_message(old_message_id)
+                await old_msg.delete()
+            except (discord.NotFound, discord.Forbidden):
+                pass
+            except Exception as exc:
+                _g.logger.debug(f"[TP] Failed deleting previous strike queue board message {old_message_id}: {exc}")
+
+        board["channel_id"] = int(getattr(board_channel, "id", board_channel_id))
+        board["message_id"] = int(new_msg.id)
+        board["last_rendered_at"] = now_iso
+        board["last_bump_at"] = now_iso
+        _save_strike_queue(queue_data)
+
+
+async def _queue_member_for_strike(
+    member: "discord.Member",
+    guild: "discord.Guild | None",
+    *,
+    minutes: int,
+    mode_preference: str,
+) -> tuple[bool, str]:
+    if not _member_meets_strike_queue_baseline(member):
+        return False, "Only active brothers may join the strike queue."
+
+    if minutes < 5 or minutes > 240:
+        return False, "Queue duration must be between 5 and 240 minutes."
+
+    normalized_mode = _normalize_strike_queue_mode(mode_preference)
+    if str(mode_preference or "").strip().lower() not in {
+        "", "any", "hard", "hard-strat", "hard_strat", "omega", "omega-strat", "omega_strat"
+    }:
+        return False, "Mode preference must be one of: any, hard, omega."
+    if normalized_mode == "omega" and not _tp_get_player_platform(member):
+        return False, "Omega queueing requires a PC or Console role."
+
+    data = _load_tp()
+    packages = data.get("packages", {})
+    commitment = _member_active_directive_commitment(member.id, data)
+    if commitment is not None:
+        directive_code, is_specialist = commitment
+        if is_specialist:
+            return False, (
+                f"You are already committed as a specialist to directive `{directive_code}`. "
+                "Complete that operation first."
+            )
+        return False, f"You are already committed to directive `{directive_code}`. Complete that operation first."
+
+    queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
+
+    had_entries = False
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        had_entries = bool(queue_data.setdefault("entries", {}))
+        queue_data.setdefault("entries", {})[str(member.id)] = {
+            "user_id": int(member.id),
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(),
+            "requested_minutes": int(minutes),
+            "mode_preference": normalized_mode,
+            "platform": _tp_get_player_platform(member),
+        }
+        _save_strike_queue(queue_data)
+
+    match_count = await _evaluate_strike_queue_matches(guild) if guild else 0
+    await _reconcile_strike_queue_board(guild, major_change=match_count > 0, force_bump=not had_entries)
+
+    queue_eligible_count = len(queue_eligible)
+    mode_text = normalized_mode.upper() if normalized_mode != "any" else "ANY"
+    match_text = ""
+    if match_count > 0:
+        noun = "directive" if match_count == 1 else "directives"
+        match_text = (
+            f" A full strike element was committed for **{match_count}** {noun}; "
+            "the queue was cleared and the directive roster updated."
+        )
+    return True, (
+        f"You are queued for strike directives for the next **{minutes}** minutes. "
+        f"Mode preference: **{mode_text}**. "
+        f"Current fully-open directives eligible for queue matching: **{queue_eligible_count}**."
+        f"{match_text}"
+    )
+
+
+async def _leave_member_from_strike_queue(user_id: int, guild: "discord.Guild | None") -> bool:
+    async with _STRIKE_QUEUE_LOCK:
+        queue_data = _load_strike_queue()
+        queue_data, _ = _prune_strike_queue(queue_data)
+        removed = queue_data.setdefault("entries", {}).pop(str(int(user_id)), None)
+        _save_strike_queue(queue_data)
+    if removed is not None:
+        await _reconcile_strike_queue_board(guild, major_change=True)
+        return True
+    return False
+
+
+class StrikeQueueBoardView(discord.ui.View):
+    """Persistent controls for the public strike queue board."""
+
+    def __init__(self):
+        try:
+            super().__init__(timeout=None)
+        except TypeError:
+            super().__init__()
+
+    async def _handle_join(self, interaction: discord.Interaction, mode_preference: str) -> None:
+        guild = interaction.guild or _get_guild_from_bot()
+        member = guild.get_member(interaction.user.id) if guild else None
+        if member is None:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Could not resolve your membership.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        ok, msg = await _queue_member_for_strike(member, guild, minutes=60, mode_preference=mode_preference)
+        await interaction.followup.send(msg, ephemeral=True)
+
+    @discord.ui.button(label="Join Any", style=discord.ButtonStyle.primary, custom_id="tp_strike_queue_join_any")
+    async def join_any(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_join(interaction, "any")
+
+    @discord.ui.button(label="Join Hard", style=discord.ButtonStyle.success, custom_id="tp_strike_queue_join_hard")
+    async def join_hard(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_join(interaction, "hard")
+
+    @discord.ui.button(label="Join Omega", style=discord.ButtonStyle.secondary, custom_id="tp_strike_queue_join_omega")
+    async def join_omega(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_join(interaction, "omega")
+
+    @discord.ui.button(label="Leave Queue", style=discord.ButtonStyle.danger, custom_id="tp_strike_queue_leave")
+    async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild or _get_guild_from_bot()
+        await interaction.response.defer(ephemeral=True)
+        removed = await _leave_member_from_strike_queue(interaction.user.id, guild)
+        if removed:
+            await interaction.followup.send("You have been removed from the strike queue.", ephemeral=True)
+            return
+        await interaction.followup.send("You are not currently in the strike queue.", ephemeral=True)
+
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, custom_id="tp_strike_queue_refresh")
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild or _get_guild_from_bot()
+        await interaction.response.defer(ephemeral=True)
+        await _reconcile_strike_queue_board(guild, major_change=False)
+        await interaction.followup.send("Queue board refreshed.", ephemeral=True)
+
+    @discord.ui.button(label="My Status", style=discord.ButtonStyle.secondary, custom_id="tp_strike_queue_my_status")
+    async def my_status(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild or _get_guild_from_bot()
+        member = guild.get_member(interaction.user.id) if guild else None
+        if member is None:
+            await interaction.response.send_message("Could not resolve your membership.", ephemeral=True)
+            return
+
+        async with _STRIKE_QUEUE_LOCK:
+            queue_data = _load_strike_queue()
+            queue_data, _ = _prune_strike_queue(queue_data)
+            entries = queue_data.setdefault("entries", {})
+            entry = entries.get(str(member.id))
+            ordered = _ordered_queue_entries(entries)
+            _save_strike_queue(queue_data)
+
+        if not entry:
+            await interaction.response.send_message("You are not currently queued.", ephemeral=True)
+            return
+
+        position = next((idx + 1 for idx, (uid, _e) in enumerate(ordered) if uid == str(member.id)), 1)
+        mode = _normalize_strike_queue_mode(entry.get("mode_preference"))
+        mode_text = "ANY" if mode == "any" else mode.upper()
+        expires_at = str(entry.get("expires_at") or "").strip()
+        expiry_text = expires_at
+        try:
+            expiry = datetime.fromisoformat(expires_at)
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            expiry_text = f"<t:{int(expiry.timestamp())}:R>"
+        except Exception:
+            pass
+        await interaction.response.send_message(
+            f"Mode: **{mode_text}**\nPosition: **{position}/{len(ordered)}**\nExpires: {expiry_text}",
+            ephemeral=True,
+        )
 
 
 def _member_meets_strike_queue_baseline(member: discord.Member) -> bool:
@@ -7882,74 +8325,8 @@ async def queue_strike(
     member = interaction.user
     guild = interaction.guild
     await interaction.response.defer(ephemeral=True)
-
-    if not _member_meets_strike_queue_baseline(member):
-        await interaction.followup.send("Only active brothers may join the strike queue.", ephemeral=True)
-        return
-
-    if minutes < 5 or minutes > 240:
-        await interaction.followup.send("Queue duration must be between 5 and 240 minutes.", ephemeral=True)
-        return
-
-    normalized_mode = _normalize_strike_queue_mode(mode_preference)
-    if str(mode_preference or "").strip().lower() not in {
-        "", "any", "hard", "hard-strat", "hard_strat", "omega", "omega-strat", "omega_strat"
-    }:
-        await interaction.followup.send("Mode preference must be one of: any, hard, omega.", ephemeral=True)
-        return
-    if normalized_mode == "omega" and not _tp_get_player_platform(member):
-        await interaction.followup.send("Omega queueing requires a PC or Console role.", ephemeral=True)
-        return
-
-    data = _load_tp()
-    packages = data.get("packages", {})
-    commitment = _member_active_directive_commitment(member.id, data)
-    if commitment is not None:
-        directive_code, is_specialist = commitment
-        if is_specialist:
-            await interaction.followup.send(
-                f"You are already committed as a specialist to directive `{directive_code}`. Complete that operation first.",
-                ephemeral=True,
-            )
-            return
-        await interaction.followup.send(
-            f"You are already committed to directive `{directive_code}`. Complete that operation first.",
-            ephemeral=True,
-        )
-        return
-
-    queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
-
-    async with _STRIKE_QUEUE_LOCK:
-        queue_data = _load_strike_queue()
-        queue_data, _ = _prune_strike_queue(queue_data)
-        queue_data.setdefault("entries", {})[str(member.id)] = {
-            "user_id": int(member.id),
-            "queued_at": datetime.now(timezone.utc).isoformat(),
-            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(),
-            "requested_minutes": int(minutes),
-            "mode_preference": normalized_mode,
-            "platform": _tp_get_player_platform(member),
-        }
-        _save_strike_queue(queue_data)
-
-    match_count = await _evaluate_strike_queue_matches(guild)
-
-    queue_eligible_count = len(queue_eligible)
-    mode_text = normalized_mode.upper() if normalized_mode != "any" else "ANY"
-    match_text = ""
-    if match_count > 0:
-        noun = "directive" if match_count == 1 else "directives"
-        match_text = f" A full strike element was committed for **{match_count}** {noun}; the queue was cleared and the directive roster updated."
-    await interaction.followup.send(
-        (
-            f"You are queued for strike directives for the next **{minutes}** minutes. "
-            f"Mode preference: **{mode_text}**. "
-            f"Current fully-open directives eligible for queue matching: **{queue_eligible_count}**."
-            f"{match_text}"
-        ),
-        ephemeral=True,
-    )
+    ok, message = await _queue_member_for_strike(member, guild, minutes=minutes, mode_preference=mode_preference)
+    await interaction.followup.send(message, ephemeral=True)
 
 
 @app_commands.command(
@@ -7958,13 +8335,10 @@ async def queue_strike(
 )
 async def leave_strike_queue(interaction: discord.Interaction):
     member = interaction.user
+    guild = interaction.guild
     await interaction.response.defer(ephemeral=True)
 
-    async with _STRIKE_QUEUE_LOCK:
-        queue_data = _load_strike_queue()
-        queue_data, _ = _prune_strike_queue(queue_data)
-        removed = queue_data.setdefault("entries", {}).pop(str(member.id), None)
-        _save_strike_queue(queue_data)
+    removed = await _leave_member_from_strike_queue(member.id, guild)
 
     if removed:
         await interaction.followup.send("You have been removed from the strike queue.", ephemeral=True)
@@ -8441,10 +8815,12 @@ async def _strike_queue_match_sweep_loop():
         if not guild_id:
             for guild in bot.guilds:
                 await _evaluate_strike_queue_matches(guild)
+                await _reconcile_strike_queue_board(guild)
         else:
             guild = bot.get_guild(int(guild_id))
             if guild:
                 await _evaluate_strike_queue_matches(guild)
+                await _reconcile_strike_queue_board(guild)
     except Exception as e:
         _g.logger.error(f"[TP] Strike queue sweep loop error: {e}")
 
@@ -8477,6 +8853,14 @@ async def register_persistent_views() -> None:
             _g.logger.info(
                 f"target_packages_ops: registered {signup_count} SignUp persistent views"
             )
+
+        queue_data = _load_strike_queue()
+        board = _strike_queue_board_state(queue_data)
+        board_msg_id = int(board.get("message_id") or 0)
+        if board_msg_id:
+            _g.bot.add_view(StrikeQueueBoardView(), message_id=board_msg_id)
+            if _g.logger:
+                _g.logger.info("target_packages_ops: registered strike queue board persistent view")
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"target_packages_ops: register_persistent_views failed: {exc}")
