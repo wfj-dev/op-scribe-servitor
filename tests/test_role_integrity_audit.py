@@ -471,6 +471,97 @@ def test_collect_role_integrity_findings_flags_company_command_for_specialists(m
     assert "company_command_excess" in codes
 
 
+def test_collect_role_integrity_findings_flags_company_membership_for_specialists(monkeypatch):
+    member = _make_member(15, ["Watch Brother", "Watch Apothecary", "Watch Company Primus"])
+    guild = SimpleNamespace(members=[member], get_role=lambda rid: SimpleNamespace(id=rid, name="Primus Command" if rid == 2002 else "Watch Company Primus"))
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {
+            "role_integrity_audit": {},
+            "companies": {
+                "primus": {
+                    "name": "Watch Company Primus",
+                    "companyRoleId": 2001,
+                    "companyCommandRoleId": 2002,
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+    monkeypatch.setattr(ro, "_role_id_set", lambda _m: {2001})
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+    assert "company_role_excess" in codes
+
+
+def test_collect_role_integrity_findings_flags_kill_team_for_specialists(monkeypatch):
+    member = _make_member(16, ["Watch Brother", "Watch Apothecary", "Kill Team Alpha"])
+    guild = SimpleNamespace(members=[member], get_role=lambda _rid: None)
+
+    monkeypatch.setattr(ro._g, "CONFIG", {"role_integrity_audit": {}, "companies": {}})
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", {3001})
+    monkeypatch.setattr(ro, "_role_id_set", lambda _m: {3001})
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+    assert "kt_assignment_invalid" in codes
+
+
+def test_collect_role_integrity_findings_flags_blade_track_for_company_membership(monkeypatch):
+    member = _make_member(17, ["Watch Brother", "Watch Veteran", "Bladeguard", "Watch Company Primus"])
+    guild = SimpleNamespace(members=[member], get_role=lambda rid: SimpleNamespace(id=rid, name="Watch Company Primus"))
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {
+            "role_integrity_audit": {},
+            "companies": {
+                "primus": {
+                    "name": "Watch Company Primus",
+                    "companyRoleId": 2001,
+                    "companyCommandRoleId": 2002,
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+    monkeypatch.setattr(ro, "_role_id_set", lambda _m: {2001})
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+    assert "company_role_excess" in codes
+
+
+def test_collect_role_integrity_findings_flags_dreadnought_track_for_company_membership(monkeypatch):
+    member = _make_member(18, ["Watch Brother", "Watch Veteran", "Honored Dreadnought", "Watch Company Primus"])
+    guild = SimpleNamespace(members=[member], get_role=lambda rid: SimpleNamespace(id=rid, name="Watch Company Primus"))
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {
+            "role_integrity_audit": {},
+            "companies": {
+                "primus": {
+                    "name": "Watch Company Primus",
+                    "companyRoleId": 2001,
+                    "companyCommandRoleId": 2002,
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(bot, "ALLOWED_KT_ROLE_IDS", set())
+    monkeypatch.setattr(ro, "_role_id_set", lambda _m: {2001})
+
+    findings = _run(ro._collect_role_integrity_findings(guild))
+    codes = {f["code"] for f in findings}
+    assert "company_role_excess" in codes
+
+
 def test_parse_roster_section_from_source_filters_embed_sections():
     field_cmd = SimpleNamespace(name="▸ Company Captain & Lieutenant", value="· | <@101>")
     field_specialist = SimpleNamespace(name="▸ Forge Master's Specialists", value="· | <@202>")
