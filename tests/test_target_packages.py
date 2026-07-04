@@ -1041,6 +1041,7 @@ class TestParticipationRepAccounting:
         import opscribe.target_packages_ops as tp
 
         member = _make_member(["Watch Apothecary", "Blademaster"], member_id=999)
+        reversed_member = _make_member(["Blademaster", "Watch Apothecary"], member_id=1000)
         monkeypatch.setattr(
             tp,
             "_cadre_rep_bucket_role_map",
@@ -1048,6 +1049,7 @@ class TestParticipationRepAccounting:
         )
 
         assert tp._specialist_rep_bucket(member) == "Blades"
+        assert tp._specialist_rep_bucket(reversed_member) == "Blades"
 
     def test_company_gets_split_plus_base_award(self):
         import opscribe.target_packages_ops as tp
