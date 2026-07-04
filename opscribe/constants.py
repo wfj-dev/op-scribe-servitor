@@ -487,6 +487,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Red Scorpions":          0x3A3F44,  # Charcoal/dark grey
     "Red Templars":           0xB01B1B,  # Red
     "Salamanders":            0x0A6B3B,  # Bright dark green/emerald
+    "Sable Knights":          0x5A0E14,  # Dark red with black accents
     "Scythes of the Emperor": 0xF2C200,  # Yellow
     "Sons of Medusa":         0x1A7A4C,  # Emerald green
     "Space Wolves":           0x6B8499,  # Blue-grey (The Fang)
