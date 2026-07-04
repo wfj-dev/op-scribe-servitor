@@ -10,11 +10,14 @@ Tests cover:
 """
 
 import asyncio
+import io
 import sys
 import types
 from itertools import combinations as itertools_combinations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
+
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -569,7 +572,7 @@ class TestDrawStrats:
         assert len(debuffs) == neg
 
     def test_rep_3_counts(self):
-        result = _draw_strats(60.0, self.STRATS)
+        result = _draw_strats(99.0, self.STRATS)
         core = result["core"]
         buffs = [s for s in core if s["type"] == "buff"]
         debuffs = [s for s in core if s["type"] == "debuff"]
@@ -946,6 +949,30 @@ class TestCadreSpecialistRoles:
 
 
 class TestParticipationRepAccounting:
+    def test_target_packages_config_file_loaded_once_when_live_config_present(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        calls = {"open": 0}
+
+        def _fake_open(*_args, **_kwargs):
+            calls["open"] += 1
+            return io.StringIO('{"target_packages": {"cadres": {"x": {"rep_bucket": "Blades"}}}}')
+
+        monkeypatch.setattr("builtins.open", _fake_open)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_CACHE", None)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_FILE_CACHE", None)
+        monkeypatch.setattr(tp, "_CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED", False)
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda name: {"target_packages": {"cadres": {"x": {"leader_role_name": "Blademaster"}}}} if name == "CONFIG" else None,
+        )
+
+        tp._target_packages_config()
+        tp._target_packages_config()
+
+        assert calls["open"] == 1
+
     def test_rep_delta_for_package_uses_mode_specific_values(self):
         import opscribe.target_packages_ops as tp
 
@@ -955,9 +982,9 @@ class TestParticipationRepAccounting:
         omega_with_req = {"mode": "Omega-Strat", "required_roles": ["Watch Veteran"]}
 
         assert tp._rep_delta_for_package(hard_no_req, STATUS_COMPLETED) == 3.0
-        assert tp._rep_delta_for_package(hard_with_req, STATUS_COMPLETED) == 4.0
+        assert tp._rep_delta_for_package(hard_with_req, STATUS_COMPLETED) == 6.0
         assert tp._rep_delta_for_package(omega_no_req, STATUS_COMPLETED) == 5.0
-        assert tp._rep_delta_for_package(omega_with_req, STATUS_COMPLETED) == 6.0
+        assert tp._rep_delta_for_package(omega_with_req, STATUS_COMPLETED) == 11.0
 
         assert tp._rep_delta_for_package(hard_no_req, STATUS_FAILED) == -2.0
         assert tp._rep_delta_for_package(omega_no_req, STATUS_FAILED) == -3.0
@@ -983,8 +1010,10 @@ class TestParticipationRepAccounting:
 
         allocations = tp._compute_participation_rep_allocations(pkg, guild, 3.0)
 
-        assert allocations["kill_teams"] == {"Kill Team A": 1.0, "Kill Team B": 1.0}
-        assert allocations["cadres"] == {"Apothecarion": 1.0}
+        assert allocations["kill_teams"] == {"Kill Team A": 0.7, "Kill Team B": 0.7}
+        assert allocations["cadres"] == {"Apothecarion": 0.7}
+        assert allocations["companies"] == {"Primus": 0.4}
+        assert allocations["fortress"] == 0.5
 
     def test_split_allocations_exclude_captain_and_lieutenant(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -1004,9 +1033,25 @@ class TestParticipationRepAccounting:
         allocations = tp._compute_participation_rep_allocations(pkg, guild, 2.0)
 
         assert allocations["kill_teams"] == {}
-        assert allocations["cadres"] == {"Apothecarion": 2.0}
+        assert allocations["cadres"] == {"Apothecarion": 0.46}
+        assert allocations["companies"] == {"Primus": 0.94}
+        assert allocations["fortress"] == 0.6
 
-    def test_company_gets_full_rep_even_when_split(self):
+    def test_specialist_rep_bucket_selection_is_deterministic(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Watch Apothecary", "Blademaster"], member_id=999)
+        reversed_member = _make_member(["Blademaster", "Watch Apothecary"], member_id=1000)
+        monkeypatch.setattr(
+            tp,
+            "_cadre_rep_bucket_role_map",
+            lambda: {"Watch Apothecary": "Apothecarion", "Blademaster": "Blades"},
+        )
+
+        assert tp._specialist_rep_bucket(member) == "Blades"
+        assert tp._specialist_rep_bucket(reversed_member) == "Blades"
+
+    def test_company_gets_split_plus_base_award(self):
         import opscribe.target_packages_ops as tp
 
         data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
@@ -1014,16 +1059,17 @@ class TestParticipationRepAccounting:
         allocations = {
             "kill_teams": {"Kill Team A": 1.0, "Kill Team B": 1.0},
             "cadres": {"Apothecarion": 1.0},
+            "companies": {"Watch Company Primus": 0.3},
         }
 
-        tp._apply_entity_rep_allocations(data, pkg, allocations, 3.0)
+        tp._apply_entity_rep_allocations(data, pkg, allocations, company_bonus=1.0)
 
         assert data["entity_stats"]["kill_teams"]["Kill Team A"]["rep_earned"] == 1.0
         assert data["entity_stats"]["kill_teams"]["Kill Team B"]["rep_earned"] == 1.0
         assert data["entity_stats"]["cadres"]["Apothecarion"]["rep_earned"] == 1.0
-        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 3.0
+        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 1.3
 
-    def test_company_gets_command_bonus_on_top_of_full_completion_rep(self):
+    def test_company_base_award_applies_on_top_of_split(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
@@ -1037,44 +1083,61 @@ class TestParticipationRepAccounting:
         specialist = _make_member(["Watch Apothecary"], member_id=12)
         guild = _make_guild([captain, lieutenant, specialist])
 
-        bonus = tp._compute_company_command_bonus(pkg, guild)
-        assert bonus == 2.0
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
 
-        allocations = {"kill_teams": {}, "cadres": {"Apothecarion": 3.0}}
-        tp._apply_entity_rep_allocations(data, pkg, allocations, 3.0, company_bonus=bonus)
+        base_bonus = tp._compute_company_completion_bonus(pkg)
+        assert base_bonus == 1.0
 
-        assert data["entity_stats"]["cadres"]["Apothecarion"]["rep_earned"] == 3.0
-        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 5.0
+        allocations = tp._compute_participation_rep_allocations(pkg, guild, 3.0)
+        tp._apply_entity_rep_allocations(data, pkg, allocations, company_bonus=base_bonus)
 
-    def test_fortress_bonus_includes_watch_master_and_huntmaster(self):
+        assert data["entity_stats"]["cadres"]["Apothecarion"]["rep_earned"] == 0.7
+        assert data["entity_stats"]["companies"]["Watch Company Primus"]["rep_earned"] == 2.4
+
+    def test_fortress_base_award_returns_default(self):
         import opscribe.target_packages_ops as tp
 
-        pkg = {
-            "signed_up": [10, 11, 12],
-            "assigned_specialist_ids": [],
-        }
-        wm = _make_member(["Watch Master"], member_id=10)
-        huntmaster = _make_member(["Huntmaster"], member_id=11)
-        brother = _make_member(["Watch Brother"], member_id=12)
-        guild = _make_guild([wm, huntmaster, brother])
+        pkg = {"id": "TP-TEST"}
+        assert tp._compute_fortress_completion_bonus(pkg) == 1.0
 
-        assert tp._compute_fortress_command_bonus(pkg, guild) == 2.0
-
-    def test_cadre_leader_bonus_allocations(self):
+    def test_high_command_participation_flows_to_fortress_split(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         pkg = {
             "signed_up": [21, 22, 23],
             "assigned_specialist_ids": [],
+            "assigned_company": "Watch Company Primus",
         }
         blademaster = _make_member(["Blademaster"], member_id=21)
         high_chaplain = _make_member(["High Chaplain"], member_id=22)
         huntmaster = _make_member(["Huntmaster"], member_id=23)
         guild = _make_guild([blademaster, high_chaplain, huntmaster])
 
-        bonuses = tp._compute_cadre_leader_bonus_allocations(pkg, guild)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
 
-        assert bonuses == {"Blades": 0.5, "Reclusiam": 0.5}
+        allocations = tp._compute_participation_rep_allocations(pkg, guild, 3.0)
+
+        assert allocations["kill_teams"] == {}
+        assert allocations["cadres"] == {"Blades": 0.7, "Reclusiam": 0.7}
+        assert allocations["fortress"] == 1.6
+
+    def test_apply_entity_rep_allocations_rejects_unexpected_legacy_args(self):
+        import opscribe.target_packages_ops as tp
+
+        data = {"entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}}}
+        pkg = {"assigned_company": "Watch Company Primus"}
+        allocations = {"kill_teams": {}, "cadres": {}, "companies": {}}
+
+        with pytest.raises(TypeError, match="at most two legacy positional args"):
+            tp._apply_entity_rep_allocations(data, pkg, allocations, 1.0, {"Apothecarion": 0.2}, "unexpected")
 
 
 # ---------------------------------------------------------------------------
@@ -1187,24 +1250,22 @@ class TestComputeHonors:
         assert result["kill_teams"]["Bravo"]["tier_index"] == 2
         assert result["kill_teams"]["Bravo"]["tier"] == "Vigilant"
 
-    def test_company_contributor_gate_caps_tier(self):
-        """Company tier is capped when too few distinct KTs contributed."""
+    def test_company_single_kt_still_scores_by_rep_and_completions(self):
+        """Company tier no longer uses a distinct-KT gate cap."""
         # 3 completions each contributing 5 rep → co_rep=15, co_comp=3
         # ri: 15 >= 13.0 → index 2; ci: 3 >= 3 → index 1
-        # raw_final = round(0.75*2 + 0.25*1) = 2
-        # Tier index 2 needs _CO_KT_GATES[2] = 2 distinct KTs.
-        # Only 1 KT contributed → gate triggers → raw_final drops to 1 → "Marked"
+        # final = round(0.75*2 + 0.25*1) = 2
         pkgs = {
             f"p{i}": _make_completed_pkg(f"p{i}", "Alpha", "Primus", float(i*5), float(i*5+5), self._WITHIN)
             for i in range(3)
         }
         result = self._call(pkgs)
         tier_idx = result["companies"]["Primus"]["tier_index"]
-        assert tier_idx < 2, f"Expected gate to cap tier below 2 but got {tier_idx}"
+        assert tier_idx == 2
         assert result["companies"]["Primus"]["contributing_kts"] == 1
 
     def test_company_multi_kt_unlocks_higher_tier(self):
-        """Two contributing KTs satisfy the gate for tier index 2."""
+        """Two contributing KTs preserve expected tier index under no-gate model."""
         # Same total stats as gate-capped case but split across 2 KTs.
         pkgs = {
             "p0": _make_completed_pkg("p0", "Alpha", "Primus", 0.0, 5.0, self._WITHIN),

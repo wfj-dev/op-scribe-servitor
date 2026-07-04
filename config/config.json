@@ -325,7 +325,7 @@
       "Void Warden",
       "Chief Apothecary",
       "High Chaplain",
-      "Lord Executioner",
+      "Blademaster",
       "Venerable Dreadnought",
       "Huntmaster"
     ],
@@ -495,6 +495,28 @@
         "hc": 10
       }
     },
+    "strike_rep_split_weights": {
+      "line_brother": {
+        "fortress": 10,
+        "company": 20,
+        "kt": 70
+      },
+      "specialist": {
+        "fortress": 30,
+        "cadre": 70
+      },
+      "company_command": {
+        "fortress": 30,
+        "company": 70
+      },
+      "high_command": {
+        "fortress": 100
+      }
+    },
+    "strike_completion_base_awards": {
+      "company": 1.0,
+      "fortress": 1.0
+    },
     "strat_modifier_counts_by_rep_tier": {
       "-3": {
         "positive": 1,
@@ -535,6 +557,7 @@
         "version": 1,
         "leader_role_name": "Forgemaster",
         "leader_role_id": 1436505765073653860,
+        "rep_bucket": "Armory",
         "member_roles": [
           {
             "name": "Watch Techmarine",
@@ -555,6 +578,7 @@
         "version": 1,
         "leader_role_name": "Chief Apothecary",
         "leader_role_id": 1455224397387272363,
+        "rep_bucket": "Apothecarion",
         "member_roles": [
           {
             "name": "Watch Apothecary",
@@ -567,6 +591,7 @@
         "version": 1,
         "leader_role_name": "High Chaplain",
         "leader_role_id": 1436506654458904576,
+        "rep_bucket": "Reclusiam",
         "member_roles": [
           {
             "name": "Watch Chaplain",
@@ -577,26 +602,32 @@
       },
       "champion": {
         "version": 1,
-        "leader_role_name": "Lord Executioner",
+        "leader_role_name": "Blademaster",
         "leader_role_id": 1435341811886588154,
+        "rep_bucket": "Blades",
+        "rep_role_aliases": [
+          "Lord Executioner",
+          "Company Champion",
+          "Kill Team Champion"
+        ],
         "member_roles": [
           {
-            "name": "Company Champion",
+            "name": "First Blade",
             "id": 1434222022489145424
           },
           {
-            "name": "Kill Team Champion",
-            "id": 1434218776210964690,
-            "scope_exception": "kill_team"
+            "name": "Bladeguard",
+            "id": 1434218776210964690
           }
         ],
         "scope": "fortress",
-        "notes": "Kill Team Champion remains tied to Kill Team scope despite Lord Executioner ownership (fortress-wide authority only)"
+        "notes": "Bladeguard and First Blade are fortress-scoped specialist assignments under Blademaster authority."
       },
       "librarius": {
         "version": 1,
         "leader_role_name": "Void Warden",
         "leader_role_id": 1455226254897975389,
+        "rep_bucket": "Librarius",
         "member_roles": [
           {
             "name": "Watch Librarian",

@@ -47,6 +47,27 @@ _STRIKE_QUEUE_COMBINATION_CANDIDATE_LIMIT = 12
 _STRIKE_QUEUE_BOARD_FALLBACK_CHANNEL_ID = 1429942816741523570
 _STRIKE_QUEUE_BOARD_BUMP_MINUTES = 25
 
+_CONFIG_TARGET_PACKAGES_CACHE: dict | None = None
+_CONFIG_TARGET_PACKAGES_FILE_CACHE: dict | None = None
+_CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED = False
+
+
+def _target_packages_config_from_file() -> dict:
+    global _CONFIG_TARGET_PACKAGES_FILE_CACHE, _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED
+    if _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED:
+        return _CONFIG_TARGET_PACKAGES_FILE_CACHE or {}
+
+    try:
+        cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            raw = json.load(f) or {}
+        tp_cfg = (raw.get("target_packages") or {}) if isinstance(raw, dict) else {}
+        _CONFIG_TARGET_PACKAGES_FILE_CACHE = tp_cfg if isinstance(tp_cfg, dict) else {}
+    except Exception:
+        _CONFIG_TARGET_PACKAGES_FILE_CACHE = {}
+    _CONFIG_TARGET_PACKAGES_FILE_CACHE_LOADED = True
+    return _CONFIG_TARGET_PACKAGES_FILE_CACHE or {}
+
 
 def _get_guild_from_bot() -> "discord.Guild | None":
     """Resolve the configured guild from the bot. Used when interaction.guild is None (DM context)."""
@@ -57,6 +78,46 @@ def _get_guild_from_bot() -> "discord.Guild | None":
     if guild_id:
         return bot.get_guild(int(guild_id))
     return next(iter(bot.guilds), None)
+
+
+def _target_packages_config() -> dict:
+    """Return target_packages config from bot CONFIG, with file fallback for tests/tools."""
+    global _CONFIG_TARGET_PACKAGES_CACHE
+
+    live_cfg = (_b("CONFIG") or {}).get("target_packages")
+    if isinstance(live_cfg, dict) and live_cfg:
+        file_cfg = _target_packages_config_from_file()
+        if file_cfg:
+            merged = json.loads(json.dumps(file_cfg))
+            for key, value in live_cfg.items():
+                if key == "cadres" and isinstance(value, dict) and isinstance(merged.get("cadres"), dict):
+                    merged_cadres = merged.get("cadres") or {}
+                    for cadre_key, cadre_value in value.items():
+                        if isinstance(cadre_value, dict) and isinstance(merged_cadres.get(cadre_key), dict):
+                            merged_entry = dict(merged_cadres.get(cadre_key) or {})
+                            merged_entry.update(cadre_value)
+                            merged_cadres[cadre_key] = merged_entry
+                        else:
+                            merged_cadres[cadre_key] = cadre_value
+                    merged["cadres"] = merged_cadres
+                else:
+                    merged[key] = value
+            _CONFIG_TARGET_PACKAGES_CACHE = merged
+            return merged
+
+        _CONFIG_TARGET_PACKAGES_CACHE = live_cfg
+        return live_cfg
+
+    if _CONFIG_TARGET_PACKAGES_CACHE is not None:
+        return _CONFIG_TARGET_PACKAGES_CACHE
+
+    tp_cfg = _target_packages_config_from_file()
+    if tp_cfg:
+        _CONFIG_TARGET_PACKAGES_CACHE = tp_cfg
+        return tp_cfg
+
+    _CONFIG_TARGET_PACKAGES_CACHE = {}
+    return _CONFIG_TARGET_PACKAGES_CACHE
 
 
 def _tp_get_player_platform(member: discord.Member) -> Optional[str]:
@@ -681,6 +742,18 @@ _REQUIREMENT_SLOT_TIER_WEIGHTS_DEFAULT = {
     _REQ_TIER_HC: 10,
 }
 
+_STRIKE_REP_SPLIT_WEIGHTS_DEFAULT = {
+    "line_brother": {"fortress": 20, "company": 10, "kt": 70},
+    "specialist": {"fortress": 20, "cadre": 80},
+    "company_command": {"fortress": 20, "company": 80},
+    "high_command": {"fortress": 100},
+}
+
+_STRIKE_COMPLETION_BASE_AWARDS_DEFAULT = {
+    "company": 1.0,
+    "fortress": 1.0,
+}
+
 
 def _requirement_no_req_chance() -> float:
     """Return no-requirement draw chance from config with safe default."""
@@ -1064,7 +1137,7 @@ async def _send_single_batch_warning(
         name="▸ Current Batch",
         value=(
             f"Batch: `{reminder_batch_id}`\n"
-            f"Completed: {len(completed)}/{len(batch_pkgs)} ({completion_rate * 100:.0f}%)\n"
+            f"Completed: {len(completed)}/{len(batch_pkgs)} ({_fmt_float2(completion_rate * 100)}%)\n"
             f"Still Active: {len(actionable)}"
         ),
         inline=False,
@@ -2812,7 +2885,7 @@ def _rep_delta_for_package(pkg: dict, outcome: str) -> float:
         req_roles = pkg.get("required_roles", []) or []
         delta = 5.0 if is_omega else 3.0
         if req_roles:
-            delta += 1.0
+            delta += 6.0 if is_omega else 3.0
         return delta
     if outcome == STATUS_FAILED:
         return -3.0 if is_omega else -2.0
@@ -2826,201 +2899,296 @@ def _apply_rep_delta(data: dict, delta: float) -> None:
     data["rep"] = max(_REP_MIN, min(_REP_MAX, cur + float(delta or 0.0)))
 
 
+def _cadre_rep_bucket_role_map() -> dict[str, str]:
+    """Return role->cadre rep bucket mapping from target_packages.cadres config.
+
+    Expected config shape per cadre entry:
+      {
+        "leader_role_name": "Chief Apothecary",
+        "member_roles": [{"name": "Watch Apothecary", "id": ...}],
+        "rep_bucket": "Apothecarion",
+        "rep_role_aliases": ["Legacy Leader Name"]
+      }
+    """
+    cadres_cfg = (_target_packages_config().get("cadres") or {})
+    if not isinstance(cadres_cfg, dict):
+        return {}
+
+    out: dict[str, str] = {}
+    for cadre_key, cadre_data in cadres_cfg.items():
+        if not isinstance(cadre_data, dict):
+            continue
+
+        bucket = str(cadre_data.get("rep_bucket") or "").strip()
+        if not bucket:
+            _g.logger.warning(
+                "[TP] target_packages.cadres[%s] missing rep_bucket; skipping rep routing for this cadre",
+                cadre_key,
+            )
+            continue
+
+        roles_for_bucket: set[str] = set()
+        leader_role_name = cadre_data.get("leader_role_name")
+        if isinstance(leader_role_name, str) and leader_role_name.strip():
+            roles_for_bucket.add(leader_role_name.strip())
+
+        alias_roles = cadre_data.get("rep_role_aliases") or []
+        if isinstance(alias_roles, list):
+            for alias in alias_roles:
+                if isinstance(alias, str) and alias.strip():
+                    roles_for_bucket.add(alias.strip())
+
+        for member in (cadre_data.get("member_roles") or []):
+            if isinstance(member, dict):
+                role_name = str(member.get("name") or "").strip()
+            elif isinstance(member, str):
+                role_name = member.strip()
+            else:
+                role_name = ""
+            if role_name:
+                roles_for_bucket.add(role_name)
+
+        for role_name in roles_for_bucket:
+            out[role_name] = bucket
+
+    return out
+
+
 def _specialist_rep_bucket(member: "discord.Member") -> str | None:
     roles = _member_role_names(member)
-    if roles & {"Watch Apothecary", "Chief Apothecary"}:
-        return "Apothecarion"
-    if roles & {"Watch Techmarine", "Forgemaster", "Honored Dreadnought", "Venerable Dreadnought"}:
-        return "Armory"
-    if roles & {"Watch Chaplain", "High Chaplain"}:
-        return "Reclusiam"
-    if roles & {"Watch Librarian", "Void Warden"}:
-        return "Librarius"
-    if roles & {"Bladeguard", "First Blade", "Blademaster"}:
-        return "Blades"
+
+    configured_map = _cadre_rep_bucket_role_map()
+    # If multiple cadre roles match, select the bucket for the alphabetically
+    # first matching role name.
+    for role_name in sorted(roles):
+        bucket = configured_map.get(role_name)
+        if bucket:
+            return bucket
     return None
 
 
-def _compute_participation_rep_allocations(pkg: dict, guild: "discord.Guild | None", total_rep: float) -> dict:
-    """Split directive completion rep across participating KTs and specialist cadres.
+def _strike_rep_split_weights() -> dict:
+    """Return role-based strike rep split weights from config with defaults."""
+    raw = _target_packages_config().get("strike_rep_split_weights") or {}
+    if not isinstance(raw, dict):
+        return json.loads(json.dumps(_STRIKE_REP_SPLIT_WEIGHTS_DEFAULT))
 
-    Captain/Lieutenant participants are intentionally excluded from split attribution;
-    their contribution is represented in full via company rep.
-    """
-    result = {"kill_teams": {}, "cadres": {}}
+    parsed: dict[str, dict[str, int]] = {}
+    for role_class, default_weights in _STRIKE_REP_SPLIT_WEIGHTS_DEFAULT.items():
+        role_raw = raw.get(role_class, default_weights)
+        if not isinstance(role_raw, dict):
+            _g.logger.warning(
+                "[TP] Invalid target_packages.strike_rep_split_weights[%s]=%s; using defaults %s",
+                role_class,
+                role_raw,
+                default_weights,
+            )
+            return json.loads(json.dumps(_STRIKE_REP_SPLIT_WEIGHTS_DEFAULT))
+        parsed[role_class] = {}
+        for bucket_name, default_weight in default_weights.items():
+            try:
+                parsed[role_class][bucket_name] = int(role_raw.get(bucket_name, default_weight))
+            except Exception:
+                _g.logger.warning(
+                    "[TP] Invalid target_packages.strike_rep_split_weights[%s][%s]=%s; using defaults %s",
+                    role_class,
+                    bucket_name,
+                    role_raw.get(bucket_name),
+                    default_weights,
+                )
+                return json.loads(json.dumps(_STRIKE_REP_SPLIT_WEIGHTS_DEFAULT))
+        if sum(parsed[role_class].values()) <= 0:
+            _g.logger.warning(
+                "[TP] Non-positive strike rep split weights for %s; using defaults %s",
+                role_class,
+                default_weights,
+            )
+            return json.loads(json.dumps(_STRIKE_REP_SPLIT_WEIGHTS_DEFAULT))
+    return parsed
+
+
+def _strike_completion_base_awards() -> dict[str, float]:
+    """Return base completion awards applied outside weighted participant split."""
+    raw = _target_packages_config().get("strike_completion_base_awards") or {}
+    if not isinstance(raw, dict):
+        return dict(_STRIKE_COMPLETION_BASE_AWARDS_DEFAULT)
+
+    parsed: dict[str, float] = {}
+    for key, default_value in _STRIKE_COMPLETION_BASE_AWARDS_DEFAULT.items():
+        try:
+            parsed[key] = float(raw.get(key, default_value))
+        except Exception:
+            _g.logger.warning(
+                "[TP] Invalid target_packages.strike_completion_base_awards[%s]=%s; using default %s",
+                key,
+                raw.get(key),
+                default_value,
+            )
+            return dict(_STRIKE_COMPLETION_BASE_AWARDS_DEFAULT)
+    return parsed
+
+
+def _strike_rep_role_class(member: "discord.Member") -> str:
+    """Return role class for rep split routing."""
+    roles = _member_role_names(member)
+    if roles & {"Watch Master", "Huntmaster"}:
+        return "high_command"
+    if roles & {"Watch Captain", "Watch Lieutenant"}:
+        return "company_command"
+    if _specialist_rep_bucket(member):
+        return "specialist"
+    return "line_brother"
+
+
+def _split_cents_by_weights(total_cents: int, weighted_buckets: list[tuple[str, int]]) -> dict[str, int]:
+    """Split a cent total across weighted buckets deterministically."""
+    positive = [(name, int(weight)) for name, weight in weighted_buckets if int(weight) > 0]
+    if total_cents <= 0 or not positive:
+        return {name: 0 for name, _ in weighted_buckets}
+
+    total_weight = sum(weight for _name, weight in positive)
+    allocations: dict[str, int] = {}
+    remainders: list[tuple[float, str]] = []
+    allocated = 0
+    for name, weight in positive:
+        exact = (total_cents * weight) / total_weight
+        floor_cents = int(exact)
+        allocated += floor_cents
+        allocations[name] = floor_cents
+        remainders.append((exact - floor_cents, name))
+
+    leftover = total_cents - allocated
+    if leftover > 0:
+        # Highest fractional remainder receives first priority; ties break by bucket
+        # name so per-bucket rounding stays deterministic across runs.
+        for _frac, name in sorted(remainders, key=lambda item: (-item[0], item[1]))[:leftover]:
+            allocations[name] = allocations.get(name, 0) + 1
+
+    for name, _weight in weighted_buckets:
+        allocations.setdefault(name, 0)
+    return allocations
+
+
+def _compute_participation_rep_allocations(pkg: dict, guild: "discord.Guild | None", total_rep: float) -> dict:
+    """Split completion pool among participating brothers, then route by role weights."""
+    result = {"kill_teams": {}, "cadres": {}, "companies": {}, "fortress": 0.0}
     total = float(total_rep or 0.0)
     if total <= 0:
         return result
 
     signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
     specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
-    specialist_id_set = set(specialist_ids)
     participant_ids = list(dict.fromkeys(signed_ids + specialist_ids))
     if not participant_ids:
         return result
 
+    weights_cfg = _strike_rep_split_weights()
+    class_weights = {
+        "line_brother": list((weights_cfg.get("line_brother") or {}).items()),
+        "specialist": list((weights_cfg.get("specialist") or {}).items()),
+        "company_command": list((weights_cfg.get("company_command") or {}).items()),
+        "high_command": list((weights_cfg.get("high_command") or {}).items()),
+    }
+
+    pool_cents = int(round(total * 100.0))
+    base_share = pool_cents // len(participant_ids)
+    remainder = pool_cents % len(participant_ids)
+
     from .forge_ops import _resolve_killteam_for_member
 
-    contributor_keys: set[tuple[str, str]] = set()
-    for uid in participant_ids:
+    for idx, uid in enumerate(participant_ids):
         member = guild.get_member(uid) if guild else None
         if not member:
             continue
 
-        roles = _member_role_names(member)
-        if "Watch Captain" in roles or "Watch Lieutenant" in roles:
-            continue
-
-        if uid in specialist_id_set:
-            cadre_bucket = _specialist_rep_bucket(member)
-            if cadre_bucket:
-                contributor_keys.add(("cadres", cadre_bucket))
-                continue
+        share_cents = base_share + (1 if idx < remainder else 0)
+        role_class = _strike_rep_role_class(member)
+        split = _split_cents_by_weights(share_cents, class_weights.get(role_class, class_weights["line_brother"]))
 
         kt_name = _resolve_killteam_for_member(member)
-        if kt_name:
-            contributor_keys.add(("kill_teams", kt_name))
+        cadre_bucket = _specialist_rep_bucket(member)
+        company_name = pkg.get("assigned_company")
 
-    if not contributor_keys:
-        return result
-
-    ordered = sorted(contributor_keys, key=lambda item: (item[0], item[1]))
-    cents_total = int(round(total * 100.0))
-    base = cents_total // len(ordered)
-    remainder = cents_total % len(ordered)
-    for idx, (bucket, name) in enumerate(ordered):
-        share_cents = base + (1 if idx < remainder else 0)
-        result[bucket][name] = round(share_cents / 100.0, 2)
+        if "fortress" in split:
+            result["fortress"] = round(float(result["fortress"]) + split["fortress"] / 100.0, 2)
+        if kt_name and "kt" in split:
+            result["kill_teams"][kt_name] = round(float(result["kill_teams"].get(kt_name, 0.0)) + split["kt"] / 100.0, 2)
+        if cadre_bucket and "cadre" in split:
+            result["cadres"][cadre_bucket] = round(float(result["cadres"].get(cadre_bucket, 0.0)) + split["cadre"] / 100.0, 2)
+        if company_name and "company" in split:
+            result["companies"][company_name] = round(float(result["companies"].get(company_name, 0.0)) + split["company"] / 100.0, 2)
 
     return result
 
 
-def _compute_company_command_bonus(pkg: dict, guild: "discord.Guild | None") -> float:
-    """Return company-only bonus rep from participating command members.
-
-    Each participating Watch Captain or Watch Lieutenant contributes +1.0 company
-    rep on completion. This bonus does not flow to KT/cadre split allocations.
-    """
-    assigned_company = pkg.get("assigned_company")
-    if not assigned_company:
+def _compute_company_completion_bonus(pkg: dict) -> float:
+    """Base company rep award granted on any completed strike for assigned company."""
+    if not pkg.get("assigned_company"):
         return 0.0
+    return float(_strike_completion_base_awards().get("company", 0.0))
 
-    participant_ids = [
-        int(uid)
-        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
-        if str(uid).strip()
-    ]
-    if not participant_ids or guild is None:
+
+def _compute_fortress_completion_bonus(pkg: dict) -> float:
+    """Base fortress standing award granted on any completed strike."""
+    if not pkg.get("id"):
         return 0.0
-
-    bonus = 0.0
-    for uid in participant_ids:
-        member = guild.get_member(uid) if guild else None
-        if not member:
-            continue
-        roles = _member_role_names(member)
-        if "Watch Captain" in roles or "Watch Lieutenant" in roles:
-            bonus += 1.0
-    return bonus
-
-
-def _compute_fortress_command_bonus(pkg: dict, guild: "discord.Guild | None") -> float:
-    """Return fortress-only bonus rep from participating high command members.
-
-    Watch Master and Huntmaster contribute +1.0 fortress rep each when they
-    participate in a completed directive.
-    """
-    participant_ids = [
-        int(uid)
-        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
-        if str(uid).strip()
-    ]
-    if not participant_ids or guild is None:
-        return 0.0
-
-    bonus = 0.0
-    for uid in participant_ids:
-        member = guild.get_member(uid) if guild else None
-        if not member:
-            continue
-        roles = _member_role_names(member)
-        if "Watch Master" in roles or "Huntmaster" in roles:
-            bonus += 1.0
-    return bonus
-
-
-_CADRE_LEADER_BONUS_BY_ROLE = {
-    "Blademaster": "Blades",
-    "Forgemaster": "Armory",
-    "Chief Apothecary": "Apothecarion",
-    "High Chaplain": "Reclusiam",
-    "Void Warden": "Librarius",
-}
-
-
-def _compute_cadre_leader_bonus_allocations(pkg: dict, guild: "discord.Guild | None") -> dict[str, float]:
-    """Return cadre-only bonus rep from participating cadre leaders.
-
-    Each participating cadre leader contributes +0.5 rep to their cadre bucket.
-    Huntmaster is intentionally excluded and contributes to fortress bonus only.
-    """
-    participant_ids = [
-        int(uid)
-        for uid in dict.fromkeys((pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or []))
-        if str(uid).strip()
-    ]
-    if not participant_ids or guild is None:
-        return {}
-
-    bonus: dict[str, float] = {}
-    for uid in participant_ids:
-        member = guild.get_member(uid) if guild else None
-        if not member:
-            continue
-        roles = _member_role_names(member)
-        for role_name, cadre_bucket in _CADRE_LEADER_BONUS_BY_ROLE.items():
-            if role_name in roles:
-                bonus[cadre_bucket] = round(float(bonus.get(cadre_bucket, 0.0)) + 0.5, 2)
-                break
-    return bonus
+    return float(_strike_completion_base_awards().get("fortress", 0.0))
 
 
 def _apply_entity_rep_allocations(
     data: dict,
     pkg: dict,
     allocations: dict,
-    total_rep: float,
+    *legacy_args,
     company_bonus: float = 0.0,
-    cadre_bonus_allocations: dict | None = None,
+    fortress_bonus: float = 0.0,
 ) -> None:
-    """Apply split participation rep to KT/cadre stats and company rep credit.
-
-    Company credit = full directive rep + command participation bonus.
-    """
+    """Apply split participation rep to KT/cadre/company stats and fortress standing."""
     stats = data.setdefault("entity_stats", {})
     kt_stats = stats.setdefault("kill_teams", {})
     company_stats = stats.setdefault("companies", {})
     cadre_stats = stats.setdefault("cadres", {})
 
+    # Backward compatibility for legacy callsites/tests:
+    #   _apply_entity_rep_allocations(data, pkg, allocs, total_rep, company_bonus=...)
+    # and optional cadre bonus map at position 5.
+    if len(legacy_args) > 2:
+        raise TypeError(
+            "_apply_entity_rep_allocations() accepts at most two legacy positional args "
+            "(legacy_total_rep, legacy_cadre_bonus); pass other values via keyword args, "
+            f"got {len(legacy_args)}"
+        )
+    if legacy_args:
+        legacy_total_rep = float(legacy_args[0] or 0.0)
+        if legacy_total_rep:
+            company_bonus += legacy_total_rep
+    if len(legacy_args) > 1 and isinstance(legacy_args[1], dict):
+        legacy_cadre_bonus = legacy_args[1] or {}
+        cadre_alloc = dict(allocations.get("cadres", {}) or {})
+        for cadre_name, delta in legacy_cadre_bonus.items():
+            cadre_alloc[cadre_name] = round(float(cadre_alloc.get(cadre_name, 0.0) or 0.0) + float(delta or 0.0), 2)
+        allocations = dict(allocations)
+        allocations["cadres"] = cadre_alloc
+
     for kt_name, delta in (allocations.get("kill_teams", {}) or {}).items():
         row = kt_stats.setdefault(kt_name, {"completed": 0, "failed": 0, "rep_earned": 0.0})
         row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(delta or 0.0), 2)
 
-    merged_cadre_allocations: dict[str, float] = {}
     for cadre_name, delta in (allocations.get("cadres", {}) or {}).items():
-        merged_cadre_allocations[cadre_name] = float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0)
-    for cadre_name, delta in (cadre_bonus_allocations or {}).items():
-        merged_cadre_allocations[cadre_name] = float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0)
-
-    for cadre_name, delta in merged_cadre_allocations.items():
         row = cadre_stats.setdefault(cadre_name, {"completed": 0, "failed": 0, "rep_earned": 0.0})
         row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(delta or 0.0), 2)
 
+    for company_name, delta in (allocations.get("companies", {}) or {}).items():
+        row = company_stats.setdefault(company_name, {"completed": 0, "failed": 0, "rep_earned": 0.0})
+        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(delta or 0.0), 2)
+
     assigned_company = pkg.get("assigned_company")
-    if assigned_company:
+    if assigned_company and company_bonus:
         row = company_stats.setdefault(assigned_company, {"completed": 0, "failed": 0, "rep_earned": 0.0})
-        company_delta = float(total_rep or 0.0) + float(company_bonus or 0.0)
-        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + company_delta, 2)
+        row["rep_earned"] = round(float(row.get("rep_earned", 0.0) or 0.0) + float(company_bonus or 0.0), 2)
+
+    if fortress_bonus:
+        _apply_rep_delta(data, float(fortress_bonus or 0.0))
 
 
 def _select_package_multiplier(rep: float) -> int:
@@ -4161,38 +4329,29 @@ async def submit_package(
 
         data["cycle"]["completed"] += 1
         rep_before = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
-        completion_rep_delta = _rep_delta_for_package(pkg, STATUS_COMPLETED)
-        fortress_command_bonus = _compute_fortress_command_bonus(pkg, guild)
-        _apply_rep_delta(data, completion_rep_delta + fortress_command_bonus)
-        rep_after = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
-        pkg["rep_before"] = rep_before
-        pkg["rep_after"] = rep_after
-
-        split_allocations = _compute_participation_rep_allocations(pkg, guild, completion_rep_delta)
-        company_bonus = _compute_company_command_bonus(pkg, guild)
-        cadre_bonus_allocations = _compute_cadre_leader_bonus_allocations(pkg, guild)
+        completion_rep_pool = _rep_delta_for_package(pkg, STATUS_COMPLETED)
+        split_allocations = _compute_participation_rep_allocations(pkg, guild, completion_rep_pool)
+        company_base_bonus = _compute_company_completion_bonus(pkg)
+        fortress_base_bonus = _compute_fortress_completion_bonus(pkg)
         _apply_entity_rep_allocations(
             data,
             pkg,
             split_allocations,
-            completion_rep_delta,
-            company_bonus=company_bonus,
-            cadre_bonus_allocations=cadre_bonus_allocations,
+            company_bonus=company_base_bonus,
+            fortress_bonus=float(split_allocations.get("fortress", 0.0) or 0.0) + float(fortress_base_bonus or 0.0),
         )
-        merged_cadre_allocations = dict(split_allocations.get("cadres", {}) or {})
-        for cadre_name, delta in (cadre_bonus_allocations or {}).items():
-            merged_cadre_allocations[cadre_name] = round(
-                float(merged_cadre_allocations.get(cadre_name, 0.0)) + float(delta or 0.0),
-                2,
-            )
+        rep_after = float(data.get("rep", _REP_NEUTRAL) or _REP_NEUTRAL)
+        pkg["rep_before"] = rep_before
+        pkg["rep_after"] = rep_after
+
         pkg["rep_allocations"] = {
             "kill_teams": split_allocations.get("kill_teams", {}),
-            "cadres": merged_cadre_allocations,
-            "companies": (
-                {company: round(float(completion_rep_delta) + float(company_bonus), 2)}
-                if company else {}
-            ),
-            "fortress_bonus": round(float(fortress_command_bonus), 2),
+            "cadres": split_allocations.get("cadres", {}),
+            "companies": split_allocations.get("companies", {}),
+            "fortress": round(float(split_allocations.get("fortress", 0.0) or 0.0), 2),
+            "company_base": round(float(company_base_bonus or 0.0), 2),
+            "fortress_base": round(float(fortress_base_bonus or 0.0), 2),
+            "completion_pool": round(float(completion_rep_pool or 0.0), 2),
         }
 
         _save_tp(data)
@@ -4331,7 +4490,6 @@ def _compute_honors(tp_data: dict) -> dict:
       comp_index  (0-5): based on completions in window
       final_index = round(0.75 * rep_index + 0.25 * comp_index), clamped 0-5
 
-    Company tiers additionally gate on distinct contributing KTs in window.
     Titles go up AND down based on re-evaluation.
     """
     now = datetime.now(timezone.utc)
@@ -4343,8 +4501,6 @@ def _compute_honors(tp_data: dict) -> dict:
     # Company thresholds
     _CO_REP_THRESHOLDS  = [0.0, 5.0, 13.0, 23.0, 33.0, 46.0]
     _CO_COMP_THRESHOLDS = [0,   3,   6,   10,   14,   18]
-    # Company KT contributor gates per tier index (minimum distinct KTs)
-    _CO_KT_GATES = [0, 1, 2, 3, 4, 4]
     _CADRE_REP_THRESHOLDS = {
         "Blades": [0.0, 4.0, 11.0, 20.0, 31.0, 44.0],
         "Armory": [0.0, 3.0, 8.0, 15.0, 23.0, 33.0],
@@ -4393,10 +4549,11 @@ def _compute_honors(tp_data: dict) -> dict:
 
         kt = pkg.get("assigned_kt")
         company = pkg.get("assigned_company")
-        rep_delta = float(pkg.get("rep_after", 0.0) or 0.0) - float(pkg.get("rep_before", 0.0) or 0.0)
         rep_alloc = pkg.get("rep_allocations") or {}
+        rep_delta = max(float(pkg.get("rep_after", 0.0) or 0.0) - float(pkg.get("rep_before", 0.0) or 0.0), 0.0)
         kt_alloc = rep_alloc.get("kill_teams") if isinstance(rep_alloc, dict) else {}
         company_alloc = rep_alloc.get("companies") if isinstance(rep_alloc, dict) else {}
+        company_base = float(rep_alloc.get("company_base", 0.0) or 0.0) if isinstance(rep_alloc, dict) else 0.0
         cadre_alloc = rep_alloc.get("cadres") if isinstance(rep_alloc, dict) else {}
 
         if kt:
@@ -4405,14 +4562,16 @@ def _compute_honors(tp_data: dict) -> dict:
             for kt_name, delta in kt_alloc.items():
                 kt_rep_earned[kt_name] = kt_rep_earned.get(kt_name, 0.0) + max(float(delta or 0.0), 0.0)
         elif kt:
-            kt_rep_earned[kt] = kt_rep_earned.get(kt, 0.0) + max(rep_delta, 0.0)
+            kt_rep_earned[kt] = kt_rep_earned.get(kt, 0.0) + rep_delta
 
         if company:
             co_completions[company] = co_completions.get(company, 0) + 1
             if isinstance(company_alloc, dict) and company in company_alloc:
                 co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(float(company_alloc.get(company) or 0.0), 0.0)
-            else:
-                co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(rep_delta, 0.0)
+            elif not isinstance(rep_alloc, dict) or not rep_alloc:
+                co_rep_earned[company] = co_rep_earned.get(company, 0.0) + rep_delta
+            if company_base:
+                co_rep_earned[company] = co_rep_earned.get(company, 0.0) + max(company_base, 0.0)
 
             if isinstance(kt_alloc, dict) and kt_alloc:
                 co_kt_contributors.setdefault(company, set()).update(str(name) for name in kt_alloc.keys())
@@ -4447,10 +4606,7 @@ def _compute_honors(tp_data: dict) -> dict:
         ri = _rep_index(co_rep_earned.get(company, 0.0), _CO_REP_THRESHOLDS)
         ci = _comp_index(co_completions.get(company, 0), _CO_COMP_THRESHOLDS)
         raw_final = min(5, round(0.75 * ri + 0.25 * ci))
-        # Apply KT contributor gate — cap tier if not enough distinct KTs
         kt_count = len(co_kt_contributors.get(company, set()))
-        while raw_final > 0 and kt_count < _CO_KT_GATES[raw_final]:
-            raw_final -= 1
         co_results[company] = {
             "tier": _COMPANY_TITLE_TIERS[raw_final],
             "tier_index": raw_final,
@@ -4654,7 +4810,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                     f"**Completed:** {len(completed)}  ·  "
                     f"**Failed:** {len(failed)}  ·  "
                     f"**Lapsed:** {len(lapsed)}\n"
-                    f"**Completion Rate:** {completion_rate * 100:.0f}%"
+                    f"**Completion Rate:** {_fmt_float2(completion_rate * 100)}%"
                 ),
                 inline=False,
             )
@@ -4665,9 +4821,9 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             fw_embed.add_field(
                 name="▸ Ordo Xenos Standing",
                 value=(
-                    f"{_before_line} `{rep_start:.2f}`\n"
-                    f"→ {_after_line} `{rep_end:.2f}`\n"
-                    f"**Delta:** `{rep_delta:+.2f}`"
+                    f"{_before_line} `{_fmt_float2(rep_start)}`\n"
+                    f"→ {_after_line} `{_fmt_float2(rep_end)}`\n"
+                    f"**Delta:** `{_fmt_float2(rep_delta, signed=True)}`"
                 ),
                 inline=False,
             )
@@ -4753,7 +4909,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             value=(
                 f"**Directives Assigned:** {len(kt_batch)}\n"
                 f"**Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}\n"
-                f"**Rep Contributed:** `{kt_rep_contributed:+.2f}`"
+                f"**Rep Contributed:** `{_fmt_float2(kt_rep_contributed, signed=True)}`"
             ),
             inline=False,
         )
@@ -4856,8 +5012,8 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 f"**Completed:** {len(completed)}  ·  "
                 f"**Failed:** {len(failed)}  ·  "
                 f"**Lapsed:** {len(lapsed)}\n"
-                f"**Completion Rate:** {completion_rate * 100:.0f}%\n"
-                f"**Standing:** {_before_line2} `{rep_start:.2f}` → {_after_line2} `{rep_end:.2f}` (`{rep_delta:+.2f}`)"
+                f"**Completion Rate:** {_fmt_float2(completion_rate * 100)}%\n"
+                f"**Standing:** {_before_line2} `{_fmt_float2(rep_start)}` → {_after_line2} `{_fmt_float2(rep_end)}` (`{_fmt_float2(rep_delta, signed=True)}`)"
             ),
             inline=False,
         )
@@ -5640,6 +5796,25 @@ _REP_TIER_LABELS = {
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"}
 
 
+def _fmt_float2(value: float, signed: bool = False) -> str:
+    """Format numeric values for display with up to two decimals.
+
+    Trailing zeros are trimmed so whole numbers remain compact.
+    """
+    rounded = round(float(value or 0.0), 2)
+    if abs(rounded) < 0.005:
+        rounded = 0.0
+
+    fmt = f"{rounded:+.2f}" if signed else f"{rounded:.2f}"
+    if signed and fmt and fmt[0] in "+-":
+        sign = fmt[0]
+        body = fmt[1:].rstrip("0").rstrip(".")
+        if not body:
+            body = "0"
+        return f"{sign}{body}"
+    return fmt.rstrip("0").rstrip(".")
+
+
 def _clearance_for_member(member: Optional[discord.Member]) -> str:
     if member is None or _is_admin(member):
         return "VERMILION"
@@ -5656,7 +5831,8 @@ def _clearance_for_member(member: Optional[discord.Member]) -> str:
 def _rep_display(rep: float) -> str:
     label = _standing_state_name(rep)
     icons = _standing_skull_bar(rep)
-    return f"{icons} **{label}** `{rep:.2f}`" if icons else f"**{label}** `{rep:.2f}`"
+    rep_text = _fmt_float2(rep)
+    return f"{icons} **{label}** `{rep_text}`" if icons else f"**{label}** `{rep_text}`"
 
 
 def _standing_skull_bar(rep: float) -> str:
@@ -6100,7 +6276,7 @@ def _build_package_embed(
             embed.add_field(name="▸ Negative Modifiers", value=neg_value, inline=False)
 
     embed.set_footer(
-        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {rep:.2f}",
+        text=f"ᴄʟᴇᴀʀᴀɴᴄᴇ: {clearance}  ·  {_standing_state_name(rep)} {_fmt_float2(rep)}",
         icon_url="https://cdn.discordapp.com/emojis/1501748904880767147.webp?size=44",
     )
 
@@ -8583,9 +8759,9 @@ async def log_strike_report(
         embed.add_field(
             name="▸ Ordo Xenos Standing",
             value=(
-                f"{standing_before_line} `{rep_before:.2f}`\n"
-                f"-> {standing_after_line} `{rep_after:.2f}`\n"
-                f"Delta: `{(rep_after - rep_before):+.2f}`"
+                f"{standing_before_line} `{_fmt_float2(rep_before)}`\n"
+                f"-> {standing_after_line} `{_fmt_float2(rep_after)}`\n"
+                f"Delta: `{_fmt_float2(rep_after - rep_before, signed=True)}`"
             ),
             inline=False,
         )
