@@ -399,7 +399,7 @@ def test_fortress_rep_state_name_empty_string_defaults_to_neutral():
 
 def test_fortress_rep_title_format():
     result = roster_embeds._fortress_rep_title({"rep": 50.0})
-    assert "Fortress Standing" in result
+    assert result.startswith("-# ")
     assert "NEUTRAL" in result
     assert "50.0/100" in result
     assert "[" in result and "]" in result
@@ -519,6 +519,26 @@ def test_get_hc_members_includes_watch_captain_and_excludes_reserves():
     members = roster_embeds._get_hc_members(guild)
 
     assert [m.id for m in members] == [31, 30]
+
+
+def test_blade_hall_sort_key_orders_role_bands_top_mid_bottom():
+    bladeguard = _member(member_id=1, display_name="Bladeguard", roles=[_role(10, "Bladeguard")])
+    first_blade = _member(member_id=2, display_name="First Blade", roles=[_role(11, "First Blade")])
+    blademaster = _member(member_id=3, display_name="Blademaster", roles=[_role(12, "Blademaster")])
+    company_champion = _member(member_id=4, display_name="Company Champion", roles=[_role(13, "Company Champion")])
+    kt_champion = _member(member_id=5, display_name="Kill Team Champion", roles=[_role(14, "Kill Team Champion")])
+    lord_executioner = _member(member_id=6, display_name="Lord Executioner", roles=[_role(15, "Lord Executioner")])
+
+    members = [bladeguard, first_blade, blademaster, company_champion, kt_champion, lord_executioner]
+    ordered = sorted(members, key=roster_embeds._blade_hall_sort_key)
+
+    top_ids = {m.id for m in ordered[:2]}
+    mid_ids = {m.id for m in ordered[2:4]}
+    bottom_ids = {m.id for m in ordered[4:6]}
+
+    assert top_ids == {3, 6}
+    assert mid_ids == {2, 4}
+    assert bottom_ids == {1, 5}
 
 
 def test_get_company_champion_members_filters_by_company_and_role():

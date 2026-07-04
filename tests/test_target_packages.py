@@ -1311,7 +1311,7 @@ class TestStrikeDirectiveMultiplier:
             return [4]
 
         monkeypatch.setattr(tp.random, "choices", fake_choices)
-        assert _select_package_multiplier(52.0) == 4
+        assert _select_package_multiplier(90.0) == 4
         assert seen["weights"] == [10, 20, 35, 35]
 
 
