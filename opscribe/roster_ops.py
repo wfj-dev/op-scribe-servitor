@@ -2244,7 +2244,8 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
         has_huntmaster = huntmaster in role_names
         has_specialist = len(specialist_presence) > 0
-        is_specialist_track_member = has_specialist or has_champion or has_dread
+        has_specialist_marker = deathwatch_specialist in role_names
+        is_specialist_track_member = has_specialist or has_specialist_marker or has_champion or has_dread
 
         active_tracks = []
         if has_oath:
