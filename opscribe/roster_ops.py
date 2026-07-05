@@ -4121,6 +4121,62 @@ async def tally_deeds(
                     color=0x2ECC71,
                 )
 
+                if send_to is not None:
+                    try:
+                        team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
+                        kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
+                        member_rows = list(kt_snap.get("member_rows") or [])
+                        roster_chunk_count = (len(sorted_items) + 4) // 5
+                        # Reserve fields for: stat key + roster chunk fields (+ optional truncation note)
+                        max_embed_fields = 25
+                        base_reserved = 1 + roster_chunk_count
+                        available_for_members = max(0, max_embed_fields - base_reserved)
+
+                        rows_to_show = member_rows
+                        omitted_rows = 0
+                        if len(member_rows) > available_for_members:
+                            if available_for_members > 0:
+                                rows_to_show = member_rows[: max(0, available_for_members - 1)]
+                                omitted_rows = max(0, len(member_rows) - len(rows_to_show))
+                            else:
+                                rows_to_show = []
+                                omitted_rows = len(member_rows)
+
+                        roster_embed.add_field(
+                            name="▸ 7ᴅ ᴋᴇʏ",
+                            value=(
+                                "ΔAAR: 7-day AAR points | Ω: Omega ops | BL: Black Laurels-tagged AARs\n"
+                                "DV: Dual Vigil-tagged AARs | SD: Strike directives completed | CB: weighted combat bond score"
+                            ),
+                            inline=False,
+                        )
+
+                        for row in rows_to_show:
+                            member_label = str(row.get("member_label", row.get("member_id", "Unknown")))
+                            aar_delta = int(row.get("aar_delta", 0) or 0)
+                            omega_count = int(row.get("omega_count", 0) or 0)
+                            bl_count = int(row.get("black_laurels_count", 0) or 0)
+                            dv_count = int(row.get("dual_vigil_count", 0) or 0)
+                            sd_count = int(row.get("strike_directives_count", 0) or 0)
+                            cb_score = int(row.get("cb_score", 0) or 0)
+                            roster_embed.add_field(
+                                name=f"▸ {member_label}",
+                                value=(
+                                    f"ΔAAR: **{aar_delta}** | Ω: **{omega_count}** | BL: **{bl_count}**\n"
+                                    f"DV: **{dv_count}** | SD: **{sd_count}** | CB: **{cb_score}**"
+                                ),
+                                inline=True,
+                            )
+
+                        if omitted_rows > 0:
+                            roster_embed.add_field(
+                                name="▸ ɴᴏᴛᴇ",
+                                value=f"{omitted_rows} member field(s) omitted to stay within Discord embed limits.",
+                                inline=False,
+                            )
+                    except Exception as snap_err:
+                        _g.logger.debug("7-day snapshot embed build failed: %s", snap_err, exc_info=True)
+
                 # Build roster entries using combat bonds style formatting
                 roster_lines = []
                 for it in sorted_items:
@@ -4688,12 +4744,12 @@ def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
     waves_participated = 0
 
     for record in records:
-        brother_ids = record.get("brother_ids", [])
+        brother_ids = [str(b) for b in (record.get("brother_ids") or [])]
         if user_id in brother_ids:
             ops += 1
             difficulty_class = record.get("difficulty_class")
             if difficulty_class in ("normal_siege", "hard_siege"):
-                bw = record.get("brother_waves") or {}
+                bw = {str(k): v for k, v in (record.get("brother_waves") or {}).items()}
                 try:
                     my_waves = int(bw.get(user_id, 0) or 0)
                 except Exception:
@@ -4736,6 +4792,149 @@ def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
         "gene_carries": gene_carries,
         "gene_seed_points": gene_seed_points,
         "waves_participated": waves_participated,
+    }
+
+
+def _record_has_black_laurels_tag(record: dict) -> bool:
+    """Return True when an AAR record contains any Black Laurels marker."""
+    try:
+        return bool(
+            record.get("black_laurels_in_mission")
+            or record.get("black_laurels_in_difficulty")
+            or record.get("black_laurels_mentioned_elsewhere")
+        )
+    except Exception:
+        return False
+
+
+def _extract_directive_ids_from_record(record: dict) -> Set[str]:
+    """Collect linked strike directive identifiers from a single AAR record."""
+    ids: Set[str] = set()
+    try:
+        single_id = record.get("target_package_id")
+        if single_id:
+            ids.add(str(single_id))
+    except Exception:
+        pass
+    try:
+        for pkg_id in record.get("target_package_ids") or []:
+            if pkg_id:
+                ids.add(str(pkg_id))
+    except Exception:
+        pass
+    return ids
+
+
+def _compute_killteam_sendto_snapshot_7d(
+    member_ids: List[str],
+    guild: Optional[discord.Guild] = None,
+) -> Dict[str, object]:
+    """Compute per-member 7-day killteam stats for send_to tally_deeds embeds."""
+    team_ids: Set[str] = {str(uid) for uid in (member_ids or []) if uid}
+    if not team_ids:
+        return {
+            "window_days": 7,
+            "member_rows": [],
+        }
+
+    recents = _get_missions_last_days(7)
+    team_records: List[dict] = []
+    for rec in recents:
+        try:
+            rec_ids = {str(b) for b in (rec.get("brother_ids") or [])}
+            if rec_ids & team_ids:
+                team_records.append(rec)
+        except Exception:
+            continue
+
+    try:
+        pair_counts = _build_pair_counts(team_records)
+    except Exception:
+        pair_counts = {}
+
+    # Sum weighted pair scores per member for in-team combat bond signal.
+    cb_scores: Dict[str, int] = {uid: 0 for uid in team_ids}
+    for (left_uid, right_uid), score in pair_counts.items():
+        l_uid = str(left_uid)
+        r_uid = str(right_uid)
+        if l_uid in team_ids and r_uid in team_ids:
+            try:
+                s_val = int(score or 0)
+            except Exception:
+                s_val = 0
+            cb_scores[l_uid] = int(cb_scores.get(l_uid, 0)) + s_val
+            cb_scores[r_uid] = int(cb_scores.get(r_uid, 0)) + s_val
+
+    member_rows: List[Dict[str, object]] = []
+    for uid in sorted(team_ids):
+        try:
+            label = _format_member_styled(guild, uid, chapters_map=None, include_chapter=False)
+        except Exception:
+            label = uid
+
+        member_records: List[dict] = []
+        for rec in team_records:
+            try:
+                if uid in {str(b) for b in (rec.get("brother_ids") or [])}:
+                    member_records.append(rec)
+            except Exception:
+                continue
+
+        try:
+            m_stats = compute_stats_for_user_in_records(uid, member_records)
+            aar_delta = int(m_stats.get("aar_points", 0) or 0)
+        except Exception:
+            aar_delta = 0
+
+        omega_count = 0
+        black_laurels_count = 0
+        dual_vigil_count = 0
+        directive_ids: Set[str] = set()
+        for rec in member_records:
+            try:
+                if (rec.get("difficulty_class") or "") == "omega_ops":
+                    omega_count += 1
+            except Exception:
+                pass
+            try:
+                if _record_has_black_laurels_tag(rec):
+                    black_laurels_count += 1
+            except Exception:
+                pass
+            try:
+                if bool(rec.get("dual_vigil_in_mission")):
+                    dual_vigil_count += 1
+            except Exception:
+                pass
+            try:
+                directive_ids |= _extract_directive_ids_from_record(rec)
+            except Exception:
+                pass
+
+        member_rows.append(
+            {
+                "member_id": uid,
+                "member_label": label,
+                "aar_delta": int(aar_delta),
+                "omega_count": int(omega_count),
+                "black_laurels_count": int(black_laurels_count),
+                "dual_vigil_count": int(dual_vigil_count),
+                "strike_directives_count": int(len(directive_ids)),
+                "cb_score": int(cb_scores.get(uid, 0) or 0),
+            }
+        )
+
+    member_rows.sort(
+        key=lambda row: (
+            -int(row.get("aar_delta", 0) or 0),
+            -int(row.get("cb_score", 0) or 0),
+            str(row.get("member_label", "")).lower(),
+        )
+    )
+
+    return {
+        "window_days": 7,
+        "member_rows": member_rows,
     }
 
 
