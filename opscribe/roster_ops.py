@@ -2133,6 +2133,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         watch_chaplain.lower(),
         watch_apothecary.lower(),
         watch_techmarine.lower(),
+        watch_librarian.lower(),
         first_blade.lower(),
         blademaster.lower(),
         watch_master.lower(),
