@@ -802,6 +802,7 @@ HOME_CHAPTERS = [
     "Death Spectres",
     "Epsilon Paladins",
     "Exorcists",
+    "Executioners",
     "Flesh Tearers",
     "Genesis Chapter",
     "Hawk Lords",
