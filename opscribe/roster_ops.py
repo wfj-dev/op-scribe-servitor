@@ -4179,7 +4179,7 @@ async def tally_deeds(
                             chapter_emoji = ""
                             if home_ch and home_ch not in ("Unknown", "REDACTED"):
                                 chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
-                            field_name = f"▸ {chapter_emoji} | {display_name}" if chapter_emoji else f"▸ {display_name}"
+                            field_name = f"▸ {chapter_emoji} | {mention_label}" if chapter_emoji else f"▸ {mention_label}"
                             aar_delta = int(row.get("aar_delta", 0) or 0)
                             omega_count = int(row.get("omega_count", 0) or 0)
                             bl_count = int(row.get("black_laurels_count", 0) or 0)
@@ -4189,7 +4189,6 @@ async def tally_deeds(
                             roster_embed.add_field(
                                 name=field_name,
                                 value=(
-                                    f"Brother: {mention_label}\n"
                                     f"ΔAAR: **{aar_delta}** | Ω: **{omega_count}** | BL: **{bl_count}**\n"
                                     f"DV: **{dv_count}** | SD: **{sd_count}** | CB: **{cb_score}**"
                                 ),
