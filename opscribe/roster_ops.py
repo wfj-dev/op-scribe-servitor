@@ -2062,6 +2062,10 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         return fallback
 
     watch_brother = _role_name("watch_brother", "Watch Brother")
+    try:
+        watch_brother_role_id = int(_b("WATCH_BROTHER_ROLE_ID") or 0)
+    except Exception:
+        watch_brother_role_id = 0
     watch_veteran = _role_name("watch_veteran", "Watch Veteran")
     oathsworn = _role_name("oathsworn", "Oathsworn")
     watch_sergeant = _role_name("watch_sergeant", "Watch Sergeant")
@@ -2161,7 +2165,11 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
     company_cmd_role_by_company_role: dict[int, int] = {}
     company_cmd_role_ids: set[int] = set()
     company_name_by_role_id: dict[int, str] = {}
+    company_command_name_hints_lc: set[str] = set()
     for key, entry in company_cfg.items():
+        company_name = str((entry or {}).get("name") or key or "").strip()
+        if company_name:
+            company_command_name_hints_lc.add(f"{company_name.lower()} command")
         try:
             c_role = int((entry or {}).get("companyRoleId") or 0)
             cmd_role = int((entry or {}).get("companyCommandRoleId") or 0)
@@ -2175,6 +2183,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
                 company_cmd_role_ids.add(cmd_role)
 
     kt_role_ids = {int(x) for x in (_b("ALLOWED_KT_ROLE_IDS") or set()) if x}
+    kt_name_hints_lc = {str(name).strip().lower() for name in (_b("KILL_TEAMS") or []) if str(name).strip()}
     findings: list[dict] = []
 
     def _add(member: discord.Member, code: str, detail: str) -> None:
@@ -2191,20 +2200,32 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if getattr(member, "bot", False):
             continue
         role_names = _role_name_set(member)
+        role_names_lc = {name.lower() for name in role_names}
         role_ids = _role_id_set(member)
 
         # Exclusion rules from the audit scope.
-        if "Reserves" in role_names or "Interred Brother" in role_names:
+        if "reserves" in role_names_lc or "interred brother" in role_names_lc:
             continue
-        if watch_brother not in role_names:
+        if watch_brother_role_id:
+            if watch_brother_role_id not in role_ids:
+                continue
+        elif watch_brother not in role_names:
             continue
 
         company_hits = sorted([rid for rid in company_role_ids if rid in role_ids])
         kt_hits = sorted([rid for rid in kt_role_ids if rid in role_ids])
+        company_name_hits = sorted([name for name in role_names_lc if name.startswith("watch company ")])
+        company_command_name_hits = sorted([name for name in role_names_lc if name in company_command_name_hints_lc])
+        kt_name_hits = sorted([
+            name for name in role_names_lc if name.startswith("kill team ") or name in kt_name_hints_lc
+        ])
 
-        if len(company_hits) > 1:
+        company_assignment_count = len(company_hits) if company_hits else len(company_name_hits)
+        kt_assignment_count = len(kt_hits) if kt_hits else len(kt_name_hits)
+
+        if company_assignment_count > 1:
             _add(member, "multi_company", "Member holds multiple company roles.")
-        if len(kt_hits) > 1:
+        if kt_assignment_count > 1:
             _add(member, "multi_kill_team", "Member holds multiple kill team roles.")
 
         # No-skip checks across each declared track.
@@ -2243,7 +2264,18 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         has_champion = any(r in role_names for r in [bladeguard, first_blade, blademaster])
         has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
         has_huntmaster = huntmaster in role_names
-        has_specialist = len(specialist_presence) > 0
+        has_specialist_keyword = any(
+            (
+                "techmarine" in role
+                or "librarian" in role
+                or "apothecary" in role
+                or "chaplain" in role
+                or role == "forgemaster"
+                or role == "void warden"
+            )
+            for role in role_names_lc
+        )
+        has_specialist = len(specialist_presence) > 0 or has_specialist_keyword
         has_specialist_marker = deathwatch_specialist in role_names
         is_specialist_track_member = has_specialist or has_specialist_marker or has_champion or has_dread
 
@@ -2305,15 +2337,19 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
                 company_name = company_name_by_role_id.get(company_role_id, "company")
                 _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
-        if is_specialist_track_member and company_hits:
+        has_company_membership = bool(company_hits or company_name_hits)
+        has_company_command = bool(company_command_name_hits) or any(rid in role_ids for rid in company_cmd_role_ids)
+        has_kill_team_assignment = bool(kt_hits or kt_name_hits)
+
+        if is_specialist_track_member and has_company_membership:
             _add(member, "company_role_excess", "Specialist-track members must not hold company membership roles.")
 
-        if is_specialist_track_member and any(rid in role_ids for rid in company_cmd_role_ids):
+        if is_specialist_track_member and has_company_command:
             _add(member, "company_command_excess", "Specialist-track members must not hold company command roles.")
 
-        if is_specialist_track_member and kt_hits:
+        if is_specialist_track_member and has_kill_team_assignment:
             _add(member, "kt_assignment_invalid", "Specialist-track members must not be assigned to a kill team.")
-        elif kt_hits and any(r in role_names for r in company_command_or_higher_roles):
+        elif has_kill_team_assignment and any(r in role_names for r in company_command_or_higher_roles):
             _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
 
     return findings
