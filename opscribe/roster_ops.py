@@ -2088,77 +2088,11 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
     honored_dreadnought = _role_name("honored_dreadnought", "Honored Dreadnought")
     venerable_dreadnought = _role_name("venerable_dreadnought", "Venerable Dreadnought")
-    dreadnought_cadre = _role_name("dreadnought_cadre", "Dreadnought Cadre")
     deathwatch_specialist = _role_name("deathwatch_specialist", "Deathwatch Specialist")
     huntmaster = _role_name("huntmaster", "Huntmaster")
 
     high_command_role = _role_name("high_command", "High Command")
     watch_command_role = _role_name("watch_command", "Watch Command")
-
-    command_track = [watch_brother, watch_veteran, watch_sergeant, watch_lieutenant, watch_captain, watch_master]
-    oathsworn_track = [watch_brother, watch_veteran, oathsworn]
-    champion_track = [watch_brother, watch_veteran, bladeguard, first_blade, blademaster]
-    dreadnought_track = [watch_brother, watch_veteran, honored_dreadnought, venerable_dreadnought]
-    specialist_tracks = {
-        "techmarine": [watch_brother, watch_veteran, watch_techmarine, forgemaster],
-        "librarian": [watch_brother, watch_veteran, watch_librarian, void_warden],
-        "apothecary": [watch_brother, watch_veteran, watch_apothecary, chief_apothecary],
-        "chaplain": [watch_brother, watch_veteran, watch_chaplain, high_chaplain],
-    }
-    huntmaster_track = (
-        (cfg.get("huntmaster_required_rank_role_names") or [])
-        or [
-            watch_brother,
-            watch_veteran,
-            deathwatch_specialist,
-            watch_command_role,
-            high_command_role,
-            huntmaster,
-        ]
-    )
-
-    company_command_membership = set(
-        (cfg.get("company_command_rank_role_names") or [])
-        or [
-            watch_lieutenant,
-            watch_captain,
-        ]
-    )
-    high_command_required_roles = set(
-        (cfg.get("high_command_required_rank_role_names") or [])
-        or [
-            watch_captain,
-            watch_master,
-            forgemaster,
-            void_warden,
-            chief_apothecary,
-            high_chaplain,
-            blademaster,
-            venerable_dreadnought,
-        ]
-    )
-    watch_command_required_roles = set(
-        (cfg.get("watch_command_required_rank_role_names") or [])
-        or [
-            watch_sergeant,
-            watch_lieutenant,
-            watch_captain,
-            watch_master,
-            first_blade,
-            blademaster,
-            watch_techmarine,
-            forgemaster,
-            watch_librarian,
-            void_warden,
-            watch_apothecary,
-            chief_apothecary,
-            watch_chaplain,
-            high_chaplain,
-            honored_dreadnought,
-            venerable_dreadnought,
-        ]
-    )
-    company_command_or_higher_roles = company_command_membership | high_command_required_roles
 
     company_cfg = _g.CONFIG.get("companies") or {}
     company_role_ids: set[int] = set()
@@ -2184,6 +2118,63 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
     kt_role_ids = {int(x) for x in (_b("ALLOWED_KT_ROLE_IDS") or set()) if x}
     kt_name_hints_lc = {str(name).strip().lower() for name in (_b("KILL_TEAMS") or []) if str(name).strip()}
+
+    allowed_kt_rank_names_lc = {
+        watch_brother.lower(),
+        watch_veteran.lower(),
+        oathsworn.lower(),
+        watch_sergeant.lower(),
+        watch_lieutenant.lower(),
+        watch_captain.lower(),
+        watch_master.lower(),
+    }
+    allowed_watch_command_names_lc = {
+        watch_sergeant.lower(),
+        watch_chaplain.lower(),
+        watch_apothecary.lower(),
+        watch_techmarine.lower(),
+        first_blade.lower(),
+        blademaster.lower(),
+        watch_master.lower(),
+        huntmaster.lower(),
+        forgemaster.lower(),
+        chief_apothecary.lower(),
+        high_chaplain.lower(),
+        void_warden.lower(),
+        watch_captain.lower(),
+        watch_lieutenant.lower(),
+        honored_dreadnought.lower(),
+        venerable_dreadnought.lower(),
+    }
+    allowed_high_command_names_lc = {
+        forgemaster.lower(),
+        void_warden.lower(),
+        high_chaplain.lower(),
+        chief_apothecary.lower(),
+        watch_captain.lower(),
+        watch_master.lower(),
+        huntmaster.lower(),
+        blademaster.lower(),
+        venerable_dreadnought.lower(),
+    }
+    allowed_specialist_marker_names_lc = {
+        watch_techmarine.lower(),
+        watch_librarian.lower(),
+        watch_apothecary.lower(),
+        watch_chaplain.lower(),
+        forgemaster.lower(),
+        chief_apothecary.lower(),
+        void_warden.lower(),
+        high_chaplain.lower(),
+        huntmaster.lower(),
+        blademaster.lower(),
+        honored_dreadnought.lower(),
+        venerable_dreadnought.lower(),
+        bladeguard.lower(),
+        first_blade.lower(),
+    }
+
+    captains_lieutenants_by_kt: dict[int, list[discord.Member]] = {}
     findings: list[dict] = []
 
     def _add(member: discord.Member, code: str, detail: str) -> None:
@@ -2206,173 +2197,113 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         # Exclusion rules from the audit scope.
         if "reserves" in role_names_lc or "interred brother" in role_names_lc:
             continue
-        if watch_brother_role_id:
-            if watch_brother_role_id not in role_ids:
-                continue
-        elif watch_brother not in role_names:
+        company_hits = sorted([rid for rid in company_role_ids if rid in role_ids])
+        company_name_hits = sorted([name for name in role_names_lc if name.startswith("watch company ")])
+        company_cmd_hits = sorted([rid for rid in company_cmd_role_ids if rid in role_ids])
+        kt_hits = sorted([rid for rid in kt_role_ids if rid in role_ids])
+        kt_name_hits = sorted([name for name in role_names_lc if name.startswith("kill team ") or name in kt_name_hints_lc])
+
+        has_watch_brother = (watch_brother_role_id in role_ids) or (watch_brother.lower() in role_names_lc)
+        has_watch_veteran = watch_veteran.lower() in role_names_lc
+        has_oathsworn = oathsworn.lower() in role_names_lc
+        has_watch_sergeant = watch_sergeant.lower() in role_names_lc
+        has_watch_lieutenant = watch_lieutenant.lower() in role_names_lc
+        has_watch_captain = watch_captain.lower() in role_names_lc
+        has_watch_master = watch_master.lower() in role_names_lc
+        has_watch_command_role = watch_command_role.lower() in role_names_lc
+        has_high_command_role = high_command_role.lower() in role_names_lc
+        has_specialist_marker = deathwatch_specialist.lower() in role_names_lc
+        has_company_role = bool(company_hits or company_name_hits)
+        has_company_command_role = bool(company_cmd_hits)
+        has_kt_role = bool(kt_hits or kt_name_hits)
+
+        has_allowed_kt_rank = any(
+            name in role_names_lc
+            for name in allowed_kt_rank_names_lc
+        )
+        has_allowed_watch_command_rank = any(
+            name in role_names_lc
+            for name in allowed_watch_command_names_lc
+        )
+        has_allowed_high_command_rank = any(
+            name in role_names_lc
+            for name in allowed_high_command_names_lc
+        )
+        has_allowed_specialist_marker_rank = any(
+            name in role_names_lc
+            for name in allowed_specialist_marker_names_lc
+        )
+
+        has_relevant_rank = any(
+            [
+                has_watch_veteran,
+                has_oathsworn,
+                has_watch_sergeant,
+                has_watch_lieutenant,
+                has_watch_captain,
+                has_watch_master,
+                has_watch_command_role,
+                has_high_command_role,
+                has_specialist_marker,
+                has_company_role,
+                has_company_command_role,
+                has_kt_role,
+            ]
+        )
+        if not has_relevant_rank:
             continue
 
-        company_hits = sorted([rid for rid in company_role_ids if rid in role_ids])
-        kt_hits = sorted([rid for rid in kt_role_ids if rid in role_ids])
-        company_name_hits = sorted([name for name in role_names_lc if name.startswith("watch company ")])
-        company_command_name_hits = sorted([name for name in role_names_lc if name in company_command_name_hints_lc])
-        kt_name_hits = sorted([
-            name for name in role_names_lc if name.startswith("kill team ") or name in kt_name_hints_lc
-        ])
+        if not has_watch_brother and has_relevant_rank:
+            _add(member, "watch_brother_missing", "Member holds a tracked rank role without the Watch Brother role.")
 
-        company_assignment_count = len(company_hits) if company_hits else len(company_name_hits)
-        kt_assignment_count = len(kt_hits) if kt_hits else len(kt_name_hits)
-
-        if company_assignment_count > 1:
+        if len(company_hits) > 1:
             _add(member, "multi_company", "Member holds multiple company roles.")
-        if kt_assignment_count > 1:
+        if len(company_cmd_hits) > 1:
+            _add(member, "company_command_multiple", "Member holds multiple company command roles.")
+        if len(kt_hits) > 1:
             _add(member, "multi_kill_team", "Member holds multiple kill team roles.")
 
-        # No-skip checks across each declared track.
-        for label, track in (
-            ("command", command_track),
-            ("oathsworn", oathsworn_track),
-            ("champion", champion_track),
-            ("dreadnought", dreadnought_track),
-        ):
-            missing = _track_missing_prereqs(track, role_names)
-            if missing:
-                _add(member, f"{label}_skip", f"Missing track prerequisites: {', '.join(missing)}.")
+        if has_kt_role and not has_company_role:
+            _add(member, "company_role_missing", "Kill team members must also hold a company role.")
+        if has_kt_role and not has_allowed_kt_rank:
+            _add(member, "kt_assignment_invalid", "Only Watch Brother, Watch Veteran, Oathsworn, Watch Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may hold kill team roles.")
 
-        if huntmaster in role_names:
-            missing = _track_missing_prereqs(huntmaster_track, role_names)
-            if missing:
-                _add(member, "huntmaster_skip", f"Missing track prerequisites: {', '.join(missing)}.")
+        if has_company_command_role and not has_company_role:
+            _add(member, "company_role_missing", "Company command roles require a company role.")
+        if has_company_command_role and not (has_watch_captain or has_watch_lieutenant):
+            _add(member, "company_command_excess", "Only Watch Captain and Watch Lieutenant may hold company command roles.")
+        if (has_watch_captain or has_watch_lieutenant) and not has_company_command_role:
+            company_name = company_name_by_role_id.get(company_hits[0], "company") if len(company_hits) == 1 else "company"
+            _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
-        specialist_presence = []
-        for label, track in specialist_tracks.items():
-            missing = _track_missing_prereqs(track, role_names)
-            if missing:
-                _add(member, f"{label}_skip", f"Missing track prerequisites: {', '.join(missing)}.")
-            if any(r in role_names for r in track[2:]):
-                specialist_presence.append(label)
-
-        if len(specialist_presence) > 1:
-            _add(
-                member,
-                "cross_specialist",
-                f"Cross-specialist assignment detected: {', '.join(sorted(specialist_presence))}.",
-            )
-
-        has_command_advanced = any(r in role_names for r in [watch_sergeant, watch_lieutenant, watch_captain, watch_master])
-        has_oath = oathsworn in role_names
-        has_champion = any(r in role_names for r in [bladeguard, first_blade, blademaster])
-        has_dread = any(r in role_names for r in [honored_dreadnought, venerable_dreadnought])
-        has_huntmaster = huntmaster in role_names
-        specialist_rank_names_lc = {
-            watch_librarian.lower(),
-            watch_apothecary.lower(),
-            watch_techmarine.lower(),
-            watch_chaplain.lower(),
-            forgemaster.lower(),
-            high_chaplain.lower(),
-            chief_apothecary.lower(),
-            void_warden.lower(),
-            bladeguard.lower(),
-            first_blade.lower(),
-            blademaster.lower(),
-            huntmaster.lower(),
-        }
-        has_specialist_keyword = any(name in role_names_lc for name in specialist_rank_names_lc) or any(
-            (
-                "techmarine" in role
-                or "librarian" in role
-                or "apothecary" in role
-                or "chaplain" in role
-                or "forgemaster" in role
-                or "void warden" in role
-                or "blade" in role
-                or "huntmaster" in role
-            )
-            for role in role_names_lc
-        )
-        has_specialist = len(specialist_presence) > 0 or has_specialist_keyword
-        has_specialist_marker = deathwatch_specialist in role_names
-        is_specialist_track_member = (
-            has_specialist
-            or has_specialist_marker
-            or has_champion
-            or has_dread
-            or has_huntmaster
-        )
-
-        active_tracks = []
-        if has_oath:
-            active_tracks.append("oathsworn")
-        if has_command_advanced:
-            active_tracks.append("command")
-        if has_champion:
-            active_tracks.append("champion")
-        if has_dread:
-            active_tracks.append("dreadnought")
-        if has_huntmaster:
-            active_tracks.append("huntmaster")
-        if has_specialist:
-            active_tracks.append("specialist")
-        if len(active_tracks) > 1:
-            _add(member, "track_mixing", f"Conflicting tracks detected: {', '.join(active_tracks)}.")
-
-        if has_oath and has_command_advanced:
-            _add(member, "oathsworn_terminal", "Oathsworn must not coexist with command ranks.")
-
-        if has_specialist and deathwatch_specialist not in role_names:
+        if has_allowed_specialist_marker_rank and not has_specialist_marker:
             _add(member, "missing_specialist_marker", f"Missing required marker role: {deathwatch_specialist}.")
-        if has_dread and dreadnought_cadre not in role_names:
-            _add(member, "missing_dreadnought_marker", f"Missing required marker role: {dreadnought_cadre}.")
+        if has_specialist_marker and not has_allowed_specialist_marker_rank:
+            _add(member, "specialist_marker_excess", f"{deathwatch_specialist} is only valid on specialist ranks.")
+        if has_specialist_marker and (has_company_role or has_company_command_role or has_kt_role):
+            _add(member, "company_role_excess", "Deathwatch Specialist members must not hold company or kill team roles.")
 
-        has_hc_rank = any(r in role_names for r in high_command_required_roles)
-        has_hc_role = high_command_role in role_names
-        if has_hc_rank and not has_hc_role:
-            _add(member, "high_command_missing", f"Expected {high_command_role} role is missing.")
-        if has_hc_role and not has_hc_rank:
-            _add(member, "high_command_excess", f"Has {high_command_role} role without a qualifying rank role.")
-
-        is_bladeguard_only = (bladeguard in role_names) and not any(
-            r in role_names for r in [first_blade, blademaster]
-        )
-        has_watch_command_required = any(r in role_names for r in watch_command_required_roles)
-        has_watch_command = watch_command_role in role_names
-        if has_watch_command_required and not has_watch_command:
+        if has_watch_command_role and not has_allowed_watch_command_rank:
+            _add(member, "watch_command_excess", f"{watch_command_role} is only valid on watch-command ranks.")
+        if has_allowed_watch_command_rank and not has_watch_command_role:
             _add(member, "watch_command_missing", f"Expected {watch_command_role} role is missing.")
-        if is_bladeguard_only and has_watch_command:
-            _add(
-                member,
-                "watch_command_excess",
-                f"Has {watch_command_role} role at Bladeguard without First Blade/Blade Master.",
-            )
-        if is_bladeguard_only and has_hc_role:
-            _add(
-                member,
-                "high_command_excess",
-                f"Has {high_command_role} role at Bladeguard without First Blade/Blade Master.",
-            )
 
-        if len(company_hits) == 1 and any(r in role_names for r in company_command_membership):
-            company_role_id = company_hits[0]
-            expected_cmd_role_id = company_cmd_role_by_company_role.get(company_role_id)
-            if expected_cmd_role_id and expected_cmd_role_id not in role_ids:
-                company_name = company_name_by_role_id.get(company_role_id, "company")
-                _add(member, "company_command_missing", f"Missing {company_name} command role.")
+        if has_high_command_role and not has_allowed_high_command_rank:
+            _add(member, "high_command_excess", f"{high_command_role} is only valid on high-command ranks.")
+        if has_allowed_high_command_rank and not has_high_command_role:
+            _add(member, "high_command_missing", f"Expected {high_command_role} role is missing.")
 
-        has_company_membership = bool(company_hits or company_name_hits)
-        has_company_command = bool(company_command_name_hits) or any(rid in role_ids for rid in company_cmd_role_ids)
-        has_kill_team_assignment = bool(kt_hits or kt_name_hits)
+        if has_watch_brother and has_kt_role and (has_watch_sergeant or has_watch_lieutenant or has_watch_captain):
+            for kt_role_id in kt_hits:
+                captains_lieutenants_by_kt.setdefault(kt_role_id, []).append(member)
 
-        if is_specialist_track_member and has_company_membership:
-            _add(member, "company_role_excess", "Specialist-track members must not hold company membership roles.")
-
-        if is_specialist_track_member and has_company_command:
-            _add(member, "company_command_excess", "Specialist-track members must not hold company command roles.")
-
-        if is_specialist_track_member and has_kill_team_assignment:
-            _add(member, "kt_assignment_invalid", "Specialist-track members must not be assigned to a kill team.")
-        elif has_kill_team_assignment and any(r in role_names for r in company_command_or_higher_roles):
-            _add(member, "kt_assignment_invalid", "Company-command-or-higher members must not be in a kill team.")
+    for kt_role_id, members in captains_lieutenants_by_kt.items():
+        if len(members) <= 1:
+            continue
+        kt_role = guild.get_role(kt_role_id)
+        kt_name = kt_role.name if kt_role else f"KT-{kt_role_id}"
+        for member in members:
+            _add(member, "kt_shared_role", f"{kt_name} is shared by multiple Sergeant/Lieutenant/Captain members.")
 
     return findings
 
@@ -2394,21 +2325,22 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
     unique_members = len({int(item.get("member_id")) for item in findings if item.get("member_id") is not None})
 
     code_labels = {
+        "watch_brother_missing": "WatchBrother-missing",
         "multi_company": "Company-conflict",
         "multi_kill_team": "KillTeam-conflict",
         "company_role_missing": "Company-missing",
-        "huntmaster_skip": "Track-missing",
-        "track_mixing": "Track-conflict",
-        "oathsworn_terminal": "OATH-conflict",
-        "missing_specialist_marker": "Specialist-marker-missing",
-        "missing_dreadnought_marker": "Dread-marker-missing",
-        "high_command_missing": "HighCmd-missing",
+        "company_command_multiple": "CoCmd-conflict",
+        "company_command_excess": "CoCmd-excess",
+        "watch_command_excess": "WatchCmd-excess",
         "high_command_excess": "HighCmd-excess",
+        "specialist_marker_excess": "Specialist-marker-excess",
+        "missing_specialist_marker": "Specialist-marker-missing",
+        "high_command_missing": "HighCmd-missing",
         "watch_command_missing": "WatchCmd-missing",
         "company_role_excess": "Company-excess",
         "company_command_missing": "CoCmd-missing",
-        "company_command_excess": "CoCmd-excess",
         "kt_assignment_invalid": "KillTeam-invalid",
+        "kt_shared_role": "KillTeam-shared",
     }
 
     role_by_name = {r.name.lower(): r for r in getattr(guild, "roles", [])}
