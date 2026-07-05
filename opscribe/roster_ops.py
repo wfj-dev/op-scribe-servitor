@@ -4174,8 +4174,8 @@ async def tally_deeds(
                                 value=f"{omitted_rows} member field(s) omitted to stay within Discord embed limits.",
                                 inline=False,
                             )
-                    except Exception:
-                        pass
+                    except Exception as snap_err:
+                        _g.logger.debug("7-day snapshot embed build failed: %s", snap_err, exc_info=True)
 
                 # Build roster entries using combat bonds style formatting
                 roster_lines = []
@@ -4744,12 +4744,12 @@ def compute_stats_for_user_in_records(user_id: str, records: List[dict]):
     waves_participated = 0
 
     for record in records:
-        brother_ids = record.get("brother_ids", [])
+        brother_ids = [str(b) for b in (record.get("brother_ids") or [])]
         if user_id in brother_ids:
             ops += 1
             difficulty_class = record.get("difficulty_class")
             if difficulty_class in ("normal_siege", "hard_siege"):
-                bw = record.get("brother_waves") or {}
+                bw = {str(k): v for k, v in (record.get("brother_waves") or {}).items()}
                 try:
                     my_waves = int(bw.get(user_id, 0) or 0)
                 except Exception:
