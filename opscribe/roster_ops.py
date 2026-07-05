@@ -4125,7 +4125,16 @@ async def tally_deeds(
                     try:
                         team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
                         kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
+                        window_days = int(kt_snap.get("window_days", 7) or 7)
                         member_rows = list(kt_snap.get("member_rows") or [])
+                        chapter_by_member: Dict[str, str] = {}
+                        for it in sorted_items:
+                            try:
+                                m_id = str(it.get("member_id", "") or "")
+                                if m_id:
+                                    chapter_by_member[m_id] = str(it.get("home_chapter", "") or "")
+                            except Exception:
+                                continue
                         # Keep send_to as a single shared embed: 1 key field + per-member fields.
                         # Discord hard-caps embeds to 25 fields.
                         max_embed_fields = 25
@@ -4144,14 +4153,24 @@ async def tally_deeds(
                         roster_embed.add_field(
                             name="▸ 7ᴅ ᴋᴇʏ",
                             value=(
-                                "ΔAAR: 7-day AAR points | Ω: Omega ops | BL: Black Laurels-tagged AARs\n"
-                                "DV: Dual Vigil-tagged AARs | SD: Strike directives completed | CB: weighted combat bond score"
+                                f"Window: Last **{window_days} day(s)**\n"
+                                "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
+                                "BL: Black Laurels-tagged AARs | DV: Dual Vigil-tagged AARs\n"
+                                "SD: Strike directives completed | CB: Teamwork score (how consistently you ran with this kill team)"
                             ),
                             inline=False,
                         )
 
                         for row in rows_to_show:
-                            member_label = str(row.get("member_label", row.get("member_id", "Unknown")))
+                            member_id = str(row.get("member_id", "") or "")
+                            mention_label = f"<@{member_id}>" if member_id else str(
+                                row.get("member_label", row.get("member_id", "Unknown"))
+                            )
+                            home_ch = chapter_by_member.get(member_id, "")
+                            chapter_emoji = ""
+                            if home_ch and home_ch not in ("Unknown", "REDACTED"):
+                                chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
+                            field_name = f"▸ {chapter_emoji} | {mention_label}" if chapter_emoji else f"▸ {mention_label}"
                             aar_delta = int(row.get("aar_delta", 0) or 0)
                             omega_count = int(row.get("omega_count", 0) or 0)
                             bl_count = int(row.get("black_laurels_count", 0) or 0)
@@ -4159,7 +4178,7 @@ async def tally_deeds(
                             sd_count = int(row.get("strike_directives_count", 0) or 0)
                             cb_score = int(row.get("cb_score", 0) or 0)
                             roster_embed.add_field(
-                                name=f"▸ {member_label}",
+                                name=field_name,
                                 value=(
                                     f"ΔAAR: **{aar_delta}** | Ω: **{omega_count}** | BL: **{bl_count}**\n"
                                     f"DV: **{dv_count}** | SD: **{sd_count}** | CB: **{cb_score}**"
