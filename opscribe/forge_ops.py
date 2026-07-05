@@ -2679,11 +2679,9 @@ async def _attest(
         )
         return
 
-    # Find the responsible attestor based on bearer's company/role
-    attestor_member, role_key = _b("_find_responsible_attestor")(member, interaction.guild)
-    if attestor_member is None:
-        attestor_member = interaction.user
-        role_key = _caller_role_key
+    # Attestation authority is always the command invoker.
+    attestor_member = interaction.user
+    role_key = _caller_role_key
 
     # Timestamp and authority
     try:
@@ -2691,11 +2689,7 @@ async def _attest(
     except Exception:
         ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    if role_key == "forgemaster":
-        authority = "Jericho High Command"
-    else:
-        comp = _find_company_or_chapter(attestor_member) or "Unknown Company"
-        authority = comp
+    authority = "Jericho Armory"
 
     attester = getattr(attestor_member, "display_name", None) or str(attestor_member.id)
     attester = attester.replace("●", "").replace("⚬", "").strip()

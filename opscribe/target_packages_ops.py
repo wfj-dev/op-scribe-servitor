@@ -6789,26 +6789,12 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
         if not pkg:
             return
 
-        signed_up = pkg.get("signed_up", [])
-        specialists = pkg.get("assigned_specialist_ids", [])
-        sp_assigners = pkg.get("specialist_assigners", {})
-        mode = pkg.get("mode", "")
-        total_capacity = 3 if "Hard" in mode else 5
-        count = len(signed_up) + len(specialists)
-
-        signed_names = []
-        for uid in signed_up:
-            m2 = resolved_guild.get_member(uid) if resolved_guild else None
-            signed_names.append(m2.display_name if m2 else str(uid))
-        for uid in specialists:
-            m2 = resolved_guild.get_member(uid) if resolved_guild else None
-            sp_assigner_id = sp_assigners.get(str(uid))
-            sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
-            sp_suffix = f" _(via {sp_a.display_name})_" if (sp_a and int(sp_assigner_id) != int(uid)) else " _(specialist)_"
-            signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
-
-        roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
-        roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
+        # Reconcile display status with current readiness before rendering.
+        if pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED):
+            desired_status = STATUS_DEPLOYED if _check_deployed(pkg, resolved_guild) else STATUS_RECRUITING
+            if pkg.get("status") != desired_status:
+                pkg["status"] = desired_status
+                _save_tp(data)
 
         signup_channel_id = pkg.get("signup_channel_id")
         signup_message_id = pkg.get("signup_message_id")
@@ -6819,32 +6805,8 @@ async def _refresh_signup_embed_for_package(package_id: str, guild: "discord.Gui
         if not ch:
             return
         msg = await ch.fetch_message(int(signup_message_id))
-        if not msg.embeds:
-            return
-
-        upd_embed = msg.embeds[0]
-        req_roles = pkg.get("required_roles", [])
-        deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
-        if req_roles and resolved_guild:
-            req_display = _resolve_requirements_display(pkg, resolved_guild)
-            for rl, em, _wh in req_display:
-                deploy_lines.append(f"{em} **{rl}**")
-        elif req_roles:
-            for rl in req_roles:
-                deploy_lines.append(f"🔲 **{rl}**")
-        deploy_lines.append("Press **⚔ Comply** to register for this operation.")
-
-        new_fields = [
-            f for f in upd_embed.fields
-            if not f.name.startswith("▸ Signed Up")
-            and f.name != "▸ Deployment Requirements"
-            and f.name != "▸ Required Ranks"
-        ]
-        upd_embed.clear_fields()
-        for f in new_fields:
-            upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-        upd_embed.add_field(name="▸ Deployment Requirements", value="\n".join(deploy_lines), inline=False)
-        upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
+        rep = data.get("rep", 0.0)
+        upd_embed = _build_signup_embed_from_package(pkg, rep, resolved_guild)
         await msg.edit(embed=upd_embed, view=SignUpView(package_id=package_id))
     except Exception as e:
         _g.logger.debug(f"[TP] Signup embed refresh failed for {package_id}: {e}")
@@ -6946,23 +6908,16 @@ class _ManageRosterView(discord.ui.View):
             await interaction.edit_original_response(content=f"{msg}\nNo additional members are removable by you.", view=None)
 
 
-async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: discord.Member = None) -> None:
-    """Post the KT sign-up embed in the KT's forum thread."""
-    from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
+def _build_signup_embed_from_package(
+    pkg: dict,
+    rep: float,
+    guild: "discord.Guild | None",
+    complier: "discord.Member | None" = None,
+) -> discord.Embed:
+    """Build the canonical KT signup embed from current package state."""
+    embed = _build_package_embed(pkg, rep, guild=guild)
 
-    data = _load_tp()
-    pkg = data["packages"].get(package_id)
-    if not pkg:
-        return
-
-    kt_name = pkg.get("assigned_kt", "")
-    company_mention = _resolve_company_role_mention(guild, pkg.get("assigned_company"))
-    mode = pkg.get("mode", "")
-    req_roles = pkg.get("required_roles", [])
-
-    data_rep = data.get("rep", 0.0)
-    embed = _build_package_embed(pkg, data_rep, guild=guild)
-    leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
+    leader_member, _leader_role = _resolve_kt_leader_for_package(pkg, guild)
     assigned_captain_member = None
     assigned_captain_id = int(pkg.get("assigned_captain_id") or 0)
     if guild and assigned_captain_id:
@@ -6988,17 +6943,18 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
             name=f"{leader_member.display_name}",
             icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
         )
+
+    mode = pkg.get("mode", "")
+    req_roles = pkg.get("required_roles", [])
     total_capacity = 3 if "Hard" in mode else 5
 
-    # Remove ▸ Required Ranks — it will be merged into ▸ Deployment Requirements below
+    # Remove ▸ Required Ranks — it is merged into ▸ Deployment Requirements.
     _embed_fields = [f for f in embed.fields if f.name != "▸ Required Ranks"]
     embed.clear_fields()
     for _f in _embed_fields:
         embed.add_field(name=_f.name, value=_f.value, inline=_f.inline)
 
-    # Build merged ▸ Deployment Requirements: checkboxes (no names) + size + comply
-    _deploy_lines = []
-    _deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
+    _deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
     if req_roles and guild:
         _req_disp = _resolve_requirements_display(pkg, guild)
         for _role, _emoji, _who in _req_disp:
@@ -7013,31 +6969,47 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
         inline=False,
     )
 
-    # Add current roster if anyone is already signed up / attached (e.g. on repost)
-    _current_signed = pkg.get("signed_up", [])
-    _current_specialists = pkg.get("assigned_specialist_ids", [])
-    _specialist_assigners = pkg.get("specialist_assigners", {})
-    _roster_total = len(_current_signed) + len(_current_specialists)
-    if _roster_total > 0:
-        _roster_names = []
-        for uid in _current_signed:
+    signed_ids = pkg.get("signed_up", [])
+    specialist_ids = pkg.get("assigned_specialist_ids", [])
+    specialist_assigners = pkg.get("specialist_assigners", {})
+    roster_total = len(signed_ids) + len(specialist_ids)
+    if roster_total > 0:
+        roster_names = []
+        for uid in signed_ids:
             m2 = guild.get_member(uid) if guild else None
-            _roster_names.append(m2.display_name if m2 else str(uid))
-        for uid in _current_specialists:
+            roster_names.append(m2.display_name if m2 else str(uid))
+        for uid in specialist_ids:
             m2 = guild.get_member(uid) if guild else None
-            _sp_name = m2.display_name if m2 else str(uid)
-            _assigner_id = _specialist_assigners.get(str(uid))
-            if _assigner_id and int(_assigner_id) != int(uid):
-                _a = guild.get_member(_assigner_id) if guild else None
-                _sp_name += f" _(via {_a.display_name if _a else str(_assigner_id)})_"
+            sp_name = m2.display_name if m2 else str(uid)
+            assigner_id = specialist_assigners.get(str(uid))
+            if assigner_id and int(assigner_id) != int(uid):
+                a = guild.get_member(assigner_id) if guild else None
+                sp_name += f" _(via {a.display_name if a else str(assigner_id)})_"
             else:
-                _sp_name += " _(specialist)_"
-            _roster_names.append(_sp_name)
+                sp_name += " _(specialist)_"
+            roster_names.append(sp_name)
         embed.add_field(
-            name=f"▸ Signed Up ({_roster_total}/{total_capacity})",
-            value="\n".join(f"• {n}" for n in _roster_names),
+            name=f"▸ Signed Up ({roster_total}/{total_capacity})",
+            value="\n".join(f"• {n}" for n in roster_names),
             inline=False,
         )
+
+    return embed
+
+
+async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: discord.Member = None) -> None:
+    """Post the KT sign-up embed in the KT's forum thread."""
+    from .forge_ops import _get_award_announcement_channel, _resolve_killteam_for_member
+
+    data = _load_tp()
+    pkg = data["packages"].get(package_id)
+    if not pkg:
+        return
+
+    kt_name = pkg.get("assigned_kt", "")
+    company_mention = _resolve_company_role_mention(guild, pkg.get("assigned_company"))
+    data_rep = data.get("rep", 0.0)
+    embed = _build_signup_embed_from_package(pkg, data_rep, guild, complier=complier)
 
     view = SignUpView(package_id=package_id)
 
@@ -7352,85 +7324,35 @@ class SignUpView(discord.ui.View):
 
         await _remove_member_from_strike_queue(member.id)
 
-        signed_up = pkg2.get("signed_up", [])
-        _specialists_su = pkg2.get("assigned_specialist_ids", [])
-        mode = pkg2.get("mode", "")
-        total_capacity = 3 if "Hard" in mode else 5
-        count = len(signed_up) + len(_specialists_su)
-
-        # Update the sign-up embed to show current roster
+        # Refresh signup embed and specialist notification embeds.
         try:
             resolved_guild = guild or _get_guild_from_bot()
+            await _refresh_signup_embed_for_package(self.package_id, resolved_guild)
+
+            data3 = _load_tp()
+            pkg3 = data3["packages"].get(self.package_id, {})
+            signed_up3 = pkg3.get("signed_up", [])
+            specialists3 = pkg3.get("assigned_specialist_ids", [])
+            mode3 = pkg3.get("mode", "")
+            total_capacity3 = 3 if "Hard" in mode3 else 5
+            count3 = len(signed_up3) + len(specialists3)
+
             signed_names = []
-            for uid in pkg2.get("signed_up", []):
+            for uid in signed_up3:
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
                 signed_names.append(m2.display_name if m2 else str(uid))
-            for uid in _specialists_su:
+            for uid in specialists3:
                 m2 = resolved_guild.get_member(uid) if resolved_guild else None
-                sp_assigners = pkg2.get("specialist_assigners", {})
+                sp_assigners = pkg3.get("specialist_assigners", {})
                 sp_assigner_id = sp_assigners.get(str(uid))
                 sp_a = resolved_guild.get_member(sp_assigner_id) if (resolved_guild and sp_assigner_id) else None
                 sp_suffix = f" _(via {sp_a.display_name})_" if (sp_a and int(sp_assigner_id) != int(uid)) else " _(specialist)_"
                 signed_names.append((m2.display_name if m2 else str(uid)) + sp_suffix)
-            roster_field_name = f"▸ Signed Up ({count}/{total_capacity})"
+            roster_field_name = f"▸ Signed Up ({count3}/{total_capacity3})"
             roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
 
-            # Update KT sign-up embed
-            signup_channel_id = pkg2.get("signup_channel_id")
-            signup_message_id = pkg2.get("signup_message_id")
-            if signup_channel_id and signup_message_id and resolved_guild:
-                ch = await _resolve_channel(resolved_guild, int(signup_channel_id))
-                if ch:
-                    msg = await ch.fetch_message(int(signup_message_id))
-                    if msg.embeds:
-                        # If status just flipped to DEPLOYED, rebuild the full embed
-                        # so the Intel Dossier status line also updates.
-                        if pkg2.get("status") == STATUS_DEPLOYED:
-                            data_rep = _load_tp().get("rep", 0.0)
-                            upd_embed = _build_package_embed(pkg2, data_rep, guild=resolved_guild)
-                            _rck2 = []
-                            if pkg2.get("required_roles"):
-                                if resolved_guild:
-                                    _rd2 = _resolve_requirements_display(pkg2, resolved_guild)
-                                    _rck2 = [f"{em} **{rl}**" for rl, em, _ in _rd2]
-                                else:
-                                    _rck2 = [f"🔲 **{r}**" for r in pkg2.get("required_roles", [])]
-                            _dp2 = _rck2 + [f"**Strike Team Size:** {total_capacity}", "Press **⚔ Comply** to register for this operation."]
-                            upd_embed.add_field(
-                                name="▸ Deployment Requirements",
-                                value="\n".join(_dp2),
-                                inline=False,
-                            )
-                            upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-                        else:
-                            upd_embed = msg.embeds[0]
-                            # Rebuild ▸ Deployment Requirements with updated checkboxes (no names)
-                            _req_roles2 = pkg2.get("required_roles", [])
-                            _new_deploy_lines = [f"**Strike Team Size:** {total_capacity}"]
-                            if _req_roles2 and resolved_guild:
-                                _req_display2 = _resolve_requirements_display(pkg2, resolved_guild)
-                                for _rl, _em, _wh in _req_display2:
-                                    _new_deploy_lines.append(f"{_em} **{_rl}**")
-                            elif _req_roles2:
-                                for _rl in _req_roles2:
-                                    _new_deploy_lines.append(f"🔲 **{_rl}**")
-                            _new_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
-                            _new_deploy_value = "\n".join(_new_deploy_lines)
-                            new_fields = [
-                                f for f in upd_embed.fields
-                                if not f.name.startswith("▸ Signed Up")
-                                and f.name != "▸ Deployment Requirements"
-                                and f.name != "▸ Required Ranks"
-                            ]
-                            upd_embed.clear_fields()
-                            for f in new_fields:
-                                upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                            upd_embed.add_field(name="▸ Deployment Requirements", value=_new_deploy_value, inline=False)
-                            upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-                        await msg.edit(embed=upd_embed, view=SignUpView(package_id=self.package_id))
-
             # Update specialist notification embeds
-            for sp_msg_ref in pkg2.get("specialist_notification_msgs", []):
+            for sp_msg_ref in pkg3.get("specialist_notification_msgs", []):
                 try:
                     if sp_msg_ref.get("kind") == "assignment_link":
                         continue
@@ -7504,59 +7426,7 @@ class SignUpView(discord.ui.View):
 
         await interaction.response.send_message(success_message, ephemeral=True)
 
-        # Update the signup embed roster
-        try:
-            resolved_guild = interaction.guild or _get_guild_from_bot()
-            data3 = _load_tp()
-            pkg3 = data3["packages"].get(self.package_id, {})
-            signed_up3 = pkg3.get("signed_up", [])
-            _specialists3 = pkg3.get("assigned_specialist_ids", [])
-            mode3 = pkg3.get("mode", "")
-            total_capacity3 = 3 if "Hard" in mode3 else 5
-            count3 = len(signed_up3) + len(_specialists3)
-            signed_names = []
-            for uid in signed_up3:
-                m2 = resolved_guild.get_member(uid) if resolved_guild else None
-                signed_names.append(m2.display_name if m2 else str(uid))
-            for uid in _specialists3:
-                m2 = resolved_guild.get_member(uid) if resolved_guild else None
-                signed_names.append((m2.display_name if m2 else str(uid)) + " _(specialist)_")
-            roster_field_name = f"▸ Signed Up ({count3}/{total_capacity3})"
-            roster_field_value = "\n".join(f"• {n}" for n in signed_names) or "—"
-
-            signup_channel_id = pkg3.get("signup_channel_id")
-            signup_message_id = pkg3.get("signup_message_id")
-            if signup_channel_id and signup_message_id and resolved_guild:
-                ch = await _resolve_channel(resolved_guild, int(signup_channel_id))
-                if ch:
-                    msg = await ch.fetch_message(int(signup_message_id))
-                    if msg.embeds:
-                        upd_embed = msg.embeds[0]
-                        _req_roles3 = pkg3.get("required_roles", [])
-                        _sd_deploy_lines = [f"**Strike Team Size:** {total_capacity3}"]
-                        if _req_roles3 and resolved_guild:
-                            _req_display3 = _resolve_requirements_display(pkg3, resolved_guild)
-                            for _rl3, _em3, _wh3 in _req_display3:
-                                _sd_deploy_lines.append(f"{_em3} **{_rl3}**")
-                        elif _req_roles3:
-                            for _rl3 in _req_roles3:
-                                _sd_deploy_lines.append(f"🔲 **{_rl3}**")
-                        _sd_deploy_lines.append("Press **⚔ Comply** to register for this operation.")
-                        _sd_deploy_value = "\n".join(_sd_deploy_lines)
-                        new_fields = [
-                            f for f in upd_embed.fields
-                            if not f.name.startswith("▸ Signed Up")
-                            and f.name != "▸ Deployment Requirements"
-                            and f.name != "▸ Required Ranks"
-                        ]
-                        upd_embed.clear_fields()
-                        for f in new_fields:
-                            upd_embed.add_field(name=f.name, value=f.value, inline=f.inline)
-                        upd_embed.add_field(name="▸ Deployment Requirements", value=_sd_deploy_value, inline=False)
-                        upd_embed.add_field(name=roster_field_name, value=roster_field_value, inline=False)
-                        await msg.edit(embed=upd_embed, view=SignUpView(package_id=self.package_id))
-        except Exception as e:
-            _g.logger.debug(f"[TP] Stand Down embed update failed for {self.package_id}: {e}")
+        await _refresh_signup_embed_for_package(self.package_id, interaction.guild or _get_guild_from_bot())
 
 
 class SpecialistAssignView(discord.ui.View):
