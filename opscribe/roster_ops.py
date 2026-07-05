@@ -4126,11 +4126,10 @@ async def tally_deeds(
                         team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
                         kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
                         member_rows = list(kt_snap.get("member_rows") or [])
-                        roster_chunk_count = (len(sorted_items) + 4) // 5
-                        # Reserve fields for: stat key + roster chunk fields (+ optional truncation note)
+                        # Keep send_to as a single shared embed: 1 key field + per-member fields.
+                        # Discord hard-caps embeds to 25 fields.
                         max_embed_fields = 25
-                        base_reserved = 1 + roster_chunk_count
-                        available_for_members = max(0, max_embed_fields - base_reserved)
+                        available_for_members = max(0, max_embed_fields - 1)
 
                         rows_to_show = member_rows
                         omitted_rows = 0
@@ -4177,83 +4176,81 @@ async def tally_deeds(
                     except Exception as snap_err:
                         _g.logger.debug("7-day snapshot embed build failed: %s", snap_err, exc_info=True)
 
-                # Build roster entries using combat bonds style formatting
-                roster_lines = []
-                for it in sorted_items:
-                    _member_id = str(it.get("member_id", "") or "")  # Available but not displayed in this format
-                    nm = str(it.get("name", "") or "")
-                    studs = str(it.get("studs_symbols", "") or "")
-                    st = str(it.get("status", ""))
-                    home_ch = str(it.get("home_chapter", "") or "")
-                    aar_v = int(it.get("aar", 0) or 0)
-                    gene_v = int(it.get("gene", 0) or 0)
-                    armory_v = int(it.get("armory", 0) or 0)
-                    status_icon = "✅" if st.lower() == "active" else "⏸️"
+                if send_to is None:
+                    # Build roster entries using combat bonds style formatting
+                    roster_lines = []
+                    for it in sorted_items:
+                        _member_id = str(it.get("member_id", "") or "")  # Available but not displayed in this format
+                        nm = str(it.get("name", "") or "")
+                        studs = str(it.get("studs_symbols", "") or "")
+                        st = str(it.get("status", ""))
+                        home_ch = str(it.get("home_chapter", "") or "")
+                        aar_v = int(it.get("aar", 0) or 0)
+                        gene_v = int(it.get("gene", 0) or 0)
+                        armory_v = int(it.get("armory", 0) or 0)
+                        status_icon = "✅" if st.lower() == "active" else "⏸️"
 
-                    # Get rank emoji
-                    role_names = it.get("role_names", [])
-                    member_rank = None
-                    for rp in _b("RANK_ROLES_PRIORITY"):
-                        if rp in role_names:
-                            member_rank = rp
-                            break
-                    rank_emoji = _b("_get_rank_emoji")(interaction.guild, member_rank) if member_rank else ""
+                        # Get rank emoji
+                        role_names = it.get("role_names", [])
+                        member_rank = None
+                        for rp in _b("RANK_ROLES_PRIORITY"):
+                            if rp in role_names:
+                                member_rank = rp
+                                break
+                        rank_emoji = _b("_get_rank_emoji")(interaction.guild, member_rank) if member_rank else ""
 
-                    # Strip rank prefix from name (case-insensitive)
-                    stripped_name = nm
-                    for rp in _b("RANK_ROLES_PRIORITY"):
-                        if stripped_name.lower().startswith(rp.lower()):
-                            stripped_name = stripped_name[len(rp) :].lstrip()
-                            break
-                    # Truncate after stripping
-                    stripped_name = stripped_name[:20]
+                        # Strip rank prefix from name (case-insensitive)
+                        stripped_name = nm
+                        for rp in _b("RANK_ROLES_PRIORITY"):
+                            if stripped_name.lower().startswith(rp.lower()):
+                                stripped_name = stripped_name[len(rp) :].lstrip()
+                                break
+                        # Truncate after stripping
+                        stripped_name = stripped_name[:20]
 
-                    # Get chapter emoji
-                    chapter_emoji = ""
-                    if home_ch and home_ch not in ("Unknown", "REDACTED"):
-                        chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
+                        # Get chapter emoji
+                        chapter_emoji = ""
+                        if home_ch and home_ch not in ("Unknown", "REDACTED"):
+                            chapter_emoji = _b("_get_emoji_by_name")(interaction.guild, home_ch) or ""
 
-                    # Build member label: rank_emoji name studs chapter_emoji
-                    # (status icon on separate concept line below)
-                    parts = []
-                    if rank_emoji:
-                        parts.append(rank_emoji)
-                    parts.append(f"**{stripped_name}**")
-                    if studs:
-                        parts.append(studs)
-                    if chapter_emoji:
-                        parts.append(chapter_emoji)
-                    member_label = " ".join(parts)
+                        # Build member label: rank_emoji name studs chapter_emoji
+                        # (status icon on separate concept line below)
+                        parts = []
+                        if rank_emoji:
+                            parts.append(rank_emoji)
+                        parts.append(f"**{stripped_name}**")
+                        if studs:
+                            parts.append(studs)
+                        if chapter_emoji:
+                            parts.append(chapter_emoji)
+                        member_label = " ".join(parts)
 
-                    roster_lines.append(
-                        f"{status_icon} {member_label}\nAAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
-                    )
+                        roster_lines.append(
+                            f"{status_icon} {member_label}\nAAR: {aar_v} | Gene: {gene_v} | Armory: {armory_v}"
+                        )
 
-                # Chunk into fields (max ~5 members per field to avoid overflow)
-                chunk_size = 5
-                for i in range(0, len(roster_lines), chunk_size):
-                    chunk = roster_lines[i : i + chunk_size]
-                    field_value = "\n".join(chunk)
-                    roster_embed.add_field(
-                        name="\u200b",
-                        value=field_value or "—",
-                        inline=False,
-                    )
+                    # Chunk into fields (max ~5 members per field to avoid overflow)
+                    chunk_size = 5
+                    for i in range(0, len(roster_lines), chunk_size):
+                        chunk = roster_lines[i : i + chunk_size]
+                        field_value = "\n".join(chunk)
+                        roster_embed.add_field(
+                            name="\u200b",
+                            value=field_value or "—",
+                            inline=False,
+                        )
 
                 roster_embed.set_footer(text="᛭⋅ Roster generated from recent service records ⋅᛭")
 
-                pages = _paginate_embed_fields(roster_embed)
-                if len(pages) > 1:
-                    view = _EmbedPagesView(pages, interaction.user.id)
-                    if send_to_channel:
-                        msg = await send_to_channel.send(embed=pages[0], view=view)
-                    else:
-                        msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
-                    view.message = msg
+                # For shared send_to posts, keep a single embed with no pagination controls.
+                if send_to_channel:
+                    await send_to_channel.send(embed=roster_embed)
                 else:
-                    # Send embed only (clean output)
-                    if send_to_channel:
-                        await send_to_channel.send(embed=roster_embed)
+                    pages = _paginate_embed_fields(roster_embed)
+                    if len(pages) > 1:
+                        view = _EmbedPagesView(pages, interaction.user.id)
+                        msg = await interaction.followup.send(embed=pages[0], view=view, ephemeral=True)
+                        view.message = msg
                     else:
                         await interaction.followup.send(embed=roster_embed, ephemeral=True)
             except Exception:
