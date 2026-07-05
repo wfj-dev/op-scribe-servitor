@@ -6963,7 +6963,27 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
     data_rep = data.get("rep", 0.0)
     embed = _build_package_embed(pkg, data_rep, guild=guild)
     leader_member, leader_role = _resolve_kt_leader_for_package(pkg, guild)
-    if leader_member:
+    assigned_captain_member = None
+    assigned_captain_id = int(pkg.get("assigned_captain_id") or 0)
+    if guild and assigned_captain_id:
+        assigned_captain_member = guild.get_member(assigned_captain_id)
+
+    # Match strike-directive flow author style: actor display name/avatar only.
+    if complier:
+        embed.set_author(
+            name=f"{complier.display_name}",
+            icon_url=complier.display_avatar.url if getattr(complier, "display_avatar", None) else None,
+        )
+    elif assigned_captain_member:
+        embed.set_author(
+            name=f"{assigned_captain_member.display_name}",
+            icon_url=(
+                assigned_captain_member.display_avatar.url
+                if getattr(assigned_captain_member, "display_avatar", None)
+                else None
+            ),
+        )
+    elif leader_member:
         embed.set_author(
             name=f"{leader_member.display_name}",
             icon_url=leader_member.display_avatar.url if getattr(leader_member, "display_avatar", None) else None,
@@ -6978,8 +6998,6 @@ async def _post_signup_embed(package_id: str, guild: discord.Guild, complier: di
 
     # Build merged ▸ Deployment Requirements: checkboxes (no names) + size + comply
     _deploy_lines = []
-    if complier:
-        _deploy_lines.append(f"{complier.mention} has accepted these orders.")
     _deploy_lines.append(f"**Strike Team Size:** {total_capacity}")
     if req_roles and guild:
         _req_disp = _resolve_requirements_display(pkg, guild)
