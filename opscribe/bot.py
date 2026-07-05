@@ -1317,7 +1317,8 @@ def is_sergeant_or_higher(user: discord.User | discord.Member):
 
 
 # Permission track data tables (BATTLE_LINE_TRACK, BATTLE_LINE_RANKS,
-# CHAMPION_TRACK, CHAMPION_RANKS, SPECIALIST_TRACKS, SPECIALIST_RANKS,
+# OATHSWORN_TRACK, OATHSWORN_RANKS, CHAMPION_TRACK, CHAMPION_RANKS,
+# SPECIALIST_TRACKS, SPECIALIST_RANKS, DREAD_TRACK, DREAD_RANKS,
 # HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES) live in permissions.py.
 
 
@@ -1337,6 +1338,16 @@ def _user_meets_track_requirement(user_roles: set[str], min_rank: str) -> bool:
     # Check specialist tracks (4 independent sub-tracks)
     if min_rank in SPECIALIST_TRACKS:
         allowed_roles = SPECIALIST_TRACKS[min_rank]
+        return bool(user_roles & allowed_roles)
+
+    # Check oathsworn track
+    if min_rank in OATHSWORN_TRACK:
+        allowed_roles = OATHSWORN_TRACK[min_rank]
+        return bool(user_roles & allowed_roles)
+
+    # Check dread track
+    if min_rank in DREAD_TRACK:
+        allowed_roles = DREAD_TRACK[min_rank]
         return bool(user_roles & allowed_roles)
 
     # Check champion track

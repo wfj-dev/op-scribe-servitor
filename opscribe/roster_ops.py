@@ -2174,6 +2174,8 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         first_blade.lower(),
     }
 
+    rank_priority = list(_b("RANK_ROLES_PRIORITY") or [])
+
     captains_lieutenants_by_kt: dict[int, list[discord.Member]] = {}
     findings: list[dict] = []
 
@@ -2204,52 +2206,24 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         kt_name_hits = sorted([name for name in role_names_lc if name.startswith("kill team ") or name in kt_name_hints_lc])
 
         has_watch_brother = (watch_brother_role_id in role_ids) or (watch_brother.lower() in role_names_lc)
-        has_watch_veteran = watch_veteran.lower() in role_names_lc
-        has_oathsworn = oathsworn.lower() in role_names_lc
-        has_watch_sergeant = watch_sergeant.lower() in role_names_lc
-        has_watch_lieutenant = watch_lieutenant.lower() in role_names_lc
-        has_watch_captain = watch_captain.lower() in role_names_lc
-        has_watch_master = watch_master.lower() in role_names_lc
-        has_watch_command_role = watch_command_role.lower() in role_names_lc
-        has_high_command_role = high_command_role.lower() in role_names_lc
         has_specialist_marker = deathwatch_specialist.lower() in role_names_lc
         has_company_role = bool(company_hits or company_name_hits)
         has_company_command_role = bool(company_cmd_hits)
         has_kt_role = bool(kt_hits or kt_name_hits)
+        has_watch_command_role = watch_command_role.lower() in role_names_lc
+        has_high_command_role = high_command_role.lower() in role_names_lc
 
-        has_allowed_kt_rank = any(
-            name in role_names_lc
-            for name in allowed_kt_rank_names_lc
-        )
-        has_allowed_watch_command_rank = any(
-            name in role_names_lc
-            for name in allowed_watch_command_names_lc
-        )
-        has_allowed_high_command_rank = any(
-            name in role_names_lc
-            for name in allowed_high_command_names_lc
-        )
-        has_allowed_specialist_marker_rank = any(
-            name in role_names_lc
-            for name in allowed_specialist_marker_names_lc
-        )
+        highest_rank_name = None
+        for rank_name in rank_priority:
+            if rank_name.lower() in role_names_lc:
+                highest_rank_name = rank_name
+                break
+        highest_rank_lc = highest_rank_name.lower() if highest_rank_name else None
 
-        has_relevant_rank = any(
-            [
-                has_watch_veteran,
-                has_oathsworn,
-                has_watch_sergeant,
-                has_watch_lieutenant,
-                has_watch_captain,
-                has_watch_master,
-                has_watch_command_role,
-                has_high_command_role,
-                has_specialist_marker,
-                has_company_role,
-                has_company_command_role,
-                has_kt_role,
-            ]
-        )
+        has_allowed_kt_rank = highest_rank_lc in allowed_kt_rank_names_lc
+        has_allowed_specialist_marker_rank = highest_rank_lc in allowed_specialist_marker_names_lc
+
+        has_relevant_rank = highest_rank_name is not None or has_specialist_marker or has_company_role or has_company_command_role or has_kt_role
         if not has_relevant_rank:
             continue
 
@@ -2270,9 +2244,9 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
         if has_company_command_role and not has_company_role:
             _add(member, "company_role_missing", "Company command roles require a company role.")
-        if has_company_command_role and not (has_watch_captain or has_watch_lieutenant):
+        if has_company_command_role and highest_rank_lc not in {watch_captain.lower(), watch_lieutenant.lower()}:
             _add(member, "company_command_excess", "Only Watch Captain and Watch Lieutenant may hold company command roles.")
-        if (has_watch_captain or has_watch_lieutenant) and not has_company_command_role:
+        if highest_rank_lc in {watch_captain.lower(), watch_lieutenant.lower()} and not has_company_command_role:
             company_name = company_name_by_role_id.get(company_hits[0], "company") if len(company_hits) == 1 else "company"
             _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
@@ -2283,17 +2257,17 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if has_specialist_marker and (has_company_role or has_company_command_role or has_kt_role):
             _add(member, "company_role_excess", "Deathwatch Specialist members must not hold company or kill team roles.")
 
-        if has_watch_command_role and not has_allowed_watch_command_rank:
+        if has_watch_command_role and highest_rank_lc not in allowed_watch_command_names_lc:
             _add(member, "watch_command_excess", f"{watch_command_role} is only valid on watch-command ranks.")
-        if has_allowed_watch_command_rank and not has_watch_command_role:
+        if highest_rank_lc in allowed_watch_command_names_lc and not has_watch_command_role:
             _add(member, "watch_command_missing", f"Expected {watch_command_role} role is missing.")
 
-        if has_high_command_role and not has_allowed_high_command_rank:
+        if has_high_command_role and highest_rank_lc not in allowed_high_command_names_lc:
             _add(member, "high_command_excess", f"{high_command_role} is only valid on high-command ranks.")
-        if has_allowed_high_command_rank and not has_high_command_role:
+        if highest_rank_lc in allowed_high_command_names_lc and not has_high_command_role:
             _add(member, "high_command_missing", f"Expected {high_command_role} role is missing.")
 
-        if has_watch_brother and has_kt_role and (has_watch_sergeant or has_watch_lieutenant or has_watch_captain):
+        if has_watch_brother and has_kt_role and highest_rank_lc in {watch_sergeant.lower(), watch_lieutenant.lower(), watch_captain.lower()}:
             for kt_role_id in kt_hits:
                 captains_lieutenants_by_kt.setdefault(kt_role_id, []).append(member)
 

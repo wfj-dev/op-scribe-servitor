@@ -10,12 +10,16 @@ so existing references and tests keep working unchanged.
 # PERMISSION TRACKS
 # ============================================================================
 # Three tracks exist:
-#   1. Battle Line: Watch Brother → Watch Veteran → Oathsworn → Watch Sergeant
+#   1. Battle Line: Watch Brother → Watch Veteran → Watch Sergeant
 #                   → Watch Lieutenant → Watch Captain
-#   2. Blade: Bladeguard -> First Blade -> Blade Master
-#   3. Specialist (4 sub-tracks, each leading to High Command):
-#        Chaplain → High Chaplain, Apothecary → Chief Apothecary,
-#        Librarian → Void Warden, Techmarine → Forgemaster
+#   2. Oathsworn: Watch Brother → Watch Veteran → Oathsworn
+#   3. Blade: Watch Brother → Watch Veteran → Bladeguard -> First Blade -> Blade Master
+#   4. Specialist (4 sub-tracks, each leading to High Command):
+#        Watch Brother → Watch Veteran → Chaplain → High Chaplain,
+#        Watch Brother → Watch Veteran → Apothecary → Chief Apothecary,
+#        Watch Brother → Watch Veteran → Librarian → Void Warden,
+#        Watch Brother → Watch Veteran → Techmarine → Forgemaster
+#   5. Dread: Watch Brother → Watch Veteran → Honored Dreadnought → Venerable Dreadnought
 #
 # High Command = senior specialists (High Chaplain, Chief Apothecary, Void Warden,
 #                Forgemaster) + Watch Master
@@ -27,19 +31,16 @@ BATTLE_LINE_TRACK = {
     "Watch Brother": {
         "Watch Brother",
         "Watch Veteran",
-        "Oathsworn",
         "Watch Sergeant",
         "Watch Lieutenant",
         "Watch Captain",
     },
     "Watch Veteran": {
         "Watch Veteran",
-        "Oathsworn",
         "Watch Sergeant",
         "Watch Lieutenant",
         "Watch Captain",
     },
-    "Oathsworn": {"Oathsworn", "Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
     "Watch Sergeant": {"Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
     "Watch Lieutenant": {"Watch Lieutenant", "Watch Captain"},
     "Watch Captain": {"Watch Captain"},
@@ -47,14 +48,34 @@ BATTLE_LINE_TRACK = {
 BATTLE_LINE_RANKS = {
     "Watch Brother",
     "Watch Veteran",
-    "Oathsworn",
     "Watch Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
 }
 
+# Oathsworn track (linear progression)
+OATHSWORN_TRACK = {
+    "Watch Brother": {"Watch Brother", "Watch Veteran", "Oathsworn"},
+    "Watch Veteran": {"Watch Veteran", "Oathsworn"},
+    "Oathsworn": {"Oathsworn"},
+}
+OATHSWORN_RANKS = {"Watch Brother", "Watch Veteran", "Oathsworn"}
+
 # Blade track (linear progression)
 CHAMPION_TRACK = {
+    "Watch Brother": {
+        "Watch Brother",
+        "Watch Veteran",
+        "Bladeguard",
+        "First Blade",
+        "Blade Master",
+    },
+    "Watch Veteran": {
+        "Watch Veteran",
+        "Bladeguard",
+        "First Blade",
+        "Blade Master",
+    },
     "Bladeguard": {
         "Bladeguard",
         "First Blade",
@@ -67,6 +88,8 @@ CHAMPION_RANKS = {"Bladeguard", "First Blade", "Blade Master"}
 
 # Specialist tracks: each sub-track is independent, leads to High Command
 SPECIALIST_TRACKS = {
+    "Watch Brother": {"Watch Brother", "Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan"},
+    "Watch Veteran": {"Watch Veteran", "Watch Techmarine", "Forgemaster", "Watch Librarian", "Void Warden", "Watch Chaplain", "High Chaplain", "Watch Apothecary", "Chief Apothecary", "Watch Keeper", "Castellan"},
     "Watch Techmarine": {"Watch Techmarine", "Forgemaster"},
     "Forgemaster": {"Forgemaster"},
     "Watch Librarian": {"Watch Librarian", "Void Warden"},
@@ -79,6 +102,15 @@ SPECIALIST_TRACKS = {
     "Castellan": {"Castellan"},
 }
 SPECIALIST_RANKS = set(SPECIALIST_TRACKS.keys())
+
+# Dread track (linear progression)
+DREAD_TRACK = {
+    "Watch Brother": {"Watch Brother", "Watch Veteran", "Honored Dreadnought", "Venerable Dreadnought"},
+    "Watch Veteran": {"Watch Veteran", "Honored Dreadnought", "Venerable Dreadnought"},
+    "Honored Dreadnought": {"Honored Dreadnought", "Venerable Dreadnought"},
+    "Venerable Dreadnought": {"Venerable Dreadnought"},
+}
+DREAD_RANKS = {"Watch Brother", "Watch Veteran", "Honored Dreadnought", "Venerable Dreadnought"}
 
 # High Command (senior specialists + Watch Master)
 HIGH_COMMAND_RANKS = {

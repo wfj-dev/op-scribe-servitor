@@ -56,13 +56,13 @@ from .constants import (  # noqa: F401
     TERMINUS_VERIFIER_RANKS,
     VERIFIER_TIER_THRESHOLDS,
 )
-from .permissions import BATTLE_LINE_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES
+from .permissions import BATTLE_LINE_RANKS, OATHSWORN_RANKS, CHAMPION_RANKS, SPECIALIST_RANKS, DREAD_RANKS, HIGH_COMMAND_RANKS, WATCH_COMMAND_ROLES
 from . import _bot_globals as _g
 from .challenge_policy import evaluate_crux_bl_rank_a
 
 
 # Any role that counts as a server member (Watch Brother or higher on any track)
-_MEMBER_RANKS = BATTLE_LINE_RANKS | CHAMPION_RANKS | SPECIALIST_RANKS | HIGH_COMMAND_RANKS
+_MEMBER_RANKS = BATTLE_LINE_RANKS | OATHSWORN_RANKS | CHAMPION_RANKS | SPECIALIST_RANKS | DREAD_RANKS | HIGH_COMMAND_RANKS
 
 
 def _b(name):
