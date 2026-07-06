@@ -3017,8 +3017,8 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 0.0)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 0.0)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_wait_minutes", lambda: 0.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_wait_minutes", lambda: 0.0)
 
         async def _fake_finalize(*_args, **_kwargs):
             return None
@@ -3055,9 +3055,9 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 80.0)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
-        # Queue has an oldest waiter (id=2) and a newer waiter (id=3); the newer one drags the match below 80%.
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_wait_minutes", lambda: 30.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_wait_minutes", lambda: 100.0)
+        # One queued brother has only waited 10 minutes, so the 30-minute partial threshold blocks backfill.
         monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda m, _entry: 100.0 if m.id == 2 else 10.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
@@ -3085,8 +3085,8 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_strike_queue_backfill_partials_enabled", lambda: True)
-        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_wait_percent", lambda: 100.0)
-        monkeypatch.setattr(tp, "_strike_queue_single_fill_wait_percent", lambda: 100.0)
+        monkeypatch.setattr(tp, "_strike_queue_partial_backfill_min_wait_minutes", lambda: 100.0)
+        monkeypatch.setattr(tp, "_strike_queue_single_fill_min_wait_minutes", lambda: 5.0)
         monkeypatch.setattr(tp, "_member_queue_wait_time_minutes", lambda *_args, **_kwargs: 0.0)
 
         posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
