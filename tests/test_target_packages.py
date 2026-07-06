@@ -3237,7 +3237,7 @@ class TestStrikeQueueMatching:
             ("send", "Omega queueing requires a PC or Console role.", True),
         ]
 
-    def test_queue_strike_rejects_when_already_committed_to_active_directive(self, monkeypatch):
+    def test_queue_strike_auto_removes_from_active_directive_when_joining_queue(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
@@ -3245,14 +3245,36 @@ class TestStrikeQueueMatching:
 
         pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
         pkg["directive_code"] = "OX-EXISTING"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        queue_data = {"entries": {}, "announced_matches": {}}
 
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
-        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        async def _fake_eval(_guild):
+            return 0
+
+        async def _fake_reconcile(*_args, **_kwargs):
+            return None
+
+        async def _fake_refresh(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+        monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
 
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "already committed to directive `OX-EXISTING`" in interaction.calls[1][1]
+        assert "Removed from OX-EXISTING sign-up roster." in interaction.calls[1][1]
+        assert tp_data["packages"][pkg["id"]]["signed_up"] == []
+        assert "1" in queue_data["entries"]
 
     def test_queue_strike_reports_fully_open_queue_eligible_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp

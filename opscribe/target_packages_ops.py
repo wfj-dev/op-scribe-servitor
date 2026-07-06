@@ -1975,14 +1975,14 @@ async def _queue_member_for_strike(
     data = _load_tp()
     packages = data.get("packages", {})
     commitment = _member_active_directive_commitment(member.id, data)
+    removal_note = ""
     if commitment is not None:
-        directive_code, is_specialist = commitment
-        if is_specialist:
-            return False, (
-                f"You are already committed as a specialist to directive `{directive_code}`. "
-                "Complete that operation first."
-            )
-        return False, f"You are already committed to directive `{directive_code}`. Complete that operation first."
+        removed, removal_note = await _remove_member_from_active_directive(member, guild)
+        if removed:
+            data = _load_tp()
+            packages = data.get("packages", {})
+        else:
+            removal_note = ""
 
     queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
 
@@ -2013,6 +2013,8 @@ async def _queue_member_for_strike(
             f" A full strike element was committed for **{match_count}** {noun}; "
             "the queue was cleared and the directive roster updated."
         )
+    if removal_note:
+        match_text = f" {removal_note}" + match_text
     return True, (
         f"You are queued for strike directives for the next **{minutes}** minutes. "
         f"Mode preference: **{mode_text}**. "
@@ -6755,6 +6757,70 @@ async def remove_attached_member_from_directive(
 
     target_display = target_member.display_name if target_member else str(target_id)
     return True, f"{target_display}: {action_msg}"
+
+
+async def _remove_member_from_active_directive(member: discord.Member, guild: "discord.Guild | None") -> tuple[bool, str]:
+    """Remove a member from whichever active directive they are currently attached to."""
+    if member is None:
+        return False, "Member not found."
+
+    async with _TP_LOCK:
+        data = _load_tp()
+        packages = data.get("packages", {}) or {}
+        active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
+        target_package_id: str | None = None
+        target_package_code = "UNKNOWN"
+        target_pkg: dict | None = None
+
+        for package_id, pkg in packages.items():
+            if not isinstance(pkg, dict) or pkg.get("status") not in active_statuses:
+                continue
+            if int(member.id) not in {
+                int(uid)
+                for uid in (pkg.get("signed_up", []) or []) + (pkg.get("assigned_specialist_ids", []) or [])
+            }:
+                continue
+            target_package_id = str(package_id)
+            target_package_code = str(pkg.get("directive_code") or pkg.get("id") or package_id or "UNKNOWN")
+            target_pkg = pkg
+            break
+
+        if target_package_id is None or target_pkg is None:
+            return False, "You are not currently attached to a directive."
+
+        resolved_guild = guild or _get_guild_from_bot()
+        target_member = resolved_guild.get_member(int(member.id)) if resolved_guild else None
+        allowed, removable_kinds, deny_reason = _can_actor_remove_attached_target(
+            member,
+            target_member,
+            int(member.id),
+            target_pkg,
+            resolved_guild,
+        )
+        if not allowed:
+            return False, deny_reason
+
+        success, action_msg = _remove_target_from_package(
+            target_pkg,
+            int(member.id),
+            removable_kinds,
+            resolved_guild,
+        )
+        if not success:
+            return False, action_msg
+
+        _save_tp(data)
+
+    try:
+        await _refresh_signup_embed_for_package(target_package_id, guild)
+    except Exception as exc:
+        _g.logger.debug(f"[TP] Failed refreshing directive embed after queue auto-detach for {target_package_code}: {exc}")
+
+    if "specialist" in action_msg.lower() and "sign-up roster" in action_msg.lower():
+        return True, f"Removed from {target_package_code} and cleared specialist attachment."
+    if "specialist" in action_msg.lower():
+        return True, f"Removed from {target_package_code} and cleared specialist attachment."
+    return True, f"Removed from {target_package_code} sign-up roster."
 
 
 def _attached_target_ids(pkg: dict) -> list[int]:
