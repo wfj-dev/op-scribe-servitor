@@ -1481,24 +1481,24 @@ def _strike_queue_backfill_partials_enabled() -> bool:
     return False
 
 
-def _strike_queue_partial_backfill_wait_percent() -> float:
-    """Minimum relative wait percent before allowing tier-1 partial backfill."""
+def _strike_queue_partial_backfill_min_wait_minutes() -> float:
+    """Minimum absolute queued minutes before allowing tier-1 partial backfill."""
     cfg = (_b("CONFIG") or {}).get("target_packages", {})
     try:
-        n = float(cfg.get("strike_queue_partial_backfill_wait_percent", 35))
+        n = float(cfg.get("strike_queue_partial_backfill_min_wait_minutes", 10))
     except Exception:
-        return 35.0
-    return max(0.0, min(100.0, n))
+        return 10.0
+    return max(0.0, n)
 
 
-def _strike_queue_single_fill_wait_percent() -> float:
-    """Minimum relative wait percent before allowing tier-2 single-slot backfill."""
+def _strike_queue_single_fill_min_wait_minutes() -> float:
+    """Minimum absolute queued minutes before allowing tier-2 single-slot backfill."""
     cfg = (_b("CONFIG") or {}).get("target_packages", {})
     try:
-        n = float(cfg.get("strike_queue_single_fill_wait_percent", 70))
+        n = float(cfg.get("strike_queue_single_fill_min_wait_minutes", 20))
     except Exception:
-        return 70.0
-    return max(0.0, min(100.0, n))
+        return 20.0
+    return max(0.0, n)
 
 
 def _strike_queue_announced_ttl_minutes() -> int:
@@ -2535,26 +2535,18 @@ def _member_queue_wait_time_minutes(member: discord.Member, entry: dict) -> floa
         return 0.0
 
 
-def _queue_wait_percent_of_oldest(wait_minutes: float, max_wait_minutes: float) -> float:
-    """Convert a member wait into a queue-relative percentage of current oldest wait."""
-    if max_wait_minutes <= 0:
-        return 0.0
-    return max(0.0, min(100.0, (wait_minutes / max_wait_minutes) * 100.0))
-
-
-def _queue_match_wait_percent(
+def _queue_match_all_members_waited_minutes(
     entry_map: dict[str, dict],
     match_members: list[discord.Member],
-    max_wait_minutes: float,
-) -> float:
-    """Return the shortest relative wait percent among matched members."""
+    min_wait_minutes: float,
+) -> bool:
+    """Return True when every matched member has queued for at least min_wait_minutes."""
+    if min_wait_minutes <= 0:
+        return True
     if not match_members:
-        return 0.0
-    return min(
-        _queue_wait_percent_of_oldest(
-            _member_queue_wait_time_minutes(member, entry_map.get(str(member.id), {})),
-            max_wait_minutes,
-        )
+        return False
+    return all(
+        _member_queue_wait_time_minutes(member, entry_map.get(str(member.id), {})) >= min_wait_minutes
         for member in match_members
     )
 
@@ -2594,12 +2586,8 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
             candidate_matches: list[tuple[dict, list[discord.Member], list[str], datetime]] = []
             backfill_partials = _strike_queue_backfill_partials_enabled()
-            partial_wait_threshold = _strike_queue_partial_backfill_wait_percent()
-            single_wait_threshold = _strike_queue_single_fill_wait_percent()
-            max_wait_minutes = max(
-                (_member_queue_wait_time_minutes(member, entry) for member, entry in active_entries),
-                default=0.0,
-            )
+            partial_min_wait_minutes = _strike_queue_partial_backfill_min_wait_minutes()
+            single_min_wait_minutes = _strike_queue_single_fill_min_wait_minutes()
 
             for pkg in packages.values():
                 if pkg.get("status") != STATUS_RECRUITING:
@@ -2625,15 +2613,12 @@ async def _evaluate_strike_queue_matches(guild: discord.Guild) -> int:
 
                 quality_tier = _queue_match_quality_tier(pkg, len(match_members))
 
-                # Gate backfill tiers by relative queue age, not fixed minutes.
                 if quality_tier == 1:
-                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
-                    if match_wait_percent < partial_wait_threshold:
+                    if not _queue_match_all_members_waited_minutes(entries, match_members, partial_min_wait_minutes):
                         continue
 
                 if quality_tier == 2:
-                    match_wait_percent = _queue_match_wait_percent(entries, match_members, max_wait_minutes)
-                    if match_wait_percent < single_wait_threshold:
+                    if not _queue_match_all_members_waited_minutes(entries, match_members, single_min_wait_minutes):
                         continue
 
                 candidate_matches.append((
