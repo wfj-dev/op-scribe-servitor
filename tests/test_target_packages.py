@@ -3285,9 +3285,11 @@ class TestStrikeQueueMatching:
         pkg = _make_pkg(mode="Hard-Strat", signed_up=[], assigned_specialist_ids=[1])
         pkg["directive_code"] = "OX-SPEC"
         tp_data = {"packages": {pkg["id"]: pkg}}
+        queue_data = {"entries": {}, "announced_matches": {}}
 
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
         monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
         monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
 
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
@@ -3297,7 +3299,7 @@ class TestStrikeQueueMatching:
         assert "OX-SPEC" in interaction.calls[1][1]
         assert interaction.calls[1][2] is True  # ephemeral error
         # Must not be queued
-        assert not hasattr(tp, "_STRIKE_QUEUE_LOCK") or True  # queue not reached
+        assert "1" not in queue_data.get("entries", {})
 
     def test_queue_strike_blocks_on_auto_detach_failure(self, monkeypatch):
         import opscribe.target_packages_ops as tp
