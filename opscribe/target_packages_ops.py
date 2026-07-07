@@ -1977,12 +1977,17 @@ async def _queue_member_for_strike(
     commitment = _member_active_directive_commitment(member.id, data)
     removal_note = ""
     if commitment is not None:
+        directive_code, is_specialist = commitment
+        if is_specialist:
+            return False, (
+                f"You are already committed as a specialist to directive `{directive_code}`. "
+                "Complete that operation first."
+            )
         removed, removal_note = await _remove_member_from_active_directive(member, guild)
-        if removed:
-            data = _load_tp()
-            packages = data.get("packages", {})
-        else:
-            removal_note = ""
+        if not removed:
+            return False, removal_note or f"You are already committed to directive `{directive_code}`. Complete that operation first."
+        data = _load_tp()
+        packages = data.get("packages", {})
 
     queue_eligible = _queue_eligible_packages_for_member(member, packages, normalized_mode, guild)
 
@@ -6816,8 +6821,6 @@ async def _remove_member_from_active_directive(member: discord.Member, guild: "d
     except Exception as exc:
         _g.logger.debug(f"[TP] Failed refreshing directive embed after queue auto-detach for {target_package_code}: {exc}")
 
-    if "specialist" in action_msg.lower() and "sign-up roster" in action_msg.lower():
-        return True, f"Removed from {target_package_code} and cleared specialist attachment."
     if "specialist" in action_msg.lower():
         return True, f"Removed from {target_package_code} and cleared specialist attachment."
     return True, f"Removed from {target_package_code} sign-up roster."
