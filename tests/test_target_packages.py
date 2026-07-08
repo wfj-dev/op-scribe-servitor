@@ -3326,7 +3326,7 @@ class TestStrikeQueueMatching:
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "specialist role" in interaction.calls[1][1].lower()
+        assert interaction.calls[1][1] == "This member fulfills a required specialist role and cannot be removed."
         assert interaction.calls[1][2] is True  # ephemeral error
         # Must not be queued when detach fails
         assert "1" not in queue_data.get("entries", {})
