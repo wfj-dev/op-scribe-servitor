@@ -1993,6 +1993,27 @@ def _get_kadaku_campaign_announcement(
     )
 
 
+def _get_distinguished_kadaku_campaign_announcement(
+    member: discord.Member,
+    member_chapter: str,
+    guild: discord.Guild,
+) -> Tuple[str, discord.Embed, Optional[discord.File]]:
+    """Generate a flavorful Distinguished Kadaku Campaign Medal announcement embed."""
+    return _build_challenge_award_embed(
+        member=member,
+        member_chapter=member_chapter,
+        guild=guild,
+        title="DISTINGUISHED KADAKU CAMPAIGN MEDAL",
+        color=0x4E4631,
+        openings=KADAKU_CAMPAIGN_OPENINGS,
+        proclamations=KADAKU_CAMPAIGN_PROCLAMATIONS,
+        chapter_lines=KADAKU_CAMPAIGN_CHAPTER_LINES,
+        rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
+        award_label="Distinguished Kadaku Campaign Medal",
+        award_image="kadaku.jpeg",
+    )
+
+
 def _get_black_reef_campaign_announcement(
     member: discord.Member,
     member_chapter: str,
@@ -3579,6 +3600,7 @@ __all__ = [
     "_get_crimson_laurels_announcement",
     "_get_crux_terminatus_announcement",
     "_get_distinguished_black_reef_announcement",
+    "_get_distinguished_kadaku_campaign_announcement",
     "_get_distinguished_pipehitter_announcement",
     "_get_dual_vigil_announcement",
     "_get_emoji_by_name",

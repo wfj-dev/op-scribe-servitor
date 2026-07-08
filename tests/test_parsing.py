@@ -8,6 +8,7 @@ from opscribe.constants import (
     BLACK_LAURELS_ROLE_ID,
     BLACK_REEF_PERSECUTION_ROLE_ID,
     CHAPTER_APPROVED_ROLE_ID,
+    DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
@@ -436,6 +437,59 @@ def test_process_challenge_tracking_herisor_wave_line_bl_fallback_awards_disting
     assert HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID in award_role_ids
     assert DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID not in award_role_ids
+
+
+def test_process_challenge_tracking_distinguished_kadaku_requires_bl_and_leviathan_all_missions():
+    role = SimpleNamespace(id=999111, name="Watch Brother")
+    member = SimpleNamespace(id=9901, display_name="KadakuBrother", roles=[role])
+    guild = _FakeGuild(member)
+    progress_data = {}
+
+    records = [
+        {
+            "mission": "Inferno",
+            "difficulty_class": "absolute_ops",
+            "leviathan_protocol_in_mission": True,
+            "black_laurels_in_mission": True,
+            "brother_ids": [str(member.id)],
+            "aar_id": "kadaku-dist-1",
+            "message_url": "https://discord.example/aar/kadaku1",
+            "timestamp": "2026-07-08T00:01:00Z",
+        },
+        {
+            "mission": "Termination",
+            "difficulty_class": "absolute_ops",
+            "leviathan_protocol_in_mission": True,
+            "black_laurels_in_mission": True,
+            "brother_ids": [str(member.id)],
+            "aar_id": "kadaku-dist-2",
+            "message_url": "https://discord.example/aar/kadaku2",
+            "timestamp": "2026-07-08T00:02:00Z",
+        },
+        {
+            "mission": "Reclamation",
+            "difficulty_class": "absolute_ops",
+            "leviathan_protocol_in_mission": True,
+            "black_laurels_in_mission": True,
+            "brother_ids": [str(member.id)],
+            "aar_id": "kadaku-dist-3",
+            "message_url": "https://discord.example/aar/kadaku3",
+            "timestamp": "2026-07-08T00:03:00Z",
+        },
+    ]
+
+    with (
+        patch("opscribe.aar_ops._g.CHALLENGE_PROGRESS_LOCK", _AsyncLock()),
+        patch("opscribe.aar_ops._load_challenge_progress", return_value=progress_data),
+        patch("opscribe.aar_ops._save_challenge_progress"),
+    ):
+        n1 = asyncio.run(_process_challenge_tracking(records[0], guild))
+        n2 = asyncio.run(_process_challenge_tracking(records[1], guild))
+        n3 = asyncio.run(_process_challenge_tracking(records[2], guild))
+
+    assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID not in {n[2] for n in n1}
+    assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID not in {n[2] for n in n2}
+    assert DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID in {n[2] for n in n3}
 
 
 def _make_black_laurels_exception_message(

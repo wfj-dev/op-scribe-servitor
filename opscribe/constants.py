@@ -272,6 +272,7 @@ TERMINUS_SLAYER_CLASS_AWARD_TYPES: dict[int, str] = {
 
 # Challenge award role IDs for eligibility checking
 KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1486067010747236472
+DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID = 1519841481118978119
 BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087426219348069
 DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID = 1497087831074537562
 CRUX_TERMINATUS_ROLE_ID = 1476288996756820109
@@ -405,6 +406,7 @@ CHALLENGE_ROLES = [
     (1465020459794956349, "White Hand of Death", "ClandestineOperationsMedal"),
     (1465021610812637214, "Red Hand of Doom", "DistinguishedClandestineoperati"),
     (1486067010747236472, "Kadaku Campaign Medal", "KadakuCampaignMedal"),
+    (1519841481118978119, "Distinguished Kadaku Campaign Medal", "DistinguishedKadakuCampaign"),
     (1497087426219348069, "Black Reef Campaign Medal", "BlackReefCampaignMedal"),
     (1497087831074537562, "Distinguished Black Reef Campaign Medal", "DistinguishedBlackReefCampaign"),
     (1502135764312526858, "The Order Omega", "TheOrderOmega"),
