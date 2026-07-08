@@ -114,6 +114,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _generate_unique_batch_id,
     post_cycle_reports,
     submit_package,
+    _formation_labels_for_completed_package,
 )
 
 
@@ -1138,6 +1139,65 @@ class TestParticipationRepAccounting:
 
         with pytest.raises(TypeError, match="at most two legacy positional args"):
             tp._apply_entity_rep_allocations(data, pkg, allocations, 1.0, {"Apothecarion": 0.2}, "unexpected")
+
+class TestFormationLabels:
+    def test_formations_include_company_cadre_and_killteam(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        captain = _make_member(["Watch Captain", "Watch Company Primus"], member_id=201)
+        forgemaster = _make_member(["Forgemaster"], member_id=202)
+        veteran = _make_member(["Watch Veteran", "Kill Team Alpha"], member_id=203)
+        guild = _make_guild([captain, forgemaster, veteran])
+        pkg = {
+            "signed_up": [201, 203],
+            "assigned_specialist_ids": [202],
+        }
+
+        monkeypatch.setattr(tp, "_specialist_rep_bucket", lambda member: "Armory" if member.id == 202 else None)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(
+                _resolve_killteam_for_member=lambda member: "Kill Team Alpha" if member.id == 203 else None
+            ),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(
+                _get_member_company_name=lambda member: "Watch Company Primus" if member.id == 201 else None
+            ),
+        )
+
+        labels = _formation_labels_for_completed_package(pkg, guild)
+
+        assert labels == ["Watch Company Primus", "Armory", "Kill Team Alpha"]
+
+    def test_formations_fallback_to_watch_master_when_unresolved(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        watch_master = _make_member(["Watch Master"], member_id=301)
+        guild = _make_guild([watch_master])
+        pkg = {
+            "signed_up": [301],
+            "assigned_specialist_ids": [],
+        }
+
+        monkeypatch.setattr(tp, "_specialist_rep_bucket", lambda _member: None)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        labels = _formation_labels_for_completed_package(pkg, guild)
+
+        assert labels == ["Watch Master"]
 
 
 # ---------------------------------------------------------------------------
