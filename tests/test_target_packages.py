@@ -3237,7 +3237,7 @@ class TestStrikeQueueMatching:
             ("send", "Omega queueing requires a PC or Console role.", True),
         ]
 
-    def test_queue_strike_rejects_when_already_committed_to_active_directive(self, monkeypatch):
+    def test_queue_strike_auto_removes_from_active_directive_when_joining_queue(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
@@ -3245,14 +3245,91 @@ class TestStrikeQueueMatching:
 
         pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
         pkg["directive_code"] = "OX-EXISTING"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        queue_data = {"entries": {}, "announced_matches": {}}
 
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
-        monkeypatch.setattr(tp, "_load_tp", lambda: {"packages": {pkg["id"]: pkg}})
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        async def _fake_eval(_guild):
+            return 0
+
+        async def _fake_reconcile(*_args, **_kwargs):
+            return None
+
+        async def _fake_refresh(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+        monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
 
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "already committed to directive `OX-EXISTING`" in interaction.calls[1][1]
+        assert "Removed from OX-EXISTING sign-up roster." in interaction.calls[1][1]
+        assert tp_data["packages"][pkg["id"]]["signed_up"] == []
+        assert "1" in queue_data["entries"]
+
+    def test_queue_strike_blocks_member_committed_as_specialist(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[], assigned_specialist_ids=[1])
+        pkg["directive_code"] = "OX-SPEC"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        queue_data = {"entries": {}, "announced_matches": {}}
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert "specialist" in interaction.calls[1][1].lower()
+        assert "OX-SPEC" in interaction.calls[1][1]
+        assert interaction.calls[1][2] is True  # ephemeral error
+        # Must not be queued
+        assert "1" not in queue_data.get("entries", {})
+
+    def test_queue_strike_blocks_on_auto_detach_failure(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        interaction = _make_interaction(member, _make_guild([member]))
+
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1])
+        pkg["directive_code"] = "OX-LOCKED"
+        tp_data = {"packages": {pkg["id"]: pkg}}
+        queue_data = {"entries": {}, "announced_matches": {}}
+
+        monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        async def _fake_remove_denied(_member, _guild):
+            return False, "This member fulfills a required specialist role and cannot be removed."
+
+        monkeypatch.setattr(tp, "_remove_member_from_active_directive", _fake_remove_denied)
+
+        asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
+
+        assert interaction.calls[0] == ("defer", True)
+        assert interaction.calls[1][1] == "This member fulfills a required specialist role and cannot be removed."
+        assert interaction.calls[1][2] is True  # ephemeral error
+        # Must not be queued when detach fails
+        assert "1" not in queue_data.get("entries", {})
 
     def test_queue_strike_reports_fully_open_queue_eligible_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp
