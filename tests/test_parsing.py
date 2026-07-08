@@ -13,6 +13,7 @@ from opscribe.constants import (
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_TAG_ROLE_ID,
+    LEVIATHAN_PROTOCOL_ROLE_ID,
 )
 
 
@@ -621,6 +622,35 @@ def test_black_laurels_black_reef_hard_strat_still_valid():
     rec = parse_aar(msg)
     errs = validate_aar(rec)
     assert errs == [], f"Expected Black Reef Hard-Strat BL path to remain valid, got: {errs}"
+
+
+def test_black_laurels_leviathan_kadaku_mission_non_absolute_valid():
+    users = [FakeUser(9101, "KadakuA", nick="KadakuA"), FakeUser(9102, "KadakuB", nick="KadakuB"), FakeUser(9103, "KadakuC", nick="KadakuC")]
+    difficulty = FakeRole(9901, "Lethal")
+    black_laurels = FakeRole(BLACK_LAURELS_ROLE_ID, "Black Laurels")
+    leviathan = FakeRole(LEVIATHAN_PROTOCOL_ROLE_ID, "Leviathan Protocol")
+
+    msg = FakeMessage(
+        (
+            "++ MISSION REPORT ++\n"
+            f"Mission: Inferno <@&{BLACK_LAURELS_ROLE_ID}> <@&{leviathan.id}>\n"
+            "Rank: A\n"
+            f"Difficulty: <@&{difficulty.id}>\n"
+            f"Gene-seed: <@{users[0].id}>\n"
+            "Armory Data: 2\n"
+            "Team:\n"
+            f"<@{users[0].id}>\n"
+            f"<@{users[1].id}>\n"
+            f"<@{users[2].id}>\n"
+            "++ END OF REPORT ++\n"
+        ),
+        mentions=users,
+        role_mentions=[difficulty, black_laurels, leviathan],
+    )
+
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert errs == [], f"Expected Leviathan+Kadaku BL path to validate on non-Absolute difficulty, got: {errs}"
 
 
 def test_chapter_approved_role_mention_is_detected():

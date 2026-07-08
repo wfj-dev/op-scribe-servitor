@@ -3198,9 +3198,11 @@ def validate_aar(record: dict):
         has_hard_stratagem = "hard-stratagem" in dlower
         has_hard_siege = "hard-siege" in dlower
         has_black_reef_persecution = record.get("black_reef_persecution_in_mission", False)
+        has_leviathan_in_mission = record.get("leviathan_protocol_in_mission", False)
         has_herisor_defense = record.get("herisor_defense_in_mission", False)
         mission_lower = (mission or "").lower().strip()
         mission_clean = re.sub(r"<.*", "", mission_lower).strip()
+        bl_leviathan_kadaku_unlock = has_leviathan_in_mission and mission_clean in KADAKU_CAMPAIGN_REQUIRED_MISSIONS
         herisor_hard_strat_allowed = mission_clean in {"termination", "reclamation"}
         waves_ok_for_herisor_siege = False
         try:
@@ -3249,8 +3251,17 @@ def validate_aar(record: dict):
             if is_in_grace_period:
                 # GRACE PERIOD (before Feb 20, 2026): Allow Black Laurels on Mission OR Difficulty
                 # Only check: must have @Absolute or @Omega when Black Laurels is present
-                if not has_absolute and not has_omega and not bl_hard_strat_unlocked and not bl_herisor_hard_unlock:
-                    errors.append("@Black_Laurels requires @Absolute or @Omega on the Difficulty line.")
+                if (
+                    not has_absolute
+                    and not has_omega
+                    and not bl_hard_strat_unlocked
+                    and not bl_herisor_hard_unlock
+                    and not bl_leviathan_kadaku_unlock
+                ):
+                    errors.append(
+                        "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
+                        "(or @Leviathan_Protocol on the Mission line for Kadaku missions)."
+                    )
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
                 if not has_omega and not bl_hard_strat_unlocked:
                     if mission_clean and mission_clean not in BLACK_LAURELS_REQUIRED_MISSIONS:
@@ -3264,11 +3275,18 @@ def validate_aar(record: dict):
                 # Exception: @Hard-Stratagem is also allowed when @Black_Reef_Persecution is on the Mission line
                 if has_black_laurels_difficulty and not has_black_laurels_mission:
                     errors.append("@Black_Laurels must be placed on the Mission line only.")
-                if not has_absolute and not has_omega and not bl_hard_strat_unlocked and not bl_herisor_hard_unlock:
+                if (
+                    not has_absolute
+                    and not has_omega
+                    and not bl_hard_strat_unlocked
+                    and not bl_herisor_hard_unlock
+                    and not bl_leviathan_kadaku_unlock
+                ):
                     errors.append(
                         "@Black_Laurels requires @Absolute or @Omega on the Difficulty line "
                         "(or @Hard-Stratagem when @Black_Reef_Persecution is on the Mission line, "
-                        "or @Hard-Stratagem/@Hard-Siege when @Defense_of_Herisor is on the Mission line)."
+                        "or @Hard-Stratagem/@Hard-Siege when @Defense_of_Herisor is on the Mission line, "
+                        "or @Leviathan_Protocol on the Mission line for Kadaku missions)."
                     )
                 # Check eligible missions (Omega and BRP+Hard-Strat allow any mission)
                 if not has_omega and not bl_hard_strat_unlocked:
