@@ -33,6 +33,7 @@ from .constants import (  # noqa: F401
     CHALLENGE_PROGRESS_PATH,
     CRUX_TERMINATUS_ROLE_ID,
     DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,
+    DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
     DISTINGUISHED_PIPEHITTER_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_ROLE_ID,
     DISTINGUISHED_HERISOR_DEFENSE_MEDAL_WITH_VALOR_ROLE_ID,
@@ -1552,6 +1553,7 @@ async def _challenge_progress_inner(
     # Tuples: (label, progress_key, required_set, role_id)
     challenge_rows = [
         ("Kadaku Campaign Medal",              "kadaku_campaign",       KADAKU_CAMPAIGN_REQUIRED_MISSIONS,              KADAKU_CAMPAIGN_MEDAL_ROLE_ID),
+        ("Distinguished Kadaku",               "distinguished_kadaku",  KADAKU_CAMPAIGN_REQUIRED_MISSIONS,              DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID),
         ("Black Reef Campaign Medal",          "black_reef",            BLACK_REEF_REQUIRED_MISSIONS,                   BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID),
         ("Distinguished Black Reef",           "distinguished_black_reef", BLACK_REEF_REQUIRED_MISSIONS,               DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID),
         ("Black Laurels",                      "black_laurels",         BLACK_LAURELS_REQUIRED_MISSIONS,               BLACK_LAURELS_ROLE_ID),

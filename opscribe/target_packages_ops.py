@@ -3106,6 +3106,64 @@ def _compute_participation_rep_allocations(pkg: dict, guild: "discord.Guild | No
     return result
 
 
+def _formation_labels_for_completed_package(pkg: dict, guild: "discord.Guild | None") -> list[str]:
+    """Return deterministic formation labels represented by directive participants.
+
+    Ordering is company -> cadre -> kill team -> high command fallback labels.
+    High command fallback labels only apply to members with no company/cadre/kt
+    resolution and only include Watch Master or Huntmaster.
+    """
+    signed_ids = [int(uid) for uid in (pkg.get("signed_up", []) or []) if str(uid).strip()]
+    specialist_ids = [int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or []) if str(uid).strip()]
+    participant_ids = list(dict.fromkeys(signed_ids + specialist_ids))
+    if not participant_ids:
+        return []
+
+    from .forge_ops import _resolve_killteam_for_member
+    from .roster_ops import _get_member_company_name
+
+    company_labels: set[str] = set()
+    cadre_labels: set[str] = set()
+    kill_team_labels: set[str] = set()
+    high_command_labels: set[str] = set()
+
+    for uid in participant_ids:
+        member = guild.get_member(uid) if guild else None
+        if not member:
+            continue
+
+        resolved = False
+
+        company_name = _get_member_company_name(member)
+        if company_name:
+            company_labels.add(str(company_name).strip())
+            resolved = True
+
+        cadre_name = _specialist_rep_bucket(member)
+        if cadre_name:
+            cadre_labels.add(str(cadre_name).strip())
+            resolved = True
+
+        kill_team_name = _resolve_killteam_for_member(member)
+        if kill_team_name:
+            kill_team_labels.add(str(kill_team_name).strip())
+            resolved = True
+
+        if not resolved:
+            roles = _member_role_names(member)
+            if "Watch Master" in roles:
+                high_command_labels.add("Watch Master")
+            elif "Huntmaster" in roles:
+                high_command_labels.add("Huntmaster")
+
+    return (
+        sorted(company_labels)
+        + sorted(cadre_labels)
+        + sorted(kill_team_labels)
+        + sorted(high_command_labels)
+    )
+
+
 def _compute_company_completion_bonus(pkg: dict) -> float:
     """Base company rep award granted on any completed strike for assigned company."""
     if not pkg.get("assigned_company"):
@@ -8602,7 +8660,8 @@ async def log_strike_report(
         data = _load_tp()
         pkg = data.get("packages", {}).get(target_pkg["id"], target_pkg)
         classification = str(pkg.get("classification") or "STRIKE").strip().title()
-        completed_kt = str(pkg.get("assigned_kt") or "Unassigned")
+        formation_labels = _formation_labels_for_completed_package(pkg, guild)
+        formations_display = ", ".join(formation_labels) if formation_labels else str(pkg.get("assigned_kt") or "Unresolved")
         rep_before = float(pkg.get("rep_before", data.get("rep", _REP_NEUTRAL)) or _REP_NEUTRAL)
         rep_after = float(pkg.get("rep_after", data.get("rep", _REP_NEUTRAL)) or _REP_NEUTRAL)
         standing_before = _standing_skull_bar(rep_before)
@@ -8628,7 +8687,7 @@ async def log_strike_report(
             icon_url=member.display_avatar.url if member.display_avatar else None,
         )
         embed.add_field(name=f"▸ {classification} Directive", value=directive_display, inline=True)
-        embed.add_field(name="▸ Kill Team Completed", value=completed_kt, inline=True)
+        embed.add_field(name="▸ Formations Participated", value=formations_display, inline=True)
         embed.add_field(
             name="▸ Ordo Xenos Standing",
             value=(

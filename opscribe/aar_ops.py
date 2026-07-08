@@ -197,6 +197,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             for _k in (
                 "sok_g_pipehitter",
                 "kadaku_campaign",
+                "distinguished_kadaku",
                 "black_reef",
                 "distinguished_black_reef",
                 "dual_vigil",
@@ -219,6 +220,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
             for _k in (
                 "sok_g_pipehitter",
                 "kadaku_campaign",
+                "distinguished_kadaku",
                 "black_reef",
                 "distinguished_black_reef",
                 "dual_vigil",
@@ -352,6 +354,38 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                     aar_urls = [m["message_url"] for m in user_progress["kadaku_campaign"] if m["message_url"]]
                     notifications.append((user_id_str, "Kadaku Campaign Medal", KADAKU_CAMPAIGN_MEDAL_ROLE_ID, "kadaku_campaign_medal", aar_urls))
                     notified_challenges.append("kadaku_campaign")
+
+            # === Distinguished Kadaku Campaign Medal tracking ===
+            if leviathan_protocol and black_laurels and mission_name in KADAKU_CAMPAIGN_REQUIRED_MISSIONS:
+                if "distinguished_kadaku" not in user_progress:
+                    user_progress["distinguished_kadaku"] = []
+
+                existing_missions = {m["mission"] for m in user_progress["distinguished_kadaku"]}
+                if mission_name not in existing_missions:
+                    user_progress["distinguished_kadaku"].append(
+                        {"mission": mission_name, "aar_id": aar_id, "message_url": message_url, "timestamp": timestamp}
+                    )
+
+                unique_missions = {m["mission"] for m in user_progress["distinguished_kadaku"]}
+                if (
+                    len(unique_missions) >= len(KADAKU_CAMPAIGN_REQUIRED_MISSIONS)
+                    and unique_missions == KADAKU_CAMPAIGN_REQUIRED_MISSIONS
+                    and "distinguished_kadaku" not in notified_challenges
+                    and member
+                    and is_watch_brother_or_higher
+                    and not discord.utils.get(member.roles, id=DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID)
+                ):
+                    aar_urls = [m["message_url"] for m in user_progress["distinguished_kadaku"] if m["message_url"]]
+                    notifications.append(
+                        (
+                            user_id_str,
+                            "Distinguished Kadaku Campaign Medal",
+                            DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,
+                            "distinguished_kadaku_campaign_medal",
+                            aar_urls,
+                        )
+                    )
+                    notified_challenges.append("distinguished_kadaku")
 
             # === Black Reef Campaign Medal tracking ===
             if black_reef_persecution and mission_name in BLACK_REEF_REQUIRED_MISSIONS:
@@ -785,6 +819,7 @@ _WATCH_BROTHER_OR_HIGHER = {
 # Pipehitter and Crux Terminatus have non-standard conditions and are handled separately below.
 _SIMPLE_CHALLENGE_SPECS = [
     ("kadaku_campaign",       KADAKU_CAMPAIGN_REQUIRED_MISSIONS,       KADAKU_CAMPAIGN_MEDAL_ROLE_ID,                   "Kadaku Campaign Medal",                     "kadaku_campaign_medal",                    "kadaku_campaign"),
+    ("distinguished_kadaku",  KADAKU_CAMPAIGN_REQUIRED_MISSIONS,       DISTINGUISHED_KADAKU_CAMPAIGN_MEDAL_ROLE_ID,     "Distinguished Kadaku Campaign Medal",       "distinguished_kadaku_campaign_medal",      "distinguished_kadaku"),
     ("black_reef",            BLACK_REEF_REQUIRED_MISSIONS,            BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID,               "Black Reef Campaign Medal",                 "black_reef_campaign_medal",                "black_reef"),
     ("distinguished_black_reef", BLACK_REEF_REQUIRED_MISSIONS,         DISTINGUISHED_BLACK_REEF_CAMPAIGN_MEDAL_ROLE_ID, "Distinguished Black Reef Campaign Medal",   "distinguished_black_reef_campaign_medal",  "distinguished_black_reef"),
     ("dual_vigil",            DUAL_VIGIL_REQUIRED_MISSIONS,            DUAL_VIGIL_AWARD_ROLE_ID,                        "Order of the Aquiline Brotherhood",         "dual_vigil",                               "dual_vigil"),
