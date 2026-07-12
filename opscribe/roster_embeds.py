@@ -846,8 +846,16 @@ def _load_honors() -> dict:
 
 
 _KT_TITLE_TIERS    = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
-_CO_TITLE_TIERS    = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_CO_LEGACY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_CO_TITLE_TIERS    = list(_KT_TITLE_TIERS)
 _CADRE_TITLE_TIERS = {
+    "Blades": list(_KT_TITLE_TIERS),
+    "Armory": list(_KT_TITLE_TIERS),
+    "Apothecarion": list(_KT_TITLE_TIERS),
+    "Librarius": list(_KT_TITLE_TIERS),
+    "Reclusiam": list(_KT_TITLE_TIERS),
+}
+_CADRE_LEGACY_TITLE_TIERS = {
     "Blades": ["Unblooded", "Duel-Sworn", "Edge Consecrated", "Execution Masters", "Relic Edge Conclave", "Headsman's Ascendant"],
     "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
     "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Locked Stewards", "Sanguine Custodians", "Vitae Keepers", "Apothecarion Ascendant"],
@@ -862,6 +870,19 @@ _CADRE_BY_SPECIALIST_SECTION = {
     "Reclusiam": "Reclusiam",
 }
 _HONORS_WINDOW     = 4  # number of tiers to show in the sliding window
+
+
+def _normalize_honors_tier(
+    tier_name: str | None,
+    current_tiers: list[str],
+    legacy_tiers: list[str] | None = None,
+) -> str:
+    """Map persisted legacy tier names onto the active shared tier labels."""
+    if tier_name in current_tiers:
+        return str(tier_name)
+    if legacy_tiers and tier_name in legacy_tiers:
+        return current_tiers[legacy_tiers.index(str(tier_name))]
+    return current_tiers[0]
 
 
 def _tier_window(tiers: list, current: str, *, standing_prefix: str = "⚖️") -> str:
@@ -929,9 +950,11 @@ def _honors_title_for_company(
     """
     if honors is None:
         honors = _load_honors()
-    tier = honors.get("companies", {}).get(company_name, {}).get("tier", "Unrecorded")
-    if not tier:
-        tier = "Unrecorded"
+    tier = _normalize_honors_tier(
+        honors.get("companies", {}).get(company_name, {}).get("tier"),
+        _CO_TITLE_TIERS,
+        _CO_LEGACY_TITLE_TIERS,
+    )
     return _tier_window(_CO_TITLE_TIERS, tier, standing_prefix=standing_prefix)
 
 
@@ -950,9 +973,11 @@ def _honors_title_for_cadre(
         return None
     if honors is None:
         honors = _load_honors()
-    tier = honors.get("cadres", {}).get(cadre_name, {}).get("tier", tiers[0])
-    if not tier:
-        tier = tiers[0]
+    tier = _normalize_honors_tier(
+        honors.get("cadres", {}).get(cadre_name, {}).get("tier"),
+        tiers,
+        _CADRE_LEGACY_TITLE_TIERS.get(cadre_name),
+    )
     return _tier_window(tiers, tier, standing_prefix=standing_prefix)
 
 

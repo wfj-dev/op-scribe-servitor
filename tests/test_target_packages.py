@@ -188,6 +188,29 @@ def _invoke_command(cmd, *args, **kwargs):
     return target(*args, **kwargs)
 
 
+def test_generate_single_package_skips_non_standard_siege_ops(monkeypatch):
+    from opscribe import target_packages_ops as tp
+
+    monkeypatch.setattr(tp.random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(tp, "_build_briefing", lambda *args, **kwargs: "brief")
+    pkg = tp._generate_single_package(
+        existing_ids={"OX-1"},
+        existing_codes={"001"},
+        existing_names={"Alpha"},
+        rep=50.0,
+        graph={"world_type_missions": {"dead_world": [14, 2]}, "nodes": [{"id": "node", "type": "dead_world"}]},
+        active_strats=[],
+        templates={"req_tier_templates": {"no_req": [""], "veteran": [""]}},
+        available_roles=set(),
+        ops_list=[
+            {"id": 14, "name": "Siege", "strats_allowed": False, "objective_type": "defend_waves"},
+            {"id": 2, "name": "Normal", "strats_allowed": True, "objective_type": "assassination"},
+        ],
+    )
+
+    assert pkg["mission_id"] == 2
+
+
 class TestRemoveAuthority:
     def test_highcom_no_requirement_self_attached_removable_by_self(self):
         actor = _make_member(["Watch Techmarine"], member_id=10)
