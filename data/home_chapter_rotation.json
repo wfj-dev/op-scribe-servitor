@@ -6,29 +6,26 @@
     "Crimson Fists",
     "Dark Angels",
     "Flesh Tearers",
-    "Marines Malevolent",
     "Mentors",
     "Raptors",
     "Raven Guard",
-    "Space Wolves",
     "Tempestuous Angels",
     "Black Shield",
     "Angels of Vengeance",
     "Blood Angels",
     "Salamanders",
-    "Bleeding Hearts",
     "Blood Ravens",
-    "Dragonspears",
     "Iron Hands",
-    "Necropolis Hawks",
     "Carmine Blades",
     "Angels of Defiance",
     "Imperius Reavers",
-    "Iron Hounds",
-    "Iron Lords",
     "Iron Ravens",
     "Minotaurs",
-    "Tome Keepers"
+    "Tome Keepers",
+    "Consecrators",
+    "Exorcists",
+    "Red Scorpions",
+    "Tigers Argent"
   ],
   "selected": {
     "2026-02": [
@@ -54,6 +51,10 @@
     "2026-07": [
       "Imperial Fists",
       "Hospitallers"
+    ],
+    "2026-08": [
+      "Marines Malevolent",
+      "Space Wolves"
     ]
   }
 }

@@ -330,25 +330,32 @@ def test_honors_title_for_kt_returns_formatted_tier():
     assert "**Initiated**" in result
 
 
-def test_honors_title_for_company_returns_empty_for_unrecorded():
+def test_honors_title_for_company_maps_legacy_unrecorded_to_shared_tier():
     honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Unrecorded"}}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
     assert result.startswith("-# ")
-    assert "**Unrecorded**" in result
+    assert "**Unproven**" in result
 
 
-def test_honors_title_for_company_returns_empty_for_unknown_company():
+def test_honors_title_for_company_returns_shared_default_for_unknown_company():
     honors = {"kill_teams": {}, "companies": {}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
     assert result.startswith("-# ")
-    assert "**Unrecorded**" in result
+    assert "**Unproven**" in result
 
 
 def test_honors_title_for_company_returns_formatted_tier():
     honors = {"kill_teams": {}, "companies": {"Watch Company Primus": {"tier": "Marked"}}}
     result = roster_embeds._honors_title_for_company("Watch Company Primus", honors=honors)
     assert result.startswith("-# ")
-    assert "**Marked**" in result
+    assert "**Initiated**" in result
+
+
+def test_honors_title_for_cadre_maps_legacy_tier_to_shared_name():
+    honors = {"kill_teams": {}, "companies": {}, "cadres": {"Armory": {"tier": "Tempered"}}}
+    result = roster_embeds._honors_title_for_cadre("Watch Armory", honors=honors)
+    assert result is not None
+    assert "**Initiated**" in result
 
 
 def test_load_honors_returns_empty_dict_when_file_missing():

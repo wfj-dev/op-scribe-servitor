@@ -2472,6 +2472,12 @@ async def _post_queue_match_ping(
         color=0xA31919,
     )
     embed.add_field(name="Existing Roster", value=existing_line, inline=False)
+
+    # Prefer explicit role ping before the embed when queue matches become active.
+    lfg_pve_role = discord.utils.get(getattr(guild, "roles", []), name="LFG-PVE")
+    if lfg_pve_role:
+        await thread.send(content=lfg_pve_role.mention)
+
     await thread.send(content=roster_mentions, embed=embed)
     return True
 
@@ -3796,7 +3802,7 @@ def _generate_single_package(
     ]
     node = random.choice(eligible_nodes)
     world_type = node["type"]
-    mission_pool = list(dict.fromkeys(op["id"] for op in ops_list if op.get("id") is not None))
+    mission_pool = list(dict.fromkeys(op["id"] for op in ops_list if op.get("id") is not None and op.get("strats_allowed", True)))
     if not mission_pool:
         raise ValueError("No operations with valid IDs are available for package generation.")
     mission_id = random.choice(mission_pool)
@@ -4489,14 +4495,35 @@ _HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
 # KT title tiers (ordered lowest → highest; index = tier level)
 # ---------------------------------------------------------------------------
 _KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
-_COMPANY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_COMPANY_LEGACY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
+_COMPANY_TITLE_TIERS = list(_KT_TITLE_TIERS)
 _CADRE_TITLE_TIERS = {
+    "Blades": list(_KT_TITLE_TIERS),
+    "Armory": list(_KT_TITLE_TIERS),
+    "Apothecarion": list(_KT_TITLE_TIERS),
+    "Librarius": list(_KT_TITLE_TIERS),
+    "Reclusiam": list(_KT_TITLE_TIERS),
+}
+_CADRE_LEGACY_TITLE_TIERS = {
     "Blades": ["Unblooded", "Duel-Sworn", "Edge Consecrated", "Execution Masters", "Relic Edge Conclave", "Headsman's Ascendant"],
     "Armory": ["Uncalibrated", "Tempered", "Machine-Blessed", "Artificer Proven", "Relic-Smiths", "Omnissian Exemplars"],
     "Apothecarion": ["Unsworn Chirurgeons", "Field Medicae", "Gene-Locked Stewards", "Sanguine Custodians", "Vitae Keepers", "Apothecarion Ascendant"],
     "Librarius": ["Unattuned", "Warded Minds", "Empyric Disciplined", "Veil Wardens", "Hexagrammic Savants", "Oracular Ascendant"],
     "Reclusiam": ["Unanointed", "Catechized", "Zeal-Bound", "Crozius Proven", "Litany Exemplars", "Voice of the Emperor"],
 }
+
+
+def _normalize_honor_tier_name(
+    tier_name: str | None,
+    current_tiers: list[str],
+    legacy_tiers: list[str] | None = None,
+) -> str:
+    """Map persisted legacy tier names onto the active shared tier labels."""
+    if tier_name in current_tiers:
+        return str(tier_name)
+    if legacy_tiers and tier_name in legacy_tiers:
+        return current_tiers[legacy_tiers.index(str(tier_name))]
+    return current_tiers[0]
 
 # Cadre sections for highcom report: (section_name, [role_names_in_cadre])
 # Castellan omitted by design. Huntmaster not a cadre.
@@ -4786,9 +4813,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
 
         for co_name, new_data in sorted(_new_honors["companies"].items()):
             old_data  = old_honors.get("companies", {}).get(co_name, {})
-            old_tier  = old_data.get("tier", "Unrecorded")
+            old_tier  = _normalize_honor_tier_name(
+                old_data.get("tier"),
+                _COMPANY_TITLE_TIERS,
+                _COMPANY_LEGACY_TITLE_TIERS,
+            )
             new_tier  = new_data["tier"]
-            old_idx   = _COMPANY_TITLE_TIERS.index(old_tier) if old_tier in _COMPANY_TITLE_TIERS else 0
+            old_idx   = _COMPANY_TITLE_TIERS.index(old_tier)
             new_idx   = new_data["tier_index"]
             if new_idx == old_idx:
                 continue  # no change — skip
@@ -4797,12 +4828,17 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
 
         for cadre_name, new_data in sorted((_new_honors.get("cadres") or {}).items()):
             old_data = old_honors.get("cadres", {}).get(cadre_name, {})
-            old_tier = old_data.get("tier", (_CADRE_TITLE_TIERS.get(cadre_name) or [new_data["tier"]])[0])
             titles = _CADRE_TITLE_TIERS.get(cadre_name)
+            legacy_titles = _CADRE_LEGACY_TITLE_TIERS.get(cadre_name)
+            old_tier = _normalize_honor_tier_name(
+                old_data.get("tier"),
+                titles or [new_data["tier"]],
+                legacy_titles,
+            )
             if not titles:
                 continue
             new_tier = new_data["tier"]
-            old_idx = titles.index(old_tier) if old_tier in titles else 0
+            old_idx = titles.index(old_tier)
             new_idx = new_data["tier_index"]
             if new_idx == old_idx:
                 continue
