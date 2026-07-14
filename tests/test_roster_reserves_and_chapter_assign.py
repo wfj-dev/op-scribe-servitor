@@ -1,0 +1,363 @@
+import asyncio
+import sys
+import types
+from types import SimpleNamespace
+
+
+def _install_discord_stub():
+    discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
+
+    class _StubEmbed:
+        def __init__(self, *, color=None, title=None, description=None):
+            self.color = color
+            self.title = title
+            self.description = description
+            self.fields = []
+            self.author = None
+
+        def add_field(self, *, name, value, inline=True):
+            self.fields.append(SimpleNamespace(name=name, value=value, inline=inline))
+
+        def set_author(self, *, name=None, icon_url=None):
+            self.author = SimpleNamespace(name=name, icon_url=icon_url)
+
+    discord_stub.Member = object
+    discord_stub.User = object
+    discord_stub.Guild = object
+    discord_stub.Role = object
+    discord_stub.TextChannel = object
+    discord_stub.Interaction = object
+    discord_stub.Thread = type("Thread", (), {})
+    discord_stub.ForumChannel = type("ForumChannel", (), {})
+    discord_stub.File = object
+    discord_stub.Object = object
+    discord_stub.NotFound = Exception
+    discord_stub.Forbidden = Exception
+    discord_stub.ButtonStyle = types.SimpleNamespace(secondary=2, success=3, danger=4, primary=1)
+    discord_stub.Embed = _StubEmbed
+    discord_stub.abc = types.SimpleNamespace(Messageable=object, GuildChannel=object, MessageableChannel=object)
+    discord_stub.utils = types.SimpleNamespace(
+        get=lambda items, **kwargs: next(
+            (item for item in items if all(getattr(item, key, None) == value for key, value in kwargs.items())),
+            None,
+        )
+    )
+    discord_stub.__getattr__ = lambda name: type(name, (), {})
+
+    app_commands_mod = types.ModuleType("discord.app_commands")
+    app_commands_mod.CommandTree = type("CommandTree", (), {"__init__": lambda self, bot: None})
+    app_commands_mod.command = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.describe = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.choices = lambda **_kwargs: (lambda func: func)
+    app_commands_mod.autocomplete = lambda **_kwargs: (lambda func: func)
+    _fallback_type = type(
+        "_FallbackType",
+        (),
+        {
+            "__init__": lambda self, *args, **kwargs: None,
+            "__class_getitem__": classmethod(lambda cls, _item: cls),
+        },
+    )
+    app_commands_mod.Choice = _fallback_type
+    app_commands_mod.__getattr__ = lambda _name: _fallback_type
+    discord_stub.app_commands = app_commands_mod
+
+    ui_mod = types.ModuleType("discord.ui")
+    ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
+    ui_mod.Button = object
+    ui_mod.Select = object
+    ui_mod.UserSelect = object
+    ui_mod.RoleSelect = object
+    ui_mod.button = lambda **_kwargs: (lambda func: func)
+    ui_mod.select = lambda **_kwargs: (lambda func: func)
+    discord_stub.ui = ui_mod
+
+    class _LoopStub:
+        def __init__(self, func):
+            self.func = func
+
+        def before_loop(self, _func):
+            return _func
+
+        def after_loop(self, _func):
+            return _func
+
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+    tasks_mod = types.ModuleType("discord.ext.tasks")
+    tasks_mod.loop = lambda **_kwargs: (lambda func: _LoopStub(func))
+    ext_mod = types.ModuleType("discord.ext")
+    ext_mod.tasks = tasks_mod
+    discord_stub.ext = ext_mod
+
+    sys.modules["discord"] = discord_stub
+    sys.modules["discord.app_commands"] = app_commands_mod
+    sys.modules["discord.ext"] = ext_mod
+    sys.modules["discord.ext.tasks"] = tasks_mod
+    sys.modules["discord.ui"] = ui_mod
+
+
+_install_discord_stub()
+
+bot_stub = types.ModuleType("opscribe.bot")
+bot_tree_stub = SimpleNamespace(command=lambda **_kwargs: (lambda func: func))
+bot_stub.bot = SimpleNamespace(tree=bot_tree_stub)
+bot_stub.tree = SimpleNamespace()
+bot_stub.CONFIG = {}
+bot_stub.DEBUG_MODE = False
+bot_stub.ALLOWED_KT_ROLE_IDS = set()
+bot_stub.KILL_TEAMS = []
+bot_stub.HOME_CHAPTERS = []
+bot_stub.check_command_permission = lambda _user, _command: True
+bot_stub.is_allowed_channel = lambda _interaction: True
+sys.modules["opscribe.bot"] = bot_stub
+sys.modules["bot"] = bot_stub
+
+import opscribe._bot_globals as _g  # noqa: E402
+
+_g.bot = bot_stub.bot
+
+import opscribe.roster_ops as ro  # noqa: E402
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+class _Role(SimpleNamespace):
+    pass
+
+
+class _Guild:
+    def __init__(self, roles, channels=None):
+        self.roles = roles
+        self._channels = channels or {}
+
+    def get_role(self, role_id):
+        return next((role for role in self.roles if getattr(role, "id", None) == role_id), None)
+
+    def get_channel(self, channel_id):
+        return self._channels.get(channel_id)
+
+
+class _Channel:
+    def __init__(self):
+        self.messages = []
+
+    async def send(self, content=None, embed=None):
+        self.messages.append({"content": content, "embed": embed})
+
+
+class _Member:
+    def __init__(self, member_id, roles, guild):
+        self.id = member_id
+        self.name = f"Member{member_id}"
+        self.display_name = self.name
+        self.mention = f"<@{member_id}>"
+        self.roles = list(roles)
+        self.guild = guild
+        self.bot = False
+        self.display_avatar = SimpleNamespace(url=f"https://avatar.example/{member_id}.png")
+
+    async def remove_roles(self, *roles, reason=None):
+        remove_ids = {role.id for role in roles}
+        self.roles = [role for role in self.roles if role.id not in remove_ids]
+
+    async def add_roles(self, *roles, reason=None):
+        existing_ids = {role.id for role in self.roles}
+        for role in roles:
+            if role.id not in existing_ids:
+                self.roles.append(role)
+                existing_ids.add(role.id)
+
+
+class _Response:
+    def __init__(self):
+        self.messages = []
+
+    async def send_message(self, content, ephemeral=False):
+        self.messages.append({"content": content, "ephemeral": ephemeral})
+
+
+class _Interaction:
+    def __init__(self, guild, user):
+        self.guild = guild
+        self.user = user
+        self.response = _Response()
+
+
+def _role(role_id, name):
+    return _Role(id=role_id, name=name, mention=f"<@&{role_id}>")
+
+
+def test_assign_member_to_reserves_removes_company_and_kill_team_roles():
+    reserves = _role(ro.RESERVES_ROLE_ID, "Reserves")
+    company = _role(2001, "Watch Company Primus")
+    kill_team = _role(3001, "Kill Team Talon")
+    unrelated = _role(4001, "Watch Brother")
+    guild = _Guild([reserves, company, kill_team, unrelated])
+    member = _Member(77, [company, kill_team, unrelated], guild)
+
+    bot_stub.ALLOWED_KT_ROLE_IDS = {kill_team.id}
+    bot_stub.KILL_TEAMS = [kill_team.name]
+
+    result = _run(ro._assign_member_to_reserves(member))
+
+    remaining_names = {role.name for role in member.roles}
+    assert remaining_names == {"Watch Brother", "Reserves"}
+    assert set(result["removed"]) == {"Watch Company Primus", "Kill Team Talon"}
+    assert result["added"] == ["Reserves"]
+
+
+def test_chapter_assign_swaps_existing_chapter_roles():
+    old_chapter = _role(5001, "Blood Angels")
+    new_chapter = _role(5002, "Hawk Lords")
+    non_chapter = _role(5003, "Watch Brother")
+    announce_channel = _Channel()
+    guild = _Guild([old_chapter, new_chapter, non_chapter], channels={ro.SERVICE_STUDS_CHANNEL_ID: announce_channel})
+    member = _Member(88, [old_chapter, non_chapter], guild)
+    interaction = _Interaction(guild, user=SimpleNamespace(id=1, name="Apothecary"))
+    interaction.user.display_name = "Apothecary"
+    interaction.user.display_avatar = SimpleNamespace(url="https://avatar.example/apothecary.png")
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels", "Hawk Lords"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_assign"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+    bot_stub._get_award_announcement_channel = None
+
+    _run(ro.chapter_assign(interaction, member, "Hawk Lords"))
+
+    role_names = {role.name for role in member.roles}
+    assert role_names == {"Hawk Lords", "Watch Brother"}
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "Removed other chapter roles: Blood Angels." in interaction.response.messages[0]["content"]
+    assert len(announce_channel.messages) == 1
+    announce_embed = announce_channel.messages[0]["embed"]
+    assert announce_embed is not None
+    assert announce_embed.author.name == "Apothecary"
+    assert "Blood Angels -> Hawk Lords" in announce_embed.description
+
+
+def test_chapter_assign_rejects_invalid_chapter():
+    guild = _Guild([])
+    member = _Member(99, [], guild)
+    interaction = _Interaction(guild, user=SimpleNamespace(id=1, name="Apothecary"))
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels", "Hawk Lords"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_assign"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.chapter_assign(interaction, member, "Ultramarines"))
+
+    assert "is not a valid chapter" in interaction.response.messages[0]["content"]
+
+
+def test_chapter_assign_denies_when_permission_fails():
+    guild = _Guild([])
+    member = _Member(101, [], guild)
+    interaction = _Interaction(guild, user=SimpleNamespace(id=2, name="Brother"))
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels"]
+    bot_stub.check_command_permission = lambda _user, _command: False
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.chapter_assign(interaction, member, "Blood Angels"))
+
+    assert interaction.response.messages == [{"content": "Access denied.", "ephemeral": True}]
+
+
+def test_chapter_request_with_role_notifies_apothecary_with_requester_as_author():
+    apothecary_role = _role(6001, ro.APOTHECARY_ROLE_NAME)
+    requested_role = _role(6002, "Hawk Lords")
+    current_role = _role(6003, "Blood Angels")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, requested_role, current_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(111, [current_role], guild)
+    requester.display_name = "Brother Titus"
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels", "Hawk Lords"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.chapter_request(interaction, requested_role))
+
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "sent to the Apothecary staff channel" in interaction.response.messages[0]["content"]
+    assert len(staff_channel.messages) == 1
+    sent = staff_channel.messages[0]
+    assert sent["content"] == apothecary_role.mention
+    embed = sent["embed"]
+    assert embed.author.name == "Brother Titus"
+    requested_field = next(field for field in embed.fields if field.name == "Requested Chapter Role")
+    assert requested_field.value == requested_role.mention
+
+
+def test_chapter_request_without_role_pings_watch_master_and_forgemaster():
+    apothecary_role = _role(7001, ro.APOTHECARY_ROLE_NAME)
+    watch_master_role = _role(7002, "Watch Master")
+    forgemaster_role = _role(7003, "Forgemaster")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, watch_master_role, forgemaster_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(112, [], guild)
+    requester.display_name = "Brother Leon"
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.chapter_request(interaction, None))
+
+    sent = staff_channel.messages[0]
+    assert apothecary_role.mention in sent["content"]
+    assert watch_master_role.mention in sent["content"]
+    assert forgemaster_role.mention in sent["content"]
+    escalation_field = next(field for field in sent["embed"].fields if field.name == "Escalation Required")
+    assert "notify Watch Master and Forgemaster" in escalation_field.value
+
+
+def test_chapter_request_has_28_day_cooldown(monkeypatch):
+    apothecary_role = _role(7101, ro.APOTHECARY_ROLE_NAME)
+    requested_role = _role(7102, "Hawk Lords")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, requested_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(113, [], guild)
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = ["Hawk Lords"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    state_store = {}
+
+    def _fake_load():
+        return dict(state_store)
+
+    def _fake_save(state):
+        state_store.clear()
+        state_store.update(state)
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
+    monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
+
+    _run(ro.chapter_request(interaction, requested_role))
+    assert len(staff_channel.messages) == 1
+    assert "sent to the Apothecary staff channel" in interaction.response.messages[0]["content"]
+
+    second_interaction = _Interaction(guild, requester)
+    _run(ro.chapter_request(second_interaction, requested_role))
+
+    assert len(staff_channel.messages) == 1
+    assert "cooldown active" in second_interaction.response.messages[0]["content"].lower()
+    assert second_interaction.response.messages[0]["ephemeral"] is True

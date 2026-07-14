@@ -1862,6 +1862,19 @@ async def _reconcile_strike_queue_board(
     if guild is None:
         return
 
+    async def _pin_queue_board_message(msg: object) -> None:
+        """Best-effort pin for the active strike queue board message."""
+        try:
+            if getattr(msg, "pinned", False):
+                return
+            pin_fn = getattr(msg, "pin", None)
+            if callable(pin_fn):
+                await pin_fn(reason="Pin active strike queue board")
+        except (discord.Forbidden, discord.NotFound):
+            pass
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Failed pinning strike queue board message: {exc}")
+
     async with _STRIKE_QUEUE_LOCK:
         queue_data = _load_strike_queue()
         queue_data, _ = _prune_strike_queue(queue_data)
@@ -1925,6 +1938,7 @@ async def _reconcile_strike_queue_board(
             try:
                 old_msg = await board_channel.fetch_message(old_message_id)
                 await old_msg.edit(content=queue_alert_ping, embed=embed, view=view)
+                await _pin_queue_board_message(old_msg)
                 board["channel_id"] = int(getattr(board_channel, "id", board_channel_id))
                 board["message_id"] = int(old_msg.id)
                 board["last_rendered_at"] = now_iso
@@ -1936,6 +1950,7 @@ async def _reconcile_strike_queue_board(
                 _g.logger.debug(f"[TP] Failed editing strike queue board message {old_message_id}: {exc}")
 
         new_msg = await board_channel.send(content=queue_alert_ping, embed=embed, view=view)
+        await _pin_queue_board_message(new_msg)
         if old_message_id:
             try:
                 old_msg = await board_channel.fetch_message(old_message_id)
@@ -2491,6 +2506,7 @@ async def _apply_strike_queue_match(
         return None
 
     matched_ids = [int(member.id) for member in matched_members]
+    cleared_non_deployed_package_ids: list[str] = []
 
     async with _TP_LOCK:
         data = _load_tp()
@@ -2505,6 +2521,38 @@ async def _apply_strike_queue_match(
             if not eligible:
                 return None
 
+        # Queue pop behavior: clear matched members from every other active,
+        # non-deployed directive before attaching them to the committed directive.
+        packages = data.get("packages", {}) or {}
+        for other_package_id, other_pkg in packages.items():
+            if str(other_package_id) == package_id:
+                continue
+            if not isinstance(other_pkg, dict):
+                continue
+            if other_pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING):
+                continue
+
+            changed = False
+            signed_up = list(other_pkg.get("signed_up", []) or [])
+            next_signed = [uid for uid in signed_up if int(uid) not in matched_ids]
+            if len(next_signed) != len(signed_up):
+                other_pkg["signed_up"] = next_signed
+                changed = True
+
+            specialist_ids = list(other_pkg.get("assigned_specialist_ids", []) or [])
+            next_specialists = [uid for uid in specialist_ids if int(uid) not in matched_ids]
+            removed_specialists = [uid for uid in specialist_ids if int(uid) in matched_ids]
+            if len(next_specialists) != len(specialist_ids):
+                other_pkg["assigned_specialist_ids"] = next_specialists
+                changed = True
+                assigners = other_pkg.get("specialist_assigners")
+                if isinstance(assigners, dict):
+                    for removed_uid in removed_specialists:
+                        assigners.pop(str(removed_uid), None)
+
+            if changed:
+                cleared_non_deployed_package_ids.append(str(other_package_id))
+
         live_pkg.setdefault("signed_up", [])
         for member_id in matched_ids:
             if member_id not in live_pkg["signed_up"]:
@@ -2515,6 +2563,12 @@ async def _apply_strike_queue_match(
 
         _save_tp(data)
         committed_pkg = dict(live_pkg)
+
+    for cleared_package_id in cleared_non_deployed_package_ids:
+        try:
+            await _refresh_signup_embed_for_package(cleared_package_id, guild)
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Failed refreshing cleared directive embed for {cleared_package_id}: {exc}")
 
     return committed_pkg
 
