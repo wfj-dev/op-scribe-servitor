@@ -325,6 +325,56 @@ _WATCH_COMPANY_ROLE_NAMES: List[str] = [
 ]
 
 
+def _is_kill_team_membership_role(role: object) -> bool:
+    """Return True when a role represents Kill Team membership."""
+    role_id = getattr(role, "id", 0) or 0
+    role_name = (getattr(role, "name", "") or "").strip()
+    role_name_lc = role_name.lower()
+    allowed_kt_role_ids = {int(x) for x in (_b("ALLOWED_KT_ROLE_IDS") or set()) if x}
+    kill_team_names_lc = {
+        str(name).strip().lower() for name in (_b("KILL_TEAMS") or []) if str(name).strip()
+    }
+    return (
+        role_id in allowed_kt_role_ids
+        or role_name_lc.startswith("kill team ")
+        or role_name_lc in kill_team_names_lc
+    )
+
+
+async def _assign_member_to_reserves(member: discord.Member) -> Dict[str, List[str]]:
+    """Remove company/KT membership roles and ensure the Reserves role is present."""
+    guild = getattr(member, "guild", None)
+    if guild is None:
+        return {"removed": [], "added": []}
+
+    roles_to_remove = []
+    for role in getattr(member, "roles", []) or []:
+        role_name = (getattr(role, "name", "") or "").strip()
+        role_id = getattr(role, "id", 0) or 0
+        if role_name in _WATCH_COMPANY_ROLE_NAMES or role_id == DREADNOUGHT_CADRE_ROLE_ID or _is_kill_team_membership_role(role):
+            roles_to_remove.append(role)
+
+    reserves_role = guild.get_role(RESERVES_ROLE_ID)
+    if reserves_role is None:
+        reserves_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Reserves")
+
+    removed_names = [getattr(role, "name", str(getattr(role, "id", "?"))) for role in roles_to_remove]
+    added_names: List[str] = []
+
+    if roles_to_remove:
+        await member.remove_roles(*roles_to_remove, reason="Moved to Reserves due to inactivity")
+
+    if reserves_role and not any(getattr(role, "id", 0) == getattr(reserves_role, "id", None) for role in getattr(member, "roles", []) or []):
+        await member.add_roles(reserves_role, reason="Moved to Reserves due to inactivity")
+        added_names.append(getattr(reserves_role, "name", "Reserves"))
+    elif reserves_role is None:
+        _g.logger.warning(
+            f"Reserves role {RESERVES_ROLE_ID} not found while moving {getattr(member, 'id', '?')} inactive"
+        )
+
+    return {"removed": removed_names, "added": added_names}
+
+
 def _orphan_companies_for_role(guild: Optional[discord.Guild], specialist_role: str) -> set:
     """Return the set of Watch Company role names that have no active member with ``specialist_role``.
 
@@ -925,6 +975,10 @@ async def _check_activity_status_changes():
                         await _handle_dreadnought_inactivity(member)
                     except Exception as e:
                         _g.logger.exception(f"Failed to handle dreadnought inactivity for {member.id}: {e}")
+                    try:
+                        await _assign_member_to_reserves(member)
+                    except Exception as e:
+                        _g.logger.exception(f"Failed to update reserve roles for {member.id}: {e}")
 
             # Send notifications for changes; mark notified_inactive only on confirmed delivery
             for member, old, new, uid in changes:
@@ -2731,6 +2785,282 @@ async def litany_of_function(interaction: discord.Interaction):
     if len(text) > 1900:
         text = text[:1900].rsplit("\n", 1)[0] + "\n…"
     await interaction.response.send_message(text, ephemeral=True)
+
+
+def _canonical_member_chapters(member: discord.Member, home_chapters: List[str]) -> List[str]:
+    """Return canonical HOME_CHAPTERS currently present on member roles."""
+    role_names = {
+        (getattr(role, "name", "") or "").strip().lower()
+        for role in getattr(member, "roles", []) or []
+    }
+    return [hc for hc in home_chapters if hc.lower() in role_names]
+
+
+def _safe_set_embed_author(embed: discord.Embed, user: discord.Member | discord.User) -> None:
+    """Best-effort author setter for command-driven embeds."""
+    try:
+        icon_url = None
+        avatar = getattr(user, "display_avatar", None)
+        if avatar is not None:
+            icon_url = getattr(avatar, "url", None)
+        if hasattr(embed, "set_author"):
+            embed.set_author(name=getattr(user, "display_name", getattr(user, "name", "Unknown")), icon_url=icon_url)
+    except Exception:
+        pass
+
+
+_CHAPTER_REQUEST_STATE_PATH = os.path.join(DATA_DIR, "chapter_request_state.json")
+_CHAPTER_REQUEST_COOLDOWN_DAYS = 28
+
+
+def _load_chapter_request_state() -> dict:
+    try:
+        with open(_CHAPTER_REQUEST_STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_chapter_request_state(state: dict) -> None:
+    tmp = _CHAPTER_REQUEST_STATE_PATH + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(_CHAPTER_REQUEST_STATE_PATH), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _CHAPTER_REQUEST_STATE_PATH)
+    except Exception:
+        # best-effort persistence: command flow should still succeed if write fails
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+
+
+@_g.bot.tree.command(
+    name="chapter_request",
+    description="Request a home chapter assignment/change for Apothecary review.",
+)
+@app_commands.describe(
+    chapter_role="Optional existing chapter role you are requesting.",
+)
+async def chapter_request(
+    interaction: discord.Interaction,
+    chapter_role: Optional[discord.Role] = None,
+):
+    if not (
+        _b("check_command_permission")(interaction.user, "chapter_request") and _b("is_allowed_channel")(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+        return
+
+    # Per-user request cooldown: one chapter request every 28 days.
+    requester_id = str(getattr(interaction.user, "id", ""))
+    now = datetime.utcnow()
+    req_state = _load_chapter_request_state()
+    user_entry = req_state.get(requester_id)
+    last_requested = (user_entry.get("last_requested_at") or "").strip() if isinstance(user_entry, dict) else ""
+    if last_requested:
+        try:
+            last_dt = datetime.fromisoformat(last_requested)
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.replace(tzinfo=None)
+            if (now - last_dt) < timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS):
+                next_eligible = last_dt + timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS)
+                days_remaining = max(1, (next_eligible - now).days + 1)
+                await interaction.response.send_message(
+                    f"Chapter request cooldown active: **{days_remaining}** day(s) remaining before your next request.",
+                    ephemeral=True,
+                )
+                return
+        except Exception:
+            pass
+
+    staff_channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
+    if staff_channel is None:
+        await interaction.response.send_message(
+            "Could not resolve the Apothecary staff channel for this request.",
+            ephemeral=True,
+        )
+        return
+
+    home_chapters: List[str] = _b("HOME_CHAPTERS") or []
+    requester_chapters = _canonical_member_chapters(interaction.user, home_chapters)
+    requested_name = (getattr(chapter_role, "name", "") or "").strip()
+    requested_is_canonical = bool(requested_name) and any(requested_name.lower() == hc.lower() for hc in home_chapters)
+
+    apothecary_role = discord.utils.get(getattr(guild, "roles", []) or [], name=APOTHECARY_ROLE_NAME)
+    watch_master_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Master")
+    forgemaster_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Forgemaster")
+    apothecary_ping = apothecary_role.mention if apothecary_role else "@Watch Apothecary"
+    escalations = [r.mention for r in (watch_master_role, forgemaster_role) if r is not None]
+
+    embed = discord.Embed(
+        title="Chapter Change Request",
+        color=0x1F8B4C,
+        description="A brother has requested a chapter assignment/update.",
+    )
+    _safe_set_embed_author(embed, interaction.user)
+    embed.add_field(name="Requester", value=getattr(interaction.user, "mention", str(getattr(interaction.user, "id", "Unknown"))), inline=False)
+    embed.add_field(
+        name="Current Chapter(s)",
+        value=", ".join(requester_chapters) if requester_chapters else "None currently assigned",
+        inline=False,
+    )
+    embed.add_field(
+        name="Requested Chapter Role",
+        value=getattr(chapter_role, "mention", "Unspecified / new chapter request"),
+        inline=False,
+    )
+
+    notify_content = apothecary_ping
+    if chapter_role is None:
+        escalation_prefix = " ".join(escalations) if escalations else "Watch Master + Forgemaster"
+        notify_content = " ".join([notify_content, escalation_prefix]).strip()
+        embed.add_field(
+            name="Escalation Required",
+            value=(
+                "No chapter role was provided. Apothecary should notify Watch Master and Forgemaster "
+                "to add bot chapter support and Discord server role support for the requested chapter."
+            ),
+            inline=False,
+        )
+    elif not requested_is_canonical:
+        escalation_prefix = " ".join(escalations) if escalations else "Watch Master + Forgemaster"
+        notify_content = " ".join([notify_content, escalation_prefix]).strip()
+        embed.add_field(
+            name="Canonical Support Missing",
+            value=(
+                f"Role `{requested_name}` exists in Discord but is not in canonical HOME_CHAPTERS. "
+                "Notify Watch Master and Forgemaster to add bot chapter support."
+            ),
+            inline=False,
+        )
+
+    await staff_channel.send(content=notify_content, embed=embed)
+    req_state[requester_id] = {
+        "last_requested_at": now.isoformat(),
+        "requested_role_id": getattr(chapter_role, "id", None),
+        "requested_role_name": requested_name or None,
+    }
+    _save_chapter_request_state(req_state)
+    await interaction.response.send_message(
+        "Your chapter request has been sent to the Apothecary staff channel.",
+        ephemeral=True,
+    )
+
+
+@_g.bot.tree.command(
+    name="chapter_assign",
+    description="Assign a valid home chapter role to a Brother.",
+)
+@app_commands.describe(
+    member="The Brother receiving the chapter role.",
+    chapter="Canonical chapter role name to assign.",
+)
+async def chapter_assign(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    chapter: str,
+):
+    if not (
+        _b("check_command_permission")(interaction.user, "chapter_assign") and _b("is_allowed_channel")(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+        return
+
+    home_chapters: List[str] = _b("HOME_CHAPTERS") or []
+    requested = (chapter or "").strip()
+    desired_chapter = next((hc for hc in home_chapters if hc.lower() == requested.lower()), None)
+    if desired_chapter is None:
+        await interaction.response.send_message(
+            f"`{requested}` is not a valid chapter. Use one of the canonical HOME_CHAPTERS entries.",
+            ephemeral=True,
+        )
+        return
+
+    target_role = discord.utils.get(getattr(guild, "roles", []) or [], name=desired_chapter)
+    if target_role is None:
+        await interaction.response.send_message(
+            f"The `{desired_chapter}` role does not exist in this server.",
+            ephemeral=True,
+        )
+        return
+
+    current_chapter_roles = [
+        role
+        for role in getattr(member, "roles", []) or []
+        if any((getattr(role, "name", "") or "").lower() == hc.lower() for hc in home_chapters)
+    ]
+    old_chapter_names = [getattr(role, "name", "Unknown") for role in current_chapter_roles]
+    roles_to_remove = [role for role in current_chapter_roles if getattr(role, "id", 0) != getattr(target_role, "id", None)]
+    has_target_role = any(
+        getattr(role, "id", 0) == getattr(target_role, "id", None)
+        for role in getattr(member, "roles", []) or []
+    )
+
+    if roles_to_remove:
+        await member.remove_roles(*roles_to_remove, reason=f"chapter_assign by {interaction.user}")
+    if not has_target_role:
+        await member.add_roles(target_role, reason=f"chapter_assign by {interaction.user}")
+
+    removed_names = ", ".join(getattr(role, "name", "Unknown") for role in roles_to_remove) or "none"
+    if has_target_role and not roles_to_remove:
+        msg = f"{member.mention} already has **{desired_chapter}** and no other chapter roles were present."
+    else:
+        action = "assigned" if not has_target_role else "retained"
+        msg = (
+            f"Chapter role {action} for {member.mention}: **{desired_chapter}**. "
+            f"Removed other chapter roles: {removed_names}."
+        )
+
+    announcement_channel = None
+    get_announcement_channel = _b("_get_award_announcement_channel")
+    if callable(get_announcement_channel):
+        try:
+            announcement_channel = await get_announcement_channel(member, guild)
+        except Exception as e:
+            _g.logger.debug(f"Failed to resolve chapter assignment announcement channel for {member.id}: {e}")
+    if announcement_channel is None:
+        announcement_channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+
+    if announcement_channel is not None:
+        before_value = ", ".join(old_chapter_names) if old_chapter_names else "None"
+        if old_chapter_names and desired_chapter not in old_chapter_names:
+            summary = f"{before_value} -> {desired_chapter}"
+        elif old_chapter_names:
+            summary = f"{desired_chapter} confirmed"
+        else:
+            summary = f"Assigned {desired_chapter}"
+
+        announce_embed = discord.Embed(
+            title="Home Chapter Updated",
+            color=0x2ECC71,
+            description=f"{member.mention} chapter assignment: **{summary}**",
+        )
+        _safe_set_embed_author(announce_embed, interaction.user)
+        announce_embed.add_field(name="Brother", value=member.mention, inline=True)
+        announce_embed.add_field(name="Previous", value=before_value, inline=True)
+        announce_embed.add_field(name="Current", value=desired_chapter, inline=True)
+        try:
+            await announcement_channel.send(embed=announce_embed)
+        except Exception as e:
+            _g.logger.debug(f"Failed to post chapter assignment announcement for {member.id}: {e}")
+
+    await interaction.response.send_message(msg, ephemeral=True)
 
 
 async def _requeue_award_type_autocomplete(
@@ -8311,6 +8641,8 @@ __all__ = [
     "_get_effective_induction_date",
     "_get_member_company_name",
     "_extract_company_short_name",
+    "_is_kill_team_membership_role",
+    "_assign_member_to_reserves",
     "_orphan_companies_for_role",
     "_company_scope_ring",
     "_is_active_participant",
@@ -8399,8 +8731,10 @@ __all__ = [
     "ToggleFormatView",
     # ── Public command functions ──────────────────────────────────────────────
     "litany_of_function",
+    "chapter_request",
     "requeue_award",
     "pick_home_chapters",
+    "chapter_assign",
     "tally_deeds",
     "submit_portrait",
     "combat_bonds",
