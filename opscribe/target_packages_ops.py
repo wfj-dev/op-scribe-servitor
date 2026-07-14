@@ -1916,6 +1916,7 @@ async def _reconcile_strike_queue_board(
         now_iso = datetime.now(timezone.utc).isoformat()
         embed = _build_strike_queue_board_embed(queue_data, packages, guild)
         view = StrikeQueueBoardView()
+        queue_alert_ping = "<@&1429678423290281984>"
 
         old_message_id = int(board.get("message_id") or 0)
         should_bump = _should_bump_strike_queue_board(board, force_bump=force_bump, major_change=major_change)
@@ -1923,7 +1924,7 @@ async def _reconcile_strike_queue_board(
         if old_message_id and not should_bump:
             try:
                 old_msg = await board_channel.fetch_message(old_message_id)
-                await old_msg.edit(embed=embed, view=view)
+                await old_msg.edit(content=queue_alert_ping, embed=embed, view=view)
                 board["channel_id"] = int(getattr(board_channel, "id", board_channel_id))
                 board["message_id"] = int(old_msg.id)
                 board["last_rendered_at"] = now_iso
@@ -1934,7 +1935,7 @@ async def _reconcile_strike_queue_board(
             except Exception as exc:
                 _g.logger.debug(f"[TP] Failed editing strike queue board message {old_message_id}: {exc}")
 
-        new_msg = await board_channel.send(embed=embed, view=view)
+        new_msg = await board_channel.send(content=queue_alert_ping, embed=embed, view=view)
         if old_message_id:
             try:
                 old_msg = await board_channel.fetch_message(old_message_id)
@@ -2472,11 +2473,6 @@ async def _post_queue_match_ping(
         color=0xA31919,
     )
     embed.add_field(name="Existing Roster", value=existing_line, inline=False)
-
-    # Prefer explicit role ping before the embed when queue matches become active.
-    lfg_pve_role = discord.utils.get(getattr(guild, "roles", []), name="LFG-PVE")
-    if lfg_pve_role:
-        await thread.send(content=lfg_pve_role.mention)
 
     await thread.send(content=roster_mentions, embed=embed)
     return True

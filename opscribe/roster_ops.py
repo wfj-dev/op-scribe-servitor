@@ -2242,6 +2242,11 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
             _add(member, "company_role_missing", "Kill team members must also hold a company role.")
         if has_kt_role and not has_allowed_kt_rank:
             _add(member, "kt_assignment_invalid", "Only Watch Brother, Watch Veteran, Oathsworn, Watch Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may hold kill team roles.")
+        is_oathsworn_role = oathsworn.lower() in role_names_lc
+        if is_oathsworn_role and not has_company_role:
+            _add(member, "oathsworn_company_missing", "Oathsworn members must hold a company role.")
+        if is_oathsworn_role and not has_kt_role:
+            _add(member, "kt_assignment_missing", "Oathsworn members must hold a kill team role.")
 
         if has_company_command_role and not has_company_role:
             _add(member, "company_role_missing", "Company command roles require a company role.")
@@ -2304,6 +2309,8 @@ async def _post_role_integrity_findings(guild: discord.Guild, findings: list[dic
         "multi_company": "Company-conflict",
         "multi_kill_team": "KillTeam-conflict",
         "company_role_missing": "Company-missing",
+        "oathsworn_company_missing": "Oathsworn-company-missing",
+        "kt_assignment_missing": "KillTeam-missing",
         "company_command_multiple": "CoCmd-conflict",
         "company_command_excess": "CoCmd-excess",
         "watch_command_excess": "WatchCmd-excess",
