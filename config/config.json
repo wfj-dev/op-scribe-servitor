@@ -88,6 +88,17 @@
         "Watch Command"
       ]
     },
+    "chapter_request": {
+      "min_rank": "Watch Brother",
+      "roles": [
+        "Watch Inductee"
+      ]
+    },
+    "chapter_assign": {
+      "roles": [
+        "Watch Apothecary"
+      ]
+    },
     "promotion_queue": {
       "roles": [
         "Watch Command"
@@ -548,7 +559,7 @@
       }
     },
     "strike_queue_match_sweep_minutes": 5,
-    "strike_queue_backfill_partials_enabled": true,
+    "strike_queue_backfill_partials_enabled": false,
     "strike_queue_partial_backfill_min_wait_minutes": 10,
     "strike_queue_single_fill_min_wait_minutes": 20,
     "request_strike_directives_max_per_week": 2,
