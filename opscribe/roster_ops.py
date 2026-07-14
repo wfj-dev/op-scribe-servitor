@@ -2818,7 +2818,7 @@ def _load_chapter_request_state() -> dict:
         with open(_CHAPTER_REQUEST_STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         return {}
 
 
@@ -2866,7 +2866,8 @@ async def chapter_request(
     requester_id = str(getattr(interaction.user, "id", ""))
     now = datetime.utcnow()
     req_state = _load_chapter_request_state()
-    last_requested = ((req_state.get(requester_id) or {}).get("last_requested_at") or "").strip()
+    user_entry = req_state.get(requester_id)
+    last_requested = (user_entry.get("last_requested_at") or "").strip() if isinstance(user_entry, dict) else ""
     if last_requested:
         try:
             last_dt = datetime.fromisoformat(last_requested)
