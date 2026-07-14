@@ -3024,6 +3024,86 @@ class TestStrikeQueueMatching:
         assert queue_data["entries"] == {}
         assert refresh_calls
 
+    def test_evaluate_queue_pop_clears_other_non_deployed_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        queue_data = {
+            "entries": {
+                "1": {"queued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "2": {"queued_at": "2026-01-01T00:01:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+                "3": {"queued_at": "2026-01-01T00:02:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "mode_preference": "hard"},
+            },
+            "announced_matches": {},
+        }
+
+        target_pkg = _make_pkg(mode="Hard-Strat", signed_up=[])
+        target_pkg["id"] = "OX-TARGET"
+        target_pkg["directive_code"] = "OX-TARGET"
+
+        other_recruiting = _make_pkg(mode="Hard-Strat", signed_up=[1], assigned_specialist_ids=[2])
+        other_recruiting["id"] = "OX-OTHER"
+        other_recruiting["directive_code"] = "OX-OTHER"
+        other_recruiting["specialist_assigners"] = {"2": 999}
+
+        other_deployed = _make_pkg(
+            status=tp.STATUS_DEPLOYED,
+            mode="Hard-Strat",
+            signed_up=[1],
+            assigned_specialist_ids=[2],
+        )
+        other_deployed["id"] = "OX-DEPLOYED"
+        other_deployed["directive_code"] = "OX-DEPLOYED"
+
+        tp_data = {
+            "packages": {
+                target_pkg["id"]: target_pkg,
+                other_recruiting["id"]: other_recruiting,
+                other_deployed["id"]: other_deployed,
+            }
+        }
+
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+        refresh_calls = []
+
+        monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
+        monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [target_pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
+
+        async def _fake_refresh(package_id, _guild):
+            refresh_calls.append(package_id)
+
+        async def _fake_finalize(*_args, **_kwargs):
+            return None
+
+        async def _fake_ping(*_args, **_kwargs):
+            return True
+
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_finalize_strike_queue_match_directive", _fake_finalize)
+        monkeypatch.setattr(tp, "_post_queue_match_ping", _fake_ping)
+
+        posted = asyncio.run(tp._evaluate_strike_queue_matches(guild))
+
+        assert posted == 1
+        assert tp_data["packages"]["OX-TARGET"]["signed_up"] == [1, 2, 3]
+        assert tp_data["packages"]["OX-TARGET"]["status"] == tp.STATUS_DEPLOYED
+
+        # Cleared from non-deployed active directive.
+        assert tp_data["packages"]["OX-OTHER"]["signed_up"] == []
+        assert tp_data["packages"]["OX-OTHER"]["assigned_specialist_ids"] == []
+        assert tp_data["packages"]["OX-OTHER"]["specialist_assigners"] == {}
+
+        # Deployed directives are intentionally untouched.
+        assert tp_data["packages"]["OX-DEPLOYED"]["signed_up"] == [1]
+        assert tp_data["packages"]["OX-DEPLOYED"]["assigned_specialist_ids"] == [2]
+
+        assert "OX-OTHER" in refresh_calls
+        assert queue_data["entries"] == {}
+
     def test_evaluate_queue_matches_does_not_use_pending_sgt_directive(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -3608,12 +3688,18 @@ class TestStrikeQueueBoard:
             self.id = message_id
             self.deleted = False
             self.edits = []
+            self.pinned = False
+            self.pin_calls = []
 
         async def edit(self, **kwargs):
             self.edits.append(kwargs)
 
         async def delete(self):
             self.deleted = True
+
+        async def pin(self, *, reason=None):
+            self.pinned = True
+            self.pin_calls.append(reason)
 
     class _FakeChannel:
         def __init__(self, channel_id=1429942816741523570):
@@ -3715,6 +3801,8 @@ class TestStrikeQueueBoard:
 
         assert len(channel.sent) == 1
         assert channel.sent[0].get("content") == "<@&1429678423290281984>"
+        created = channel.messages[queue_data["board"]["message_id"]]
+        assert created.pinned is True
         assert queue_data["board"]["message_id"] == 5000
         assert queue_data["board"]["channel_id"] == channel.id
         assert queue_data["board"]["last_bump_at"] is not None
@@ -3754,6 +3842,7 @@ class TestStrikeQueueBoard:
         assert len(channel.sent) == 0
         assert len(existing.edits) == 1
         assert existing.edits[0].get("content") == "<@&1429678423290281984>"
+        assert existing.pinned is True
         assert queue_data["board"]["message_id"] == 7001
         assert queue_data["board"]["last_rendered_at"] is not None
 
