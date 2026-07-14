@@ -3217,6 +3217,35 @@ class TestStrikeQueueMatching:
         assert tp_data["packages"][pkg["id"]]["signed_up"] == [1, 2, 3]
         assert queue_data["entries"] == {}
 
+    def test_post_queue_match_ping_mentions_only_matched_roster(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class _FakeThread(tp.discord.Thread):
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, content=None, embed=None):
+                self.sent.append({"content": content, "embed": embed})
+
+        members = [_with_company_role(_make_member(["Watch Brother"], member_id=i)) for i in (1, 2, 3)]
+        guild = _make_guild(members)
+        thread = _FakeThread()
+        pkg = _make_pkg(mode="Hard-Strat", signed_up=[1, 2, 3])
+
+        async def _fake_ensure_thread(*_args, **_kwargs):
+            return thread
+
+        monkeypatch.setattr(tp, "_ensure_directive_forum_thread", _fake_ensure_thread)
+
+        ok = asyncio.run(tp._post_queue_match_ping(pkg, members, guild, []))
+
+        assert ok is True
+        assert len(thread.sent) == 1
+        payload = thread.sent[0]
+        assert "<@&1429678423290281984>" not in (payload.get("content") or "")
+        assert "<@1>" in (payload.get("content") or "")
+        assert getattr(payload.get("embed"), "title", "") == "Strike Team Readied"
+
     def test_evaluate_queue_matches_records_tentative_on_commit_miss(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -3685,6 +3714,7 @@ class TestStrikeQueueBoard:
         asyncio.run(tp._reconcile_strike_queue_board(guild, force_bump=True))
 
         assert len(channel.sent) == 1
+        assert channel.sent[0].get("content") == "<@&1429678423290281984>"
         assert queue_data["board"]["message_id"] == 5000
         assert queue_data["board"]["channel_id"] == channel.id
         assert queue_data["board"]["last_bump_at"] is not None
@@ -3723,6 +3753,7 @@ class TestStrikeQueueBoard:
 
         assert len(channel.sent) == 0
         assert len(existing.edits) == 1
+        assert existing.edits[0].get("content") == "<@&1429678423290281984>"
         assert queue_data["board"]["message_id"] == 7001
         assert queue_data["board"]["last_rendered_at"] is not None
 
