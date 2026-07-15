@@ -94,6 +94,12 @@
         "Watch Inductee"
       ]
     },
+    "request_homebrew_chapter": {
+      "min_rank": "Watch Brother",
+      "roles": [
+        "Watch Inductee"
+      ]
+    },
     "chapter_assign": {
       "roles": [
         "Watch Apothecary"

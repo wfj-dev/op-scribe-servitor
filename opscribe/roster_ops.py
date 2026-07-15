@@ -2811,6 +2811,7 @@ def _safe_set_embed_author(embed: discord.Embed, user: discord.Member | discord.
 
 _CHAPTER_REQUEST_STATE_PATH = os.path.join(DATA_DIR, "chapter_request_state.json")
 _CHAPTER_REQUEST_COOLDOWN_DAYS = 28
+_HOMEBREW_CHAPTER_LORE_MAX_CHARS = 1024
 
 
 def _load_chapter_request_state() -> dict:
@@ -2840,16 +2841,118 @@ def _save_chapter_request_state(state: dict) -> None:
             pass
 
 
+def _chapter_request_cooldown_days_remaining(requester_id: str, now: datetime) -> Optional[int]:
+    """Return cooldown days remaining for requester, or None when eligible."""
+    req_state = _load_chapter_request_state()
+    user_entry = req_state.get(requester_id)
+    last_requested = (user_entry.get("last_requested_at") or "").strip() if isinstance(user_entry, dict) else ""
+    if not last_requested:
+        return None
+    try:
+        last_dt = datetime.fromisoformat(last_requested)
+        if last_dt.tzinfo is not None:
+            last_dt = last_dt.replace(tzinfo=None)
+        if (now - last_dt) < timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS):
+            next_eligible = last_dt + timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS)
+            return max(1, (next_eligible - now).days + 1)
+    except Exception:
+        return None
+    return None
+
+
+def _record_chapter_request_state(
+    requester_id: str,
+    now: datetime,
+    *,
+    requested_role_id: Optional[int] = None,
+    requested_role_name: Optional[str] = None,
+    request_type: str = "chapter_request",
+    homebrew_chapter_name: Optional[str] = None,
+    geneseed_lineage: Optional[str] = None,
+) -> None:
+    """Persist per-user request timing and last payload details for cooldown/audit."""
+    req_state = _load_chapter_request_state()
+    req_state[requester_id] = {
+        "last_requested_at": now.isoformat(),
+        "requested_role_id": requested_role_id,
+        "requested_role_name": requested_role_name,
+        "request_type": request_type,
+        "homebrew_chapter_name": homebrew_chapter_name,
+        "geneseed_lineage": geneseed_lineage,
+    }
+    _save_chapter_request_state(req_state)
+
+
+def _chapter_request_notify_roles(guild: discord.Guild) -> tuple[str, list[str]]:
+    """Resolve staff ping mentions for chapter request command notifications."""
+    apothecary_role = discord.utils.get(getattr(guild, "roles", []) or [], name=APOTHECARY_ROLE_NAME)
+    watch_master_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Master")
+    forgemaster_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Forgemaster")
+    apothecary_ping = apothecary_role.mention if apothecary_role else "@Watch Apothecary"
+    escalations = [r.mention for r in (watch_master_role, forgemaster_role) if r is not None]
+    return apothecary_ping, escalations
+
+
+def _normalize_chapter_request_name(value: str) -> str:
+    """Normalize chapter names for resilient user input and role matching."""
+    cleaned = re.sub(r"[^a-z0-9\s]+", " ", (value or "").strip().lower())
+    return " ".join(cleaned.split())
+
+
+def _find_chapter_role_by_name(guild: discord.Guild, chapter_name: str) -> Optional[discord.Role]:
+    """Resolve a guild role by normalized chapter name."""
+    normalized_target = _normalize_chapter_request_name(chapter_name)
+    if not normalized_target:
+        return None
+    for role in getattr(guild, "roles", []) or []:
+        role_name = (getattr(role, "name", "") or "").strip()
+        if _normalize_chapter_request_name(role_name) == normalized_target:
+            return role
+    return None
+
+
+def _build_chapter_request_embed(
+    interaction: discord.Interaction,
+    *,
+    title: str,
+    description: str,
+    requester_chapters: list[str],
+    requested_label: str,
+    extra_fields: Optional[list[tuple[str, str]]] = None,
+) -> discord.Embed:
+    """Build chapter request embed with shared requester/chapter metadata."""
+    embed = discord.Embed(
+        title=title,
+        color=0x1F8B4C,
+        description=description,
+    )
+    _safe_set_embed_author(embed, interaction.user)
+    embed.add_field(name="Requester", value=getattr(interaction.user, "mention", str(getattr(interaction.user, "id", "Unknown"))), inline=False)
+    embed.add_field(
+        name="Current Chapter(s)",
+        value=", ".join(requester_chapters) if requester_chapters else "None currently assigned",
+        inline=False,
+    )
+    embed.add_field(
+        name="Requested Chapter",
+        value=requested_label,
+        inline=False,
+    )
+    for name, value in extra_fields or []:
+        embed.add_field(name=name, value=value, inline=False)
+    return embed
+
+
 @_g.bot.tree.command(
     name="chapter_request",
-    description="Request a home chapter assignment/change for Apothecary review.",
+    description="Request a standard chapter assignment by chapter name.",
 )
 @app_commands.describe(
-    chapter_role="Optional existing chapter role you are requesting.",
+    chapter_name="Chapter name (works whether or not the role already exists in server).",
 )
 async def chapter_request(
     interaction: discord.Interaction,
-    chapter_role: Optional[discord.Role] = None,
+    chapter_name: str,
 ):
     if not (
         _b("check_command_permission")(interaction.user, "chapter_request") and _b("is_allowed_channel")(interaction)
@@ -2862,27 +2965,24 @@ async def chapter_request(
         await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
         return
 
+    requested_name = (chapter_name or "").strip()
+    if not requested_name:
+        await interaction.response.send_message(
+            "You must provide a chapter name for `/chapter_request`. Use `/request_homebrew_chapter` for homebrew chapter submissions.",
+            ephemeral=True,
+        )
+        return
+
     # Per-user request cooldown: one chapter request every 28 days.
     requester_id = str(getattr(interaction.user, "id", ""))
     now = datetime.utcnow()
-    req_state = _load_chapter_request_state()
-    user_entry = req_state.get(requester_id)
-    last_requested = (user_entry.get("last_requested_at") or "").strip() if isinstance(user_entry, dict) else ""
-    if last_requested:
-        try:
-            last_dt = datetime.fromisoformat(last_requested)
-            if last_dt.tzinfo is not None:
-                last_dt = last_dt.replace(tzinfo=None)
-            if (now - last_dt) < timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS):
-                next_eligible = last_dt + timedelta(days=_CHAPTER_REQUEST_COOLDOWN_DAYS)
-                days_remaining = max(1, (next_eligible - now).days + 1)
-                await interaction.response.send_message(
-                    f"Chapter request cooldown active: **{days_remaining}** day(s) remaining before your next request.",
-                    ephemeral=True,
-                )
-                return
-        except Exception:
-            pass
+    days_remaining = _chapter_request_cooldown_days_remaining(requester_id, now)
+    if days_remaining is not None:
+        await interaction.response.send_message(
+            f"Chapter request cooldown active: **{days_remaining}** day(s) remaining before your next request.",
+            ephemeral=True,
+        )
+        return
 
     staff_channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
     if staff_channel is None:
@@ -2894,66 +2994,137 @@ async def chapter_request(
 
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
     requester_chapters = _canonical_member_chapters(interaction.user, home_chapters)
-    requested_name = (getattr(chapter_role, "name", "") or "").strip()
-    requested_is_canonical = bool(requested_name) and any(requested_name.lower() == hc.lower() for hc in home_chapters)
+    matched_role = _find_chapter_role_by_name(guild, requested_name)
 
-    apothecary_role = discord.utils.get(getattr(guild, "roles", []) or [], name=APOTHECARY_ROLE_NAME)
-    watch_master_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Master")
-    forgemaster_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Forgemaster")
-    apothecary_ping = apothecary_role.mention if apothecary_role else "@Watch Apothecary"
-    escalations = [r.mention for r in (watch_master_role, forgemaster_role) if r is not None]
-
-    embed = discord.Embed(
-        title="Chapter Change Request",
-        color=0x1F8B4C,
-        description="A brother has requested a chapter assignment/update.",
-    )
-    _safe_set_embed_author(embed, interaction.user)
-    embed.add_field(name="Requester", value=getattr(interaction.user, "mention", str(getattr(interaction.user, "id", "Unknown"))), inline=False)
-    embed.add_field(
-        name="Current Chapter(s)",
-        value=", ".join(requester_chapters) if requester_chapters else "None currently assigned",
-        inline=False,
-    )
-    embed.add_field(
-        name="Requested Chapter Role",
-        value=getattr(chapter_role, "mention", "Unspecified / new chapter request"),
-        inline=False,
-    )
-
+    apothecary_ping, escalations = _chapter_request_notify_roles(guild)
+    extra_fields: list[tuple[str, str]] = []
     notify_content = apothecary_ping
-    if chapter_role is None:
+    if matched_role is None:
         escalation_prefix = " ".join(escalations) if escalations else "Watch Master + Forgemaster"
         notify_content = " ".join([notify_content, escalation_prefix]).strip()
-        embed.add_field(
-            name="Escalation Required",
-            value=(
-                "No chapter role was provided. Apothecary should notify Watch Master and Forgemaster "
-                "to add bot chapter support and Discord server role support for the requested chapter."
-            ),
-            inline=False,
+        extra_fields.append(
+            (
+                "Support Onboarding Required",
+                (
+                    f"No existing Discord role matched `{requested_name}`. "
+                    "Notify Watch Master and Forgemaster to add Discord role/bot support for this chapter request."
+                ),
+            )
         )
-    elif not requested_is_canonical:
-        escalation_prefix = " ".join(escalations) if escalations else "Watch Master + Forgemaster"
-        notify_content = " ".join([notify_content, escalation_prefix]).strip()
-        embed.add_field(
-            name="Canonical Support Missing",
-            value=(
-                f"Role `{requested_name}` exists in Discord but is not in canonical HOME_CHAPTERS. "
-                "Notify Watch Master and Forgemaster to add bot chapter support."
-            ),
-            inline=False,
-        )
+
+    embed = _build_chapter_request_embed(
+        interaction,
+        title="Chapter Change Request",
+        description="A brother has requested a chapter assignment/update.",
+        requester_chapters=requester_chapters,
+        requested_label=getattr(matched_role, "mention", requested_name),
+        extra_fields=extra_fields,
+    )
 
     await staff_channel.send(content=notify_content, embed=embed)
-    req_state[requester_id] = {
-        "last_requested_at": now.isoformat(),
-        "requested_role_id": getattr(chapter_role, "id", None),
-        "requested_role_name": requested_name or None,
-    }
-    _save_chapter_request_state(req_state)
+    _record_chapter_request_state(
+        requester_id,
+        now,
+        requested_role_id=getattr(matched_role, "id", None),
+        requested_role_name=requested_name or None,
+        request_type="chapter_request",
+    )
     await interaction.response.send_message(
         "Your chapter request has been sent to the Apothecary staff channel.",
+        ephemeral=True,
+    )
+
+
+@_g.bot.tree.command(
+    name="request_homebrew_chapter",
+    description="Request a new homebrew chapter for Apothecary and command review.",
+)
+@app_commands.describe(
+    name="Homebrew chapter name.",
+    geneseed_lineage="Geneseed lineage for this chapter.",
+    lore_blurb="Short lore blurb for this chapter (max 1024 chars).",
+)
+async def request_homebrew_chapter(
+    interaction: discord.Interaction,
+    name: str,
+    geneseed_lineage: str,
+    lore_blurb: str,
+):
+    if not (
+        _b("check_command_permission")(interaction.user, "request_homebrew_chapter") and _b("is_allowed_channel")(interaction)
+    ):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+        return
+
+    chapter_name = (name or "").strip()
+    lineage = (geneseed_lineage or "").strip()
+    lore = (lore_blurb or "").strip()
+
+    if not chapter_name or not lineage or not lore:
+        await interaction.response.send_message(
+            "Name, geneseed lineage, and lore blurb are all required.",
+            ephemeral=True,
+        )
+        return
+
+    if len(lore) > _HOMEBREW_CHAPTER_LORE_MAX_CHARS:
+        await interaction.response.send_message(
+            f"Lore blurb is too long: max {_HOMEBREW_CHAPTER_LORE_MAX_CHARS} characters.",
+            ephemeral=True,
+        )
+        return
+
+    requester_id = str(getattr(interaction.user, "id", ""))
+    now = datetime.utcnow()
+    days_remaining = _chapter_request_cooldown_days_remaining(requester_id, now)
+    if days_remaining is not None:
+        await interaction.response.send_message(
+            f"Chapter request cooldown active: **{days_remaining}** day(s) remaining before your next request.",
+            ephemeral=True,
+        )
+        return
+
+    staff_channel = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
+    if staff_channel is None:
+        await interaction.response.send_message(
+            "Could not resolve the Apothecary staff channel for this request.",
+            ephemeral=True,
+        )
+        return
+
+    home_chapters: List[str] = _b("HOME_CHAPTERS") or []
+    requester_chapters = _canonical_member_chapters(interaction.user, home_chapters)
+    apothecary_ping, escalations = _chapter_request_notify_roles(guild)
+    escalation_prefix = " ".join(escalations) if escalations else "Watch Master + Forgemaster"
+    notify_content = " ".join([apothecary_ping, escalation_prefix]).strip()
+
+    embed = _build_chapter_request_embed(
+        interaction,
+        title="Homebrew Chapter Request",
+        description="A brother has requested a new homebrew chapter for review.",
+        requester_chapters=requester_chapters,
+        requested_label=chapter_name,
+        extra_fields=[
+            ("Geneseed Lineage", lineage),
+            ("Lore Blurb", lore),
+        ],
+    )
+
+    await staff_channel.send(content=notify_content, embed=embed)
+    _record_chapter_request_state(
+        requester_id,
+        now,
+        request_type="request_homebrew_chapter",
+        homebrew_chapter_name=chapter_name,
+        geneseed_lineage=lineage,
+    )
+    await interaction.response.send_message(
+        "Your homebrew chapter request has been sent to the Apothecary staff channel.",
         ephemeral=True,
     )
 
@@ -8732,6 +8903,7 @@ __all__ = [
     # ── Public command functions ──────────────────────────────────────────────
     "litany_of_function",
     "chapter_request",
+    "request_homebrew_chapter",
     "requeue_award",
     "pick_home_chapters",
     "chapter_assign",
