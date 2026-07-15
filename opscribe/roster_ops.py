@@ -968,8 +968,18 @@ async def _check_activity_status_changes():
             # Save member last post times (status map saved after notifications below)
             _save_member_last_post_times(member_last_posts)
 
-            # Handle Dreadnought inactivity: if a dreadnought becomes inactive, inter them
+            # Send notifications and apply side effects for changes.
+            # For inactive transitions, send the transfer notification first so rank/company
+            # details reflect pre-transfer roles, then mutate roles.
             for member, old, new, uid in changes:
+                try:
+                    await _send_activity_status_notification(guild, member, old, new)
+                    if new == "inactive" and uid in new_status_map:
+                        new_status_map[uid]["notified_inactive"] = True
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    _g.logger.exception(f"Failed to notify activity change for {member.id}: {e}")
+
                 if new == "inactive":
                     try:
                         await _handle_dreadnought_inactivity(member)
@@ -979,16 +989,6 @@ async def _check_activity_status_changes():
                         await _assign_member_to_reserves(member)
                     except Exception as e:
                         _g.logger.exception(f"Failed to update reserve roles for {member.id}: {e}")
-
-            # Send notifications for changes; mark notified_inactive only on confirmed delivery
-            for member, old, new, uid in changes:
-                try:
-                    await _send_activity_status_notification(guild, member, old, new)
-                    if new == "inactive" and uid in new_status_map:
-                        new_status_map[uid]["notified_inactive"] = True
-                    await asyncio.sleep(0.5)
-                except Exception as e:
-                    _g.logger.exception(f"Failed to notify activity change for {member.id}: {e}")
 
             # Save updated activity status (after notifications so notified_inactive reflects actual sends)
             _save_activity_status(new_status_map)
