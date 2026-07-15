@@ -267,7 +267,7 @@ def test_chapter_assign_denies_when_permission_fails():
     assert interaction.response.messages == [{"content": "Access denied.", "ephemeral": True}]
 
 
-def test_chapter_request_with_role_notifies_apothecary_with_requester_as_author():
+def test_chapter_request_with_matching_role_name_notifies_apothecary_with_requester_as_author():
     apothecary_role = _role(6001, ro.APOTHECARY_ROLE_NAME)
     requested_role = _role(6002, "Hawk Lords")
     current_role = _role(6003, "Blood Angels")
@@ -284,7 +284,7 @@ def test_chapter_request_with_role_notifies_apothecary_with_requester_as_author(
     bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
     bot_stub.is_allowed_channel = lambda _interaction: True
 
-    _run(ro.chapter_request(interaction, requested_role))
+    _run(ro.chapter_request(interaction, "  hawk   lords "))
 
     assert interaction.response.messages[0]["ephemeral"] is True
     assert "sent to the Apothecary staff channel" in interaction.response.messages[0]["content"]
@@ -293,11 +293,11 @@ def test_chapter_request_with_role_notifies_apothecary_with_requester_as_author(
     assert sent["content"] == apothecary_role.mention
     embed = sent["embed"]
     assert embed.author.name == "Brother Titus"
-    requested_field = next(field for field in embed.fields if field.name == "Requested Chapter Role")
+    requested_field = next(field for field in embed.fields if field.name == "Requested Chapter")
     assert requested_field.value == requested_role.mention
 
 
-def test_chapter_request_without_role_pings_watch_master_and_forgemaster():
+def test_chapter_request_without_matching_role_escalates_watch_master_and_forgemaster():
     apothecary_role = _role(7001, ro.APOTHECARY_ROLE_NAME)
     watch_master_role = _role(7002, "Watch Master")
     forgemaster_role = _role(7003, "Forgemaster")
@@ -314,14 +314,101 @@ def test_chapter_request_without_role_pings_watch_master_and_forgemaster():
     bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
     bot_stub.is_allowed_channel = lambda _interaction: True
 
-    _run(ro.chapter_request(interaction, None))
+    _run(ro.chapter_request(interaction, "Imperial Fists"))
 
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "sent to the Apothecary staff channel" in interaction.response.messages[0]["content"]
+    assert len(staff_channel.messages) == 1
     sent = staff_channel.messages[0]
     assert apothecary_role.mention in sent["content"]
     assert watch_master_role.mention in sent["content"]
     assert forgemaster_role.mention in sent["content"]
-    escalation_field = next(field for field in sent["embed"].fields if field.name == "Escalation Required")
-    assert "notify Watch Master and Forgemaster" in escalation_field.value
+    field_map = {field.name: field.value for field in sent["embed"].fields}
+    assert field_map["Requested Chapter"] == "Imperial Fists"
+    assert "No existing Discord role matched" in field_map["Support Onboarding Required"]
+
+
+def test_chapter_request_blank_name_returns_error():
+    apothecary_role = _role(7051, ro.APOTHECARY_ROLE_NAME)
+    staff_channel = _Channel()
+    guild = _Guild([apothecary_role], channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel})
+    requester = _Member(115, [], guild)
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels"]
+    bot_stub.check_command_permission = lambda _user, command: command == "chapter_request"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.chapter_request(interaction, "   "))
+
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "must provide a chapter name" in interaction.response.messages[0]["content"].lower()
+    assert len(staff_channel.messages) == 0
+
+
+def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
+    apothecary_role = _role(7201, ro.APOTHECARY_ROLE_NAME)
+    watch_master_role = _role(7202, "Watch Master")
+    forgemaster_role = _role(7203, "Forgemaster")
+    current_role = _role(7204, "Blood Angels")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, watch_master_role, forgemaster_role, current_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(121, [current_role], guild)
+    requester.display_name = "Brother Cassian"
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = ["Blood Angels"]
+    bot_stub.check_command_permission = lambda _user, command: command == "request_homebrew_chapter"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(
+        ro.request_homebrew_chapter(
+            interaction,
+            "Ebon Wardens",
+            "Raven Guard",
+            "Stealth-obsessed brotherhood forged in long-void boarding actions.",
+        )
+    )
+
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "homebrew chapter request has been sent" in interaction.response.messages[0]["content"].lower()
+    assert len(staff_channel.messages) == 1
+    sent = staff_channel.messages[0]
+    assert apothecary_role.mention in sent["content"]
+    assert watch_master_role.mention in sent["content"]
+    assert forgemaster_role.mention in sent["content"]
+    embed = sent["embed"]
+    assert embed.author.name == "Brother Cassian"
+    field_map = {field.name: field.value for field in embed.fields}
+    assert field_map["Requested Chapter"] == "Ebon Wardens"
+    assert field_map["Geneseed Lineage"] == "Raven Guard"
+    assert "Stealth-obsessed brotherhood" in field_map["Lore Blurb"]
+
+
+def test_request_homebrew_chapter_rejects_lore_over_discord_limit():
+    apothecary_role = _role(7301, ro.APOTHECARY_ROLE_NAME)
+    watch_master_role = _role(7302, "Watch Master")
+    forgemaster_role = _role(7303, "Forgemaster")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, watch_master_role, forgemaster_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(122, [], guild)
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = []
+    bot_stub.check_command_permission = lambda _user, command: command == "request_homebrew_chapter"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(ro.request_homebrew_chapter(interaction, "Ebon Wardens", "Raven Guard", "x" * 1025))
+
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "max 1024 characters" in interaction.response.messages[0]["content"].lower()
+    assert len(staff_channel.messages) == 0
 
 
 def test_chapter_request_has_28_day_cooldown(monkeypatch):
@@ -351,12 +438,59 @@ def test_chapter_request_has_28_day_cooldown(monkeypatch):
     monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
     monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
 
-    _run(ro.chapter_request(interaction, requested_role))
+    _run(ro.chapter_request(interaction, "Hawk Lords"))
     assert len(staff_channel.messages) == 1
     assert "sent to the Apothecary staff channel" in interaction.response.messages[0]["content"]
 
     second_interaction = _Interaction(guild, requester)
-    _run(ro.chapter_request(second_interaction, requested_role))
+    _run(ro.chapter_request(second_interaction, "Hawk Lords"))
+
+    assert len(staff_channel.messages) == 1
+    assert "cooldown active" in second_interaction.response.messages[0]["content"].lower()
+    assert second_interaction.response.messages[0]["ephemeral"] is True
+
+
+def test_homebrew_request_shares_chapter_request_cooldown(monkeypatch):
+    apothecary_role = _role(7401, ro.APOTHECARY_ROLE_NAME)
+    watch_master_role = _role(7402, "Watch Master")
+    forgemaster_role = _role(7403, "Forgemaster")
+    requested_role = _role(7404, "Hawk Lords")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, watch_master_role, forgemaster_role, requested_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(123, [], guild)
+
+    bot_stub.HOME_CHAPTERS = ["Hawk Lords"]
+    bot_stub.check_command_permission = lambda _user, command: command in {"chapter_request", "request_homebrew_chapter"}
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    state_store = {}
+
+    def _fake_load():
+        return dict(state_store)
+
+    def _fake_save(state):
+        state_store.clear()
+        state_store.update(state)
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
+    monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
+
+    first_interaction = _Interaction(guild, requester)
+    _run(ro.chapter_request(first_interaction, "Hawk Lords"))
+    assert len(staff_channel.messages) == 1
+
+    second_interaction = _Interaction(guild, requester)
+    _run(
+        ro.request_homebrew_chapter(
+            second_interaction,
+            "Ebon Wardens",
+            "Raven Guard",
+            "Stealth-obsessed brotherhood forged in long-void boarding actions.",
+        )
+    )
 
     assert len(staff_channel.messages) == 1
     assert "cooldown active" in second_interaction.response.messages[0]["content"].lower()
