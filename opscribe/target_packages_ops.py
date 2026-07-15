@@ -2911,7 +2911,7 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
             or (
                 p.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
                 and (
-                    p.get("assigned_kt") == kt
+                    (kt and p.get("assigned_kt") == kt)
                     or (
                         p.get("assigned_kt") is None
                         and company
