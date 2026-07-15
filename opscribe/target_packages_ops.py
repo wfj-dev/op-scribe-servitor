@@ -1563,14 +1563,22 @@ def _prune_announced_strike_queue_matches(data: dict, packages: dict, active_ent
 
 def _member_active_directive_commitment(member_id: int, data: dict) -> tuple[str, bool] | None:
     active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
+    signed_code: str | None = None
+    specialist_code: str | None = None
     for pkg in (data.get("packages", {}) or {}).values():
         if pkg.get("status") not in active_statuses:
             continue
         code = str(pkg.get("directive_code") or pkg.get("id") or "UNKNOWN")
         if int(member_id) in {int(uid) for uid in (pkg.get("signed_up", []) or [])}:
-            return code, False
+            if signed_code is None:
+                signed_code = code
         if int(member_id) in {int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or [])}:
-            return code, True
+            if specialist_code is None:
+                specialist_code = code
+    if specialist_code is not None:
+        return specialist_code, True
+    if signed_code is not None:
+        return signed_code, False
     return None
 
 
@@ -2037,6 +2045,45 @@ async def _queue_member_for_strike(
     if normalized_mode == "omega" and not _tp_get_player_platform(member):
         return False, "Omega queueing requires a PC or Console role."
 
+    async def _clear_all_recruiting_directive_rosters() -> tuple[int, list[str]]:
+        """Clear all signed/specialist attachments from recruiting directives."""
+        changed_package_ids: list[str] = []
+        changed_codes: list[str] = []
+        async with _TP_LOCK:
+            tp_data = _load_tp()
+            packages_map = tp_data.get("packages", {}) or {}
+            changed = False
+            for package_id, pkg in packages_map.items():
+                if not isinstance(pkg, dict):
+                    continue
+                if pkg.get("status") != STATUS_RECRUITING:
+                    continue
+                had_signed = bool(pkg.get("signed_up", []) or [])
+                had_specialists = bool(pkg.get("assigned_specialist_ids", []) or [])
+                if not had_signed and not had_specialists:
+                    continue
+                pkg["signed_up"] = []
+                pkg["assigned_specialist_ids"] = []
+                pkg["specialist_assigners"] = {}
+                changed = True
+                changed_package_ids.append(str(package_id))
+                changed_codes.append(str(pkg.get("directive_code") or pkg.get("id") or package_id or "UNKNOWN"))
+            if changed:
+                _save_tp(tp_data)
+
+        for package_id in changed_package_ids:
+            try:
+                await _refresh_signup_embed_for_package(package_id, guild)
+            except Exception as exc:
+                _g.logger.debug(f"[TP] Failed refreshing directive embed after recruiting-roster clear for {package_id}: {exc}")
+
+        return len(changed_package_ids), changed_codes
+
+    cleared_count, cleared_codes = await _clear_all_recruiting_directive_rosters()
+    if cleared_count > 0:
+        # Reflect roster clears on the public queue board before continuing queue flow.
+        await _reconcile_strike_queue_board(guild, major_change=True, force_bump=True)
+
     data = _load_tp()
     packages = data.get("packages", {})
     commitment = _member_active_directive_commitment(member.id, data)
@@ -2085,9 +2132,16 @@ async def _queue_member_for_strike(
         )
     if removal_note:
         match_text = f" {removal_note}" + match_text
+    clear_text = ""
+    if cleared_count > 0:
+        clear_text = (
+            f" Recruiting directive rosters cleared: **{cleared_count}**"
+            + (f" ({', '.join(f'`{c}`' for c in cleared_codes[:4])}{' ...' if len(cleared_codes) > 4 else ''})." if cleared_codes else ".")
+        )
     return True, (
         f"You are queued for strike directives for the next **{minutes}** minutes. "
         f"Mode preference: **{mode_text}**. "
+        f"{clear_text} "
         f"Current fully-open directives eligible for queue matching: **{queue_eligible_count}**."
         f"{match_text}"
     )
@@ -6958,17 +7012,15 @@ async def remove_attached_member_from_directive(
 
 
 async def _remove_member_from_active_directive(member: discord.Member, guild: "discord.Guild | None") -> tuple[bool, str]:
-    """Remove a member from whichever active directive they are currently attached to."""
+    """Remove a member from all recruiting directives they are currently attached to."""
     if member is None:
         return False, "Member not found."
 
     async with _TP_LOCK:
         data = _load_tp()
         packages = data.get("packages", {}) or {}
-        active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED}
-        target_package_id: str | None = None
-        target_package_code = "UNKNOWN"
-        target_pkg: dict | None = None
+        active_statuses = {STATUS_RECRUITING}
+        target_packages: list[tuple[str, str, dict]] = []
 
         for package_id, pkg in packages.items():
             if not isinstance(pkg, dict) or pkg.get("status") not in active_statuses:
@@ -6980,43 +7032,57 @@ async def _remove_member_from_active_directive(member: discord.Member, guild: "d
                 continue
             target_package_id = str(package_id)
             target_package_code = str(pkg.get("directive_code") or pkg.get("id") or package_id or "UNKNOWN")
-            target_pkg = pkg
-            break
+            target_packages.append((target_package_id, target_package_code, pkg))
 
-        if target_package_id is None or target_pkg is None:
+        if not target_packages:
             return False, "You are not currently attached to a directive."
 
         resolved_guild = guild or _get_guild_from_bot()
         target_member = resolved_guild.get_member(int(member.id)) if resolved_guild else None
-        allowed, removable_kinds, deny_reason = _can_actor_remove_attached_target(
-            member,
-            target_member,
-            int(member.id),
-            target_pkg,
-            resolved_guild,
-        )
-        if not allowed:
-            return False, deny_reason
+        removal_plans: list[tuple[str, str, dict, set[str]]] = []
+        for target_package_id, target_package_code, target_pkg in target_packages:
+            allowed, removable_kinds, deny_reason = _can_actor_remove_attached_target(
+                member,
+                target_member,
+                int(member.id),
+                target_pkg,
+                resolved_guild,
+            )
+            if not allowed:
+                return False, deny_reason
+            removal_plans.append((target_package_id, target_package_code, target_pkg, removable_kinds))
 
-        success, action_msg = _remove_target_from_package(
-            target_pkg,
-            int(member.id),
-            removable_kinds,
-            resolved_guild,
-        )
-        if not success:
-            return False, action_msg
+        removal_results: list[tuple[str, str, str]] = []
+        for target_package_id, target_package_code, target_pkg, removable_kinds in removal_plans:
+            success, action_msg = _remove_target_from_package(
+                target_pkg,
+                int(member.id),
+                removable_kinds,
+                resolved_guild,
+            )
+            if not success:
+                return False, action_msg
+            removal_results.append((target_package_id, target_package_code, action_msg))
 
         _save_tp(data)
 
-    try:
-        await _refresh_signup_embed_for_package(target_package_id, guild)
-    except Exception as exc:
-        _g.logger.debug(f"[TP] Failed refreshing directive embed after queue auto-detach for {target_package_code}: {exc}")
+    for target_package_id, target_package_code, _action_msg in removal_results:
+        try:
+            await _refresh_signup_embed_for_package(target_package_id, guild)
+        except Exception as exc:
+            _g.logger.debug(f"[TP] Failed refreshing directive embed after queue auto-detach for {target_package_code}: {exc}")
 
-    if "specialist" in action_msg.lower():
-        return True, f"Removed from {target_package_code} and cleared specialist attachment."
-    return True, f"Removed from {target_package_code} sign-up roster."
+    if len(removal_results) == 1:
+        _target_package_id, target_package_code, action_msg = removal_results[0]
+        if "specialist" in action_msg.lower():
+            return True, f"Removed from {target_package_code} and cleared specialist attachment."
+        return True, f"Removed from {target_package_code} sign-up roster."
+
+    removed_codes = ", ".join(f"`{code}`" for _pkg_id, code, _msg in removal_results)
+    removed_specialist = any("specialist" in msg.lower() for _pkg_id, _code, msg in removal_results)
+    if removed_specialist:
+        return True, f"Removed from directives {removed_codes} and cleared specialist attachments."
+    return True, f"Removed from directives {removed_codes} sign-up rosters."
 
 
 def _attached_target_ids(pkg: dict) -> list[int]:
