@@ -1773,7 +1773,11 @@ def _strike_queue_open_directive_count(
     for uid, entry in _ordered_queue_entries(entries):
         mode_preference = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
         mode_preferences.add(mode_preference)
-        member = guild.get_member(int(uid)) if guild else None
+        try:
+            uid_int = int(uid)
+        except (ValueError, TypeError):
+            continue
+        member = guild.get_member(uid_int) if guild else None
         if member is None:
             continue
         eligible = _queue_eligible_packages_for_member(member, packages, mode_preference, guild)

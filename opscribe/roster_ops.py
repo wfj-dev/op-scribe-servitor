@@ -2966,7 +2966,7 @@ async def chapter_request(
         return
 
     requested_name = (chapter_name or "").strip()
-    if not requested_name:
+    if not requested_name or not any(c.isalnum() for c in requested_name):
         await interaction.response.send_message(
             "You must provide a chapter name for `/chapter_request`. Use `/request_homebrew_chapter` for homebrew chapter submissions.",
             ephemeral=True,
@@ -3021,7 +3021,11 @@ async def chapter_request(
         extra_fields=extra_fields,
     )
 
-    await staff_channel.send(content=notify_content, embed=embed)
+    await staff_channel.send(
+        content=notify_content,
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(users=False, roles=True, everyone=False),
+    )
     _record_chapter_request_state(
         requester_id,
         now,
@@ -3115,7 +3119,11 @@ async def request_homebrew_chapter(
         ],
     )
 
-    await staff_channel.send(content=notify_content, embed=embed)
+    await staff_channel.send(
+        content=notify_content,
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(users=False, roles=True, everyone=False),
+    )
     _record_chapter_request_state(
         requester_id,
         now,
