@@ -14,6 +14,7 @@ from opscribe.constants import (
     HERISOR_DEFENSE_MEDAL_ROLE_ID,
     HERISOR_DEFENSE_TAG_ROLE_ID,
     LEVIATHAN_PROTOCOL_ROLE_ID,
+    PIPEHITTER_ROLE_ID,
 )
 
 
@@ -677,6 +678,44 @@ def test_chapter_approved_role_mention_is_detected():
     )
     rec = parse_aar(msg)
     assert rec.get("chapter_approved") is True
+
+
+def _make_pipehitter_message(difficulty_name: str, mission_name: str = "Inferno"):
+    users = [FakeUser(9601, "PipeA", nick="PipeA"), FakeUser(9602, "PipeB", nick="PipeB")]
+    difficulty = FakeRole(9902, difficulty_name)
+    pipehitter = FakeRole(PIPEHITTER_ROLE_ID, "SOK-G: Pipehitter")
+
+    msg = FakeMessage(
+        (
+            "++ MISSION REPORT ++\n"
+            f"Mission: {mission_name} <@&{PIPEHITTER_ROLE_ID}>\n"
+            "Rank: A\n"
+            f"Difficulty: <@&{difficulty.id}>\n"
+            f"Gene-seed: <@{users[0].id}>\n"
+            "Armory Data: 1\n"
+            "Brothers:\n"
+            f" - <@{users[0].id}>\n"
+            f" - <@{users[1].id}>\n"
+            "++ END OF REPORT ++\n"
+        ),
+        mentions=users,
+        role_mentions=[difficulty, pipehitter],
+    )
+    return msg
+
+
+def test_pipehitter_requires_hard_stratagem_difficulty():
+    msg = _make_pipehitter_message(difficulty_name="Absolute")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert any("requires @Hard-Stratagem" in e for e in errs), errs
+
+
+def test_pipehitter_hard_stratagem_on_eligible_mission_has_no_difficulty_error():
+    msg = _make_pipehitter_message(difficulty_name="Hard-Stratagem", mission_name="Inferno")
+    rec = parse_aar(msg)
+    errs = validate_aar(rec)
+    assert not any("requires @Hard-Stratagem" in e for e in errs), errs
 
 
 def test_editing_existing_aar_replaces_challenge_progress_entry():

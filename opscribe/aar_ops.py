@@ -3337,6 +3337,8 @@ def validate_aar(record: dict):
 
         # Pipehitter validation: only allowed on eligible missions
         if record.get("pipehitter_mentioned", False):
+            if not has_hard_stratagem:
+                errors.append("@Pipehitter/@Distinguished_Pipehitter requires @Hard-Stratagem on the Difficulty line.")
             mission_lower = (mission or "").lower().strip()
             mission_clean = re.sub(r"<.*", "", mission_lower).strip()
             if mission_clean and mission_clean not in PIPEHITTER_ELIGIBLE_MISSIONS:
