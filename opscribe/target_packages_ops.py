@@ -1758,6 +1758,53 @@ def _strike_queue_mode_breakdown(entries: dict) -> tuple[int, int, int]:
     return hard_count, omega_count, any_count
 
 
+def _strike_queue_open_directive_count(
+    entries: dict,
+    packages: dict,
+    guild: "discord.Guild | None",
+) -> int:
+    """Count open directives currently targetable by queued members for matchmaking."""
+    if not entries or not packages:
+        return 0
+
+    open_ids: set[str] = set()
+    mode_preferences: set[str] = set()
+
+    for uid, entry in _ordered_queue_entries(entries):
+        mode_preference = _normalize_strike_queue_mode((entry or {}).get("mode_preference"))
+        mode_preferences.add(mode_preference)
+        try:
+            uid_int = int(uid)
+        except (ValueError, TypeError):
+            continue
+        member = guild.get_member(uid_int) if guild else None
+        if member is None:
+            continue
+        eligible = _queue_eligible_packages_for_member(member, packages, mode_preference, guild)
+        for pkg in eligible:
+            pkg_id = str(pkg.get("id") or "").strip()
+            if pkg_id:
+                open_ids.add(pkg_id)
+
+    if open_ids:
+        return len(open_ids)
+
+    # Fallback: count queue-open directives by mode if members are unresolved.
+    backfill_partials = _strike_queue_backfill_partials_enabled()
+    for pkg in packages.values():
+        if pkg.get("status") != STATUS_RECRUITING:
+            continue
+        if (not backfill_partials) and (pkg.get("signed_up", []) or pkg.get("assigned_specialist_ids", [])):
+            continue
+        if mode_preferences and (not any(_strike_mode_matches_preference(pkg, pref) for pref in mode_preferences)):
+            continue
+        pkg_id = str(pkg.get("id") or "").strip()
+        if pkg_id:
+            open_ids.add(pkg_id)
+
+    return len(open_ids)
+
+
 def _build_strike_queue_board_embed(
     queue_data: dict,
     packages: dict,
@@ -1767,6 +1814,7 @@ def _build_strike_queue_board_embed(
     ordered_entries = _ordered_queue_entries(entries)
     total = len(ordered_entries)
     hard_count, omega_count, any_count = _strike_queue_mode_breakdown(entries)
+    open_directives = _strike_queue_open_directive_count(entries, packages, guild)
     pc_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "pc")
     console_count = sum(1 for _uid, e in ordered_entries if str((e or {}).get("platform") or "") == "console")
     unknown_platform_count = max(0, total - pc_count - console_count)
@@ -1784,6 +1832,7 @@ def _build_strike_queue_board_embed(
         name="Queue Snapshot",
         value=(
             f"Total: **{total}**\n"
+            f"Open directives matchmaking now: **{open_directives}**\n"
             f"Modes: Hard **{hard_count}** | Omega **{omega_count}** | Any **{any_count}**\n"
             f"Platforms: PC **{pc_count}** | Console **{console_count}**"
             + (f" | Unknown **{unknown_platform_count}**" if unknown_platform_count else "")
