@@ -635,12 +635,24 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
 
+    def _normalize_member_casing(text: str) -> str:
+        """Normalize mixed-case tokens while preserving punctuation and symbols."""
+
+        def _fix_word(match: re.Match[str]) -> str:
+            word = match.group(0)
+            # Preserve one-letter tokens exactly as uppercase initials (e.g., "D.").
+            if len(word) == 1:
+                return word.upper()
+            return word[:1].upper() + word[1:].lower()
+
+        return re.sub(r"[A-Za-z]+", _fix_word, text)
+
     # Use server display name (nickname-aware), normalized to plain readable text.
     display_name = _normalize_display_name(getattr(member, "display_name", "") or getattr(member, "name", ""))
     display_name = re.sub(r"\s+", " ", display_name).strip() or str(getattr(member, "id", "?"))
-    # Normalize casing: capitalize the first letter of each word so mixed-case
-    # Discord nicknames render consistently (e.g. "wATCH bROTHER" → "Watch Brother").
-    display_name = display_name.title()
+    # Normalize casing so mixed-case Discord nicknames render consistently
+    # (e.g. "WATCH MAsTER VAN" -> "Watch Master Van").
+    display_name = _normalize_member_casing(display_name)
     left = chapter_emoji_str or "·"
     return f"{left} | {display_name}"
 
