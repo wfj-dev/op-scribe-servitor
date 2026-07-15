@@ -752,33 +752,44 @@ from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noq
 
 # Lines 828-2593 extracted to roster_ops.py
 
-# Global rank priority list (highest -> lowest)
-RANK_ROLES_PRIORITY = [
-    "Watch Master",
-    "Blade Master",
-    "Chief Apothecary",
-    "High Chaplain",
-    "Forgemaster",
-    "Castellan",
-    "Void Warden",
-    "Huntmaster",
-    "Watch Captain",
-    "Venerable Dreadnought",
-    "Watch Lieutenant",
-    "First Blade",
-    "Watch Apothecary",
-    "Watch Chaplain",
-    "Watch Librarian",
-    "Watch Techmarine",
-    "Watch Keeper",
-    "Watch Sergeant",
-    "Honored Dreadnought",
-    "Interred Brother",
-    "Oathsworn",
-    "Bladeguard",
-    "Watch Veteran",
-    "Watch Brother",
-]
+# Global rank priority model (tiered, highest -> lowest).
+# Ranks inside the same tier are peers and intentionally share the same priority.
+RANK_TIERS: Dict[int, List[str]] = {
+    0: ["Watch Master"],
+    1: [
+        "Blade Master",
+        "Chief Apothecary",
+        "Forgemaster",
+        "High Chaplain",
+        "Huntmaster",
+        "Venerable Dreadnought",
+        "Void Warden",
+        "Watch Captain",
+    ],
+    2: [
+        "First Blade",
+        "Honored Dreadnought",
+        "Watch Apothecary",
+        "Watch Chaplain",
+        "Watch Librarian",
+        "Watch Lieutenant",
+        "Watch Techmarine",
+    ],
+    3: ["Watch Sergeant"],
+    4: ["Bladeguard", "Oathsworn"],
+    5: ["Watch Veteran"],
+    6: ["Watch Brother"],
+}
+
+# Flattened list retained for iteration and display in other modules.
+RANK_ROLES_PRIORITY = [rank for tier in sorted(RANK_TIERS) for rank in RANK_TIERS[tier]]
+
+# Canonical rank -> tier mapping used by comparison helpers.
+RANK_ROLE_TIERS: Dict[str, int] = {
+    rank: tier
+    for tier, ranks in RANK_TIERS.items()
+    for rank in ranks
+}
 
 # Canonical list of known home chapters for lookup
 HOME_CHAPTERS = [
@@ -1079,10 +1090,9 @@ def _print_progress(prefix: str, current: int, total: int, width: int = 40):
 
 
 def _role_index(role_name: str):
-    try:
-        return RANK_ROLES_PRIORITY.index(role_name)
-    except ValueError:
-        return None
+    # Lower value means higher authority. Same-tier ranks intentionally share
+    # the same value so they compare as peers.
+    return RANK_ROLE_TIERS.get(role_name)
 
 
 def get_highest_rank_index(user: discord.User | discord.Member):
