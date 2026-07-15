@@ -638,6 +638,9 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     # Use server display name (nickname-aware), normalized to plain readable text.
     display_name = _normalize_display_name(getattr(member, "display_name", "") or getattr(member, "name", ""))
     display_name = re.sub(r"\s+", " ", display_name).strip() or str(getattr(member, "id", "?"))
+    # Normalize casing: capitalize the first letter of each word so mixed-case
+    # Discord nicknames render consistently (e.g. "wATCH bROTHER" → "Watch Brother").
+    display_name = display_name.title()
     left = chapter_emoji_str or "·"
     return f"{left} | {display_name}"
 
