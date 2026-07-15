@@ -1638,9 +1638,9 @@ async def _challenge_progress_inner(
     )
 
     # --- Crux Terminatus eligibility checklist ---
-    # All requirements are evaluated live against current roles and AAR records.
-    # Holding the Crux role does NOT short-circuit — roles can be revoked if new
-    # missions are added and requirements are no longer met.
+    # Evaluate requirements live, but render as completed when the user already
+    # holds the Crux role. This keeps command output aligned with awarded status
+    # while grace-period enforcement remains authoritative elsewhere.
 
     # Requirement 1: Black Laurels role held AND every post-enforcement BL AAR is Rank A
     # over the user's effective mission baseline.
@@ -1662,20 +1662,22 @@ async def _challenge_progress_inner(
     ts_role_count = sum(1 for rid in TERMINUS_SLAYER_ROLE_IDS if rid in target_role_ids)
     ts_slays_met = ts_role_count >= 2
 
-    bl_check = "✅" if all_bl_rank_a else "🔲"
-    dist_check = "✅" if has_distinguished else "🔲"
-    ts_check = "✅" if ts_slays_met else "🔲"
+    has_crux_role = CRUX_TERMINATUS_ROLE_ID in target_role_ids
+    bl_check = "✅" if (all_bl_rank_a or has_crux_role) else "🔲"
+    dist_check = "✅" if (has_distinguished or has_crux_role) else "🔲"
+    ts_check = "✅" if (ts_slays_met or has_crux_role) else "🔲"
+    display_ts_role_count = max(ts_role_count, 2) if has_crux_role else ts_role_count
     bl_rank_detail = ""
-    if verbose and non_a_missions:
+    if verbose and non_a_missions and not has_crux_role:
         bl_rank_detail = "\n  _Non-Rank A (post-enforcement): " + ", ".join(sorted(non_a_missions)) + "_"
     bl_scope_detail = ""
-    if verbose and _grandfathered_bl:
+    if verbose and _grandfathered_bl and not has_crux_role:
         bl_scope_detail = "\n  _Grandfathered baseline in effect for Crux BL audit._"
     challenge_lines.append(
         f"**Crux Terminatus**\n"
         f"{bl_check} Black Laurels — baseline missions, Rank A{bl_rank_detail}{bl_scope_detail}\n"
         f"{dist_check} Distinguished SOK-G: Pipehitter\n"
-        f"{ts_check} Terminus Slayer roles held: {ts_role_count}/2"
+        f"{ts_check} Terminus Slayer roles held: {display_ts_role_count}/2"
     )
 
     # --- Dual Vigil eligibility checklist ---
