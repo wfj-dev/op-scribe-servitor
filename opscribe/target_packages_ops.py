@@ -2901,11 +2901,24 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
         return _active()
 
     from .forge_ops import _resolve_killteam_for_member
+    from .roster_ops import _get_member_company_name
     kt = _resolve_killteam_for_member(member)
-    if kt:
+    company = _get_member_company_name(member)
+    if kt or company:
         return [
             p for p in _active()
-            if p.get("assigned_kt") == kt or _is_personally_attached(p)
+            if _is_personally_attached(p)
+            or (
+                p.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
+                and (
+                    (kt and p.get("assigned_kt") == kt)
+                    or (
+                        p.get("assigned_kt") is None
+                        and company
+                        and p.get("assigned_company") == company
+                    )
+                )
+            )
         ]
     return [p for p in _active() if _is_personally_attached(p)]
 

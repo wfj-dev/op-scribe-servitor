@@ -466,6 +466,68 @@ class TestHighCommandVisibility:
         assert "p_other" not in visible_ids
 
 
+class TestCompanyScopedVisibility:
+    def test_company_member_without_kt_sees_only_matching_company_and_personal(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=701), company_name="Watch Company Primus")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        pkgs = {
+            "p_company_match": {
+                "id": "p_company_match",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company_other": {
+                "id": "p_company_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_unassigned_kt": {
+                "id": "p_unassigned_kt",
+                "status": STATUS_RECRUITING,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_personal": {
+                "id": "p_personal",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [701],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_company_match", "p_personal"}
+
+
 # ---------------------------------------------------------------------------
 # _draw_requirements
 # ---------------------------------------------------------------------------
