@@ -3625,6 +3625,39 @@ class TestStrikeQueueMatching:
         assert "Position: **1/1**" in field_map.get("Your Queue Status", "")
         assert "Eligible fully-open directives now: **1**" in field_map.get("Estimated Wait", "")
 
+    def test_strike_queue_board_embed_shows_open_directive_count(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member1 = _with_company_role(_make_member(["Watch Brother"], member_id=1))
+        member2 = _with_company_role(_make_member(["Watch Brother"], member_id=2))
+        guild = _make_guild([member1, member2])
+
+        pkg_hard = _make_pkg(mode="Hard-Strat", signed_up=[])
+        pkg_hard["id"] = "pkg_hard"
+        pkg_omega = _make_pkg(mode="Omega-Strat", signed_up=[])
+        pkg_omega["id"] = "pkg_omega"
+        packages = {pkg_hard["id"]: pkg_hard, pkg_omega["id"]: pkg_omega}
+
+        queue_data = {
+            "entries": {
+                "1": {"mode_preference": "hard", "platform": "pc"},
+                "2": {"mode_preference": "omega", "platform": "console"},
+            }
+        }
+
+        def _fake_eligible(member, _packages, mode_preference, _guild):
+            if member.id == 1 and mode_preference == "hard":
+                return [pkg_hard]
+            if member.id == 2 and mode_preference == "omega":
+                return [pkg_omega]
+            return []
+
+        monkeypatch.setattr(tp, "_queue_eligible_packages_for_member", _fake_eligible)
+
+        embed = tp._build_strike_queue_board_embed(queue_data, packages, guild)
+        field_map = {f.name: f.value for f in embed.fields}
+        assert "Open directives matchmaking now: **2**" in field_map.get("Queue Snapshot", "")
+
     def test_strike_queue_status_shows_tentative_groups(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
