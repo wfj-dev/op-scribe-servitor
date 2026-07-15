@@ -3433,216 +3433,220 @@ async def _select_home_chapters_for_month(offset: int = 0, guild: Optional[disco
     chapters from the current `remaining` pool (resetting if needed), prioritized
     by weighted chapter score, cache the pair under that month, and persist.
     """
+    _score_cache: Optional[Tuple[List[str], Dict[str, Dict[str, float]], List[str]]] = None
+
+    def _compute_chapter_scores(days: int = 28) -> Tuple[List[str], Dict[str, Dict[str, float]], List[str]]:
+        """Return eligible chapters, per-chapter factors, and globally-ranked order.
+
+        Eligibility remains unchanged: chapter must have at least one member with
+        the chapter role and at least one non-reserve member among them.
+        """
+        nonlocal _score_cache
+        if _score_cache is not None:
+            return _score_cache
+
+        home_chapters: List[str] = _b("HOME_CHAPTERS") or []
+        g = guild or _b("_resolve_notification_guild")()
+        if g is None:
+            empty_metrics = {
+                c: {
+                    "rank": 0.0,
+                    "recent_aars": 0.0,
+                    "members": 0.0,
+                    "studs": 0.0,
+                    "score": 0.0,
+                }
+                for c in home_chapters
+            }
+            ordered_fallback = sorted(home_chapters)
+            _score_cache = (home_chapters.copy(), empty_metrics, ordered_fallback)
+            return _score_cache
+
+        members = list(getattr(g, "members", []) or [])
+        chapter_total_counts: Dict[str, int] = {c: 0 for c in home_chapters}
+        chapter_non_reserve_members: Dict[str, List[discord.Member]] = {c: [] for c in home_chapters}
+
+        for mbr in members:
+            try:
+                roles = getattr(mbr, "roles", []) or []
+                role_names = [(getattr(r, "name", "") or "").strip() for r in roles]
+                role_names_lc = {rn.lower() for rn in role_names if rn}
+                has_reserve = any("reserve" in rn for rn in role_names_lc)
+                for chap in home_chapters:
+                    if chap.lower() in role_names_lc:
+                        chapter_total_counts[chap] += 1
+                        if not has_reserve:
+                            chapter_non_reserve_members[chap].append(mbr)
+            except Exception:
+                continue
+
+        eligible = [
+            chap
+            for chap in home_chapters
+            if chapter_total_counts.get(chap, 0) > 0 and len(chapter_non_reserve_members.get(chap, [])) > 0
+        ]
+        if not eligible:
+            eligible = home_chapters.copy()
+
+        # Precompute recent per-user AAR count (last N days).
+        recent_user_aar_counts: Dict[str, int] = {}
+        try:
+            recents = _get_missions_last_days(days)
+            for rec in recents:
+                try:
+                    for uid in (rec.get("brother_ids") or []):
+                        sid = str(uid)
+                        recent_user_aar_counts[sid] = int(recent_user_aar_counts.get(sid, 0)) + 1
+                except Exception:
+                    continue
+        except Exception:
+            recent_user_aar_counts = {}
+
+        # Build raw factors.
+        rank_tiers = _b("RANK_ROLE_TIERS") or {}
+        max_rank_tier = max(rank_tiers.values()) if rank_tiers else 6
+        idx_veteran = _b("_role_index")("Watch Veteran")
+
+        raw: Dict[str, Dict[str, float]] = {
+            chap: {"rank": 0.0, "recent_aars": 0.0, "members": 0.0, "studs": 0.0}
+            for chap in home_chapters
+        }
+
+        stats_cache: Dict[str, Dict[str, int]] = {}
+
+        for chap in home_chapters:
+            non_reserve = chapter_non_reserve_members.get(chap, [])
+            raw[chap]["members"] = float(len(non_reserve))
+
+            rank_total = 0.0
+            aar_total = 0.0
+            studs_total = 0.0
+
+            for mbr in non_reserve:
+                uid = str(getattr(mbr, "id", ""))
+                if not uid:
+                    continue
+
+                # Rank factor: higher authority contributes more points.
+                try:
+                    highest_tier = _b("get_highest_rank_index")(mbr)
+                    if highest_tier is not None:
+                        rank_points = max(0, (max_rank_tier - int(highest_tier) + 1))
+                        rank_total += float(rank_points)
+                except Exception:
+                    pass
+
+                # Recent activity factor: member AAR participations in last N days.
+                aar_total += float(recent_user_aar_counts.get(uid, 0))
+
+                # Stud factor: entitled studs (same formula used elsewhere).
+                try:
+                    if uid not in stats_cache:
+                        stats_cache[uid] = compute_stats_for_user(uid) or {}
+                    aar_points = int(stats_cache[uid].get("aar_points", 0) or 0)
+                except Exception:
+                    aar_points = 0
+
+                try:
+                    highest_tier = _b("get_highest_rank_index")(mbr)
+                    is_veteran_or_higher = (
+                        idx_veteran is not None
+                        and highest_tier is not None
+                        and int(highest_tier) <= int(idx_veteran)
+                    )
+                    if is_veteran_or_higher:
+                        joined_at = _get_effective_induction_date(mbr)
+                        if joined_at:
+                            if joined_at.tzinfo is not None:
+                                joined_at = joined_at.astimezone(timezone.utc).replace(tzinfo=None)
+                            weeks = max(0, (datetime.utcnow() - joined_at).days // 7)
+                            studs_time = weeks // 4
+                        else:
+                            studs_time = 0
+                        studs_aar = aar_points // 400
+                        studs_total += float(min(studs_time, studs_aar, 16))
+                except Exception:
+                    continue
+
+            raw[chap]["rank"] = rank_total
+            raw[chap]["recent_aars"] = aar_total
+            raw[chap]["studs"] = studs_total
+
+        def _normalize_factor(key: str) -> Dict[str, float]:
+            vals = [float(raw[c].get(key, 0.0)) for c in eligible]
+            if not vals:
+                return {c: 0.0 for c in home_chapters}
+            lo = min(vals)
+            hi = max(vals)
+            if hi <= lo:
+                return {c: 0.0 for c in home_chapters}
+            return {
+                c: (float(raw[c].get(key, 0.0)) - lo) / (hi - lo)
+                if c in eligible
+                else 0.0
+                for c in home_chapters
+            }
+
+        rank_norm = _normalize_factor("rank")
+        aar_norm = _normalize_factor("recent_aars")
+        members_norm = _normalize_factor("members")
+        studs_norm = _normalize_factor("studs")
+
+        metrics: Dict[str, Dict[str, float]] = {}
+        for chap in home_chapters:
+            score = 0.25 * rank_norm.get(chap, 0.0)
+            score += 0.25 * aar_norm.get(chap, 0.0)
+            score += 0.25 * members_norm.get(chap, 0.0)
+            score += 0.25 * studs_norm.get(chap, 0.0)
+            metrics[chap] = {
+                "rank": float(raw[chap].get("rank", 0.0)),
+                "recent_aars": float(raw[chap].get("recent_aars", 0.0)),
+                "members": float(raw[chap].get("members", 0.0)),
+                "studs": float(raw[chap].get("studs", 0.0)),
+                "score": float(score),
+            }
+
+        # Same score/peer tie breaks are deterministic and stable.
+        ordered = sorted(
+            eligible,
+            key=lambda c: (
+                -metrics[c]["score"],
+                -metrics[c]["recent_aars"],
+                -metrics[c]["rank"],
+                -metrics[c]["members"],
+                -metrics[c]["studs"],
+                c.lower(),
+            ),
+        )
+
+        _score_cache = (eligible, metrics, ordered)
+        return _score_cache
+
+    def _ordered_chapters(chapters: List[str], days: int = 28) -> List[str]:
+        """Return chapters ordered by weighted score with deterministic fallback."""
+        eligible, _metrics, ordered = _compute_chapter_scores(days)
+        candidate_set = set(chapters or [])
+        preferred = [c for c in ordered if c in candidate_set]
+        # Include any non-eligible fallbacks in deterministic order.
+        remainder = sorted([c for c in candidate_set if c not in preferred])
+        return preferred + remainder
+
+    def _active_for_month(month_key: str, days: int = 28) -> List[str]:
+        """Determine active chapters with unchanged eligibility semantics."""
+        try:
+            active, _metrics, _ordered = _compute_chapter_scores(days)
+            return active if active else (_b("HOME_CHAPTERS") or []).copy()
+        except Exception:
+            return (_b("HOME_CHAPTERS") or []).copy()
+
+    # Pre-compute chapter scores outside the lock to avoid holding it during
+    # expensive member iteration and I/O in _get_missions_last_days.
+    _compute_chapter_scores(28)
+
     async with _g.ROTATION_LOCK:
         state = _load_home_chapter_rotation()
         target = _month_key_for_offset(offset)
         selected = state.get("selected", {}) or {}
-
-        _score_cache: Optional[Tuple[List[str], Dict[str, Dict[str, float]], List[str]]] = None
-
-        def _compute_chapter_scores(days: int = 28) -> Tuple[List[str], Dict[str, Dict[str, float]], List[str]]:
-            """Return eligible chapters, per-chapter factors, and globally-ranked order.
-
-            Eligibility remains unchanged: chapter must have at least one member with
-            the chapter role and at least one non-reserve member among them.
-            """
-            nonlocal _score_cache
-            if _score_cache is not None:
-                return _score_cache
-
-            home_chapters: List[str] = _b("HOME_CHAPTERS") or []
-            g = guild or _b("_resolve_notification_guild")()
-            if g is None:
-                empty_metrics = {
-                    c: {
-                        "rank": 0.0,
-                        "recent_aars": 0.0,
-                        "members": 0.0,
-                        "studs": 0.0,
-                        "score": 0.0,
-                    }
-                    for c in home_chapters
-                }
-                ordered_fallback = sorted(home_chapters)
-                _score_cache = (home_chapters.copy(), empty_metrics, ordered_fallback)
-                return _score_cache
-
-            members = list(getattr(g, "members", []) or [])
-            chapter_total_counts: Dict[str, int] = {c: 0 for c in home_chapters}
-            chapter_non_reserve_members: Dict[str, List[discord.Member]] = {c: [] for c in home_chapters}
-
-            for mbr in members:
-                try:
-                    roles = getattr(mbr, "roles", []) or []
-                    role_names = [(getattr(r, "name", "") or "").strip() for r in roles]
-                    role_names_lc = {rn.lower() for rn in role_names if rn}
-                    has_reserve = any("reserve" in rn for rn in role_names_lc)
-                    for chap in home_chapters:
-                        if chap.lower() in role_names_lc:
-                            chapter_total_counts[chap] += 1
-                            if not has_reserve:
-                                chapter_non_reserve_members[chap].append(mbr)
-                except Exception:
-                    continue
-
-            eligible = [
-                chap
-                for chap in home_chapters
-                if chapter_total_counts.get(chap, 0) > 0 and len(chapter_non_reserve_members.get(chap, [])) > 0
-            ]
-            if not eligible:
-                eligible = home_chapters.copy()
-
-            # Precompute recent per-user AAR count (last N days).
-            recent_user_aar_counts: Dict[str, int] = {}
-            try:
-                recents = _get_missions_last_days(days)
-                for rec in recents:
-                    try:
-                        for uid in (rec.get("brother_ids") or []):
-                            sid = str(uid)
-                            recent_user_aar_counts[sid] = int(recent_user_aar_counts.get(sid, 0)) + 1
-                    except Exception:
-                        continue
-            except Exception:
-                recent_user_aar_counts = {}
-
-            # Build raw factors.
-            rank_tiers = _b("RANK_ROLE_TIERS") or {}
-            max_rank_tier = max(rank_tiers.values()) if rank_tiers else 6
-            idx_veteran = _b("_role_index")("Watch Veteran")
-
-            raw: Dict[str, Dict[str, float]] = {
-                chap: {"rank": 0.0, "recent_aars": 0.0, "members": 0.0, "studs": 0.0}
-                for chap in home_chapters
-            }
-
-            stats_cache: Dict[str, Dict[str, int]] = {}
-
-            for chap in home_chapters:
-                non_reserve = chapter_non_reserve_members.get(chap, [])
-                raw[chap]["members"] = float(len(non_reserve))
-
-                rank_total = 0.0
-                aar_total = 0.0
-                studs_total = 0.0
-
-                for mbr in non_reserve:
-                    uid = str(getattr(mbr, "id", ""))
-                    if not uid:
-                        continue
-
-                    # Rank factor: higher authority contributes more points.
-                    try:
-                        highest_tier = _b("get_highest_rank_index")(mbr)
-                        if highest_tier is not None:
-                            rank_points = max(0, (max_rank_tier - int(highest_tier) + 1))
-                            rank_total += float(rank_points)
-                    except Exception:
-                        pass
-
-                    # Recent activity factor: member AAR participations in last N days.
-                    aar_total += float(recent_user_aar_counts.get(uid, 0))
-
-                    # Stud factor: entitled studs (same formula used elsewhere).
-                    try:
-                        if uid not in stats_cache:
-                            stats_cache[uid] = compute_stats_for_user(uid) or {}
-                        aar_points = int(stats_cache[uid].get("aar_points", 0) or 0)
-                    except Exception:
-                        aar_points = 0
-
-                    try:
-                        highest_tier = _b("get_highest_rank_index")(mbr)
-                        is_veteran_or_higher = (
-                            idx_veteran is not None
-                            and highest_tier is not None
-                            and int(highest_tier) <= int(idx_veteran)
-                        )
-                        if is_veteran_or_higher:
-                            joined_at = _get_effective_induction_date(mbr)
-                            if joined_at:
-                                if joined_at.tzinfo is not None:
-                                    joined_at = joined_at.astimezone(timezone.utc).replace(tzinfo=None)
-                                weeks = max(0, (datetime.utcnow() - joined_at).days // 7)
-                                studs_time = weeks // 4
-                            else:
-                                studs_time = 0
-                            studs_aar = aar_points // 400
-                            studs_total += float(min(studs_time, studs_aar, 16))
-                    except Exception:
-                        continue
-
-                raw[chap]["rank"] = rank_total
-                raw[chap]["recent_aars"] = aar_total
-                raw[chap]["studs"] = studs_total
-
-            def _normalize_factor(key: str) -> Dict[str, float]:
-                vals = [float(raw[c].get(key, 0.0)) for c in eligible]
-                if not vals:
-                    return {c: 0.0 for c in home_chapters}
-                lo = min(vals)
-                hi = max(vals)
-                if hi <= lo:
-                    return {c: 0.0 for c in home_chapters}
-                return {
-                    c: (float(raw[c].get(key, 0.0)) - lo) / (hi - lo)
-                    if c in eligible
-                    else 0.0
-                    for c in home_chapters
-                }
-
-            rank_norm = _normalize_factor("rank")
-            aar_norm = _normalize_factor("recent_aars")
-            members_norm = _normalize_factor("members")
-            studs_norm = _normalize_factor("studs")
-
-            metrics: Dict[str, Dict[str, float]] = {}
-            for chap in home_chapters:
-                score = 0.25 * rank_norm.get(chap, 0.0)
-                score += 0.25 * aar_norm.get(chap, 0.0)
-                score += 0.25 * members_norm.get(chap, 0.0)
-                score += 0.25 * studs_norm.get(chap, 0.0)
-                metrics[chap] = {
-                    "rank": float(raw[chap].get("rank", 0.0)),
-                    "recent_aars": float(raw[chap].get("recent_aars", 0.0)),
-                    "members": float(raw[chap].get("members", 0.0)),
-                    "studs": float(raw[chap].get("studs", 0.0)),
-                    "score": float(score),
-                }
-
-            # Same score/peer tie breaks are deterministic and stable.
-            ordered = sorted(
-                eligible,
-                key=lambda c: (
-                    -metrics[c]["score"],
-                    -metrics[c]["recent_aars"],
-                    -metrics[c]["rank"],
-                    -metrics[c]["members"],
-                    -metrics[c]["studs"],
-                    c.lower(),
-                ),
-            )
-
-            _score_cache = (eligible, metrics, ordered)
-            return _score_cache
-
-        def _ordered_chapters(chapters: List[str], days: int = 28) -> List[str]:
-            """Return chapters ordered by weighted score with deterministic fallback."""
-            eligible, _metrics, ordered = _compute_chapter_scores(days)
-            candidate_set = set(chapters or [])
-            preferred = [c for c in ordered if c in candidate_set]
-            # Include any non-eligible fallbacks in deterministic order.
-            remainder = sorted([c for c in candidate_set if c not in preferred])
-            return preferred + remainder
-
-        def _active_for_month(month_key: str, days: int = 28) -> List[str]:
-            """Determine active chapters with unchanged eligibility semantics."""
-            try:
-                active, _metrics, _ordered = _compute_chapter_scores(days)
-                return active if active else (_b("HOME_CHAPTERS") or []).copy()
-            except Exception:
-                return (_b("HOME_CHAPTERS") or []).copy()
 
         # If we have a cached pair for the target month, check if we should return it as-is.
         if target in selected and isinstance(selected[target], list) and len(selected[target]) == 2:
