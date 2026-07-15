@@ -653,3 +653,39 @@ def test_tp_status_for_members_aggregates_active_directives():
         "pkg2": {"id": "pkg2", "status": "recruiting", "assigned_specialist_ids": [10]},
     }
     assert roster_embeds._tp_status_for_members({10}, packages=packages) == "-# 🔴 Deployed (2 directives)"
+
+
+def test_normalize_member_casing_mixed_case_words():
+    assert roster_embeds._normalize_member_casing("WATCH MAsTER VAN") == "Watch Master Van"
+
+
+def test_normalize_member_casing_all_lower():
+    assert roster_embeds._normalize_member_casing("watch master") == "Watch Master"
+
+
+def test_normalize_member_casing_all_upper():
+    assert roster_embeds._normalize_member_casing("IRON FIST") == "Iron Fist"
+
+
+def test_normalize_member_casing_preserves_single_letter_initials():
+    # Single-letter tokens like "D." should be forced to uppercase.
+    assert roster_embeds._normalize_member_casing("D. grimm") == "D. Grimm"
+
+
+def test_normalize_member_casing_preserves_hyphenated_names():
+    # Hyphens are left untouched; each alphabetic run is cased independently.
+    assert roster_embeds._normalize_member_casing("GRIMM-KNIGHT") == "Grimm-Knight"
+
+
+def test_normalize_member_casing_preserves_apostrophes():
+    assert roster_embeds._normalize_member_casing("d'AMORE") == "D'Amore"
+
+
+def test_normalize_member_casing_empty_string():
+    assert roster_embeds._normalize_member_casing("") == ""
+
+
+def test_normalize_member_casing_non_alpha_only():
+    # Strings with no alpha characters are returned unchanged.
+    assert roster_embeds._normalize_member_casing("123 ·|·") == "123 ·|·"
+

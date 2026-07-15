@@ -758,6 +758,7 @@ RANK_TIERS: Dict[int, List[str]] = {
     0: ["Watch Master"],
     1: [
         "Blade Master",
+        "Castellan",
         "Chief Apothecary",
         "Forgemaster",
         "High Chaplain",
@@ -771,6 +772,7 @@ RANK_TIERS: Dict[int, List[str]] = {
         "Honored Dreadnought",
         "Watch Apothecary",
         "Watch Chaplain",
+        "Watch Keeper",
         "Watch Librarian",
         "Watch Lieutenant",
         "Watch Techmarine",

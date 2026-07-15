@@ -625,6 +625,33 @@ def _fmt_title(text: str, emoji_str: str = "") -> str:
     return f"\u16ed\u22c5 {text} \u22c5\u16ed"  # ᛭⋅ … ⋅᛭ fallback
 
 
+def _normalize_member_casing(text: str) -> str:
+    """Normalize mixed-case tokens while preserving punctuation and symbols.
+
+    Each run of ASCII letters is title-cased; single-letter tokens are forced to
+    uppercase (preserving initials such as ``"D."``); hyphens, apostrophes, and
+    other non-letter characters are left untouched.
+
+    Examples::
+
+        >>> _normalize_member_casing("WATCH MAsTER VAN")
+        'Watch Master Van'
+        >>> _normalize_member_casing("d'Amore")
+        "D'Amore"
+        >>> _normalize_member_casing("B. Grimm-Knight")
+        'B. Grimm-Knight'
+    """
+
+    def _fix_word(match: re.Match[str]) -> str:
+        word = match.group(0)
+        # Preserve one-letter tokens exactly as uppercase initials (e.g., "D.").
+        if len(word) == 1:
+            return word.upper()
+        return word[:1].upper() + word[1:].lower()
+
+    return re.sub(r"[A-Za-z]+", _fix_word, text)
+
+
 def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
     """Render a single roster line: ``:chapteremoji: | display_name`` (plain text)."""
     home_chapters: List[str] = _b("HOME_CHAPTERS") or []
@@ -634,18 +661,6 @@ def _render_member_line(guild: discord.Guild, member: discord.Member) -> str:
         if chapter in role_names:
             chapter_emoji_str = _get_emoji_by_name(guild, chapter) or ""
             break
-
-    def _normalize_member_casing(text: str) -> str:
-        """Normalize mixed-case tokens while preserving punctuation and symbols."""
-
-        def _fix_word(match: re.Match[str]) -> str:
-            word = match.group(0)
-            # Preserve one-letter tokens exactly as uppercase initials (e.g., "D.").
-            if len(word) == 1:
-                return word.upper()
-            return word[:1].upper() + word[1:].lower()
-
-        return re.sub(r"[A-Za-z]+", _fix_word, text)
 
     # Use server display name (nickname-aware), normalized to plain readable text.
     display_name = _normalize_display_name(getattr(member, "display_name", "") or getattr(member, "name", ""))
