@@ -1,6 +1,7 @@
 # OP-Scribe Servitor — Watch Command Guide
 
-This guide covers commands available to Watch Command staff (Watch Sergeant and above, with specialist roles, Forgemaster, or admin access). Regular member commands are covered in the Watch Brother Guide.
+This guide is for Watch Sergeant and higher ranks (including specialists, High Command, Forgemaster, and admin access).
+If you are Watch Inductee, Watch Brother, Watch Veteran, Bladeguard, or Oathsworn, use `GUIDE_WATCH_BROTHER.md`.
 
 Commands are grouped by function. Access level is noted for each — if the bot says "access denied," the command requires a higher rank or a specific role.
 
@@ -14,17 +15,6 @@ Commands are grouped by function. Access level is noted for each — if the bot 
 **Options:**
 - `brother:@User` — Individual brother's lifetime tallies and activity status.
 - `killteam:@Role` — Kill Team roster ordered by rank, studs, and AAR points, with a 7-day summary.
-
-**Access:** Watch Command
-
----
-
-### `/combat_bonds`
-**What it does:** Shows the strongest operational bonds between brothers over a chosen time window. Useful for identifying active partnerships and team health.
-
-**Options:**
-- `brother:@User` — (Optional) Focus results on a specific brother.
-- `window:` — Days to look back (default: 30).
 
 **Access:** Watch Command
 

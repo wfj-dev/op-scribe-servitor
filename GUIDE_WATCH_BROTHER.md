@@ -1,79 +1,139 @@
-# OP-Scribe Servitor — Watch Brother+ Guide
+# OP-Scribe Servitor - Enlisted Guide
 
-This guide covers every command available to regular Watch Brothers. All commands are typed in Discord using the `/` prefix. Most commands only work in designated channels — the bot will tell you if you're in the wrong place.
+This guide is for these ranks:
 
----
+- Watch Inductee
+- Watch Brother
+- Watch Veteran
+- Bladeguard
+- Oathsworn
 
-## Your Records
+## Read This First
 
-### `/my_deeds`
-**What it does:** Shows your personal Deeds Ledger — your lifetime AAR points, gene-seed stewardship score, and armory recovery score, along with whether you're currently active.
+- Type commands with `/` in Discord.
+- Most bot replies are private (only you can see them).
+- Some commands only work in certain channels.
+- If you see `Access denied`, you are in the wrong channel or do not have permission.
+- If you are Watch Sergeant or higher, use `GUIDE_WATCH_COMMAND.md`.
 
-**How to use:** Just type `/my_deeds` — no extra options needed. Use it in your Kill Team's channel.
+## Deeds and Profile
 
----
+### `/tally_deeds`
+Shows your Deeds Ledger.
 
-## Challenges & Kill Logs
+Use it with no options.
+
+### `/submit_portrait`
+Send a picture for your Deeds Ledger profile.
+
+Options:
+- `image` (required): upload an image file.
+
+Notes:
+- You can submit once every 28 days.
+- Staff review it before it is used.
+
+## Strike Directive Queue (Ordo Xenos)
+
+### `/queue_strike`
+Join the strike queue.
+
+Options:
+- `minutes` (optional): how long to stay in queue.
+- `mode_preference` (optional): queue for `any`, `hard`, or `omega`.
+
+### `/leave_strike_queue`
+Leave the strike queue.
+
+### `/strike_queue_status`
+See where you are in line and roughly how long you may wait.
+
+### `/log_strike_report`
+Submit your finished strike using the AAR link.
+
+Options:
+- `aar_link` (required): link to your AAR post.
+
+## Challenges and Progress
 
 ### `/submit_kill_log`
-**What it does:** Submit a Terminus Slayer kill log for the Terminus Slayer challenge. Requires a video or clip of the kill and a link to the AAR from that mission.
+Send in a Terminus Slayer kill log.
 
-**Options:**
-- `class:` — Your class for the kill (must match your challenge class).
-- `terminus:` — Which Terminus enemy you killed (select from the dropdown).
-- `aar_link:` — Paste the Discord link to your AAR post.
-- `video_url:` — Link to your kill clip (YouTube, Medal, Streamable, etc.).
-- `video:` — Alternatively, attach a video file directly.
+Options:
+- `class` (required): your class role.
+- `terminus` (required): which Terminus enemy you killed.
+- `aar_link` (required): link to the mission AAR.
+- `video_url` (optional): link to your clip.
+- `video` (optional): upload your clip file.
 
-**Example:**
-- `/submit_kill_log class:@Primaris Intercessor terminus:Carnifex aar_link:https://discord.com/... video_url:https://medal.tv/...`
-
----
+Notes:
+- You must include a recording (link or uploaded video).
+- This only works in the kill-log channel.
 
 ### `/challenge-progress`
-**What it does:** Shows your current challenge progress — mission awards you've earned and your Terminus Slayer kill count.
+Shows your challenge progress.
 
-**How to use:** Just type `/challenge-progress`.
+Use it with no options to check your own progress.
 
----
-
-## Looking For Group
+## Looking For Group (LFG)
 
 ### `/lfg_queue`
-**What it does:** Create a Looking For Group post to find brothers for an operation or omega mission.
+Create an LFG post to find players.
 
-**Options:**
-- `mission_type:` — The type of mission (operations, omega, etc.).
-- Other options will appear — fill in what's relevant.
+Options:
+- `queue_type` (required): `operation`, `siege`, or `omega`.
+- `initiation_trial` (optional): mark it as an initiation trial.
+- `expire_minutes` (optional): set when it expires.
+- `message` (optional): extra note for players.
 
----
+Notes:
+- You need either the PC or Console player role.
+- Omega may limit how many Console players can join.
 
 ### `/lfg_join`
-**What it does:** Join an existing LFG queue that another brother created.
+Join an LFG post.
 
----
+Options:
+- `queue` (required): pick from the list.
 
 ### `/lfg_leave`
-**What it does:** Leave an LFG queue you're currently signed up for.
+Leave an LFG post.
 
----
+Options:
+- `queue` (required): pick from the list.
 
 ### `/lfg_close`
-**What it does:** Close and delete an LFG queue that you created.
+Close your own LFG post.
 
----
+Options:
+- `queue` (required): pick from the list.
 
-## Standings & Leaderboards
+## Chapter Requests
 
-### `/verifier_standing`
-**What it does:** Shows the rolling 7-day verifier activity leaderboard — who has been most active in verifying kill logs.
+### `/chapter_request`
+Ask to change to a standard chapter.
 
-> **Who can use this:** Watch Veteran and above.
+Options:
+- `chapter_name` (required): chapter you want.
 
----
+Notes:
+- You can send one request every 28 days.
+- Apothecary staff review the request.
 
-## Tips
+### `/request_homebrew_chapter`
+Ask for a new homebrew chapter.
 
-- Commands only work in allowed channels. If the bot says "wrong channel," check the pinned channel list.
-- All responses are **ephemeral** (only visible to you) unless the command is designed to post publicly.
-- If a command doesn't respond, you may not have the required rank for it yet.
+Options:
+- `name` (required): chapter name.
+- `geneseed_lineage` (required): chapter lineage.
+- `lore_blurb` (required): short lore text.
+
+Notes:
+- You can send one request every 28 days.
+- Staff and command review it.
+
+## Quick Troubleshooting
+
+- `Access denied`: wrong channel or no permission.
+- `This command cannot be used in this channel`: use it in an allowed channel.
+- Command not showing in `/` list: wait a moment and try again.
