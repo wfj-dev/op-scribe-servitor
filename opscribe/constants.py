@@ -57,6 +57,13 @@ CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
 # Terminus Kill Log subsystem
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
+# Kill-team / company honors tracking
+HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
+
+# ---------------------------------------------------------------------------
+# Kill-team renown tiers (ordered lowest → highest; index = tier level)
+# ---------------------------------------------------------------------------
+KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 
 # ---------------------------------------------------------------------------
 # Channel IDs

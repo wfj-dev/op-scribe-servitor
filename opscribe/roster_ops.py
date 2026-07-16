@@ -5487,7 +5487,6 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
     return ids
 
 
-_KT_RENOWN_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _KT_RENOWN_UNLOCKS = {
     "Unproven": "No KT renown unlocks yet",
     "Initiated": "No KT renown unlocks yet",
@@ -5500,7 +5499,7 @@ _KT_RENOWN_UNLOCKS = {
 
 def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
     """Return current KT renown tier, 28-day stats, and unlock text for a kill team."""
-    default_tier = _KT_RENOWN_TIERS[0]
+    default_tier = KT_TITLE_TIERS[0]
     summary: Dict[str, object] = {
         "tier": default_tier,
         "tier_index": 0,
@@ -5511,18 +5510,17 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
     if not kt_name:
         return summary
 
-    honors_path = os.path.join(DATA_DIR, "honors.json")
     try:
-        if not os.path.exists(honors_path):
+        if not os.path.exists(HONORS_PATH):
             return summary
-        with open(honors_path, "r", encoding="utf-8") as f:
+        with open(HONORS_PATH, "r", encoding="utf-8") as f:
             payload = json.load(f) or {}
         entry = ((payload.get("kill_teams") or {}).get(kt_name) or {}) if isinstance(payload, dict) else {}
         if not isinstance(entry, dict):
             return summary
 
         tier = str(entry.get("tier") or default_tier)
-        if tier not in _KT_RENOWN_TIERS:
+        if tier not in KT_TITLE_TIERS:
             tier = default_tier
         try:
             completions_28d = int(entry.get("completions_28d", 0) or 0)
@@ -5536,7 +5534,7 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
         summary.update(
             {
                 "tier": tier,
-                "tier_index": _KT_RENOWN_TIERS.index(tier),
+                "tier_index": KT_TITLE_TIERS.index(tier),
                 "completions_28d": completions_28d,
                 "rep_earned_28d": rep_earned_28d,
                 "unlocks": _KT_RENOWN_UNLOCKS.get(tier, _KT_RENOWN_UNLOCKS[default_tier]),
