@@ -4745,6 +4745,7 @@ async def tally_deeds(
                     try:
                         team_member_ids = [str(it.get("member_id", "") or "") for it in sorted_items if it.get("member_id")]
                         kt_snap = _compute_killteam_sendto_snapshot_7d(team_member_ids, interaction.guild)
+                        kt_renown = _get_killteam_renown_summary(kt_display_name)
                         window_days = int(kt_snap.get("window_days", 7) or 7)
                         member_rows = list(kt_snap.get("member_rows") or [])
                         chapter_by_member: Dict[str, str] = {}
@@ -4755,10 +4756,10 @@ async def tally_deeds(
                                     chapter_by_member[m_id] = str(it.get("home_chapter", "") or "")
                             except Exception:
                                 continue
-                        # Keep send_to as a single shared embed: 1 key field + per-member fields.
+                        # Keep send_to as a single shared embed: KT renown + key field + per-member fields.
                         # Discord hard-caps embeds to 25 fields.
                         max_embed_fields = 25
-                        available_for_members = max(0, max_embed_fields - 1)
+                        available_for_members = max(0, max_embed_fields - 2)
 
                         rows_to_show = member_rows
                         omitted_rows = 0
@@ -4769,6 +4770,17 @@ async def tally_deeds(
                             else:
                                 rows_to_show = []
                                 omitted_rows = len(member_rows)
+
+                        roster_embed.add_field(
+                            name="▸ ᴋᴛ ʀᴇɴᴏᴡɴ",
+                            value=(
+                                f"Tier: **{kt_renown.get('tier', 'Unproven')}**\n"
+                                f"28d SD Completions: **{int(kt_renown.get('completions_28d', 0) or 0)}** | "
+                                f"28d Rep Earned: **{float(kt_renown.get('rep_earned_28d', 0.0) or 0.0):.1f}**\n"
+                                f"Unlocks: **{kt_renown.get('unlocks', 'No KT renown unlocks yet')}**"
+                            ),
+                            inline=False,
+                        )
 
                         roster_embed.add_field(
                             name="▸ 7ᴅ ᴋᴇʏ",
@@ -5473,6 +5485,66 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
     except Exception:
         pass
     return ids
+
+
+_KT_RENOWN_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
+_KT_RENOWN_UNLOCKS = {
+    "Unproven": "No KT renown unlocks yet",
+    "Initiated": "No KT renown unlocks yet",
+    "Vigilant": "Cloaks",
+    "Sworn": "Cloaks, Iron Halos",
+    "Hallowed": "Cloaks, Iron Halos, all crested helms (excluding Victrix Guard)",
+    "Eternal": "Featured in Jericho lore",
+}
+
+
+def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
+    """Return current KT renown tier, 28-day stats, and unlock text for a kill team."""
+    default_tier = _KT_RENOWN_TIERS[0]
+    summary: Dict[str, object] = {
+        "tier": default_tier,
+        "tier_index": 0,
+        "completions_28d": 0,
+        "rep_earned_28d": 0.0,
+        "unlocks": _KT_RENOWN_UNLOCKS[default_tier],
+    }
+    if not kt_name:
+        return summary
+
+    honors_path = os.path.join(DATA_DIR, "honors.json")
+    try:
+        if not os.path.exists(honors_path):
+            return summary
+        with open(honors_path, "r", encoding="utf-8") as f:
+            payload = json.load(f) or {}
+        entry = ((payload.get("kill_teams") or {}).get(kt_name) or {}) if isinstance(payload, dict) else {}
+        if not isinstance(entry, dict):
+            return summary
+
+        tier = str(entry.get("tier") or default_tier)
+        if tier not in _KT_RENOWN_TIERS:
+            tier = default_tier
+        try:
+            completions_28d = int(entry.get("completions_28d", 0) or 0)
+        except Exception:
+            completions_28d = 0
+        try:
+            rep_earned_28d = round(float(entry.get("rep_earned_28d", 0.0) or 0.0), 2)
+        except Exception:
+            rep_earned_28d = 0.0
+
+        summary.update(
+            {
+                "tier": tier,
+                "tier_index": _KT_RENOWN_TIERS.index(tier),
+                "completions_28d": completions_28d,
+                "rep_earned_28d": rep_earned_28d,
+                "unlocks": _KT_RENOWN_UNLOCKS.get(tier, _KT_RENOWN_UNLOCKS[default_tier]),
+            }
+        )
+    except Exception:
+        return summary
+    return summary
 
 
 def _compute_killteam_sendto_snapshot_7d(
