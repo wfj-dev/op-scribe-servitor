@@ -3314,6 +3314,10 @@ def _formation_labels_for_completed_package(pkg: dict, guild: "discord.Guild | N
         resolved = False
 
         company_name = _get_member_company_name(member)
+        # Dreadnought Cadre is modeled as a specialist formation bucket in
+        # strike reporting; do not emit it as a company label here.
+        if company_name == "Dreadnought Cadre":
+            company_name = None
         if company_name:
             company_labels.add(str(company_name).strip())
             resolved = True
