@@ -1284,6 +1284,32 @@ class TestFormationLabels:
 
         assert labels == ["Watch Master"]
 
+    def test_formations_exclude_dreadnought_company_label_and_use_armory_bucket(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        dread = _make_member(["Venerable Dreadnought"], member_id=401)
+        guild = _make_guild([dread])
+        pkg = {
+            "signed_up": [401],
+            "assigned_specialist_ids": [],
+        }
+
+        monkeypatch.setattr(tp, "_specialist_rep_bucket", lambda member: "Armory" if member.id == 401 else None)
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Dreadnought Cadre"),
+        )
+
+        labels = _formation_labels_for_completed_package(pkg, guild)
+
+        assert labels == ["Armory"]
+
 
 # ---------------------------------------------------------------------------
 # _compute_honors
