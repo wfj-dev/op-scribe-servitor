@@ -4659,20 +4659,14 @@ def _random_strike_image_file(filename_hint: str = "report") -> "tuple[discord.F
     except Exception:
         return None, None
 
-_HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
-
-# ---------------------------------------------------------------------------
-# KT title tiers (ordered lowest → highest; index = tier level)
-# ---------------------------------------------------------------------------
-_KT_TITLE_TIERS = ["Unproven", "Initiated", "Vigilant", "Sworn", "Hallowed", "Eternal"]
 _COMPANY_LEGACY_TITLE_TIERS = ["Unrecorded", "Marked", "Recognized", "Honored", "Exalted", "Storied"]
-_COMPANY_TITLE_TIERS = list(_KT_TITLE_TIERS)
+_COMPANY_TITLE_TIERS = list(KT_TITLE_TIERS)
 _CADRE_TITLE_TIERS = {
-    "Blades": list(_KT_TITLE_TIERS),
-    "Armory": list(_KT_TITLE_TIERS),
-    "Apothecarion": list(_KT_TITLE_TIERS),
-    "Librarius": list(_KT_TITLE_TIERS),
-    "Reclusiam": list(_KT_TITLE_TIERS),
+    "Blades": list(KT_TITLE_TIERS),
+    "Armory": list(KT_TITLE_TIERS),
+    "Apothecarion": list(KT_TITLE_TIERS),
+    "Librarius": list(KT_TITLE_TIERS),
+    "Reclusiam": list(KT_TITLE_TIERS),
 }
 _CADRE_LEGACY_TITLE_TIERS = {
     "Blades": ["Unblooded", "Duel-Sworn", "Edge Consecrated", "Execution Masters", "Relic Edge Conclave", "Headsman's Ascendant"],
@@ -4708,9 +4702,9 @@ _CADRE_SECTIONS = [
 
 def _load_honors() -> dict:
     try:
-        if not os.path.exists(_HONORS_PATH):
+        if not os.path.exists(HONORS_PATH):
             return {"kill_teams": {}, "companies": {}, "cadres": {}}
-        with open(_HONORS_PATH, "r", encoding="utf-8") as f:
+        with open(HONORS_PATH, "r", encoding="utf-8") as f:
             payload = json.load(f)
             payload.setdefault("kill_teams", {})
             payload.setdefault("companies", {})
@@ -4723,7 +4717,7 @@ def _load_honors() -> dict:
 def _save_honors(data: dict) -> None:
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
-        with open(_HONORS_PATH, "w", encoding="utf-8") as f:
+        with open(HONORS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         _g.logger.error(f"[TP] Failed to save honors.json: {e}")
@@ -4839,7 +4833,7 @@ def _compute_honors(tp_data: dict) -> dict:
         ci = _comp_index(kt_completions.get(kt, 0), _KT_COMP_THRESHOLDS)
         final = min(5, round(0.75 * ri + 0.25 * ci))
         kt_results[kt] = {
-            "tier": _KT_TITLE_TIERS[final],
+            "tier": KT_TITLE_TIERS[final],
             "tier_index": final,
             "completions_28d": kt_completions.get(kt, 0),
             "rep_earned_28d": round(kt_rep_earned.get(kt, 0.0), 2),
@@ -4974,7 +4968,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             old_data  = old_honors.get("kill_teams", {}).get(kt_name, {})
             old_tier  = old_data.get("tier", "Unproven")
             new_tier  = new_data["tier"]
-            old_idx   = _KT_TITLE_TIERS.index(old_tier) if old_tier in _KT_TITLE_TIERS else 0
+            old_idx   = KT_TITLE_TIERS.index(old_tier) if old_tier in KT_TITLE_TIERS else 0
             new_idx   = new_data["tier_index"]
             if new_idx == old_idx:
                 continue  # no change — skip
