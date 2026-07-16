@@ -391,4 +391,5 @@ class TestGetKillteamRenownSummary:
             result = roster_ops._get_killteam_renown_summary("Alpha")
 
         assert result["tier"] == "Eternal"
+        assert result["tier_index"] == 5
         assert result["unlocks"] == "Featured in Jericho lore"
