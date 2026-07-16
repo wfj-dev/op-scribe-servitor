@@ -15,7 +15,7 @@ import importlib
 import sys
 import types
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +326,69 @@ class TestComputeKillteamSendtoSnapshot7d:
         missions = [_op(["u1"], points=3)]
         result = self._run(["u1"], missions, label_map={"u1": "Brother Test"})
         assert result["member_rows"][0]["member_label"] == "Brother Test"
+
+
+# ---------------------------------------------------------------------------
+# _get_killteam_renown_summary
+# ---------------------------------------------------------------------------
+
+class TestGetKillteamRenownSummary:
+    def test_missing_honors_file_returns_unproven_defaults(self):
+        with patch("opscribe.roster_ops.os.path.exists", return_value=False):
+            result = roster_ops._get_killteam_renown_summary("Alpha")
+
+        assert result == {
+            "tier": "Unproven",
+            "tier_index": 0,
+            "completions_28d": 0,
+            "rep_earned_28d": 0.0,
+            "unlocks": "No KT renown unlocks yet",
+        }
+
+    def test_sworn_tier_returns_expected_unlocks_and_stats(self):
+        payload = {
+            "kill_teams": {
+                "Alpha": {
+                    "tier": "Sworn",
+                    "tier_index": 3,
+                    "completions_28d": 6,
+                    "rep_earned_28d": 15.0,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Alpha")
+
+        assert result == {
+            "tier": "Sworn",
+            "tier_index": 3,
+            "completions_28d": 6,
+            "rep_earned_28d": 15.0,
+            "unlocks": "Cloaks, Iron Halos",
+        }
+
+    def test_eternal_tier_returns_jericho_lore_unlock(self):
+        payload = {
+            "kill_teams": {
+                "Alpha": {
+                    "tier": "Eternal",
+                    "completions_28d": 12,
+                    "rep_earned_28d": 38.0,
+                }
+            }
+        }
+
+        with (
+            patch("opscribe.roster_ops.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+            patch("opscribe.roster_ops.json.load", return_value=payload),
+        ):
+            result = roster_ops._get_killteam_renown_summary("Alpha")
+
+        assert result["tier"] == "Eternal"
+        assert result["unlocks"] == "Featured in Jericho lore"
