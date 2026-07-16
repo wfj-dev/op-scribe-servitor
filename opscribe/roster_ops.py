@@ -5534,7 +5534,7 @@ def _get_killteam_renown_summary(kt_name: str) -> Dict[str, object]:
         summary.update(
             {
                 "tier": tier,
-                "tier_index": KT_TITLE_TIERS.index(tier),
+                "tier_index": KT_TITLE_TIERS.index(tier) if tier in KT_TITLE_TIERS else 0,
                 "completions_28d": completions_28d,
                 "rep_earned_28d": rep_earned_28d,
                 "unlocks": _KT_RENOWN_UNLOCKS.get(tier, _KT_RENOWN_UNLOCKS[default_tier]),
