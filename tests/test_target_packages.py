@@ -331,7 +331,7 @@ class TestHighCommandVisibility:
     def test_forgemaster_sees_all_active_directives(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
-        member = _with_company_role(_make_member(["Forgemaster"], member_id=501), company_name="Watch Company Primus")
+        member = _make_member(["Forgemaster"], member_id=501)
 
         monkeypatch.setitem(
             sys.modules,
@@ -341,7 +341,7 @@ class TestHighCommandVisibility:
         monkeypatch.setitem(
             sys.modules,
             "opscribe.roster_ops",
-            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
         )
 
         pkgs = {
@@ -422,7 +422,7 @@ class TestHighCommandVisibility:
         visible = tp._visible_active_packages_for_member(member, pkgs)
         visible_ids = {p["id"] for p in visible}
 
-        assert "p_cadre" in visible_ids
+        assert "p_cadre" not in visible_ids
 
     def test_watch_captain_scope_remains_company_limited_even_if_also_high_command(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -526,6 +526,111 @@ class TestCompanyScopedVisibility:
         visible_ids = {p["id"] for p in visible}
 
         assert visible_ids == {"p_company_match", "p_personal"}
+
+    def test_unscoped_specialist_member_sees_all_active_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=702)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        pkgs = {
+            "p_company_match": {
+                "id": "p_company_match",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company_other": {
+                "id": "p_company_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_unassigned_kt": {
+                "id": "p_unassigned_kt",
+                "status": STATUS_RECRUITING,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_personal": {
+                "id": "p_personal",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [702],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_company_match", "p_company_other", "p_unassigned_kt", "p_personal"}
+
+    def test_scoped_specialist_member_still_follows_company_scope(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(
+            _make_member(["Watch Brother", "Watch Techmarine"], member_id=703),
+            company_name="Watch Company Primus",
+        )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Alpha"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
+        )
+
+        pkgs = {
+            "p_company_match": {
+                "id": "p_company_match",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company_other": {
+                "id": "p_company_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Secundus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_company_match"}
 
 
 # ---------------------------------------------------------------------------
@@ -958,6 +1063,50 @@ class TestIsEligibleToSignUp:
         ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
         assert ok is True
         assert reason == ""
+
+    def test_unscoped_specialist_role_bypasses_company_scope(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: None),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: None),
+        )
+
+        pkg = self._base_pkg()
+        pkg["assigned_company"] = "Primus"
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71005)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is True
+        assert reason == ""
+
+    def test_scoped_specialist_role_still_obeys_company_scope(self, monkeypatch):
+        from opscribe.target_packages_ops import _is_eligible_to_sign_up
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.forge_ops",
+            types.SimpleNamespace(_resolve_killteam_for_member=lambda _member: "Kill Team Beta"),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Secundus"),
+        )
+
+        pkg = self._base_pkg()
+        pkg["assigned_company"] = "Primus"
+        member = _make_member(["Watch Brother", "Watch Techmarine"], member_id=71006)
+        guild = _make_guild([member])
+        ok, reason = _is_eligible_to_sign_up(member, pkg, guild)
+        assert ok is False
+        assert "not part" in reason.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -3768,7 +3917,7 @@ class TestStrikeQueueMatching:
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="hard"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "Current fully-open directives eligible for queue matching: **1**." in interaction.calls[1][1]
+        assert "Current fully-open directives eligible for queue matching: **2**." in interaction.calls[1][1]
 
     def test_queue_strike_backfill_enabled_counts_partial_directives(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -3834,11 +3983,11 @@ class TestStrikeQueueMatching:
 
         assert interaction.calls[0] == ("defer", True)
         payload = interaction.calls[1][1]
-        assert getattr(payload, "title", "") == "Strike Queue Status"
+        assert getattr(payload, "title", "") == "`sᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`"
         field_map = {f.name: f.value for f in payload.fields}
-        assert "Mode: **OMEGA**" in field_map.get("Your Queue Status", "")
-        assert "Position: **1/1**" in field_map.get("Your Queue Status", "")
-        assert "Eligible fully-open directives now: **1**" in field_map.get("Estimated Wait", "")
+        assert "Mode: **OMEGA**" in field_map.get("`ʏᴏᴜʀ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`", "")
+        assert "Position: **1/1**" in field_map.get("`ʏᴏᴜʀ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`", "")
+        assert "Eligible fully-open directives now: **1**" in field_map.get("`ᴇsᴛɪᴍᴀᴛᴇᴅ ᴡᴀɪᴛ`", "")
 
     def test_strike_queue_board_embed_shows_open_directive_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -3871,7 +4020,7 @@ class TestStrikeQueueMatching:
 
         embed = tp._build_strike_queue_board_embed(queue_data, packages, guild)
         field_map = {f.name: f.value for f in embed.fields}
-        assert "Open directives matchmaking now: **2**" in field_map.get("Queue Snapshot", "")
+        assert "Open directives matchmaking now: **2**" in field_map.get("`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`", "")
 
     def test_strike_queue_board_embed_open_directive_count_fallback_no_guild(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -3902,7 +4051,7 @@ class TestStrikeQueueMatching:
         # Fallback counts fully-open recruiting packages whose mode matches a queued preference.
         # pkg_hard (Hard-Strat, empty) matches "hard"; pkg_omega (Omega-Strat, empty) matches "omega";
         # pkg_partial is excluded because backfill is disabled and it has a signed_up member.
-        assert "Open directives matchmaking now: **2**" in field_map.get("Queue Snapshot", "")
+        assert "Open directives matchmaking now: **2**" in field_map.get("`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`", "")
 
     def test_strike_queue_status_shows_tentative_groups(self, monkeypatch):
         import opscribe.target_packages_ops as tp
