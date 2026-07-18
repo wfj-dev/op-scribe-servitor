@@ -1,323 +1,359 @@
-# OP-Scribe Servitor — Watch Command Guide
+# OP-Scribe Servitor - Watch Command Guide
 
-This guide is for Watch Sergeant and higher ranks (including specialists, High Command, Forgemaster, and admin access).
-If you are Watch Inductee, Watch Brother, Watch Veteran, Bladeguard, or Oathsworn, use `GUIDE_WATCH_BROTHER.md`.
-
-Commands are grouped by function. Access level is noted for each — if the bot says "access denied," the command requires a higher rank or a specific role.
-
----
-
-## Roster & Records
-
-### `/tally_deeds`
-**What it does:** Shows the Deeds Ledger for any brother or a Kill Team roster summary.
-
-**Options:**
-- `brother:@User` — Individual brother's lifetime tallies and activity status.
-- `killteam:@Role` — Kill Team roster ordered by rank, studs, and AAR points, with a 7-day summary.
-
-**Access:** Watch Command
+-# **Audience:** Watch Sergeant+ (including specialists, High Command, Forgemaster, configured admin)
+-# If you are below Watch Sergeant, use GUIDE_WATCH_BROTHER.md.
+-# If the bot returns `Access denied`, rank/role/channel permissions did not pass.
 
 ---
 
-### `/company_roster`
-**What it does:** Shows all Kill Teams and their member counts across the entire Fortress.
+## ᛭⋅ ʀᴏsᴛᴇʀ ᴀɴᴅ ʀᴇᴄᴏʀᴅs ⋅᛭
 
-**Access:** Watch Command
+### /tally_deeds
+-# Shows an individual Deeds Ledger or a Kill Team summary.
 
----
+```text
+OPTIONS
+brother:@User (optional)
+killteam:@Role (optional)
+ACCESS
+Watch Command
+```
 
-### `/promotion_queue`
-**What it does:** Shows brothers who are approaching or have met the requirements for service stud milestones and veteran promotions. Use this to identify who is due for recognition.
+### /company_roster
+-# Displays all Kill Teams and member totals across the Fortress.
 
-**Access:** Watch Command
+```text
+ACCESS
+Watch Command
+```
 
----
+### /promotion_queue
+-# Lists members approaching or meeting stud and veteran milestones.
 
-### `/audit_service_studs`
-**What it does:** Lists brothers whose displayed service studs don't match what the bot has calculated they're entitled to. Use this to find and correct display mismatches.
+```text
+ACCESS
+Watch Command
+```
 
-**Access:** Watch Command
+### /audit_service_studs
+-# Audits displayed studs against earned studs.
 
----
+```text
+ACCESS
+Watch Command
+```
 
-### `/pick_home_chapters`
-**What it does:** Randomly selects home chapter(s) for a member from the current rotation pool.
+### /pick_home_chapters
+-# Randomly assigns home chapter(s) from the active rotation pool.
 
-**Options:**
-- `member:@User` — The brother to assign.
+```text
+OPTIONS
+member:@User (required)
+ACCESS
+Watch Command
+```
 
-**Access:** Watch Command
+### /set_induction
+-# Sets or clears a manual induction date override.
 
----
-
-### `/set_induction`
-**What it does:** Sets or clears a custom induction date for a member. Use when a brother's join date needs a manual override (e.g., was inducted before the bot was active).
-
-**Options:**
-- `member:@User` — The brother whose date to set.
-- `date:` — Date in `YYYY-MM-DD` format. Leave blank to clear any existing override.
-
-**Access:** Forgemaster
-
----
-
-## Archive Management
-
-### `/sanctify_battle_records`
-**What it does:** Ingests new AARs from the chronicle channel and adds them to the archive. Run this after a batch of new AARs has been posted and approved.
-
-**Options:**
-- `span_days:` — (Optional) Only scan the last N days of messages.
-
-**Access:** Forgemaster
-
----
-
-### `/reconcile_records`
-**What it does:** Reprocesses all archived AARs and recalculates member stats. Use this after bulk corrections or if you suspect records are out of sync.
-
-**Options:**
-- `span_days:` — (Optional) Limit to the last N days.
-
-**Access:** Forgemaster
+```text
+OPTIONS
+member:@User (required)
+date: YYYY-MM-DD (optional; blank clears override)
+ACCESS
+Forgemaster
+```
 
 ---
 
-### `/audit_archive_discrepancies`
-**What it does:** Rechecks AARs that were previously rejected and restores any that have since been fixed (e.g., the linked message was corrected).
+## ᛭⋅ ᴀʀᴄʜɪᴠᴇ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ ⋅᛭
 
-**Options:**
-- `span_days:` — (Optional) Limit scope.
+### /sanctify_battle_records
+-# Ingests new AARs from chronicle channels into the archive.
 
-**Access:** Forgemaster
+```text
+OPTIONS
+span_days (optional)
+ACCESS
+Forgemaster
+```
 
----
+### /reconcile_records
+-# Reprocesses archived AARs and recalculates stats.
 
-### `/reparse_records`
-**What it does:** Re-reads stored AAR records from their original Discord message URLs and updates the archive entries. Use this if record data has drifted from source messages.
+```text
+OPTIONS
+span_days (optional)
+ACCESS
+Forgemaster
+```
 
-**Options:**
-- `limit:` — (Optional) Maximum number of records to reparse.
+### /audit_archive_discrepancies
+-# Rechecks previously rejected AARs and restores corrected entries.
 
-**Access:** Configured admin user only
+```text
+OPTIONS
+span_days (optional)
+ACCESS
+Forgemaster
+```
 
----
+### /reparse_records
+-# Reparses stored AAR records from original Discord URLs.
 
-### `/requeue_award`
-**What it does:** Manually enqueues a missed award announcement for a member. Use this when an automated announcement failed to post.
+```text
+OPTIONS
+limit (optional)
+ACCESS
+Configured admin user only
+```
 
-**Options:**
-- `member:@User` — The member to re-announce for.
+### /requeue_award
+-# Re-enqueues a missed award announcement.
 
-**Access:** Forgemaster
-
----
-
-## Forge & Armor Subsystem
-
-### `/forge_rite`
-**What it does:** Generates and posts a formatted cogitator attestation block for a member. Used for formal induction or promotion ceremonies.
-
-**Options:**
-- `member:@User` — The brother to generate the attestation for.
-
-**Access:** Techmarine / Forgemaster
-
----
-
-### `/set_rite`
-**What it does:** Sets your personal consecration rite text, which gets embedded into attestations you generate.
-
-**Options:**
-- `rite_text:` — Your rite text (multiline supported).
-
-**Access:** Techmarine / Forgemaster
-
----
-
-### `/armor_status`
-**What it does:** Shows armor integrity status for any brother — damage tier, scan result, and active alerts.
-
-**Options:**
-- `brother:@User` — (Optional) Check a specific brother.
-
-**Access:** Watch Techmarine / Forgemaster
+```text
+OPTIONS
+member:@User (required)
+ACCESS
+Forgemaster
+```
 
 ---
 
-### `/forge_chronicle`
-**What it does:** Posts or updates the Forge Chronicle dashboard — a summary of atmospheric forge statistics and armor health across the Fortress.
+## ᛭⋅ ғᴏʀɢᴇ ᴀɴᴅ ᴀʀᴍᴏʀ sᴜʙsʏsᴛᴇᴍ ⋅᛭
 
-**Access:** Techmarine / Forgemaster
+### /forge_rite
+-# Generates a formal attestation block for induction/promotion ceremonies.
 
----
+```text
+OPTIONS
+member:@User (required)
+ACCESS
+Techmarine / Forgemaster
+```
 
-### `/requisition_supplies`
-**What it does:** Spends from the community armory reserve to fund blessing charges or intensive armor scans.
+### /set_rite
+-# Stores your personal consecration rite text.
 
-**Access:** Techmarine / Forgemaster
+```text
+OPTIONS
+rite_text (required)
+ACCESS
+Techmarine / Forgemaster
+```
 
----
+### /armor_status
+-# Shows armor integrity tier, scan state, and active alerts.
 
-### `/preview_armor_alert`
-**What it does:** Previews what an automated armor damage alert would look like for a specific brother, without sending the real alert.
+```text
+OPTIONS
+brother:@User (optional)
+ACCESS
+Watch Techmarine / Forgemaster
+```
 
-**Access:** Techmarine / Forgemaster
+### /forge_chronicle
+-# Posts or refreshes the Forge Chronicle dashboard.
 
----
+```text
+ACCESS
+Techmarine / Forgemaster
+```
 
-### `/test_armor_alert`
-**What it does:** Force-sends a real armor alert to the arming chamber channel. For testing alert routing only.
+### /requisition_supplies
+-# Spends armory reserve on blessing charges or intensive scans.
 
-**Access:** Forgemaster
+```text
+ACCESS
+Techmarine / Forgemaster
+```
 
----
+### /preview_armor_alert
+-# Preview-only armor alert render (no live alert post).
 
-### `/forge_override`
-**What it does:** Enables or disables the Techmarine / armor subsystem entirely.
+```text
+ACCESS
+Techmarine / Forgemaster
+```
 
-**Access:** Forgemaster
+### /test_armor_alert
+-# Sends a live armor alert for routing tests.
 
----
+```text
+ACCESS
+Forgemaster
+```
 
-## Librarian Subsystem (Warp Exposure)
+### /forge_override
+-# Enables/disables the armor subsystem.
 
-### `/warp_status`
-**What it does:** Shows brothers currently at risk from warp exposure. Librarians see their own company plus any overflow; Void Wardens see the entire Fortress.
-
-**Access:** Librarian (own company) / Void Warden (fortress-wide)
-
----
-
-### `/warp_cleanse`
-**What it does:** Performs a Warp Cleansing rite on a brother to reduce their corruption level.
-
-**Options:**
-- `member:@User` — The brother to cleanse.
-- `intensive:` — (Optional) Pay extra charges for a guaranteed full purge with no dice roll.
-- `force:` — (Void Warden only) Bypass recipient cooldowns.
-
-**Access:** Librarian / Void Warden
-
----
-
-### `/warp_scry`
-**What it does:** Traces a brother's full warp contagion subtree — deeper than `/warp_status`. Use to investigate an active corruption chain.
-
-**Access:** Librarian / Void Warden
-
----
-
-### `/librarium_chronicle`
-**What it does:** Posts a sanitized Librarium status snapshot to the designated channel. For public reporting on warp threat levels.
-
-**Access:** Void Warden / Forgemaster
-
----
-
-### `/librarium_override`
-**What it does:** Enables or disables the Librarian subsystem entirely.
-
-**Access:** Forgemaster
+```text
+ACCESS
+Forgemaster
+```
 
 ---
 
-## Auto-Ingest (AAR Automation)
+## ᛭⋅ ʟɪʙʀᴀʀɪᴀɴ sᴜʙsʏsᴛᴇᴍ ⋅᛭
 
-### `/auto_ingest_status`
-**What it does:** Shows the current state of the auto-AAR-ingest system and the current pressure level (how aggressively it's scanning).
+### /warp_status
+-# Lists members at warp-exposure risk.
+-# Librarian scope: own company (+ overflow); Void Warden: fortress-wide.
 
-**Access:** Watch Techmarine / Watch Librarian
+```text
+ACCESS
+Librarian / Void Warden
+```
 
----
+### /warp_cleanse
+-# Performs a warp cleansing rite.
 
-### `/auto_ingest_set`
-**What it does:** Enables or disables the auto-ingest system.
+```text
+OPTIONS
+member:@User (required)
+intensive (optional)
+force (optional; Void Warden only)
+ACCESS
+Librarian / Void Warden
+```
 
-**Access:** Forgemaster
+### /warp_scry
+-# Traces a full warp contagion subtree.
 
----
+```text
+ACCESS
+Librarian / Void Warden
+```
 
-### `/auto_ingest_force`
-**What it does:** Forces an immediate auto-ingest tick, bypassing the normal cooldown. Use when you need the archive updated immediately.
+### /librarium_chronicle
+-# Posts a sanitized Librarium status snapshot.
 
-**Access:** Forgemaster
+```text
+ACCESS
+Void Warden / Forgemaster
+```
 
----
+### /librarium_override
+-# Enables/disables the Librarian subsystem.
 
-## Looking For Group
-
-### `/lfg_queue`
-**What it does:** Creates a Looking For Group queue for an operation, siege, or omega mission. Posts a joinable embed in the LFG channel and pings the relevant role.
-
-**Options:**
-- `queue_type:` — operation, siege, or omega.
-- Other options (expiry, notes, etc.) will appear as prompts.
-
-**Access:** Watch Brother+
-
----
-
-### `/lfg_join`
-**What it does:** Join an existing LFG queue.
-
-**Access:** Watch Brother+
-
----
-
-### `/lfg_leave`
-**What it does:** Leave an LFG queue you're currently signed up for.
-
-**Access:** Watch Brother+
-
----
-
-### `/lfg_close`
-**What it does:** Close and delete an LFG queue you created.
-
-**Access:** Watch Brother+
+```text
+ACCESS
+Forgemaster
+```
 
 ---
 
-## Terminus Slayer
+## ᛭⋅ ᴀᴜᴛᴏ-ɪɴɢᴇsᴛ (ᴀᴀʀ ᴀᴜᴛᴏᴍᴀᴛɪᴏɴ) ⋅᛭
 
-### `/submit_kill_log`
-**What it does:** Submit a kill log entry for the Terminus Slayer challenge. Brothers submit their own.
+### /auto_ingest_status
+-# Shows ingest state and current processing pressure.
 
-**Access:** Watch Brother+
+```text
+ACCESS
+Watch Techmarine / Watch Librarian
+```
 
----
+### /auto_ingest_set
+-# Enables/disables auto-ingest.
 
-### `/verifier_standing`
-**What it does:** Shows the rolling 7-day verifier leaderboard — who has been most active processing kill log submissions.
+```text
+ACCESS
+Forgemaster
+```
 
-**Access:** Watch Veteran+
+### /auto_ingest_force
+-# Forces an immediate ingest tick.
 
----
-
-## Diagnostics
-
-### `/cache_stats`
-**What it does:** Shows the internal DataStore cache sizes, dirty flags, and last flush timestamps. Use this to troubleshoot slow ingest or data sync issues.
-
-**Access:** Watch Techmarine / Watch Master
-
----
-
-### `/record_of_blood`
-**What it does:** Scans the record-of-blood channel and cross-references home chapter declarations for all Watch Brothers. Produces a full report of matches and any unrecognized chapter mentions.
-
-**Access:** Forgemaster / Watch Master
+```text
+ACCESS
+Forgemaster
+```
 
 ---
 
-### `/preview_stud_announcement`
-**What it does:** Previews a service stud announcement for a member without actually posting it.
+## ᛭⋅ ʟᴏᴏᴋɪɴɢ ғᴏʀ ɢʀᴏᴜᴘ ⋅᛭
 
-**Access:** Forgemaster
+### /lfg_queue
+-# Creates a joinable operation/siege/omega queue.
+
+```text
+OPTIONS
+queue_type (required): operation | siege | omega
+ACCESS
+Watch Brother+
+```
+
+### /lfg_join
+-# Join an existing queue.
+
+```text
+ACCESS
+Watch Brother+
+```
+
+### /lfg_leave
+-# Leave your current queue.
+
+```text
+ACCESS
+Watch Brother+
+```
+
+### /lfg_close
+-# Close a queue you created.
+
+```text
+ACCESS
+Watch Brother+
+```
 
 ---
+
+## ᛭⋅ ᴛᴇʀᴍɪɴᴜs sʟᴀʏᴇʀ ⋅᛭
+
+### /submit_kill_log
+-# Submit a Terminus Slayer kill log entry.
+
+```text
+ACCESS
+Watch Brother+
+```
+
+### /verifier_standing
+-# Shows 7-day verifier activity leaderboard.
+
+```text
+ACCESS
+Watch Veteran+
+```
+
+---
+
+## ᛭⋅ ᴅɪᴀɢɴᴏsᴛɪᴄs ⋅᛭
+
+### /cache_stats
+-# Displays DataStore cache size, dirty flags, and flush timestamps.
+
+```text
+ACCESS
+Watch Techmarine / Watch Master
+```
+
+### /record_of_blood
+-# Cross-references chapter declarations from record-of-blood posts.
+
+```text
+ACCESS
+Forgemaster / Watch Master
+```
+
+### /preview_stud_announcement
+-# Preview-only render of a service stud announcement.
+
+```text
+ACCESS
+Forgemaster
+```
 
 ### `/litany_of_function`
 **What it does:** Posts a compact summary of available commands.

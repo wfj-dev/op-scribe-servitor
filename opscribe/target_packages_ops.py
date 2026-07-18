@@ -1126,24 +1126,25 @@ async def _send_single_batch_warning(
     hours_left = max(1, int(remaining.total_seconds() // 3600))
 
     embed = discord.Embed(
-        title=f"{_DW_EMOJI} Strike Directive Reminder {_DW_EMOJI}",
+        title=f"{_DW_EMOJI} `sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ ʀᴇᴍɪɴᴅᴇʀ` {_DW_EMOJI}",
         color=0xC4A030,
         description=(
-            f"You have roughly **{hours_left} hour(s)** to assign and complete current Ordo Xenos strike directives.\n"
-            f"{_warning_flavor_for_completion_rate(completion_rate)}"
+            "```\nᴏʀᴅᴏ xᴇɴᴏs · ᴄʏᴄʟᴇ ᴡᴀʀɴɪɴɢ\n```\n"
+            f"-# You have roughly **{hours_left} hour(s)** to assign and complete current directives.\n"
+            f"-# {_warning_flavor_for_completion_rate(completion_rate)}"
         ),
     )
     embed.add_field(
-        name="▸ Current Batch",
+        name="`ᴄᴜʀʀᴇɴᴛ ʙᴀᴛᴄʜ`",
         value=(
-            f"Batch: `{reminder_batch_id}`\n"
-            f"Completed: {len(completed)}/{len(batch_pkgs)} ({_fmt_float2(completion_rate * 100)}%)\n"
-            f"Still Active: {len(actionable)}"
+            f"-# Batch: `{reminder_batch_id}`\n"
+            f"-# Completed: {len(completed)}/{len(batch_pkgs)} ({_fmt_float2(completion_rate * 100)}%)\n"
+            f"-# Still Active: {len(actionable)}"
         ),
         inline=False,
     )
     embed.add_field(
-        name="▸ Earliest Deadline",
+        name="`ᴇᴀʀʟɪᴇsᴛ ᴅᴇᴀᴅʟɪɴᴇ`",
         value=_format_deadline_dual_region(nearest_deadline.isoformat()),
         inline=False,
     )
@@ -1828,7 +1829,7 @@ def _build_strike_queue_board_embed(
     unknown_platform_count = max(0, total - pc_count - console_count)
 
     embed = discord.Embed(
-        title="Strike Matchmaking Queue",
+        title="`sᴛʀɪᴋᴇ ᴍᴀᴛᴄʜᴍᴀᴋɪɴɢ ǫᴜᴇᴜᴇ`",
         description=(
             "```\nꜱᴛʀɪᴋᴇ ᴍᴀᴛᴄʜᴍᴀᴋɪɴɢ ǫᴜᴇᴜᴇ · ʟɪᴠᴇ\n```\n"
             "-# Join via buttons below or `/queue_strike`.\n"
@@ -1837,12 +1838,12 @@ def _build_strike_queue_board_embed(
         color=0xA31919,
     )
     embed.add_field(
-        name="Queue Snapshot",
+        name="`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`",
         value=(
-            f"Total: **{total}**\n"
-            f"Open directives matchmaking now: **{open_directives}**\n"
-            f"Modes: Hard **{hard_count}** | Omega **{omega_count}** | Any **{any_count}**\n"
-            f"Platforms: PC **{pc_count}** | Console **{console_count}**"
+            f"-# Total: **{total}**\n"
+            f"-# Open directives matchmaking now: **{open_directives}**\n"
+            f"-# Modes: Hard **{hard_count}** | Omega **{omega_count}** | Any **{any_count}**\n"
+            f"-# Platforms: PC **{pc_count}** | Console **{console_count}**"
             + (f" | Unknown **{unknown_platform_count}**" if unknown_platform_count else "")
         ),
         inline=False,
@@ -1874,18 +1875,14 @@ def _build_strike_queue_board_embed(
     if total > 12:
         roster_lines.append(f"+{total - 12} more")
 
-    embed.add_field(
-        name="Queued Brothers",
-        value="\n".join(roster_lines) if roster_lines else "No queued brothers.",
-        inline=False,
-    )
+    embed.add_field(name="`ǫᴜᴇᴜᴇᴅ ʙʀᴏᴛʜᴇʀs`", value="\n".join(roster_lines) if roster_lines else "-# No queued brothers.", inline=False)
 
     tentative_groups = _tentative_groups_for_status(queue_data, packages, guild)
     tentative_preview = tentative_groups[:4]
     tentative_text = "\n".join(tentative_preview) if tentative_preview else "No tentative groups currently tracked."
     if len(tentative_groups) > 4:
         tentative_text += f"\n+{len(tentative_groups) - 4} more"
-    embed.add_field(name="Tentative Groups", value=tentative_text, inline=False)
+    embed.add_field(name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", value=tentative_text, inline=False)
 
     sweep_minutes = _strike_queue_match_sweep_minutes()
     if hasattr(embed, "set_footer"):
@@ -2581,16 +2578,17 @@ async def _post_queue_match_ping(
     existing_line = f"Existing roster: {', '.join(existing_roster_names)}" if existing_roster_names else "None"
     directive_line = f"`{code}` — {name}" if name else f"`{code}`"
     embed = discord.Embed(
-        title="Strike Team Readied",
+        title="`sᴛʀɪᴋᴇ ᴛᴇᴀᴍ ʀᴇᴀᴅɪᴇᴅ`",
         description=(
-            f"**Astropathic concurrence achieved.** {classification} directive {directive_line} has a ready strike element now.\n\n"
-            f"Queued brothers available now: {matched_names}\n"
-            f"Required strike strength: **{capacity}**\n"
-            f"Queue cleared for matched brothers."
+            "```\nᴀsᴛʀᴏᴘᴀᴛʜɪᴄ ᴄᴏɴᴄᴜʀʀᴇɴᴄᴇ ᴀᴄʜɪᴇᴠᴇᴅ\n```\n"
+            f"-# {classification} directive {directive_line} has a ready strike element.\n"
+            f"-# Queued brothers available now: {matched_names}\n"
+            f"-# Required strike strength: **{capacity}**\n"
+            "-# Queue cleared for matched brothers."
         ),
         color=0xA31919,
     )
-    embed.add_field(name="Existing Roster", value=existing_line, inline=False)
+    embed.add_field(name="`ᴇxɪsᴛɪɴɢ ʀᴏsᴛᴇʀ`", value=f"-# {existing_line}", inline=False)
 
     await thread.send(content=roster_mentions, embed=embed)
     return True
@@ -5054,13 +5052,13 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             fw_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
 
             fw_embed.add_field(
-                name="▸ Cycle Results",
+                name="`ᴄʏᴄʟᴇ ʀᴇsᴜʟᴛs`",
                 value=(
-                    f"**Directives Issued:** {total}\n"
-                    f"**Completed:** {len(completed)}  ·  "
+                    f"-# **Directives Issued:** {total}\n"
+                    f"-# **Completed:** {len(completed)}  ·  "
                     f"**Failed:** {len(failed)}  ·  "
                     f"**Lapsed:** {len(lapsed)}\n"
-                    f"**Completion Rate:** {_fmt_float2(completion_rate * 100)}%"
+                    f"-# **Completion Rate:** {_fmt_float2(completion_rate * 100)}%"
                 ),
                 inline=False,
             )
@@ -5069,11 +5067,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             _before_line = f"{_bar_before} **{_name_before}**" if _bar_before else f"**{_name_before}**"
             _after_line  = f"{standing_bar} **{standing_name}**" if standing_bar else f"**{standing_name}**"
             fw_embed.add_field(
-                name="▸ Ordo Xenos Standing",
+                name="`ᴏʀᴅᴏ xᴇɴᴏs sᴛᴀɴᴅɪɴɢ`",
                 value=(
-                    f"{_before_line} `{_fmt_float2(rep_start)}`\n"
-                    f"→ {_after_line} `{_fmt_float2(rep_end)}`\n"
-                    f"**Delta:** `{_fmt_float2(rep_delta, signed=True)}`"
+                    f"-# {_before_line} `{_fmt_float2(rep_start)}`\n"
+                    f"-# → {_after_line} `{_fmt_float2(rep_end)}`\n"
+                    f"-# **Delta:** `{_fmt_float2(rep_delta, signed=True)}`"
                 ),
                 inline=False,
             )
@@ -5087,17 +5085,17 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 kt_hon_block = "\n".join(_honors_kt_changes)
                 if len(kt_hon_block) > 1024:
                     kt_hon_block = kt_hon_block[:1020] + "\n…"
-                fw_embed.add_field(name="▸ Kill Team Honours", value=kt_hon_block, inline=False)
+                fw_embed.add_field(name="`ᴋɪʟʟ ᴛᴇᴀᴍ ʜᴏɴᴏᴜʀs`", value=kt_hon_block, inline=False)
             if _honors_co_changes:
                 co_hon_block = "\n".join(_honors_co_changes)
                 if len(co_hon_block) > 1024:
                     co_hon_block = co_hon_block[:1020] + "\n…"
-                fw_embed.add_field(name="▸ Company Honours", value=co_hon_block, inline=False)
+                fw_embed.add_field(name="`ᴄᴏᴍᴘᴀɴʏ ʜᴏɴᴏᴜʀs`", value=co_hon_block, inline=False)
             if _honors_cadre_changes:
                 cadre_hon_block = "\n".join(_honors_cadre_changes)
                 if len(cadre_hon_block) > 1024:
                     cadre_hon_block = cadre_hon_block[:1020] + "\n…"
-                fw_embed.add_field(name="▸ Cadre Honours", value=cadre_hon_block, inline=False)
+                fw_embed.add_field(name="`ᴄᴀᴅʀᴇ ʜᴏɴᴏᴜʀs`", value=cadre_hon_block, inline=False)
             _fw_img, _fw_img_name = _random_strike_image_file("fortress")
             if _fw_img and _fw_img_name:
                 fw_embed.set_image(url=f"attachment://{_fw_img_name}")
@@ -5155,11 +5153,11 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         kt_embed.set_author(name=f"{kt_name}  ·  {_batch_label}")
 
         kt_embed.add_field(
-            name="▸ Cycle Summary",
+            name="`ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
             value=(
-                f"**Directives Assigned:** {len(kt_batch)}\n"
-                f"**Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}\n"
-                f"**Rep Contributed:** `{_fmt_float2(kt_rep_contributed, signed=True)}`"
+                f"-# **Directives Assigned:** {len(kt_batch)}\n"
+                f"-# **Completed:** {len(kt_completed)}  ·  **Failed:** {len(kt_failed)}\n"
+                f"-# **Rep Contributed:** `{_fmt_float2(kt_rep_contributed, signed=True)}`"
             ),
             inline=False,
         )
@@ -5187,7 +5185,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             block = "\n".join(completed_lines)
             if len(block) > 1024:
                 block = block[:1020] + "\n…"
-            kt_embed.add_field(name=f"▸ Completed Operations ({len(kt_completed)})", value=block, inline=False)
+            kt_embed.add_field(name=f"`ᴄᴏᴍᴘʟᴇᴛᴇᴅ ᴏᴘᴇʀᴀᴛɪᴏɴs ({len(kt_completed)})`", value=block, inline=False)
 
         if kt_failed:
             fail_lines = [
@@ -5197,7 +5195,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             fail_block = "\n".join(fail_lines)
             if len(fail_block) > 1024:
                 fail_block = fail_block[:1020] + "\n…"
-            kt_embed.add_field(name=f"▸ Failed Operations ({len(kt_failed)})", value=fail_block, inline=False)
+            kt_embed.add_field(name=f"`ғᴀɪʟᴇᴅ ᴏᴘᴇʀᴀᴛɪᴏɴs ({len(kt_failed)})`", value=fail_block, inline=False)
 
         kt_embed.set_footer(
             text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴍᴀɢᴇɴᴛᴀ",
@@ -5256,14 +5254,14 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
         _before_line2 = f"{_standing_skull_bar(rep_start)} **{_standing_state_name(rep_start)}**" if _standing_skull_bar(rep_start) else f"**{_standing_state_name(rep_start)}**"
         _after_line2  = f"{standing_bar} **{standing_name}**" if standing_bar else f"**{standing_name}**"
         hc_embed.add_field(
-            name="▸ Theatre Summary",
+            name="`ᴛʜᴇᴀᴛʀᴇ sᴜᴍᴍᴀʀʏ`",
             value=(
-                f"**Directives Issued:** {total}\n"
-                f"**Completed:** {len(completed)}  ·  "
+                f"-# **Directives Issued:** {total}\n"
+                f"-# **Completed:** {len(completed)}  ·  "
                 f"**Failed:** {len(failed)}  ·  "
                 f"**Lapsed:** {len(lapsed)}\n"
-                f"**Completion Rate:** {_fmt_float2(completion_rate * 100)}%\n"
-                f"**Standing:** {_before_line2} `{_fmt_float2(rep_start)}` → {_after_line2} `{_fmt_float2(rep_end)}` (`{_fmt_float2(rep_delta, signed=True)}`)"
+                f"-# **Completion Rate:** {_fmt_float2(completion_rate * 100)}%\n"
+                f"-# **Standing:** {_before_line2} `{_fmt_float2(rep_start)}` → {_after_line2} `{_fmt_float2(rep_end)}` (`{_fmt_float2(rep_delta, signed=True)}`)"
             ),
             inline=False,
         )
@@ -5278,7 +5276,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 c_total = c_done + c_fail
                 icon = "🟢" if c_fail == 0 and c_total > 0 else ("🟡" if c_fail < c_done else "🔴")
                 co_lines.append(f"{icon} **{cname}** — {c_done}/{c_total} completed" + (f"  ·  {c_fail} failed" if c_fail else ""))
-            hc_embed.add_field(name="▸ Companies", value="\n".join(co_lines) or "—", inline=False)
+            hc_embed.add_field(name="`ᴄᴏᴍᴘᴀɴɪᴇs`", value="\n".join(co_lines) or "-# —", inline=False)
 
         # Cadre sections — only include cadres that participated
         for section_name, cadre_roles in _CADRE_SECTIONS:
@@ -5422,14 +5420,14 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             req_block = "\n".join(req_lines)
             if len(req_block) > 1024:
                 req_block = req_block[:1020] + "\n…"
-            c_embed.add_field(name="▸ Required & Deployed", value=req_block, inline=False)
+            c_embed.add_field(name="`ʀᴇǫᴜɪʀᴇᴅ ᴀɴᴅ ᴅᴇᴘʟᴏʏᴇᴅ`", value=req_block, inline=False)
 
         if cadre_voluntary_pkgs:
             vol_lines = [_fmt_cadre_pkg(p) for p in cadre_voluntary_pkgs]
             vol_block = "\n".join(vol_lines)
             if len(vol_block) > 1024:
                 vol_block = vol_block[:1020] + "\n…"
-            c_embed.add_field(name="▸ Additional Deployments", value=vol_block, inline=False)
+            c_embed.add_field(name="`ᴀᴅᴅɪᴛɪᴏɴᴀʟ ᴅᴇᴘʟᴏʏᴍᴇɴᴛs`", value=vol_block, inline=False)
 
         c_embed.set_footer(
             text="ᴄʟᴇᴀʀᴀɴᴄᴇ: ᴏʙsɪᴅɪᴀɴ",
@@ -5488,7 +5486,7 @@ async def _update_ox_rep_embed(guild: discord.Guild) -> None:
         title=f"{_DW_EMOJI} ᴏʀᴅᴏ xᴇɴᴏs sᴛᴀɴᴅɪɴɢ {_DW_EMOJI}",
         description=(
             f"{_rep_display(rep)}\n\n"
-            f"**Completed:** {cycle.get('completed', 0)}  ·  "
+            f"-# **Completed:** {cycle.get('completed', 0)}  ·  "
             f"**Failed:** {cycle.get('failed', 0)}  ·  "
             f"**Lapsed:** {cycle.get('lapsed', 0)}"
         ),
@@ -5526,13 +5524,33 @@ async def expire_packages(guild: discord.Guild) -> None:
         changed = False
         expired_ids: list[str] = []
         touched_batch_ids: set[str] = set()
+        malformed_deadline_ids: list[str] = []
 
         cycle = data.setdefault("cycle", {})
 
         for pkg in data["packages"].values():
             if pkg["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED):
                 continue
-            deadline = datetime.fromisoformat(pkg["deadline"])
+            deadline_raw = str(pkg.get("deadline") or "").strip()
+            if not deadline_raw:
+                malformed_deadline_ids.append(str(pkg.get("id") or "<unknown>"))
+                _g.logger.warning(
+                    "[TP] Skipping expiry check for package %s: missing deadline",
+                    str(pkg.get("id") or "<unknown>"),
+                )
+                continue
+            try:
+                deadline = datetime.fromisoformat(deadline_raw)
+            except Exception:
+                malformed_deadline_ids.append(str(pkg.get("id") or "<unknown>"))
+                _g.logger.warning(
+                    "[TP] Skipping expiry check for package %s: invalid deadline '%s'",
+                    str(pkg.get("id") or "<unknown>"),
+                    deadline_raw,
+                )
+                continue
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
             remaining = deadline - now
             if remaining > timedelta(0):
                 continue
@@ -5564,6 +5582,11 @@ async def expire_packages(guild: discord.Guild) -> None:
 
         if changed:
             _save_tp(data)
+        if malformed_deadline_ids:
+            _g.logger.warning(
+                "[TP] Packages skipped in expiry pass due to malformed deadline: %s",
+                ", ".join(sorted(set(malformed_deadline_ids))),
+            )
 
     try:
         _latest = _load_tp()
@@ -5832,9 +5855,12 @@ async def _notify_specialist_assigned(
                 break
 
     embed = discord.Embed(
-        title=f"{_DW_EMOJI} Specialist Assignment {_DW_EMOJI}",
+        title=f"{_DW_EMOJI} `sᴘᴇᴄɪᴀʟɪsᴛ ᴀssɪɢɴᴍᴇɴᴛ` {_DW_EMOJI}",
         color=0xE67E22,
-        description=f"{specialist_member.mention} has been attached to directive `{pkg.get('directive_code') or package_id}`.",
+        description=(
+            "```\nsᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ · sᴘᴇᴄɪᴀʟɪsᴛ ʟɪɴᴋ\n```\n"
+            f"-# {specialist_member.mention} has been attached to `{pkg.get('directive_code') or package_id}`."
+        ),
     )
     if cadre_leader:
         embed.set_author(
@@ -5848,15 +5874,14 @@ async def _notify_specialist_assigned(
 
     link_line = f"[Open KT Directive]({directive_url})" if directive_url else "KT directive link unavailable"
     embed.add_field(
-        name="▸ Directive",
+        name="`ᴅɪʀᴇᴄᴛɪᴠᴇ`",
         value=f"{directive_label}\n{link_line}",
         inline=False,
     )
     embed.add_field(
-        name="▸ Status",
+        name="`sᴛᴀᴛᴜs`",
         value=(
-            "You are attached as a specialist and remain locked until completion, failure, lapse, "
-            "or cadre leader reassignment."
+            "-# You remain locked until completion, failure, lapse, or cadre leader reassignment."
         ),
         inline=False,
     )
@@ -8777,10 +8802,14 @@ async def strike_queue_status(interaction: discord.Interaction):
 
     if not entry:
         queue_eligible = _queue_eligible_packages_for_member(member, packages, "any", guild)
-        embed = discord.Embed(title="Strike Queue Status", color=0xA31919)
-        embed.description = (
-            "You are not currently queued. "
-            f"Current fully-open directives eligible for queue matching: **{len(queue_eligible)}**."
+        embed = discord.Embed(
+            title="`sᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
+            description=(
+                "```\nsᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ · sᴛᴀᴛᴜs\n```\n"
+                "-# You are not currently queued.\n"
+                f"-# Eligible fully-open directives now: **{len(queue_eligible)}**."
+            ),
+            color=0xA31919,
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
@@ -8845,28 +8874,32 @@ async def strike_queue_status(interaction: discord.Interaction):
     if len(tentative_groups) > tentative_cap:
         tentative_text += f"\n+{len(tentative_groups) - tentative_cap} more"
 
-    embed = discord.Embed(title="Strike Queue Status", color=0xA31919)
+    embed = discord.Embed(
+        title="`sᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
+        description="```\nsᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ · ʟɪᴠᴇ ᴛᴇʟᴇᴍᴇᴛʀʏ\n```",
+        color=0xA31919,
+    )
     embed.add_field(
-        name="Your Queue Status",
+        name="`ʏᴏᴜʀ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
         value=(
-            f"Mode: **{mode_text}**\n"
-            f"Position: **{queue_position}/{queue_total}**\n"
-            f"Queued: {queued_at_text}\n"
-            f"Expires: {expiry_text}"
+            f"-# Mode: **{mode_text}**\n"
+            f"-# Position: **{queue_position}/{queue_total}**\n"
+            f"-# Queued: {queued_at_text}\n"
+            f"-# Expires: {expiry_text}"
         ),
         inline=False,
     )
     embed.add_field(
-        name="Estimated Wait",
+        name="`ᴇsᴛɪᴍᴀᴛᴇᴅ ᴡᴀɪᴛ`",
         value=(
-            f"{eta_text}\n"
-            f"Sweep cadence: every **{sweep_minutes} min**\n"
-            f"Eligible fully-open directives now: **{len(queue_eligible)}**"
+            f"-# {eta_text}\n"
+            f"-# Sweep cadence: every **{sweep_minutes} min**\n"
+            f"-# Eligible fully-open directives now: **{len(queue_eligible)}**"
         ),
         inline=False,
     )
-    embed.add_field(name="Brothers In Queue", value=queue_preview_text or "No queued brothers.", inline=False)
-    embed.add_field(name="Tentative Groups", value=tentative_text, inline=False)
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", value=queue_preview_text or "-# No queued brothers.", inline=False)
+    embed.add_field(name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", value=tentative_text, inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
 
