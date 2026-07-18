@@ -5609,7 +5609,7 @@ def _compute_killteam_sendto_snapshot_7d(
             except Exception:
                 continue
 
-        if not member_records and int(cb_scores.get(uid, 0) or 0) == 0:
+        if not member_records and int(cb_scores.get(uid, 0)) == 0:
             continue
 
         try:
