@@ -27,6 +27,28 @@ def _b(name):
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
 
 
+def _configured_company_role_names() -> set[str]:
+    """Return configured Watch Company role names, falling back to known defaults."""
+    cfg = _g.CONFIG.get("companies") or {}
+    configured: set[str] = set()
+    if isinstance(cfg, dict):
+        for key, entry in cfg.items():
+            raw_name = str((entry or {}).get("name") or key or "").strip()
+            if not raw_name:
+                continue
+            if raw_name.lower().startswith("watch company "):
+                configured.add(raw_name)
+            else:
+                configured.add(f"Watch Company {raw_name}")
+    return configured or {
+        "Watch Company Primus",
+        "Watch Company Secundus",
+        "Watch Company Tertius",
+        "Watch Company Quartus",
+        "Watch Company Quintus",
+    }
+
+
 def _load_rites() -> dict:
     try:
         if not os.path.exists(RITES_PATH):
@@ -2651,13 +2673,7 @@ def _find_company_or_chapter(user: discord.User | discord.Member) -> Optional[st
     """Get authority for attestation: company or High Command only (never chapter)."""
     try:
         roles = getattr(user, "roles", []) or []
-        company_roles = {
-            "Watch Company Primus",
-            "Watch Company Secundus",
-            "Watch Company Tertius",
-            "Watch Company Quartus",
-            "Watch Company Quintus",
-        }
+        company_roles = _configured_company_role_names()
         member_company = None
         for r in roles:
             rn = (getattr(r, "name", "") or "").strip()

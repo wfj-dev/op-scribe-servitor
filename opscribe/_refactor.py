@@ -63,7 +63,6 @@ GLOBAL_SUBS = [
     (r"\bget_highest_rank_index\b", "_b('get_highest_rank_index')"),
     (r"\b_canonical_role_names\b", "_b('_canonical_role_names')"),
     (r"\b_is_techmarine_or_forgemaster\b", "_b('_is_techmarine_or_forgemaster')"),
-    (r"\b_find_responsible_attestor\b", "_b('_find_responsible_attestor')"),
     (r"\b_role_index\b", "_b('_role_index')"),
 ]
 

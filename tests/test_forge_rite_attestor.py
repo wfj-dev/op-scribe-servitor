@@ -1,15 +1,6 @@
-"""Unit tests for _find_responsible_attestor and _get_techmarine_acknowledgment_blended.
+"""Unit tests for forge acknowledgment helpers.
 
 Covers:
-- _find_responsible_attestor:
-    * High Command bearer → Forgemaster blesses
-    * Techmarine bearer → Forgemaster blesses
-    * Bearer with company → Company's Techmarine blesses
-    * Multiple techmarines in company → one is chosen (random selection)
-    * No company → Forgemaster fallback
-    * No Techmarine for company → Forgemaster fallback
-    * No Forgemaster found → returns (None, 'forgemaster')
-
 - _get_techmarine_acknowledgment_blended:
     * Rank detection picks the highest-priority matching rank
     * Falls back to Watch Brother when no rank matches
@@ -21,12 +12,11 @@ Covers:
 import unittest.mock
 
 from opscribe.bot import (
-    _find_responsible_attestor,
     _get_techmarine_acknowledgment_blended,
-    HIGH_COMMAND_ROLES,
     TECHMARINE_RANK_ACKNOWLEDGMENTS,
     TECHMARINE_STUDS_ACKNOWLEDGMENT,
 )
+import opscribe.forge_ops as forge_ops
 
 
 # ---------------------------------------------------------------------------
@@ -51,165 +41,15 @@ class FakeGuild:
         self.members = members
 
 
-# ---------------------------------------------------------------------------
-# _find_responsible_attestor – High Command bearer
-# ---------------------------------------------------------------------------
+def test_find_company_or_chapter_uses_configured_company_names(monkeypatch):
+    member = FakeMember(1, ["Watch Company Sextus", "Watch Brother"])
+    monkeypatch.setattr(
+        forge_ops._g,
+        "CONFIG",
+        {"companies": {"sextus": {"name": "Sextus", "companyRoleId": 6001}}},
+    )
 
-
-def test_high_command_bearer_selects_forgemaster():
-    """A High Command bearer should be blessed by the Forgemaster."""
-    # Pick one role from HIGH_COMMAND_ROLES that is NOT 'Forgemaster'
-    hc_role = next(r for r in HIGH_COMMAND_ROLES if r != "Forgemaster")
-    bearer = FakeMember(1, [hc_role])
-    forgemaster = FakeMember(2, ["Forgemaster"])
-    guild = FakeGuild([bearer, forgemaster])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
-
-
-def test_high_command_bearer_no_forgemaster_returns_none():
-    """If bearer is High Command and no Forgemaster exists, return (None, 'forgemaster')."""
-    hc_role = next(r for r in HIGH_COMMAND_ROLES if r != "Forgemaster")
-    bearer = FakeMember(1, [hc_role])
-    guild = FakeGuild([bearer])  # no forgemaster
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is None
-    assert role_key == "forgemaster"
-
-
-def test_watch_captain_bearer_selects_forgemaster():
-    """Watch Captain is High Command and should be blessed by the Forgemaster."""
-    assert "Watch Captain" in HIGH_COMMAND_ROLES, "Watch Captain must be in HIGH_COMMAND_ROLES"
-    bearer = FakeMember(1, ["Watch Captain", "Watch Company Primus"])
-    company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
-    forgemaster = FakeMember(3, ["Forgemaster"])
-    guild = FakeGuild([bearer, company_tech, forgemaster])
-
-    # Even though there's a company techmarine, Watch Captain gets Forgemaster
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
-
-
-# ---------------------------------------------------------------------------
-# _find_responsible_attestor – Techmarine bearer
-# ---------------------------------------------------------------------------
-
-
-def test_techmarine_bearer_selects_forgemaster():
-    """A Techmarine bearer should be blessed by the Forgemaster."""
-    bearer = FakeMember(1, ["Watch Techmarine"])
-    forgemaster = FakeMember(2, ["Forgemaster"])
-    guild = FakeGuild([bearer, forgemaster])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
-
-
-def test_techmarine_bearer_no_forgemaster_returns_none():
-    """Techmarine bearer with no Forgemaster in guild → (None, 'forgemaster')."""
-    bearer = FakeMember(1, ["Watch Techmarine"])
-    guild = FakeGuild([bearer])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is None
-    assert role_key == "forgemaster"
-
-
-# ---------------------------------------------------------------------------
-# _find_responsible_attestor – Company Techmarine
-# ---------------------------------------------------------------------------
-
-
-def test_company_bearer_selects_company_techmarine():
-    """A bearer in a company should be blessed by that company's Techmarine."""
-    bearer = FakeMember(1, ["Watch Brother", "Watch Company Primus"])
-    company_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Primus"])
-    guild = FakeGuild([bearer, company_tech])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is company_tech
-    assert role_key == "techmarine"
-
-
-def test_company_bearer_different_company_tech_not_selected():
-    """A bearer should not get a Techmarine from a different company."""
-    bearer = FakeMember(1, ["Watch Brother", "Watch Company Primus"])
-    other_tech = FakeMember(2, ["Watch Techmarine", "Watch Company Secundus"])
-    forgemaster = FakeMember(3, ["Forgemaster"])
-    guild = FakeGuild([bearer, other_tech, forgemaster])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
-
-
-def test_multiple_company_techmarines_one_is_chosen():
-    """When multiple Techmarines share the bearer's company, one is selected."""
-    bearer = FakeMember(1, ["Watch Brother", "Watch Company Secundus"])
-    tech_a = FakeMember(2, ["Watch Techmarine", "Watch Company Secundus"])
-    tech_b = FakeMember(3, ["Watch Techmarine", "Watch Company Secundus"])
-    guild = FakeGuild([bearer, tech_a, tech_b])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor in (tech_a, tech_b)
-    assert role_key == "techmarine"
-
-
-def test_multiple_company_techmarines_both_can_be_chosen():
-    """Random selection among company Techmarines is exercised; both are reachable."""
-    bearer = FakeMember(1, ["Watch Brother", "Watch Company Tertius"])
-    tech_a = FakeMember(2, ["Watch Techmarine", "Watch Company Tertius"])
-    tech_b = FakeMember(3, ["Watch Techmarine", "Watch Company Tertius"])
-    guild = FakeGuild([bearer, tech_a, tech_b])
-
-    chosen = set()
-    for _ in range(200):
-        attestor, _ = _find_responsible_attestor(bearer, guild)
-        chosen.add(attestor.id)
-    assert tech_a.id in chosen
-    assert tech_b.id in chosen
-
-
-# ---------------------------------------------------------------------------
-# _find_responsible_attestor – Forgemaster fallback
-# ---------------------------------------------------------------------------
-
-
-def test_no_company_bearer_falls_back_to_forgemaster():
-    """A bearer with no company role should fall back to the Forgemaster."""
-    bearer = FakeMember(1, ["Watch Brother"])  # no company
-    forgemaster = FakeMember(2, ["Forgemaster"])
-    guild = FakeGuild([bearer, forgemaster])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
-
-
-def test_no_company_no_forgemaster_returns_none():
-    """No company and no Forgemaster → (None, 'forgemaster')."""
-    bearer = FakeMember(1, ["Watch Brother"])
-    guild = FakeGuild([bearer])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is None
-    assert role_key == "forgemaster"
-
-
-def test_company_bearer_no_company_tech_falls_back_to_forgemaster():
-    """Bearer in a company with no matching Techmarine → Forgemaster fallback."""
-    bearer = FakeMember(1, ["Watch Brother", "Watch Company Quartus"])
-    forgemaster = FakeMember(2, ["Forgemaster"])
-    guild = FakeGuild([bearer, forgemaster])
-
-    attestor, role_key = _find_responsible_attestor(bearer, guild)
-    assert attestor is forgemaster
-    assert role_key == "forgemaster"
+    assert forge_ops._find_company_or_chapter(member) == "Watch Company Sextus"
 
 
 # ---------------------------------------------------------------------------
