@@ -1,46 +1,45 @@
 # OP-Scribe Servitor - Enlisted Guide
 
 -# Audience: Watch Inductee, Watch Brother, Watch Veteran, Bladeguard, Oathsworn
--# Use slash commands only (`/`). Most bot replies are private. Some commands are channel-locked.
+-# Use slash commands only (`/`). Most replies are private.
 -# Watch Sergeant+ should use GUIDE_WATCH_COMMAND.md.
 
 ```text
 FAST CHECK
 1) Right channel
 2) Right rank/role
-3) Command appears in `/` menu
 ```
 
-## ᛭⋅ Deeds and Profile ⋅᛭
-- `/tally_deeds` - Show your Deeds Ledger.
-- `/submit_portrait image:<upload>` - Portrait upload.
-	- 28d cooldown. Staff-reviewed before use.
+`**᛭⋅ Deeds and Profile ⋅᛭**`
+- `/tally_deeds` - Shows your ledger totals and recent activity.
+- `/submit_portrait image:<upload>` - Submit a new ledger portrait.
+	- 28d cooldown; staff review required.
 
-## ᛭⋅ Strike Directive Queue ⋅᛭
-- `/queue_strike [minutes] [mode_preference:any|hard|omega]`
-- `/leave_strike_queue`
-- `/strike_queue_status`
-- `/log_strike_report aar_link:<url>`
+`**᛭⋅ Strike Directive Queue ⋅᛭**`
+- `/queue_strike [minutes] [mode_preference:any|hard|omega]` - Join queue with optional time/mode.
+- `/leave_strike_queue` - Remove yourself from queue.
+- `/strike_queue_status` - Show your place and rough wait.
+- `/log_strike_report aar_link:<url>` - Log a completed strike by AAR link.
 
-## ᛭⋅ Challenges and Progress ⋅᛭
-- `/submit_kill_log class:<role> terminus:<target> aar_link:<url> [video_url] [video]`
-	- Recording required (URL or upload). Kill-log channel only.
-- `/challenge-progress`
+`**᛭⋅ Challenges and Progress ⋅᛭**`
+- `/submit_kill_log class:<role> terminus:<target> aar_link:<url> [video_url] [video]` - Submit Terminus Slayer kill.
+	- Recording required (URL or upload); kill-log channel only.
+- `/challenge-progress` - Show your challenge progress.
 
-## ᛭⋅ Looking For Group ⋅᛭
-- `/lfg_queue queue_type:<operation|siege|omega> [initiation_trial] [expire_minutes] [message]`
-	- Requires PC or Console role. Omega may limit console slots.
-- `/lfg_join queue:<queue>`
-- `/lfg_leave queue:<queue>`
-- `/lfg_close queue:<queue>`
+`**᛭⋅ Looking For Group ⋅᛭**`
+- `/lfg_queue queue_type:<operation|siege|omega> [initiation_trial] [expire_minutes] [message]` - Open a squad queue.
+	- Requires PC or Console role; omega may limit console slots.
+- `/lfg_join queue:<queue>` - Join a posted queue.
+- `/lfg_leave queue:<queue>` - Leave a queue you joined.
+- `/lfg_close queue:<queue>` - Close your own queue.
 
-## ᛭⋅ Chapter Requests ⋅᛭
-- `/chapter_request chapter_name:<name>`
-	- 28d cooldown. Apothecary review required.
-- `/request_homebrew_chapter name:<name> geneseed_lineage:<lineage> lore_blurb:<text>`
-	- 28d cooldown. Staff + command review.
+`**᛭⋅ Chapter Requests ⋅᛭**`
+- `/chapter_request chapter_name:<name>` - Request transfer to a standard chapter.
+	- 28d cooldown; Apothecary review required.
+- `/request_homebrew_chapter name:<name> geneseed_lineage:<lineage> lore_blurb:<text>` - Request a homebrew chapter.
+	- 28d cooldown; staff + command review.
 
-## ᛭⋅ Troubleshooting ⋅᛭
-- `Access denied` = rank/role/channel mismatch.
+`**᛭⋅ Troubleshooting ⋅᛭**`
+- `Access denied` = rank, role, or channel mismatch.
 - `This command cannot be used in this channel` = move channels.
 - Missing command in `/` menu = wait briefly and retry.

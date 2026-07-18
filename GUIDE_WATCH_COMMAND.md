@@ -2,62 +2,36 @@
 
 -# Audience: Watch Sergeant+ (specialists, High Command, Forgemaster, configured admin)
 -# Below Watch Sergeant: use GUIDE_WATCH_BROTHER.md.
+-# Shared WB+ command details are in GUIDE_WATCH_BROTHER.md.
 
-Tags: WC, FM, TM, WT, WL, VW, WM, WB+, WV+.
+`**᛭⋅ Roster and Records ⋅᛭**`
+- `/tally_deeds [brother:@User] [killteam:@Role]` (WC) - Ledger lookup for member or kill team.
+- `/company_roster` (WC) - Fortress-wide company/member totals.
+- `/promotion_queue` (WC) - Members near or at promotion thresholds.
+- `/audit_service_studs` (WC) - Stud display mismatches vs earned values.
+- `/pick_home_chapters member:@User` (WC) - Roll home chapter assignment.
+- `/set_induction member:@User [date:YYYY-MM-DD]` (FM) - Set/clear induction date override.
+- `/set_loa member:@User start_date:<YYYY-MM-DD> end_date:<YYYY-MM-DD>` (WA/FM) - Set Leave of Absence window.
 
-## ᛭⋅ Roster and Records ⋅᛭
-- `/tally_deeds [brother:@User] [killteam:@Role]` (WC)
-- `/company_roster` (WC)
-- `/promotion_queue` (WC)
-- `/audit_service_studs` (WC)
-- `/pick_home_chapters member:@User` (WC)
-- `/set_induction member:@User [date:YYYY-MM-DD]` (FM, blank clears)
+`**᛭⋅ Archive Management ⋅᛭**`
+- `/sanctify_battle_records [span_days]` (FM) - Ingest new AARs.
+- `/reconcile_records [span_days]` (FM) - Rebuild stats from archived AARs.
+- `/audit_archive_discrepancies [span_days]` (FM) - Recheck rejected AARs.
+- `/reparse_records [limit]` (configured admin) - Reparse stored AAR URLs.
+- `/requeue_award member:@User` (FM) - Re-enqueue missed award announcement.
 
-## ᛭⋅ Archive Management ⋅᛭
-- `/sanctify_battle_records [span_days]` (FM)
-- `/reconcile_records [span_days]` (FM)
-- `/audit_archive_discrepancies [span_days]` (FM)
-- `/reparse_records [limit]` (configured admin)
-- `/requeue_award member:@User` (FM)
+`**᛭⋅ Shared WB+ Commands ⋅᛭**`
+- For LFG, strike queue, kill logs, challenge progress: see GUIDE_WATCH_BROTHER.md.
+- `/verifier_standing` (WV+) - 7-day kill-log verifier activity leaderboard.
 
-## ᛭⋅ Forge and Armor ⋅᛭
-- `/forge_rite member:@User` (TM/FM)
-- `/set_rite rite_text:<text>` (TM/FM)
-- `/armor_status [brother:@User]` (WT/FM)
-- `/forge_chronicle` (TM/FM)
-- `/requisition_supplies` (TM/FM)
-- `/preview_armor_alert` (TM/FM)
-- `/test_armor_alert` (FM)
-- `/forge_override` (FM)
+`**᛭⋅ Diagnostics ⋅᛭**`
+- `/cache_stats` (WM) - DataStore cache/dirty/flush status.
+- `/record_of_blood` (FM/WM) - Cross-check chapter declarations from record posts.
+- `/preview_stud_announcement` (FM) - Preview stud announcement render.
+- `/litany_of_function` (WC) - Compact command summary post.
 
-## ᛭⋅ Librarian Subsystem ⋅᛭
-- `/warp_status` (Librarian/VW, scope: own company + overflow)
-- `/warp_cleanse member:@User [intensive] [force]` (Librarian/VW, force VW-only)
-- `/warp_scry` (Librarian/VW)
-- `/librarium_chronicle` (VW/FM)
-- `/librarium_override` (FM)
-
-## ᛭⋅ Auto-Ingest ⋅᛭
-- `/auto_ingest_status` (WT/WL)
-- `/auto_ingest_set` (FM)
-- `/auto_ingest_force` (FM)
-
-## ᛭⋅ LFG and Challenges ⋅᛭
-- `/lfg_queue queue_type:<operation|siege|omega>` (WB+)
-- `/lfg_join` (WB+)
-- `/lfg_leave` (WB+)
-- `/lfg_close` (WB+)
-- `/submit_kill_log` (WB+)
-- `/verifier_standing` (WV+)
-
-## ᛭⋅ Diagnostics ⋅᛭
-- `/cache_stats` (WT/WM)
-- `/record_of_blood` (FM/WM)
-- `/preview_stud_announcement` (FM)
-- `/litany_of_function` (WC)
-
-## ᛭⋅ Notes ⋅᛭
-- Most admin replies are ephemeral unless command posts publicly.
-- Some commands are channel-restricted.
+`**᛭⋅ Notes ⋅᛭**`
+- Most admin replies are ephemeral unless posted publicly.
+- Channel restrictions apply.
 - `Access denied` = permission/channel mismatch.
 - `reconcile` and `sanctify` are lock-protected.
