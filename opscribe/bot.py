@@ -859,20 +859,48 @@ HOME_CHAPTERS = [
 KILL_TEAMS: List[str] = []
 
 # Command-level teams (company commands and high command)
-COMMAND_TEAMS = [
+_DEFAULT_COMMAND_TEAMS = [
     "Primus Command",
     "Secundus Command",
     "Tertius Command",
+    "Quartus Command",
+    "Quintus Command",
     "High Command",
 ]
-
-# Role ID mapping for command-level teams (for mentions)
-COMMAND_TEAM_ROLE_IDS = {
+_DEFAULT_COMMAND_TEAM_ROLE_IDS = {
     "high command": 1452913063970865203,
     "primus command": 1468794571889709248,
     "secundus command": 1468797860014325902,
     "tertius command": 1468797905740759082,
+    "quartus command": None,  # Not yet configured in the server
+    "quintus command": None,  # Not yet configured in the server
 }
+try:
+    _company_cfg = CONFIG.get("companies") or {}
+    _configured_command_teams = []
+    _configured_command_team_role_ids = {"high command": HIGH_COMMAND_ROLE_ID}
+    if isinstance(_company_cfg, dict):
+        for key, entry in _company_cfg.items():
+            company_name = str((entry or {}).get("name") or key or "").strip()
+            if not company_name:
+                continue
+            command_name = f"{company_name} Command"
+            _configured_command_teams.append(command_name)
+            try:
+                command_role_id = int((entry or {}).get("companyCommandRoleId") or 0)
+            except Exception:
+                command_role_id = 0
+            if command_role_id:
+                _configured_command_team_role_ids[command_name.lower()] = command_role_id
+    COMMAND_TEAMS = _configured_command_teams + ["High Command"] if _configured_command_teams else list(_DEFAULT_COMMAND_TEAMS)
+    COMMAND_TEAM_ROLE_IDS = (
+        _configured_command_team_role_ids
+        if len(_configured_command_team_role_ids) > 1
+        else dict(_DEFAULT_COMMAND_TEAM_ROLE_IDS)
+    )
+except Exception:
+    COMMAND_TEAMS = list(_DEFAULT_COMMAND_TEAMS)
+    COMMAND_TEAM_ROLE_IDS = dict(_DEFAULT_COMMAND_TEAM_ROLE_IDS)
 
 # Default allowed command channels (can be overridden in config.json "default_allowed_channels")
 DEFAULT_ALLOWED_CHANNELS = {"❖⋅data-vault⋅❖"}
@@ -965,6 +993,11 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
         ch = interaction.channel
         ch_name = getattr(ch, "name", None)
         ch_id = str(getattr(ch, "id", ""))
+        parent_id = getattr(ch, "parent_id", None)
+        if parent_id is None:
+            parent = getattr(ch, "parent", None)
+            parent_id = getattr(parent, "id", None)
+        parent_id_str = str(parent_id) if parent_id is not None else ""
 
         # Determine invoked command name
         cmd_name = None
@@ -1017,6 +1050,12 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
         allowed_ids = set(CONFIG.get("allowed_command_channel_ids") or [])
         if allowed_ids and ch_id:
             return ch_id in {str(x) for x in allowed_ids}
+
+        # KT forum posts inherit broad command access from their approved forum
+        # parent channels so current and future posts do not need manual entries.
+        allowed_kt_forum_parent_ids = {str(x) for x in (ALLOWED_KT_FORUM_PARENT_IDS or set())}
+        if parent_id_str and parent_id_str in allowed_kt_forum_parent_ids:
+            return True
 
         # Final fallback: default allowed channel names
         default_channels = set(CONFIG.get("default_allowed_channels") or DEFAULT_ALLOWED_CHANNELS)
@@ -1210,105 +1249,6 @@ def _compute_authority_bracket_member_ids(
                 continue
         return ids
     return None
-
-
-def _find_responsible_attestor(bearer: discord.Member, guild: discord.Guild) -> Tuple[Optional[discord.Member], str]:
-    """Find the responsible techmarine/forgemaster for blessing a bearer's armor.
-
-    Returns (attestor_member, role_key) where role_key is 'forgemaster' or 'techmarine'.
-    Returns (None, 'forgemaster') if no attestor found (caller should handle fallback).
-
-    Logic:
-    1. If bearer is High Command → Forgemaster blesses
-    2. If bearer is a Techmarine → Forgemaster blesses (master blesses his subordinates)
-    3. If bearer has a company → That company's Techmarine blesses
-       (random selection if multiple techmarines in company)
-    4. No company or no techmarine → Forgemaster fills the gap
-    """
-    import random as _rand
-
-    logger.debug(f"[attestor] Finding attestor for bearer={bearer.display_name} (id={bearer.id})")
-    logger.debug(f"[attestor] Guild members count: {len(guild.members)}")
-
-    # Check if bearer is High Command → Forgemaster responsibility
-    try:
-        bearer_roles = {n.lower() for n in _canonical_role_names(bearer)}
-    except Exception:
-        bearer_roles = set()
-
-    logger.debug(f"[attestor] Bearer roles (lower): {bearer_roles}")
-
-    highcom_lower = {r.lower() for r in HIGH_COMMAND_ROLES}
-    if bearer_roles & highcom_lower:
-        logger.debug("[attestor] Bearer is High Command -> Forgemaster")
-        # Bearer is High Command - find the Forgemaster
-        for m in guild.members:
-            try:
-                m_roles = {n.lower() for n in _canonical_role_names(m)}
-                if any("forgemaster" in r for r in m_roles):
-                    return m, "forgemaster"
-            except Exception:
-                continue
-        return None, "forgemaster"  # No forgemaster found
-
-    # Check if bearer is a Techmarine → Forgemaster blesses them
-    # Must be exact "watch techmarine" role, not Terminus Slayer awards
-    if "watch techmarine" in bearer_roles:
-        logger.debug("[attestor] Bearer is Watch Techmarine -> Forgemaster")
-        for m in guild.members:
-            try:
-                m_roles = {n.lower() for n in _canonical_role_names(m)}
-                if any("forgemaster" in r for r in m_roles):
-                    return m, "forgemaster"
-            except Exception:
-                continue
-        return None, "forgemaster"  # No forgemaster found
-
-    # Get bearer's company
-    bearer_company = _get_member_company_name(bearer)
-    logger.debug(f"[attestor] Bearer company: {bearer_company}")
-
-    if bearer_company:
-        # Find techmarine(s) in the same company
-        # Must be exact "watch techmarine" role, not Terminus Slayer awards
-        company_techmarines = []
-        all_techmarines_found = []
-        for m in guild.members:
-            try:
-                m_roles = {n.lower() for n in _canonical_role_names(m)}
-                m_company = _get_member_company_name(m)
-                is_tech = "watch techmarine" in m_roles
-                if is_tech:
-                    all_techmarines_found.append((m.display_name, m_company, list(m_roles)))
-                if is_tech and m_company == bearer_company:
-                    company_techmarines.append(m)
-            except Exception:
-                continue
-
-        logger.debug(f"[attestor] All techmarines found: {all_techmarines_found}")
-        logger.debug(
-            f"[attestor] Company techmarines for {bearer_company}: {[m.display_name for m in company_techmarines]}"
-        )
-
-        if company_techmarines:
-            chosen = _rand.choice(company_techmarines)
-            logger.debug(f"[attestor] Chose techmarine: {chosen.display_name}")
-            # If multiple, pick randomly; otherwise return the one
-            return chosen, "techmarine"
-
-    logger.debug("[attestor] No company techmarine found, falling back to Forgemaster")
-
-    # Fallback: No company or no techmarine for company → Forgemaster
-    for m in guild.members:
-        try:
-            m_roles = {n.lower() for n in _canonical_role_names(m)}
-            if any("forgemaster" in r for r in m_roles):
-                logger.debug(f"[attestor] Found Forgemaster: {m.display_name}")
-                return m, "forgemaster"
-        except Exception:
-            continue
-
-    return None, "forgemaster"  # No forgemaster found either
 
 
 # Lines 3040-5931 extracted to forge_ops.py

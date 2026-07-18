@@ -81,7 +81,7 @@ def _install_discord_stub():
     ui_mod.select = lambda **_kwargs: (lambda func: func)
     discord_stub.ui = ui_mod
     discord_stub.ButtonStyle = types.SimpleNamespace(secondary=2, success=3, danger=4, primary=1)
-    discord_stub.abc = types.SimpleNamespace(Messageable=object, GuildChannel=object, MessageableChannel=object)
+    discord_stub.abc = types.SimpleNamespace(User=object, Messageable=object, GuildChannel=object, MessageableChannel=object)
     discord_stub.__getattr__ = lambda name: type(name, (), {})
 
     class _LoopStub:
@@ -136,6 +136,56 @@ _g.bot = bot_stub.bot
 import opscribe.roster_embeds as roster_embeds
 
 
+def test_roster_company_channels_includes_tertius():
+    assert roster_embeds.ROSTER_COMPANY_CHANNELS["Watch Company Tertius"] == 1527777716076548216
+
+
+def test_configured_roster_company_channels_prefers_config_values():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "companies": {
+                "tertius": {"name": "Tertius", "rosterChannelId": "1527777716076548216"},
+                "quartus": {"name": "Quartus", "rosterChannelId": "1999"},
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        channels = roster_embeds._configured_roster_company_channels()
+
+    assert channels == {
+        "Watch Company Tertius": 1527777716076548216,
+        "Watch Company Quartus": 1999,
+    }
+
+
+def test_company_command_image_filename_uses_config_override():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "companies": {
+                "quartus": {"name": "Quartus", "commandImageAsset": "Quartus Special.png"},
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        assert roster_embeds._company_command_image_filename("Watch Company Quartus") == "Quartus Special.png"
+
+
+def test_company_command_image_filename_uses_convention_then_generic():
+    with patch.object(roster_embeds, "_b", lambda _name: {"companies": {}}), patch.object(
+        roster_embeds.os.path,
+        "exists",
+        side_effect=lambda path: path.endswith("Quartus Command.png"),
+    ):
+        assert roster_embeds._company_command_image_filename("Watch Company Quartus") == "Quartus Command.png"
+        assert roster_embeds._company_command_image_filename("Watch Company Quintus") == "Command.png"
+
+
 def _member(*, member_id=1, nick=None, display_name=None, name=None, roles=None):
     return SimpleNamespace(
         id=member_id,
@@ -183,8 +233,8 @@ def test_is_in_reserves_by_role_id_or_name():
 def test_load_roster_state_returns_defaults_when_file_missing():
     with patch.object(roster_embeds, "ROSTER_STATE_PATH", "/tmp/roster-state-does-not-exist.json"), patch.object(
         roster_embeds,
-        "ROSTER_COMPANY_CHANNELS",
-        {"Watch Company Primus": 11, "Watch Company Secundus": 22},
+        "_configured_roster_company_channels",
+        lambda: {"Watch Company Primus": 11, "Watch Company Secundus": 22},
     ):
         state = roster_embeds._load_roster_state()
 
@@ -193,6 +243,7 @@ def test_load_roster_state_returns_defaults_when_file_missing():
             "channel_id": 11,
             "hc_message_id": None,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {},
         },
@@ -200,6 +251,7 @@ def test_load_roster_state_returns_defaults_when_file_missing():
             "channel_id": 22,
             "hc_message_id": None,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {},
         },
@@ -215,8 +267,8 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
 
     with patch.object(roster_embeds, "ROSTER_STATE_PATH", str(state_path)), patch.object(
         roster_embeds,
-        "ROSTER_COMPANY_CHANNELS",
-        {"Watch Company Primus": 11, "Watch Company Secundus": 22},
+        "_configured_roster_company_channels",
+        lambda: {"Watch Company Primus": 11, "Watch Company Secundus": 22},
     ):
         state = roster_embeds._load_roster_state()
 
@@ -225,6 +277,7 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
             "channel_id": 999,
             "hc_message_id": 101,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {"Kill Team Alpha": 202},
         },
@@ -232,6 +285,7 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
             "channel_id": 22,
             "hc_message_id": None,
             "specialist_message_id": None,
+            "specialist_message_ids": {},
             "command_message_id": None,
             "killteam_message_ids": {},
         },
