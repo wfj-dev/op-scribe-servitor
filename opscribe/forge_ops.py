@@ -3430,6 +3430,94 @@ def _build_new_format_preview_embeds(
             pass
 
         try:
+            # Awards/promotions: use real builders with a live sample member.
+            sample_member = requester if isinstance(requester, discord.Member) else None
+            if sample_member is None:
+                sample_member = next((m for m in getattr(guild, "members", []) if not getattr(m, "bot", False)), None)
+
+            if sample_member is not None:
+                role_names = {(getattr(r, "name", "") or "").strip() for r in getattr(sample_member, "roles", [])}
+                member_chapter = next(
+                    (
+                        hc
+                        for hc in (_b("HOME_CHAPTERS") or [])
+                        if any(rn.lower() == hc.lower() for rn in role_names)
+                    ),
+                    "Unknown",
+                )
+
+                _content, service_studs_embed = _get_service_studs_announcement(
+                    sample_member,
+                    member_chapter,
+                    displayed_studs=2,
+                    new_studs=1,
+                    earned_studs=3,
+                    owed_studs=0,
+                    guild=guild,
+                )
+                previews.append(service_studs_embed)
+
+                _content, oathsworn_embed, _poll = _get_oathsworn_announcement(
+                    sample_member,
+                    member_chapter,
+                    earned_studs=3,
+                    guild=guild,
+                )
+                previews.append(oathsworn_embed)
+
+                _content, watch_vet_embed, _award_file = _get_watch_veteran_announcement(
+                    sample_member,
+                    member_chapter,
+                    guild,
+                )
+                previews.append(watch_vet_embed)
+
+                _content, ardent_embed, _award_file = _get_ardent_raider_announcement(
+                    sample_member,
+                    member_chapter,
+                    guild,
+                )
+                previews.append(ardent_embed)
+
+                _content, apothecarion_embed, _award_file = _get_apothecarion_medal_announcement(
+                    sample_member,
+                    member_chapter,
+                    guild,
+                )
+                previews.append(apothecarion_embed)
+
+                _content, crimson_embed, _award_file = _get_crimson_laurels_announcement(
+                    sample_member,
+                    member_chapter,
+                    guild,
+                )
+                previews.append(crimson_embed)
+
+                _content, challenge_embed, _award_file = _build_challenge_award_embed(
+                    member=sample_member,
+                    member_chapter=member_chapter,
+                    guild=guild,
+                    title="SOK-G: PIPEHITTER",
+                    color=0x607D8B,
+                    openings=SOK_G_PIPEHITTER_OPENINGS,
+                    proclamations=SOK_G_PIPEHITTER_PROCLAMATIONS,
+                    chapter_lines=SOK_G_PIPEHITTER_CHAPTER_LINES,
+                    rank_lines=SOK_G_PIPEHITTER_RANK_LINES,
+                    award_label="SOK-G: Pipehitter",
+                    award_image="award_sok_g_pipehitter.png",
+                )
+                previews.append(challenge_embed)
+
+                _content, challenge_wrapper_embed, _award_file = _get_sok_g_pipehitter_announcement(
+                    sample_member,
+                    member_chapter,
+                    guild,
+                )
+                previews.append(challenge_wrapper_embed)
+        except Exception:
+            pass
+
+        try:
             from . import roster_ops as _ro  # local import avoids cycles at import time
 
             live_milestone = _ro._build_milestone_embed(guild, "aar_points", 25000, 25250)
