@@ -355,29 +355,29 @@ def _build_kill_log_embed(entry: dict, guild: Optional[discord.Guild] = None) ->
     }.get(entry.get("status", "pending"), discord.Colour.from_rgb(80, 80, 80))
 
     embed = discord.Embed(
-        title="⚔️ Terminus Kill Report",
+        title="`ᴛᴇʀᴍɪɴᴜs ᴋɪʟʟ ʀᴇᴘᴏʀᴛ`",
         colour=colour,
     )
-    embed.add_field(name="Brother", value=f"<@{brother_id}>", inline=True)
-    embed.add_field(name="Class", value=class_name, inline=True)
-    embed.add_field(name="Terminus", value=terminus, inline=True)
-    embed.add_field(name="Kill Attempt", value=f"{kill_number}/3", inline=True)
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# <@{brother_id}>", inline=True)
+    embed.add_field(name="`ᴄʟᴀss`", value=f"-# {class_name}", inline=True)
+    embed.add_field(name="`ᴛᴇʀᴍɪɴᴜs`", value=f"-# {terminus}", inline=True)
+    embed.add_field(name="`ᴋɪʟʟ ᴀᴛᴛᴇᴍᴘᴛ`", value=f"-# {kill_number}/3", inline=True)
     embed.add_field(
-        name="Prior Verified",
-        value=f"{verified_count}/3 confirmed before this submission",
+        name="`ᴘʀɪᴏʀ ᴠᴇʀɪғɪᴇᴅ`",
+        value=f"-# {verified_count}/3 confirmed before this submission",
         inline=True,
     )
-    embed.add_field(name="AAR", value=f"[View Report]({aar_link})", inline=True)
+    embed.add_field(name="`ᴀᴀʀ`", value=f"[View Report]({aar_link})", inline=True)
     if video_url:
-        embed.add_field(name="Recording", value=f"[Watch]({video_url})", inline=True)
+        embed.add_field(name="`ʀᴇᴄᴏʀᴅɪɴɢ`", value=f"[Watch]({video_url})", inline=True)
     embed.add_field(
-        name="Status",
-        value=_status_line(entry),
+        name="`sᴛᴀᴛᴜs`",
+        value=f"-# {_status_line(entry)}",
         inline=False,
     )
     verifications_field = _format_verifications_field(entry)
     if verifications_field:
-        embed.add_field(name="Verifications", value=verifications_field, inline=False)
+        embed.add_field(name="`ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴs`", value=verifications_field, inline=False)
     embed.set_footer(text=f"Kill Log ID: {entry['kill_log_id']}")
     embed.timestamp = _parse_dt(entry["submitted_at"])
     return embed
@@ -385,62 +385,62 @@ def _build_kill_log_embed(entry: dict, guild: Optional[discord.Guild] = None) ->
 
 def _build_apo_notification_embed(entry: dict) -> discord.Embed:
     embed = discord.Embed(
-        title="⚠️ Terminus Kill Log — Under Review",
+        title="`ᴛᴇʀᴍɪɴᴜs ᴋɪʟʟ ʟᴏɢ · ᴜɴᴅᴇʀ ʀᴇᴠɪᴇᴡ`",
         description=(
-            "A kill log entry has been **denied** by a Watch Veteran. "
-            "Apothecary action required."
+            "-# A kill log entry has been **denied** by a Watch Veteran.\n"
+            "-# Apothecary action required."
         ),
         colour=discord.Colour.orange(),
     )
-    embed.add_field(name="Kill Log", value=entry["kill_log_id"], inline=True)
-    embed.add_field(name="Brother", value=f"<@{entry['brother_id']}>", inline=True)
+    embed.add_field(name="`ᴋɪʟʟ ʟᴏɢ`", value=f"-# {entry['kill_log_id']}", inline=True)
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# <@{entry['brother_id']}>", inline=True)
     embed.add_field(
-        name="Class / Terminus",
-        value=f"{entry['class_name']} / {entry['terminus_type']}",
+        name="`ᴄʟᴀss / ᴛᴇʀᴍɪɴᴜs`",
+        value=f"-# {entry['class_name']} / {entry['terminus_type']}",
         inline=True,
     )
     denied_by = entry.get("denied_by")
     denied_at = entry.get("denied_at", "")
     if denied_by:
-        embed.add_field(name="Denied By", value=f"<@{denied_by}>", inline=True)
+        embed.add_field(name="`ᴅᴇɴɪᴇᴅ ʙʏ`", value=f"-# <@{denied_by}>", inline=True)
     if denied_at:
         ts = int(_parse_dt(denied_at).timestamp())
-        embed.add_field(name="Denied At", value=f"<t:{ts}:f>", inline=True)
+        embed.add_field(name="`ᴅᴇɴɪᴇᴅ ᴀᴛ`", value=f"-# <t:{ts}:f>", inline=True)
     deny_reason = entry.get("deny_reason", "").strip()
     if deny_reason:
-        embed.add_field(name="Deny Reason", value=deny_reason, inline=False)
+        embed.add_field(name="`ᴅᴇɴʏ ʀᴇᴀsᴏɴ`", value=f"-# {deny_reason}", inline=False)
     video_url = entry.get("video_url") or entry.get("video_attachment_url") or ""
     if video_url:
-        embed.add_field(name="Recording", value=f"[Watch]({video_url})", inline=False)
+        embed.add_field(name="`ʀᴇᴄᴏʀᴅɪɴɢ`", value=f"[Watch]({video_url})", inline=False)
     embed.set_footer(text="Use the buttons below to make a final ruling.")
     return embed
 
 
 def _build_completion_embed(brother_id: str, class_name: str) -> discord.Embed:
     embed = discord.Embed(
-        title="🏆 Terminus Slayer — Class Cleared",
+        title="`ᴛᴇʀᴍɪɴᴜs sʟᴀʏᴇʀ · ᴄʟᴀss ᴄʟᴇᴀʀᴇᴅ`",
         description=(
-            f"<@{brother_id}> has confirmed all 3 kills on every current Terminus type "
+            f"-# <@{brother_id}> has confirmed all 3 kills on every current Terminus type "
             f"as **{class_name}**.\n\n"
-            "The Terminus Slayer award for this class may now be granted."
+            "-# The Terminus Slayer award for this class may now be granted."
         ),
         colour=discord.Colour.gold(),
     )
-    embed.add_field(name="Brother", value=f"<@{brother_id}>", inline=True)
-    embed.add_field(name="Class", value=class_name, inline=True)
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# <@{brother_id}>", inline=True)
+    embed.add_field(name="`ᴄʟᴀss`", value=f"-# {class_name}", inline=True)
     for t in TERMINUS_TYPES:
-        embed.add_field(name=t, value="✅ 3/3", inline=True)
+        embed.add_field(name=f"`{t}`", value="-# ✅ 3/3", inline=True)
     embed.timestamp = datetime.now(timezone.utc)
     return embed
 
 
 def _build_reminder_embed(stale_entries: list[dict], guild_id: int) -> discord.Embed:
     embed = discord.Embed(
-        title="📋 Kill Log — Pending Verification",
+        title="`ᴋɪʟʟ ʟᴏɢ · ᴘᴇɴᴅɪɴɢ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ`",
         description=(
-            "The following kill log entries have been awaiting verification "
-            f"for over {KILL_LOG_REMINDER_HOURS} hours. "
-            "Watch Veterans, please review."
+            "-# The following kill log entries have been awaiting verification "
+            f"for over {KILL_LOG_REMINDER_HOURS} hours.\n"
+            "-# Watch Veterans, please review."
         ),
         colour=discord.Colour.from_rgb(180, 140, 60),
     )
@@ -456,7 +456,7 @@ def _build_reminder_embed(stale_entries: list[dict], guild_id: int) -> discord.E
         else:
             entry_label = entry["kill_log_id"]
         embed.add_field(
-            name=f"{entry['kill_log_id']} — {entry['class_name']} / {entry['terminus_type']}",
+            name=f"`{entry['kill_log_id']} · {entry['class_name']} / {entry['terminus_type']}`",
             value=(
                 f"{entry_label} · <@{entry['brother_id']}> · "
                 f"Submitted <t:{ts}:R> · "
@@ -1357,12 +1357,12 @@ async def verifier_standing(interaction: discord.Interaction):
     rows.sort(key=lambda x: x[1], reverse=True)
 
     embed = discord.Embed(
-        title="⚔️ Verifier Standing — Rolling 7 Days",
+        title="`ᴠᴇʀɪғɪᴇʀ sᴛᴀɴᴅɪɴɢ · ʀᴏʟʟɪɴɢ 7 ᴅᴀʏs`",
         colour=discord.Colour.from_rgb(120, 80, 160),
     )
 
     if not rows:
-        embed.description = "No verification activity in the past 7 days."
+        embed.description = "-# No verification activity in the past 7 days."
     else:
         medals = ["🥇", "🥈", "🥉"]
         lines = []
@@ -1373,7 +1373,7 @@ async def verifier_standing(interaction: discord.Interaction):
             lines.append(f"{medal} <@{vet_id}> `{bar}` {count} actions  {tier_str}")
         embed.description = "\n".join(lines)
 
-    embed.set_footer(text="Verify or deny kill logs to build your standing. Resets on a rolling 7-day window.")
+    embed.set_footer(text="Verify/deny actions build standing on a rolling 7-day window.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -1714,8 +1714,8 @@ async def _challenge_progress_inner(
 
     base_colour = discord.Colour.from_rgb(80, 140, 200)
     embed1 = discord.Embed(
-        title=f"Challenge Progress — {target.display_name}",
-        description="Page 1 of 2 — Mission Awards",
+        title=f"`ᴄʜᴀʟʟᴇɴɢᴇ ᴘʀᴏɢʀᴇss` · {target.display_name}",
+        description="-# Page 1 of 2 — Mission Awards",
         colour=base_colour,
     )
     _add_chunked_fields(embed1, "⚔️ Mission Awards", challenge_lines)
@@ -1742,8 +1742,8 @@ async def _challenge_progress_inner(
             ts_lines.append(f"**{class_name}**\n" + "  |  ".join(type_parts))
 
     embed2 = discord.Embed(
-        title=f"Challenge Progress — {target.display_name}",
-        description="Page 2 of 2 — Terminus Slayer Kills",
+        title=f"`ᴄʜᴀʟʟᴇɴɢᴇ ᴘʀᴏɢʀᴇss` · {target.display_name}",
+        description="-# Page 2 of 2 — Terminus Slayer Kills",
         colour=base_colour,
     )
     _add_chunked_fields(embed2, "💀 Terminus Slayer Kills", ts_lines, sep="\n")
@@ -1951,29 +1951,29 @@ async def _handle_apo_revoke_kill(
         apo_ch = guild.get_channel(APOTHECARY_STAFF_CHANNEL_ID)
         if apo_ch:
             embed = discord.Embed(
-                title="🩸 Kill Log — Apothecary Revocation",
+                title="`ᴋɪʟʟ ʟᴏɢ · ᴀᴘᴏᴛʜᴇᴄᴀʀʏ ʀᴇᴠᴏᴄᴀᴛɪᴏɴ`",
                 colour=discord.Colour.dark_red(),
             )
-            embed.add_field(name="Kill Log ID", value=kill_log_id, inline=True)
-            embed.add_field(name="Brother", value=f"<@{entry['brother_id']}>", inline=True)
+            embed.add_field(name="`ᴋɪʟʟ ʟᴏɢ ɪᴅ`", value=f"-# {kill_log_id}", inline=True)
+            embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# <@{entry['brother_id']}>", inline=True)
             embed.add_field(
-                name="Class / Terminus",
-                value=f"{entry['class_name']} / {entry['terminus_type']}",
+                name="`ᴄʟᴀss / ᴛᴇʀᴍɪɴᴜs`",
+                value=f"-# {entry['class_name']} / {entry['terminus_type']}",
                 inline=True,
             )
-            embed.add_field(name="Revoked By", value=f"<@{actor_id}>", inline=True)
+            embed.add_field(name="`ʀᴇᴠᴏᴋᴇᴅ ʙʏ`", value=f"-# <@{actor_id}>", inline=True)
             embed.add_field(
-                name="Award Queue Entry Removed",
-                value="Yes" if award_stripped else "N/A",
+                name="`ᴀᴡᴀʀᴅ ǫᴜᴇᴜᴇ ᴇɴᴛʀʏ ʀᴇᴍᴏᴠᴇᴅ`",
+                value=f"-# {'Yes' if award_stripped else 'N/A'}",
                 inline=True,
             )
             embed.add_field(
-                name="Class Role Stripped",
-                value="Yes" if role_stripped else "No",
+                name="`ᴄʟᴀss ʀᴏʟᴇ sᴛʀɪᴘᴘᴇᴅ`",
+                value=f"-# {'Yes' if role_stripped else 'No'}",
                 inline=True,
             )
             if reason_clean:
-                embed.add_field(name="Reason", value=reason_clean, inline=False)
+                embed.add_field(name="`ʀᴇᴀsᴏɴ`", value=f"-# {reason_clean}", inline=False)
             embed.timestamp = datetime.now(timezone.utc)
             try:
                 await apo_ch.send(embed=embed)

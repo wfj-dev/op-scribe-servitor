@@ -1,139 +1,167 @@
 # OP-Scribe Servitor - Enlisted Guide
 
-This guide is for these ranks:
+-# **Audience:** Watch Inductee, Watch Brother, Watch Veteran, Bladeguard, Oathsworn
+-# **Command usage:** open Discord chat and type `/` to browse slash commands
 
-- Watch Inductee
-- Watch Brother
-- Watch Veteran
-- Bladeguard
-- Oathsworn
+---
 
-## Read This First
+## ᛭⋅ ʀᴇᴀᴅ ᴛʜɪs ғɪʀsᴛ ⋅᛭
 
-- Type commands with `/` in Discord.
-- Most bot replies are private (only you can see them).
-- Some commands only work in certain channels.
-- If you see `Access denied`, you are in the wrong channel or do not have permission.
-- If you are Watch Sergeant or higher, use `GUIDE_WATCH_COMMAND.md`.
+-# Most bot responses are private by default.
+-# Some commands are channel-restricted.
+-# `Access denied` means rank, role, or channel mismatch.
+-# Watch Sergeant+ should use GUIDE_WATCH_COMMAND.md.
 
-## Deeds and Profile
+```text
+FAST CHECK
+1) Use slash commands only.
+2) Confirm you are in the right channel.
+3) Confirm you have the required role/rank.
+```
 
-### `/tally_deeds`
-Shows your Deeds Ledger.
+---
 
-Use it with no options.
+## ᛭⋅ ᴅᴇᴇᴅs ᴀɴᴅ ᴘʀᴏғɪʟᴇ ⋅᛭
 
-### `/submit_portrait`
-Send a picture for your Deeds Ledger profile.
+### /tally_deeds
+-# Shows your Deeds Ledger.
+-# Use with no options.
 
-Options:
-- `image` (required): upload an image file.
+### /submit_portrait
+-# Upload a profile image for your Deeds Ledger card.
 
-Notes:
-- You can submit once every 28 days.
-- Staff review it before it is used.
+```text
+OPTIONS
+image (required): image upload
+```
 
-## Strike Directive Queue (Ordo Xenos)
+-# Cooldown: once every 28 days.
+-# Portraits are staff-reviewed before use.
 
-### `/queue_strike`
-Join the strike queue.
+---
 
-Options:
-- `minutes` (optional): how long to stay in queue.
-- `mode_preference` (optional): queue for `any`, `hard`, or `omega`.
+## ᛭⋅ sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ ǫᴜᴇᴜᴇ ⋅᛭
 
-### `/leave_strike_queue`
-Leave the strike queue.
+### /queue_strike
+-# Join the strike queue.
 
-### `/strike_queue_status`
-See where you are in line and roughly how long you may wait.
+```text
+OPTIONS
+minutes (optional): queue duration
+mode_preference (optional): any | hard | omega
+```
 
-### `/log_strike_report`
-Submit your finished strike using the AAR link.
+### /leave_strike_queue
+-# Leave the strike queue.
 
-Options:
-- `aar_link` (required): link to your AAR post.
+### /strike_queue_status
+-# View queue position and rough wait estimate.
 
-## Challenges and Progress
+### /log_strike_report
+-# Submit completed strike report through an AAR link.
 
-### `/submit_kill_log`
-Send in a Terminus Slayer kill log.
+```text
+OPTIONS
+aar_link (required): link to AAR post
+```
 
-Options:
-- `class` (required): your class role.
-- `terminus` (required): which Terminus enemy you killed.
-- `aar_link` (required): link to the mission AAR.
-- `video_url` (optional): link to your clip.
-- `video` (optional): upload your clip file.
+---
 
-Notes:
-- You must include a recording (link or uploaded video).
-- This only works in the kill-log channel.
+## ᛭⋅ ᴄʜᴀʟʟᴇɴɢᴇs ᴀɴᴅ ᴘʀᴏɢʀᴇss ⋅᛭
 
-### `/challenge-progress`
-Shows your challenge progress.
+### /submit_kill_log
+-# Submit a Terminus Slayer kill log.
 
-Use it with no options to check your own progress.
+```text
+OPTIONS
+class (required): class role
+terminus (required): defeated target
+aar_link (required): mission AAR
+video_url (optional): clip URL
+video (optional): clip upload
+```
 
-## Looking For Group (LFG)
+-# Recording is mandatory (URL or upload).
+-# Kill-log channel only.
 
-### `/lfg_queue`
-Create an LFG post to find players.
+### /challenge-progress
+-# Displays your current challenge progress.
+-# Use with no options.
 
-Options:
-- `queue_type` (required): `operation`, `siege`, or `omega`.
-- `initiation_trial` (optional): mark it as an initiation trial.
-- `expire_minutes` (optional): set when it expires.
-- `message` (optional): extra note for players.
+---
 
-Notes:
-- You need either the PC or Console player role.
-- Omega may limit how many Console players can join.
+## ᛭⋅ ʟᴏᴏᴋɪɴɢ ғᴏʀ ɢʀᴏᴜᴘ ⋅᛭
 
-### `/lfg_join`
-Join an LFG post.
+### /lfg_queue
+-# Create an LFG queue for teammates.
 
-Options:
-- `queue` (required): pick from the list.
+```text
+OPTIONS
+queue_type (required): operation | siege | omega
+initiation_trial (optional): mark as trial
+expire_minutes (optional): expiry timer
+message (optional): extra note
+```
 
-### `/lfg_leave`
-Leave an LFG post.
+-# Requires either PC or Console player role.
+-# Omega may limit console slots.
 
-Options:
-- `queue` (required): pick from the list.
+### /lfg_join
+-# Join an existing LFG queue.
 
-### `/lfg_close`
-Close your own LFG post.
+```text
+OPTIONS
+queue (required): select queue
+```
 
-Options:
-- `queue` (required): pick from the list.
+### /lfg_leave
+-# Leave an LFG queue.
 
-## Chapter Requests
+```text
+OPTIONS
+queue (required): select queue
+```
 
-### `/chapter_request`
-Ask to change to a standard chapter.
+### /lfg_close
+-# Close an LFG queue you created.
 
-Options:
-- `chapter_name` (required): chapter you want.
+```text
+OPTIONS
+queue (required): select queue
+```
 
-Notes:
-- You can send one request every 28 days.
-- Apothecary staff review the request.
+---
 
-### `/request_homebrew_chapter`
-Ask for a new homebrew chapter.
+## ᛭⋅ ᴄʜᴀᴘᴛᴇʀ ʀᴇǫᴜᴇsᴛs ⋅᛭
 
-Options:
-- `name` (required): chapter name.
-- `geneseed_lineage` (required): chapter lineage.
-- `lore_blurb` (required): short lore text.
+### /chapter_request
+-# Request transfer to a standard chapter.
 
-Notes:
-- You can send one request every 28 days.
-- Staff and command review it.
+```text
+OPTIONS
+chapter_name (required): requested chapter
+```
 
-## Quick Troubleshooting
+-# Cooldown: once every 28 days.
+-# Apothecary review required.
 
-- `Access denied`: wrong channel or no permission.
-- `This command cannot be used in this channel`: use it in an allowed channel.
-- Command not showing in `/` list: wait a moment and try again.
+### /request_homebrew_chapter
+-# Request creation of a homebrew chapter.
+
+```text
+OPTIONS
+name (required): chapter name
+geneseed_lineage (required): chapter lineage
+lore_blurb (required): short lore summary
+```
+
+-# Cooldown: once every 28 days.
+-# Staff and command review required.
+
+---
+
+## ᛭⋅ ǫᴜɪᴄᴋ ᴛʀᴏᴜʙʟᴇsʜᴏᴏᴛɪɴɢ ⋅᛭
+
+-# `Access denied` -> wrong rank/role/channel.
+-# `This command cannot be used in this channel` -> move to an allowed channel.
+-# Command missing from `/` menu -> wait briefly, then retry.
