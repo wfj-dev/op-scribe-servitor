@@ -285,7 +285,10 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
         color = 0x3498DB  # Blue - empty
 
     # Build queue display label
-    queue_display = type_config.get("display", queue_data.get("queue_type", "Unknown"))
+    queue_display = type_config.get(
+        "display",
+        queue_data.get("queue_type") or queue_data.get("type", "Unknown"),
+    )
     title = f"`{queue_display} ǫᴜᴇᴜᴇ`"
     if initiation_trial:
         title += " · ɪɴɪᴛɪᴀᴛɪᴏɴ ᴛʀɪᴀʟ"
@@ -3177,7 +3180,9 @@ def _build_new_format_preview_embeds(
             live_lfg = _build_lfg_embed(lfg_queue, guild)
             previews.append(live_lfg)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (forge_lfg): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (forge_lfg, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
         try:
             from . import target_packages_ops as _tp  # local import avoids cycles at import time
@@ -3384,7 +3389,9 @@ def _build_new_format_preview_embeds(
             )
             previews.append(live_cadre_cycle)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (target_packages): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (target_packages, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
         try:
             from . import terminus_ops as _term  # local import avoids cycles at import time
@@ -3427,7 +3434,9 @@ def _build_new_format_preview_embeds(
             live_reminder = _term._build_reminder_embed(stale, int(getattr(guild, "id", 0) or 0))
             previews.append(live_reminder)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (terminus): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (terminus, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
         try:
             from . import roster_ops as _ro  # local import avoids cycles at import time
@@ -3435,7 +3444,9 @@ def _build_new_format_preview_embeds(
             live_milestone = _ro._build_milestone_embed(guild, "aar_points", 25000, 25250)
             previews.append(live_milestone)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (roster): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (roster, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
         try:
             # Auto-ingest: operational DM-style ingest result card
@@ -3483,7 +3494,9 @@ def _build_new_format_preview_embeds(
             live_ingest_status.set_footer(text="Operation-Scribe Servitor · /auto_ingest_force to override")
             previews.append(live_ingest_status)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (auto_ingest): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (auto_ingest, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
         try:
             # Archive/audit: record-of-blood summary embed shape
@@ -3522,7 +3535,9 @@ def _build_new_format_preview_embeds(
             live_stud_audit.set_footer(text="Use PC/Console button for detailed ANSI table")
             previews.append(live_stud_audit)
         except Exception as e:
-            _g.logger.warning(f"Failed to build embed preview (audit): {e}")
+            _g.logger.warning(
+                f"Failed to build embed preview (audit, requester_id={getattr(requester, 'id', None)}): {e}"
+            )
 
     return previews
 
