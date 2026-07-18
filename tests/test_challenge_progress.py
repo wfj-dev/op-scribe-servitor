@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from opscribe import _bot_globals as _g
-from opscribe.constants import CRUX_TERMINATUS_ROLE_ID
+from opscribe.constants import BLACK_LAURELS_ROLE_ID, CRUX_TERMINATUS_ROLE_ID
 
 
 class _FakeTree:
@@ -78,3 +78,104 @@ def test_challenge_progress_crux_role_holder_shows_completed_checklist():
     assert "✅ Black Laurels — baseline missions, Rank A" in crux_block
     assert "✅ Distinguished SOK-G: Pipehitter" in crux_block
     assert "✅ Terminus Slayer roles held: 2/2" in crux_block
+
+
+def test_challenge_progress_crux_rank_a_uses_any_post_enforcement_rank_a_reclamation_run():
+    uid = 993706776920854578
+
+    class _FakeDataStore:
+        def __init__(self, records):
+            self._records = records
+
+        def iter_records(self):
+            return iter(self._records)
+
+    records = [
+        {
+            "mission": "Inferno",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-10T00:00:00+00:00",
+        },
+        {
+            "mission": "Decapitation",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-11T00:00:00+00:00",
+        },
+        {
+            "mission": "Vox Liberatis",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-12T00:00:00+00:00",
+        },
+        {
+            "mission": "Ballistic Engine",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-13T00:00:00+00:00",
+        },
+        {
+            "mission": "Exfiltration",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-14T00:00:00+00:00",
+        },
+        {
+            "mission": "Termination",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-15T00:00:00+00:00",
+        },
+        {
+            "mission": "Reclamation",
+            "rank": "B",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-06-20T00:00:00+00:00",
+        },
+        {
+            "mission": "Reclamation",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-07-05T00:00:00+00:00",
+        },
+        {
+            "mission": "Disruption",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-07-10T00:00:00+00:00",
+        },
+        {
+            "mission": "Purgation",
+            "rank": "A",
+            "black_laurels_in_mission": True,
+            "brother_ids": [uid],
+            "timestamp": "2026-07-11T00:00:00+00:00",
+        },
+    ]
+
+    interaction = _make_interaction(target_role_ids=[BLACK_LAURELS_ROLE_ID], user_id=uid)
+
+    with (
+        patch.object(terminus_ops, "_load_state", return_value={"progress": {}}),
+        patch.object(terminus_ops._g, "DATASTORE", _FakeDataStore(records)),
+        patch("opscribe.terminus_ops.os.path.exists", return_value=False),
+    ):
+        _run(terminus_ops._challenge_progress_inner(interaction, member=None, verbose=True))
+
+    interaction.followup.send.assert_awaited_once()
+    embed = interaction.followup.send.await_args.kwargs["embed"]
+    crux_block = _extract_crux_block(embed)
+
+    assert crux_block
+    assert "✅ Black Laurels — baseline missions, Rank A" in crux_block
+    assert "Non-Rank A (post-enforcement): Reclamation" not in crux_block
