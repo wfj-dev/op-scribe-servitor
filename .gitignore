@@ -208,4 +208,6 @@ __marimo__/
 
 # Op Scribe Servitor data files
 data/
+!data/home_chapter_rotation.json
+!data/rites.json
 logs
