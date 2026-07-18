@@ -210,6 +210,27 @@ def test_assign_member_to_reserves_removes_company_and_kill_team_roles():
     assert result["added"] == ["Reserves"]
 
 
+def test_assign_member_to_reserves_uses_configured_company_roles(monkeypatch):
+    reserves = _role(ro.RESERVES_ROLE_ID, "Reserves")
+    company = _role(2002, "Watch Company Quartus")
+    unrelated = _role(4001, "Watch Brother")
+    guild = _Guild([reserves, company, unrelated])
+    member = _Member(78, [company, unrelated], guild)
+
+    monkeypatch.setattr(
+        ro._g,
+        "CONFIG",
+        {"companies": {"quartus": {"name": "Quartus", "companyRoleId": 2002}}},
+    )
+
+    result = _run(ro._assign_member_to_reserves(member))
+
+    remaining_names = {role.name for role in member.roles}
+    assert remaining_names == {"Watch Brother", "Reserves"}
+    assert set(result["removed"]) == {"Watch Company Quartus"}
+    assert result["added"] == ["Reserves"]
+
+
 def test_chapter_assign_swaps_existing_chapter_roles():
     old_chapter = _role(5001, "Blood Angels")
     new_chapter = _role(5002, "Hawk Lords")

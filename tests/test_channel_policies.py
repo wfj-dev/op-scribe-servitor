@@ -23,15 +23,16 @@ from opscribe.bot import is_allowed_channel, DEFAULT_ALLOWED_CHANNELS
 class FakeChannel:
     """Minimal stand-in for a discord.TextChannel."""
 
-    def __init__(self, name: str, channel_id: int):
+    def __init__(self, name: str, channel_id: int, parent_id: int | None = None):
         self.name = name
         self.id = channel_id
+        self.parent_id = parent_id
 
 
-def _make_interaction(channel_name: str, channel_id: int, command_name: str):
+def _make_interaction(channel_name: str, channel_id: int, command_name: str, parent_id: int | None = None):
     """Return a simple namespace that mimics a discord.Interaction."""
     interaction = types.SimpleNamespace()
-    interaction.channel = FakeChannel(channel_name, channel_id)
+    interaction.channel = FakeChannel(channel_name, channel_id, parent_id=parent_id)
     interaction.command = types.SimpleNamespace(name=command_name)
     interaction.data = {"name": command_name}
     return interaction
@@ -162,6 +163,27 @@ def test_fallback_allowed_channel_ids_blocks_non_matching_id():
     with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
         ix = _make_interaction("random-channel", 9999, "any_command")
         assert is_allowed_channel(ix) is False
+
+
+def test_fallback_kt_forum_parent_ids_permits_thread_under_allowed_parent():
+    """Forum posts under configured KT parents should inherit broad command access."""
+    config = {"target_packages": {"kt_forum_parent_ids": [7777]}}
+    with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
+        with unittest.mock.patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {7777}):
+            ix = _make_interaction("kt-post", 8888, "any_command", parent_id=7777)
+            assert is_allowed_channel(ix) is True
+
+
+def test_command_restrictions_still_override_allowed_kt_forum_parent_thread():
+    """Command-level locks should still win inside approved KT forum posts."""
+    config = {
+        "command_channel_restrictions": {"submit_kill_log": [5555]},
+        "target_packages": {"kt_forum_parent_ids": [7777]},
+    }
+    with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
+        with unittest.mock.patch.object(bot, "ALLOWED_KT_FORUM_PARENT_IDS", {7777}):
+            ix = _make_interaction("kt-post", 8888, "submit_kill_log", parent_id=7777)
+            assert is_allowed_channel(ix) is False
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,39 @@ def _b(name):
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
 
 
+def _configured_watch_company_role_names() -> List[str]:
+    """Return Watch Company role names from config, falling back to defaults."""
+    cfg = _g.CONFIG.get("companies") or {}
+    configured: List[str] = []
+    if isinstance(cfg, dict):
+        for key, entry in cfg.items():
+            raw_name = str((entry or {}).get("name") or key or "").strip()
+            if not raw_name:
+                continue
+            if raw_name.lower().startswith("watch company "):
+                configured.append(raw_name)
+            else:
+                configured.append(f"Watch Company {raw_name}")
+    return configured or list(_WATCH_COMPANY_ROLE_NAMES)
+
+
+def _configured_company_command_role_names() -> Set[str]:
+    """Return company command role names derived from configured companies."""
+    company_names = _configured_watch_company_role_names()
+    configured = {
+        f"{company_name.replace('Watch Company', '').strip()} Command"
+        for company_name in company_names
+        if company_name != "Dreadnought Cadre"
+    }
+    return configured or {
+        "Primus Command",
+        "Secundus Command",
+        "Tertius Command",
+        "Quartus Command",
+        "Quintus Command",
+    }
+
+
 def _load_activity_status() -> Dict[str, Dict]:
     """Load stored activity status mapping: user_id -> {'status': 'active'|'inactive', 'updated_at': ISO timestamp}.
 
@@ -289,13 +322,7 @@ def _get_member_company_name(member: discord.Member) -> Optional[str]:
     except Exception:
         pass
 
-    company_roles = {
-        "Watch Company Primus",
-        "Watch Company Secundus",
-        "Watch Company Tertius",
-        "Watch Company Quartus",
-        "Watch Company Quintus",
-    }
+    company_roles = set(_configured_watch_company_role_names())
     try:
         for r in getattr(member, "roles", []) or []:
             rn = (getattr(r, "name", "") or "").strip()
@@ -350,7 +377,7 @@ async def _assign_member_to_reserves(member: discord.Member) -> Dict[str, List[s
     for role in getattr(member, "roles", []) or []:
         role_name = (getattr(role, "name", "") or "").strip()
         role_id = getattr(role, "id", 0) or 0
-        if role_name in _WATCH_COMPANY_ROLE_NAMES or role_id == DREADNOUGHT_CADRE_ROLE_ID or _is_kill_team_membership_role(role):
+        if role_name in _configured_watch_company_role_names() or role_id == DREADNOUGHT_CADRE_ROLE_ID or _is_kill_team_membership_role(role):
             roles_to_remove.append(role)
 
     reserves_role = guild.get_role(RESERVES_ROLE_ID)
@@ -374,83 +401,6 @@ async def _assign_member_to_reserves(member: discord.Member) -> Dict[str, List[s
     return {"removed": removed_names, "added": added_names}
 
 
-def _orphan_companies_for_role(guild: Optional[discord.Guild], specialist_role: str) -> set:
-    """Return the set of Watch Company role names that have no active member with ``specialist_role``.
-
-    A company is "covered" when at least one non-bot member has both ``specialist_role``
-    AND that company role. Used by /armor_status and /warp_status gap-filling so a
-    specialist whose home company is clear backfills coverage on companies without
-    a counterpart specialist before reaching into peer territory.
-    """
-    companies = set(_WATCH_COMPANY_ROLE_NAMES)
-    if guild is None:
-        return companies
-    covered: set = set()
-    try:
-        for member in guild.members:
-            if getattr(member, "bot", False):
-                continue
-            role_names = {(getattr(r, "name", "") or "").strip() for r in (getattr(member, "roles", []) or [])}
-            if specialist_role not in role_names:
-                continue
-            for c in companies:
-                if c in role_names:
-                    covered.add(c)
-    except Exception:
-        pass
-    return companies - covered
-
-
-def _company_scope_ring(
-    member_company: Optional[str],
-    caller_company: Optional[str],
-    orphan_companies: set,
-) -> int:
-    """Return ring rank for a candidate brother: lower fills first.
-
-    0 — caller's own company (primary responsibility)
-    1 — orphan company (no counterpart specialist assigned)
-    2 — other companies (peer-covered territory, lowest priority)
-    3 — no company assignment
-    """
-    if not member_company:
-        return 3
-    if caller_company and member_company == caller_company:
-        return 0
-    if member_company in orphan_companies:
-        return 1
-    return 2
-
-
-def _is_active_participant(member: Optional[discord.Member]) -> bool:
-    """Return True if ``member`` should participate in armor/warp systems.
-
-    A member counts as an active participant when they:
-      - Hold at least one Watch rank role (anything in RANK_HONORIFICS), AND
-      - Are not in Reserves, AND
-      - Are not Interred (sarcophagus inactive — Honored/Venerable Dreadnoughts
-        remain active until interred).
-
-    Bots and members without a Watch rank are excluded. Used as the single
-    authority for "should this member's AAR record drive armor damage / warp
-    exposure / appear in /armor_status / /warp_status?" — keeps both systems
-    in sync on inactive vs. participant status.
-    """
-    if member is None or getattr(member, "bot", False):
-        return False
-    roles = getattr(member, "roles", []) or []
-    role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
-    role_ids = {getattr(r, "id", 0) for r in roles}
-    # Must have at least one ranked role
-    if not (role_names & set(RANK_HONORIFICS.keys())):
-        return False
-    # Excluded: Reserves
-    if RESERVES_ROLE_ID in role_ids or "reserves" in {n.lower() for n in role_names}:
-        return False
-    # Excluded: Interred Brother (inactive sarcophagus)
-    if INTERRED_BROTHER_ROLE_ID in role_ids or "Interred Brother" in role_names:
-        return False
-    return True
 
 
 def _find_company_command_staff(
@@ -4825,9 +4775,11 @@ async def tally_deeds(
                             name="`7ᴅ ᴋᴇʏ`",
                             value=(
                                 f"Window: Last **{window_days} day(s)**\n"
+                                "Total AAR: Lifetime AAR points\n"
                                 "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
                                 "BL: Black Laurels-tagged AARs | DV: Dual Vigil-tagged AARs\n"
-                                "SD: Strike directives completed | CB: Teamwork score (how consistently you ran with this kill team)"
+                                "SD: Strike directives completed | CB: Teamwork score (how consistently you ran with this kill team)\n"
+                                "Only non-zero 7d metrics are shown per member."
                             ),
                             inline=False,
                         )
@@ -4861,12 +4813,29 @@ async def tally_deeds(
                             dv_count = int(row.get("dual_vigil_count", 0) or 0)
                             sd_count = int(row.get("strike_directives_count", 0) or 0)
                             cb_score = int(row.get("cb_score", 0) or 0)
+                            lifetime_aar_total = int(row.get("lifetime_aar_total", 0) or 0)
+
+                            weekly_parts: List[str] = []
+                            if aar_delta > 0:
+                                weekly_parts.append(f"ΔAAR: **{aar_delta}**")
+                            if omega_count > 0:
+                                weekly_parts.append(f"Ω: **{omega_count}**")
+                            if bl_count > 0:
+                                weekly_parts.append(f"BL: **{bl_count}**")
+                            if dv_count > 0:
+                                weekly_parts.append(f"DV: **{dv_count}**")
+                            if sd_count > 0:
+                                weekly_parts.append(f"SD: **{sd_count}**")
+                            if cb_score > 0:
+                                weekly_parts.append(f"CB: **{cb_score}**")
+                            weekly_line = " | ".join(weekly_parts) if weekly_parts else "No 7d activity"
+
                             roster_embed.add_field(
                                 name="\u200b",
                                 value=(
                                     f"{header_line}\n"
-                                    f"ΔAAR: **{aar_delta}** | Ω: **{omega_count}** | BL: **{bl_count}**\n"
-                                    f"DV: **{dv_count}** | SD: **{sd_count}** | CB: **{cb_score}**"
+                                    f"Total AAR: **{lifetime_aar_total}**\n"
+                                    f"{weekly_line}"
                                 ),
                                 inline=True,
                             )
@@ -5645,6 +5614,12 @@ def _compute_killteam_sendto_snapshot_7d(
         except Exception:
             aar_delta = 0
 
+        try:
+            lifetime_stats = compute_stats_for_user(uid) or {}
+            lifetime_aar_total = int(lifetime_stats.get("aar_points", 0) or 0)
+        except Exception:
+            lifetime_aar_total = 0
+
         omega_count = 0
         black_laurels_count = 0
         dual_vigil_count = 0
@@ -5670,11 +5645,23 @@ def _compute_killteam_sendto_snapshot_7d(
             except Exception:
                 pass
 
+        # Omit brothers with no 7d activity or teamwork signal from send_to summaries.
+        if (
+            int(aar_delta) == 0
+            and int(omega_count) == 0
+            and int(black_laurels_count) == 0
+            and int(dual_vigil_count) == 0
+            and int(len(directive_ids)) == 0
+            and int(cb_scores.get(uid, 0) or 0) == 0
+        ):
+            continue
+
         member_rows.append(
             {
                 "member_id": uid,
                 "member_label": label,
                 "aar_delta": int(aar_delta),
+                "lifetime_aar_total": int(lifetime_aar_total),
                 "omega_count": int(omega_count),
                 "black_laurels_count": int(black_laurels_count),
                 "dual_vigil_count": int(dual_vigil_count),
@@ -8906,22 +8893,10 @@ async def company_roster(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     # All company names to iterate through
-    all_companies = [
-        "Watch Company Primus",
-        "Watch Company Secundus",
-        "Watch Company Tertius",
-        "Watch Company Quartus",
-        "Watch Company Quintus",
-    ]
+    all_companies = _configured_watch_company_role_names()
 
     # Command roles that are fine without a Kill Team assignment
-    company_command_roles = {
-        "Primus Command",
-        "Secundus Command",
-        "Tertius Command",
-        "Quartus Command",
-        "Quintus Command",
-    }
+    company_command_roles = _configured_company_command_role_names()
 
     embeds = []
     fortress_total = 0

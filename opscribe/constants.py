@@ -446,6 +446,7 @@ ROSTER_IMAGE_COMPANY_COMMAND_BY_COMPANY: dict[str, str] = {
 ROSTER_COMPANY_CHANNELS: dict[str, int] = {
     "Watch Company Primus": 1433351509722267658,
     "Watch Company Secundus": 1458255466189684999,
+    "Watch Company Tertius": 1527777716076548216,
 }
 
 # Ranks that appear in the Company Command roster section.

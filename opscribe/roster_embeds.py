@@ -62,7 +62,7 @@ _CUSTOM_EMOJI_RE = re.compile(r"<a?:[A-Za-z0-9_]+:\d+>")
 # Campaign accolades helpers
 # ---------------------------------------------------------------------------
 
-# Maps campaign company_id → Watch Company name prefix (matches ROSTER_COMPANY_CHANNELS keys)
+# Maps campaign company_id → Watch Company name prefix (matches configured roster company names)
 def _co_id_to_roster_name(company_id: str) -> str:
     """Convert 'primus' → 'Watch Company Primus'."""
     return f"Watch Company {company_id.capitalize()}"
@@ -71,6 +71,27 @@ def _co_id_to_roster_name(company_id: str) -> str:
 def _co_roster_name_to_id(roster_name: str) -> str:
     """Convert 'Watch Company Primus' → 'primus'."""
     return roster_name.replace("Watch Company", "").strip().lower()
+
+
+def _configured_roster_company_channels() -> dict[str, int]:
+    """Return roster channel mapping from config, falling back to constants."""
+    cfg = (_b("CONFIG") or {}).get("companies") or {}
+    configured: dict[str, int] = {}
+    if isinstance(cfg, dict):
+        for entry in cfg.values():
+            if not isinstance(entry, dict):
+                continue
+            company_short_name = str(entry.get("name") or "").strip()
+            if not company_short_name:
+                continue
+            try:
+                channel_id = int(entry.get("rosterChannelId") or 0)
+            except Exception:
+                channel_id = 0
+            if not channel_id:
+                continue
+            configured[f"Watch Company {company_short_name}"] = channel_id
+    return configured or dict(ROSTER_COMPANY_CHANNELS)
 
 
 _RIBBON_LABELS = {
@@ -106,10 +127,35 @@ _SPECIALIST_IMAGE_BY_SECTION = {
     "Apothecarion": "Apothecarion.png",
 }
 
-_COMPANY_COMMAND_IMAGE_BY_COMPANY = {
-    "Watch Company Primus": "Primus Command.png",
-    "Watch Company Secundus": "Secundus Command.png",
-}
+def _configured_company_entry(company_name: str) -> dict:
+    """Return the configured company entry matching a roster company name."""
+    cfg = (_b("CONFIG") or {}).get("companies") or {}
+    if not isinstance(cfg, dict):
+        return {}
+    for key, entry in cfg.items():
+        if not isinstance(entry, dict):
+            continue
+        raw_name = str(entry.get("name") or key or "").strip()
+        if not raw_name:
+            continue
+        full_name = raw_name if raw_name.lower().startswith("watch company ") else f"Watch Company {raw_name}"
+        if full_name == company_name:
+            return entry
+    return {}
+
+
+def _company_command_image_filename(company_name: str) -> str:
+    """Resolve company command banner asset from config or naming convention."""
+    entry = _configured_company_entry(company_name)
+    configured_filename = str(entry.get("commandImageAsset") or "").strip()
+    if configured_filename:
+        return configured_filename
+
+    short_name = company_name.replace("Watch Company", "").strip()
+    candidate = f"{short_name} Command.png"
+    if short_name and os.path.exists(_asset_path(candidate)):
+        return candidate
+    return "Command.png"
 
 
 def _asset_path(filename: str) -> str:
@@ -223,7 +269,7 @@ def _load_roster_state() -> dict:
             "command_message_id": None,
             "killteam_message_ids": {},
         }
-        for company, channel_id in ROSTER_COMPANY_CHANNELS.items()
+        for company, channel_id in _configured_roster_company_channels().items()
     }
     try:
         if os.path.exists(ROSTER_STATE_PATH):
@@ -364,7 +410,7 @@ def _blade_hall_sort_key(member: discord.Member) -> tuple[int, int, int, str]:
 def _company_order_index_for_member(member: discord.Member) -> int:
     """Return configured company order index for a member, or fallback at end."""
     role_names = _member_role_names(member)
-    company_names = list(ROSTER_COMPANY_CHANNELS.keys())
+    company_names = list(_configured_roster_company_channels().keys())
     for idx, company_name in enumerate(company_names):
         if company_name in role_names:
             return idx
@@ -1183,7 +1229,7 @@ async def _update_company_roster(
         now = datetime.now(timezone.utc)
 
     company_state = state.get(company_name, {})
-    channel_id = company_state.get("channel_id") or ROSTER_COMPANY_CHANNELS.get(company_name)
+    channel_id = company_state.get("channel_id") or _configured_roster_company_channels().get(company_name)
     if not channel_id:
         raise ValueError(f"No channel ID configured for '{company_name}'")
 
@@ -1234,7 +1280,7 @@ async def _update_company_roster(
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
     cmd_image_url, cmd_image_file = _resolve_asset_image(
-        _COMPANY_COMMAND_IMAGE_BY_COMPANY.get(company_name)
+        _company_command_image_filename(company_name)
     )
     hc_image_url, hc_file = _resolve_asset_image("High Command.png")
 
@@ -1435,7 +1481,7 @@ async def _update_all_rosters(guild: discord.Guild, *, force_repost: bool = Fals
         results: dict[str, str] = {}
         now = datetime.now(timezone.utc)
 
-        for company_name in ROSTER_COMPANY_CHANNELS:
+        for company_name in _configured_roster_company_channels():
             try:
                 await _update_company_roster(
                     guild,
