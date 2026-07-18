@@ -36,6 +36,28 @@ def _b(name):
     return getattr(m, name) if (m is not None and hasattr(m, name)) else globals().get(name)
 
 
+def _configured_company_role_names() -> set[str]:
+    """Return configured Watch Company role names, falling back to known defaults."""
+    cfg = (_b("CONFIG") or {}).get("companies") or {}
+    configured: set[str] = set()
+    if isinstance(cfg, dict):
+        for key, entry in cfg.items():
+            raw_name = str((entry or {}).get("name") or key or "").strip()
+            if not raw_name:
+                continue
+            if raw_name.lower().startswith("watch company "):
+                configured.add(raw_name)
+            else:
+                configured.add(f"Watch Company {raw_name}")
+    return configured or {
+        "Watch Company Primus",
+        "Watch Company Secundus",
+        "Watch Company Tertius",
+        "Watch Company Quartus",
+        "Watch Company Quintus",
+    }
+
+
 TARGET_PACKAGES_PATH = os.path.join(DATA_DIR, "target_packages.json")
 STRIKE_QUEUE_PATH = os.path.join(DATA_DIR, "strike_directive_queue.json")
 _REFERENCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference")
@@ -6852,16 +6874,10 @@ def _can_actor_remove_attached_target(
                 return resolved
         except Exception:
             pass
-        role_names = _member_role_names(member)
-        for rn in (
-            "Watch Company Primus",
-            "Watch Company Secundus",
-            "Watch Company Tertius",
-            "Watch Company Quartus",
-            "Watch Company Quintus",
-            "Dreadnought Cadre",
-        ):
-            if rn in role_names:
+        configured_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
+        for role in getattr(member, "roles", []):
+            rn = (getattr(role, "name", "") or "").strip()
+            if rn in configured_names:
                 return rn
         return None
 

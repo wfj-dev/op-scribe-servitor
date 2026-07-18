@@ -240,19 +240,25 @@ class TestExtractDirectiveIdsFromRecord:
 class TestComputeKillteamSendtoSnapshot7d:
     """Full aggregation: patch _get_missions_last_days and _build_pair_counts."""
 
-    def _run(self, member_ids, missions, pair_counts=None, label_map=None):
+    def _run(self, member_ids, missions, pair_counts=None, label_map=None, lifetime_aar_map=None):
         if pair_counts is None:
             pair_counts = {}
         if label_map is None:
             label_map = {}
+        if lifetime_aar_map is None:
+            lifetime_aar_map = {}
 
         def _fake_label(guild, uid, **_kw):
             return label_map.get(uid, uid)
+
+        def _fake_lifetime(uid):
+            return {"aar_points": int(lifetime_aar_map.get(uid, 0) or 0)}
 
         with (
             patch.object(roster_ops, "_get_missions_last_days", return_value=missions),
             patch.object(roster_ops, "_build_pair_counts", return_value=pair_counts),
             patch.object(roster_ops, "_format_member_styled", side_effect=_fake_label),
+            patch.object(roster_ops, "compute_stats_for_user", side_effect=_fake_lifetime),
         ):
             return roster_ops._compute_killteam_sendto_snapshot_7d(member_ids, guild=None)
 
@@ -318,14 +324,18 @@ class TestComputeKillteamSendtoSnapshot7d:
         missions = [_op(["u2"], points=10)]
         result = self._run(["u1", "u2"], missions)
         rows = {r["member_id"]: r for r in result["member_rows"]}
-        assert rows["u1"]["aar_delta"] == 0
-        assert rows["u1"]["omega_count"] == 0
-        assert rows["u1"]["cb_score"] == 0
+        assert "u1" not in rows
+        assert rows["u2"]["aar_delta"] == 10
 
     def test_member_label_used_from_format_helper(self):
         missions = [_op(["u1"], points=3)]
         result = self._run(["u1"], missions, label_map={"u1": "Brother Test"})
         assert result["member_rows"][0]["member_label"] == "Brother Test"
+
+    def test_lifetime_aar_total_is_included(self):
+        missions = [_op(["u1"], points=3)]
+        result = self._run(["u1"], missions, lifetime_aar_map={"u1": 42})
+        assert result["member_rows"][0]["lifetime_aar_total"] == 42
 
 
 # ---------------------------------------------------------------------------

@@ -212,6 +212,21 @@ def test_generate_single_package_skips_non_standard_siege_ops(monkeypatch):
 
 
 class TestRemoveAuthority:
+    def test_configured_company_role_names_supports_config_defined_company(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(
+            tp,
+            "_b",
+            lambda name: (
+                {"companies": {"sextus": {"name": "Sextus", "companyRoleId": 6001}}}
+                if name == "CONFIG"
+                else None
+            ),
+        )
+
+        assert tp._configured_company_role_names() == {"Watch Company Sextus"}
+
     def test_highcom_no_requirement_self_attached_removable_by_self(self):
         actor = _make_member(["Watch Techmarine"], member_id=10)
         pkg = _make_pkg(
@@ -2356,7 +2371,7 @@ class TestSubmitPackagePermissions:
 
 
 class TestDirectiveForumLifecycle:
-    def test_config_company_forum_mapping_includes_primus_and_secundus(self, monkeypatch):
+    def test_config_company_forum_mapping_includes_tertius(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
         cfg = {
@@ -2364,6 +2379,7 @@ class TestDirectiveForumLifecycle:
                 "directive_forum_parent_by_company": {
                     "Watch Company Primus": 1433351293103112202,
                     "Watch Company Secundus": 1458255656682258504,
+                    "Watch Company Tertius": 1527778077323821086,
                 }
             }
         }
@@ -2371,7 +2387,7 @@ class TestDirectiveForumLifecycle:
         mapping = tp._directive_forum_parent_map()
         assert mapping["watch company primus"] == 1433351293103112202
         assert mapping["watch company secundus"] == 1458255656682258504
-        assert "watch company tertius" not in mapping
+        assert mapping["watch company tertius"] == 1527778077323821086
 
     def test_resolve_directive_forum_parent_prefers_explicit_mapping(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -2396,11 +2412,12 @@ class TestDirectiveForumLifecycle:
                         "directive_forum_parent_by_company": {
                             "Watch Company Primus": 1433351293103112202,
                             "Watch Company Secundus": 1458255656682258504,
+                            "Watch Company Tertius": 1527778077323821086,
                         }
                     }
                 }
                 if name == "CONFIG"
-                else ({1433351293103112202, 1458255656682258504} if name == "ALLOWED_KT_FORUM_PARENT_IDS" else None)
+                else ({1433351293103112202, 1458255656682258504, 1527778077323821086} if name == "ALLOWED_KT_FORUM_PARENT_IDS" else None)
             ),
         )
 
