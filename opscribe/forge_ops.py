@@ -327,7 +327,12 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
             p = players[i]
             member = guild.get_member(p["user_id"])
             name = member.display_name if member else f"User {p['user_id']}"
-            platform_label = "PC" if p["platform"] == "pc" else "Console"
+            if p["platform"] == "pc":
+                platform_label = "🖥️"
+            elif p["platform"] == "console":
+                platform_label = "🎮"
+            else:
+                platform_label = "❔"
             slot_lines.append(f"{i + 1}. {name} · {platform_label}")
         else:
             slot_lines.append(f"{i + 1}. — Empty —")
@@ -348,6 +353,58 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     embed.set_footer(text="Use the buttons below to join or leave this queue")
 
     return embed
+
+
+async def _remove_lfg_queue_from_storage(queue_id: int) -> None:
+    """Remove an LFG queue from memory and disk state."""
+    async with _g.LFG_QUEUE_LOCK:
+        if queue_id in _g.LFG_ACTIVE_QUEUES:
+            del _g.LFG_ACTIVE_QUEUES[queue_id]
+        all_queues = _b("_load_lfg_queues")()
+        if str(queue_id) in all_queues:
+            del all_queues[str(queue_id)]
+            _b("_save_lfg_queues")(all_queues)
+
+
+async def _delete_lfg_queue_message(
+    guild: Optional[discord.Guild],
+    queue_id: int,
+    channel_id: Optional[int],
+) -> None:
+    """Delete a queue message if it still exists."""
+    if not guild or not channel_id:
+        return
+    try:
+        channel = guild.get_channel(int(channel_id))
+        if not channel:
+            return
+        msg = await channel.fetch_message(queue_id)
+        await msg.delete()
+    except discord.NotFound:
+        pass
+    except discord.Forbidden:
+        try:
+            embed = discord.Embed(
+                title="✅ Queue Filled",
+                description="This queue reached capacity and has been closed.",
+                color=0x2ECC71,
+            )
+            msg = await channel.fetch_message(queue_id)
+            await msg.edit(embed=embed, view=None)
+        except Exception:
+            pass
+    except Exception as e:
+        _g.logger.debug(f"Failed to delete full queue message {queue_id}: {e}")
+
+
+def _queue_player_mentions(guild: Optional[discord.Guild], players: list[dict]) -> str:
+    """Render queue player mentions for the ready ping."""
+    mentions = []
+    for p in players:
+        uid = p.get("user_id")
+        member = guild.get_member(uid) if guild and uid else None
+        mentions.append(member.mention if member else f"<@{uid}>")
+    return ", ".join(mentions)
 
 
 class LFGQueueView(discord.ui.View):
@@ -480,27 +537,35 @@ class LFGQueueView(discord.ui.View):
         queue_data["players"] = players
         await self._save_queue_data(queue_data)
 
-        # Update embed by editing the message directly
-        embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
-        await interaction.response.edit_message(embed=embed, view=self)
+        is_full = len(players) >= type_config.get("max_players", 3)
 
-        # Check if queue is now full and notify creator
-        if len(players) >= type_config.get("max_players", 3):
-            creator = interaction.guild.get_member(queue_data["creator_id"])
+        if is_full:
+            await _remove_lfg_queue_from_storage(self.queue_id)
+            await _delete_lfg_queue_message(
+                interaction.guild,
+                self.queue_id,
+                queue_data.get("channel_id"),
+            )
+            await interaction.response.send_message(
+                "✅ You joined the queue. It is now full and has been cleaned up.",
+                ephemeral=True,
+            )
+
+            creator = interaction.guild.get_member(queue_data["creator_id"]) if interaction.guild else None
             if creator:
-                player_mentions = []
-                for p in players:
-                    m = interaction.guild.get_member(p["user_id"])
-                    if m:
-                        player_mentions.append(m.mention)
                 try:
                     await interaction.followup.send(
                         f"🎉 **Queue Full!** {creator.mention}, your {type_config.get('display', 'Mission')} queue is ready!\n"
-                        f"Players: {', '.join(player_mentions)}",
+                        f"Players: {_queue_player_mentions(interaction.guild, players)}",
                         allowed_mentions=discord.AllowedMentions(users=True),
                     )
                 except Exception:
                     pass
+            return
+
+        # Update embed by editing the message directly
+        embed = _b("_build_lfg_embed")(queue_data, interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
 
     async def leave_queue(self, interaction: discord.Interaction):
         member = interaction.user
@@ -4045,6 +4110,32 @@ async def lfg_join(
         all_queues[str(queue_id)] = queue_data
         _b("_save_lfg_queues")(all_queues)
 
+        is_full = len(players) >= type_config.get("max_players", 3)
+
+    if is_full:
+        await _remove_lfg_queue_from_storage(queue_id)
+        await _delete_lfg_queue_message(
+            interaction.guild,
+            queue_id,
+            queue_data.get("channel_id"),
+        )
+        await interaction.response.send_message(
+            "✅ You joined the queue. It is now full and has been cleaned up.",
+            ephemeral=True,
+        )
+
+        creator = interaction.guild.get_member(queue_data["creator_id"]) if interaction.guild else None
+        if creator:
+            try:
+                await interaction.followup.send(
+                    f"🎉 **Queue Full!** {creator.mention}, your {type_config.get('display', 'Mission')} queue is ready!\n"
+                    f"Players: {_queue_player_mentions(interaction.guild, players)}",
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
+            except Exception:
+                pass
+        return
+
     # Update the queue message embed
     try:
         channel_id = queue_data.get("channel_id")
@@ -4061,24 +4152,6 @@ async def lfg_join(
         _g.logger.debug(f"Failed to update queue embed: {e}")
 
     await interaction.response.send_message("✅ You joined the queue!", ephemeral=True)
-
-    # Check if queue is now full and notify
-    if len(players) >= type_config.get("max_players", 3):
-        creator = interaction.guild.get_member(queue_data["creator_id"])
-        if creator:
-            player_mentions = []
-            for p in players:
-                m = interaction.guild.get_member(p["user_id"])
-                if m:
-                    player_mentions.append(m.mention)
-            try:
-                await interaction.followup.send(
-                    f"🎉 **Queue Full!** {creator.mention}, your {type_config.get('display', 'Mission')} queue is ready!\n"
-                    f"Players: {', '.join(player_mentions)}",
-                    allowed_mentions=discord.AllowedMentions(users=True),
-                )
-            except Exception:
-                pass
 
 
 @_g.bot.tree.command(
