@@ -373,11 +373,12 @@ async def _assign_member_to_reserves(member: discord.Member) -> Dict[str, List[s
     if guild is None:
         return {"removed": [], "added": []}
 
+    watch_company_names = set(_configured_watch_company_role_names())
     roles_to_remove = []
     for role in getattr(member, "roles", []) or []:
         role_name = (getattr(role, "name", "") or "").strip()
         role_id = getattr(role, "id", 0) or 0
-        if role_name in _configured_watch_company_role_names() or role_id == DREADNOUGHT_CADRE_ROLE_ID or _is_kill_team_membership_role(role):
+        if role_name in watch_company_names or role_id == DREADNOUGHT_CADRE_ROLE_ID or _is_kill_team_membership_role(role):
             roles_to_remove.append(role)
 
     reserves_role = guild.get_role(RESERVES_ROLE_ID)
@@ -5607,6 +5608,9 @@ def _compute_killteam_sendto_snapshot_7d(
                     member_records.append(rec)
             except Exception:
                 continue
+
+        if not member_records and int(cb_scores.get(uid, 0) or 0) == 0:
+            continue
 
         try:
             m_stats = compute_stats_for_user_in_records(uid, member_records)

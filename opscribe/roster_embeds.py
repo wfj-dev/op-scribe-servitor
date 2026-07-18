@@ -78,10 +78,10 @@ def _configured_roster_company_channels() -> dict[str, int]:
     cfg = (_b("CONFIG") or {}).get("companies") or {}
     configured: dict[str, int] = {}
     if isinstance(cfg, dict):
-        for entry in cfg.values():
+        for key, entry in cfg.items():
             if not isinstance(entry, dict):
                 continue
-            company_short_name = str(entry.get("name") or "").strip()
+            company_short_name = str(entry.get("name") or key or "").strip()
             if not company_short_name:
                 continue
             try:
