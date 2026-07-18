@@ -9,7 +9,6 @@ Covers:
     * Tier thresholds: <=3 → tier 1, 4-11 → tier 2, >=12 → tier 3
 """
 
-import sys
 import unittest.mock
 
 from opscribe.bot import (
@@ -17,8 +16,7 @@ from opscribe.bot import (
     TECHMARINE_RANK_ACKNOWLEDGMENTS,
     TECHMARINE_STUDS_ACKNOWLEDGMENT,
 )
-
-forge_ops = sys.modules["opscribe.forge_ops"]
+import opscribe.forge_ops as forge_ops
 
 
 # ---------------------------------------------------------------------------

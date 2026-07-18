@@ -6874,9 +6874,10 @@ def _can_actor_remove_attached_target(
                 return resolved
         except Exception:
             pass
-        role_names = _member_role_names(member)
-        for rn in tuple(_configured_company_role_names()) + ("Dreadnought Cadre",):
-            if rn in role_names:
+        configured_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
+        for role in getattr(member, "roles", []):
+            rn = (getattr(role, "name", "") or "").strip()
+            if rn in configured_names:
                 return rn
         return None
 
