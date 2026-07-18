@@ -181,9 +181,9 @@ def evaluate_crux_bl_rank_a(user_id: str, records: Iterable[Mapping[str, Any]]) 
 
     # Second pass: audit only the effective mission set.
     saw_any = False
-    all_rank_a = True
-    non_a_missions: set[str] = set()
     seen_effective_missions: set[str] = set()
+    mission_rank_a: dict[str, bool] = {}
+    mission_has_post_enforcement_non_a: dict[str, bool] = {}
 
     for rec in user_bl_records:
         mission = _clean_mission_name(rec)
@@ -194,14 +194,20 @@ def evaluate_crux_bl_rank_a(user_id: str, records: Iterable[Mapping[str, Any]]) 
         seen_effective_missions.add(mission)
         rank = (rec.get("rank") or "A").strip().upper()
         if rank == "A":
+            mission_rank_a[mission] = True
             continue
 
-        # Only post-enforcement non-A records fail the Crux BL requirement.
+        # Only post-enforcement non-A records matter for the verbose audit.
         rec_dt = _parse_record_ts(rec.get("timestamp"))
         if rec_dt is not None and rec_dt >= BLACK_LAURELS_STRICT_ENFORCEMENT_DATE:
-            all_rank_a = False
-            if mission:
-                non_a_missions.add(mission)
+            mission_has_post_enforcement_non_a[mission] = True
+
+    non_a_missions: set[str] = {
+        mission
+        for mission, has_non_a in mission_has_post_enforcement_non_a.items()
+        if has_non_a and not mission_rank_a.get(mission, False)
+    }
+    all_rank_a = saw_any and not non_a_missions
 
     missing_missions = sorted(effective_missions - seen_effective_missions)
 
