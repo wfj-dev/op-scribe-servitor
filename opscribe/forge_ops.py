@@ -284,38 +284,38 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
     else:
         color = 0x3498DB  # Blue - empty
 
-    # Build title with queue-specific emoji
+    # Build queue display label
     queue_display = type_config.get("display", queue_data.get("type", "Unknown"))
-    if queue_type == "omega":
-        queue_emoji = _get_emoji_by_name(guild, "Omega") or "⚔️"
-    else:
-        queue_emoji = "⚔️"
-    title = f"{queue_emoji} {queue_display} Queue"
+    title = f"`{queue_display} ǫᴜᴇᴜᴇ`"
     if initiation_trial:
-        title += " (Initiation Trial)"
+        title += " · ɪɴɪᴛɪᴀᴛɪᴏɴ ᴛʀɪᴀʟ"
     if player_count >= max_players:
-        title += " [FULL]"
+        title += " · ғᴜʟʟ"
 
-    embed = discord.Embed(title=title, color=color)
+    embed = discord.Embed(
+        title=title,
+        description="```\nʟғɢ ʀᴏsᴛᴇʀ · ʟɪᴠᴇ\n```",
+        color=color,
+    )
 
     # Creator info
     creator = guild.get_member(creator_id)
     creator_name = creator.display_name if creator else f"User {creator_id}"
     embed.set_author(name=f"Created by {creator_name}")
 
-    # Build description with expires time and custom message
-    desc_parts = []
+    # Build details block (expiry and custom message)
+    detail_lines = []
     if expires_at:
         try:
             exp_dt = datetime.fromisoformat(expires_at)
             exp_ts = int(exp_dt.timestamp())
-            desc_parts.append(f"⏰ Expires <t:{exp_ts}:R>")
+            detail_lines.append(f"-# Expires <t:{exp_ts}:R>")
         except Exception:
             pass
     if custom_message:
-        desc_parts.append(f"📝 *{custom_message}*")
-    if desc_parts:
-        embed.description = "\n".join(desc_parts)
+        detail_lines.append(f"-# *{custom_message}*")
+    if detail_lines:
+        embed.add_field(name="`ᴅᴇᴛᴀɪʟs`", value="\n".join(detail_lines), inline=False)
 
     # Player slots
     slot_lines = []
@@ -324,25 +324,25 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
             p = players[i]
             member = guild.get_member(p["user_id"])
             name = member.display_name if member else f"User {p['user_id']}"
-            platform_emoji = "🖥️" if p["platform"] == "pc" else "🎮"
-            slot_lines.append(f"{i + 1}. {platform_emoji} {name}")
+            platform_label = "PC" if p["platform"] == "pc" else "Console"
+            slot_lines.append(f"{i + 1}. {name} · {platform_label}")
         else:
-            slot_lines.append(f"{i + 1}. ─ *Empty* ─")
+            slot_lines.append(f"{i + 1}. — Empty —")
 
     embed.add_field(
-        name=f"Players ({player_count}/{max_players})",
+        name=f"`ᴘʟᴀʏᴇʀs ({player_count}/{max_players})`",
         value="\n".join(slot_lines),
         inline=False,
     )
 
     # Console limit info for Omega
     if max_console is not None:
-        console_status = f"🎮 Console: {console_count}/{max_console}"
+        console_status = f"-# Console: {console_count}/{max_console}"
         if console_count >= max_console:
             console_status += " (limit reached)"
-        embed.add_field(name="Platform Limits", value=console_status, inline=False)
+        embed.add_field(name="`ᴘʟᴀᴛғᴏʀᴍ ʟɪᴍɪᴛs`", value=console_status, inline=False)
 
-    embed.set_footer(text="Click buttons to join/leave")
+    embed.set_footer(text="Use the buttons below to join or leave this queue")
 
     return embed
 
@@ -1225,8 +1225,8 @@ def _get_service_studs_announcement(
 
     # Build embed
     embed = discord.Embed(
-        title="᛭⋅ MARK OF SERVICE ⋅᛭",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title="`ᴍᴀʀᴋ ᴏғ sᴇʀᴠɪᴄᴇ`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xC0C0C0,  # Silver for service studs
     )
 
@@ -1249,7 +1249,7 @@ def _get_service_studs_announcement(
     # Opening and milestone intro flow together without line break (plain narrative text, no italics/quotes)
     proclamation_value = f"{opening} {milestone_intro}"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=proclamation_value,
         inline=False,
     )
@@ -1271,7 +1271,7 @@ def _get_service_studs_announcement(
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     if earned_studs > 0:
         bearer_value += f"\nService Studs: [{studs_pips}] ({earned_studs})"
-    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+    embed.add_field(name="`ʙᴇᴀʀᴇʀ`", value=bearer_value, inline=True)
 
     # Calculate visual pip change (what pips change from BEFORE to AFTER)
     # displayed_studs = what they had before, new_total = what they'll have after
@@ -1308,12 +1308,12 @@ def _get_service_studs_announcement(
     record_value += f"Total: **{earned_studs}** | Displayed: **{displayed_studs}**"
     if owed_studs > 0:
         record_value += f"\nOwed: **{owed_studs}**"
-    embed.add_field(name="▸ Service Record", value=record_value, inline=True)
+    embed.add_field(name="`sᴇʀᴠɪᴄᴇ ʀᴇᴄᴏʀᴅ`", value=record_value, inline=True)
 
     # Special milestone callout (bold labels, plain narrative - check against earned studs)
     special_milestone = SERVICE_STUDS_SPECIAL_MILESTONES.get(earned_studs)
     if special_milestone:
-        embed.add_field(name="▸ Milestone", value=special_milestone, inline=False)
+        embed.add_field(name="`ᴍɪʟᴇsᴛᴏɴᴇ`", value=special_milestone, inline=False)
 
     # Honor of the Long Watch: Tiered Ordo Xenos phrase + blended chapter/role flavor
     # Select tier-appropriate Ordo Xenos honor
@@ -1337,7 +1337,7 @@ def _get_service_studs_announcement(
     blended_flavor = _blend_stud_flavor_by_rank(member_chapter, member_rank_name, pip_type)
 
     embed.add_field(
-        name="▸ Honor of the Long Watch",
+        name="`ʜᴏɴᴏʀ ᴏғ ᴛʜᴇ ʟᴏɴɢ ᴡᴀᴛᴄʜ`",
         value=f'*"{ordo_honor} {blended_flavor}"*',
         inline=False,
     )
@@ -1349,14 +1349,14 @@ def _get_service_studs_announcement(
         marking_value = f"{marking_primary}\n{marking_secondary}"
 
     embed.add_field(
-        name="▸ Rite of Marking",
+        name="`ʀɪᴛᴇ ᴏғ ᴍᴀʀᴋɪɴɢ`",
         value=marking_value,
         inline=False,
     )
 
     # Footer with closing phrase from ceremonial closings
     closing_phrase = random.choice(DEATHWATCH_STUD_CLOSINGS)
-    embed.set_footer(text=f"᛭⋅ {closing_phrase} Jericho Stands! ⋅᛭")
+    embed.set_footer(text=f"{closing_phrase} Jericho stands.")
     embed.set_image(url="attachment://studs.png")
 
     # Content has @Watch Brother and member mention for actual pings (outside embed)
@@ -1399,15 +1399,15 @@ def _get_oathsworn_announcement(
     dw_emoji_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     oath_emoji_str = f"{oathsworn_emoji} " if oathsworn_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_emoji_str}᛭⋅ OATHSWORN CONSIDERATION ⋅᛭{dw_emoji_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_emoji_str}`ᴏᴀᴛʜsᴡᴏʀɴ ᴄᴏɴsɪᴅᴇʀᴀᴛɪᴏɴ`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xFFD700,  # Gold for Oathsworn consideration
     )
 
     # Proclamation field
     proclamation_value = f"{opening}\n\n{proclamation}"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=proclamation_value,
         inline=False,
     )
@@ -1428,7 +1428,7 @@ def _get_oathsworn_announcement(
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         candidate_value += f"\nLineage: {chapter_prefix}{lineage_display}"
     candidate_value += f"\nService Studs: **[{studs_pips}]** ({earned_studs})"
-    embed.add_field(name="▸ Candidate", value=candidate_value, inline=True)
+    embed.add_field(name="`ᴄᴀɴᴅɪᴅᴀᴛᴇ`", value=candidate_value, inline=True)
 
     # Eligibility field
     eligibility_value = (
@@ -1436,11 +1436,11 @@ def _get_oathsworn_announcement(
         f"Service Studs: **{earned_studs}** (3 required) ✓\n"
         f"Eligible for: {oath_emoji_str}**Oathsworn**"
     )
-    embed.add_field(name="▸ Eligibility", value=eligibility_value, inline=True)
+    embed.add_field(name="`ᴇʟɪɢɪʙɪʟɪᴛʏ`", value=eligibility_value, inline=True)
 
     # Call to action
     embed.add_field(
-        name="▸ Rite of Elevation",
+        name="`ʀɪᴛᴇ ᴏғ ᴇʟᴇᴠᴀᴛɪᴏɴ`",
         value=(
             "The Watch awaits your judgment, Brothers.\n"
             "Cast your vote below to determine if this warrior shall take the Oath."
@@ -1449,7 +1449,7 @@ def _get_oathsworn_announcement(
     )
 
     # Footer
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
 
     # Create poll - 48 hour duration
     poll = discord.Poll(
@@ -1562,8 +1562,8 @@ def _get_watch_veteran_announcement(
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_str}᛭⋅ WATCH VETERAN PROMOTION ⋅᛭{dw_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_str}`ᴡᴀᴛᴄʜ ᴠᴇᴛᴇʀᴀɴ ᴘʀᴏᴍᴏᴛɪᴏɴ`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xC0C0C0,
     )
 
@@ -1571,7 +1571,7 @@ def _get_watch_veteran_announcement(
     if chapter_coda:
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=_trunc(proclamation_text),
         inline=False,
     )
@@ -1584,15 +1584,15 @@ def _get_watch_veteran_announcement(
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    embed.add_field(name="▸ Promoted Warrior", value=bearer_value, inline=True)
+    embed.add_field(name="`ᴘʀᴏᴍᴏᴛᴇᴅ ᴡᴀʀʀɪᴏʀ`", value=bearer_value, inline=True)
 
     embed.add_field(
-        name="▸ Service Record",
+        name="`sᴇʀᴠɪᴄᴇ ʀᴇᴄᴏʀᴅ`",
         value="Service: **200+ AAR Points** ✓\nTime: **2+ Weeks** ✓\nPromoted to: **Watch Veteran**",
         inline=True,
     )
 
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
     award_file = _get_award_image("award_watch_veteran.png")
     if award_file:
         embed.set_image(url="attachment://award_watch_veteran.png")
@@ -1621,8 +1621,8 @@ def _get_ardent_raider_announcement(
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_str}᛭⋅ ARDENT RAIDER RIBBON ⋅᛭{dw_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_str}`ᴀʀᴅᴇɴᴛ ʀᴀɪᴅᴇʀ ʀɪʙʙᴏɴ`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xD4AF37,
     )
 
@@ -1630,7 +1630,7 @@ def _get_ardent_raider_announcement(
     if chapter_coda:
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=_trunc(proclamation_text),
         inline=False,
     )
@@ -1648,16 +1648,16 @@ def _get_ardent_raider_announcement(
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+    embed.add_field(name="`ʀᴇᴄɪᴘɪᴇɴᴛ`", value=bearer_value, inline=True)
 
     ribbon_str = f"{ribbon_emoji} " if ribbon_emoji else "🎖️ "
     embed.add_field(
-        name="▸ Award",
+        name="`ᴀᴡᴀʀᴅ`",
         value=f"{ribbon_str}**Ardent Raider Ribbon**\n200+ Armory Points ✓",
         inline=True,
     )
 
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
     award_file = _get_award_image("award_ardent_raider.png")
     if award_file:
         embed.set_image(url="attachment://award_ardent_raider.png")
@@ -1685,8 +1685,8 @@ def _get_apothecarion_medal_announcement(
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_str}᛭⋅ APOTHECARION SERVICE MEDAL ⋅᛭{dw_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_str}`ᴀᴘᴏᴛʜᴇᴄᴀʀɪᴏɴ sᴇʀᴠɪᴄᴇ ᴍᴇᴅᴀʟ`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xFFFFFF,
     )
 
@@ -1694,7 +1694,7 @@ def _get_apothecarion_medal_announcement(
     if chapter_coda:
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=_trunc(proclamation_text),
         inline=False,
     )
@@ -1713,16 +1713,16 @@ def _get_apothecarion_medal_announcement(
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+    embed.add_field(name="`ʀᴇᴄɪᴘɪᴇɴᴛ`", value=bearer_value, inline=True)
 
     medal_str = f"{medal_emoji} " if medal_emoji else "🎖️ "
     embed.add_field(
-        name="▸ Award",
+        name="`ᴀᴡᴀʀᴅ`",
         value=f"{medal_str}**Apothecarion Service Medal**\n150+ Gene-Seed Points ✓",
         inline=True,
     )
 
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
     award_file = _get_award_image("award_apothecarion_medal.png")
     if award_file:
         embed.set_image(url="attachment://award_apothecarion_medal.png")
@@ -1750,8 +1750,8 @@ def _get_crimson_laurels_announcement(
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_str}᛭⋅ CRIMSON LAURELS ⋅᛭{dw_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_str}`ᴄʀɪᴍsᴏɴ ʟᴀᴜʀᴇʟs`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0xDC143C,
     )
 
@@ -1759,7 +1759,7 @@ def _get_crimson_laurels_announcement(
     if chapter_coda:
         proclamation_text += f"\n\n*{chapter_coda}*"
     embed.add_field(
-        name="▸ Watch's Proclamation",
+        name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`",
         value=_trunc(proclamation_text),
         inline=False,
     )
@@ -1778,16 +1778,16 @@ def _get_crimson_laurels_announcement(
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+    embed.add_field(name="`ʀᴇᴄɪᴘɪᴇɴᴛ`", value=bearer_value, inline=True)
 
     laurels_str = f"{laurels_emoji} " if laurels_emoji else "🎖️ "
     embed.add_field(
-        name="▸ Award",
+        name="`ᴀᴡᴀʀᴅ`",
         value=f"{laurels_str}**Crimson Laurels**\n1000+ AAR Points ✓\nBlack Laurels ✓",
         inline=True,
     )
 
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
     award_file = _get_award_image("award_crimson_laurels.png")
     if award_file:
         embed.set_image(url="attachment://award_crimson_laurels.png")
@@ -1853,15 +1853,15 @@ def _build_challenge_award_embed(
 
     dw_str = f"{deathwatch_emoji} " if deathwatch_emoji else ""
     embed = discord.Embed(
-        title=f"{dw_str}᛭⋅ {title} ⋅᛭{dw_str}",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title=f"{dw_str}`{title.lower()}`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=color,
     )
 
     proclamation_text = f"{opening}\n\n{proclamation}"
     if selected_coda:
         proclamation_text += f"\n\n*{selected_coda}*"
-    embed.add_field(name="▸ Watch's Proclamation", value=_trunc(proclamation_text), inline=False)
+    embed.add_field(name="`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`", value=_trunc(proclamation_text), inline=False)
 
     rank_emoji = _get_rank_emoji(guild, member_rank) if member_rank else None
     rank_prefix = f"{rank_emoji} " if rank_emoji else ""
@@ -1872,12 +1872,12 @@ def _build_challenge_award_embed(
         chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
         lineage_display = "REDACTED" if member_chapter == "Black Shield" else member_chapter
         bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
-    embed.add_field(name="▸ Recipient", value=bearer_value, inline=True)
+    embed.add_field(name="`ʀᴇᴄɪᴘɪᴇɴᴛ`", value=bearer_value, inline=True)
 
     award_prefix = f"{award_emoji} " if award_emoji else "🎖️ "
-    embed.add_field(name="▸ Award", value=f"{award_prefix}**{award_label}**", inline=True)
+    embed.add_field(name="`ᴀᴡᴀʀᴅ`", value=f"{award_prefix}**{award_label}**", inline=True)
 
-    embed.set_footer(text="᛭⋅ By Bolt and Blade, the Watch Endures! ⋅᛭")
+    embed.set_footer(text="By bolt and blade, the watch endures.")
     award_file = _get_award_image(award_image) if award_image else None
     if award_file:
         embed.set_image(url=f"attachment://{award_image}")
@@ -2855,7 +2855,7 @@ async def _attest(
     if bearer_studs > 0:
         studs_pips = _studs_pips(bearer_studs)
         bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
-    embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+    embed.add_field(name="`ʙᴇᴀʀᴇʀ`", value=bearer_value, inline=True)
 
     # Machine spirit field
     spirit_event_label = "First Binding" if spirit_is_first else ("Renewal" if spirit_is_renewed else "Maintenance")
@@ -2864,7 +2864,7 @@ async def _attest(
         f"*{spirit_status_text}*\n"
         f"🟢 Rite: {spirit_event_label}"
     )
-    embed.add_field(name="▸ Machine-Spirit", value=status_value, inline=True)
+    embed.add_field(name="`ᴍᴀᴄʜɪɴᴇ-sᴘɪʀɪᴛ`", value=status_value, inline=True)
 
     # Honor of the Long Watch
     tier_for_honor = _studs_tier(bearer_studs)
@@ -2882,13 +2882,13 @@ async def _attest(
 
     if chapter_blessing:
         embed.add_field(
-            name="▸ Honor of the Long Watch",
+            name="`ʜᴏɴᴏʀ ᴏғ ᴛʜᴇ ʟᴏɴɢ ᴡᴀᴛᴄʜ`",
             value=f"*\"{ordo_honor_embed} {stud_acknowledgment} {chapter_blessing}\"*",
             inline=False,
         )
     else:
         embed.add_field(
-            name="▸ Honor of the Long Watch",
+            name="`ʜᴏɴᴏʀ ᴏғ ᴛʜᴇ ʟᴏɴɢ ᴡᴀᴛᴄʜ`",
             value=f"*\"{ordo_honor_embed} {stud_acknowledgment}\"*",
             inline=False,
         )
@@ -2896,13 +2896,13 @@ async def _attest(
     # Litany (personal rite, if set)
     if rite_text:
         rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
-        embed.add_field(name="▸ Litany to the Machine-Spirit", value=f"{rite_display}", inline=False)
+        embed.add_field(name="`ʟɪᴛᴀɴʏ ᴛᴏ ᴛʜᴇ ᴍᴀᴄʜɪɴᴇ-sᴘɪʀɪᴛ`", value=f"{rite_display}", inline=False)
 
     # Attestation
     rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
     attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
     tech_value = f"{attester_with_rank}\n{authority} • {ts}\n*\"{sacred_phrase}\"*"
-    attestation_field_name = "▸ Self-Attestation" if is_self_blessing else "▸ Attestation"
+    attestation_field_name = "`sᴇʟғ-ᴀᴛᴛᴇsᴛᴀᴛɪᴏɴ`" if is_self_blessing else "`ᴀᴛᴛᴇsᴛᴀᴛɪᴏɴ`"
     embed.add_field(name=attestation_field_name, value=tech_value, inline=True)
 
     # Attach approval stamp image
@@ -3046,6 +3046,556 @@ async def _preview_stud_announcement(
     await interaction.followup.send(
         f"{debug_info}{content}",
         embed=embed,
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+def _build_new_format_preview_embeds(
+    guild: Optional[discord.Guild],
+    requester: Optional[discord.abc.User] = None,
+) -> list[discord.Embed]:
+    """Return a catalog of styled embed previews for admin-only visual QA."""
+    divider = "⎯" * 18
+    previews: list[discord.Embed] = []
+
+    e = discord.Embed(
+        title="<:Deathwatch:1501748904880767147> **᛭⋅ ᴀʀᴅᴇɴᴛ ʀᴀɪᴅᴇʀ ʀɪʙʙᴏɴ ⋅᛭** <:Deathwatch:1501748904880767147>",
+        description=f"{divider}\n-# *⌾ Watch Fortress Jericho ⌾*\n{divider}",
+        color=0x2E4053,
+    )
+    e.add_field(
+        name="**`ᴡᴀᴛᴄʜ's ᴘʀᴏᴄʟᴀᴍᴀᴛɪᴏɴ`**",
+        value=(
+            "-# There are warriors who fight with bolter and blade, and those who fight with data.\n"
+            "-# This is the new style baseline for ceremonial award prose."
+        ),
+        inline=False,
+    )
+    e.add_field(
+        name="**`ʀᴇᴄɪᴘɪᴇɴᴛ`**",
+        value=(
+            "-# <:WatchBrother:1435655975414796479> **Brother Example**\n"
+            "-# *Kill Team Example, Watch Company Primus*\n"
+            "-# Lineage: Example Chapter"
+        ),
+        inline=False,
+    )
+    e.add_field(
+        name="**`ᴀᴡᴀʀᴅ`**",
+        value="-# <:ArdentRaiderRibbon:1480974972590624788> **Ardent Raider Ribbon**\n-# 200+ Armory Points ✓",
+        inline=False,
+    )
+    e.set_footer(text="<:Deathwatch:1501748904880767147> ᛭⋅ ᴊᴇʀɪᴄʜᴏ sᴛᴀɴᴅs ⋅᛭ <:Deathwatch:1501748904880767147>")
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`ʟғɢ ǫᴜᴇᴜᴇ ᴘʀᴇᴠɪᴇᴡ`**",
+        description=f"{divider}\n-# Queue card style (operational)\n{divider}",
+        color=0x1F8B4C,
+    )
+    e.add_field(name="**`ǫᴜᴇᴜᴇ sɴᴀᴘsʜᴏᴛ`**", value="-# Players: **2/3**\n-# Mode: **Operation**\n-# Expires: <t:1893456000:R>", inline=False)
+    e.add_field(name="**`ᴘʟᴀʏᴇʀs`**", value="-# 1. Brother A\n-# 2. Brother B\n-# 3. — Empty —", inline=False)
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ ᴘʀᴇᴠɪᴇᴡ`**",
+        description="-# New style for target package embeds.",
+        color=0xA31919,
+    )
+    e.add_field(name="**`ɪɴᴛᴇʟ ᴅᴏssɪᴇʀ`**", value="-# **Theatre:** Avarax\n-# **Operation:** Inferno\n-# **Mode:** HARD-STRAT\n-# **Status:** RECRUITING", inline=False)
+    e.add_field(name="**`ғɪᴇʟᴅ ʙʀɪᴇғɪɴɢ`**", value="-# Breach and purge designated xeno enclaves.", inline=False)
+    e.add_field(name="**`ᴍᴏᴅɪғɪᴇʀs`**", value="-# Positive: Auspex Uplink\n-# Negative: Vox Static", inline=False)
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`ᴛᴇʀᴍɪɴᴜs ᴋɪʟʟ ʟᴏɢ ᴘʀᴇᴠɪᴇᴡ`**",
+        description="-# Verification and status card style.",
+        color=discord.Colour.orange(),
+    )
+    e.add_field(name="**`ʙʀᴏᴛʜᴇʀ`**", value="-# <@1234567890>", inline=True)
+    e.add_field(name="**`ᴄʟᴀss`**", value="-# Tactical", inline=True)
+    e.add_field(name="**`ᴛᴇʀᴍɪɴᴜs`**", value="-# Carnifex", inline=True)
+    e.add_field(name="**`sᴛᴀᴛᴜs`**", value="-# ⚠️ Under Review — Awaiting Apothecary Decision", inline=False)
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`ᴅᴇᴇᴅs ʟᴇᴅɢᴇʀ ᴘʀᴇᴠɪᴇᴡ`**",
+        description="-# Personal report-card style with concise field labels.",
+        color=0x2ECC71,
+    )
+    e.add_field(name="**`ʙᴇᴀʀᴇʀ`**", value="-# **Brother Example**\n-# Lineage: Example Chapter", inline=True)
+    e.add_field(name="**`sᴛᴀᴛᴜs`**", value="-# **Active**\n-# Last AAR: 2d ago", inline=True)
+    e.add_field(name="**`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`**", value="-# Operations: **120** | Waves: **40**\n-# AAR: **850** | Gene-seed: **30**", inline=False)
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`ʀᴇᴄᴏʀᴅ-ᴏғ-ʙʟᴏᴏᴅ ᴘʀᴇᴠɪᴇᴡ`**",
+        description="-# Diagnostics card with optional ANSI/code output companion.",
+        color=0x2ECC71,
+    )
+    e.add_field(name="**`sᴛᴀᴛᴜs`**", value="-# No discrepancies found", inline=False)
+    e.add_field(name="**`ɴᴏᴛᴇ`**", value="```ansi\nWATCH FORTRESS JERICHO // ARCHIVE-COGITATOR\n```", inline=False)
+    previews.append(e)
+
+    e = discord.Embed(
+        title="**`ᴀᴜᴛᴏ-ɪɴɢᴇsᴛ ᴘʀᴇᴠɪᴇᴡ`**",
+        description="-# Automated status notification style.",
+        color=0x3498DB,
+    )
+    e.add_field(name="**`ᴄʜʀᴏɴɪᴄʟᴇᴅ`**", value="-# 24", inline=True)
+    e.add_field(name="**`ʀᴇᴊᴇᴄᴛᴇᴅ`**", value="-# 2", inline=True)
+    e.add_field(name="**`ʙᴀᴄᴋʟᴏɢ`**", value="-# backlog ≈ **7**", inline=False)
+    previews.append(e)
+
+    # Optional guild-context card for chapter role mention readability.
+    if guild is not None:
+        e = discord.Embed(
+            title="**`ᴄʜᴀᴘᴛᴇʀ ʀᴇǫᴜᴇsᴛ ᴘʀᴇᴠɪᴇᴡ`**",
+            description="-# Apothecary workflow style preview.",
+            color=0x1F8B4C,
+        )
+        e.add_field(name="**`ʀᴇǫᴜᴇsᴛᴇʀ`**", value="-# <@1234567890>", inline=False)
+        e.add_field(name="**`ᴄᴜʀʀᴇɴᴛ ᴄʜᴀᴘᴛᴇʀ(s)`**", value="-# Crimson Fists", inline=False)
+        e.add_field(name="**`ʀᴇǫᴜᴇsᴛᴇᴅ ᴄʜᴀᴘᴛᴇʀ`**", value="-# Black Templars", inline=False)
+        previews.append(e)
+
+    # Live subsystem previews (builder-backed where practical).
+    if guild is not None:
+        try:
+            # Forge LFG live builder
+            lfg_queue = {
+                "queue_type": "operation",
+                "creator_id": int(getattr(requester, "id", 0) or 0),
+                "players": [
+                    {"user_id": int(getattr(requester, "id", 0) or 0), "platform": "pc"},
+                ],
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat(),
+                "initiation_trial": False,
+                "message": "Live builder preview",
+            }
+            live_lfg = _build_lfg_embed(lfg_queue, guild)
+            previews.append(live_lfg)
+        except Exception:
+            pass
+
+        try:
+            from . import target_packages_ops as _tp  # local import avoids cycles at import time
+
+            # Target package board live builder
+            now_iso = datetime.now(timezone.utc).isoformat()
+            sample_uid = str(int(getattr(requester, "id", 0) or 0) or 1)
+            queue_data = {
+                "entries": {
+                    sample_uid: {
+                        "platform": "pc",
+                        "mode_preference": "hard",
+                        "queued_at": now_iso,
+                    }
+                }
+            }
+            packages = {
+                "SD-001": {
+                    "id": "SD-001",
+                    "status": "RECRUITING",
+                    "mode": "Hard",
+                    "node": "Avarax",
+                    "mission_id": "INFERNO",
+                    "signed_up": [],
+                    "assigned_specialist_ids": [],
+                }
+            }
+            live_board = _tp._build_strike_queue_board_embed(queue_data, packages, guild)
+            previews.append(live_board)
+
+            # Strike directive live builder
+            sample_pkg = {
+                "id": "SD-101",
+                "directive_code": "SD-101",
+                "directive_name": "Silent Spear",
+                "node": "Avarax",
+                "mission_id": "INFERNO",
+                "mode": "Hard",
+                "status": "RECRUITING",
+                "briefing": "Breach xeno redoubt and recover cogitator caskets.",
+                "stratagems": {
+                    "positive": ["Auspex Uplink"],
+                    "negative": ["Vox Static"],
+                },
+                "intel_lapse": False,
+                "deadline": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+                "assigned_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+                "specialist_assigners": {},
+            }
+            viewer = requester if isinstance(requester, discord.Member) else None
+            live_pkg = _tp._build_package_embed(sample_pkg, rep=0.82, index=1, total=1, viewer=viewer, guild=guild)
+            previews.append(live_pkg)
+
+            # Strike directive signup card live builder
+            signup_pkg = {
+                **sample_pkg,
+                "required_roles": ["Bulwark", "Sniper"],
+                "signed_up": [int(getattr(requester, "id", 0) or 0)] if requester else [],
+                "assigned_specialist_ids": [],
+                "specialist_assigners": {},
+            }
+            live_signup = _tp._build_signup_embed_from_package(signup_pkg, rep=0.82, guild=guild)
+            previews.append(live_signup)
+
+            # Strike queue status card (command output shape)
+            live_queue_status = discord.Embed(
+                title="`sᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
+                description="```\nsᴛʀɪᴋᴇ ǫᴜᴇᴜᴇ · ʟɪᴠᴇ ᴛᴇʟᴇᴍᴇᴛʀʏ\n```",
+                color=0xA31919,
+            )
+            live_queue_status.add_field(
+                name="`ʏᴏᴜʀ ǫᴜᴇᴜᴇ sᴛᴀᴛᴜs`",
+                value=(
+                    "-# Mode: **Hard / Any**\n"
+                    "-# Position: **2/6**\n"
+                    "-# Queued: <t:1893451800:R>\n"
+                    "-# Expires: <t:1893457200:R>"
+                ),
+                inline=False,
+            )
+            live_queue_status.add_field(
+                name="`ᴇsᴛɪᴍᴀᴛᴇᴅ ᴡᴀɪᴛ`",
+                value=(
+                    "-# Estimated dispatch window: **15-30 min**\n"
+                    "-# Sweep cadence: every **15 min**\n"
+                    "-# Eligible fully-open directives now: **3**"
+                ),
+                inline=False,
+            )
+            live_queue_status.add_field(
+                name="`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`",
+                value="-# 1. Brother A · hard · <t:1893451200:R>\n-# 2. Brother B · any · <t:1893451800:R>",
+                inline=False,
+            )
+            live_queue_status.add_field(
+                name="`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`",
+                value="-# SD-104: Brother A, Brother B, Brother C",
+                inline=False,
+            )
+            previews.append(live_queue_status)
+
+            # Single-batch warning alert card
+            live_batch_warning = discord.Embed(
+                title=f"{_tp._DW_EMOJI} `sᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ ʀᴇᴍɪɴᴅᴇʀ` {_tp._DW_EMOJI}",
+                color=0xC4A030,
+                description=(
+                    "```\nᴏʀᴅᴏ xᴇɴᴏs · ᴄʏᴄʟᴇ ᴡᴀʀɴɪɴɢ\n```\n"
+                    "-# You have roughly **6 hour(s)** to assign and complete current directives.\n"
+                    "-# Ordo Xenos expects immediate compliance."
+                ),
+            )
+            live_batch_warning.add_field(
+                name="`ᴄᴜʀʀᴇɴᴛ ʙᴀᴛᴄʜ`",
+                value="-# Batch: `BATCH-117`\n-# Completed: 3/8 (37.50%)\n-# Still Active: 5",
+                inline=False,
+            )
+            live_batch_warning.add_field(
+                name="`ᴇᴀʀʟɪᴇsᴛ ᴅᴇᴀᴅʟɪɴᴇ`",
+                value="Primary Region: <t:1893457200:f>\nSecondary Region: <t:1893471600:f>",
+                inline=False,
+            )
+            previews.append(live_batch_warning)
+
+            # Specialist assignment notification card
+            live_specialist_assign = discord.Embed(
+                title=f"{_tp._DW_EMOJI} `sᴘᴇᴄɪᴀʟɪsᴛ ᴀssɪɢɴᴍᴇɴᴛ` {_tp._DW_EMOJI}",
+                color=0xE67E22,
+                description=(
+                    "```\nsᴛʀɪᴋᴇ ᴅɪʀᴇᴄᴛɪᴠᴇ · sᴘᴇᴄɪᴀʟɪsᴛ ʟɪɴᴋ\n```\n"
+                    "-# <@1234567890> has been attached to `SD-118`."
+                ),
+            )
+            live_specialist_assign.add_field(
+                name="`ᴅɪʀᴇᴄᴛɪᴠᴇ`",
+                value="`SD-118` — Breach at Vhane Spire\n[Open KT Directive](https://discord.com/channels/0/0/0)",
+                inline=False,
+            )
+            live_specialist_assign.add_field(
+                name="`sᴛᴀᴛᴜs`",
+                value="-# You remain locked until completion, failure, lapse, or cadre leader reassignment.",
+                inline=False,
+            )
+            previews.append(live_specialist_assign)
+
+            # Cycle summary cards: fortress/company/cadre variants
+            live_fortress_cycle = discord.Embed(
+                title="`ᴏʀᴅᴏ xᴇɴᴏs ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
+                color=0xA31919,
+                description="-# Fortress-level strike directive cycle outcome.",
+            )
+            live_fortress_cycle.add_field(
+                name="`ᴄʏᴄʟᴇ ʀᴇsᴜʟᴛs`",
+                value=(
+                    "-# **Directives Issued:** 12\n"
+                    "-# **Completed:** 8  ·  **Failed:** 2  ·  **Lapsed:** 2\n"
+                    "-# **Completion Rate:** 66.67%"
+                ),
+                inline=False,
+            )
+            live_fortress_cycle.add_field(
+                name="`ᴏʀᴅᴏ xᴇɴᴏs sᴛᴀɴᴅɪɴɢ`",
+                value="-# ☠☠ **Stable** `0.72`\n-# → ☠☠☠ **Elevated** `0.84`\n-# **Delta:** `+0.12`",
+                inline=False,
+            )
+            previews.append(live_fortress_cycle)
+
+            live_company_cycle = discord.Embed(
+                title="`ᴄᴏᴍᴘᴀɴʏ ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
+                color=0x8B0000,
+                description="-# Company-level strike directive cycle outcome.",
+            )
+            live_company_cycle.add_field(
+                name="`ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
+                value=(
+                    "-# **Directives Assigned:** 4\n"
+                    "-# **Completed:** 3  ·  **Failed:** 1\n"
+                    "-# **Rep Contributed:** `+0.09`"
+                ),
+                inline=False,
+            )
+            live_company_cycle.add_field(
+                name="`ᴄᴏᴍᴘʟᴇᴛᴇᴅ ᴏᴘᴇʀᴀᴛɪᴏɴs (3)`",
+                value="`SD-111` Breach of Kharon\n`SD-113` Relic Seizure\n`SD-115` Hive Purge",
+                inline=False,
+            )
+            previews.append(live_company_cycle)
+
+            live_cadre_cycle = discord.Embed(
+                title="`ᴄᴀᴅʀᴇ ᴄʏᴄʟᴇ sᴜᴍᴍᴀʀʏ`",
+                color=0xE67E22,
+                description="-# Cadre deployment and compliance summary.",
+            )
+            live_cadre_cycle.add_field(
+                name="`ʀᴇǫᴜɪʀᴇᴅ ᴀɴᴅ ᴅᴇᴘʟᴏʏᴇᴅ`",
+                value="`SD-110` Tactical ✓\n`SD-112` Bulwark ✓\n`SD-114` Sniper ✓",
+                inline=False,
+            )
+            live_cadre_cycle.add_field(
+                name="`ᴀᴅᴅɪᴛɪᴏɴᴀʟ ᴅᴇᴘʟᴏʏᴍᴇɴᴛs`",
+                value="`SD-117` Apothecary (voluntary)",
+                inline=False,
+            )
+            previews.append(live_cadre_cycle)
+        except Exception:
+            pass
+
+        try:
+            from . import terminus_ops as _term  # local import avoids cycles at import time
+
+            sample_bid = str(int(getattr(requester, "id", 0) or 0) or 1)
+            submitted_at = datetime.now(timezone.utc).isoformat()
+            log_entry = {
+                "kill_log_id": "KLOG-TEST-001",
+                "brother_id": sample_bid,
+                "class_name": "Tactical",
+                "terminus_type": "Carnifex",
+                "kill_number": 2,
+                "aar_link": "https://discord.com/channels/0/0/0",
+                "video_url": "https://example.com/clip",
+                "verified_prior_count": 1,
+                "status": "under_review",
+                "submitted_at": submitted_at,
+                "verifications": [sample_bid],
+            }
+            live_kill = _term._build_kill_log_embed(log_entry, guild)
+            previews.append(live_kill)
+
+            live_apo = _term._build_apo_notification_embed(log_entry)
+            previews.append(live_apo)
+
+            live_complete = _term._build_completion_embed(sample_bid, "Tactical")
+            previews.append(live_complete)
+
+            stale = [
+                {
+                    "kill_log_id": "KLOG-REM-001",
+                    "brother_id": sample_bid,
+                    "class_name": "Tactical",
+                    "terminus_type": "Carnifex",
+                    "submitted_at": submitted_at,
+                    "verifications": [sample_bid],
+                    "embed_message_id": 1,
+                }
+            ]
+            live_reminder = _term._build_reminder_embed(stale, int(getattr(guild, "id", 0) or 0))
+            previews.append(live_reminder)
+        except Exception:
+            pass
+
+        try:
+            from . import roster_ops as _ro  # local import avoids cycles at import time
+
+            live_milestone = _ro._build_milestone_embed(guild, "aar_points", 25000, 25250)
+            previews.append(live_milestone)
+        except Exception:
+            pass
+
+        try:
+            # Auto-ingest: operational DM-style ingest result card
+            live_ingest_rite = discord.Embed(
+                title="ᛙ⋅ AUTOMATED INGESTION RITE ⋅ᛙ",
+                color=0x2ECC71,
+                description="_Trigger: **Ready**_",
+            )
+            live_ingest_rite.add_field(name="▸ Chronicled", value="12", inline=True)
+            live_ingest_rite.add_field(name="▸ Rejected", value="1", inline=True)
+            live_ingest_rite.add_field(name="▸ Scan Window", value="Last 7 day(s)", inline=True)
+            live_ingest_rite.add_field(name="▸ Backlog", value="backlog ≈ **4**", inline=False)
+            live_ingest_rite.set_footer(text="Operation-Scribe Servitor · automated rite")
+            previews.append(live_ingest_rite)
+
+            # Auto-ingest: Forgemaster status card shape
+            live_ingest_status = discord.Embed(
+                title="᛭⋅ AUTO-AAR-INGEST STATUS ⋅᛭",
+                description="✅ **READY** — will ingest on next tick",
+                color=0x2ECC71,
+            )
+            live_ingest_status.add_field(
+                name="▶ Configuration",
+                value=(
+                    "**Runtime:** on\n"
+                    "**Config:** on\n"
+                    "**Interval:** 30 min · **Cooldown:** 6.0h · **Span:** 7d\n"
+                    "**Forced if:** backlog ≥ 20 OR stale ≥ 2d\n"
+                    "**Forge system:** on"
+                ),
+                inline=False,
+            )
+            live_ingest_status.add_field(name="▶ Backlog", value="**4** unprocessed AARs", inline=False)
+            live_ingest_status.add_field(
+                name="▸ History",
+                value=(
+                    "**Last check:** <t:1893450000:R> (READY)\n"
+                    "**Next check:** in ~12 min\n"
+                    "**Last ingest:** <t:1893442800:R> (ready)\n"
+                    "**Blocked since:** —\n"
+                    "**Last FM DM:** <t:1893442820:R>"
+                ),
+                inline=False,
+            )
+            live_ingest_status.set_footer(text="Operation-Scribe Servitor · /auto_ingest_force to override")
+            previews.append(live_ingest_status)
+        except Exception:
+            pass
+
+        try:
+            # Archive/audit: record-of-blood summary embed shape
+            live_rob_audit = discord.Embed(
+                title="`ʀᴇᴄᴏʀᴅ-ᴏғ-ʙʟᴏᴏᴅ ᴀᴜᴅɪᴛ`",
+                description="-# Watch Brothers scanned: 38",
+                color=0x2ECC71,
+            )
+            live_rob_audit.add_field(
+                name="`ᴅɪsᴄʀᴇᴘᴀɴᴄɪᴇs ғᴏᴜɴᴅ (2)`",
+                value=(
+                    "-# Brother Ajax: claimed **Black Templars**, role **Crimson Fists**\n"
+                    "-# Non-canonical chapter declared: **Storm Sentinels**"
+                ),
+                inline=False,
+            )
+            live_rob_audit.set_footer(text="Use PC/Console button for detailed ANSI view")
+            previews.append(live_rob_audit)
+
+            # Archive/audit: service-studs audit summary embed shape
+            live_stud_audit = discord.Embed(
+                title="`sᴇʀᴠɪᴄᴇ-sᴛᴜᴅs ᴀᴜᴅɪᴛ`",
+                description="-# Found 3 discrepancies",
+                color=0x2ECC71,
+            )
+            live_stud_audit.add_field(
+                name="`ɴᴇᴇᴅ ᴀᴡᴀʀᴅs (2)`",
+                value="-# Brother Castor: AWARD 1\n-# Brother Pollux: AWARD 2",
+                inline=False,
+            )
+            live_stud_audit.add_field(
+                name="`ɴᴇᴇᴅ ʀᴇғᴏʀᴍᴀᴛ (1)`",
+                value="-# Brother Voss: ●⚬⚬⚬ → ●",
+                inline=False,
+            )
+            live_stud_audit.set_footer(text="Use PC/Console button for detailed ANSI table")
+            previews.append(live_stud_audit)
+        except Exception:
+            pass
+
+    return previews
+
+
+class _PreviewEmbedPagesView(discord.ui.View):
+    """Ephemeral paginator for admin embed style preview."""
+
+    def __init__(self, embeds: list[discord.Embed], requester_id: int):
+        super().__init__(timeout=600)
+        self.embeds = embeds
+        self.page = 0
+        self.requester_id = requester_id
+        self._sync_buttons()
+
+    def _sync_buttons(self) -> None:
+        self.prev_btn.disabled = self.page <= 0
+        self.next_btn.disabled = self.page >= len(self.embeds) - 1
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return bool(interaction.user and interaction.user.id == self.requester_id)
+
+    @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if self.page > 0:
+            self.page -= 1
+            self._sync_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            return
+        await interaction.response.defer()
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if self.page < len(self.embeds) - 1:
+            self.page += 1
+            self._sync_buttons()
+            await interaction.response.edit_message(embed=self.embeds[self.page], view=self)
+            return
+        await interaction.response.defer()
+
+
+@_g.bot.tree.command(
+    name="preview_all_embeds_new_format",
+    description="Admin-only: preview the new embed formatting catalog (ephemeral).",
+)
+async def preview_all_embeds_new_format(interaction: discord.Interaction):
+    checker = _b("check_command_permission")
+    if callable(checker) and not checker(interaction.user, "preview_all_embeds_new_format"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    admin_ids = {str(a) for a in (_g.CONFIG.get("admin_user_ids") or [])}
+    if str(interaction.user.id) not in admin_ids:
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    embeds = _build_new_format_preview_embeds(interaction.guild, interaction.user)
+    total = len(embeds)
+    for idx, em in enumerate(embeds, start=1):
+        footer = em.footer.text if em.footer and em.footer.text else ""
+        page = f"Template {idx}/{total}"
+        em.set_footer(text=f"{footer} · {page}" if footer else page)
+
+    view = _PreviewEmbedPagesView(embeds, interaction.user.id)
+    await interaction.followup.send(
+        (
+            f"**Embed preview catalog**\n"
+            "-# Admin-only ephemeral preview of new formatting style.\n"
+            "-# Catalog contains template pages and builder-backed pages only.\n"
+            f"-# Pages: **{total}**"
+        ),
+        embed=embeds[0],
+        view=view,
         ephemeral=True,
         allowed_mentions=discord.AllowedMentions.none(),
     )
@@ -3642,6 +4192,7 @@ __all__ = [
     "_load_machine_spirits",
     "_load_rites",
     "_preview_stud_announcement",
+    "preview_all_embeds_new_format",
     "_resolve_killteam_for_member",
     "_resolve_killteams_for_member",
     "_restore_lfg_queue_views",

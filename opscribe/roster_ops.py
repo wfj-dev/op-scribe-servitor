@@ -2910,11 +2910,28 @@ def _find_chapter_role_by_name(guild: discord.Guild, chapter_name: str) -> Optio
     return None
 
 
+def _chapter_name_with_emoji(guild: discord.Guild, chapter_name: str) -> str:
+    """Render chapter name with guild emoji when available."""
+    name = (chapter_name or "").strip()
+    if not name:
+        return "Unknown"
+    try:
+        lookup = _b("_get_emoji_by_name")
+        if callable(lookup):
+            emoji = lookup(guild, name)
+            if emoji:
+                return f"{emoji} {name}"
+    except Exception:
+        pass
+    return name
+
+
 def _build_chapter_request_embed(
     interaction: discord.Interaction,
     *,
     title: str,
     description: str,
+    guild: discord.Guild,
     requester_chapters: list[str],
     requested_label: str,
     extra_fields: Optional[list[tuple[str, str]]] = None,
@@ -2926,10 +2943,11 @@ def _build_chapter_request_embed(
         description=description,
     )
     _safe_set_embed_author(embed, interaction.user)
+    chapter_display = ", ".join(_chapter_name_with_emoji(guild, ch) for ch in requester_chapters) if requester_chapters else "None currently assigned"
     embed.add_field(name="Requester", value=getattr(interaction.user, "mention", str(getattr(interaction.user, "id", "Unknown"))), inline=False)
     embed.add_field(
         name="Current Chapter(s)",
-        value=", ".join(requester_chapters) if requester_chapters else "None currently assigned",
+        value=chapter_display,
         inline=False,
     )
     embed.add_field(
@@ -3011,12 +3029,23 @@ async def chapter_request(
             )
         )
 
+    requested_display = getattr(matched_role, "mention", requested_name)
+    if matched_role is not None:
+        try:
+            lookup = _b("_get_emoji_by_name")
+            emoji = lookup(guild, getattr(matched_role, "name", requested_name)) if callable(lookup) else None
+            if emoji:
+                requested_display = f"{emoji} {requested_display}"
+        except Exception:
+            pass
+
     embed = _build_chapter_request_embed(
         interaction,
         title="Chapter Change Request",
         description="A brother has requested a chapter assignment/update.",
+        guild=guild,
         requester_chapters=requester_chapters,
-        requested_label=getattr(matched_role, "mention", requested_name),
+        requested_label=requested_display,
         extra_fields=extra_fields,
     )
 
@@ -3110,8 +3139,9 @@ async def request_homebrew_chapter(
         interaction,
         title="Homebrew Chapter Request",
         description="A brother has requested a new homebrew chapter for review.",
+        guild=guild,
         requester_chapters=requester_chapters,
-        requested_label=chapter_name,
+        requested_label=_chapter_name_with_emoji(guild, chapter_name),
         extra_fields=[
             ("Geneseed Lineage", lineage),
             ("Lore Blurb", lore),
@@ -3216,13 +3246,18 @@ async def chapter_assign(
         announcement_channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
 
     if announcement_channel is not None:
-        before_value = ", ".join(old_chapter_names) if old_chapter_names else "None"
+        def _with_chapter_emoji(name: str) -> str:
+            return _chapter_name_with_emoji(guild, name)
+
         if old_chapter_names and desired_chapter not in old_chapter_names:
-            summary = f"{before_value} -> {desired_chapter}"
+            summary = (
+                f"{', '.join(_with_chapter_emoji(ch) for ch in old_chapter_names)} "
+                f"-> {_with_chapter_emoji(desired_chapter)}"
+            )
         elif old_chapter_names:
-            summary = f"{desired_chapter} confirmed"
+            summary = f"{_with_chapter_emoji(desired_chapter)} confirmed"
         else:
-            summary = f"Assigned {desired_chapter}"
+            summary = f"Assigned {_with_chapter_emoji(desired_chapter)}"
 
         announce_embed = discord.Embed(
             title="Home Chapter Updated",
@@ -3231,8 +3266,12 @@ async def chapter_assign(
         )
         _safe_set_embed_author(announce_embed, interaction.user)
         announce_embed.add_field(name="Brother", value=member.mention, inline=True)
-        announce_embed.add_field(name="Previous", value=before_value, inline=True)
-        announce_embed.add_field(name="Current", value=desired_chapter, inline=True)
+        announce_embed.add_field(
+            name="Previous",
+            value=(", ".join(_with_chapter_emoji(ch) for ch in old_chapter_names) if old_chapter_names else "None"),
+            inline=True,
+        )
+        announce_embed.add_field(name="Current", value=_with_chapter_emoji(desired_chapter), inline=True)
         try:
             await announcement_channel.send(embed=announce_embed)
         except Exception as e:
@@ -4736,8 +4775,8 @@ async def tally_deeds(
             try:
                 kt_display_name = _b("_extract_killteam_name")(getattr(killteam, "name", "Unknown"))
                 roster_embed = discord.Embed(
-                    title="᛭⋅ KILL TEAM ROSTER ⋅᛭",
-                    description=f"*⌾ {kt_display_name} ⌾*",
+                    title="`ᴋɪʟʟ ᴛᴇᴀᴍ ʀᴏsᴛᴇʀ`",
+                    description=f"-# ⌾ {kt_display_name} ⌾",
                     color=0x2ECC71,
                 )
 
@@ -4772,7 +4811,7 @@ async def tally_deeds(
                                 omitted_rows = len(member_rows)
 
                         roster_embed.add_field(
-                            name="▸ ᴋᴛ ʀᴇɴᴏᴡɴ",
+                            name="`ᴋᴛ ʀᴇɴᴏᴡɴ`",
                             value=(
                                 f"Tier: **{kt_renown.get('tier', 'Unproven')}**\n"
                                 f"28d SD Completions: **{int(kt_renown.get('completions_28d', 0) or 0)}** | "
@@ -4783,7 +4822,7 @@ async def tally_deeds(
                         )
 
                         roster_embed.add_field(
-                            name="▸ 7ᴅ ᴋᴇʏ",
+                            name="`7ᴅ ᴋᴇʏ`",
                             value=(
                                 f"Window: Last **{window_days} day(s)**\n"
                                 "ΔAAR: Total AAR points earned in this window | Ω: Omega operations\n"
@@ -4834,7 +4873,7 @@ async def tally_deeds(
 
                         if omitted_rows > 0:
                             roster_embed.add_field(
-                                name="▸ ɴᴏᴛᴇ",
+                                name="`ɴᴏᴛᴇ`",
                                 value=f"{omitted_rows} member field(s) omitted to stay within Discord embed limits.",
                                 inline=False,
                             )
@@ -4905,7 +4944,7 @@ async def tally_deeds(
                             inline=False,
                         )
 
-                roster_embed.set_footer(text="᛭⋅ Roster generated from recent service records ⋅᛭")
+                roster_embed.set_footer(text="Roster generated from recent service records.")
 
                 # For shared send_to posts, keep a single embed with no pagination controls.
                 if send_to_channel:
@@ -4962,8 +5001,8 @@ async def tally_deeds(
                 )
 
                 embed = discord.Embed(
-                    title="᛭⋅ DEEDS LEDGER ⋅᛭",
-                    description="*⌾ Watch Fortress Jericho ⌾*",
+                    title="`ᴅᴇᴇᴅs ʟᴇᴅɢᴇʀ`",
+                    description="-# ⌾ Watch Fortress Jericho ⌾",
                     color=CHAPTER_EMBED_COLORS.get(home_ch, 0x2ECC71),
                 )
 
@@ -4986,18 +5025,18 @@ async def tally_deeds(
                 if bearer_studs > 0:
                     studs_pips = _studs_pips(bearer_studs)
                     bearer_value += f"\nService Studs: [{studs_pips}] ({bearer_studs})"
-                embed.add_field(name="▸ Bearer", value=bearer_value, inline=True)
+                embed.add_field(name="`ʙᴇᴀʀᴇʀ`", value=bearer_value, inline=True)
 
                 # ▸ Status field
                 status_val = stat_dict.get("Status", "Unknown")
                 last_aar_val = stat_dict.get("Last AAR", "—")
                 status_lines = [f"**{status_val}**", f"Last AAR: {last_aar_val}"]
-                embed.add_field(name="▸ Status", value="\n".join(status_lines), inline=True)
+                embed.add_field(name="`sᴛᴀᴛᴜs`", value="\n".join(status_lines), inline=True)
 
                 # ▸ Service Record field
                 induction_val = stat_dict.get("Induction", "—")
                 embed.add_field(
-                    name="▸ Induction",
+                    name="`ɪɴᴅᴜᴄᴛɪᴏɴ`",
                     value=f"{induction_val}",
                     inline=False,
                 )
@@ -5015,7 +5054,7 @@ async def tally_deeds(
                     f"Brothers Sanctioned: **{sanctioned_val}**\n"
                     f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
                 )
-                embed.add_field(name="▸ Deeds Tallied", value=deeds_value, inline=False)
+                embed.add_field(name="`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`", value=deeds_value, inline=False)
 
                 # ▸ Challenges field
                 target_role_ids_ch = {getattr(r, "id", 0) for r in getattr(target, "roles", [])}
@@ -5034,7 +5073,7 @@ async def tally_deeds(
 
                 if completed_challenges:
                     challenge_lines = [f"✦ {c}" for c in completed_challenges]
-                    base_field_name = f"▸ Challenges ({len(completed_challenges)})"
+                    base_field_name = f"`ᴄʜᴀʟʟᴇɴɢᴇs ({len(completed_challenges)})`"
                     current_chunk = ""
                     field_index = 0
 
@@ -5055,7 +5094,7 @@ async def tally_deeds(
                         embed.add_field(name=field_name, value=current_chunk, inline=False)
 
                 # Footer
-                embed.set_footer(text="᛭⋅ Recorded by decree of Watch Command ⋅᛭")
+                embed.set_footer(text="Recorded by decree of Watch Command.")
             else:
                 embed = _embed_from_ansi("Deeds Ledger", reply_text)
         except Exception:
@@ -6396,23 +6435,23 @@ def _format_bonds_embed(
     Shows up to 5 group bonds, with tier labels and member lines.
     """
     embed = discord.Embed(
-        title="᛭⋅ COMBAT BONDS ⋅᛭",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title="`ᴄᴏᴍʙᴀᴛ ʙᴏɴᴅs`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0x2ECC71,
     )
     if not bonds:
         embed.add_field(
-            name="▸ Status",
-            value="No qualifying Combat Bonds found in the current window.",
+            name="`sᴛᴀᴛᴜs`",
+            value="-# No qualifying Combat Bonds found in the current window.",
             inline=False,
         )
         return embed
 
     # Auspex window info
     window_text = f"Last {window_days} day(s)" if window_days is not None else f"Last {window_span} engagements"
-    embed.add_field(name="▸ Auspex Window", value=window_text, inline=True)
+    embed.add_field(name="`ᴀᴜsᴘᴇx ᴡɪɴᴅᴏᴡ`", value=f"-# {window_text}", inline=True)
     embed.add_field(
-        name="▸ Veneration Key",
+        name="`ᴠᴇɴᴇʀᴀᴛɪᴏɴ ᴋᴇʏ`",
         value="FRAGILE | FORMING | RELIABLE | STALWART | INDOMITABLE",
         inline=True,
     )
@@ -6446,12 +6485,12 @@ def _format_bonds_embed(
             lines.append("\n".join(group_lines))
         value = "\n\n".join(lines)  # Separate groups with blank line
         embed.add_field(
-            name=f"▸ {tier}",
+            name=f"`{tier}`",
             value=value,
             inline=False,
         )
 
-    embed.set_footer(text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭")
+    embed.set_footer(text="These Combat Bonds may be invoked by decree of Watch Command.")
     return embed
 
 
@@ -6500,8 +6539,8 @@ def _format_personal_bonds_jericho_embed(
     chapter_emoji = _b("_get_emoji_by_name")(guild, target_chapter) if guild and target_chapter else ""
 
     embed = discord.Embed(
-        title="᛭⋅ COMBAT BONDS ⋅᛭",
-        description="*⌾ Watch Fortress Jericho ⌾*",
+        title="`ᴄᴏᴍʙᴀᴛ ʙᴏɴᴅs`",
+        description="-# ⌾ Watch Fortress Jericho ⌾",
         color=0x2ECC71,
     )
 
@@ -6513,19 +6552,19 @@ def _format_personal_bonds_jericho_embed(
     if chapter_emoji:
         bearer_parts.append(chapter_emoji)
     embed.add_field(
-        name="▸ Bearer",
+        name="`ʙᴇᴀʀᴇʀ`",
         value=" ".join(bearer_parts),
         inline=True,
     )
 
     # Auspex window info
     window_text = f"Last {window_days} day(s)" if window_days else "Last 28 days"
-    embed.add_field(name="▸ Auspex Window", value=window_text, inline=True)
+    embed.add_field(name="`ᴀᴜsᴘᴇx ᴡɪɴᴅᴏᴡ`", value=f"-# {window_text}", inline=True)
 
     if not pair_bonds:
         embed.add_field(
-            name="▸ Status",
-            value="No qualifying Combat Bonds found for this Brother in the current window.",
+            name="`sᴛᴀᴛᴜs`",
+            value="-# No qualifying Combat Bonds found for this Brother in the current window.",
             inline=False,
         )
         return embed
@@ -6613,12 +6652,12 @@ def _format_personal_bonds_jericho_embed(
         bonds_lines.append(f"**{tier}**\n" + "\n".join(partner_labels))
 
     embed.add_field(
-        name="▸ Forged Bonds",
+        name="`ғᴏʀɢᴇᴅ ʙᴏɴᴅs`",
         value="\n\n".join(bonds_lines) if bonds_lines else "None",
         inline=False,
     )
 
-    embed.set_footer(text="᛭⋅ These Combat Bonds may be invoked by decree of Watch Command. ⋅᛭")
+    embed.set_footer(text="These Combat Bonds may be invoked by decree of Watch Command.")
     return embed
 
 
@@ -7433,8 +7472,8 @@ def _build_milestone_embed(
     emoji_str = f"{emoji} " if emoji else ""
 
     embed = discord.Embed(
-        title=f"᛭⋅ {emoji_str}{title} {emoji_str}⋅᛭",
-        description=f"*{description}*",
+        title=f"`{emoji_str}{title} {emoji_str}`",
+        description=f"-# {description}",
         color=color,
     )
 
@@ -7444,14 +7483,14 @@ def _build_milestone_embed(
 
     # Add the milestone field
     embed.add_field(
-        name="▸ Milestone Reached",
-        value=f"**{milestone_str}**",
+        name="`ᴍɪʟᴇsᴛᴏɴᴇ ʀᴇᴀᴄʜᴇᴅ`",
+        value=f"-# **{milestone_str}**",
         inline=True,
     )
 
     embed.add_field(
-        name="▸ Current Total",
-        value=f"**{current_str}**",
+        name="`ᴄᴜʀʀᴇɴᴛ ᴛᴏᴛᴀʟ`",
+        value=f"-# **{current_str}**",
         inline=True,
     )
 
@@ -8690,8 +8729,8 @@ async def promotion_queue(interaction: discord.Interaction):
 
     # --- Watch Veteran Promotion Queue ---
     veteran_embed = discord.Embed(
-        title="᛭⋅ WATCH VETERAN QUEUE ⋅᛭",
-        description="*Requirements: 200 AAR + 2 weeks service*",
+        title="`ᴡᴀᴛᴄʜ ᴠᴇᴛᴇʀᴀɴ ǫᴜᴇᴜᴇ`",
+        description="-# Requirements: 200 AAR + 2 weeks service",
         color=0xFFD700,  # Gold
     )
 
@@ -8705,7 +8744,7 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "veteran", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | **{date_str}**")
         veteran_embed.add_field(
-            name=f"▸ Ready on Date ({len(veteran_aar_met_time_not)})",
+            name=f"`ʀᴇᴀᴅʏ ᴏɴ ᴅᴀᴛᴇ ({len(veteran_aar_met_time_not)})`",
             value=_build_field_value(lines, len(veteran_aar_met_time_not)),
             inline=False,
         )
@@ -8719,7 +8758,7 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "veteran", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | needs **{aar_needed}**")
         veteran_embed.add_field(
-            name=f"▸ Needs AAR ({len(veteran_aar_not_time_met)})",
+            name=f"`ɴᴇᴇᴅs ᴀᴀʀ ({len(veteran_aar_not_time_met)})`",
             value=_build_field_value(lines, len(veteran_aar_not_time_met)),
             inline=False,
         )
@@ -8734,22 +8773,22 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "veteran", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | {aar_pts} AAR | {date_str}, +{aar_needed}")
         veteran_embed.add_field(
-            name=f"▸ Needs Both ({len(veteran_aar_not_time_not)})",
+            name=f"`ɴᴇᴇᴅs ʙᴏᴛʜ ({len(veteran_aar_not_time_not)})`",
             value=_build_field_value(lines, len(veteran_aar_not_time_not)),
             inline=False,
         )
 
     if not (veteran_aar_met_time_not or veteran_aar_not_time_met or veteran_aar_not_time_not):
-        veteran_embed.add_field(name="▸ Status", value="No Watch Brothers pending.", inline=False)
+        veteran_embed.add_field(name="`sᴛᴀᴛᴜs`", value="-# No Watch Brothers pending.", inline=False)
 
     total_veterans = len(veteran_aar_met_time_not) + len(veteran_aar_not_time_met) + len(veteran_aar_not_time_not)
-    veteran_embed.set_footer(text=f"᛭⋅ {total_veterans} in queue ⋅᛭")
+    veteran_embed.set_footer(text=f"{total_veterans} in queue")
     embeds.append(veteran_embed)
 
     # --- Service Studs Queue ---
     studs_embed = discord.Embed(
-        title="᛭⋅ SERVICE STUDS QUEUE ⋅᛭",
-        description="*Requirements: 4 weeks + 400 AAR per stud*",
+        title="`sᴇʀᴠɪᴄᴇ sᴛᴜᴅs ǫᴜᴇᴜᴇ`",
+        description="-# Requirements: 4 weeks + 400 AAR per stud",
         color=0xC0C0C0,  # Silver
     )
 
@@ -8772,7 +8811,7 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "studs", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | **{date_str}**")
         studs_embed.add_field(
-            name=f"▸ Ready on Date ({len(studs_aar_met_time_not)})",
+            name=f"`ʀᴇᴀᴅʏ ᴏɴ ᴅᴀᴛᴇ ({len(studs_aar_met_time_not)})`",
             value=_build_field_value(lines, len(studs_aar_met_time_not)),
             inline=False,
         )
@@ -8795,7 +8834,7 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "studs", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | needs **{aar_needed}**")
         studs_embed.add_field(
-            name=f"▸ Needs AAR ({len(studs_aar_not_time_met)})",
+            name=f"`ɴᴇᴇᴅs ᴀᴀʀ ({len(studs_aar_not_time_met)})`",
             value=_build_field_value(lines, len(studs_aar_not_time_met)),
             inline=False,
         )
@@ -8820,16 +8859,16 @@ async def promotion_queue(interaction: discord.Interaction):
             arrow = _get_position_arrow(str(member.id), "studs", pos)
             lines.append(f"᛭⋅ {member_str}{arrow} | →{target_str} | {date_str}, +{aar_needed}")
         studs_embed.add_field(
-            name=f"▸ Needs Both ({len(studs_aar_not_time_not)})",
+            name=f"`ɴᴇᴇᴅs ʙᴏᴛʜ ({len(studs_aar_not_time_not)})`",
             value=_build_field_value(lines, len(studs_aar_not_time_not)),
             inline=False,
         )
 
     if not (studs_aar_met_time_not or studs_aar_not_time_met or studs_aar_not_time_not):
-        studs_embed.add_field(name="▸ Status", value="No veterans pending.", inline=False)
+        studs_embed.add_field(name="`sᴛᴀᴛᴜs`", value="-# No veterans pending.", inline=False)
 
     total_studs = len(studs_aar_met_time_not) + len(studs_aar_not_time_met) + len(studs_aar_not_time_not)
-    studs_embed.set_footer(text=f"᛭⋅ {total_studs} in queue ⋅᛭")
+    studs_embed.set_footer(text=f"{total_studs} in queue")
     embeds.append(studs_embed)
 
     # Save current positions for next comparison (merge with current on-disk state
@@ -8937,8 +8976,8 @@ async def company_roster(interaction: discord.Interaction):
         # Build embed for this company
         short_name = _extract_company_short_name(company)
         embed = discord.Embed(
-            title=f"᛭⋅ {short_name.upper()} COMPANY ⋅᛭",
-            description=f"*⌾ {company} ⌾*",
+            title=f"`{short_name.upper()} ᴄᴏᴍᴘᴀɴʏ`",
+            description=f"-# ⌾ {company} ⌾",
             color=0x2ECC71,
         )
 
@@ -8949,7 +8988,7 @@ async def company_roster(interaction: discord.Interaction):
 
         if kt_lines:
             embed.add_field(
-                name="▸ Kill Teams",
+                name="`ᴋɪʟʟ ᴛᴇᴀᴍs`",
                 value="\n".join(kt_lines),
                 inline=False,
             )
@@ -8957,15 +8996,15 @@ async def company_roster(interaction: discord.Interaction):
         # Add unassigned members if any
         if no_kt_members:
             embed.add_field(
-                name="▸ No Kill Team",
-                value=f"{len(no_kt_members)} member(s)",
+                name="`ɴᴏ ᴋɪʟʟ ᴛᴇᴀᴍ`",
+                value=f"-# {len(no_kt_members)} member(s)",
                 inline=False,
             )
 
         # Summary for this company
         total_in_kts = sum(len(m) for m in kt_counts.values())
         embed.set_footer(
-            text=f"᛭⋅ {total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total ⋅᛭"
+            text=f"{total_in_kts} in Kill Teams | {len(no_kt_members)} unassigned | {len(company_members)} total"
         )
 
         embeds.append(embed)
@@ -8979,7 +9018,7 @@ async def company_roster(interaction: discord.Interaction):
 
     # Add a summary embed at the end
     summary_embed = discord.Embed(
-        title="᛭⋅ FORTRESS SUMMARY ⋅᛭",
+        title="`ғᴏʀᴛʀᴇss sᴜᴍᴍᴀʀʏ`",
         color=0xFFD700,
     )
     summary_embed.add_field(
