@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -17,7 +17,10 @@ class FileChange:
 
 
 def _iter_files(root: Path) -> list[Path]:
-    return sorted(p for p in root.rglob("*") if p.is_file())
+    return sorted(
+        p for p in root.rglob("*")
+        if p.is_file() and ".bak." not in p.name
+    )
 
 
 def _replace_in_file(path: Path, old: str, new: str, *, backup: bool, stamp: str) -> int:
@@ -59,7 +62,7 @@ def main() -> None:
     if args.old_id == args.new_id:
         raise SystemExit("old-id and new-id are identical; nothing to do")
 
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup = not args.no_backup
 
     scanned = 0
