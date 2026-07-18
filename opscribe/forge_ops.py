@@ -345,7 +345,7 @@ def _build_lfg_embed(queue_data: dict, guild: discord.Guild) -> discord.Embed:
 
     # Console limit info for Omega
     if max_console is not None:
-        console_status = f"-# Console: {console_count}/{max_console}"
+        console_status = f"-# 🎮 Console: {console_count}/{max_console}"
         if console_count >= max_console:
             console_status += " (limit reached)"
         embed.add_field(name="`ᴘʟᴀᴛғᴏʀᴍ ʟɪᴍɪᴛs`", value=console_status, inline=False)
