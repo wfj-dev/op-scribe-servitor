@@ -1699,6 +1699,133 @@ class TestExpiryWarnings:
         assert store["cycle"].get("general_warning_sent_at", {}).get("BATCH-20260623") is not None
         assert store["cycle"]["last_general_warning_batch_id"] == "BATCH-20260623"
 
+    def test_expire_packages_skips_missing_and_invalid_deadlines(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        warnings = []
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260624",
+                "batch_summary_posted_at": {},
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "MISS-1": {
+                    "id": "MISS-1",
+                    "status": STATUS_RECRUITING,
+                    "deadline": "",
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                },
+                "BAD-1": {
+                    "id": "BAD-1",
+                    "status": STATUS_RECRUITING,
+                    "deadline": "not-a-date",
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                },
+                "GOOD-1": {
+                    "id": "GOOD-1",
+                    "status": STATUS_RECRUITING,
+                    "deadline": (now + timedelta(hours=6)).isoformat(),
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                },
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(tp, "_apply_rep_delta", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(tp, "_send_single_batch_warning", lambda *_args, **_kwargs: False)
+        logger = types.SimpleNamespace(
+            warning=lambda msg, *args: warnings.append(msg % args if args else msg),
+            debug=lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(tp._g, "logger", logger, raising=False)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_delete_package_messages", _noop)
+        monkeypatch.setattr(tp, "_update_ox_rep_embed", _noop)
+        monkeypatch.setattr(tp, "_post_batch_summary", _noop)
+
+        guild = _make_guild([])
+        asyncio.run(expire_packages(guild))
+
+        assert store["packages"]["MISS-1"]["status"] == STATUS_RECRUITING
+        assert store["packages"]["BAD-1"]["status"] == STATUS_RECRUITING
+        assert store["cycle"]["failed"] == 0
+        assert any("missing deadline" in msg for msg in warnings)
+        assert any("invalid deadline" in msg for msg in warnings)
+
+    def test_expire_packages_treats_naive_deadline_as_utc(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        now = datetime.now(timezone.utc)
+        naive_past = (now - timedelta(minutes=10)).replace(tzinfo=None).isoformat()
+        posted_batches = []
+        store = {
+            "rep": 30.0,
+            "rep_scale_version": 2,
+            "cycle": {
+                "generated_at": None,
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "lapsed": 0,
+                "batch_id": "BATCH-20260624",
+                "batch_summary_posted_at": {},
+            },
+            "entity_stats": {"companies": {}, "kill_teams": {}, "cadres": {}},
+            "packages": {
+                "NAIVE-1": {
+                    "id": "NAIVE-1",
+                    "status": STATUS_RECRUITING,
+                    "deadline": naive_past,
+                    "batch_id": "BATCH-20260624",
+                    "assigned_kt": None,
+                    "assigned_company": None,
+                },
+            },
+            "rep_embed_message_id": None,
+        }
+
+        monkeypatch.setattr(tp, "_load_tp", lambda: store)
+        monkeypatch.setattr(tp, "_save_tp", lambda _data: None)
+        monkeypatch.setattr(tp, "_apply_rep_delta", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(tp, "_send_single_batch_warning", lambda *_args, **_kwargs: False)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        async def fake_post_batch_summary(_guild, _data, batch_id=None):
+            posted_batches.append(batch_id)
+
+        monkeypatch.setattr(tp, "_delete_package_messages", _noop)
+        monkeypatch.setattr(tp, "_update_ox_rep_embed", _noop)
+        monkeypatch.setattr(tp, "_post_batch_summary", fake_post_batch_summary)
+
+        guild = _make_guild([])
+        asyncio.run(expire_packages(guild))
+
+        assert store["packages"]["NAIVE-1"]["status"] == STATUS_FAILED
+        assert store["cycle"]["failed"] == 1
+        assert posted_batches == ["BATCH-20260624"]
+
 
 class TestCycleReportIdempotencyAndScope:
     def test_batch_recency_prefers_suffixed_same_day_batch(self):
