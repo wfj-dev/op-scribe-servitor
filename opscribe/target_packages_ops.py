@@ -2863,62 +2863,20 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
         )
 
     _mroles = _member_role_names(member)
-    if "Watch Master" in _mroles:
-        return _active()
-
-    if "Watch Captain" in _mroles or "Watch Lieutenant" in _mroles:
-        from .roster_ops import _get_member_company_name
-        company = _get_member_company_name(member)
-        return [
-            p for p in _active()
-            if p["status"] == STATUS_DISTRIBUTED
-            or (
-                p.get("assigned_company") == company
-                and p["status"] in (STATUS_RECRUITING, STATUS_DEPLOYED)
-            )
-            or _is_personally_attached(p)
-        ]
-
-    # High Command visibility mirrors signup eligibility: global active pool.
-    # Captain/Lieutenant company scope is intentionally handled above.
-    if any(role_name in HIGH_COMMAND_RANKS for role_name in _mroles):
-        return _active()
-
-    if _mroles & _CADRE_LEADER_ROLES:
-        cadre_pkgs = [
-            p for p in _active([STATUS_RECRUITING, STATUS_DEPLOYED])
-            if any(_cadre_leader_owns(member, r) for r in p.get("required_roles", []))
-        ]
-        attached_pkgs = [p for p in _active() if _is_personally_attached(p)]
-        merged_by_id = {p.get("id"): p for p in cadre_pkgs}
-        for p in attached_pkgs:
-            merged_by_id[p.get("id")] = p
-        return list(merged_by_id.values())
+    from .roster_ops import _get_member_company_name
+    member_company = _get_member_company_name(member)
 
     if _is_debug_mode() and _is_admin(member):
         return _active()
 
-    from .forge_ops import _resolve_killteam_for_member
-    from .roster_ops import _get_member_company_name
-    kt = _resolve_killteam_for_member(member)
-    company = _get_member_company_name(member)
-    if kt or company:
+    if member_company:
         return [
             p for p in _active()
             if _is_personally_attached(p)
-            or (
-                p.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED)
-                and (
-                    (kt and p.get("assigned_kt") == kt)
-                    or (
-                        p.get("assigned_kt") is None
-                        and company
-                        and p.get("assigned_company") == company
-                    )
-                )
-            )
+            or p.get("assigned_company") == member_company
         ]
-    return [p for p in _active() if _is_personally_attached(p)]
+
+    return _active()
 
 
 def _visible_non_deployed_packages_for_member(member: discord.Member, packages: dict) -> list[dict]:
@@ -6728,6 +6686,11 @@ def _member_has_structural_scope(member_kt: str | None, member_company: str | No
     return bool(member_kt or member_company)
 
 
+def _member_has_specialist_role(member: discord.Member) -> bool:
+    """Return True when a member holds any cadre-specialist role."""
+    return bool(_member_role_names(member) & _CADRE_SPECIALIST_ROLES)
+
+
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
     """Return (eligible, reason). Watch Brother+ check, unit scope, not already signed up."""
     if member.bot or not _is_active(member):
@@ -6761,19 +6724,12 @@ def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Gu
     if member_max < min_idx:
         return False, "You must be at least Watch Brother to sign up."
 
-    # Structural scope is determined only by KT/company attachment.
-    # Members without KT/company attachment are considered unscoped.
-    from .forge_ops import _resolve_killteam_for_member
     from .roster_ops import _get_member_company_name
-    member_kt = _resolve_killteam_for_member(member)
     member_company = _get_member_company_name(member)
-    assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
 
-    if _member_has_structural_scope(member_kt, member_company) and not (
-        member_kt == assigned_kt or member_company == assigned_company
-    ):
-        return False, f"You are not part of {assigned_kt or assigned_company}."
+    if member_company and member_company != assigned_company:
+        return False, f"You are not part of {assigned_company}."
 
     # Must not already be signed up on another active package
     data = _load_tp()

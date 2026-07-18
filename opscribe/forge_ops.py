@@ -1362,10 +1362,10 @@ def _get_service_studs_announcement(
     pip_changes = []
     if delta_auramite > 0:
         pip_word = "Stud" if delta_auramite == 1 else "Studs"
-        pip_changes.append(f"+{delta_auramite}● Auramite {pip_word}")
+        pip_changes.append(f"+{delta_auramite} ● Auramite {pip_word}")
     if delta_plasteel > 0:
         pip_word = "Stud" if delta_plasteel == 1 else "Studs"
-        pip_changes.append(f"+{delta_plasteel}⚬ Plasteel {pip_word}")
+        pip_changes.append(f"+{delta_plasteel} ⚬ Plasteel {pip_word}")
 
     # Service Record field (bold values for numerical emphasis)
     if pip_changes:
