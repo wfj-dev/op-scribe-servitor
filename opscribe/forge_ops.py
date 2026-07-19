@@ -2097,7 +2097,7 @@ def _get_distinguished_kadaku_campaign_announcement(
         color=0x4E4631,
         openings=KADAKU_CAMPAIGN_OPENINGS,
         proclamations=KADAKU_CAMPAIGN_PROCLAMATIONS,
-        chapter_lines=KADAKU_CAMPAIGN_CHAPTER_LINES,
+        chapter_lines=DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES,
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Distinguished Kadaku Campaign Medal",
         award_image="kadaku.jpeg",
@@ -2204,7 +2204,7 @@ def _get_herisor_defense_announcement(
         proclamations=[
             _HERISOR_DEFENSE_PROCLAMATION,
         ],
-        chapter_lines={},
+        chapter_lines=HERISOR_DEFENSE_CHAPTER_LINES,
         rank_lines={},
         award_label="Herisor Defense Medal",
         award_image="award_herisor_defense_medal.png",
@@ -2229,7 +2229,7 @@ def _get_distinguished_herisor_defense_announcement(
         proclamations=[
             _HERISOR_DEFENSE_DISTINGUISHED_PROCLAMATION,
         ],
-        chapter_lines={},
+        chapter_lines=DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES,
         rank_lines={},
         award_label="Distinguished Herisor Defense Medal",
         award_image="award_distinguished_herisor_defense_medal.png",
@@ -2254,7 +2254,7 @@ def _get_distinguished_herisor_defense_valor_announcement(
         proclamations=[
             _HERISOR_DEFENSE_VALOR_PROCLAMATION,
         ],
-        chapter_lines={},
+        chapter_lines=DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES,
         rank_lines={},
         award_label="Distinguished Herisor Defense Medal with Valor",
         award_image="award_distinguished_herisor_defense_medal_with_valor.png",
