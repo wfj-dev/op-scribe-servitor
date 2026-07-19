@@ -797,6 +797,7 @@ RANK_ROLE_TIERS: Dict[str, int] = {
 HOME_CHAPTERS = [
     "Angels of Defiance",
     "Angels of Vengeance",
+    "Atlantian Spears",
     "Black Templars",
     "Bleeding Hearts",
     "Blood Angels",
@@ -819,6 +820,7 @@ HOME_CHAPTERS = [
     "Flesh Tearers",
     "Genesis Chapter",
     "Hawk Lords",
+    "Howling Griffons",
     "Hospitallers",
     "Imperial Fists",
     "Imperius Reavers",
@@ -826,6 +828,7 @@ HOME_CHAPTERS = [
     "Iron Hounds",
     "Iron Lords",
     "Iron Ravens",
+    "Iron Snakes",
     "Knights of the Raven",
     "Lamenters",
     "Marines Errant",
