@@ -469,6 +469,7 @@ CHAPTER_EMBED_COLORS: dict = {
     # --- Canon chapters ---
     "Angels of Defiance":     0xE3DAC9,  # Quartered bone & black; bone used as accent
     "Angels of Vengeance":    0x0B0B0B,  # Jet black (Dark Angels Legion black)
+    "Atlantian Spears":       0x1D7A8C,  # Teal blue (gold trim accents)
     "Black Shield":           0x0A0A0A,  # Black armor, no chapter heraldry
     "Black Templars":         0x100F0F,  # Black with white insets
     "Blood Angels":           0xBA0C2F,  # Bright vibrant red
@@ -483,6 +484,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Flesh Tearers":          0x6E1414,  # Dark crimson
     "Genesis Chapter":        0xB01B1B,  # Red
     "Hawk Lords":             0x6E4B8B,  # Purple
+    "Howling Griffons":       0xC83A1E,  # Quartered red/yellow; red used as accent
     "Imperial Fists":         0xF4C20D,  # Yellow
     "Iron Hands":             0x0C0C0C,  # Black (bare-metal augmetics)
     "Iron Lords":             0x0B0B0B,  # Black with red thigh plates
@@ -518,6 +520,7 @@ CHAPTER_EMBED_COLORS: dict = {
     "Imperius Reavers":       0xB8902F,  # Deep imperial gold
     "Iron Hounds":            0x4A4E54,  # Gunmetal grey
     "Iron Ravens":            0x2B2E33,  # Dark gunmetal/black
+    "Iron Snakes":            0x2D6F78,  # Sea green (Ithaka oceanic heraldry)
     "Knights of the Raven":   0x14342B,  # Dark green (Dark Angels successor)
     "Tempestuous Angels":     0x3A6EA5,  # Storm blue
     "The Drakes":             0x1E5631,  # Dark green (fire/drake themed)

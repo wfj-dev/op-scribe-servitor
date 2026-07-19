@@ -2204,8 +2204,8 @@ def _get_herisor_defense_announcement(
         proclamations=[
             _HERISOR_DEFENSE_PROCLAMATION,
         ],
-        chapter_lines={},
-        rank_lines={},
+        chapter_lines=HERISOR_DEFENSE_CHAPTER_LINES,
+        rank_lines=BLACK_LAURELS_RANK_LINES,
         award_label="Herisor Defense Medal",
         award_image="award_herisor_defense_medal.png",
     )
@@ -2229,8 +2229,8 @@ def _get_distinguished_herisor_defense_announcement(
         proclamations=[
             _HERISOR_DEFENSE_DISTINGUISHED_PROCLAMATION,
         ],
-        chapter_lines={},
-        rank_lines={},
+        chapter_lines=DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES,
+        rank_lines=DISTINGUISHED_BLACK_REEF_RANK_LINES,
         award_label="Distinguished Herisor Defense Medal",
         award_image="award_distinguished_herisor_defense_medal.png",
     )
@@ -2254,8 +2254,8 @@ def _get_distinguished_herisor_defense_valor_announcement(
         proclamations=[
             _HERISOR_DEFENSE_VALOR_PROCLAMATION,
         ],
-        chapter_lines={},
-        rank_lines={},
+        chapter_lines=DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES,
+        rank_lines=ORDER_OMEGA_RANK_LINES,
         award_label="Distinguished Herisor Defense Medal with Valor",
         award_image="award_distinguished_herisor_defense_medal_with_valor.png",
     )

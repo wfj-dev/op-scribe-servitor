@@ -5,6 +5,7 @@ from typing import Dict, List  # noqa: F401
 CHAPTER_BLESSINGS: Dict[str, str] = {
     "Angels of Defiance": "Unyielding as the Lion, defiant unto death—your armor bears the Unforgiven's resolve.",
     "Angels of Vengeance": "The wrath of the Lion courses through your warplate.",
+    "Atlantian Spears": "Teal and gold warplate, guided by disciplined foresight—your armor bears Sanguinius's legacy without surrender.",
     "Black Templars": "No pity, no remorse, no fear—your armor embodies the Eternal Crusade.",
     "Bleeding Hearts": "The Rage burns close—your armor bears the weight of martyrdom and the trophies of the hunt.",
     "Blood Angels": "By the Blood of Sanguinius, your armor is sanctified.",
@@ -28,12 +29,13 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst is tempered within your armor's adamantine heart.",
     "Genesis Chapter": "The purity of Guilliman's line flows through these blessed plates.",
     "Hawk Lords": "Swift as the raptor, your armor bears you to righteous war.",
+    "Howling Griffons": "Red and yellow quartered, oath-bound and unbowed—your armor carries vows fulfilled in fire and steel.",
     "Hospitallers": "Mercy and wrath unite—your armor shields the weak and smites the wicked.",
     "Imperial Fists": "Fortify your spirit as these plates fortify your flesh.",
     "Imperius Reavers": "The Eastern Fringe demands warriors without mercy—your armor carries the Stormbringers' unyielding defiance to every xenos threat.",
     "Iron Hands": "The flesh is weak, but your armor is the strength of iron.",
     "Iron Ravens": "Silent shadow, tempered iron—your armor moves unseen and strikes with precision.",
-    "Iron Snakes": "The waters of Ithaka anoint your armor; as the Snakes strike, so shall you.",
+    "Iron Snakes": "Sea-green plate and calm precision—your armor bears Ithaka's patient hunter creed into the Long Watch.",
     "Iron Hounds": "Guilliman's hounds pursue without relent; your armor knows no surrender.",
     "Iron Lords": "Iron of vigil, iron of grip—your armor upholds the Iron Watch; the Grendl Stars hold because you do.",
     "Knights of the Raven": "In cunning silence, your armor conceals the Emperor's justice.",
@@ -67,25 +69,75 @@ CHAPTER_BLESSINGS: Dict[str, str] = {
 # Higher ranks should be checked first since members often have multiple rank roles
 
 FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
+    "Angels of Defiance": [
+        "Defiance is not a pose but a practice; I prove it by tending my own warplate.",
+        "The Lion's unbowed sons do not wait for certainty from others when their own hands suffice.",
+        "I bless this armor myself and leave no space for doubt between oath and action.",
+    ],
+    "Angels of Vengeance": [
+        "Vengeance teaches patience and self-command; both are present in this rite.",
+        "The Lion's wrath is best trusted to disciplined hands, so these plates are mine to sanctify.",
+        "No other artisan need intervene—the work is mine, and so is the judgment behind it.",
+    ],
+    "Atlantian Spears": [
+        "Foresight and discipline guide my hand; I bless this plate to stand against xenos and heretic alike.",
+        "Teal and gold are not ornament but duty fulfilled; I tend this armor myself.",
+        "Sanguinius gave us fury, but restraint keeps us true; I sanctify this warplate in that balance.",
+    ],
+    "Black Shield": [
+        "I have no chapter's forge to claim—only my own hands, and they are enough.",
+        "What name I lost does not matter; this armor answers to my oath alone.",
+        "The rite is mine because there is no lineage left to perform it in my stead.",
+    ],
+    "Black Templars": [
+        "A crusader's plate is never truly at rest; I sanctify it myself and return to the march.",
+        "No pity, no delay, no dependence—these are suitable words for a forge rite as well as a war.",
+        "The Eternal Crusade leaves little room for idle hands, so mine perform this blessing without assistance.",
+    ],
+    "Bleeding Hearts": [
+        "The hunt leaves marks on plate and soul alike; I tend the first so the second stays leashed.",
+        "Martyrdom is no excuse for neglect. I keep this armor ready with my own hands.",
+        "The Rage circles close enough already—I will not surrender this rite to uncertainty as well.",
+    ],
+    "Blood Ravens": [
+        "Knowledge is power, and knowledge of one's own warplate is among the most practical forms of it.",
+        "I record the rite, perform the rite, and understand the rite—what more is required?",
+        "The Librarius taught me the value of careful method; the forge confirms it in steel.",
+    ],
+    "Brazen Minotaurs": [
+        "Bronze plate and siege-born fury both answer best to the warrior who bears them.",
+        "I maintain this warplate as a breaker maintains the ram—personally, and without hesitation.",
+        "The enemy will test every seam. I would rather my own hands had set each one.",
+    ],
+    "Carcharodons": [
+        "The void does not provide spare hands, so I learned long ago to rely on my own.",
+        "Silence serves the rite as well as it serves the hunt; I tend these plates alone.",
+        "What emerges from the Outer Dark stays lethal by necessity, not by ceremony alone.",
+    ],
     "Hawk Lords": [
         "The raptor tends its own talons—who else knows where they have struck?",
         "From forge to sky, I bless the wings that carry me to war.",
         "Swift as the hawk, patient as the artisan—the rite is mine alone.",
+    ],
+    "Howling Griffons": [
+        "An oath sworn is an oath completed; I bless this warplate with that same finality.",
+        "Quartered red and yellow, unbroken in a thousand campaigns—this rite is mine to enact.",
+        "The Codex teaches precision, our vows demand endurance; I tend this armor to both.",
     ],
     "Iron Hands": [
         "Flesh is weak; I trust only myself to tend the machine.",
         "The Gorgon would approve—self-sufficiency in all things.",
         "Logic dictates: who better to bless my iron than I?",
     ],
+    "Iron Snakes": [
+        "Ithaka's hunts taught us to trust measured hands; mine are sufficient for this rite.",
+        "Patience and precision are meaningless unless practiced personally; I sanctify this plate myself.",
+        "The sea keeps no artificer on standby in a storm. I keep my own warplate ready.",
+    ],
     "Iron Lords": [
         "The Iron Hands taught self-sufficiency; the Iron Lords have held that vigil for three thousand years.",
         "My vigil demands I trust only iron-hard certainty—my own hands upon my own warplate.",
         "Iron of vigil, iron of grip. Who better than I to bless what I alone have held?",
-    ],
-    "Iron Snakes": [
-        "The Wyrm-hunter tends his own lance—none know its balance better.",
-        "Ithaka's sons know solitude upon the waves; I renew my own armor.",
-        "The serpent sheds its skin unaided; so do I maintain my warplate.",
     ],
     "Salamanders": [
         "Vulkan's fire and my own hands—no other blessing is needed.",
@@ -127,10 +179,25 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "Armageddon taught us endurance through betrayal; these rites I trust to my own hand.",
         "The lion still roars. I renew my warplate to carry that roar into battle.",
     ],
+    "Cowled Wardens": [
+        "Some duties are best kept beneath the hood, and this rite is one of them.",
+        "The cowl hides much, but never negligence; I tend my own warplate to keep it so.",
+        "Watchfulness begins at the first buckle and seal, and I trust my own hands with both.",
+    ],
+    "Crimson Fists": [
+        "Rynn's sons do not waste what remains, least of all their own hard-kept plate.",
+        "Defiance is maintenance done properly in the lull before the next disaster.",
+        "I trust the Fist, the bolter, and the hands that hold both—mine.",
+    ],
     "Dark Angels": [
         "Some secrets are kept even from the forge. This rite is one.",
         "The Lion trusted few; I trust only myself for this.",
         "In solitude, the Unforgiven find their own absolution.",
+    ],
+    "Dark Krakens": [
+        "Pressure reveals weakness; I would rather discover it here than in the abyss of battle.",
+        "The deep taught us to keep our own gear alive or drown beside it.",
+        "I tend this armor alone, as any abyssal hunter worthy of the name should.",
     ],
     "Death Exorcists": [
         "The Rage will not take me — I sanctify my own armor against it, as I sanctify myself.",
@@ -197,6 +264,111 @@ FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER: Dict[str, List[str]] = {
         "We arrive without warning and depart without word. Who then should bless this armor but the one who wears it?",
         "This warplate predates the Chapter itself. I tend it in silence, as it was always tended.",
     ],
+    "Death Spectres": [
+        "When one walks so near the dead, self-reliance becomes more than virtue—it becomes habit.",
+        "The shroud leaves little room for ceremony. I tend these plates and return to the long vigil.",
+        "My armor will outlast my breath if I command it properly. That command begins here.",
+    ],
+    "Epsilon Paladins": [
+        "For Honour and for Duty, I set my own hand to the rite and trust no lesser standard.",
+        "Silver plate deserves exact hands; mine will suffice because they must.",
+        "A Paladin does not ask another to complete a duty he can fulfill himself.",
+    ],
+    "Exorcists": [
+        "What has been tested against the Warp need not fear the solitude of a forge rite.",
+        "Purity is best preserved by a warrior who understands exactly what must be excluded.",
+        "I have passed harsher rituals than this one; I can certainly complete it myself.",
+    ],
+    "Flesh Tearers": [
+        "Discipline is a sharper tool than fury in the forge, and I know the value of both.",
+        "The Red Thirst takes enough on its own—I will not surrender my armor's readiness as well.",
+        "These plates must answer instantly when battle calls; I trust my own hands to ensure they do.",
+    ],
+    "Genesis Chapter": [
+        "Guilliman's line values completeness in a warrior; self-maintenance is part of that completeness.",
+        "A son of the Genesis Chapter should understand every function of his own warplate.",
+        "The rite is straightforward, the method sound, and my hands fully adequate to the task.",
+    ],
+    "Hospitallers": [
+        "A healer who cannot tend his own armor is trusting chance with other lives.",
+        "Mercy and wrath both require reliable plate, and reliability begins under my own hands.",
+        "I bless this armor myself so it may carry me where others most need shielding.",
+    ],
+    "Iron Hounds": [
+        "A hound that cannot keep its own fangs sharp is fit for no hunt.",
+        "Pursuit without relent begins with armor maintained without excuses.",
+        "This plate runs with me to the end of the trail; I trust my own hands to keep it there.",
+    ],
+    "Iron Ravens": [
+        "Shadow and iron both reward precision; I apply that precision here with my own hands.",
+        "A warrior who moves unseen cannot rely on another to know his plate as well as he does.",
+        "I consecrate this armor myself and leave no flaw for the enemy to discover first.",
+    ],
+    "Knights of the Raven": [
+        "Stratagem begins with preparation, and preparation begins with the plate on my own frame.",
+        "Patience is wasted if a buckle fails at the critical moment. I remove that possibility myself.",
+        "This rite is another move on the board, and I prefer not to let another player make it for me.",
+    ],
+    "Lamenters": [
+        "The cursed cannot afford carelessness. I tend this armor myself because fortune certainly will not.",
+        "For those we cherish, we fight; to keep fighting, these plates must be my own responsibility.",
+        "Hope is a poor substitute for maintenance. I rely on the latter and carry the former into battle.",
+    ],
+    "Marines Errant": [
+        "A wanderer learns quickly that home forges are a luxury, not a constant.",
+        "These plates cross the stars with me, so their care stays in my hands as well.",
+        "Errantry teaches self-sufficiency first and sentiment second; the forge approves that lesson.",
+    ],
+    "Mentors": [
+        "A warrior who cannot demonstrate the full care of his own wargear is no example worth following.",
+        "Instruction begins in method, and method begins with hands disciplined enough to perform the rite alone.",
+        "I tend this armor myself because example is part of duty, not a separate concern.",
+    ],
+    "Minotaurs": [
+        "The bull lowers its head and does the work itself. So do I.",
+        "Bronze plate, brutal purpose, no unnecessary intermediaries—that is sufficient doctrine for a forge rite.",
+        "If this warplate is to break walls, then I will be the one to ready the ram.",
+    ],
+    "Raptors": [
+        "Pragmatism does not outsource what can be done efficiently by the man who depends on it.",
+        "Stealth begins with confidence in one's own equipment; I build that confidence with my own hands.",
+        "This rite is neither ornate nor optional, which makes it perfectly suited to me.",
+    ],
+    "Red Scorpions": [
+        "Purity is not preserved by assumption. I verify it personally, beginning with my own warplate.",
+        "Standards this exacting should not be delegated casually; I have no intention of doing so.",
+        "Every seal, every plate, every sanctified surface meets my inspection before battle claims it.",
+    ],
+    "Red Templars": [
+        "Speed in battle begins with readiness before it; I tend this armor myself to ensure both.",
+        "Dorn's swifter sons do not linger in the forge, but neither do we neglect it.",
+        "The rite is brief, exact, and mine to perform before the next strike is called.",
+    ],
+    "Scythes of the Emperor": [
+        "A chapter that survived so much does not leave its future to carelessness.",
+        "These plates carry survivor's duty; I maintain them with survivor's seriousness.",
+        "Extinction was denied once. I see no reason to tempt it through neglect now.",
+    ],
+    "Sons of Medusa": [
+        "The logical course is to perform the rite oneself and eliminate avoidable error.",
+        "Steel responds best to certainty, and certainty is what I bring to this armor.",
+        "This plate exists to function. I ensure that function directly.",
+    ],
+    "Storm Giants": [
+        "Great weight demands sure maintenance; I would rather trust my own hands beneath it.",
+        "A giant's stride should never falter for want of proper care. I see that it does not.",
+        "These plates are built for force and endurance; so is the warrior who tends them.",
+    ],
+    "Tempestuous Angels": [
+        "Storms reward preparation and punish vanity; I have learned from the first and avoided the second.",
+        "This armor shields the defenseless only if I first ensure it can survive the gale.",
+        "I complete the rite myself because guardianship begins before the battle is joined.",
+    ],
+    "The Drakes": [
+        "Fire purifies, but only after careful hands have prepared the offering.",
+        "A Drake should emerge from the forge as ready as he emerges from the flame—by his own effort.",
+        "I tend this armor myself so that when the burning begins, no weakness remains to feed it.",
+    ],
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -218,6 +390,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Each stud marks another debt repaid to the Lion's memory.",
         "The Unforgiven count your studs among the honors earned in penance.",
         "Your service marks shine like the Lion's own resolve.",
+    ],
+    "Atlantian Spears": [
+        "Each stud marks another vision answered before xenos and heretic could strike.",
+        "Teal plate and gold trim carry hard-won service across the Pariah warzones.",
+        "Your marks prove the Spears endure duty first, even when glory called elsewhere.",
     ],
     "Black Templars": [
         "Your studs are earned in the fires of the Eternal Crusade.",
@@ -334,6 +511,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "The skies of countless worlds have witnessed your service.",
         "Each mark a feather in your chapter's proud plumage.",
     ],
+    "Howling Griffons": [
+        "Each stud is an oath fulfilled, inscribed in steel and remembered for decades.",
+        "From Badab's convoy lines to Black Crusade trenches, your marks proclaim relentless service.",
+        "Quartered red and yellow, unbroken and unbowed—your studs record that defiance.",
+    ],
     "Hospitallers": [
         "Healers and warriors both—your studs honor those saved and those avenged.",
         "The Hospitaller's vow endures in each mark upon your brow.",
@@ -354,6 +536,11 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Your studs are data-points of unwavering duty.",
         "The machine appreciates such logical dedication.",
     ],
+    "Iron Snakes": [
+        "Each stud marks another hunt completed with Ithakan calm and precision.",
+        "Sea-green plate weathered by war and tide alike—your marks record discipline that does not crack.",
+        "Patient strikes, clean recoveries, and brothers brought home; your studs tally all three.",
+    ],
     "Iron Hounds": [
         "Relentless as the hunt—your studs mark each pursuit to the end.",
         "Orinus breeds no weakness; your marks prove Guilliman's lineage.",
@@ -368,11 +555,6 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
         "Silent as shadow, enduring as iron—your studs mark both cunning and strength.",
         "The raven's wisdom and the machine's precision are etched upon your brow.",
         "From darkness, your service emerges tempered in steel.",
-    ],
-    "Iron Snakes": [
-        "The waters of Ithaka witness your marks—each stud a testament to the phratry.",
-        "Your studs gleam like pearls won from Ithaka's depths.",
-        "For the Reef Stars and the Emperor, your service is inscribed in adamantium.",
     ],
     "Knights of the Raven": [
         "In cunning and patience, your studs are earned.",
@@ -507,6 +689,7 @@ CHAPTER_STUDS_FLAVOR: Dict[str, List[str]] = {
 WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven do not bow—and neither does a warrior who has earned the Veteran's mark.",
     "Angels of Vengeance": "The Lion's vengeance is patient; this veteran's service proves the same.",
+    "Atlantian Spears": "Foresight, restraint, and a spearpoint's discipline—this veteran has made the Atlantian name worthy of the Long Watch's rolls.",
     "Black Templars": "The Eternal Crusade forges veterans—this one has proven themselves worthy of the blade.",
     "Bleeding Hearts": "Through the hunt and the rage, this warrior has endured to stand among the Honored.",
     "Blood Angels": "The sons of Sanguinius bleed freely—and this veteran has shed enough to earn this mark.",
@@ -530,12 +713,14 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst demands fury; the Long Watch demands discipline—this veteran has mastered both.",
     "Genesis Chapter": "Guilliman's purity endures in this warrior; the veteran's mark joins a legacy of measured excellence.",
     "Hawk Lords": "Swift to engage, swift to succeed—the Hawk Lords' speed of service earns swift recognition.",
+    "Howling Griffons": "Oaths remembered, campaigns answered, and not one step yielded—this veteran bears the Howling Griffons' pride exactly as intended.",
     "Hospitallers": "Healer of the broken and breaker of the wicked—this veteran's service is beyond reproach.",
     "Imperial Fists": "Dorn's stone endures what others cannot—this veteran is proof of that heritage.",
     "Imperius Reavers": "The Eastern Fringe is a crucible without equal—this veteran emerged from it already proven before the Long Watch ever called them.",
     "Iron Hands": "The flesh proved adequate; the service proved exceptional—the Iron Hands would approve.",
     "Iron Hounds": "The hunt does not end until every quarry falls—this veteran knows no other way.",
     "Iron Lords": "The Iron Grip holds because warriors like this hold it—the Grendl Stars remain contained by such iron resolve.",
+    "Iron Snakes": "In calm and precision, this veteran's service speaks of Ithaka's legacy.",
     "Iron Ravens": "In shadow and in silence, this warrior's service has spoken loud enough for all to hear.",
     "Knights of the Raven": "Patient, cunning, and proven—the Raven's own shadow falls upon those who earn this mark.",
     "Lamenters": "Cursed they may be, but this warrior's veteran status is a blessing none can deny.",
@@ -567,6 +752,7 @@ WATCH_VETERAN_CHAPTER_LINES: Dict[str, str] = {
 ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven have always kept their secrets close—and recognized those who wrest others' from them.",
     "Angels of Vengeance": "The Lion's sons know the worth of intelligence in the war eternal.",
+    "Atlantian Spears": "The seers of the Atlantian Spears read war in fragments and omens; this warrior has supplied the fragments the Watch needed most.",
     "Black Templars": "Even the Crusade requires supply lines—and this warrior has filled them beyond measure.",
     "Bleeding Hearts": "The trophies of this hunt are not trophies of flesh, but of recovered secrets—both serve the Watch.",
     "Blood Angels": "The sons of Sanguinius are as gifted at the acquisition of knowledge as they are at its destruction.",
@@ -590,6 +776,7 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The berserker who also retrieves—a rarer breed, and a more dangerous one.",
     "Genesis Chapter": "Guilliman would approve: the Codex values intelligence as much as blade and bolter.",
     "Hawk Lords": "The raptor's eye misses nothing—and this warrior has returned with everything.",
+    "Howling Griffons": "An oath to recover the enemy's secrets is still an oath—this warrior has fulfilled it with the Griffons' customary thoroughness.",
     "Hospitallers": "Those who tend the wounded learn much; those who fight their enemies learn more—this warrior does both.",
     "Imperial Fists": "Every fortress requires supply; every war requires intelligence—Dorn built both into his doctrine.",
     "Imperius Reavers": "The Stormbringers of Praedis Zeta know every trick of the alien—this warrior has turned those tricks against the enemy and brought their secrets home.",
@@ -597,6 +784,7 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The hound retrieves what the hunter needs—and this warrior retrieves it faster than any.",
     "Iron Lords": "The Iron Lords study every xenos foe with cold precision and absolute hatred—this warrior's intelligence serves the Watch's vigil as the Iron Grip serves the Grendl Stars.",
     "Iron Ravens": "Silent, precise, and laden with recovered intelligence—the Iron Raven's gift made manifest.",
+    "Iron Snakes": "Ithaka teaches that the cleanest hunt begins with clean intelligence; this warrior stocked the Watch's vaults with exactly that.",
     "Knights of the Raven": "The strategist's most valuable weapon is information—this warrior has delivered it in abundance.",
     "Lamenters": "Even the cursed may shine brightly in service—and this warrior's light is undimmed.",
     "Marines Errant": "The void-wanderers find what others cannot reach—and this warrior has ranged furthest of all.",
@@ -627,6 +815,7 @@ ARDENT_RAIDER_CHAPTER_LINES: Dict[str, str] = {
 APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Lion's line endures through warriors like this—the Unforgiven remember every recovered gene-seed.",
     "Angels of Vengeance": "Every gene-seed recovered is vengeance denied to the alien—the Angels of Vengeance understand this well.",
+    "Atlantian Spears": "The Atlantian Spears guard their bloodline against both the enemy and the flaws of Sanguinius; this warrior preserved that future with reverence.",
     "Black Templars": "The Crusade must be sustained—this warrior ensures the Chapter's future survives every battle.",
     "Bleeding Hearts": "Even in death, the Brothers of this warrior's Chapter are preserved—the Rage cannot consume what this warrior protects.",
     "Blood Angels": "Sanguinius' own gene-seed flows through those preserved by this warrior—a sacred duty answered.",
@@ -650,6 +839,7 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The line of Seth is precious—this warrior keeps it from the abyss of extinction.",
     "Genesis Chapter": "Guilliman's purest heritage is preserved by warriors like this—the gene-seed of Macragge endures.",
     "Hawk Lords": "The raptor's nest is preserved—this warrior ensures the Lords fly on for another generation.",
+    "Howling Griffons": "The Griffons campaign too hard to squander a single legacy; this warrior made certain the fallen would still strengthen the living.",
     "Hospitallers": "The healer who heals the Chapter itself—there is no higher calling in the Apothecarion's tradition.",
     "Imperial Fists": "Dorn's legacy is in the gene-seed—this warrior holds it against all who would see it lost.",
     "Imperius Reavers": "The Reavers' line has stood the Eastern Fringe for millennia—this warrior ensures it stands for millennia more.",
@@ -657,6 +847,7 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The pack's lineage endures through this warrior's service—the hounds run on.",
     "Iron Lords": "Three thousand years of vigil over the Grendl Stars—the Iron Lords' line endures because warriors like this refuse to let it falter.",
     "Iron Ravens": "In darkness, the genetic legacy is guarded—this warrior sees to it without fail.",
+    "Iron Snakes": "No son of Ithaka leaves a brother's legacy to the carrion swarm; this warrior preserved the gene-seed with sea-calm precision.",
     "Knights of the Raven": "The Chapter's continuity depends on those who guard the gene-seed—this warrior is indispensable.",
     "Lamenters": "The cursed Chapter endures, stud by sacred stud—this warrior refuses to let the Lamenters fall silent.",
     "Marines Errant": "Far from home, the wanderers still preserve each other—this warrior ensures no Errant is truly lost.",
@@ -687,6 +878,7 @@ APOTHECARION_MEDAL_CHAPTER_LINES: Dict[str, str] = {
 CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The First Legion has always walked in legend—and this warrior has earned a place among the greatest of them.",
     "Angels of Vengeance": "Vengeance exacted across a thousand battles—the Lion would name this warrior worthy.",
+    "Atlantian Spears": "To stand among the Atlantian Spears as a legend is to pair foresight with slaughter—this warrior has done so until even the Watch names it mythic.",
     "Black Templars": "The Eternal Crusade sings this warrior's name. Few reach this pinnacle; none of them regret the cost.",
     "Bleeding Hearts": "The hunter of hunters, the martyr of martyrs—this warrior's legend is written in blood and purpose.",
     "Blood Angels": "Sanguinius himself would pause to honor a warrior who bears the Crimson Laurels.",
@@ -710,6 +902,7 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The wrath of Seth's heirs is legendary—this warrior has made that legend true.",
     "Genesis Chapter": "The Codex predicted excellence; this warrior has far exceeded every theoretical expectation.",
     "Hawk Lords": "The raptor circles over a thousand campaigns—and always returns with victory.",
+    "Howling Griffons": "The roll of oaths carried by the Howling Griffons is long; this warrior's laurels prove they had the strength to complete the grandest among them.",
     "Hospitallers": "Mercy and wrath, a thousand times over—the Hospitaller's creed written in the Watch's own annals.",
     "Imperial Fists": "Dorn built walls to last eternity—this warrior's legend is equally unyielding, equally eternal.",
     "Imperius Reavers": "The Vidar Sector's long war against alien and Daemon forges legends—and this warrior has become the greatest the Eastern Fringe has ever witnessed.",
@@ -717,6 +910,7 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "A thousand quarries pursued; a thousand quarries taken—the Iron Hound never loses the scent.",
     "Iron Lords": "Iron of vigil, iron of grip—and this warrior's legend is the strongest link in the Iron Chain that has held the Grendl Stars for three thousand years.",
     "Iron Ravens": "From shadow to legend, without a sound—the Ravens have always known this warrior's worth.",
+    "Iron Snakes": "Ithaka's hunters seldom ask for songs, but the Crimson Laurels demanded one anyway—this warrior's record is impossible to silence.",
     "Knights of the Raven": "Ten thousand gambits waged, a thousand battles won—the Knight's board has never looked more assured.",
     "Lamenters": "The curse has not broken this warrior. The Long Watch could not be more certain it never will.",
     "Marines Errant": "The stars themselves have witnessed this warrior's deeds—and not one of them would dispute the honor.",
@@ -751,6 +945,7 @@ CRIMSON_LAURELS_CHAPTER_LINES: Dict[str, str] = {
 SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven trust few with their secrets — they have trusted this warrior with the worst of theirs.",
     "Angels of Vengeance": "The Lion's vengeance is patient, but its blade is swift; this Pipehitter is its swift edge.",
+    "Atlantian Spears": "The Atlantian Spears read the shape of disaster before it breaks; this Pipehitter is what they send when foresight says only one blade will suffice.",
     "Black Templars": "The Eternal Crusade has no shortage of zealots — this one was singled out for the unwinnable.",
     "Bleeding Hearts": "Hunt-rage tempered by Pipehitter discipline becomes something the foe has no answer for.",
     "Blood Angels": "Sanguinius' sons embrace the impossible operation with the same grace they embrace death itself.",
@@ -780,6 +975,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds run down the prey no one else can catch — Pipehitters complete the missions no one else can finish.",
     "Iron Lords": "The Iron Grip holds because warriors like this complete the missions that would otherwise loosen it.",
     "Iron Ravens": "Shadow-craft and silence — the Iron Raven was a Pipehitter long before the Watch named them so.",
+    "Iron Snakes": "When the Watch Master needed a kill done clean and close, this Ithakan hunter answered like it was another reef-cull.",
     "Knights of the Raven": "Patient stalking and decisive strike — exactly what the Watch Master's blackest orders demand.",
     "Lamenters": "Cursed they may be; but on a Pipehitter operation, this warrior's curse is borne by the foe alone.",
     "Marines Errant": "Wherever the void carried them, this warrior found a way — Pipehitter work suits the wanderer.",
@@ -793,6 +989,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity in form and purity in execution — the Red Scorpion is a Pipehitter of cold perfection.",
     "Red Templars": "Fast as the blade, hard as the Fist — this warrior carries both into the Watch Master's hidden orders.",
     "Salamanders": "Vulkan's sons protect the helpless — and Pipehitters protect missions no one else can finish.",
+    "Sable Knights": "The fleet's cursed sons have no patience for hesitation; this Pipehitter spent another fragment of borrowed time exactly where the Watch Master needed it most.",
     "Scythes of the Emperor": "Sotha's loss made warriors who fear no impossibility; this Pipehitter is one of them.",
     "Sons of Medusa": "Calculated lethality and pragmatic resolve — Pipehitter operations were made for warriors like this.",
     "Space Wolves": "The skalds will sing of this warrior's lone runs into the dark — for the Watch Master's ears alone.",
@@ -802,6 +999,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "Icefang's defenders learned to hit hard before the next alarm sounded; this Pipehitter made every rapid strike count.",
     "Tome Keepers": "Every Pipehitter run this warrior survives is one more entry in the Chapter's most secret records.",
     "Ultramarines": "The Codex teaches victory; this Pipehitter has taught the Codex what victory looks like in the dark.",
+    "Howling Griffons": "Given an impossible order, a Howling Griffon does not ask whether it can be done—only whether the oath has been properly spoken. This Pipehitter answered accordingly.",
     "White Scars": "The steppe wind blows where the Watch Master orders, and this warrior is that wind made flesh.",
     "Wolfspear": "The Dark Terror hunts where no one else dares — a Pipehitter by lineage as well as by mark.",
     "Black Shield": "No lineage, no name — only the Pipehitter's mark and the operations no one else will speak of.",
@@ -814,6 +1012,7 @@ SOK_G_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
 DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "Once-trusted with secrets; now thrice-trusted with their execution. The Unforgiven do not give that trust lightly.",
     "Angels of Vengeance": "Patient vengeance demands patient warriors — and this brother has answered the call again and again.",
+    "Atlantian Spears": "The Atlantian Spears saw the shape of disaster more than once and sent the same answer each time; repeated survival has only sharpened this warrior's omen-born lethality.",
     "Black Templars": "The Eternal Crusade now counts this warrior among its most reliable blades for the Watch Master's hidden fronts.",
     "Bleeding Hearts": "Rage repeatedly mastered, hunts repeatedly closed — the Distinguished mark is well-earned by such consistency.",
     "Blood Angels": "Sanguinius' line has answered the impossible operation more than once, and prevailed every time.",
@@ -843,6 +1042,7 @@ DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds run until the prey falls; this Hound has run further than most, and the prey continues to fall.",
     "Iron Lords": "The Iron Grip closes tighter with each Distinguished Pipehitter — and this warrior has earned that mark.",
     "Iron Ravens": "Shadow-craft repeated becomes mastery; the Iron Raven has mastered the Watch Master's hidden ways.",
+    "Iron Snakes": "Repeated impossible briefs only refined this warrior's Ithakan discipline; the Distinguished mark merely confirms what the kill-logs already knew.",
     "Knights of the Raven": "Patient stalking, decisive strike — this warrior has run the cycle more times than the Watch Master usually permits.",
     "Lamenters": "Cursed lineage notwithstanding, this warrior's Pipehitter record is now an undeniable blessing for the Watch.",
     "Marines Errant": "Wanderers carry their honors with them; this Marine Errant carries the Distinguished Pipehitter mark with quiet pride.",
@@ -856,6 +1056,7 @@ DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity demands consistency; this warrior has been consistent in the most impossible of operations.",
     "Red Templars": "Fast and firm — and now repeatedly proven to be both, on operations meant to test only one of those.",
     "Salamanders": "Vulkan's sons protect again, and again. The Distinguished Pipehitter's anvil rings with this warrior's strikes.",
+    "Sable Knights": "Every return from a doomed operation is another debt stolen from the Black Rage; this distinguished Pipehitter has stolen more than most ever will.",
     "Scythes of the Emperor": "Sotha's heirs do not surrender — repeatedly proven by this warrior on operations meant to break them.",
     "Sons of Medusa": "Calculated, repeatable, lethal — exactly the Pipehitter virtues the Watch Master prizes most.",
     "Space Wolves": "The skalds will need a longer saga; this Wolf has hunted in the Watch Master's name many times now.",
@@ -865,6 +1066,7 @@ DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "From one emergency front to the next, this warrior delivered distinguished strike results wherever the line was weakest.",
     "Tome Keepers": "Each operation a new chapter; each Distinguished mark a new volume. The Chapter's secret library grows.",
     "Ultramarines": "The Codex describes excellence; this Distinguished Pipehitter has written excellence into operations no Codex would attempt.",
+    "Howling Griffons": "One impossible oath might be luck; repeated impossible victories are the Howling Griffons' preferred way of proving luck had nothing to do with it.",
     "White Scars": "The steppe wind blows through the Watch Master's blackest orders — and blows back, again and again, with this warrior.",
     "Wolfspear": "The Dark Terror hunts repeatedly in the Watch Master's dark — a hunter perfectly suited to the work.",
     "Black Shield": "No name, no lineage — only the Distinguished Pipehitter mark, and operations whose details will never be spoken.",
@@ -877,6 +1079,7 @@ DISTINGUISHED_PIPEHITTER_CHAPTER_LINES: Dict[str, str] = {
 BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "Even the Unforgiven recognize when a brother places the Kill Team's purpose above his own pursuit of redemption.",
     "Angels of Vengeance": "The Lion's wrath is best wielded together — this warrior has made that lesson their creed.",
+    "Atlantian Spears": "The Atlantian Spears trust in gifted foresight, but even prophecy is useless without brothers to act upon it; this warrior made every team stronger by standing within it.",
     "Black Templars": "The Eternal Crusade marches as one; this Templar has carried that truth into every Kill Team they have stood beside.",
     "Bleeding Hearts": "Hunt-rage shared with brothers becomes Kill Team fury — and this warrior has shared theirs without hesitation.",
     "Blood Angels": "Sanguinius died for his sons; this son has lived for his brothers, repeatedly and without ceremony.",
@@ -906,6 +1109,7 @@ BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds hunt in packs, and this Hound has never broken from theirs — no matter the temptation.",
     "Iron Lords": "The Iron Grip holds when every warrior trusts every other — this Iron Lord has been worthy of that trust.",
     "Iron Ravens": "Shadow-work is solitary; this Iron Raven has nonetheless built bonds in the darkness no one else could see.",
+    "Iron Snakes": "Ithakan hunters prize the partner who keeps pace at knife-range; this warrior made every Kill Team better by being that partner.",
     "Knights of the Raven": "The Raven hunts patient, hunts together — and this warrior has been the patience of every Kill Team they have served.",
     "Lamenters": "The cursed brother holds tightest to those who would share their burden — and this Lamenter has done so without flinching.",
     "Marines Errant": "Wherever they wander, they find brothers — and bind themselves to them with the same fierce loyalty.",
@@ -919,6 +1123,7 @@ BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity of purpose, purity of brotherhood — the Red Scorpion's standard is no easy thing, and this warrior has met it.",
     "Red Templars": "Fast as the blade, faithful to the brother — the Red Templar binds both virtues in one warrior.",
     "Salamanders": "Vulkan protected the helpless; this Salamander has protected every brother beside them as if they were the most helpless of all.",
+    "Sable Knights": "Every brother who survives one more war is another rebuke to the darkness waiting within; this warrior made that reprieve their highest priority.",
     "Scythes of the Emperor": "Sotha fell, but the brotherhood did not — this Scythe has carried that lesson into every Kill Team they have served.",
     "Sons of Medusa": "Calculated devotion to the brotherhood — the Sons of Medusa's preferred form of love.",
     "Space Wolves": "The pack is everything; this Wolf has lived the pack-bond as if no other oath ever existed.",
@@ -928,6 +1133,7 @@ BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "No chapter survives Icefang alone; this warrior's bond with their Kill Team is as hard as silver and as steady as void-black stone.",
     "Tome Keepers": "The Chapter chronicles speak of warriors; the Black Laurels chronicle speaks of brothers — and this Tome Keeper is in both books.",
     "Ultramarines": "The Codex teaches that no Ultramarine fights alone — this warrior has lived that teaching to the letter.",
+    "Howling Griffons": "The Griffons bind themselves by oath; this warrior chose to bind themselves first to the brothers at their side, and the Black Laurels were the natural result.",
     "White Scars": "The steppe wind passes; the brotherhood remains — this White Scar has been part of that remaining, again and again.",
     "Wolfspear": "The Dark Terror hunts as a pack of two; this Wolfspear has extended that pack-bond to every Kill Team they have joined.",
     "Black Shield": "No Chapter, no lineage — only the brothers beside them, and a devotion to those brothers beyond all other purpose.",
@@ -940,6 +1146,7 @@ BLACK_LAURELS_CHAPTER_LINES: Dict[str, str] = {
 CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven do not don Terminator plate lightly — and this warrior has earned the right to don it.",
     "Angels of Vengeance": "The Lion's wrath wrapped in adamantium; the Crux upon the chest — a fearsome thing to behold.",
+    "Atlantian Spears": "The Atlantian Spears rarely waste weight or motion; that makes this warrior's right to bear the Crux all the more severe and all the more deserved.",
     "Black Templars": "The Eternal Crusade's veterans don the venerated plate as a holy oath; this Templar takes that oath now.",
     "Bleeding Hearts": "Rage tempered to Terminator discipline — the Crux mark sanctifies what the Black Rage has refined.",
     "Blood Angels": "Sanguinius himself wore plate of legend; this son of his line now bears its lineage upon their breast.",
@@ -969,6 +1176,7 @@ CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The hunt continues in Terminator plate; few prey survive the Iron Hound's approach in such armor.",
     "Iron Lords": "The Iron Grip holds even tighter when sealed in venerated plate — and this warrior is now part of that grip.",
     "Iron Ravens": "Shadow-work in Terminator plate is a contradiction the Iron Raven somehow makes work.",
+    "Iron Snakes": "Ithaka breeds patient killers, and patience survives even inside adamantium; this warrior earned the Crux without surrendering either trait.",
     "Knights of the Raven": "Patient hunter in patient plate — the Crux suits this Knight as if it were forged for them.",
     "Lamenters": "Cursed lineage in venerated plate — the Crux is no cure, but it is a recognition long overdue.",
     "Marines Errant": "The wanderer who returns to the Watch in Terminator plate is a wanderer no more — they are vanguard.",
@@ -982,6 +1190,7 @@ CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity in venerated plate — the Red Scorpion's standard reaches its highest expression here.",
     "Red Templars": "Fast as the blade, hard as the Fist, sealed in venerated plate — the trifecta is complete.",
     "Salamanders": "Vulkan's sons in Terminator plate forge a wall of protection no foe can breach — this Salamander stands at that wall.",
+    "Sable Knights": "To seal one cursed son inside venerated plate is to declare that even the shadow of the Rage cannot eclipse proven greatness; this warrior earned that declaration.",
     "Scythes of the Emperor": "Sotha's heirs in venerated plate — every Crux a quiet vengeance against the swarm that took their home.",
     "Sons of Medusa": "Calculated lethality in venerated plate — the Sons of Medusa's preferred composition for the Crux.",
     "Space Wolves": "The Wolf in Terminator plate is no less wild — only deadlier, and now consecrated by the Crux.",
@@ -991,6 +1200,7 @@ CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "On Icefang, the wall is sacred. This warrior now bears the Crux to stand as that wall when all fronts buckle.",
     "Tome Keepers": "The Chapter's chronicles will mark this Crux Terminatus among the highest honors any Tome Keeper has worn.",
     "Ultramarines": "The Codex prescribes Terminator deployment with precision; this Ultramarine has earned the right to embody it.",
+    "Howling Griffons": "The Griffons prize endurance as much as oath; Terminator plate suits a warrior who has already proven both in abundance.",
     "White Scars": "The steppe wind seldom carries Terminator plate — but this White Scar has earned the right to make it carry them.",
     "Wolfspear": "The Dark Terror in Terminator plate is the dark itself — a Crux-bearer the foe never sees coming.",
     "Black Shield": "No name, no lineage — only the Crux upon their breast, the venerated plate upon their shoulders, and the Watch's full trust.",
@@ -1003,6 +1213,7 @@ CRUX_TERMINATUS_CHAPTER_LINES: Dict[str, str] = {
 KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "Even on Kadaku's worst fronts, the Unforgiven kept their secrets — and held their line.",
     "Angels of Vengeance": "Vengeance for every soul Leviathan consumed — this Angel paid that debt across the entire campaign.",
+    "Atlantian Spears": "The Atlantian Spears did not need prophecy to know what Kadaku required: discipline, endurance, and the will to answer every front. This warrior brought all three.",
     "Black Templars": "The Eternal Crusade marched the length of Kadaku, and this Templar marched with it.",
     "Bleeding Hearts": "Hunt-rage carried this warrior through every Kadaku operation without slowing.",
     "Blood Angels": "Sanguinius' sons gave Kadaku no quarter, and this Angel held the line for the campaign's full length.",
@@ -1032,6 +1243,7 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds run the prey down; this Hound ran Leviathan down across the entire Kadaku Campaign.",
     "Iron Lords": "The Iron Grip held on Kadaku — this Iron Lord ensured the grip closed every time.",
     "Iron Ravens": "Shadow-craft kept this Iron Raven alive through every Kadaku operation — and Leviathan in the dark.",
+    "Iron Snakes": "Kadaku's swarm-fronts rewarded the hunter who never overcommits; this Ithakan veteran answered every front with exact force and no waste.",
     "Knights of the Raven": "Patient through every Kadaku front; decisive at every Kadaku strike — the Knight's discipline made plain.",
     "Lamenters": "The cursed Chapter gave Kadaku no less than any other; this Lamenter gave more than most.",
     "Marines Errant": "Wherever they wandered on Kadaku, this Errant brought the Watch's banner — to every operation.",
@@ -1045,6 +1257,7 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity across every Kadaku operation — the Red Scorpion's standard unwavering.",
     "Red Templars": "Fast and faithful across every Kadaku front — the Red Templar's twin virtues.",
     "Salamanders": "Vulkan's sons protected Kadaku's civilians wherever they fought — and they fought everywhere.",
+    "Sable Knights": "Kadaku offered another war before the darkness could claim its due; this warrior answered every call as if outrunning fate itself.",
     "Scythes of the Emperor": "Sotha's heirs faced Leviathan once more on Kadaku, and this Scythe did not flinch.",
     "Sons of Medusa": "Calculated, campaign-length excellence — Kadaku's defense in the Sons of Medusa style.",
     "Space Wolves": "The skalds will sing of this Wolf's Kadaku saga for sagas to come.",
@@ -1054,6 +1267,7 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "Kadaku's contested lines looked familiar to a son of Icefang; this warrior stabilized every breach they were sent to hold.",
     "Tome Keepers": "Every Kadaku operation an entry; every entry a victory. The Chapter's chronicle is fuller for this warrior.",
     "Ultramarines": "The Codex's campaign-doctrine made manifest — Kadaku's defense an Ultramarine's masterwork.",
+    "Howling Griffons": "Kadaku became another name on a very long list of wars the Griffons refused to abandon; this warrior saw that the list was honored in full.",
     "White Scars": "The steppe wind blew across Kadaku, and this White Scar rode it from operation to operation.",
     "Wolfspear": "The Dark Terror hunted Leviathan through Kadaku's nights — every operation, every kill.",
     "Black Shield": "No lineage to claim — only the Kadaku Campaign Medal, and the Watch's full recognition of every operation completed.",
@@ -1066,6 +1280,7 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven held their secrets through the Black Reef's worst — and held the line.",
     "Angels of Vengeance": "Patient vengeance across the entire Persecution — the Lion's wrath sated, at last.",
+    "Atlantian Spears": "Void war and layered threat-screens suit the Atlantian temperament; this warrior crossed the whole Reef as if each operation had been foreseen in advance.",
     "Black Templars": "The Eternal Crusade carried this Templar across every operation of the Black Reef.",
     "Bleeding Hearts": "Hunt-rage drove this warrior through every Reef-front without rest.",
     "Blood Angels": "Sanguinius' sons gave the Black Reef their best — and this Angel was foremost among them.",
@@ -1095,6 +1310,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds run the prey down; this Hound ran the Reef's heretics down across the entire Persecution.",
     "Iron Lords": "The Iron Grip held the Black Reef shut — this Iron Lord locked the door at every operation.",
     "Iron Ravens": "Shadow-craft made the Reef's heretics this Iron Raven's prey across the full campaign.",
+    "Iron Snakes": "Void reefs and narrow kill-lanes suit Ithakan instincts; this warrior hunted the full campaign like it was home water.",
     "Knights of the Raven": "Patient through every Reef-front, decisive at every strike — the Knight's discipline complete.",
     "Lamenters": "The cursed Chapter gave the Black Reef no less than any other; this Lamenter gave more.",
     "Marines Errant": "Wherever the void took them, the Errant carried the Watch's banner — across the entire Persecution.",
@@ -1108,6 +1324,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity across the entire Persecution — the Red Scorpion's standard unwavering.",
     "Red Templars": "Fast and firm across every Reef-front — the Red Templar's twin virtues complete.",
     "Salamanders": "Vulkan's sons protected the Reef's innocents wherever they fought, and fought everywhere.",
+    "Sable Knights": "The Reef's long war was simply another stretch of road between one battle and the next; this warrior never slowed, because the curse never does.",
     "Scythes of the Emperor": "Sotha's heirs gave the Reef their best — this Scythe was among the foremost.",
     "Sons of Medusa": "Calculated, campaign-length excellence — Reef-defense in the Sons of Medusa style.",
     "Space Wolves": "The skalds will sing of this Wolf's Black Reef saga for sagas to come.",
@@ -1117,6 +1334,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "The Black Reef demanded stubborn defense under pressure; this warrior answered with Icefang's practiced endurance.",
     "Tome Keepers": "Every Reef-operation an entry; every entry a victory. The Chapter's chronicle grows.",
     "Ultramarines": "The Codex's campaign-doctrine perfected — the Reef's defense an Ultramarine's masterwork.",
+    "Howling Griffons": "The Black Reef demanded persistence more than brilliance; for a Howling Griffon that simply meant another oath completed across the full campaign.",
     "White Scars": "The steppe wind blew across the Reef, and this White Scar rode every operation to its end.",
     "Wolfspear": "The Dark Terror hunted heretics across the Reef's nights — every operation, every kill.",
     "Black Shield": "No lineage to claim — only the Black Reef Campaign Medal, and the Watch's full recognition of every operation completed.",
@@ -1129,6 +1347,7 @@ BLACK_REEF_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
 DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "Even the Unforgiven recognize when a brother carries the Kill Team through every operation — and this one did.",
     "Angels of Vengeance": "Vengeance shared, vengeance compounded — every Reef-operation was the Lion's wrath spoken by a Kill Team in unison.",
+    "Atlantian Spears": "The Atlantian Spears prize foresight, but this warrior proved the deeper gift is making every brother around them more effective in the moment of truth.",
     "Black Templars": "The Eternal Crusade marches as one; this Templar marched the entire Reef Persecution at the heart of every Kill Team they joined.",
     "Bleeding Hearts": "Hunt-rage tempered by Kill Team bond — this warrior's Reef-record is one of shared fury.",
     "Blood Angels": "Sanguinius' sons fought every Reef-operation together; this Angel was their truest beating heart.",
@@ -1158,6 +1377,7 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Pack-hunt through every Reef-front; this Hound never broke from their Kill Team across the full Persecution.",
     "Iron Lords": "The Iron Grip holds when every brother trusts every other — this Iron Lord earned that trust at every operation.",
     "Iron Ravens": "Shadow-bond across every Reef-operation; the Iron Raven's solitary craft made plural by Kill Team devotion.",
+    "Iron Snakes": "Ithakan precision became Kill Team cohesion in every Reef operation; this warrior held the pair, the team, and the line together.",
     "Knights of the Raven": "Patient hunt, shared kill — every Reef-operation a Kill Team's joint work, with this Knight at its quiet center.",
     "Lamenters": "The cursed brother holds tightest to those who would share their burden — this Lamenter held the Kill Team through every operation.",
     "Marines Errant": "Wherever they wandered, brothers were beside them — this Errant ensured the Reef Persecution was no exception.",
@@ -1171,6 +1391,7 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity of brotherhood across the Reef Persecution — the Red Scorpion's distinguishing standard met in full.",
     "Red Templars": "Fast as the blade, faithful to the brother — the Red Templar's twin virtues across every Reef-operation.",
     "Salamanders": "Vulkan protected the helpless; this Salamander protected every brother as if they were the helpless of the Reef.",
+    "Sable Knights": "The darkness stalked every deployment, yet this warrior spent their strength preserving the pair, the team, and the mission before all else.",
     "Scythes of the Emperor": "Sotha fell, but the brotherhood did not. This Scythe carried that lesson through every Reef-operation.",
     "Sons of Medusa": "Calculated devotion across every Reef-front — the Sons of Medusa's brotherhood quantified.",
     "Space Wolves": "The pack was everything across every Reef-operation; this Wolf lived the pack-bond as creed.",
@@ -1180,10 +1401,74 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "Front after front, this warrior kept their pair alive and effective through every Reef operation—Icefang discipline at distinguished scale.",
     "Tome Keepers": "Every Reef-operation a chapter; every chapter a Kill Team's joint work — this Tome Keeper's distinguished chronicle is rich.",
     "Ultramarines": "The Codex teaches no Ultramarine fights alone; this warrior lived that doctrine across every Reef-operation.",
+    "Howling Griffons": "The Griffons swear long oaths, but this warrior swore themselves to the brothers beside them across the entire Persecution and never broke faith once.",
     "White Scars": "The steppe wind passes, the brotherhood remains — this White Scar held the brotherhood through every Reef-front.",
     "Wolfspear": "The Dark Terror hunts as a pack of two; this Wolfspear extended that pack-bond across every Reef-Kill-Team they joined.",
     "Black Shield": "No name, no lineage — only the brothers beside them, every operation of the Persecution, every Kill Team's heart.",
 }
+
+_CANONICAL_HOME_CHAPTERS: List[str] = [
+    "Angels of Defiance",
+    "Angels of Vengeance",
+    "Atlantian Spears",
+    "Black Templars",
+    "Bleeding Hearts",
+    "Blood Angels",
+    "Blood Ravens",
+    "Brazen Minotaurs",
+    "Carcharodons",
+    "Carmine Blades",
+    "Celestial Lions",
+    "Consecrators",
+    "Cowled Wardens",
+    "Crimson Fists",
+    "Dark Angels",
+    "Dark Krakens",
+    "Dragonspears",
+    "Death Exorcists",
+    "Death Spectres",
+    "Epsilon Paladins",
+    "Exorcists",
+    "Executioners",
+    "Flesh Tearers",
+    "Genesis Chapter",
+    "Hawk Lords",
+    "Howling Griffons",
+    "Hospitallers",
+    "Imperial Fists",
+    "Imperius Reavers",
+    "Iron Hands",
+    "Iron Hounds",
+    "Iron Lords",
+    "Iron Ravens",
+    "Iron Snakes",
+    "Knights of the Raven",
+    "Lamenters",
+    "Marines Errant",
+    "Marines Malevolent",
+    "Mantis Warriors",
+    "Mentors",
+    "Minotaurs",
+    "Necropolis Hawks",
+    "Raptors",
+    "Raven Guard",
+    "Red Scorpions",
+    "Red Templars",
+    "Salamanders",
+    "Sable Knights",
+    "Scythes of the Emperor",
+    "Sons of Medusa",
+    "Space Wolves",
+    "Storm Giants",
+    "Tempestuous Angels",
+    "The Drakes",
+    "Tigers Argent",
+    "Tome Keepers",
+    "Ultramarines",
+    "White Scars",
+    "Wolfspear",
+    "Black Shield",
+]
 
 # ---------------------------------------------------------------------------
 # The Order Omega announcement flavor text
@@ -1192,6 +1477,7 @@ DISTINGUISHED_BLACK_REEF_CHAPTER_LINES: Dict[str, str] = {
 ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven recognize impossibility met by brotherhood — and this Angel met it, again and again.",
     "Angels of Vengeance": "The Lion's vengeance at Omega difficulty is an answer to every Fallen wrong — and this Angel gave that answer.",
+    "Atlantian Spears": "At Omega difficulty, foresight matters only if courage can act on it; this Atlantian brought both and carried their brothers through the worst the Watch could devise.",
     "Black Templars": "The Eternal Crusade has known few honors as quiet and as profound as The Order Omega — this Templar now bears it.",
     "Bleeding Hearts": "Hunt-rage at the impossible difficulty, leashed by the Kill Team's bond — this warrior's Omega service is poetry.",
     "Blood Angels": "Sanguinius' sons walked the impossible difficulty together; this Angel led that walk for every brother beside them.",
@@ -1221,6 +1507,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Hounds run the prey down at any difficulty; at Omega, the hunt is shared with brothers — this Hound ran it true.",
     "Iron Lords": "The Iron Grip at Omega difficulty is the Order's truest test, and this Iron Lord locked it shut every operation.",
     "Iron Ravens": "Shadow-craft at Omega difficulty served the Kill Team rather than the lone hunter — this Iron Raven understood the lesson.",
+    "Iron Snakes": "Omega pressure did not rattle Ithakan rhythm; this warrior stayed calm, chose correctly, and dragged the whole team through alive.",
     "Knights of the Raven": "Patient through Omega's impossible difficulty, decisive at every strike — the Knight's discipline at its absolute peak.",
     "Lamenters": "The cursed Chapter walked Omega difficulty; this Lamenter walked it as the Kill Team's truest blessing.",
     "Marines Errant": "Wherever the Errant wandered at Omega difficulty, brothers were beside them — and brothers returned with them.",
@@ -1234,6 +1521,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purity at Omega difficulty — the Red Scorpion's standard met at the impossibility, with brothers intact.",
     "Red Templars": "Fast and firm at Omega difficulty — the Red Templar's twin virtues at their absolute peak, with the Kill Team held.",
     "Salamanders": "Vulkan's sons protected the helpless at Omega difficulty; this Salamander considered every Kill Team brother the most helpless of all.",
+    "Sable Knights": "Omega is not merely hard; it is hungry. This warrior answered that hunger with fleet-forged discipline and returned before the darkness within could collect its price.",
     "Scythes of the Emperor": "Sotha fell, but Omega did not — this Scythe ensured the Kill Team prevailed where their home could not.",
     "Sons of Medusa": "Calculated lethality at Omega difficulty — the Sons of Medusa's preferred composition for the Order's induction.",
     "Space Wolves": "The skalds will sing of this Wolf's Omega saga — every operation, every brother, every impossibility.",
@@ -1243,6 +1531,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "Omega pressure is merely another frontier for Icefang's sons; this warrior held formation, held nerve, and held the line.",
     "Tome Keepers": "Every Omega operation is the Chapter's most carefully recorded; this Tome Keeper's Order Omega chronicle is the rarest of volumes.",
     "Ultramarines": "The Codex's highest doctrine met Omega's impossible difficulty — and this Ultramarine made the meeting victory.",
+    "Howling Griffons": "No Howling Griffon mistakes Omega for impossible once an oath has been sworn. This warrior proved it while dragging the whole team through the threshold alive.",
     "White Scars": "The steppe wind blew through Omega difficulty; this White Scar rode it for every brother who could not.",
     "Wolfspear": "The Dark Terror at Omega difficulty hunted what nothing else would; this Wolfspear's Order Omega is dread incarnate.",
     "Black Shield": "No lineage to claim — only Omega difficulty, every operation, every Kill Team brother brought through. The Order Omega is theirs by right.",
@@ -1257,6 +1546,7 @@ ORDER_OMEGA_CHAPTER_LINES: Dict[str, str] = {
 DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven know the weight of an unshared burden. **{name}** found one brother willing to carry half of it — across every absolute operation.",
     "Angels of Vengeance": "The Lion's sons carry their purpose without ceremony. **{name}** carried theirs through every absolute front with one brother and no fanfare.",
+    "Atlantian Spears": "The Atlantian Spears trust in readings, signs, and disciplined reactions; **{name}** found one brother whose instincts matched their own and completed every absolute operation as if both had seen it coming.",
     "Black Templars": "The Eternal Crusade does not always require a full crusade force. **{name}** has proven what two Templars, committed to every absolute operation, can achieve.",
     "Bleeding Hearts": "Pack-bond concentrated to a single pairing — **{name}** has run every absolute operation required with one brother. The hunt was answered.",
     "Blood Angels": "Sanguinius died in the company of the greatest. **{name}** chose one brother for every absolute operation and made that pairing into something worthy of the primarch's memory.",
@@ -1286,6 +1576,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "Two hounds on the same scent are worth ten scattered. **{name}** and one brother tracked every absolute mission together without deviation.",
     "Iron Lords": "The Iron Grip requires anchor points. **{name}** was one anchor; their one chosen brother was the other — every absolute operation, complete.",
     "Iron Ravens": "Shadow falls heaviest on two warriors who share it. **{name}**'s Order of the Aquiline Brotherhood is shadow shared with one brother across every absolute mission.",
+    "Iron Snakes": "Ithaka teaches that two hunters who trust each other can carve a path through anything. **{name}** proved that lesson across every absolute operation.",
     "Knights of the Raven": "The Raven's patience is sharpest when the hunt is small. **{name}** hunted every absolute operation with one companion — patient, precise, complete.",
     "Lamenters": "The cursed Chapter finds hope in the smallest companionships. **{name}**'s Order of the Aquiline Brotherhood is one such hope, forged over every absolute operation with one unwavering brother.",
     "Marines Errant": "The errant finds their purpose in unexpected partnerships. **{name}** found theirs in one brother, every absolute operation — the Order of the Aquiline Brotherhood records the finding.",
@@ -1299,6 +1590,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist standards applied to the pairing: one brother, absolute operations, every mission completed. **{name}** has met the Red Scorpion standard in all things.",
     "Red Templars": "Fast, faithful, and paired — **{name}** brought the Red Templar's values into every absolute operation with one unwavering companion.",
     "Salamanders": "Vulkan's sons do not abandon. **{name}** did not abandon their one chosen brother across a single absolute operation — every mission, together, complete.",
+    "Sable Knights": "Some warriors look to a squad for certainty; **{name}** looked to one brother, carried every absolute front beside them, and refused to let either be claimed.",
     "Scythes of the Emperor": "Sotha's memory is carried by those who refuse to be reduced below two. **{name}** carried it through every absolute operation alongside one brother.",
     "Sons of Medusa": "The calculation was simple: one brother, every absolute operation, full commitment. **{name}** ran the calculation and produced the Dual Vigil as the result.",
     "Space Wolves": "Two wolves are a hunting pair. **{name}** ran every absolute operation as that pair — one brother, full hunt, all nine missions answered.",
@@ -1308,6 +1600,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
     "Tigers Argent": "Icefang's defenders survive by trusted pairs under impossible pressure. **{name}** and one brother proved that doctrine absolute, operation after operation.",
     "Tome Keepers": "The Chapter writes what it has witnessed. **{name}**'s Dual Vigil is already in the Tome — one brother, nine absolute operations, every mission complete.",
     "Ultramarines": "The Codex describes formations of three; **{name}** has written the addendum — two warriors with absolute commitment can complete every absolute mission.",
+    "Howling Griffons": "A Griffon's oath needs no crowd to witness it. **{name}** and one brother carried every absolute operation together until the bond itself became the proof.",
     "White Scars": "Two riders on the same path, at full speed, through every absolute front required. **{name}** has completed the ride — the Dual Vigil is the trophy of that journey.",
     "Wolfspear": "The Dark Terror hunts as a pair. **{name}** has taken that Wolfspear principle into every absolute operation — one brother, full commitment, complete.",
     "Black Shield": "No name, no Chapter, one brother, every absolute operation. **{name}** has built the Order of the Aquiline Brotherhood from the most elemental materials available.",
@@ -1316,6 +1609,7 @@ DUAL_VIGIL_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven do not cede the charge to any threat. **{name}** has upheld that truth against nine Terminus-level enemies.",
     "Angels of Vengeance": "The Lion's wrath directed at Terminus-level threats — **{name}** has delivered it nine times under jump pack thrust.",
+    "Atlantian Spears": "The Atlantian Spears value timing as much as violence. **{name}** chose the perfect second to descend on nine Terminus threats and never squandered it.",
     "Black Templars": "The Eternal Crusade does not pause before a Terminus threat. **{name}** has charged nine of them and returned with nine verified kills.",
     "Bleeding Hearts": "Hunt-rage focused on the greatest target on the field — **{name}** has expressed that focus nine times at Terminus level.",
     "Blood Angels": "The sons of Sanguinius were made for this — the red thirst focused, the blade answered. **{name}** has done it nine times.",
@@ -1338,6 +1632,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "Seth's sons show the galaxy what the Red Thirst at close-quarters range achieves. **{name}** has shown it nine times at the Watch's highest threat tier.",
     "Genesis Chapter": "Guilliman's doctrine refined into a charge — **{name}** has charged nine Terminus threats beneath the jump pack and confirmed each kill.",
     "Hawk Lords": "Swift under the jump pack, lethal at close range — **{name}** has proven both nine times against Terminus-class enemies in the Watch's logs.",
+    "Howling Griffons": "An oath to kill from the front is still an oath. **{name}** fulfilled it nine times at jump-pack range against Terminus prey.",
     "Hospitallers": "The Hospitaller strikes so others may be healed. **{name}** has struck nine Terminus threats at jump-pack range and confirmed each result.",
     "Imperial Fists": "The Fist's answer to a Terminus threat is not a wall — it is a warrior, a jump pack, and a blade. **{name}** has delivered that answer nine times.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** to close fast and strike hard. Nine Terminus kills through the jump pack's charge pay that teaching's highest dividend.",
@@ -1345,6 +1640,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound locks onto the greatest prey and does not release. **{name}** has locked onto nine Terminus threats and under jump pack thrust and confirmed every kill.",
     "Iron Lords": "The Iron Grip at close range — **{name}** has delivered it nine times at Terminus level beneath jump pack thrust and blade.",
     "Iron Ravens": "The Iron Raven strikes from unexpected angles. **{name}** struck nine Terminus threats from the angle they least predicted — directly, at full speed.",
+    "Iron Snakes": "Close-assault is only chaos to the untrained. **{name}** made nine Terminus kills look like an Ithakan drill run executed at full violence.",
     "Knights of the Raven": "Patient until the jump pack fires, then absolute. **{name}** has been absolute nine times at Terminus level.",
     "Lamenters": "The cursed Chapter finds its catharsis in the charge. **{name}** has charged nine Terminus threats and confirmed nine kills — the Dual Vigil's hardest cousin.",
     "Marines Errant": "The wanderer who finds purpose in the greatest fight — **{name}** found it nine times at Terminus level, jump pack roaring.",
@@ -1358,6 +1654,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist form applied to the close-quarters charge — **{name}** has closed on nine Terminus threats with textbook precision and confirmed nine kills.",
     "Red Templars": "Fast as the blade, committed as the Crusade — **{name}** has delivered both against nine Terminus threats.",
     "Salamanders": "The sons of Nocturne do not rush for glory's sake — they rush because the threat demands it. **{name}** has answered that demand nine times at Terminus level.",
+    "Sable Knights": "Every battle fought before the darkness closes in must count. **{name}** made nine assault kills at Terminus level count more than most warriors manage in a lifetime.",
     "Scythes of the Emperor": "Sotha taught that the greatest threats must be met personally. **{name}** has met nine Terminus threats personally under jump pack thrust.",
     "Sons of Medusa": "Calculated charge, calculated kill — **{name}** has applied the Sons of Medusa's precision to nine Terminus threats.",
     "Space Wolves": "A wolf at the throat of the greatest prey on the field. **{name}** has been that wolf nine times at Terminus level.",
@@ -1375,6 +1672,7 @@ TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven hold the line and then advance through it. **{name}** has done both — nine Terminus kills behind the shield that first protected then enabled.",
     "Angels of Vengeance": "The Lion's sons absorb punishment and return it threefold. **{name}**'s nine Terminus kills are the return on nine operations of absorbed wrath.",
+    "Atlantian Spears": "The Atlantian Spears prize disciplined positioning. **{name}** turned shield, banner, and perfect timing into nine Bulwark kills against Terminus-grade threats.",
     "Black Templars": "The Templar crusade does not pause behind the shield forever. **{name}** stepped out from behind it nine times to end Terminus threats personally.",
     "Bleeding Hearts": "The pack's shield protects; the pack's blade answers. **{name}** did both — the banner raised, the brothers covered, and nine Terminus threats ended personally.",
     "Blood Angels": "The sons of Sanguinius carry both guardian's vow and warrior's fury. **{name}**'s nine Terminus kills are the fury half — the shield was the vow.",
@@ -1397,6 +1695,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The Flesh Tearer's shield is a temporary restraint. **{name}** restrained the fury long enough to plant the banner, then released it nine Terminus times.",
     "Genesis Chapter": "Guilliman's doctrine applied in full — banner, shield, kill. **{name}** has run that sequence nine times at Terminus level.",
     "Hawk Lords": "The Hawk Lord's shield is swift as their charge. **{name}** has made that shield into nine Terminus opportunities — every one confirmed.",
+    "Howling Griffons": "A Howling Griffon can swear to hold the line and still find time to step through it with a killing blow. **{name}** did so nine times.",
     "Hospitallers": "The Hospitaller shields by creed. **{name}** has extended that creed into nine Terminus kills — the shield protected the brothers, the blade answered the threat.",
     "Imperial Fists": "A Fist's shield was forged to hold. **{name}** proved it holds against Terminus threats too — and that the blade behind it is just as reliable, nine times over.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** to absorb and strike back. Nine Terminus kills from behind the Bulwark's shield are the record of that lesson applied.",
@@ -1404,6 +1703,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound's shield is the pack's anchor. **{name}** anchored nine Terminus engagements and used the position to confirm nine kills personally.",
     "Iron Lords": "The Iron Grip begins behind the shield. **{name}** has gripped nine Terminus threats after planting the banner — nine kills confirmed.",
     "Iron Ravens": "The Iron Raven's shield conceals the strike until the moment it cannot. **{name}**'s nine Terminus kills are what emerged from behind the concealment.",
+    "Iron Snakes": "Ithakan composure under pressure made the Bulwark's platform lethal. **{name}** held the line and confirmed nine Terminus kills from it.",
     "Knights of the Raven": "Patient behind the shield, precise with the strike — **{name}** has demonstrated both nine times at Terminus level.",
     "Lamenters": "The cursed Chapter protects what it still has. **{name}** protected brothers behind the shield and then answered nine Terminus threats personally.",
     "Marines Errant": "The wandering Bulwark finds their purpose in the protection and then the answer. **{name}** has answered nine Terminus threats personally.",
@@ -1417,6 +1717,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist form applied to shield, banner, and blade — **{name}** has run the Bulwark's full sequence nine times at Terminus level with verified results.",
     "Red Templars": "Fast as the blade, faithful to the shield's purpose — **{name}** has used the Bulwark's platform for nine Terminus kills without deviation.",
     "Salamanders": "The sons of Nocturne protect. **{name}** protected their brothers and then used that protective position to secure nine Terminus kills of their own.",
+    "Sable Knights": "There is no time to squander when the curse is patient. **{name}** planted the shield, bought the brothers breathing room, and spent the rest on nine Terminus kills.",
     "Scythes of the Emperor": "Sotha's lesson is protection and answer. **{name}** protected and answered nine Terminus threats personally from the Bulwark's position.",
     "Sons of Medusa": "Calculated shield deployment, calculated kill — **{name}** has applied the Sons of Medusa's precision to nine Terminus threats from behind the banner.",
     "Space Wolves": "The pack's shield is the pack's strength. **{name}** made that shield into a weapon as well — nine Terminus kills beneath the Fenrisian banner.",
@@ -1434,6 +1735,7 @@ TERMINUS_SLAYER_BULWARK_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's Heavy warriors lay down firepower without ceremony. **{name}** laid it down nine times at Terminus level and confirmed every kill.",
     "Angels of Vengeance": "The Lion's wrath in heavy weapon form — **{name}** directed it at nine Terminus threats and produced nine confirmed kills.",
+    "Atlantian Spears": "The Atlantian Spears are not known for waste, and **{name}** wasted neither shot nor opening in securing nine heavy-weapon kills at Terminus level.",
     "Black Templars": "The Crusade requires warriors who can end what others cannot reach. **{name}** reached nine Terminus threats with heavy weaponry and ended them.",
     "Bleeding Hearts": "Pack fury focused through a heavy weapon barrel — **{name}** has focused it at nine Terminus threats and confirmed every result.",
     "Blood Angels": "The sons of Sanguinius carry fury even behind heavy weapon batteries. **{name}** directed that fury at nine Terminus-level targets and verified every result.",
@@ -1456,6 +1758,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "Seth's sons do not lack for stopping power. **{name}** provided the heaviest of it against nine Terminus threats — all confirmed.",
     "Genesis Chapter": "Guilliman's doctrine applied to crowd control — target the greatest threat with the greatest weapon. **{name}** has applied it nine times at Terminus level.",
     "Hawk Lords": "Swift positioning, heavy fire — **{name}** has positioned behind the barrier and confirmed nine Terminus kills with heavy weaponry.",
+    "Howling Griffons": "Where oaths and artillery meet, the result is ruthless persistence. **{name}** kept the weapon speaking until nine Terminus targets were only records.",
     "Hospitallers": "The Hospitaller's heavy weapon protects by eliminating. **{name}** has eliminated nine Terminus threats personally with heavy weaponry and confirmed each kill.",
     "Imperial Fists": "The Fist's heavy weapon doctrine is attrition made precise. **{name}** directed that precision at nine Terminus-level enemies and produced nine confirmed kills.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** to bring the heaviest response to the heaviest threat. Nine Terminus kills confirm the lesson was learned.",
@@ -1463,6 +1766,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound's heaviest bite is the kill. **{name}** has bitten nine Terminus threats with heavy weaponry and confirmed every result in the Watch's logs.",
     "Iron Lords": "The Iron Grip expressed through the heavy weapon's barrel — **{name}** has gripped nine Terminus threats at range and confirmed nine kills.",
     "Iron Ravens": "The Iron Raven's heavy weapon speaks without echo in the void. **{name}** has spoken nine times at Terminus level and left nine confirmed kills.",
+    "Iron Snakes": "Ithaka's hunters do not waste shots. **{name}** spent exactly what was required to erase nine Terminus targets and nothing more.",
     "Knights of the Raven": "Patient positioning, then the heavy weapon's answer — **{name}** has answered nine Terminus threats from that patient position.",
     "Lamenters": "The cursed Chapter's heavy warriors answer grief with firepower. **{name}**'s nine Terminus kills are that answer at its most deliberate.",
     "Marines Errant": "The wandering Heavy finds the ideal firing position and stays there. **{name}** stayed nine times at Terminus level and confirmed nine kills.",
@@ -1476,6 +1780,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist form applied to heavy weapon engagement — **{name}** has engaged nine Terminus threats with textbook precision and confirmed nine kills.",
     "Red Templars": "Fast to position, precise with the heavy weapon — **{name}** has confirmed nine Terminus kills from behind the barrier in the Watch's records.",
     "Salamanders": "The sons of Nocturne pour everything into their work. **{name}** poured heavy weapon firepower into nine Terminus threats, with verified results every time.",
+    "Sable Knights": "A warrior racing the curse learns to value decisive fire. **{name}** brought exactly that to nine Terminus threats and left only wreckage in return.",
     "Scythes of the Emperor": "Sotha's sons know that overwhelming firepower is the answer to overwhelming threats. **{name}** has provided it nine times at Terminus level.",
     "Sons of Medusa": "Calculated heavy weapon deployment — **{name}** has calculated nine Terminus engagements and confirmed nine kills with the precision the Sons demand.",
     "Space Wolves": "A Fenrisian pack does not lack for firepower. **{name}** brought the heaviest portion of it directly to nine Terminus threats.",
@@ -1493,6 +1798,7 @@ TERMINUS_SLAYER_HEAVY_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's patience runs deep. **{name}** applied it at Sniper range nine times against Terminus threats — each shot a secret confirmed.",
     "Angels of Vengeance": "The Lion's wrath delivered from distance — **{name}** has delivered it nine times against Terminus-level threats without once closing to melee.",
+    "Atlantian Spears": "The Atlantian Spears read a battlefield before they commit to it. **{name}** read nine Terminus engagements from afar and answered each one with a perfect shot.",
     "Black Templars": "The Templar's faith extends to the trigger as freely as to the blade. **{name}** expressed that faith nine times against Terminus-level threats from range.",
     "Bleeding Hearts": "The pack's eyes find the prey at distance. **{name}** found nine Terminus threats from range and confirmed each kill before any brother needed to close.",
     "Blood Angels": "The sons of Sanguinius carry extraordinary senses into battle. **{name}** used those senses to find the angles on nine Terminus threats before those threats found them.",
@@ -1515,6 +1821,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst is quietest at distance. **{name}** has kept their distance from nine Terminus threats — close enough only to confirm the kill.",
     "Genesis Chapter": "Guilliman's doctrine applied to precision engagement — one shot, one kill, nine times at Terminus level. **{name}**'s record is doctrinally sound.",
     "Hawk Lords": "The Hawk Lord sees furthest. **{name}** has seen nine Terminus threats from the greatest distance the scope allows — and confirmed every kill.",
+    "Howling Griffons": "The Griffons do not need to be loud to keep an oath. **{name}** upheld nine of them from the scope's distance and left the record speaking in their place.",
     "Hospitallers": "The Hospitaller Sniper protects by eliminating at range before harm reaches the brothers. **{name}** has done this nine times at Terminus level.",
     "Imperial Fists": "A Fist's precision is not limited to the melee. **{name}** proved it at range, nine times, against targets the Watch considers its greatest individual threats.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** to find the angle no enemy expects. Nine Terminus kills from Sniper range confirm the lesson was mastered.",
@@ -1522,6 +1829,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound tracks at distance as readily as close. **{name}** has tracked nine Terminus threats from Sniper range and confirmed every kill.",
     "Iron Lords": "The Iron Lord's long sight finds the weakness at range. **{name}** has found nine Terminus weaknesses from the Sniper's position and confirmed every kill.",
     "Iron Ravens": "The Iron Raven's cloak is the Sniper's best ally. **{name}** has used both to confirm nine Terminus kills from positions the enemy never identified.",
+    "Iron Snakes": "Sea-hunter patience and cold trigger discipline turned distance into certainty. **{name}** confirmed nine Terminus kills from sniper range.",
     "Knights of the Raven": "The Raven's patience is the Sniper's virtue. **{name}** has been patient nine times at Terminus level — the cloak deployed, the scope aligned, the kill confirmed.",
     "Lamenters": "The cursed Chapter finds clarity at distance. **{name}** has found it nine times at Terminus level — the scope steady, the result confirmed.",
     "Marines Errant": "The errant warrior finds the best angle wherever they are. **{name}** has found nine Terminus angles from range and confirmed every kill.",
@@ -1535,6 +1843,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist precision applied at Sniper range — **{name}** has confirmed nine Terminus kills with the exactness the Red Scorpions demand of every engagement.",
     "Red Templars": "Fast to position, precise at range — **{name}** has confirmed nine Terminus kills from the Sniper's position with the Red Templar's characteristic efficiency.",
     "Salamanders": "The sons of Nocturne are deliberate in all things. **{name}**'s nine Terminus kills are deliberateness applied to the Watch's most demanding targets.",
+    "Sable Knights": "Some wars are won in the first clean shot. **{name}** placed nine such shots into Terminus threats and bought a little more time with every one.",
     "Scythes of the Emperor": "Sotha's sons find the precise angle. **{name}** has found it nine times at Terminus level — the Sniper's scope aligned, the kill confirmed.",
     "Sons of Medusa": "Calculated long-range precision — **{name}** has calculated nine Terminus engagements from Sniper range and confirmed every kill.",
     "Space Wolves": "The wolf selects the moment of the hunt as carefully as the quarry. **{name}** selected nine Terminus moments from range and never missed.",
@@ -1552,6 +1861,7 @@ TERMINUS_SLAYER_SNIPER_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's Tactical warriors are the Chapter's most complete soldiers. **{name}** has proven it against nine Terminus-level targets — complete, adaptable, final.",
     "Angels of Vengeance": "The Lion's versatility made lethal — **{name}** has adapted to nine Terminus threats and applied the correct approach every time.",
+    "Atlantian Spears": "The Atlantian Spears trust disciplined judgment over theatricality. **{name}** judged nine Terminus threats correctly and selected the exact answer every time.",
     "Black Templars": "The Crusade is won by warriors who can meet every enemy on every front. **{name}** met nine Terminus threats on nine fronts and prevailed on all of them.",
     "Bleeding Hearts": "Pack adaptability focused on the greatest hunt — **{name}** has applied the full arsenal to nine Terminus threats and confirmed every kill.",
     "Blood Angels": "The sons of Sanguinius carry extraordinary adaptability alongside their fury. **{name}** adapted to nine Terminus threats and was lethal against every one.",
@@ -1574,6 +1884,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "The Red Thirst is most useful when the warrior can choose what to do with it. **{name}** has chosen correctly nine times at Terminus level.",
     "Genesis Chapter": "Guilliman's purity finds its fullest form in the Tactical warrior. **{name}** has demonstrated that form nine times against Terminus-level threats.",
     "Hawk Lords": "Swift and adaptable — **{name}** has adapted the full toolkit to nine Terminus threats and confirmed every kill in the Watch's records.",
+    "Howling Griffons": "A Griffon's oath need not favor one weapon over another, only the completed deed. **{name}** completed nine against Terminus threats with the Tactical's full arsenal.",
     "Hospitallers": "The Hospitaller Tactical protects by being lethal at every range. **{name}** has been lethal at the correct range nine times at Terminus level.",
     "Imperial Fists": "The Fist does not limit their kills to one method. **{name}** used every available tool to verify nine Terminus kills — a complete Tactical record.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** that the correct approach changes with every engagement. Nine Terminus kills confirm the lesson.",
@@ -1581,6 +1892,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound adapts to every prey. **{name}** has adapted to nine Terminus-class prey and confirmed every kill.",
     "Iron Lords": "The Iron Lord's grip adapts to every tool. **{name}** has gripped the correct tool for nine Terminus threats and confirmed each kill.",
     "Iron Ravens": "The Iron Raven adapts their approach to every engagement. **{name}** has adapted nine times at Terminus level and confirmed nine kills.",
+    "Iron Snakes": "Ithakan doctrine values the right tool over the loud one. **{name}** chose correctly across every Terminus class and logged nine confirmed kills.",
     "Knights of the Raven": "The Raven's patience extends to weapon choice. **{name}** chose the correct weapon for nine Terminus threats and confirmed every kill.",
     "Lamenters": "The cursed Chapter's Tactical warriors find their best expression in versatility. **{name}** has expressed that versatility nine times at Terminus level.",
     "Marines Errant": "The errant warrior carries every skill the Watch requires. **{name}** has deployed each of them against nine Terminus threats with confirmed results.",
@@ -1594,6 +1906,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist adaptability — every approach must be correct before it is deployed. **{name}** has deployed the correct approach nine times at Terminus level.",
     "Red Templars": "Fast and versatile — **{name}** has applied the complete toolkit to nine Terminus threats with confirmed results.",
     "Salamanders": "The sons of Nocturne master their craft before applying it. **{name}** mastered the full range of craft and applied it nine times at Terminus level.",
+    "Sable Knights": "When time is short, versatility becomes survival. **{name}** survived—and killed—through nine Terminus-grade tests of exactly that truth.",
     "Scythes of the Emperor": "Sotha's sons bring what the moment requires. **{name}** has brought the correct approach to nine Terminus moments and confirmed every kill.",
     "Sons of Medusa": "Calculated adaptability — every Terminus threat received the approach it could not counter. **{name}** has confirmed nine kills as the result.",
     "Space Wolves": "The wolf adapts to every terrain. **{name}** adapted to three Terminus types and eliminated nine of them across the Watch's most demanding operational record.",
@@ -1611,6 +1924,7 @@ TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES: Dict[str, str] = {
 TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven tend ancient mechanisms with ancient devotion. **{name}** turned that devotion into nine Terminus kills through zone control and machine-spirit cooperation.",
     "Angels of Vengeance": "The Lion's Techmarines serve the Chapter's secrets and the Chapter's kill record. **{name}**'s nine Terminus kills through zone control serve both.",
+    "Atlantian Spears": "The Atlantian Spears value foresight; a Techmarine makes that foresight physical. **{name}** built nine Terminus kill-zones and watched prophecy become machinery.",
     "Black Templars": "The Templar's crusade finds unlikely Techmarines. **{name}** carried the Omnissiah's tools into nine Terminus engagements — the Crusade is stronger for the results.",
     "Bleeding Hearts": "Pack territory dominated by machine-spirit cooperation — **{name}** has confirmed nine Terminus kills through zone control in the Watch's records.",
     "Blood Angels": "The sons of Sanguinius carry artistry into everything. **{name}**'s nine Terminus kills are the art of zone control applied at the Watch's most demanding target class.",
@@ -1633,6 +1947,7 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "Seth's Techmarines keep the Chapter's fury mechanically directed. **{name}** has directed it through zone control at nine Terminus threats with confirmed results.",
     "Genesis Chapter": "Guilliman's Techmarines apply doctrine to deployment. **{name}** has applied zone control doctrine to nine Terminus threats and confirmed nine kills.",
     "Hawk Lords": "Swift deployment of the Tarantula, swift activation of the servo gun — **{name}** has confirmed nine Terminus kills through the Hawk Lords' efficient methodology.",
+    "Howling Griffons": "The Griffons know a vow can be fulfilled by machine as surely as by blade. **{name}** vowed nine Terminus threats would die in the kill-zone, and they did.",
     "Hospitallers": "The Hospitaller Techmarine heals the zone by clearing the threat. **{name}** has cleared nine Terminus threats through zone control with confirmed results.",
     "Imperial Fists": "The Fists built Rogal Dorn's fortresses. **{name}** built a kill zone for nine Terminus threats and did not leave any of them standing.",
     "Imperius Reavers": "The Eastern Fringe taught **{name}** that the correct mechanical deployment transforms any engagement. Nine Terminus kills confirm the lesson.",
@@ -1640,6 +1955,7 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound's zone is the pack's domain. **{name}** has dominated nine Terminus engagements through zone control and confirmed nine kills.",
     "Iron Lords": "The Iron Lord's zone is the Iron Grip extended through machine-spirit cooperation. **{name}** has extended it nine times at Terminus level.",
     "Iron Ravens": "The Iron Raven's zone control is shadow made mechanical. **{name}** has used that mechanical shadow to confirm nine Terminus kills.",
+    "Iron Snakes": "Ithakan calm met Omnissian precision as **{name}** built nine perfect kill-zones and fed nine Terminus threats into them.",
     "Knights of the Raven": "Patient deployment, then the kill zone's answer — **{name}** has answered nine Terminus threats through zone control with the Omnissiah's full blessing.",
     "Lamenters": "The cursed Chapter's Techmarines keep what little remains operational. **{name}** has kept nine Terminus threats in the confirmed-kill column through zone control.",
     "Marines Errant": "The errant Techmarine deploys wherever the Omnissiah directs. **{name}** has deployed nine times at Terminus level and confirmed nine kills.",
@@ -1653,6 +1969,7 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist zone control applied at Terminus level — **{name}** has deployed with textbook precision nine times and confirmed nine kills.",
     "Red Templars": "Fast deployment, precise zone control — **{name}** has confirmed nine Terminus kills through the Techmarine's methodology in the Watch's records.",
     "Salamanders": "The sons of Nocturne pour mastery into their craft. **{name}** poured mastery into machinery, zone control, and nine Terminus kills — a record Vulkan would note.",
+    "Sable Knights": "When the shadow of the Rage is always behind you, a machine that never hesitates is a precious ally. **{name}** turned that ally into nine Terminus kills.",
     "Scythes of the Emperor": "Sotha's Techmarines keep the Chapter's machines running and the enemy kill count rising. **{name}** has raised it nine times at Terminus level.",
     "Sons of Medusa": "The Sons serve the Omnissiah's machines with precision. **{name}** has served those machines into nine Terminus kills through zone control.",
     "Space Wolves": "The Wolves do not always trust the machine — but **{name}** made the machine trustworthy, nine Terminus times, and the pack is stronger for it.",
@@ -1668,27 +1985,72 @@ TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES: Dict[str, str] = {
 }
 
 TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES: Dict[str, str] = {
-    "Ultramarines": "The sons of Macragge value decisive action. **{name}** was decisive nine times at Terminus level — the grapnel launched, the threat engaged, the kill confirmed.",
-    "Blood Angels": "The sons of Sanguinius are drawn to the close engagement. **{name}** drew nine Terminus threats into the close engagement and settled all nine accounts.",
-    "Consecrators": "The Consecrators infiltrate, strike, and vanish — no word to allies, none to enemies. **{name}** has done it nine times at Terminus level, each time with the same silent, absolute finality.",
-    "Dark Angels": "The First Legion's infiltrators are the blade's point. **{name}** pointed that blade at nine Terminus threats and drove it home every time.",
-    "Death Exorcists": "The Death Exorcist Vanguard is the shock before the shock — **{name}** was already among the Terminus threats before they registered the danger.",
-    "Executioners": "Executioners close the distance to settle debts in person. **{name}** used Vanguard speed to settle nine Terminus debts at grapnel range.",
-    "Space Wolves": "The wolf closes on its prey. **{name}** closed on nine Terminus-level prey faster than any of them could predict — the Vanguard's lesson delivered nine times.",
-    "Imperial Fists": "The Fist does not always hold ground — sometimes the Fist advances on the most dangerous point of the field. **{name}** advanced on nine Terminus threats and found success every time.",
-    "Salamanders": "The sons of Nocturne strike with purpose. **{name}** found nine Terminus threats and struck each one with the close-quarters purpose the Vanguard is built for.",
-    "Raven Guard": "This is the Raven Guard's Vanguard in their truest form — **{name}** arrived from an unexpected angle, at maximum speed, nine times against Terminus-level targets.",
-    "Iron Hands": "The grapnel is a mechanism. The close-quarter weapon is a mechanism. **{name}** operated both with Iron Hands efficiency against nine Terminus threats.",
-    "White Scars": "Speed above all — and the Vanguard's grapnel makes speed absolute. **{name}** applied White Scars principle to nine Terminus kills at the closest possible range.",
+    "Angels of Defiance": "The Unforgiven strike hardest when the foe believes the shadows still hold. **{name}** broke from concealment nine times at Terminus level and ended each fight in motion.",
+    "Angels of Vengeance": "The Lion's sons do not always wait behind walls; sometimes vengeance arrives by grapnel and combat knife. **{name}** proved it nine times against Terminus prey.",
+    "Atlantian Spears": "The Atlantian Spears favor foresight and disciplined timing; **{name}** turned both into nine perfect close-range arrivals against Terminus threats.",
     "Black Templars": "The eternal charge is not always on foot. **{name}** launched the grapnel and charged nine Terminus threats in the Templar's eternal spirit.",
-    "Black Shield": "No chapter. No lineage. Only the grapnel's trajectory and nine Terminus kills confirmed. **{name}**'s record is the complete statement.",
+    "Bleeding Hearts": "The hunt is sharpest when the distance vanishes all at once. **{name}** erased that distance nine times and left only confirmed Terminus kills behind.",
+    "Blood Angels": "The sons of Sanguinius are drawn to the close engagement. **{name}** drew nine Terminus threats into the close engagement and settled all nine accounts.",
+    "Blood Ravens": "Knowledge chose the angle, the grapnel closed it, and the blade finished the argument. **{name}** ran that sequence nine times at Terminus level.",
+    "Brazen Minotaurs": "The bronze herd does not balk at confined violence. **{name}** slammed into nine Terminus threats at Vanguard range and broke every one of them.",
+    "Carcharodons": "Silent until the moment of impact, then irrecoverably close — **{name}** made nine Terminus threats discover the Void-born way too late.",
+    "Carmine Blades": "Baal's fury is most terrible when it chooses the instant of contact. **{name}** chose it nine times against Terminus prey and each choice was final.",
+    "Celestial Lions": "Pride is not always a roar; sometimes it is a perfect kill delivered from the blind angle. **{name}** delivered nine of them at Terminus grade.",
+    "Consecrators": "The Consecrators infiltrate, strike, and vanish — no word to allies, none to enemies. **{name}** has done it nine times at Terminus level, each time with the same silent, absolute finality.",
+    "Cowled Wardens": "The hood does not slow the kill. **{name}** crossed into nine Terminus engagements from the angle least watched and ended each one before the foe could adjust.",
+    "Crimson Fists": "Rynn's sons know how to force the issue at close range. **{name}** forced it nine times against Terminus threats and left nothing unsettled.",
+    "Dark Angels": "The First Legion's infiltrators are the blade's point. **{name}** pointed that blade at nine Terminus threats and drove it home every time.",
+    "Dark Krakens": "The abyss rewards those who strike from below and too close to escape. **{name}** brought that lesson to nine Terminus threats and confirmed every kill.",
+    "Death Exorcists": "The Death Exorcist Vanguard is the shock before the shock — **{name}** was already among the Terminus threats before they registered the danger.",
+    "Dragonspears": "Fleet-hunters know the kill is often won in the closing second. **{name}** stole that second from nine Terminus threats and made it permanent.",
+    "Death Spectres": "The Spectre appears inside the enemy's perimeter like a death already decided. **{name}** appeared that way for nine Terminus enemies and none endured the revelation.",
+    "Epsilon Paladins": "For Honour and for Dorn, **{name}** crossed the last meters to nine Terminus threats with the certainty of a knight lowering the spear.",
+    "Exorcists": "The thrice-tested warrior does not fear the close arrival. **{name}** made nine of them at Terminus level and each one ended in purified silence.",
+    "Executioners": "Executioners close the distance to settle debts in person. **{name}** used Vanguard speed to settle nine Terminus debts at grapnel range.",
+    "Flesh Tearers": "Close range is where the rage speaks clearest. **{name}** let it speak nine times against Terminus prey and kept enough control to return with proof.",
+    "Genesis Chapter": "The Codex does not forbid audacity when the timing is perfect. **{name}** proved that clause nine times by arriving fast and killing clean.",
+    "Hawk Lords": "Velocity is a weapon in its own right. **{name}** weaponised it nine times at Terminus level and left only shattered targets in the record.",
+    "Howling Griffons": "A Howling Griffon does not wait for the perfect battlefield when the oath requires the kill now. **{name}** crossed the gap to nine Terminus threats and fulfilled that oath in person.",
+    "Hospitallers": "Mercy has no place in the instant between grapnel impact and kill-confirmation. **{name}** made that instant count nine times for the brothers behind them.",
+    "Imperial Fists": "The Fist does not always hold ground — sometimes the Fist advances on the most dangerous point of the field. **{name}** advanced on nine Terminus threats and found success every time.",
+    "Imperius Reavers": "Fringe wars reward the warrior who can appear exactly where the line is failing. **{name}** appeared inside nine Terminus engagements and broke them from within.",
+    "Iron Hands": "The grapnel is a mechanism. The close-quarter weapon is a mechanism. **{name}** operated both with Iron Hands efficiency against nine Terminus threats.",
+    "Iron Hounds": "The pack's fastest bite is the one that lands before the prey recognizes the hunt. **{name}** landed it nine times at Terminus level.",
+    "Iron Lords": "The Iron Grip does not only hold territory; it seizes the vital point. **{name}** seized nine Terminus kill-zones at Vanguard speed and did not relinquish any.",
+    "Iron Ravens": "Shadow and iron together make for a brutal arrival. **{name}** arrived on nine Terminus threats that way and left each engagement mechanically final.",
+    "Iron Snakes": "The Ithakan hunter closes only when the kill is certain. **{name}** closed nine times at Vanguard speed and made certainty look effortless.",
+    "Knights of the Raven": "Patience lasted until the line was found; then **{name}** crossed it in an instant. Nine Terminus kills confirm the Knight chose every moment correctly.",
+    "Lamenters": "The cursed often close on death whether they wish to or not. **{name}** chose to do it nine times at Terminus level and made the curse serve the mission.",
+    "Marines Errant": "The wanderer who can turn any wall, ledge, or gantry into a launch point never lacks for approach angles. **{name}** found nine against Terminus prey and used them all.",
     "Marines Malevolent": "The grapnel fires and the Malevolent arrives at the kill zone first — **{name}** has arrived nine times at Terminus level and not one threat survived the meeting.",
     "Mantis Warriors": "The ambush requires closing distance at the precise moment — **{name}** launched the grapnel nine times against Terminus threats with Mantis Warriors timing, arrived in the kill zone at the exact right second, and confirmed every kill.",
+    "Mentors": "A perfect demonstration needs no lecture. **{name}** demonstrated Vanguard doctrine against Terminus threats nine times and every lesson ended in a corpse.",
+    "Minotaurs": "The bull does not always meet the foe head-on; sometimes it appears at the throat. **{name}** found nine such throats at Terminus level.",
+    "Necropolis Hawks": "Broken vertical terrain only gives the Hawk more places to launch from. **{name}** used that gift nine times to descend on Terminus prey.",
+    "Raptors": "This is stealth pragmatism condensed to a single violent arrival. **{name}** arrived on nine Terminus threats from the blind angle and departed only after the kill was certain.",
+    "Raven Guard": "This is the Raven Guard's Vanguard in their truest form — **{name}** arrived from an unexpected angle, at maximum speed, nine times against Terminus-level targets.",
+    "Red Scorpions": "Even the most exacting purist must concede that some kills are won only by immediate proximity. **{name}** conceded it nine times and executed each approach flawlessly.",
+    "Red Templars": "Fast to commit, faster to finish — **{name}** made the Red Templars' preferred rhythm lethal against nine Terminus-grade enemies.",
+    "Salamanders": "When the threat is too great to leave standing another heartbeat, even Nocturne's patient sons close hard and fast. **{name}** did so nine times.",
+    "Sable Knights": "Time is always running out for the Sable Knights. **{name}** spent nine desperate rushes at Terminus prey exactly as such time should be spent: at blade-point.",
+    "Scythes of the Emperor": "The survivors of Sotha do not waste openings. **{name}** carved through nine Terminus engagements the instant a path appeared and left each enemy dead before it closed.",
+    "Sons of Medusa": "The shortest route to a solved problem is sometimes a grapnel-line and a blade. **{name}** solved nine Terminus problems that way with impeccable machine-cold logic.",
+    "Space Wolves": "The wolf closes on its prey. **{name}** closed on nine Terminus-level prey faster than any of them could predict — the Vanguard's lesson delivered nine times.",
+    "Storm Giants": "A giant arriving at close range is a catastrophe in motion. **{name}** became that catastrophe for nine Terminus enemies and survived every impact.",
+    "Tempestuous Angels": "Storm-forged warriors know how fast the sky can break. **{name}** broke into nine Terminus engagements with that same violence and settled them up close.",
+    "The Drakes": "Drakefire is most terrible when it arrives already inside the enemy's guard. **{name}** arrived that way nine times and confirmed every kill.",
+    "Tigers Argent": "Icefang teaches that the surest answer to a breach is a killing thrust through it. **{name}** delivered that thrust nine times at Terminus level.",
+    "Tome Keepers": "The record will show nine perfect entries: grapnel launched, range collapsed, Terminus target dead. **{name}** authored all of them personally.",
+    "Ultramarines": "The sons of Macragge value decisive action. **{name}** was decisive nine times at Terminus level — the grapnel launched, the threat engaged, the kill confirmed.",
+    "White Scars": "Speed above all — and the Vanguard's grapnel makes speed absolute. **{name}** applied White Scars principle to nine Terminus kills at the closest possible range.",
+    "Wolfspear": "The Dark Terror hunts at speed. **{name}** has hunted nine Terminus threats at jump pack speed and confirmed every kill in the Watch's records.",
+    "Black Shield": "No chapter. No lineage. Only the grapnel's trajectory and nine Terminus kills confirmed. **{name}**'s record is the complete statement.",
 }
 
 MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Angels of Defiance": "The Unforgiven's secrets run deep. **{name}**'s Master Terminus Slayer record runs deeper — six classes, every Terminus type, all verified.",
     "Angels of Vengeance": "The Lion's wrath was never meant to be contained in one class. **{name}** has expressed it in all six, against every Terminus type the Watch tracks.",
+    "Atlantian Spears": "Foresight, discipline, and close study of the foe culminate here: **{name}** mastered every class, answered every Terminus form, and made the Atlantian name synonymous with total preparedness.",
     "Black Templars": "The Crusade never ends. **{name}** has fought it in every class the Watch recognises, against every class of Terminus enemy, and produced the verification record for all of it.",
     "Bleeding Hearts": "The hunt in every form the Watch teaches — **{name}** has hunted in all six classes, confirmed every Terminus type, and the hunt record stands as the fullest in the Watch's logs.",
     "Blood Angels": "The sons of Sanguinius carry extraordinary gifts into battle. **{name}** has carried them across every class, every Terminus type, and produced a record that no single gift can explain.",
@@ -1711,6 +2073,7 @@ MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Flesh Tearers": "Seth's sons find their fullest catharsis in the Master Terminus Slayer. **{name}** has expressed that catharsis across all six classes with every Terminus type confirmed.",
     "Genesis Chapter": "Guilliman's purity finds its highest combat application in the warrior who has mastered all six classes. **{name}** is that warrior — every Terminus type, all confirmed.",
     "Hawk Lords": "The Hawk Lord sees from every angle. **{name}** has engaged from every angle the Terminus Slayer challenge permits — six classes, every type, all confirmed.",
+    "Howling Griffons": "The Howling Griffons take vows seriously enough to chase them across decades; **{name}** chased mastery across every class until every Terminus record in the ledger had been answered.",
     "Hospitallers": "The Hospitaller who has mastered all six classes has nothing left to prove and everything left to demonstrate. **{name}** has demonstrated all of it — Master Terminus Slayer.",
     "Imperial Fists": "Rogal Dorn built warriors for every contingency. **{name}** proved worthy of every contingency — all six combat disciplines, all Terminus types, all verified.",
     "Imperius Reavers": "The Eastern Fringe produced a warrior who would master all six Terminus Slayer classes. **{name}** is that warrior — every type confirmed, every class complete.",
@@ -1718,6 +2081,7 @@ MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Iron Hounds": "The Hound that hunts in all six formations is the pack's most complete asset. **{name}** has proven their completeness — Master Terminus Slayer, all types confirmed.",
     "Iron Lords": "The Iron Grip in all six classes — **{name}** has gripped every Terminus type in every Terminus Slayer class and confirmed the full record.",
     "Iron Ravens": "The Iron Raven in all six shadows — **{name}** has operated in every Terminus Slayer class, confirmed every Terminus type, and earned the Watch's highest individual combat distinction.",
+    "Iron Snakes": "Ithaka's discipline scales from knife to cannon without losing tempo. **{name}** proved that in all six classes, every Terminus type, all confirmed.",
     "Knights of the Raven": "The Raven's patience rewarded in all six classes — **{name}** has confirmed every Terminus type in every class the Watch tracks. The patience and the record are both complete.",
     "Lamenters": "The cursed Chapter has found its fullest, least cursed expression in **{name}**'s Master Terminus Slayer record — six classes, every Terminus type, all verified.",
     "Marines Errant": "The errant warrior has found every class. **{name}**'s Master Terminus Slayer record is the most complete itinerary in the Watch — six classes, all Terminus types, all confirmed.",
@@ -1731,6 +2095,7 @@ MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Red Scorpions": "Purist standards applied to all six classes — **{name}** has met the Red Scorpion standard in every Terminus Slayer form the Watch recognises.",
     "Red Templars": "Fast and complete — **{name}**'s Master Terminus Slayer record is the Red Templar's highest individual achievement in the Watch's combat logs.",
     "Salamanders": "The sons of Nocturne master their craft above all else. **{name}** has mastered six crafts and applied each one to Terminus threats. Vulkan would find this entirely appropriate.",
+    "Sable Knights": "Every class mastered is another war won before the darkness within can claim the hour. **{name}** mastered them all, turning a cursed span of service into the Watch's fullest combat record.",
     "Scythes of the Emperor": "Sotha's sons honour their lost Chapter by achieving what it set out to achieve. **{name}**'s Master Terminus Slayer record honours that legacy in every class and every Terminus type.",
     "Sons of Medusa": "The Sons calculate mastery precisely. **{name}**'s Master Terminus Slayer record is the most precise calculation in the Watch — six classes completed, every Terminus type confirmed.",
     "Space Wolves": "The Great Hunt is answered in full by **{name}** — every class ridden, every Terminus prey brought down, all fifty-four kills verified in the Kill-Leader's own records.",
@@ -1744,4 +2109,357 @@ MASTER_TERMINUS_SLAYER_CHAPTER_LINES: Dict[str, str] = {
     "Wolfspear": "The Dark Terror hunts in all configurations. **{name}** has hunted in all six Terminus Slayer classes and confirmed every Terminus type — the fullest hunt record in the Watch.",
     "Black Shield": "No Chapter claims the Master Terminus Slayer. The title claims **{name}**. No lineage is required when the kill logs speak this clearly.",
 }
+
+
+HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
+    "Iron Snakes": "Ithaka's hunters know defensive war is still a hunt; this warrior held Herisor's perimeter with calm precision until the objective endured.",
+}
+
+
+DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES: Dict[str, str] = {
+    "Iron Snakes": "No brother dropped and no line buckled — this Ithakan veteran turned Herisor's siege into a study in composed, lethal team discipline.",
+}
+
+
+DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES: Dict[str, str] = {
+    "Iron Snakes": "Across both Herisor fronts, this warrior hunted every breach before it formed; valor here was not noise, but perfect timing under impossible pressure.",
+}
+
+
+# ---------------------------------------------------------------------------
+# Coverage guards for chapter-keyed flavor maps
+# ---------------------------------------------------------------------------
+# Keep these in sync with bot.HOME_CHAPTERS. We keep a local copy here to avoid
+# importing opscribe.bot and creating circular import pressure at startup.
+_CANONICAL_HOME_CHAPTERS: List[str] = [
+    "Angels of Defiance",
+    "Angels of Vengeance",
+    "Atlantian Spears",
+    "Black Templars",
+    "Bleeding Hearts",
+    "Blood Angels",
+    "Blood Ravens",
+    "Brazen Minotaurs",
+    "Carcharodons",
+    "Carmine Blades",
+    "Celestial Lions",
+    "Consecrators",
+    "Cowled Wardens",
+    "Crimson Fists",
+    "Dark Angels",
+    "Dark Krakens",
+    "Dragonspears",
+    "Death Exorcists",
+    "Death Spectres",
+    "Epsilon Paladins",
+    "Exorcists",
+    "Executioners",
+    "Flesh Tearers",
+    "Genesis Chapter",
+    "Hawk Lords",
+    "Howling Griffons",
+    "Hospitallers",
+    "Imperial Fists",
+    "Imperius Reavers",
+    "Iron Hands",
+    "Iron Hounds",
+    "Iron Lords",
+    "Iron Ravens",
+    "Iron Snakes",
+    "Knights of the Raven",
+    "Lamenters",
+    "Marines Errant",
+    "Marines Malevolent",
+    "Mantis Warriors",
+    "Mentors",
+    "Minotaurs",
+    "Necropolis Hawks",
+    "Raptors",
+    "Raven Guard",
+    "Red Scorpions",
+    "Red Templars",
+    "Salamanders",
+    "Sable Knights",
+    "Scythes of the Emperor",
+    "Sons of Medusa",
+    "Space Wolves",
+    "Storm Giants",
+    "Tempestuous Angels",
+    "The Drakes",
+    "Tigers Argent",
+    "Tome Keepers",
+    "Ultramarines",
+    "White Scars",
+    "Wolfspear",
+    "Black Shield",
+]
+
+
+_CHAPTER_MOTIFS: Dict[str, str] = {
+    "Angels of Defiance": "unyielding resolve",
+    "Angels of Vengeance": "patient retribution",
+    "Atlantian Spears": "foresight and trident discipline",
+    "Black Templars": "eternal crusade zeal",
+    "Bleeding Hearts": "martyr's fury",
+    "Blood Angels": "noble wrath of Sanguinius",
+    "Blood Ravens": "hoarded knowledge and precision",
+    "Brazen Minotaurs": "bronze siege ferocity",
+    "Carcharodons": "void-born predation",
+    "Carmine Blades": "blood-bound penitence",
+    "Celestial Lions": "pride under hardship",
+    "Consecrators": "relic-bound vigilance",
+    "Cowled Wardens": "hooded vigilance",
+    "Crimson Fists": "defiant endurance",
+    "Dark Angels": "secretive First Legion discipline",
+    "Dark Krakens": "abyssal pressure-hardened hunting",
+    "Dragonspears": "fleet-borne drakefire pursuit",
+    "Death Exorcists": "rage-denying exorcism",
+    "Death Spectres": "death-shroud austerity",
+    "Epsilon Paladins": "Dornian honour",
+    "Exorcists": "warp-tested purity",
+    "Executioners": "oath-and-axe judgment",
+    "Flesh Tearers": "controlled bloodlust",
+    "Genesis Chapter": "codex-born precision",
+    "Hawk Lords": "raptor swiftness",
+    "Howling Griffons": "oathbound red-yellow defiance",
+    "Hospitallers": "mercy in one hand and wrath in the other",
+    "Imperial Fists": "fortress resolve",
+    "Imperius Reavers": "Eastern Fringe tenacity",
+    "Iron Hands": "mechanical certainty",
+    "Iron Hounds": "relentless pursuit",
+    "Iron Lords": "the Iron Grip's ceaseless vigilance",
+    "Iron Ravens": "shadowed machinecraft",
+    "Iron Snakes": "Ithakan sea-hunter precision",
+    "Knights of the Raven": "patient stratagem",
+    "Lamenters": "cursed valor",
+    "Marines Errant": "void errantry",
+    "Marines Malevolent": "ruthless expediency",
+    "Mantis Warriors": "penitent ambush craft",
+    "Mentors": "didactic precision",
+    "Minotaurs": "bull-headed assault doctrine",
+    "Necropolis Hawks": "ruin-clearing pragmatism",
+    "Raptors": "stealth pragmatism",
+    "Raven Guard": "Coraxian shadow-war",
+    "Red Scorpions": "purity doctrine",
+    "Red Templars": "swift Dornian strike",
+    "Salamanders": "protective firecraft",
+    "Sable Knights": "rage-aware fleet discipline",
+    "Scythes of the Emperor": "survivor vengeance",
+    "Sons of Medusa": "cold logic",
+    "Space Wolves": "pack sagas",
+    "Storm Giants": "towering might",
+    "Tempestuous Angels": "storm-forged guardianship",
+    "The Drakes": "purifying drakefire",
+    "Tigers Argent": "Icefang frontier endurance",
+    "Tome Keepers": "chronicled memory",
+    "Ultramarines": "Codex mastery",
+    "White Scars": "steppe-speed ferocity",
+    "Wolfspear": "Nihilus pack-hunt discipline",
+    "Black Shield": "nameless devotion",
+}
+
+
+_CHAPTER_EPITHETS: Dict[str, str] = {
+    "Angels of Defiance": "defiant Unforgiven discipline",
+    "Angels of Vengeance": "vengeful lion-blood doctrine",
+    "Atlantian Spears": "teal-and-gold trident heraldry",
+    "Black Templars": "crusader blackplate fervor",
+    "Bleeding Hearts": "martyr-hunt war creed",
+    "Blood Angels": "Sanguinian nobility in crimson",
+    "Blood Ravens": "librarius-crowned warcraft",
+    "Brazen Minotaurs": "bronze siege-breaker tradition",
+    "Carcharodons": "void-predator silence",
+    "Carmine Blades": "carmine penitent ferocity",
+    "Celestial Lions": "lion-pride under fire",
+    "Consecrators": "reliquary warder austerity",
+    "Cowled Wardens": "hooded sentinel bearing",
+    "Crimson Fists": "Dornian defiance reborn",
+    "Dark Angels": "First Legion secrecy",
+    "Dark Krakens": "abyss-born hunter's poise",
+    "Dragonspears": "fleet-hunt drakefire creed",
+    "Death Exorcists": "rage-banishing discipline",
+    "Death Spectres": "sepulchral watchcraft",
+    "Epsilon Paladins": "silver-and-gold palatine honor",
+    "Exorcists": "thrice-tested warding rites",
+    "Executioners": "headsman's oath tradition",
+    "Flesh Tearers": "chain-bound fury",
+    "Genesis Chapter": "Codex-perfect lineage",
+    "Hawk Lords": "raptor-wing strike ethos",
+    "Howling Griffons": "quartered red-yellow oathwork",
+    "Hospitallers": "healer-warrior dual vow",
+    "Imperial Fists": "praetorian stone resolve",
+    "Imperius Reavers": "Fringe-war strike resolve",
+    "Iron Hands": "ironlogic supremacy",
+    "Iron Hounds": "pack-hunt relentlessness",
+    "Iron Lords": "Iron Grip watch doctrine",
+    "Iron Ravens": "shadowed iron method",
+    "Iron Snakes": "sea-green hunter discipline",
+    "Knights of the Raven": "stratagem-bound knightly patience",
+    "Lamenters": "sorrow-forged fidelity",
+    "Marines Errant": "void-wandering duty",
+    "Marines Malevolent": "pitiless battlefield economy",
+    "Mantis Warriors": "penitent ambush mastery",
+    "Mentors": "didactic combat exactitude",
+    "Minotaurs": "bull-charge authority",
+    "Necropolis Hawks": "ruinfront reclamation ethos",
+    "Raptors": "pragmatic stealth doctrine",
+    "Raven Guard": "Coraxian shadow precision",
+    "Red Scorpions": "purity-above-all doctrine",
+    "Red Templars": "swift Dornian blade creed",
+    "Salamanders": "Nocturnean protector's fire",
+    "Sable Knights": "fleetbound rage-discipline",
+    "Scythes of the Emperor": "Sotha's survivor wrath",
+    "Sons of Medusa": "cold machine calculus",
+    "Space Wolves": "Fenrisian pack saga",
+    "Storm Giants": "towering linebreaker force",
+    "Tempestuous Angels": "storm-forged guardian oath",
+    "The Drakes": "drakefire purgation",
+    "Tigers Argent": "Icefang frontier hardiness",
+    "Tome Keepers": "chronicle-warded memory",
+    "Ultramarines": "Macraggian codex clarity",
+    "White Scars": "steppe-borne lightning warfare",
+    "Wolfspear": "Nihilus wolfpack tenacity",
+    "Black Shield": "oath without lineage",
+}
+
+
+def _motif(chapter: str) -> str:
+    return _CHAPTER_MOTIFS.get(chapter, "unyielding duty")
+
+
+def _epithet(chapter: str) -> str:
+    return _CHAPTER_EPITHETS.get(chapter, f"{chapter} battle tradition")
+
+
+def _default_blessing(chapter: str) -> str:
+    return (
+        f"{chapter} advances in {_epithet(chapter)} under {_motif(chapter)}; your armor is consecrated for the Long Watch's harshest wars."
+    )
+
+
+def _default_forgemaster_self_attestation(chapter: str) -> List[str]:
+    chapter_motif = _motif(chapter)
+    chapter_epithet = _epithet(chapter)
+    return [
+        f"By oath and iron, I tend my own warplate in the {chapter} tradition of {chapter_motif} and {chapter_epithet}.",
+        f"No second hand is required; this consecration is mine, shaped by the {chapter}'s {chapter_motif} and sealed in {chapter_epithet}.",
+        f"The rite is completed by my own gauntlets, and the {chapter}'s {chapter_motif} steadies every motion in true {chapter_epithet} fashion.",
+    ]
+
+
+def _default_studs_flavor(chapter: str) -> List[str]:
+    chapter_motif = _motif(chapter)
+    chapter_epithet = _epithet(chapter)
+    return [
+        f"Each stud marks service rendered in the name of the {chapter}, tempered by {chapter_motif} and {chapter_epithet}.",
+        f"These marks record campaigns endured by a {chapter} warrior whose defining traits are {chapter_motif} and {chapter_epithet}.",
+        f"Duty fulfilled and oaths remembered: the {chapter}'s {chapter_motif} shines in every earned stud, framed by {chapter_epithet}.",
+    ]
+
+
+def _award_proof_phrase(award_label: str) -> str:
+    label = (award_label or "").lower()
+    if "veteran" in label:
+        return "hard-won veteran standing"
+    if "ardent raider" in label:
+        return "xenos-intel acquisition mastery"
+    if "apothecarion" in label:
+        return "gene-seed guardianship"
+    if "crimson laurels" in label:
+        return "legend-tier battlefield record"
+    if "pipehitter" in label:
+        return "success on impossible directives"
+    if "black laurels" in label:
+        return "kill-team brotherhood under pressure"
+    if "crux terminatus" in label:
+        return "terminator-grade battlefield authority"
+    if "kadaku" in label:
+        return "campaign-complete anti-leviathan endurance"
+    if "black reef" in label:
+        return "void-front campaign persistence"
+    if "order omega" in label:
+        return "omega-tier operational dominance"
+    if "aquiline" in label or "dual vigil" in label:
+        return "absolute-difficulty two-warrior cohesion"
+    if "master terminus slayer" in label:
+        return "all-class apex-target elimination mastery"
+    if "terminus slayer" in label:
+        return "apex-target elimination precision"
+    if "forge blessing" in label:
+        return "sanctified warplate discipline"
+    return "combat distinction"
+
+
+def _default_award_coda(chapter: str, award_label: str) -> str:
+    proof = _award_proof_phrase(award_label)
+    return (
+        f"The {chapter} records this {award_label} as proof of {proof}, expressed through {_motif(chapter)} and {_epithet(chapter)}; the Long Watch takes due note."
+    )
+
+
+def _ensure_string_map(
+    target: Dict[str, str],
+    *,
+    award_label: str,
+) -> None:
+    canonical = set(_CANONICAL_HOME_CHAPTERS)
+    # Remove non-canonical chapter keys to keep map parity checks clean.
+    for key in list(target.keys()):
+        if key not in canonical:
+            del target[key]
+    # Backfill missing canonical chapters with deterministic default text.
+    for chapter in _CANONICAL_HOME_CHAPTERS:
+        if chapter not in target:
+            target[chapter] = _default_award_coda(chapter, award_label)
+
+
+def _ensure_list_map(
+    target: Dict[str, List[str]],
+    *,
+    kind: str,
+) -> None:
+    canonical = set(_CANONICAL_HOME_CHAPTERS)
+    for key in list(target.keys()):
+        if key not in canonical:
+            del target[key]
+    for chapter in _CANONICAL_HOME_CHAPTERS:
+        if chapter not in target or not target[chapter]:
+            if kind == "blessing":
+                target[chapter] = [_default_blessing(chapter)]
+            elif kind == "forgemaster":
+                target[chapter] = _default_forgemaster_self_attestation(chapter)
+            else:
+                target[chapter] = _default_studs_flavor(chapter)
+
+
+# Core chapter maps
+_ensure_string_map(CHAPTER_BLESSINGS, award_label="forge blessing")
+_ensure_list_map(FORGEMASTER_SELF_ATTESTATION_BY_CHAPTER, kind="forgemaster")
+_ensure_list_map(CHAPTER_STUDS_FLAVOR, kind="studs")
+
+# Award/challenge codas
+_ensure_string_map(WATCH_VETERAN_CHAPTER_LINES, award_label="Watch Veteran honor")
+_ensure_string_map(ARDENT_RAIDER_CHAPTER_LINES, award_label="Ardent Raider citation")
+_ensure_string_map(APOTHECARION_MEDAL_CHAPTER_LINES, award_label="Apothecarion Service Medal")
+_ensure_string_map(CRIMSON_LAURELS_CHAPTER_LINES, award_label="Crimson Laurels commendation")
+_ensure_string_map(SOK_G_PIPEHITTER_CHAPTER_LINES, award_label="SOK-G Pipehitter designation")
+_ensure_string_map(DISTINGUISHED_PIPEHITTER_CHAPTER_LINES, award_label="Distinguished Pipehitter designation")
+_ensure_string_map(BLACK_LAURELS_CHAPTER_LINES, award_label="Black Laurels commendation")
+_ensure_string_map(CRUX_TERMINATUS_CHAPTER_LINES, award_label="Crux Terminatus honor")
+_ensure_string_map(KADAKU_CAMPAIGN_CHAPTER_LINES, award_label="Kadaku Campaign Medal")
+_ensure_string_map(BLACK_REEF_CAMPAIGN_CHAPTER_LINES, award_label="Black Reef Campaign Medal")
+_ensure_string_map(DISTINGUISHED_BLACK_REEF_CHAPTER_LINES, award_label="Distinguished Black Reef Medal")
+_ensure_string_map(ORDER_OMEGA_CHAPTER_LINES, award_label="Order Omega induction")
+_ensure_string_map(HERISOR_DEFENSE_CHAPTER_LINES, award_label="Herisor Defense Medal")
+_ensure_string_map(DISTINGUISHED_HERISOR_DEFENSE_CHAPTER_LINES, award_label="Distinguished Herisor Defense Medal")
+_ensure_string_map(DISTINGUISHED_HERISOR_DEFENSE_VALOR_CHAPTER_LINES, award_label="Distinguished Herisor Defense Medal with Valor")
+_ensure_string_map(DUAL_VIGIL_CHAPTER_LINES, award_label="Order of the Aquiline Brotherhood")
+_ensure_string_map(TERMINUS_SLAYER_ASSAULT_CHAPTER_LINES, award_label="Terminus Slayer Assault citation")
+_ensure_string_map(TERMINUS_SLAYER_BULWARK_CHAPTER_LINES, award_label="Terminus Slayer Bulwark citation")
+_ensure_string_map(TERMINUS_SLAYER_HEAVY_CHAPTER_LINES, award_label="Terminus Slayer Heavy citation")
+_ensure_string_map(TERMINUS_SLAYER_SNIPER_CHAPTER_LINES, award_label="Terminus Slayer Sniper citation")
+_ensure_string_map(TERMINUS_SLAYER_TACTICAL_CHAPTER_LINES, award_label="Terminus Slayer Tactical citation")
+_ensure_string_map(TERMINUS_SLAYER_TECHMARINE_CHAPTER_LINES, award_label="Terminus Slayer Techmarine citation")
+_ensure_string_map(TERMINUS_SLAYER_VANGUARD_CHAPTER_LINES, award_label="Terminus Slayer Vanguard citation")
+_ensure_string_map(MASTER_TERMINUS_SLAYER_CHAPTER_LINES, award_label="Master Terminus Slayer distinction")
 
