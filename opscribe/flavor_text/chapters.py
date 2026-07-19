@@ -1273,6 +1273,71 @@ KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
     "Black Shield": "No lineage to claim — only the Kadaku Campaign Medal, and the Watch's full recognition of every operation completed.",
 }
 
+# Distinguished Kadaku receives fully authored chapter codas rather than
+# generated suffix text.
+DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES: Dict[str, str] = {
+    "Angels of Defiance": "On Kadaku's hardest fronts, this Unforgiven did more than hold the line; they held every brother in formation and carried the campaign to Distinguished completion.",
+    "Angels of Vengeance": "Leviathan's debt was not merely paid on Kadaku, it was collected in full; this Angel's Distinguished record confirms vengeance delivered across every front.",
+    "Atlantian Spears": "Kadaku demanded foresight, endurance, and nerve under pressure; this Atlantian Spear brought all three and elevated the entire line to Distinguished standard.",
+    "Black Templars": "The Eternal Crusade marched Kadaku end to end, and this Templar marched at its sharpest point, earning Distinguished honors through relentless campaign fidelity.",
+    "Bleeding Hearts": "Hunt-rage alone does not earn Distinction; discipline does. This Bleeding Heart carried both through every Kadaku operation and left no duty unfinished.",
+    "Blood Angels": "Sanguinius' sons gave Kadaku no quarter, and this Angel gave even less, translating fury into a Distinguished campaign record the Watch will not forget.",
+    "Blood Ravens": "Every Kadaku operation became a solved problem under this Blood Raven's hand; the Distinguished citation marks scholarship weaponized at campaign scale.",
+    "Brazen Minotaurs": "Bronze momentum broke Leviathan lines again and again on Kadaku; this Minotaur's Distinguished honor confirms a charge sustained for the full campaign.",
+    "Carcharodons": "Silent across Kadaku's kill-zones, this Carcharodon left only certainty in their wake: Distinguished completion, verified in ruin and blood.",
+    "Carmine Blades": "Kadaku tested every curse and every oath; this Carmine Blade answered with Distinguished consistency and a line held to the final operation.",
+    "Celestial Lions": "Elysium's pride stood firm on Kadaku, but this Lion went further, binding courage to consistency and earning Distinguished campaign standing.",
+    "Consecrators": "The Consecrators know isolation and endurance; this warrior made Kadaku another sealed chapter of both, completed at Distinguished level.",
+    "Cowled Wardens": "In silence and precision, this Warden crossed the full Kadaku campaign and emerged with Distinguished honors earned without spectacle.",
+    "Crimson Fists": "Few in number does not mean small in effect; this Crimson Fist carried a Chapter's worth of burden on Kadaku and earned Distinguished recognition for it.",
+    "Dark Angels": "Secrets were preserved, objectives were completed, and the swarm was denied at every turn; this Dark Angel's Distinguished citation records all three outcomes.",
+    "Dark Krakens": "Pressure forged this Kraken long before Kadaku; Distinguished campaign service proves that Leviathan's weight was simply another depth to master.",
+    "Death Exorcists": "Scorched-earth doctrine met Leviathan adaptation on Kadaku, and this Death Exorcist executed it with Distinguished thoroughness from first front to last.",
+    "Dragonspears": "Fleet-borne aggression and campaign-long stamina defined this Dragonspear's Kadaku service; Distinguished status confirms both were sustained without decline.",
+    "Death Spectres": "Between life and death, this Spectre walked every Kadaku front and returned each time with the mission intact; Distinguished honors are the formal record.",
+    "Epsilon Paladins": "For Honour, for Duty, for Dorn, and for every brother in the line: this Epsilon Paladin's Kadaku record rises to Distinguished proof.",
+    "Exorcists": "Warp-tested and swarm-tested, this Exorcist turned Kadaku into a chain of passed trials and secured a Distinguished campaign conclusion.",
+    "Executioners": "Kadaku added names to the enemy dead and none to broken oaths; this Executioner's Distinguished citation marks honor held under total pressure.",
+    "Flesh Tearers": "The Red Thirst found a battlefield on Kadaku, but this Tearer kept it leashed to purpose, earning Distinguished standing through campaign-long control.",
+    "Genesis Chapter": "Codex method at full campaign tempo delivered on Kadaku; this Genesis warrior's Distinguished citation reflects doctrine applied without a single weak link.",
+    "Hawk Lords": "Speed is common; sustained speed under campaign stress is not. This Hawk Lord maintained both and earned Distinguished Kadaku honors outright.",
+    "Hospitallers": "Healer and executioner in equal measure, this Hospitaller preserved brothers and destroyed swarms across Kadaku to Distinguished effect.",
+    "Imperial Fists": "Dorn's wall does not bend for attrition. This Imperial Fist proved it on every Kadaku front and secured Distinguished recognition through unbroken endurance.",
+    "Imperius Reavers": "Eastern Fringe hardness met Kadaku's worst conditions and prevailed; this Reaver's Distinguished citation records campaign-level resilience made manifest.",
+    "Iron Hands": "Parameters were hostile, outcomes were acceptable, and completion was absolute; this Iron Hand's Distinguished Kadaku record is efficiency under war-scale stress.",
+    "Iron Hounds": "The hunt ended only when every Kadaku operation did. This Iron Hound's Distinguished standing confirms relentless pursuit sustained across the entire campaign.",
+    "Iron Lords": "The Iron Grip closed on every Kadaku front and never loosened; Distinguished honors mark this Iron Lord's campaign-long command of pressure and pace.",
+    "Iron Ravens": "Shadow-craft won single battles; discipline won the campaign. This Iron Raven's Distinguished citation records both operating as one weapon.",
+    "Iron Snakes": "Distinguished service on Kadaku marks the Ithakan hunter at full expression: every front answered, every brother supported, and no momentum surrendered to the swarm.",
+    "Knights of the Raven": "Patience in approach and violence at decision defined this Knight on Kadaku; Distinguished recognition confirms both were sustained to campaign end.",
+    "Lamenters": "Cursed or not, this Lamenter carried more than their share on Kadaku and finished with Distinguished honors earned in service, not fortune.",
+    "Marines Errant": "Across every Kadaku theatre this Errant arrived, delivered, and moved to the next with no degradation in effect; Distinguished status follows naturally.",
+    "Marines Malevolent": "Kadaku required ruthless consistency, and this Malevolent supplied it in full. Distinguished recognition marks a campaign completed without hesitation.",
+    "Mantis Warriors": "Patient ambush doctrine carried this Mantis Warrior through every Kadaku phase; Distinguished honors confirm precision sustained across the full campaign arc.",
+    "Mentors": "This Mentor's Kadaku record teaches by example: complete every front, elevate every team, finish with Distinguished campaign authority.",
+    "Minotaurs": "The herd did not break formation and this Minotaur did not break pace; Distinguished standing marks campaign-long pressure converted into victory.",
+    "Necropolis Hawks": "Kadaku's ruined hives favored urban predators; this Necropolis Hawk translated that advantage into Distinguished, full-campaign excellence.",
+    "Raptors": "Silent strikes and measured violence defined every Kadaku operation for this Raptor; Distinguished honors confirm the method scales to campaign length.",
+    "Raven Guard": "Corax's shadow did not lift from Kadaku while this Raven Guard fought there; Distinguished citation records a campaign won through unseen precision.",
+    "Red Scorpions": "Purity of method and purity of result remained intact across every Kadaku front; this Red Scorpion's Distinguished status is the expected conclusion.",
+    "Red Templars": "Fast and faithful from first operation to last, this Red Templar delivered a Distinguished Kadaku campaign through momentum without compromise.",
+    "Salamanders": "Protection of the vulnerable and destruction of the swarm were both upheld on Kadaku; this Salamander's Distinguished citation confirms that dual oath fulfilled.",
+    "Sable Knights": "With darkness always close behind, this Sable Knight still answered every Kadaku call and finished at Distinguished standard, unclaimed and unbroken.",
+    "Scythes of the Emperor": "Leviathan found Sotha once; it found no such weakness in this Scythe on Kadaku. Distinguished honors mark that hard-earned refusal.",
+    "Sons of Medusa": "Kadaku became a campaign-length equation in lethality and endurance; this Son of Medusa solved it at Distinguished grade.",
+    "Space Wolves": "The saga of this Wolf on Kadaku is not a single strike but a full campaign of them, each one true enough to earn Distinguished witness.",
+    "Storm Giants": "Towering presence and sustained battle-rhythm made this Giant a fixed point on Kadaku's shifting fronts; Distinguished recognition follows from that constancy.",
+    "Tempestuous Angels": "Fire-tempered resolve met Leviathan across every Kadaku theatre; this Tempestuous Angel finished with Distinguished proof of duty fulfilled.",
+    "The Drakes": "Dragon-flame did not flicker across Kadaku, it endured. This Drake's Distinguished standing records campaign-wide burn discipline and finality.",
+    "Tigers Argent": "Icefang doctrine thrives under impossible pressure, and this Tiger Argent proved it on Kadaku front after front, earning Distinguished campaign honors.",
+    "Tome Keepers": "Every Kadaku operation entered the chronicle as victory under this Tome Keeper's hand; Distinguished citation marks the rare chapter without blemish.",
+    "Ultramarines": "Campaign doctrine, resource discipline, and operational consistency aligned on Kadaku; this Ultramarine's Distinguished status is codex logic made real.",
+    "Howling Griffons": "For a Howling Griffon, oath and endurance are indivisible; this warrior carried both through Kadaku and secured Distinguished recognition in full.",
+    "White Scars": "Speed alone is easy; speed with total campaign completion is art. This White Scar rode every Kadaku front to a Distinguished finish.",
+    "Wolfspear": "The Dark Terror hunted Kadaku's nights without pause; this Wolfspear's Distinguished citation marks a full campaign of clean kills and kept oaths.",
+    "Black Shield": "No lineage, no heraldry, no claim but performance: this Black Shield completed Kadaku at Distinguished standard and left the Watch no doubt.",
+}
+
 # ---------------------------------------------------------------------------
 # Black Reef Campaign Medal announcement flavor text
 # ---------------------------------------------------------------------------
@@ -2447,6 +2512,7 @@ _ensure_string_map(DISTINGUISHED_PIPEHITTER_CHAPTER_LINES, award_label="Distingu
 _ensure_string_map(BLACK_LAURELS_CHAPTER_LINES, award_label="Black Laurels commendation")
 _ensure_string_map(CRUX_TERMINATUS_CHAPTER_LINES, award_label="Crux Terminatus honor")
 _ensure_string_map(KADAKU_CAMPAIGN_CHAPTER_LINES, award_label="Kadaku Campaign Medal")
+_ensure_string_map(DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES, award_label="Distinguished Kadaku Campaign Medal")
 _ensure_string_map(BLACK_REEF_CAMPAIGN_CHAPTER_LINES, award_label="Black Reef Campaign Medal")
 _ensure_string_map(DISTINGUISHED_BLACK_REEF_CHAPTER_LINES, award_label="Distinguished Black Reef Medal")
 _ensure_string_map(ORDER_OMEGA_CHAPTER_LINES, award_label="Order Omega induction")

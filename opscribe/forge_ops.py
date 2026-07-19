@@ -2097,7 +2097,7 @@ def _get_distinguished_kadaku_campaign_announcement(
         color=0x4E4631,
         openings=KADAKU_CAMPAIGN_OPENINGS,
         proclamations=KADAKU_CAMPAIGN_PROCLAMATIONS,
-        chapter_lines=KADAKU_CAMPAIGN_CHAPTER_LINES,
+        chapter_lines=DISTINGUISHED_KADAKU_CAMPAIGN_CHAPTER_LINES,
         rank_lines=KADAKU_CAMPAIGN_RANK_LINES,
         award_label="Distinguished Kadaku Campaign Medal",
         award_image="kadaku.jpeg",
