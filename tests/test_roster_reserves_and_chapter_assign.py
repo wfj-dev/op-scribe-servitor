@@ -3,6 +3,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
 
 def _install_discord_stub():
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
@@ -31,6 +33,7 @@ def _install_discord_stub():
     discord_stub.ForumChannel = type("ForumChannel", (), {})
     discord_stub.File = object
     discord_stub.Object = object
+    discord_stub.AllowedMentions = type("AllowedMentions", (), {"__init__": lambda self, *args, **kwargs: None})
     discord_stub.NotFound = Exception
     discord_stub.Forbidden = Exception
     discord_stub.ButtonStyle = types.SimpleNamespace(secondary=2, success=3, danger=4, primary=1)
@@ -63,7 +66,23 @@ def _install_discord_stub():
     discord_stub.app_commands = app_commands_mod
 
     ui_mod = types.ModuleType("discord.ui")
-    ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
+    ui_mod.View = type(
+        "View",
+        (),
+        {
+            "__init_subclass__": classmethod(lambda cls, **_kwargs: None),
+            "__init__": lambda self, *args, **kwargs: None,
+        },
+    )
+    ui_mod.Modal = type(
+        "Modal",
+        (),
+        {
+            "__init_subclass__": classmethod(lambda cls, **_kwargs: None),
+            "__init__": lambda self, *args, **kwargs: None,
+        },
+    )
+    ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *args, **kwargs: None})
     ui_mod.Button = object
     ui_mod.Select = object
     ui_mod.UserSelect = object
@@ -71,6 +90,7 @@ def _install_discord_stub():
     ui_mod.button = lambda **_kwargs: (lambda func: func)
     ui_mod.select = lambda **_kwargs: (lambda func: func)
     discord_stub.ui = ui_mod
+    discord_stub.TextStyle = types.SimpleNamespace(paragraph=1)
 
     class _LoopStub:
         def __init__(self, func):
@@ -125,6 +145,22 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_chapter_request_state(monkeypatch):
+    state_store = {}
+
+    def _fake_load():
+        return dict(state_store)
+
+    def _fake_save(state):
+        state_store.clear()
+        state_store.update(state)
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
+    monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
+    return state_store
+
+
 class _Role(SimpleNamespace):
     pass
 
@@ -144,9 +180,36 @@ class _Guild:
 class _Channel:
     def __init__(self):
         self.messages = []
+        self._messages_by_id = {}
+        self._next_id = 1000
 
-    async def send(self, content=None, embed=None):
-        self.messages.append({"content": content, "embed": embed})
+    async def send(self, content=None, embed=None, **kwargs):
+        message_id = self._next_id
+        self._next_id += 1
+        msg = _Message(message_id, self, content=content, embed=embed, view=kwargs.get("view"), extra=kwargs)
+        self._messages_by_id[message_id] = msg
+        self.messages.append({"id": message_id, "content": content, "embed": embed, "view": kwargs.get("view"), "kwargs": kwargs, "message": msg})
+        return msg
+
+    async def fetch_message(self, message_id):
+        return self._messages_by_id[message_id]
+
+
+class _Message:
+    def __init__(self, message_id, channel, *, content=None, embed=None, view=None, extra=None):
+        self.id = message_id
+        self.channel = channel
+        self.content = content
+        self.embeds = [embed] if embed is not None else []
+        self.view = view
+        self.extra = extra or {}
+
+    async def edit(self, *, content=None, embed=None, view=None):
+        if content is not None:
+            self.content = content
+        if embed is not None:
+            self.embeds = [embed]
+        self.view = view
 
 
 class _Member:
@@ -406,6 +469,7 @@ def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
     assert apothecary_role.mention in sent["content"]
     assert watch_master_role.mention in sent["content"]
     assert forgemaster_role.mention in sent["content"]
+    assert sent["view"] is not None
     embed = sent["embed"]
     assert embed.author.name == "Brother Cassian"
     field_map = {field.name: field.value for field in embed.fields}
@@ -413,6 +477,146 @@ def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
     assert field_map["Geneseed Lineage"] == "Raven Guard"
     assert "Stealth-obsessed brotherhood" in field_map["Lore Blurb"]
     assert field_map["Pauldron Proof (Space Marine 2)"] == "https://cdn.example/pauldron.png"
+    assert "Approval Status" in field_map
+
+
+def test_homebrew_watch_master_approval_is_role_gated(monkeypatch):
+    staff_channel = _Channel()
+    general_channel = _Channel()
+    guild = _Guild([], channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel, ro.SERVICE_STUDS_CHANNEL_ID: general_channel})
+    requester = _Member(1001, [], guild)
+
+    request_id = "hb-1001-1"
+    state_store = {
+        ro._HOMEBREW_REVIEW_STATE_KEY: {
+            request_id: {
+                "request_id": request_id,
+                "requester_id": "1001",
+                "chapter_name": "Ebon Wardens",
+                "status": "pending",
+                "staff_channel_id": ro.APOTHECARY_STAFF_CHANNEL_ID,
+                "staff_message_id": 0,
+                "approvals": {"watch_master": {}, "forgemaster": {}, "apothecarion": {}},
+            }
+        }
+    }
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", lambda: dict(state_store))
+    monkeypatch.setattr(ro, "_save_chapter_request_state", lambda state: state_store.clear() or state_store.update(state))
+
+    non_wm = _Member(2001, [_role(9100, "Watch Brother")], guild)
+    interaction = _Interaction(guild, non_wm)
+
+    _run(ro._handle_homebrew_lane_approval(interaction, request_id, "watch_master"))
+
+    assert "Only Watch Master" in interaction.response.messages[0]["content"]
+    assert interaction.response.messages[0]["ephemeral"] is True
+
+
+def test_homebrew_all_three_approvals_trigger_general_chat_notification(monkeypatch):
+    watch_master_role = _role(9201, "Watch Master")
+    forgemaster_role = _role(9202, "Forgemaster")
+    apothecary_role = _role(9203, "Watch Apothecary")
+    staff_channel = _Channel()
+    general_channel = _Channel()
+    guild = _Guild(
+        [watch_master_role, forgemaster_role, apothecary_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel, ro.SERVICE_STUDS_CHANNEL_ID: general_channel},
+    )
+
+    request_id = "hb-1002-1"
+    state_store = {
+        ro._HOMEBREW_REVIEW_STATE_KEY: {
+            request_id: {
+                "request_id": request_id,
+                "requester_id": "1002",
+                "chapter_name": "Ebon Wardens",
+                "status": "pending",
+                "staff_channel_id": ro.APOTHECARY_STAFF_CHANNEL_ID,
+                "staff_message_id": 0,
+                "approvals": {"watch_master": {}, "forgemaster": {}, "apothecarion": {}},
+            }
+        }
+    }
+
+    def _fake_load():
+        return dict(state_store)
+
+    def _fake_save(state):
+        state_store.clear()
+        state_store.update(state)
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
+    monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
+
+    wm_user = _Member(3001, [watch_master_role], guild)
+    forge_user = _Member(3002, [forgemaster_role], guild)
+    apo_user = _Member(3003, [apothecary_role], guild)
+
+    _run(ro._handle_homebrew_lane_approval(_Interaction(guild, wm_user), request_id, "watch_master"))
+    _run(ro._handle_homebrew_lane_approval(_Interaction(guild, forge_user), request_id, "forgemaster"))
+    _run(ro._handle_homebrew_lane_approval(_Interaction(guild, apo_user), request_id, "apothecarion"))
+
+    review = state_store[ro._HOMEBREW_REVIEW_STATE_KEY][request_id]
+    assert review["status"] == "approved"
+    assert len(general_channel.messages) == 1
+    assert "approved" in general_channel.messages[0]["content"].lower()
+    assert "Ebon Wardens" in general_channel.messages[0]["content"]
+
+
+def test_homebrew_denial_requires_apothecary_and_reason_then_notifies_general(monkeypatch):
+    apothecary_role = _role(9301, "Watch Apothecary")
+    staff_channel = _Channel()
+    general_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel, ro.SERVICE_STUDS_CHANNEL_ID: general_channel},
+    )
+
+    request_id = "hb-1003-1"
+    state_store = {
+        ro._HOMEBREW_REVIEW_STATE_KEY: {
+            request_id: {
+                "request_id": request_id,
+                "requester_id": "1003",
+                "chapter_name": "Ashen Paladins",
+                "status": "pending",
+                "staff_channel_id": ro.APOTHECARY_STAFF_CHANNEL_ID,
+                "staff_message_id": 0,
+                "approvals": {"watch_master": {}, "forgemaster": {}, "apothecarion": {}},
+            }
+        }
+    }
+
+    def _fake_load():
+        return dict(state_store)
+
+    def _fake_save(state):
+        state_store.clear()
+        state_store.update(state)
+
+    monkeypatch.setattr(ro, "_load_chapter_request_state", _fake_load)
+    monkeypatch.setattr(ro, "_save_chapter_request_state", _fake_save)
+
+    non_apo = _Member(4001, [_role(9302, "Watch Brother")], guild)
+    non_apo_interaction = _Interaction(guild, non_apo)
+    _run(ro._handle_homebrew_denial(non_apo_interaction, request_id, "not valid"))
+    assert "Only Apothecarion" in non_apo_interaction.response.messages[0]["content"]
+
+    apo_user = _Member(4002, [apothecary_role], guild)
+    no_reason_interaction = _Interaction(guild, apo_user)
+    _run(ro._handle_homebrew_denial(no_reason_interaction, request_id, ""))
+    assert "reason is required" in no_reason_interaction.response.messages[0]["content"].lower()
+
+    deny_interaction = _Interaction(guild, apo_user)
+    _run(ro._handle_homebrew_denial(deny_interaction, request_id, "No compliant heraldry proof."))
+
+    review = state_store[ro._HOMEBREW_REVIEW_STATE_KEY][request_id]
+    assert review["status"] == "denied"
+    assert review["denied_reason"] == "No compliant heraldry proof."
+    assert len(general_channel.messages) == 1
+    assert "denied" in general_channel.messages[0]["content"].lower()
+    assert "No compliant heraldry proof." in general_channel.messages[0]["content"]
 
 
 def test_request_homebrew_chapter_rejects_lore_over_discord_limit():
