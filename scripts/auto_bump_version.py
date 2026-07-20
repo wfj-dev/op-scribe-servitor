@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -41,9 +41,26 @@ def _current_version() -> tuple[int, int, int]:
     raise RuntimeError(f"Could not find __version__ in {VERSION_FILE}")
 
 
-def _resolve_range() -> str:
-    if len(sys.argv) > 1:
-        return sys.argv[1]
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Auto-bump opscribe version from commit significance."
+    )
+    parser.add_argument(
+        "revision_range",
+        nargs="?",
+        help="Git revision range (for example: HEAD~3..HEAD)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compute bump level/version without modifying files.",
+    )
+    return parser.parse_args()
+
+
+def _resolve_range(cli_range: str | None) -> str:
+    if cli_range:
+        return cli_range
 
     before = os.getenv("GITHUB_EVENT_BEFORE", "")
     after = os.getenv("GITHUB_SHA", "")
@@ -109,7 +126,8 @@ def _write_version(new_version: tuple[int, int, int]) -> None:
 
 
 def main() -> int:
-    revision_range = _resolve_range()
+    args = _parse_args()
+    revision_range = _resolve_range(args.revision_range)
     commits = _commit_messages(revision_range)
     if not commits:
         print("No commits found for range; skipping.")
@@ -118,11 +136,15 @@ def main() -> int:
     bump_level = _infer_bump(commits)
     current = _current_version()
     new_version = _bump(current, bump_level)
-    _write_version(new_version)
+    if not args.dry_run:
+        _write_version(new_version)
 
     rendered = f"{new_version[0]}.{new_version[1]}.{new_version[2]}"
+    print(f"Revision range: {revision_range}")
     print(f"Bump level: {bump_level}")
     print(f"New version: {rendered}")
+    if args.dry_run:
+        print("Dry run: no file changes written.")
 
     github_output = os.getenv("GITHUB_OUTPUT")
     if github_output:
