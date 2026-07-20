@@ -191,6 +191,10 @@ def _role(role_id, name):
     return _Role(id=role_id, name=name, mention=f"<@&{role_id}>")
 
 
+def _attachment(filename="pauldron.png", content_type="image/png", url="https://cdn.example/pauldron.png"):
+    return SimpleNamespace(filename=filename, content_type=content_type, url=url)
+
+
 def test_assign_member_to_reserves_removes_company_and_kill_team_roles():
     reserves = _role(ro.RESERVES_ROLE_ID, "Reserves")
     company = _role(2001, "Watch Company Primus")
@@ -391,6 +395,7 @@ def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
             "Ebon Wardens",
             "Raven Guard",
             "Stealth-obsessed brotherhood forged in long-void boarding actions.",
+            _attachment(),
         )
     )
 
@@ -407,6 +412,7 @@ def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
     assert field_map["Requested Chapter"] == "Ebon Wardens"
     assert field_map["Geneseed Lineage"] == "Raven Guard"
     assert "Stealth-obsessed brotherhood" in field_map["Lore Blurb"]
+    assert field_map["Pauldron Proof (Space Marine 2)"] == "https://cdn.example/pauldron.png"
 
 
 def test_request_homebrew_chapter_rejects_lore_over_discord_limit():
@@ -425,10 +431,41 @@ def test_request_homebrew_chapter_rejects_lore_over_discord_limit():
     bot_stub.check_command_permission = lambda _user, command: command == "request_homebrew_chapter"
     bot_stub.is_allowed_channel = lambda _interaction: True
 
-    _run(ro.request_homebrew_chapter(interaction, "Ebon Wardens", "Raven Guard", "x" * 1025))
+    _run(ro.request_homebrew_chapter(interaction, "Ebon Wardens", "Raven Guard", "x" * 1025, _attachment()))
 
     assert interaction.response.messages[0]["ephemeral"] is True
     assert "max 1024 characters" in interaction.response.messages[0]["content"].lower()
+    assert len(staff_channel.messages) == 0
+
+
+def test_request_homebrew_chapter_rejects_non_image_attachment():
+    apothecary_role = _role(7351, ro.APOTHECARY_ROLE_NAME)
+    watch_master_role = _role(7352, "Watch Master")
+    forgemaster_role = _role(7353, "Forgemaster")
+    staff_channel = _Channel()
+    guild = _Guild(
+        [apothecary_role, watch_master_role, forgemaster_role],
+        channels={ro.APOTHECARY_STAFF_CHANNEL_ID: staff_channel},
+    )
+    requester = _Member(124, [], guild)
+    interaction = _Interaction(guild, requester)
+
+    bot_stub.HOME_CHAPTERS = []
+    bot_stub.check_command_permission = lambda _user, command: command == "request_homebrew_chapter"
+    bot_stub.is_allowed_channel = lambda _interaction: True
+
+    _run(
+        ro.request_homebrew_chapter(
+            interaction,
+            "Ebon Wardens",
+            "Raven Guard",
+            "Stealth-obsessed brotherhood forged in long-void boarding actions.",
+            _attachment(filename="proof.txt", content_type="text/plain", url="https://cdn.example/proof.txt"),
+        )
+    )
+
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "must attach an in-game space marine 2 pauldron image" in interaction.response.messages[0]["content"].lower()
     assert len(staff_channel.messages) == 0
 
 
@@ -510,6 +547,7 @@ def test_homebrew_request_shares_chapter_request_cooldown(monkeypatch):
             "Ebon Wardens",
             "Raven Guard",
             "Stealth-obsessed brotherhood forged in long-void boarding actions.",
+            _attachment(),
         )
     )
 
