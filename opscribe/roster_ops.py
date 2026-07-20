@@ -2778,6 +2778,376 @@ def _safe_set_embed_image(embed: discord.Embed, image_url: Optional[str]) -> Non
 _CHAPTER_REQUEST_STATE_PATH = os.path.join(DATA_DIR, "chapter_request_state.json")
 _CHAPTER_REQUEST_COOLDOWN_DAYS = 28
 _HOMEBREW_CHAPTER_LORE_MAX_CHARS = 1024
+_HOMEBREW_REVIEW_STATE_KEY = "_homebrew_reviews"
+_HOMEBREW_REVIEW_STATUS_FIELD = "Approval Status"
+_HOMEBREW_REVIEW_LOCK = asyncio.Lock()
+
+_HOMEBREW_REVIEW_LANES = {
+    "watch_master": "Watch Master Approval",
+    "forgemaster": "Forgemaster Approval",
+    "apothecarion": "Apothecarion Approval",
+}
+
+
+def _has_named_role(member: discord.Member, role_name: str) -> bool:
+    return any((getattr(r, "name", "") or "").strip() == role_name for r in getattr(member, "roles", []) or [])
+
+
+def _is_watch_master_homebrew_approver(member: discord.Member) -> bool:
+    return _has_named_role(member, "Watch Master")
+
+
+def _is_forgemaster_homebrew_approver(member: discord.Member) -> bool:
+    return _has_named_role(member, "Forgemaster")
+
+
+def _is_apothecarion_homebrew_reviewer(member: discord.Member) -> bool:
+    return _has_named_role(member, "Watch Apothecary") or _has_named_role(member, "Chief Apothecary")
+
+
+def _new_homebrew_request_id(requester_id: str, now: datetime) -> str:
+    return f"hb-{requester_id}-{int(now.timestamp())}"
+
+
+def _homebrew_reviews_bucket(state: dict) -> dict:
+    bucket = state.get(_HOMEBREW_REVIEW_STATE_KEY)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        state[_HOMEBREW_REVIEW_STATE_KEY] = bucket
+    return bucket
+
+
+def _upsert_embed_field(embed: discord.Embed, name: str, value: str, *, inline: bool = False) -> None:
+    try:
+        for idx, field in enumerate(getattr(embed, "fields", []) or []):
+            if getattr(field, "name", None) == name:
+                if hasattr(embed, "set_field_at"):
+                    embed.set_field_at(idx, name=name, value=value, inline=inline)
+                else:
+                    embed.add_field(name=name, value=value, inline=inline)
+                return
+        embed.add_field(name=name, value=value, inline=inline)
+    except Exception:
+        pass
+
+
+def _homebrew_review_status_value(review: dict) -> str:
+    approvals = review.get("approvals") or {}
+    lines: list[str] = []
+    for lane_key, lane_label in _HOMEBREW_REVIEW_LANES.items():
+        lane = approvals.get(lane_key) or {}
+        approver_id = str(lane.get("user_id") or "").strip()
+        if approver_id:
+            lines.append(f"- ✅ {lane_label}: <@{approver_id}>")
+        else:
+            lines.append(f"- ⏳ {lane_label}: pending")
+
+    status = str(review.get("status") or "pending").strip().lower()
+    if status == "approved":
+        lines.append("\n**Final Status:** Approved")
+    elif status == "denied":
+        reason = str(review.get("denied_reason") or "").strip()
+        lines.append("\n**Final Status:** Denied")
+        if reason:
+            lines.append(f"**Denial Reason:** {reason}")
+    else:
+        lines.append("\n**Final Status:** Pending")
+    return "\n".join(lines)
+
+
+def _build_homebrew_review_record(
+    request_id: str,
+    interaction: discord.Interaction,
+    *,
+    chapter_name: str,
+    geneseed_lineage: str,
+    lore_blurb: str,
+    pauldron_url: str,
+    staff_channel_id: int,
+    staff_message_id: Optional[int],
+) -> dict:
+    return {
+        "request_id": request_id,
+        "requester_id": str(getattr(interaction.user, "id", "")),
+        "requester_name": str(getattr(interaction.user, "display_name", getattr(interaction.user, "name", "Unknown"))),
+        "chapter_name": chapter_name,
+        "geneseed_lineage": geneseed_lineage,
+        "lore_blurb": lore_blurb,
+        "pauldron_url": pauldron_url,
+        "staff_channel_id": int(staff_channel_id) if staff_channel_id else 0,
+        "staff_message_id": int(staff_message_id) if staff_message_id else 0,
+        "status": "pending",
+        "approvals": {
+            "watch_master": {},
+            "forgemaster": {},
+            "apothecarion": {},
+        },
+        "approved_at": None,
+        "denied_at": None,
+        "denied_by": None,
+        "denied_reason": None,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+
+async def _refresh_homebrew_review_staff_message(guild: discord.Guild, review: dict) -> None:
+    """Best-effort refresh of the staff embed with latest approval state."""
+    try:
+        ch_id = int(review.get("staff_channel_id") or 0)
+        msg_id = int(review.get("staff_message_id") or 0)
+    except Exception:
+        return
+    if not guild or not ch_id or not msg_id:
+        return
+
+    channel = guild.get_channel(ch_id)
+    if channel is None or not hasattr(channel, "fetch_message"):
+        return
+
+    try:
+        msg = await channel.fetch_message(msg_id)
+    except Exception:
+        return
+
+    embed = None
+    try:
+        embeds = getattr(msg, "embeds", None) or []
+        if embeds:
+            embed = embeds[0]
+    except Exception:
+        embed = None
+
+    if embed is not None:
+        _upsert_embed_field(embed, _HOMEBREW_REVIEW_STATUS_FIELD, _homebrew_review_status_value(review), inline=False)
+
+    status = str(review.get("status") or "pending").strip().lower()
+    view = None if status in {"approved", "denied"} else HomebrewChapterReviewView(str(review.get("request_id") or ""))
+    try:
+        if embed is not None:
+            await msg.edit(embed=embed, view=view)
+        else:
+            await msg.edit(view=view)
+    except Exception:
+        return
+
+
+def _homebrew_all_approvals_complete(review: dict) -> bool:
+    approvals = review.get("approvals") or {}
+    return all(str((approvals.get(lane) or {}).get("user_id") or "").strip() for lane in _HOMEBREW_REVIEW_LANES)
+
+
+async def _notify_homebrew_review_outcome(guild: discord.Guild, review: dict) -> None:
+    """Post final homebrew review outcomes to general chat."""
+    if guild is None:
+        return
+    channel = guild.get_channel(SERVICE_STUDS_CHANNEL_ID)
+    if channel is None:
+        return
+
+    requester_id = str(review.get("requester_id") or "").strip()
+    chapter_name = str(review.get("chapter_name") or "Unknown Chapter").strip()
+    status = str(review.get("status") or "pending").strip().lower()
+
+    if status == "approved":
+        approvals = review.get("approvals") or {}
+        wm_id = str((approvals.get("watch_master") or {}).get("user_id") or "").strip()
+        forge_id = str((approvals.get("forgemaster") or {}).get("user_id") or "").strip()
+        apo_id = str((approvals.get("apothecarion") or {}).get("user_id") or "").strip()
+        msg = (
+            f"Homebrew chapter request approved for <@{requester_id}>: **{chapter_name}**.\n"
+            f"Approvals — Watch Master: <@{wm_id}>, Forgemaster: <@{forge_id}>, Apothecarion: <@{apo_id}>."
+        )
+    elif status == "denied":
+        denied_by = str(review.get("denied_by") or "").strip()
+        reason = str(review.get("denied_reason") or "No reason provided.").strip()
+        msg = (
+            f"Homebrew chapter request denied for <@{requester_id}>: **{chapter_name}**.\n"
+            f"Denied by <@{denied_by}>. Reason: {reason}"
+        )
+    else:
+        return
+
+    try:
+        await channel.send(msg)
+    except Exception:
+        return
+
+
+async def _handle_homebrew_lane_approval(
+    interaction: discord.Interaction,
+    request_id: str,
+    lane: str,
+) -> None:
+    lane = (lane or "").strip().lower()
+    if lane not in _HOMEBREW_REVIEW_LANES:
+        await interaction.response.send_message("Invalid approval lane.", ephemeral=True)
+        return
+
+    if lane == "watch_master" and not _is_watch_master_homebrew_approver(interaction.user):
+        await interaction.response.send_message("Only Watch Master may press Watch Master Approval.", ephemeral=True)
+        return
+    if lane == "forgemaster" and not _is_forgemaster_homebrew_approver(interaction.user):
+        await interaction.response.send_message("Only Forgemaster may press Forgemaster Approval.", ephemeral=True)
+        return
+    if lane == "apothecarion" and not _is_apothecarion_homebrew_reviewer(interaction.user):
+        await interaction.response.send_message("Only Apothecarion staff may press Apothecarion Approval.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    final_status_changed = False
+    async with _HOMEBREW_REVIEW_LOCK:
+        state = _load_chapter_request_state()
+        reviews = _homebrew_reviews_bucket(state)
+        review = reviews.get(request_id)
+        if not isinstance(review, dict):
+            await interaction.response.send_message("This homebrew request could not be found.", ephemeral=True)
+            return
+
+        if str(review.get("status") or "pending").strip().lower() != "pending":
+            await interaction.response.send_message("This homebrew request is already finalized.", ephemeral=True)
+            return
+
+        approvals = review.setdefault("approvals", {})
+        lane_state = approvals.setdefault(lane, {})
+        if str(lane_state.get("user_id") or "").strip():
+            await interaction.response.send_message("This approval lane has already been completed.", ephemeral=True)
+            return
+
+        lane_state["user_id"] = str(getattr(interaction.user, "id", ""))
+        lane_state["at"] = datetime.utcnow().isoformat()
+
+        if _homebrew_all_approvals_complete(review):
+            review["status"] = "approved"
+            review["approved_at"] = datetime.utcnow().isoformat()
+            final_status_changed = True
+
+        reviews[request_id] = review
+        _save_chapter_request_state(state)
+
+    await interaction.response.send_message(
+        f"{_HOMEBREW_REVIEW_LANES[lane]} recorded.",
+        ephemeral=True,
+    )
+
+    # Refresh staff card and finalize controls if needed.
+    refreshed_state = _load_chapter_request_state()
+    refreshed_review = (_homebrew_reviews_bucket(refreshed_state)).get(request_id)
+    if isinstance(refreshed_review, dict):
+        await _refresh_homebrew_review_staff_message(guild, refreshed_review)
+        if final_status_changed:
+            await _notify_homebrew_review_outcome(guild, refreshed_review)
+
+
+async def _handle_homebrew_denial(
+    interaction: discord.Interaction,
+    request_id: str,
+    reason: str,
+) -> None:
+    if not _is_apothecarion_homebrew_reviewer(interaction.user):
+        await interaction.response.send_message("Only Apothecarion staff may deny homebrew chapter requests.", ephemeral=True)
+        return
+
+    deny_reason = (reason or "").strip()
+    if not deny_reason:
+        await interaction.response.send_message("A denial reason is required.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    async with _HOMEBREW_REVIEW_LOCK:
+        state = _load_chapter_request_state()
+        reviews = _homebrew_reviews_bucket(state)
+        review = reviews.get(request_id)
+        if not isinstance(review, dict):
+            await interaction.response.send_message("This homebrew request could not be found.", ephemeral=True)
+            return
+
+        if str(review.get("status") or "pending").strip().lower() != "pending":
+            await interaction.response.send_message("This homebrew request is already finalized.", ephemeral=True)
+            return
+
+        review["status"] = "denied"
+        review["denied_by"] = str(getattr(interaction.user, "id", ""))
+        review["denied_reason"] = deny_reason
+        review["denied_at"] = datetime.utcnow().isoformat()
+        reviews[request_id] = review
+        _save_chapter_request_state(state)
+
+    await interaction.response.send_message("Homebrew chapter request denied.", ephemeral=True)
+
+    refreshed_state = _load_chapter_request_state()
+    refreshed_review = (_homebrew_reviews_bucket(refreshed_state)).get(request_id)
+    if isinstance(refreshed_review, dict):
+        await _refresh_homebrew_review_staff_message(guild, refreshed_review)
+        await _notify_homebrew_review_outcome(guild, refreshed_review)
+
+
+class HomebrewDenyReasonModal(discord.ui.Modal, title="Deny Homebrew Chapter Request"):
+    reason: discord.ui.TextInput = discord.ui.TextInput(
+        label="Denial Reason",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=500,
+        placeholder="Explain why this homebrew chapter request is being denied.",
+    )
+
+    def __init__(self, request_id: str):
+        super().__init__()
+        self.request_id = request_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await _handle_homebrew_denial(interaction, self.request_id, self.reason.value or "")
+
+
+class HomebrewChapterReviewView(discord.ui.View):
+    def __init__(self, request_id: str):
+        super().__init__(timeout=None)
+        self.request_id = request_id
+        # In tests, discord.ui.button may be stubbed as a no-op decorator.
+        for attr_name, custom_id in (
+            ("_watch_master_approve", f"homebrew_watch_master_approve:{request_id}"),
+            ("_forgemaster_approve", f"homebrew_forgemaster_approve:{request_id}"),
+            ("_apothecarion_approve", f"homebrew_apothecarion_approve:{request_id}"),
+            ("_deny", f"homebrew_deny:{request_id}"),
+        ):
+            try:
+                getattr(self, attr_name).custom_id = custom_id
+            except Exception:
+                pass
+
+    @discord.ui.button(
+        label="Watch Master Approval",
+        style=discord.ButtonStyle.success,
+        custom_id="homebrew_watch_master_approve:__placeholder__",
+    )
+    async def _watch_master_approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _handle_homebrew_lane_approval(interaction, self.request_id, "watch_master")
+
+    @discord.ui.button(
+        label="Forgemaster Approval",
+        style=discord.ButtonStyle.success,
+        custom_id="homebrew_forgemaster_approve:__placeholder__",
+    )
+    async def _forgemaster_approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _handle_homebrew_lane_approval(interaction, self.request_id, "forgemaster")
+
+    @discord.ui.button(
+        label="Apothecarion Approval",
+        style=discord.ButtonStyle.success,
+        custom_id="homebrew_apothecarion_approve:__placeholder__",
+    )
+    async def _apothecarion_approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _handle_homebrew_lane_approval(interaction, self.request_id, "apothecarion")
+
+    @discord.ui.button(
+        label="Deny",
+        style=discord.ButtonStyle.danger,
+        custom_id="homebrew_deny:__placeholder__",
+    )
+    async def _deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not _is_apothecarion_homebrew_reviewer(interaction.user):
+            await interaction.response.send_message("Only Apothecarion staff may deny homebrew chapter requests.", ephemeral=True)
+            return
+        await interaction.response.send_modal(HomebrewDenyReasonModal(self.request_id))
 
 
 def _load_chapter_request_state() -> dict:
@@ -3126,11 +3496,38 @@ async def request_homebrew_chapter(
     )
     _safe_set_embed_image(embed, getattr(pauldron_image, "url", None))
 
-    await staff_channel.send(
+    request_id = _new_homebrew_request_id(requester_id, now)
+    _upsert_embed_field(
+        embed,
+        _HOMEBREW_REVIEW_STATUS_FIELD,
+        _homebrew_review_status_value({"status": "pending", "approvals": {}}),
+        inline=False,
+    )
+    _upsert_embed_field(embed, "Review Request ID", request_id, inline=False)
+
+    review_view = HomebrewChapterReviewView(request_id)
+    staff_msg = await staff_channel.send(
         content=notify_content,
         embed=embed,
+        view=review_view,
         allowed_mentions=discord.AllowedMentions(users=False, roles=True, everyone=False),
     )
+
+    async with _HOMEBREW_REVIEW_LOCK:
+        req_state = _load_chapter_request_state()
+        reviews = _homebrew_reviews_bucket(req_state)
+        reviews[request_id] = _build_homebrew_review_record(
+            request_id,
+            interaction,
+            chapter_name=chapter_name,
+            geneseed_lineage=lineage,
+            lore_blurb=lore,
+            pauldron_url=str(getattr(pauldron_image, "url", "") or ""),
+            staff_channel_id=int(getattr(staff_channel, "id", APOTHECARY_STAFF_CHANNEL_ID) or APOTHECARY_STAFF_CHANNEL_ID),
+            staff_message_id=int(getattr(staff_msg, "id", 0) or 0),
+        )
+        _save_chapter_request_state(req_state)
+
     _record_chapter_request_state(
         requester_id,
         now,
