@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-VERSION_FILE = Path("opscribe/__init__.py")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VERSION_FILE = REPO_ROOT / "opscribe/__init__.py"
 VERSION_RE = re.compile(r'^__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"\s*$')
 CONVENTIONAL_FEAT_RE = re.compile(r"^feat(?:\([^)]+\))?:", re.IGNORECASE)
 CONVENTIONAL_BREAKING_RE = re.compile(r"^[a-z]+(?:\([^)]+\))?!:", re.IGNORECASE)
+BREAKING_FOOTER_RE = re.compile(r"^BREAKING[ -]CHANGE:\s+\S", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,7 @@ def _git(*args: str) -> str:
         check=True,
         text=True,
         capture_output=True,
+        cwd=REPO_ROOT,
     )
     return result.stdout
 
@@ -75,7 +78,9 @@ def _commit_messages(revision_range: str) -> list[CommitMessage]:
     try:
         raw = _git("log", "--format=%s%x1f%b%x1e", revision_range)
     except subprocess.CalledProcessError:
-        # If HEAD~1 is not available (single-commit history), fall back to HEAD.
+        if revision_range != "HEAD~1..HEAD":
+            raise
+        # Single-commit history: HEAD~1 is unavailable, fall back to HEAD.
         raw = _git("log", "--format=%s%x1f%b%x1e", "-n", "1", "HEAD")
 
     messages: list[CommitMessage] = []
@@ -92,7 +97,7 @@ def _infer_bump(commits: Iterable[CommitMessage]) -> str:
     for commit in commits:
         subject = commit.subject
         body = commit.body
-        if CONVENTIONAL_BREAKING_RE.match(subject) or "BREAKING CHANGE" in body.upper():
+        if CONVENTIONAL_BREAKING_RE.match(subject) or BREAKING_FOOTER_RE.search(body):
             return "major"
         if CONVENTIONAL_FEAT_RE.match(subject):
             highest = "minor"
