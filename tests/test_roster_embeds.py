@@ -186,6 +186,38 @@ def test_company_command_image_filename_uses_convention_then_generic():
         assert roster_embeds._company_command_image_filename("Watch Company Quintus") == "Command.png"
 
 
+def test_kill_team_image_filename_prefers_role_id_config_mapping():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "target_packages": {
+                "kt_role_image_assets": {
+                    "1458254904819974386": "Kill Team Duke.png",
+                }
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        assert (
+            roster_embeds._kill_team_image_filename(
+                "Kill Team Whatever",
+                1458254904819974386,
+            )
+            == "Kill Team Duke.png"
+        )
+
+
+def test_kill_team_image_filename_role_id_falls_back_to_name_convention_when_unmapped():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {"target_packages": {"kt_role_image_assets": {}}} if name == "CONFIG" else None,
+    ):
+        assert roster_embeds._kill_team_image_filename("Kill Team Devito", 1433355179020914688) == "Kill Team Devito.png"
+
+
 def _member(*, member_id=1, nick=None, display_name=None, name=None, roles=None):
     return SimpleNamespace(
         id=member_id,

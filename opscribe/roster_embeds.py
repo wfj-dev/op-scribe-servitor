@@ -127,6 +127,23 @@ _SPECIALIST_IMAGE_BY_SECTION = {
     "Apothecarion": "Apothecarion.png",
 }
 
+def _configured_kill_team_image_assets() -> dict[int, str]:
+    """Return optional mapping of KT role ID -> asset filename from config."""
+    cfg = ((_b("CONFIG") or {}).get("target_packages") or {}).get("kt_role_image_assets") or {}
+    configured: dict[int, str] = {}
+    if not isinstance(cfg, dict):
+        return configured
+    for role_id, filename in cfg.items():
+        try:
+            rid = int(role_id)
+        except (TypeError, ValueError):
+            continue
+        asset_name = str(filename or "").strip()
+        if not asset_name:
+            continue
+        configured[rid] = asset_name
+    return configured
+
 def _configured_company_entry(company_name: str) -> dict:
     """Return the configured company entry matching a roster company name."""
     cfg = (_b("CONFIG") or {}).get("companies") or {}
@@ -178,8 +195,15 @@ def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[
     return f"attachment://{filename}", discord.File(path, filename=filename)
 
 
-def _kill_team_image_filename(kt_name: str) -> str:
-    # e.g. "Kill Team Devito" -> "Kill Team Devito.png"
+def _kill_team_image_filename(kt_name: str, kt_role_id: Optional[int] = None) -> str:
+    # Prefer role-id mapping from config so image swaps do not require code
+    # changes; keep legacy name-based fallback behavior intact.
+    if kt_role_id is not None:
+        configured_assets = _configured_kill_team_image_assets()
+        configured_asset = configured_assets.get(int(kt_role_id))
+        if configured_asset:
+            return configured_asset
+
     return f"{kt_name}.png"
 
 
@@ -1426,8 +1450,8 @@ async def _update_company_roster(
     kt_message_ids: dict[str, int] = dict(company_state.get("killteam_message_ids") or {})
     new_kt_message_ids: dict[str, int] = {}
 
-    for kt_name, _kt_role_id, kt_members in kill_teams:
-        kt_image_url, kt_image_file = _resolve_asset_image(_kill_team_image_filename(kt_name))
+    for kt_name, kt_role_id, kt_members in kill_teams:
+        kt_image_url, kt_image_file = _resolve_asset_image(_kill_team_image_filename(kt_name, kt_role_id))
         kt_block = _render_member_block(
             guild,
             kt_members,

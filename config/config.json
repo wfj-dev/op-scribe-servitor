@@ -485,6 +485,15 @@
       1498104968513847386,
       1519367523764666379
     ],
+    "kt_role_image_assets": {
+      "1433355179020914688": "Kill Team Devito.png",
+      "1458254904819974386": "Kill Team Duke.png",
+      "1486476398058012712": "Kill Team Frank.png",
+      "1519367523764666379": "Kill Team Jason.png",
+      "1458254715942080543": "Kill Team Serze.png",
+      "1498104968513847386": "Kill Team Solaire.png",
+      "1444348999401210037": "Kill Team Wi-Fi.png"
+    },
     "kt_forum_parent_ids": [
       1433351293103112202,
       1458255656682258504,
