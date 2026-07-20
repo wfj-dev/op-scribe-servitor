@@ -40,7 +40,7 @@ def _current_version() -> tuple[int, int, int]:
     for line in VERSION_FILE.read_text(encoding="utf-8").splitlines():
         match = VERSION_RE.match(line.strip())
         if match:
-            return tuple(int(part) for part in match.groups())
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
     raise RuntimeError(f"Could not find __version__ in {VERSION_FILE}")
 
 
