@@ -180,10 +180,44 @@ def test_company_command_image_filename_uses_convention_then_generic():
     with patch.object(roster_embeds, "_b", lambda _name: {"companies": {}}), patch.object(
         roster_embeds.os.path,
         "exists",
-        side_effect=lambda path: path.endswith("Quartus Command.png"),
+        side_effect=lambda path: path.endswith("quartus command.png"),
     ):
-        assert roster_embeds._company_command_image_filename("Watch Company Quartus") == "Quartus Command.png"
+        assert roster_embeds._company_command_image_filename("Watch Company Quartus") == "quartus command.png"
         assert roster_embeds._company_command_image_filename("Watch Company Quintus") == "Command.png"
+
+
+def test_company_banner_image_filenames_uses_company_then_art_convention():
+    with patch.object(roster_embeds, "_b", lambda _name: {"companies": {}}), patch.object(
+        roster_embeds.os.path,
+        "exists",
+        return_value=False,
+    ):
+        assert roster_embeds._company_banner_image_filenames("Watch Company Primus") == [
+            "primus company.png",
+            "primus art.png",
+        ]
+
+
+def test_company_banner_image_filenames_prefers_config_overrides():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "companies": {
+                "primus": {
+                    "name": "Primus",
+                    "companyImageAsset": "primus crest override.png",
+                    "companyArtImageAsset": "primus mural override.png",
+                }
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        assert roster_embeds._company_banner_image_filenames("Watch Company Primus") == [
+            "primus crest override.png",
+            "primus mural override.png",
+        ]
 
 
 def test_kill_team_image_filename_prefers_role_id_config_mapping():
@@ -216,6 +250,105 @@ def test_kill_team_image_filename_role_id_falls_back_to_name_convention_when_unm
         lambda name: {"target_packages": {"kt_role_image_assets": {}}} if name == "CONFIG" else None,
     ):
         assert roster_embeds._kill_team_image_filename("Kill Team Devito", 1433355179020914688) == "Kill Team Devito.png"
+
+
+def test_asset_path_prefers_roster_images_directory_when_present():
+    with patch.object(
+        roster_embeds.os.path,
+        "exists",
+        side_effect=lambda path: path.replace("\\", "/").endswith("assets/roster images/Kill Team Duke.png"),
+    ):
+        resolved = roster_embeds._asset_path("Kill Team Duke.png")
+
+    assert resolved.replace("\\", "/").endswith("assets/roster images/Kill Team Duke.png")
+
+
+def test_asset_path_falls_back_to_assets_root_when_roster_images_missing():
+    with patch.object(
+        roster_embeds.os.path,
+        "exists",
+        side_effect=lambda path: path.replace("\\", "/").endswith("assets/Kill Team Duke.png"),
+    ):
+        resolved = roster_embeds._asset_path("Kill Team Duke.png")
+
+    assert resolved.replace("\\", "/").endswith("assets/Kill Team Duke.png")
+
+
+def test_configured_cadre_section_image_assets_accepts_case_insensitive_section_keys():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "target_packages": {
+                "cadre_section_image_assets": {
+                    "watch armory": "Watch Armory Special.png",
+                    "Librarius": "Librarius Special.png",
+                }
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        configured = roster_embeds._configured_cadre_section_image_assets()
+
+    assert configured == {
+        "Watch Armory": "Watch Armory Special.png",
+        "Librarius": "Librarius Special.png",
+    }
+
+
+def test_specialist_image_filename_prefers_section_override_over_role_mapping():
+    guild = SimpleNamespace(
+        roles=[
+            SimpleNamespace(id=1455226254897975389, name="Watch Librarian"),
+        ]
+    )
+
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "target_packages": {
+                "cadre_section_image_assets": {
+                    "Librarius": "Librarius Section Override.png",
+                },
+                "cadre_role_image_assets": {
+                    "1455226254897975389": "Librarius Role Override.png",
+                },
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        image_name = roster_embeds._specialist_image_filename("Librarius", {"Watch Librarian"}, guild)
+
+    assert image_name == "Librarius Section Override.png"
+
+
+def test_specialist_image_filename_uses_role_mapping_when_no_section_override():
+    guild = SimpleNamespace(
+        roles=[
+            SimpleNamespace(id=1455226254897975389, name="Watch Librarian"),
+        ]
+    )
+
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "target_packages": {
+                "cadre_section_image_assets": {},
+                "cadre_role_image_assets": {
+                    "1455226254897975389": "Librarius Role Override.png",
+                },
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        image_name = roster_embeds._specialist_image_filename("Librarius", {"Watch Librarian"}, guild)
+
+    assert image_name == "Librarius Role Override.png"
 
 
 def _member(*, member_id=1, nick=None, display_name=None, name=None, roles=None):
@@ -273,6 +406,8 @@ def test_load_roster_state_returns_defaults_when_file_missing():
     assert state == {
         "Watch Company Primus": {
             "channel_id": 11,
+            "company_message_id": None,
+            "company_art_message_id": None,
             "hc_message_id": None,
             "specialist_message_id": None,
             "specialist_message_ids": {},
@@ -281,6 +416,8 @@ def test_load_roster_state_returns_defaults_when_file_missing():
         },
         "Watch Company Secundus": {
             "channel_id": 22,
+            "company_message_id": None,
+            "company_art_message_id": None,
             "hc_message_id": None,
             "specialist_message_id": None,
             "specialist_message_ids": {},
@@ -307,6 +444,8 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
     assert state == {
         "Watch Company Primus": {
             "channel_id": 999,
+            "company_message_id": None,
+            "company_art_message_id": None,
             "hc_message_id": 101,
             "specialist_message_id": None,
             "specialist_message_ids": {},
@@ -315,6 +454,8 @@ def test_load_roster_state_merges_existing_data_with_defaults(tmp_path):
         },
         "Watch Company Secundus": {
             "channel_id": 22,
+            "company_message_id": None,
+            "company_art_message_id": None,
             "hc_message_id": None,
             "specialist_message_id": None,
             "specialist_message_ids": {},

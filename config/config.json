@@ -481,18 +481,29 @@
       1458254904819974386,
       1433355179020914688,
       1444348999401210037,
+      1528564088974610442,
       1486476398058012712,
       1498104968513847386,
-      1519367523764666379
+      1519367523764666379,
+      1528563333689511936
     ],
     "kt_role_image_assets": {
-      "1433355179020914688": "Kill Team Devito.png",
-      "1458254904819974386": "Kill Team Duke.png",
-      "1486476398058012712": "Kill Team Frank.png",
-      "1519367523764666379": "Kill Team Jason.png",
-      "1458254715942080543": "Kill Team Serze.png",
-      "1498104968513847386": "Kill Team Solaire.png",
-      "1444348999401210037": "Kill Team Wi-Fi.png"
+      "1433355179020914688": "kill team falcon.png",
+      "1458254904819974386": "kill team duke.png",
+      "1486476398058012712": "kill team frank.png",
+      "1519367523764666379": "kill team jason.png",
+      "1528564088974610442": "kill team alexander.png",
+      "1458254715942080543": "kill team serze.png",
+      "1498104968513847386": "kill team solaire.png",
+      "1528563333689511936": "kill team van.png",
+      "1444348999401210037": "kill team wi-fi.png"
+    },
+    "cadre_section_image_assets": {
+      "Hall of Blades": "hall of blades.png",
+      "Librarius": "librarius.png",
+      "Watch Armory": "armory.png",
+      "Reclusiam": "reclusiam.png",
+      "Apothecarion": "apothecarion.png"
     },
     "kt_forum_parent_ids": [
       1433351293103112202,

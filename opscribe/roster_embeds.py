@@ -127,6 +127,74 @@ _SPECIALIST_IMAGE_BY_SECTION = {
     "Apothecarion": "Apothecarion.png",
 }
 
+
+def _configured_cadre_section_image_assets() -> dict[str, str]:
+    """Return optional mapping of specialist section name -> asset filename."""
+    cfg = ((_b("CONFIG") or {}).get("target_packages") or {}).get("cadre_section_image_assets") or {}
+    configured: dict[str, str] = {}
+    if not isinstance(cfg, dict):
+        return configured
+
+    canonical_sections = {name.lower(): name for name in _SPECIALIST_IMAGE_BY_SECTION}
+    for section_name, filename in cfg.items():
+        section_key = canonical_sections.get(str(section_name or "").strip().lower())
+        if not section_key:
+            continue
+        asset_name = str(filename or "").strip()
+        if not asset_name:
+            continue
+        configured[section_key] = asset_name
+    return configured
+
+
+def _configured_cadre_role_image_assets() -> dict[int, str]:
+    """Return optional mapping of cadre role ID -> asset filename."""
+    cfg = ((_b("CONFIG") or {}).get("target_packages") or {}).get("cadre_role_image_assets") or {}
+    configured: dict[int, str] = {}
+    if not isinstance(cfg, dict):
+        return configured
+    for role_id, filename in cfg.items():
+        try:
+            rid = int(role_id)
+        except (TypeError, ValueError):
+            continue
+        asset_name = str(filename or "").strip()
+        if not asset_name:
+            continue
+        configured[rid] = asset_name
+    return configured
+
+
+def _specialist_image_filename(
+    section_name: str,
+    role_names: set[str],
+    guild: Optional[discord.Guild],
+) -> str:
+    """Resolve specialist image filename with config override precedence.
+
+    Precedence:
+    1) target_packages.cadre_section_image_assets[section_name]
+    2) target_packages.cadre_role_image_assets[role_id] (first configured role
+       that belongs to this section in the current guild)
+    3) module defaults in _SPECIALIST_IMAGE_BY_SECTION
+    """
+    section_override = _configured_cadre_section_image_assets().get(section_name)
+    if section_override:
+        return section_override
+
+    role_overrides = _configured_cadre_role_image_assets()
+    if role_overrides and guild is not None:
+        section_role_ids = {
+            int(getattr(role, "id", 0) or 0)
+            for role in getattr(guild, "roles", []) or []
+            if (getattr(role, "name", "") or "") in role_names
+        }
+        for role_id, filename in role_overrides.items():
+            if role_id and role_id in section_role_ids:
+                return filename
+
+    return _SPECIALIST_IMAGE_BY_SECTION.get(section_name, "")
+
 def _configured_kill_team_image_assets() -> dict[int, str]:
     """Return optional mapping of KT role ID -> asset filename from config."""
     cfg = ((_b("CONFIG") or {}).get("target_packages") or {}).get("kt_role_image_assets") or {}
@@ -162,26 +230,62 @@ def _configured_company_entry(company_name: str) -> dict:
 
 
 def _company_command_image_filename(company_name: str) -> str:
-    """Resolve company command banner asset from config or naming convention."""
+    """Resolve company command container asset from config or naming convention."""
     entry = _configured_company_entry(company_name)
     configured_filename = str(entry.get("commandImageAsset") or "").strip()
     if configured_filename:
         return configured_filename
 
     short_name = company_name.replace("Watch Company", "").strip()
-    candidate = f"{short_name} Command.png"
+    short_slug = short_name.lower()
+    candidate = f"{short_slug} command.png"
     if short_name and os.path.exists(_asset_path(candidate)):
         return candidate
     return "Command.png"
 
 
-def _asset_path(filename: str) -> str:
+def _company_banner_image_filenames(company_name: str) -> list[str]:
+    """Resolve the first roster container images for a company.
+
+    Order is the company crest/banner first, followed by company art.
+    """
+    entry = _configured_company_entry(company_name)
+    short_name = company_name.replace("Watch Company", "").strip()
+    short_slug = short_name.lower()
+    configured_company = str(entry.get("companyImageAsset") or "").strip()
+    configured_art = str(entry.get("companyArtImageAsset") or "").strip()
+
+    filenames: list[str] = []
+    for candidate in (
+        configured_company or f"{short_slug} company.png",
+        configured_art or f"{short_slug} art.png",
+    ):
+        if candidate:
+            filenames.append(candidate)
+    return filenames
+
+
+def _asset_roots() -> list[str]:
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+    return [os.path.join(base, "roster images"), base]
+
+
+def _asset_candidate_paths(filename: str) -> list[str]:
     name = str(filename or "")
     if "/" in name or "\\" in name or ".." in name:
         _log().warning(f"Roster: invalid asset filename (path traversal blocked): {name!r}")
-        return os.path.join(base, "__invalid__")
-    return os.path.join(base, name)
+        return []
+    return [os.path.join(root, name) for root in _asset_roots()]
+
+
+def _asset_path(filename: str) -> str:
+    candidates = _asset_candidate_paths(filename)
+    if not candidates:
+        return os.path.join(_asset_roots()[-1], "__invalid__")
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[0]
 
 
 def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[discord.File]]:
@@ -190,9 +294,22 @@ def _resolve_asset_image(filename: str | None) -> tuple[Optional[str], Optional[
         return None, None
     path = _asset_path(filename)
     if not os.path.exists(path):
-        _log().warning(f"Roster: image asset missing: {path}")
+        candidates = ", ".join(_asset_candidate_paths(filename))
+        _log().warning(f"Roster: image asset missing: {filename} (checked: {candidates})")
         return None, None
     return f"attachment://{filename}", discord.File(path, filename=filename)
+
+
+def _resolve_asset_images(filenames: List[str] | None) -> tuple[list[str], list[discord.File]]:
+    """Resolve multiple local asset images, preserving input order."""
+    urls: list[str] = []
+    files: list[discord.File] = []
+    for filename in filenames or []:
+        image_url, image_file = _resolve_asset_image(filename)
+        if image_url and image_file:
+            urls.append(image_url)
+            files.append(image_file)
+    return urls, files
 
 
 def _kill_team_image_filename(kt_name: str, kt_role_id: Optional[int] = None) -> str:
@@ -276,6 +393,8 @@ def _load_roster_state() -> dict:
         {
             "Watch Company Primus": {
                 "channel_id": 1433351509722267658,
+                "company_message_id": null,
+                "company_art_message_id": null,
                 "hc_message_id": null,
                 "specialist_message_id": null,
                 "command_message_id": null,
@@ -287,6 +406,8 @@ def _load_roster_state() -> dict:
     default_state = {
         company: {
             "channel_id": channel_id,
+            "company_message_id": None,
+            "company_art_message_id": None,
             "hc_message_id": None,
             "specialist_message_id": None,
             "specialist_message_ids": {},
@@ -308,6 +429,8 @@ def _load_roster_state() -> dict:
                         continue
                     merged_state[company] = {
                         "channel_id": existing_company_state.get("channel_id", default_company_state["channel_id"]),
+                        "company_message_id": existing_company_state.get("company_message_id"),
+                        "company_art_message_id": existing_company_state.get("company_art_message_id"),
                         "hc_message_id": existing_company_state.get("hc_message_id"),
                         "specialist_message_id": existing_company_state.get("specialist_message_id"),
                         "specialist_message_ids": (
@@ -528,6 +651,7 @@ def _build_container_view(
     *,
     body_blocks: List[str],
     image_url: Optional[str] = None,
+    image_urls: Optional[List[str]] = None,
     description_lines: Optional[List[str]] = None,
     last_updated: Optional[datetime] = None,
 ) -> discord.ui.LayoutView:
@@ -547,9 +671,11 @@ def _build_container_view(
 
     view = discord.ui.LayoutView(timeout=None)
     children: list[discord.ui.Item] = []
-    if image_url:
+    gallery_urls = [url for url in (image_urls or ([] if image_url is None else [image_url])) if url]
+    if gallery_urls:
         gallery = discord.ui.MediaGallery()
-        gallery.add_item(media=image_url)
+        for media_url in gallery_urls:
+            gallery.add_item(media=media_url)
         children.append(gallery)
     children.append(discord.ui.TextDisplay(full_text))
     container = discord.ui.Container(*children, accent_color=None)
@@ -1268,7 +1394,7 @@ async def _update_company_roster(
 
     if force_repost:
         tracked_ids: set[int] = set()
-        for key in ("hc_message_id", "specialist_message_id", "command_message_id"):
+        for key in ("company_message_id", "company_art_message_id", "hc_message_id", "specialist_message_id", "command_message_id"):
             mid = company_state.get(key)
             if mid:
                 tracked_ids.add(int(mid))
@@ -1282,12 +1408,46 @@ async def _update_company_roster(
         for tracked_id in tracked_ids:
             await _delete_message_if_exists(channel, tracked_id)
 
+        company_state["company_message_id"] = None
+        company_state["company_art_message_id"] = None
         company_state["hc_message_id"] = None
         company_state["specialist_message_id"] = None
         company_state["specialist_message_ids"] = {}
         company_state["command_message_id"] = None
         company_state["killteam_message_ids"] = {}
         _log().info(f"Roster: force re-post reset completed for '{company_name}' ({len(tracked_ids)} tracked message(s))")
+
+    # One-time migration: existing rosters need a full repost so the new company
+    # banner container can be inserted ahead of High Command.
+    if not force_repost and (
+        not company_state.get("company_message_id")
+        or not company_state.get("company_art_message_id")
+    ):
+        existing_ids = [
+            company_state.get("company_message_id"),
+            company_state.get("hc_message_id"),
+            company_state.get("command_message_id"),
+            *list((company_state.get("specialist_message_ids") or {}).values()),
+            *list((company_state.get("killteam_message_ids") or {}).values()),
+        ]
+        if any(existing_ids):
+            force_repost = True
+            tracked_ids: set[int] = set()
+            for tracked_id in existing_ids:
+                if tracked_id:
+                    tracked_ids.add(int(tracked_id))
+            if company_state.get("specialist_message_id"):
+                tracked_ids.add(int(company_state["specialist_message_id"]))
+            for tracked_id in tracked_ids:
+                await _delete_message_if_exists(channel, tracked_id)
+            company_state["company_message_id"] = None
+            company_state["company_art_message_id"] = None
+            company_state["hc_message_id"] = None
+            company_state["specialist_message_id"] = None
+            company_state["specialist_message_ids"] = {}
+            company_state["command_message_id"] = None
+            company_state["killteam_message_ids"] = {}
+            _log().info(f"Roster: migrated '{company_name}' to split-banner layout ({len(tracked_ids)} message(s) reset)")
 
     # Load strike directive data once so status lines can be rendered on all embeds.
     _tp_data: dict = {}
@@ -1303,10 +1463,13 @@ async def _update_company_roster(
 
     # Load honors data once for all embeds in this company update.
     _honors_data = _load_honors()
+    banner_filenames = _company_banner_image_filenames(company_name)
+    company_image_url, company_image_file = _resolve_asset_image(banner_filenames[0] if banner_filenames else None)
+    art_image_url, art_image_file = _resolve_asset_image(banner_filenames[1] if len(banner_filenames) > 1 else None)
     cmd_image_url, cmd_image_file = _resolve_asset_image(
         _company_command_image_filename(company_name)
     )
-    hc_image_url, hc_file = _resolve_asset_image("High Command.png")
+    hc_image_url, hc_file = _resolve_asset_image("high command.png")
 
     ready_icon = _get_emoji_by_name(guild, "Ready") or "🟢"
     deployed_icon = _get_emoji_by_name(guild, "Deployed") or "🔴"
@@ -1314,7 +1477,43 @@ async def _update_company_roster(
     renown_prefix = "`ʀᴇɴᴏᴡɴ`"
     fortress_prefix = "`1. ᴏʀᴅᴏ sᴛᴀɴᴅɪɴɢ`"
 
-    # ── Embed 1: High Command ───────────────────────────────────────────────
+    # ── Container 1: Company banner ─────────────────────────────────────────
+    company_view = _build_container_view(
+        None,
+        body_blocks=[_EMPTY_FIELD_NAME],
+        image_url=company_image_url,
+        last_updated=now,
+        description_lines=[],
+    )
+    company_msg_id = await _upsert_message(
+        channel,
+        company_state.get("company_message_id"),
+        view=company_view,
+        files=[company_image_file] if company_image_file else None,
+    )
+    company_state["company_message_id"] = company_msg_id
+
+    # ── Container 2: Company art ────────────────────────────────────────────
+    if art_image_url and art_image_file:
+        company_art_view = _build_container_view(
+            None,
+            body_blocks=[_EMPTY_FIELD_NAME],
+            image_url=art_image_url,
+            last_updated=now,
+            description_lines=[],
+        )
+        company_art_msg_id = await _upsert_message(
+            channel,
+            company_state.get("company_art_message_id"),
+            view=company_art_view,
+            files=[art_image_file],
+        )
+        company_state["company_art_message_id"] = company_art_msg_id
+    else:
+        await _delete_message_if_exists(channel, company_state.get("company_art_message_id"))
+        company_state["company_art_message_id"] = None
+
+    # ── Container 3: High Command ───────────────────────────────────────────
     hc_members = _get_hc_members(guild)
     hc_block = _render_member_block(
         guild,
@@ -1352,7 +1551,7 @@ async def _update_company_roster(
 
     for idx, (section_name, role_names) in enumerate(_SPECIALIST_SECTION_ROLE_GROUPS):
         specialist_image_url, specialist_file = _resolve_asset_image(
-            _SPECIALIST_IMAGE_BY_SECTION.get(section_name)
+            _specialist_image_filename(section_name, set(role_names), guild)
         )
         specialist_members = _collect_members_with_roles(
             guild,
@@ -1409,7 +1608,7 @@ async def _update_company_roster(
     company_state["specialist_message_ids"] = new_specialist_message_ids
     company_state["specialist_message_id"] = None
 
-    # ── Embed 3: Company roster (command + Kill Teams) ───────────────────────
+    # ── Company command container ────────────────────────────────────────────
     cmd_members = _get_company_command_members(guild, company_name)
     kill_teams = _get_kill_teams_for_company(guild, company_name)
     combined_cmd_members = sorted(cmd_members, key=_sort_key_for_member)
@@ -1425,11 +1624,6 @@ async def _update_company_roster(
                 deployed_icon=deployed_icon,
                 assigned_icon=assigned_icon,
             ),
-            _honors_title_for_company(
-                company_name,
-                honors=_honors_data,
-                standing_prefix=renown_prefix,
-            ),
         ],
     )
     cmd_view = _build_container_view(
@@ -1437,7 +1631,13 @@ async def _update_company_roster(
         body_blocks=[combined_cmd_block],
         image_url=cmd_image_url,
         last_updated=now,
-        description_lines=[],
+        description_lines=[
+            _honors_title_for_company(
+                company_name,
+                honors=_honors_data,
+                standing_prefix=renown_prefix,
+            ),
+        ],
     )
     cmd_msg_id = await _upsert_message(
         channel,
