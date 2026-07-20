@@ -34,7 +34,7 @@
 **`᛭⋅ Chapter Requests ⋅᛭`**
 `/chapter_request chapter_name:<name>` - Request transfer to a standard chapter.
 	-# 28d cooldown; Apothecary review required.
-`/request_homebrew_chapter name:<name> geneseed_lineage:<lineage> lore_blurb:<text>` - Request a homebrew chapter.
+`/request_homebrew_chapter name:<name> geneseed_lineage:<lineage> lore_blurb:<text> pauldron_image:<image>` - Request a homebrew chapter.
 	-# 28d cooldown; staff + command review.
 
 **`᛭⋅ Troubleshooting ⋅᛭`**

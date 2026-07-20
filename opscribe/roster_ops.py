@@ -2254,9 +2254,14 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
 
         if has_company_command_role and not has_company_role:
             _add(member, "company_role_missing", "Company command roles require a company role.")
-        if has_company_command_role and highest_rank_lc not in {watch_captain.lower(), watch_lieutenant.lower()}:
-            _add(member, "company_command_excess", "Only Watch Captain and Watch Lieutenant may hold company command roles.")
-        if highest_rank_lc in {watch_captain.lower(), watch_lieutenant.lower()} and not has_company_command_role:
+        allowed_company_command_ranks_lc = {
+            watch_master.lower(),
+            watch_captain.lower(),
+            watch_lieutenant.lower(),
+        }
+        if has_company_command_role and highest_rank_lc not in allowed_company_command_ranks_lc:
+            _add(member, "company_command_excess", "Only Watch Master, Watch Captain, and Watch Lieutenant may hold company command roles.")
+        if has_company_role and highest_rank_lc in allowed_company_command_ranks_lc and not has_company_command_role:
             company_name = company_name_by_role_id.get(company_hits[0], "company") if len(company_hits) == 1 else "company"
             _add(member, "company_command_missing", f"Missing {company_name} command role.")
 
@@ -2759,6 +2764,17 @@ def _safe_set_embed_author(embed: discord.Embed, user: discord.Member | discord.
         pass
 
 
+def _safe_set_embed_image(embed: discord.Embed, image_url: Optional[str]) -> None:
+    """Best-effort image setter for command-driven embeds."""
+    if not image_url:
+        return
+    try:
+        if hasattr(embed, "set_image"):
+            embed.set_image(url=image_url)
+    except Exception:
+        pass
+
+
 _CHAPTER_REQUEST_STATE_PATH = os.path.join(DATA_DIR, "chapter_request_state.json")
 _CHAPTER_REQUEST_COOLDOWN_DAYS = 28
 _HOMEBREW_CHAPTER_LORE_MAX_CHARS = 1024
@@ -3026,12 +3042,14 @@ async def chapter_request(
     name="Homebrew chapter name.",
     geneseed_lineage="Geneseed lineage for this chapter.",
     lore_blurb="Short lore blurb for this chapter (max 1024 chars).",
+    pauldron_image="In-game Space Marine 2 pauldron image for review.",
 )
 async def request_homebrew_chapter(
     interaction: discord.Interaction,
     name: str,
     geneseed_lineage: str,
     lore_blurb: str,
+    pauldron_image: discord.Attachment,
 ):
     if not (
         _b("check_command_permission")(interaction.user, "request_homebrew_chapter") and _b("is_allowed_channel")(interaction)
@@ -3051,6 +3069,13 @@ async def request_homebrew_chapter(
     if not chapter_name or not lineage or not lore:
         await interaction.response.send_message(
             "Name, geneseed lineage, and lore blurb are all required.",
+            ephemeral=True,
+        )
+        return
+
+    if pauldron_image is None or not pauldron_image.content_type or not pauldron_image.content_type.startswith("image/"):
+        await interaction.response.send_message(
+            "You must attach an in-game Space Marine 2 pauldron image (PNG/JPG/etc.) for homebrew chapter review.",
             ephemeral=True,
         )
         return
@@ -3096,8 +3121,10 @@ async def request_homebrew_chapter(
         extra_fields=[
             ("Geneseed Lineage", lineage),
             ("Lore Blurb", lore),
+            ("Pauldron Proof (Space Marine 2)", getattr(pauldron_image, "url", "Attachment unavailable")),
         ],
     )
+    _safe_set_embed_image(embed, getattr(pauldron_image, "url", None))
 
     await staff_channel.send(
         content=notify_content,
