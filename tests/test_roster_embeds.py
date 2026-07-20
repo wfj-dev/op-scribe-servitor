@@ -297,6 +297,25 @@ def test_configured_cadre_section_image_assets_accepts_case_insensitive_section_
     }
 
 
+def test_configured_cadre_section_image_assets_accepts_hall_of_blades_alias():
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "target_packages": {
+                "cadre_section_image_assets": {
+                    "Hall of Blades": "hall of blades.png",
+                }
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        configured = roster_embeds._configured_cadre_section_image_assets()
+
+    assert configured == {"Blade Hall": "hall of blades.png"}
+
+
 def test_specialist_image_filename_prefers_section_override_over_role_mapping():
     guild = SimpleNamespace(
         roles=[
