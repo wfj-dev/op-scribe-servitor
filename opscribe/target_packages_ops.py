@@ -2891,6 +2891,21 @@ def _visible_active_packages_for_member(member: discord.Member, packages: dict) 
     if _is_debug_mode() and _is_admin(member):
         return _active()
 
+    # Watch Master should always retain full-board visibility even if they also
+    # hold company-scoped command roles.
+    if _is_watch_master(member):
+        return _active()
+
+    # Captains/Lieutenants should always see distributed directives (unclaimed),
+    # alongside any directives already scoped to their company or personal attachment.
+    if _is_captain_or_lt(member):
+        return [
+            p for p in _active()
+            if _is_personally_attached(p)
+            or p.get("assigned_company") == member_company
+            or p.get("status") == STATUS_DISTRIBUTED
+        ]
+
     if member_company:
         return [
             p for p in _active()

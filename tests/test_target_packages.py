@@ -102,6 +102,7 @@ from opscribe.target_packages_ops import (  # noqa: E402
     _REQ_TIER_NO_REQ,
     _REQ_TIER_HC,
     _REQ_TIER_COMPANY_COMMAND,
+    STATUS_DISTRIBUTED,
     STATUS_RECRUITING,
     STATUS_DEPLOYED,
     STATUS_COMPLETED,
@@ -343,6 +344,64 @@ class TestRemoveOperation:
 
 
 class TestHighCommandVisibility:
+    def test_watch_master_with_company_role_sees_all_active_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(
+            _make_member(["Watch Master", "Watch Captain"], member_id=500),
+            company_name="Watch Company Tertius",
+        )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Tertius"),
+        )
+
+        pkgs = {
+            "p_tert": {
+                "id": "p_tert",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Tertius",
+                "assigned_kt": "Kill Team Solaire",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_other": {
+                "id": "p_other",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": "Kill Team Duke",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_distributed": {
+                "id": "p_distributed",
+                "status": STATUS_DISTRIBUTED,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_failed": {
+                "id": "p_failed",
+                "status": STATUS_FAILED,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_tert", "p_other", "p_distributed"}
+
     def test_forgemaster_sees_all_active_directives(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
@@ -482,6 +541,98 @@ class TestHighCommandVisibility:
 
 
 class TestCompanyScopedVisibility:
+    def test_captain_with_company_role_sees_distributed_unclaimed_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Captain"], member_id=704), company_name="Watch Company Tertius")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Tertius"),
+        )
+
+        pkgs = {
+            "p_distributed": {
+                "id": "p_distributed",
+                "status": STATUS_DISTRIBUTED,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company": {
+                "id": "p_company",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Tertius",
+                "assigned_kt": "Kill Team Solaire",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_other_company": {
+                "id": "p_other_company",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": "Kill Team Serze",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_distributed", "p_company"}
+
+    def test_non_command_company_member_does_not_see_other_distributed_directives(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        member = _with_company_role(_make_member(["Watch Brother"], member_id=705), company_name="Watch Company Tertius")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "opscribe.roster_ops",
+            types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Tertius"),
+        )
+
+        pkgs = {
+            "p_distributed": {
+                "id": "p_distributed",
+                "status": STATUS_DISTRIBUTED,
+                "assigned_company": None,
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_company": {
+                "id": "p_company",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Tertius",
+                "assigned_kt": "Kill Team Solaire",
+                "required_roles": [],
+                "signed_up": [],
+                "assigned_specialist_ids": [],
+            },
+            "p_personal": {
+                "id": "p_personal",
+                "status": STATUS_RECRUITING,
+                "assigned_company": "Watch Company Primus",
+                "assigned_kt": None,
+                "required_roles": [],
+                "signed_up": [705],
+                "assigned_specialist_ids": [],
+            },
+        }
+
+        visible = tp._visible_active_packages_for_member(member, pkgs)
+        visible_ids = {p["id"] for p in visible}
+
+        assert visible_ids == {"p_company", "p_personal"}
+
     def test_company_member_without_kt_sees_only_matching_company_and_personal(self, monkeypatch):
         import opscribe.target_packages_ops as tp
 
