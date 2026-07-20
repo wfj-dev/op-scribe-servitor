@@ -136,6 +136,12 @@ def _configured_cadre_section_image_assets() -> dict[str, str]:
         return configured
 
     canonical_sections = {name.lower(): name for name in _SPECIALIST_IMAGE_BY_SECTION}
+    canonical_sections.update(
+        {
+            "hall of blades": "Blade Hall",
+            "hall of champions": "Blade Hall",
+        }
+    )
     for section_name, filename in cfg.items():
         section_key = canonical_sections.get(str(section_name or "").strip().lower())
         if not section_key:
