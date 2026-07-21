@@ -2110,6 +2110,15 @@ async def set_induction(
         overrides[user_id] = date_str
         _b("_save_induction_overrides")(overrides)
 
+        # Trigger a background promotion/stud eligibility refresh so veteran auto-promotion
+        # and related queues reflect the new induction date without waiting for the next cycle.
+        try:
+            promotion_check = _b("_check_promotion_milestones")
+            if callable(promotion_check):
+                asyncio.create_task(promotion_check())
+        except Exception:
+            pass
+
         # Calculate days since induction for display
         days_ago = (datetime.now().date() - parsed_date.date()).days
         await interaction.response.send_message(
@@ -2145,28 +2154,36 @@ async def audit_service_studs(interaction: discord.Interaction):
             if not any(r in member_role_names for r in _b("RANK_ROLES_PRIORITY")):
                 continue
 
-            # Compute entitlement using same rules as roster/tally
-            studs_count = 0
-            highest_idx = _b("get_highest_rank_index")(member)
-            if (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran):
-                joined_at = _b("_get_effective_induction_date")(member)
-                if joined_at:
-                    ja = joined_at
-                    if ja.tzinfo is not None:
-                        try:
-                            ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
-                        except Exception:
-                            ja = ja.replace(tzinfo=None)
-                    weeks = max(0, (now - ja).days // 7)
-                    studs_time = weeks // 4
-                else:
-                    studs_time = 0
+            # Compute entitlement using same rules as roster/tally.
+            # Watch Brother/Sister become stud-eligible once they meet Watch Veteran
+            # thresholds (200 AAR + 2 weeks), even before role sync occurs.
+            stats = _b("compute_stats_for_user")(str(getattr(member, "id", "")))
+            try:
+                aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
+            except Exception:
+                aar_points_val = 0
 
-                stats = _b("compute_stats_for_user")(str(getattr(member, "id", "")))
-                try:
-                    aar_points_val = int(round(float(stats.get("aar_points", 0) or 0)))
-                except Exception:
-                    aar_points_val = 0
+            joined_at = _b("_get_effective_induction_date")(member)
+            if joined_at:
+                ja = joined_at
+                if ja.tzinfo is not None:
+                    try:
+                        ja = ja.astimezone(timezone.utc).replace(tzinfo=None)
+                    except Exception:
+                        ja = ja.replace(tzinfo=None)
+                weeks = max(0, (now - ja).days // 7)
+                studs_time = weeks // 4
+            else:
+                weeks = 0
+                studs_time = 0
+
+            highest_idx = _b("get_highest_rank_index")(member)
+            is_veteran_or_higher = (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran)
+            is_watch_brother = ("Watch Brother" in member_role_names) or ("Watch Sister" in member_role_names)
+            is_veteran_eligible = aar_points_val >= 200 and weeks >= 2
+
+            studs_count = 0
+            if is_veteran_or_higher or (is_watch_brother and is_veteran_eligible):
                 studs_aar = aar_points_val // 400
                 studs_count = min(studs_time, studs_aar)
                 studs_count = min(studs_count, 16)
