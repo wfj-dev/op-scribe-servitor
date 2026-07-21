@@ -132,6 +132,23 @@ Day 4 and after:
 - If you touch async or stateful code, call out lock usage in the PR description.
 - Do not mix onboarding-sized fixes with unrelated cleanup.
 
+## Commit message convention and auto-versioning
+
+This repository uses push-time automatic version bumps from commit significance.
+The source of truth is `opscribe/__init__.py` and starts from the current baseline.
+
+Use Conventional Commit style prefixes so bump level is deterministic:
+
+- `feat: ...` or `feat(scope): ...` -> minor bump
+- `fix: ...`, `chore: ...`, and other commit types -> patch bump
+- `type(scope)!: ...` or a `BREAKING CHANGE:` footer -> major bump
+
+Notes:
+
+- A workflow commit message containing `[skip version bump]` is ignored by the bump job to avoid recursion.
+- If multiple commits are in one push, the highest significance wins (`major > minor > patch`).
+- For local verification without mutating files, run: `python3 scripts/auto_bump_version.py --dry-run HEAD~1..HEAD`.
+
 ## Domain notes
 
 This repo uses Warhammer-themed names heavily. Treat those names as business-domain terms, not as technical categories. If a term is unclear, check `README.md`, `GUIDE_WATCH_BROTHER.md`, `GUIDE_WATCH_COMMAND.md`, and the nearby tests before changing logic.
