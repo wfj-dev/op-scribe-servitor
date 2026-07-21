@@ -165,6 +165,22 @@ def test_fallback_allowed_channel_ids_blocks_non_matching_id():
         assert is_allowed_channel(ix) is False
 
 
+def test_fallback_allowed_channel_ids_permits_thread_under_matching_parent_id():
+    """A thread should be allowed when its parent forum ID is in allowed_command_channel_ids."""
+    config = {"allowed_command_channel_ids": [5555]}
+    with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
+        ix = _make_interaction("forum-post", 9999, "any_command", parent_id=5555)
+        assert is_allowed_channel(ix) is True
+
+
+def test_fallback_allowed_channel_ids_blocks_thread_when_parent_not_listed():
+    """A thread should be denied when neither thread ID nor parent ID is allowlisted."""
+    config = {"allowed_command_channel_ids": [5555]}
+    with unittest.mock.patch.dict(bot.CONFIG, config, clear=True):
+        ix = _make_interaction("forum-post", 9999, "any_command", parent_id=7777)
+        assert is_allowed_channel(ix) is False
+
+
 def test_fallback_kt_forum_parent_ids_permits_thread_under_allowed_parent():
     """Forum posts under configured KT parents should inherit broad command access."""
     config = {"target_packages": {"kt_forum_parent_ids": [7777]}}
