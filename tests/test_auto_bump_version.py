@@ -56,7 +56,7 @@ class TestInferBump:
         body = "BREAKING-CHANGE: old API removed"
         assert _infer_bump([_cm("feat: revamp", body)]) == "major"
 
-    def test_false_positive_no_breaking_change_in_text(self):
+    def test_breaking_change_phrase_in_text_does_not_trigger_major(self):
         # "no breaking changes" must NOT trigger major
         body = "This commit introduces no breaking changes to the interface."
         assert _infer_bump([_cm("feat: minor improvement", body)]) == "minor"
