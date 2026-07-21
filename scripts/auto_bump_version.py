@@ -13,6 +13,7 @@ from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = REPO_ROOT / "opscribe/__init__.py"
+GIT_NULL_SHA = "0" * 40
 VERSION_RE = re.compile(r'^__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"\s*$')
 CONVENTIONAL_FEAT_RE = re.compile(r"^feat(?:\([^)]+\))?:", re.IGNORECASE)
 CONVENTIONAL_BREAKING_RE = re.compile(r"^[a-z]+(?:\([^)]+\))?!:", re.IGNORECASE)
@@ -67,7 +68,7 @@ def _resolve_range(cli_range: str | None) -> str:
 
     before = os.getenv("GITHUB_EVENT_BEFORE", "")
     after = os.getenv("GITHUB_SHA", "")
-    if before and after and before != "0" * 40:
+    if before and after and before != GIT_NULL_SHA:
         return f"{before}..{after}"
 
     # For branch-creation pushes where "before" is all zeroes, use the current commit.
@@ -136,6 +137,11 @@ def main() -> int:
     commits = _commit_messages(revision_range)
     if not commits:
         print("No commits found for range; skipping.")
+        github_output = os.getenv("GITHUB_OUTPUT")
+        if github_output:
+            with Path(github_output).open("a", encoding="utf-8") as handle:
+                handle.write("new_version=\n")
+                handle.write("bump_level=\n")
         return 0
 
     bump_level = _infer_bump(commits)
