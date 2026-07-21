@@ -2454,17 +2454,13 @@ def _compute_member_service_studs(member: discord.Member) -> int:
     """Compute the number of service studs a member has earned.
 
     Service studs are earned at 1 per 4 weeks AND 400 AAR points (minimum of both).
-    Only Watch Veteran rank and above are eligible.
+    Watch Veteran+ are eligible, and Watch Brother/Sister become eligible once
+    they meet Watch Veteran thresholds (>=200 AAR and >=2 weeks) even before
+    role sync occurs.
     """
     try:
         idx_veteran = _b("_role_index")("Watch Veteran")
         highest_idx = _b("get_highest_rank_index")(member)
-
-        # Must be Watch Veteran or higher
-        if idx_veteran is None or highest_idx is None:
-            return 0
-        if highest_idx > idx_veteran:
-            return 0
 
         now = datetime.utcnow()
         joined_at = _b("_get_effective_induction_date")(member)
@@ -2489,6 +2485,14 @@ def _compute_member_service_studs(member: discord.Member) -> int:
             aar_points = int(round(float(stats.get("aar_points", 0) or 0)))
         except Exception:
             aar_points = 0
+
+        is_veteran_or_higher = (idx_veteran is not None) and (highest_idx is not None) and (highest_idx <= idx_veteran)
+        role_names = {getattr(r, "name", "") for r in getattr(member, "roles", [])}
+        is_watch_brother = "Watch Brother" in role_names or "Watch Sister" in role_names
+        is_veteran_eligible = aar_points >= 200 and weeks >= 2
+
+        if not (is_veteran_or_higher or (is_watch_brother and is_veteran_eligible)):
+            return 0
 
         studs_aar = aar_points // 400
 
