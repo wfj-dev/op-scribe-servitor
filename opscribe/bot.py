@@ -988,8 +988,9 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
     Note: WHO can run a command is handled by check_command_permission() via
     CONFIG["permissions"] (roles, user_ids, min_rank).
 
-    Fallback order:
-      1. CONFIG["allowed_command_channel_ids"] - explicit channel ID allowlist
+        Fallback order:
+            1. CONFIG["allowed_command_channel_ids"] - explicit channel ID allowlist
+                 (matches current channel ID OR parent channel ID for threads/forum posts)
       2. CONFIG["default_allowed_channels"] or DEFAULT_ALLOWED_CHANNELS constant
     """
     try:
@@ -1049,10 +1050,14 @@ def is_allowed_channel(interaction: discord.Interaction) -> bool:
 
             return True
 
-        # Fallback: check allowed channel IDs from config
+        # Fallback: check allowed channel IDs from config. For forum threads,
+        # also allow parent forum IDs so new posts inherit access automatically.
         allowed_ids = set(CONFIG.get("allowed_command_channel_ids") or [])
-        if allowed_ids and ch_id:
-            return ch_id in {str(x) for x in allowed_ids}
+        if allowed_ids:
+            allowed_id_strs = {str(x) for x in allowed_ids}
+            if (ch_id and ch_id in allowed_id_strs) or (parent_id_str and parent_id_str in allowed_id_strs):
+                return True
+            return False
 
         # KT forum posts inherit broad command access from their approved forum
         # parent channels so current and future posts do not need manual entries.
