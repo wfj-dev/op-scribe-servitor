@@ -74,6 +74,8 @@ def _install_discord_stub():
     ui_mod = types.ModuleType("discord.ui")
     ui_mod.View = type("View", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
     ui_mod.Button = object
+    ui_mod.Modal = type("Modal", (), {"__init_subclass__": classmethod(lambda cls, **_kwargs: None)})
+    ui_mod.TextInput = type("TextInput", (), {"__init__": lambda self, *args, **kwargs: None})
     ui_mod.Select = object
     ui_mod.UserSelect = object
     ui_mod.RoleSelect = object
@@ -881,6 +883,39 @@ def test_get_company_champion_members_filters_by_company_and_role():
     members = roster_embeds._get_company_champion_members(guild, "Watch Company Primus")
 
     assert [m.id for m in members] == [20]
+
+
+def test_get_company_command_members_uses_configured_company_command_role_id():
+    command_role_id = 7777
+    command_member = _member(
+        member_id=30,
+        display_name="Primus XO",
+        roles=[_role(command_role_id, "Primus Command")],
+    )
+    non_command_member = _member(
+        member_id=31,
+        display_name="Captain Without Command Role",
+        roles=[_role(101, "Watch Captain"), _role(102, "Watch Company Primus")],
+    )
+    guild = SimpleNamespace(members=[command_member, non_command_member])
+
+    with patch.object(
+        roster_embeds,
+        "_b",
+        lambda name: {
+            "companies": {
+                "primus": {
+                    "name": "Primus",
+                    "companyCommandRoleId": str(command_role_id),
+                }
+            }
+        }
+        if name == "CONFIG"
+        else None,
+    ):
+        members = roster_embeds._get_company_command_members(guild, "Watch Company Primus")
+
+    assert [m.id for m in members] == [30]
 
 
 def test_mention_style_label_prefixes_at_symbol_for_embed_field_names():
