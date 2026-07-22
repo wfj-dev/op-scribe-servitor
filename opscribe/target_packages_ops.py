@@ -5040,7 +5040,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 flavor = random.choice(_FORTRESS_FLAVOR_POOR)
 
             fw_embed = discord.Embed(
-                title=f"{_DW_EMOJI} ꜰᴏʀᴛʀᴇss ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ᴄʏᴄʟᴇ ᴄʟᴏsᴇᴅ {_DW_EMOJI}",
+                title=f"{_DW_EMOJI} ꜰᴏʀᴛʀᴇss ᴄʏᴄʟᴇ ᴄʟᴏsᴇᴅ {_DW_EMOJI}",
                 description=flavor,
                 color=color,
             )
@@ -5142,7 +5142,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
             kt_color = 0x8B0000
 
         kt_embed = discord.Embed(
-            title=f"{_DW_EMOJI} ᴋɪʟʟ ᴛᴇᴀᴍ ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ʀᴇᴄᴏʀᴅ {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} ᴋɪʟʟ ᴛᴇᴀᴍ ᴄʏᴄʟᴇ ʀᴇᴘᴏʀᴛ {_DW_EMOJI}",
             color=kt_color,
         )
         kt_embed.set_author(name=f"{kt_name}  ·  {_batch_label}")
@@ -5240,7 +5240,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
 
     if hc_ch or _is_debug_mode():
         hc_embed = discord.Embed(
-            title=f"{_DW_EMOJI} ᴄᴏᴍᴍᴀɴᴅ sᴛʀᴀᴛᴀɢᴇᴍ ᴀᴜᴅɪᴛ {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} ᴄᴏᴍᴍᴀɴᴅ ᴄʏᴄʟᴇ ᴀᴜᴅɪᴛ {_DW_EMOJI}",
             color=color,
         )
         hc_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
@@ -5386,7 +5386,7 @@ async def _post_batch_summary(guild: discord.Guild, data: dict, batch_id: Option
                 break
 
         c_embed = discord.Embed(
-            title=f"{_DW_EMOJI} {_smallcaps(section_label)} — ᴄʏᴄʟᴇ ᴅᴇʙʀɪᴇꜰ {_DW_EMOJI}",
+            title=f"{_DW_EMOJI} ᴄᴀᴅʀᴇ ᴅᴇʙʀɪᴇꜰ {_DW_EMOJI}",
             color=cadre_color,
         )
         c_embed.set_author(name=f"ᴏʀᴅᴏ xᴇɴᴏs · {_batch_label}")
@@ -8462,7 +8462,7 @@ class PackagePaginatorView(discord.ui.View):
             viewer=self.viewer,
             guild=resolved_guild,
         )
-        if pkg.get("status") in (STATUS_RECRUITING, STATUS_DEPLOYED):
+        if pkg.get("status") in (STATUS_DISTRIBUTED, STATUS_RECRUITING, STATUS_DEPLOYED):
             embed = _inject_readiness_fields_for_view(embed, pkg, resolved_guild)
         return embed
 

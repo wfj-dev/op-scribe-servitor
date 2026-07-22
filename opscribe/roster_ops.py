@@ -1544,13 +1544,19 @@ async def _check_promotion_milestones():
                 _g.logger.warning(f"Black Laurels channel {BLACK_LAURELS_CHANNEL_ID} not found")
                 black_laurels_channel = None
 
-        # Get Oathsworn eligibility notification channel
-        oathsworn_channel = guild.get_channel(OATHSWORN_CHANNEL_ID)
+        # Get Oathsworn eligibility command notification channel
+        oathsworn_cfg = (_g.CONFIG or {}).get("oathsworn") or {}
+        try:
+            oathsworn_channel_id = int(oathsworn_cfg.get("command_notification_channel_id") or OATHSWORN_CHANNEL_ID)
+        except Exception:
+            oathsworn_channel_id = OATHSWORN_CHANNEL_ID
+
+        oathsworn_channel = guild.get_channel(oathsworn_channel_id)
         if not oathsworn_channel:
             try:
-                oathsworn_channel = await _g.bot.fetch_channel(OATHSWORN_CHANNEL_ID)
+                oathsworn_channel = await _g.bot.fetch_channel(oathsworn_channel_id)
             except Exception:
-                _g.logger.warning(f"Oathsworn channel {OATHSWORN_CHANNEL_ID} not found")
+                _g.logger.warning(f"Oathsworn command notification channel {oathsworn_channel_id} not found")
                 oathsworn_channel = None
 
         if not studs_channel and not black_laurels_channel and not oathsworn_channel:
@@ -1919,19 +1925,16 @@ async def _check_promotion_milestones():
                         has_oathsworn_role = oathsworn_role and oathsworn_role in member.roles
 
                         if is_oathsworn_eligible and not has_oathsworn_role:
-                            # Generate flavorful announcement with embed and poll
-                            content, embed, poll = _b("_get_oathsworn_announcement")(
-                                member=member,
-                                member_chapter=member_chapter,
-                                earned_studs=oathsworn_earned_studs,
-                                guild=guild,
-                            )
-
-                            # Send the announcement with embed and poll
+                            watch_command_role = discord.utils.get(guild.roles, name="Watch Command")
+                            watch_command_mention = watch_command_role.mention if watch_command_role else "@Watch Command"
                             await oathsworn_channel.send(
-                                content,
-                                embed=embed,
-                                poll=poll,
+                                (
+                                    f"{watch_command_mention}\n"
+                                    f"{member.mention} now meets Oathsworn requirements.\n"
+                                    f"-# Rank: **Watch Veteran**\n"
+                                    f"-# Service Studs: **{oathsworn_earned_studs}** (3 required)\n"
+                                    "-# This candidate requires a command vote."
+                                ),
                                 allowed_mentions=discord.AllowedMentions(users=True, roles=True),
                             )
                             user_tracking["oathsworn_notified"] = True
