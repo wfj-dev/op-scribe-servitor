@@ -197,21 +197,25 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
             f"{_subject_line(poll)}\n"
             f"-# **Target Role/Rank:** {poll.get('target_role', 'Unknown')}\n"
             f"-# **Threshold Rule:** {class_label}\n"
-            "-# Vote identities are anonymous until close."
+            "-# Vote identities and per-option totals are anonymous until close."
         ),
         color=0x3498DB,
     )
-    embed.add_field(name="`ʏᴀʏ`", value=f"-# **{len(yes_votes)}**", inline=True)
-    embed.add_field(name="`ɴᴀʏ`", value=f"-# **{len(no_votes)}**", inline=True)
-    if includes_abstain:
-        embed.add_field(name="`ᴀʙsᴛᴀɪɴ`", value=f"-# **{len(abstain_votes)}**", inline=True)
 
     embed.add_field(
-        name="`ᴛʜʀᴇsʜᴏʟᴅs`",
+        name="`ᴘᴀʀᴛɪᴄɪᴘᴀᴛɪᴏɴ`",
+        value=(
+            f"-# Ballots cast: **{votes_cast}/{electorate}**\n"
+            f"-# Remaining: **{max(0, electorate - votes_cast)}**"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="`ᴛʜʀᴇsʜᴏʟᴅ ʀᴜʟᴇs`",
         value=(
             f"-# Quorum: **{quorum_required}/{electorate}** ({quorum_pct * 100:.0f}%)\n"
             f"-# Pass: **{threshold * 100:.0f}% yes** of yes+nay\n"
-            f"-# Ballots cast: **{votes_cast}**"
+            f"-# Abstain check: **{_abstain_revote_percent() * 100:.0f}%** triggers revote"
         ),
         inline=False,
     )
@@ -288,6 +292,7 @@ def _evaluate_poll(poll: dict) -> dict:
         "yes_count": yes_count,
         "no_count": no_count,
         "abstain_count": abstain_count,
+        "yes_no_total": yes_no_total,
         "votes_cast": votes_cast,
         "electorate": electorate,
         "quorum_required": quorum_required,
@@ -295,10 +300,25 @@ def _evaluate_poll(poll: dict) -> dict:
         "yes_rate": yes_rate,
         "abstain_rate": abstain_rate,
         "pass_threshold": pass_threshold,
+        "abstain_threshold": abstain_threshold,
+        "close_margin": close_margin,
+        "close_margin_hit": close_margin_hit,
         "outcome": outcome,
         "revote_required": revote_required,
         "revote_reasons": revote_reasons,
     }
+
+
+def _non_voter_ids(poll: dict) -> list[str]:
+    electorate = [str(uid) for uid in (poll.get("electorate_ids") or []) if str(uid).strip()]
+    votes = poll.get("votes") or {}
+    voted = {
+        str(uid)
+        for key in ("yay", "nay", "abstain")
+        for uid in (votes.get(key) or [])
+        if str(uid).strip()
+    }
+    return [uid for uid in electorate if uid not in voted]
 
 
 def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
@@ -346,6 +366,9 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
     embed.add_field(name="`ɴᴀʏ ᴠᴏᴛᴇʀs`", value=_mentions_from_ids(list(votes.get("nay") or [])), inline=False)
     if bool(poll.get("include_abstain")):
         embed.add_field(name="`ᴀʙsᴛᴀɪɴ ᴠᴏᴛᴇʀs`", value=_mentions_from_ids(list(votes.get("abstain") or [])), inline=False)
+
+    no_show_ids = _non_voter_ids(poll)
+    embed.add_field(name="`ɴᴏ-sʜᴏᴡs`", value=_mentions_from_ids(no_show_ids), inline=False)
 
     reasons = evaluation.get("revote_reasons") or []
     if reasons:
@@ -574,6 +597,7 @@ async def _handle_vote(interaction: discord.Interaction, poll_id: str, option: s
 
         votes[option].append(user_id)
         poll["votes"] = votes
+
         state["polls"][poll_id] = poll
         _save_polls_state(state)
 

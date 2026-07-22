@@ -260,6 +260,38 @@ def test_active_embed_includes_subject_member_and_threshold_rule():
     assert "<@281651485782310914>" in embed.description
     assert "Threshold Rule" in embed.description
     assert "Standard Watch Command threshold" in embed.description
+    assert "per-option totals are anonymous" in embed.description
+
+    field_names = [f.name for f in embed.fields]
+    assert "`ᴘᴀʀᴛɪᴄɪᴘᴀᴛɪᴏɴ`" in field_names
+    assert "`ᴛʜʀᴇsʜᴏʟᴅ ʀᴜʟᴇs`" in field_names
+    assert "`ʏᴀʏ`" not in field_names
+    assert "`ɴᴀʏ`" not in field_names
+    assert "`ᴀʙsᴛᴀɪɴ`" not in field_names
+
+
+def test_final_embed_includes_no_shows():
+    poll = {
+        "poll_id": "gov-0010",
+        "title": "Promotion vote",
+        "subject_user_id": None,
+        "target_role": "Watch Sergeant",
+        "classification": "normal",
+        "include_abstain": True,
+        "electorate_ids": ["1", "2", "3", "4"],
+        "electorate_size": 4,
+        "votes": {
+            "yay": ["1"],
+            "nay": ["2"],
+            "abstain": ["3"],
+        },
+    }
+    evaluation = po._evaluate_poll(poll)
+
+    embed = po._build_final_embed(poll, evaluation)
+    no_show_field = next((f for f in embed.fields if f.name == "`ɴᴏ-sʜᴏᴡs`"), None)
+    assert no_show_field is not None
+    assert "<@4>" in no_show_field.value
 
 
 class _Response:
