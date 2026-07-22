@@ -2,6 +2,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
 
 def _install_discord_stub():
     discord_stub = sys.modules.get("discord") or types.ModuleType("discord")
@@ -108,8 +110,7 @@ if not hasattr(bot_stub, "_resolve_notification_guild"):
 
 import opscribe._bot_globals as _g  # noqa: E402
 
-_g.bot = bot_stub.bot
-_g.CONFIG = {
+_TEST_GOVERNANCE_CONFIG = {
     "governance_poll": {
         "quorum_percent": 0.60,
         "normal_pass_percent": 0.66,
@@ -119,8 +120,28 @@ _g.CONFIG = {
         "duration_hours": 24,
     }
 }
+_import_bot = _g.bot
+_import_config = _g.CONFIG
+_g.bot = bot_stub.bot
+_g.CONFIG = _TEST_GOVERNANCE_CONFIG
 
 import opscribe.poll_ops as po  # noqa: E402
+
+_g.bot = _import_bot
+_g.CONFIG = _import_config
+
+
+@pytest.fixture(autouse=True)
+def _restore_bot_globals():
+    original_bot = _g.bot
+    original_config = _g.CONFIG
+    _g.bot = bot_stub.bot
+    _g.CONFIG = _TEST_GOVERNANCE_CONFIG
+    try:
+        yield
+    finally:
+        _g.bot = original_bot
+        _g.CONFIG = original_config
 
 
 class _Role(SimpleNamespace):
