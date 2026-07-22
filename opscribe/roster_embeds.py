@@ -717,11 +717,27 @@ def _get_company_command_members(
 ) -> List[discord.Member]:
     """Return Company Command members for a given company, sorted.
 
-    In the Phase 3 roster layout this is intentionally limited to Watch Captain
-    and Watch Lieutenant; specialists are rendered in the dedicated HC +
-    Specialists embed.
+    Primary behavior is role-based: include members holding the configured
+    companyCommandRoleId for that company. Falls back to legacy rank-based
+    filtering when config is incomplete.
     """
+    entry = _configured_company_entry(company_name)
+    try:
+        company_command_role_id = int(entry.get("companyCommandRoleId") or 0)
+    except Exception:
+        company_command_role_id = 0
+
     result = []
+    if company_command_role_id:
+        for m in guild.members:
+            if m.bot:
+                continue
+            if _is_in_reserves(m):
+                continue
+            if company_command_role_id in _member_role_ids(m):
+                result.append(m)
+        return sorted(result, key=_sort_key_for_member)
+
     for m in guild.members:
         if m.bot:
             continue
