@@ -3,6 +3,7 @@ machine spirits, forge rite rendering, LFG, forge chronicle functions."""
 
 import os
 import json
+import asyncio
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
@@ -177,6 +178,674 @@ def _get_arming_chamber_channel_id() -> Optional[int]:
         except (ValueError, TypeError):
             pass
     return None
+
+
+_ARMOR_SUBMISSIONS_PATH = os.path.join(DATA_DIR, "armor_submissions.json")
+_ARMOR_SUBMISSION_COOLDOWN_DAYS = 7
+_ARMOR_SUBMISSION_LIMIT = 7
+_ARMOR_SUBMISSION_LOCK = asyncio.Lock()
+
+
+def _load_armor_submissions_state() -> dict:
+    try:
+        if not os.path.exists(_ARMOR_SUBMISSIONS_PATH):
+            return {"next_id": 1, "submissions": {}, "last_submit_by_user": {}}
+        with open(_ARMOR_SUBMISSIONS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+            if not isinstance(data, dict):
+                return {"next_id": 1, "submissions": {}, "last_submit_by_user": {}}
+            data.setdefault("next_id", 1)
+            data.setdefault("submissions", {})
+            data.setdefault("last_submit_by_user", {})
+            return data
+    except Exception:
+        return {"next_id": 1, "submissions": {}, "last_submit_by_user": {}}
+
+
+def _save_armor_submissions_state(state: dict) -> None:
+    tmp = _ARMOR_SUBMISSIONS_PATH + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(_ARMOR_SUBMISSIONS_PATH), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _ARMOR_SUBMISSIONS_PATH)
+    except Exception:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+
+
+def _next_armor_submission_id(state: dict) -> str:
+    nid = int(state.get("next_id") or 1)
+    state["next_id"] = nid + 1
+    return f"armor-{nid:05d}"
+
+
+def _parse_iso_utc(raw: Optional[str]) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(raw or ""))
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _armor_submission_recent_timestamps(state: dict, user_id: int) -> list[datetime]:
+    last_by_user = state.get("last_submit_by_user") or {}
+    raw_value = last_by_user.get(str(user_id))
+    if isinstance(raw_value, str):
+        raw_timestamps = [raw_value]
+    elif isinstance(raw_value, list):
+        raw_timestamps = raw_value
+    else:
+        raw_timestamps = []
+
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(days=_ARMOR_SUBMISSION_COOLDOWN_DAYS)
+    parsed: list[datetime] = []
+    for raw_ts in raw_timestamps:
+        parsed_ts = _parse_iso_utc(str(raw_ts or "").strip())
+        if parsed_ts is None:
+            continue
+        if parsed_ts >= window_start:
+            parsed.append(parsed_ts)
+    parsed.sort()
+    return parsed
+
+
+def _is_member_in_reserves(member: discord.Member) -> bool:
+    role_ids = {getattr(r, "id", 0) for r in getattr(member, "roles", []) or []}
+    role_names = {(getattr(r, "name", "") or "").strip().lower() for r in getattr(member, "roles", []) or []}
+    return RESERVES_ROLE_ID in role_ids or "reserves" in role_names
+
+
+def _is_watch_techmarine(member: discord.Member) -> bool:
+    return any((getattr(r, "name", "") or "").strip() == "Watch Techmarine" for r in getattr(member, "roles", []) or [])
+
+
+def _armor_submission_cooldown_remaining(state: dict, user_id: int) -> Optional[timedelta]:
+    recent_submissions = _armor_submission_recent_timestamps(state, user_id)
+    if len(recent_submissions) < _ARMOR_SUBMISSION_LIMIT:
+        return None
+
+    oldest_in_window = recent_submissions[0]
+    next_ok = oldest_in_window + timedelta(days=_ARMOR_SUBMISSION_COOLDOWN_DAYS)
+    now = datetime.now(timezone.utc)
+    if now >= next_ok:
+        return None
+    return next_ok - now
+
+
+def _format_days_hours(td: timedelta) -> str:
+    total = int(td.total_seconds())
+    days = total // 86400
+    hours = (total % 86400) // 3600
+    return f"{days}d {hours}h"
+
+
+def _build_submit_armor_embed(
+    submission_id: str,
+    requester: discord.Member,
+    attachments: list[discord.Attachment],
+    note: Optional[str],
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="`ᴀʀᴍᴏʀ sᴜʙᴍɪssɪᴏɴ · ᴜɴᴅᴇʀ ʀᴇᴠɪᴇᴡ`",
+        description="-# ⌾ Arming Chamber Review Queue ⌾",
+        color=0x3498DB,
+    )
+
+    embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# {requester.mention}", inline=True)
+    embed.add_field(name="`sᴜʙᴍɪssɪᴏɴ ɪᴅ`", value=f"-# `{submission_id}`", inline=True)
+
+    if note:
+        embed.add_field(name="`ɴᴏᴛᴇ`", value=f"-# {note}", inline=False)
+
+    lines = []
+    for idx, att in enumerate(attachments, start=1):
+        lines.append(f"-# Image {idx}: [view]({getattr(att, 'url', '')})")
+    embed.add_field(name="`ᴀᴛᴛᴀᴄʜᴍᴇɴᴛs`", value="\n".join(lines), inline=False)
+
+    first_url = str(getattr(attachments[0], "url", "") or "") if attachments else ""
+    if first_url:
+        embed.set_image(url=first_url)
+
+    embed.add_field(name="`sᴛᴀᴛᴜs`", value="-# Pending techmarine review", inline=False)
+    embed.set_footer(text="Accept/Deny remains active until finalized.")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
+def _upsert_embed_field_local(embed: discord.Embed, name: str, value: str, *, inline: bool = False) -> None:
+    try:
+        for idx, field in enumerate(getattr(embed, "fields", []) or []):
+            if getattr(field, "name", None) == name:
+                embed.set_field_at(idx, name=name, value=value, inline=inline)
+                return
+        embed.add_field(name=name, value=value, inline=inline)
+    except Exception:
+        pass
+
+
+async def _build_forge_rite_embed_and_file(
+    *,
+    attestor_member: discord.Member,
+    member: discord.Member,
+    guild: Optional[discord.Guild],
+    role_key: str,
+) -> Tuple[discord.Embed, Optional[discord.File], str]:
+    # Timestamp and authority
+    try:
+        ts = _b("_format_imperial_date")(datetime.utcnow())
+    except Exception:
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    authority = "Jericho Armory"
+    attester = getattr(attestor_member, "display_name", None) or str(attestor_member.id)
+    attester = attester.replace("●", "").replace("⚬", "").strip()
+    tech_rank_name = "Forgemaster" if role_key == "forgemaster" else "Watch Techmarine"
+    tech_rank_emoji = _get_rank_emoji(guild, tech_rank_name) if guild else ""
+
+    try:
+        rite_text = await _get_user_rite(int(attestor_member.id))
+    except Exception:
+        rite_text = None
+    if rite_text and len(rite_text) > MAX_RITE_LENGTH:
+        rite_text = rite_text[:MAX_RITE_LENGTH - 3] + "..."
+
+    bearer_honorific, bearer_name, bearer_title = _get_bearer_rank_and_title(member)
+    bearer_name = bearer_name.replace("●", "").replace("⚬", "").strip()
+    bearer_chapter = _get_bearer_home_chapter(member)
+    chapter_blessing = None
+    if bearer_chapter and bearer_chapter in CHAPTER_BLESSINGS:
+        chapter_blessing = CHAPTER_BLESSINGS[bearer_chapter]
+    elif bearer_chapter:
+        for chap_name, blessing in CHAPTER_BLESSINGS.items():
+            if chap_name.lower() == bearer_chapter.lower():
+                chapter_blessing = blessing
+                break
+
+    bearer_studs = _compute_member_service_studs(member)
+    stud_acknowledgment = _get_techmarine_acknowledgment_blended(member, bearer_studs)
+
+    is_self_blessing = attestor_member.id == member.id
+    sacred_phrase = _blend_forgemaster_self_attestation(bearer_chapter) if is_self_blessing else random.choice(SACRED_MECHANICUS_PHRASES)
+
+    existing_spirit = await _get_machine_spirit(int(member.id))
+    spirit_is_first = False
+    spirit_is_renewed = False
+
+    _SPIRIT_PREFIXES = [
+        "FURY", "WRATH", "MORTIS", "VENATOR", "GLADIUS", "BELLATOR", "FEROX", "CARNIFEX", "VINDICTA", "MALLEUS",
+        "AEGIS", "VIGIL", "PURITY", "CUSTODIAN", "SENTINEL", "BULWARK", "DEFENSOR", "CASTELLAN", "PRAESIDIUM", "SCUTUM",
+        "FERRUM", "ADAMANT", "TITANICUS", "INVICTUS", "FORTIS",
+        "SACRIS", "SANCTUS", "FERVOR", "COGNIS", "ANIMUS",
+        "TALON", "RAPTOR", "LUPUS", "AQUILA", "CORVUS",
+    ]
+    _SPIRIT_SUFFIXES = [
+        "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ",
+        "Ι", "Κ", "Λ", "Μ", "Ν", "Ξ", "Ο", "Π",
+        "Ρ", "Σ", "Τ", "Υ", "Φ", "Χ", "Ψ", "Ω",
+        "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+    ]
+
+    if not existing_spirit:
+        spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
+        spirit_designation = f"{random.choice(_SPIRIT_PREFIXES)}-{spirit_hash}-{random.choice(_SPIRIT_SUFFIXES)}"
+        await _set_machine_spirit(int(member.id), spirit_designation)
+        spirit_is_first = True
+    elif random.random() < 0.08:
+        spirit_hash = hashlib.md5(f"{member.id}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:6].upper()
+        spirit_designation = f"{random.choice(_SPIRIT_PREFIXES)}-{spirit_hash}-{random.choice(_SPIRIT_SUFFIXES)}"
+        await _set_machine_spirit(int(member.id), spirit_designation)
+        spirit_is_renewed = True
+    else:
+        spirit_designation = existing_spirit
+
+    if spirit_is_first:
+        spirit_status_text = random.choice([
+            "First binding complete. Spirit and bearer are now one",
+            "Virgin armor awakened. The spirit stirs for the first time",
+            "Inaugural consecration. May this bond endure ten thousand years",
+            "New spirit bound to bearer by sacred rite of the Omnissiah",
+        ])
+    elif spirit_is_renewed:
+        spirit_status_text = random.choice([
+            "The old spirit withdraws, spent. A new consciousness stirs within the plate.",
+            "Spirit-bond dissolved and reforged. A new animus takes root in ancient ceramite.",
+            "Renewal complete. New spirit-designation logged in the cogitator annals.",
+        ])
+    else:
+        spirit_status_text = random.choice([
+            "The machine spirit stirs, recognizing its bearer",
+            "Ancient recognition-rites confirm: spirit and bearer are one",
+            "Cogitator confirms: spirit-bond integrity remains absolute",
+        ])
+
+    bearer_rank_name = None
+    for rank, hon in RANK_HONORIFICS.items():
+        if hon == bearer_honorific or rank in bearer_honorific:
+            bearer_rank_name = rank
+            break
+    if not bearer_rank_name:
+        bearer_rank_name = "Watch Brother"
+
+    rank_emoji = _get_rank_emoji(guild, bearer_rank_name) if guild else ""
+    chapter_emoji = _get_emoji_by_name(guild, bearer_chapter) if guild and bearer_chapter else None
+    machine_spirit_emoji = _get_emoji_by_name(guild, "MachineSpirit") or "⚙️"
+
+    embed = discord.Embed(
+        title="⚙️ COGITATOR RITE — FORGE ATTESTATION",
+        description="*⌮ Watch Fortress Jericho ⌮*",
+        color=0x2ECC71,
+    )
+
+    rank_prefix = f"{rank_emoji} " if rank_emoji else ""
+    if ", " in bearer_honorific:
+        title_part, rank_part = bearer_honorific.rsplit(", ", 1)
+        bearer_value = f"{rank_prefix}**{title_part},**\n**{rank_part} {bearer_name}**"
+    else:
+        bearer_value = f"{rank_prefix}**{bearer_honorific} {bearer_name}**"
+    if bearer_title:
+        bearer_value += f"\n*{bearer_title}*"
+    if bearer_chapter:
+        chapter_prefix = f"{chapter_emoji} " if chapter_emoji else ""
+        lineage_display = "REDACTED" if bearer_chapter == "Black Shield" else bearer_chapter
+        bearer_value += f"\nLineage: {chapter_prefix}{lineage_display}"
+    if bearer_studs > 0:
+        bearer_value += f"\nService Studs: [{_studs_pips(bearer_studs)}] ({bearer_studs})"
+    embed.add_field(name="`ʙᴇᴀʀᴇʀ`", value=bearer_value, inline=True)
+
+    spirit_event_label = "First Binding" if spirit_is_first else ("Renewal" if spirit_is_renewed else "Maintenance")
+    embed.add_field(
+        name="`ᴍᴀᴄʜɪɴᴇ-sᴘɪʀɪᴛ`",
+        value=(
+            f"{machine_spirit_emoji} `{spirit_designation}`\n"
+            f"*{spirit_status_text}*\n"
+            f"🟢 Rite: {spirit_event_label}"
+        ),
+        inline=True,
+    )
+
+    tier_for_honor = _studs_tier(bearer_studs)
+    if tier_for_honor == 1:
+        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER1)
+    elif tier_for_honor == 2:
+        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER2)
+    else:
+        ordo_honor_embed = random.choice(ORDO_XENOS_HONORS_TIER3)
+    if is_self_blessing:
+        ordo_honor_embed = ordo_honor_embed.format(possessive="my", possessive_cap="My", object="me")
+    else:
+        ordo_honor_embed = ordo_honor_embed.format(possessive="your", possessive_cap="Your", object="you")
+
+    if chapter_blessing:
+        honor_text = f"*\"{ordo_honor_embed} {stud_acknowledgment} {chapter_blessing}\"*"
+    else:
+        honor_text = f"*\"{ordo_honor_embed} {stud_acknowledgment}\"*"
+    embed.add_field(name="`ʜᴏɴᴏʀ ᴏғ ᴛʜᴇ ʟᴏɴɢ ᴡᴀᴛᴄʜ`", value=honor_text, inline=False)
+
+    if rite_text:
+        rite_display = str(rite_text)[:400] + ("…" if len(str(rite_text)) > 400 else "")
+        embed.add_field(name="`ʟɪᴛᴀɴʏ ᴛᴏ ᴛʜᴇ ᴍᴀᴄʜɪɴᴇ-sᴘɪʀɪᴛ`", value=rite_display, inline=False)
+
+    rank_emoji_prefix = f"{tech_rank_emoji} " if tech_rank_emoji else ""
+    attester_with_rank = f"{rank_emoji_prefix}**{attester}**"
+    tech_value = f"{attester_with_rank}\n{authority} • {ts}\n*\"{sacred_phrase}\"*"
+    attestation_field_name = "`sᴇʟғ-ᴀᴛᴛᴇsᴛᴀᴛɪᴏɴ`" if is_self_blessing else "`ᴀᴛᴛᴇsᴛᴀᴛɪᴏɴ`"
+    embed.add_field(name=attestation_field_name, value=tech_value, inline=True)
+
+    armor_approved_file = _get_award_image("Armor_Approved.png")
+    if armor_approved_file:
+        embed.set_image(url="attachment://Armor_Approved.png")
+    return embed, armor_approved_file, spirit_designation
+
+
+class ArmorSubmissionDenyModal(discord.ui.Modal, title="Deny Armor Submission"):
+    reason: discord.ui.TextInput = discord.ui.TextInput(
+        label="Denial Reason",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=500,
+        placeholder="Explain why this armor submission is denied.",
+    )
+
+    def __init__(self, submission_id: str):
+        super().__init__()
+        self.submission_id = submission_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await _handle_armor_submission_deny(interaction, self.submission_id, str(self.reason.value or "").strip())
+
+
+class ArmorSubmissionReviewView(discord.ui.View):
+    def __init__(self, submission_id: str):
+        super().__init__(timeout=None)
+        self.submission_id = submission_id
+        for attr_name, custom_id in (
+            ("_accept", f"armor_submit_accept:{submission_id}"),
+            ("_deny", f"armor_submit_deny:{submission_id}"),
+        ):
+            try:
+                getattr(self, attr_name).custom_id = custom_id
+            except Exception:
+                pass
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, custom_id="armor_submit_accept:__placeholder__")
+    async def _accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _handle_armor_submission_accept(interaction, self.submission_id)
+
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger, custom_id="armor_submit_deny:__placeholder__")
+    async def _deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not _is_watch_techmarine(interaction.user):
+            await interaction.response.send_message("Only Watch Techmarines may deny submissions.", ephemeral=True)
+            return
+        await interaction.response.send_modal(ArmorSubmissionDenyModal(self.submission_id))
+
+
+async def _handle_armor_submission_accept(interaction: discord.Interaction, submission_id: str) -> None:
+    if not isinstance(interaction.user, discord.Member) or not _is_watch_techmarine(interaction.user):
+        await interaction.response.send_message("Only Watch Techmarines may accept submissions.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Guild context unavailable.", ephemeral=True)
+        return
+
+    async with _ARMOR_SUBMISSION_LOCK:
+        state = _load_armor_submissions_state()
+        sub = (state.get("submissions") or {}).get(submission_id)
+        if not isinstance(sub, dict):
+            await interaction.response.send_message("Submission not found.", ephemeral=True)
+            return
+        if str(sub.get("status") or "pending") != "pending":
+            await interaction.response.send_message("This submission has already been finalized.", ephemeral=True)
+            return
+
+        brother_id = int(sub.get("requester_id") or 0)
+        member = guild.get_member(brother_id)
+        if member is None:
+            await interaction.response.send_message("Could not resolve the submitting brother.", ephemeral=True)
+            return
+
+        sub["status"] = "accepted"
+        sub["reviewed_by"] = str(interaction.user.id)
+        sub["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        state["submissions"][submission_id] = sub
+        _save_armor_submissions_state(state)
+
+    embed, approval_file, _spirit = await _build_forge_rite_embed_and_file_async(
+        attestor_member=interaction.user,
+        member=member,
+        guild=guild,
+        role_key="techmarine",
+    )
+
+    send_kwargs: dict = {
+        "content": member.mention,
+        "embed": embed,
+        "allowed_mentions": discord.AllowedMentions(users=True),
+    }
+    if approval_file:
+        send_kwargs["file"] = approval_file
+
+    try:
+        await interaction.channel.send(**send_kwargs)
+    except Exception as exc:
+        await interaction.response.send_message(f"Accepted, but failed to post forge rite: {exc}", ephemeral=True)
+        return
+
+    try:
+        if interaction.message and interaction.message.embeds:
+            final_embed = interaction.message.embeds[0]
+            _upsert_embed_field_local(final_embed, "`sᴛᴀᴛᴜs`", f"-# Accepted by <@{interaction.user.id}>", inline=False)
+            await interaction.message.edit(embed=final_embed, view=None)
+        elif interaction.message:
+            await interaction.message.edit(view=None)
+    except Exception:
+        pass
+
+    await interaction.response.send_message("Armor submission accepted and forge rite posted.", ephemeral=True)
+
+
+async def _handle_armor_submission_deny(interaction: discord.Interaction, submission_id: str, reason: str) -> None:
+    if not isinstance(interaction.user, discord.Member) or not _is_watch_techmarine(interaction.user):
+        await interaction.response.send_message("Only Watch Techmarines may deny submissions.", ephemeral=True)
+        return
+    if not reason:
+        await interaction.response.send_message("A denial reason is required.", ephemeral=True)
+        return
+
+    async with _ARMOR_SUBMISSION_LOCK:
+        state = _load_armor_submissions_state()
+        sub = (state.get("submissions") or {}).get(submission_id)
+        if not isinstance(sub, dict):
+            await interaction.response.send_message("Submission not found.", ephemeral=True)
+            return
+        if str(sub.get("status") or "pending") != "pending":
+            await interaction.response.send_message("This submission has already been finalized.", ephemeral=True)
+            return
+
+        sub["status"] = "denied"
+        sub["reviewed_by"] = str(interaction.user.id)
+        sub["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        sub["denial_reason"] = reason
+        requester_id = str(sub.get("requester_id") or "")
+        channel_id = int(sub.get("channel_id") or 0)
+        state["submissions"][submission_id] = sub
+        _save_armor_submissions_state(state)
+
+    notify_channel = interaction.channel
+    guild = interaction.guild
+    if guild is not None and channel_id:
+        resolved_channel = guild.get_channel(channel_id)
+        if resolved_channel is not None:
+            notify_channel = resolved_channel
+
+    if notify_channel is not None and requester_id:
+        try:
+            await notify_channel.send(
+                content=(
+                    f"<@{requester_id}> your armor submission `{submission_id}` was denied.\n"
+                    f"Reason: {reason}"
+                ),
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
+        except Exception:
+            pass
+
+    try:
+        if interaction.message and interaction.message.embeds:
+            final_embed = interaction.message.embeds[0]
+            _upsert_embed_field_local(final_embed, "`sᴛᴀᴛᴜs`", f"-# Denied by <@{interaction.user.id}>\n-# Reason: {reason}", inline=False)
+            await interaction.message.edit(embed=final_embed, view=None)
+        elif interaction.message:
+            await interaction.message.edit(view=None)
+    except Exception:
+        pass
+
+    await interaction.response.send_message("Armor submission denied.", ephemeral=True)
+
+
+async def _build_forge_rite_embed_and_file_async(
+    *,
+    attestor_member: discord.Member,
+    member: discord.Member,
+    guild: Optional[discord.Guild],
+    role_key: str,
+) -> Tuple[discord.Embed, Optional[discord.File], str]:
+    embed, approval_file, spirit = await _build_forge_rite_embed_and_file(
+        attestor_member=attestor_member,
+        member=member,
+        guild=guild,
+        role_key=role_key,
+    )
+    return embed, approval_file, spirit
+
+
+@_g.bot.tree.command(name="submit_armor", description="Submit armor images for Watch Techmarine review.")
+@app_commands.describe(
+    image_1="Primary armor image",
+    image_2="Optional additional armor image",
+    image_3="Optional additional armor image",
+    image_4="Optional additional armor image",
+    image_5="Optional additional armor image",
+    image_6="Optional additional armor image",
+    image_7="Optional additional armor image",
+    image_8="Optional additional armor image",
+    image_9="Optional additional armor image",
+    image_10="Optional additional armor image",
+    note="Optional short note for reviewers",
+)
+async def submit_armor(
+    interaction: discord.Interaction,
+    image_1: discord.Attachment,
+    image_2: Optional[discord.Attachment] = None,
+    image_3: Optional[discord.Attachment] = None,
+    image_4: Optional[discord.Attachment] = None,
+    image_5: Optional[discord.Attachment] = None,
+    image_6: Optional[discord.Attachment] = None,
+    image_7: Optional[discord.Attachment] = None,
+    image_8: Optional[discord.Attachment] = None,
+    image_9: Optional[discord.Attachment] = None,
+    image_10: Optional[discord.Attachment] = None,
+    note: Optional[str] = None,
+):
+    if not _b("check_command_permission")(interaction.user, "submit_armor"):
+        await interaction.response.send_message("Access denied.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+        return
+
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message("Member context unavailable.", ephemeral=True)
+        return
+
+    if _is_member_in_reserves(interaction.user):
+        await interaction.response.send_message("Members in Reserves cannot submit armor reviews.", ephemeral=True)
+        return
+
+    clean_note = (note or "").strip()
+    if len(clean_note) > 300:
+        await interaction.response.send_message("Note is too long (max 300 characters).", ephemeral=True)
+        return
+
+    attachments = [
+        attachment
+        for attachment in [
+            image_1,
+            image_2,
+            image_3,
+            image_4,
+            image_5,
+            image_6,
+            image_7,
+            image_8,
+            image_9,
+            image_10,
+        ]
+        if attachment is not None
+    ]
+    for att in attachments:
+        ctype = str(getattr(att, "content_type", "") or "")
+        if not ctype.startswith("image/"):
+            await interaction.response.send_message("All attachments must be images.", ephemeral=True)
+            return
+
+    channel_id = _get_arming_chamber_channel_id()
+    if not channel_id:
+        await interaction.response.send_message("Arming chamber channel is not configured.", ephemeral=True)
+        return
+
+    review_channel = guild.get_channel(channel_id)
+    if review_channel is None:
+        await interaction.response.send_message("Could not resolve the arming chamber channel.", ephemeral=True)
+        return
+
+    async with _ARMOR_SUBMISSION_LOCK:
+        state = _load_armor_submissions_state()
+        remaining = _armor_submission_cooldown_remaining(state, int(interaction.user.id))
+        if remaining is not None:
+            recent_count = len(_armor_submission_recent_timestamps(state, int(interaction.user.id)))
+            await interaction.response.send_message(
+                (
+                    f"Armor submission limit reached: {recent_count}/{_ARMOR_SUBMISSION_LIMIT} used in the last "
+                    f"{_ARMOR_SUBMISSION_COOLDOWN_DAYS} days. Next slot opens in {_format_days_hours(remaining)}."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        submission_id = _next_armor_submission_id(state)
+        embed = _build_submit_armor_embed(submission_id, interaction.user, attachments, clean_note or None)
+        view = ArmorSubmissionReviewView(submission_id)
+
+        techmarine_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Techmarine")
+        mention = techmarine_role.mention if techmarine_role else "@Watch Techmarine"
+        msg = await review_channel.send(
+            content=f"{mention} armor review requested by {interaction.user.mention}",
+            embed=embed,
+            view=view,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=True, everyone=False),
+        )
+        _g.bot.add_view(view, message_id=int(getattr(msg, "id", 0) or 0))
+
+        state.setdefault("submissions", {})[submission_id] = {
+            "submission_id": submission_id,
+            "requester_id": str(interaction.user.id),
+            "requester_name": str(interaction.user.display_name),
+            "note": clean_note,
+            "attachment_urls": [str(getattr(a, "url", "") or "") for a in attachments],
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "channel_id": int(channel_id),
+            "message_id": int(getattr(msg, "id", 0) or 0),
+        }
+        recent_submissions = _armor_submission_recent_timestamps(state, int(interaction.user.id))
+        recent_submissions.append(datetime.now(timezone.utc))
+        state.setdefault("last_submit_by_user", {})[str(interaction.user.id)] = [
+            submitted_at.isoformat() for submitted_at in recent_submissions
+        ]
+        _save_armor_submissions_state(state)
+
+    await interaction.response.send_message(
+        f"Armor submission logged to <#{channel_id}> as `{submission_id}`.",
+        ephemeral=True,
+    )
+
+
+async def register_armor_submission_views() -> None:
+    """Re-register persistent armor submission review views on startup."""
+    try:
+        state = _load_armor_submissions_state()
+        count = 0
+        for sub in (state.get("submissions") or {}).values():
+            if str(sub.get("status") or "pending") != "pending":
+                continue
+            submission_id = str(sub.get("submission_id") or "")
+            if not submission_id:
+                continue
+            view = ArmorSubmissionReviewView(submission_id)
+            msg_id = int(sub.get("message_id") or 0)
+            if msg_id:
+                _g.bot.add_view(view, message_id=msg_id)
+            else:
+                _g.bot.add_view(view)
+            count += 1
+        if _g.logger:
+            _g.logger.info(f"forge_ops: registered {count} pending armor submission view(s)")
+    except Exception as exc:
+        if _g.logger:
+            _g.logger.warning(f"forge_ops: register_armor_submission_views failed: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3612,16 +4281,6 @@ def _build_new_format_preview_embeds(
             pass
 
         try:
-            from . import roster_ops as _ro  # local import avoids cycles at import time
-
-            live_milestone = _ro._build_milestone_embed(guild, "aar_points", 25000, 25250)
-            previews.append(live_milestone)
-        except Exception as e:
-            _g.logger.warning(
-                f"Failed to build embed preview (roster, requester_id={getattr(requester, 'id', None)}): {e}"
-            )
-
-        try:
             # Auto-ingest: operational DM-style ingest result card
             live_ingest_rite = discord.Embed(
                 title="ᛙ⋅ AUTOMATED INGESTION RITE ⋅ᛙ",
@@ -4391,6 +5050,7 @@ __all__ = [
     "preview_all_embeds_new_format",
     "_resolve_killteam_for_member",
     "_resolve_killteams_for_member",
+    "register_armor_submission_views",
     "_restore_lfg_queue_views",
     "_save_lfg_queues",
     "_save_machine_spirits",
@@ -4403,4 +5063,5 @@ __all__ = [
     "lfg_join",
     "lfg_leave",
     "lfg_queue",
+    "submit_armor",
 ]

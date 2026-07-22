@@ -3275,25 +3275,25 @@ def _build_chapter_request_embed(
 ) -> discord.Embed:
     """Build chapter request embed with shared requester/chapter metadata."""
     embed = discord.Embed(
-        title=title,
+        title=f"`{title}`",
         color=0x1F8B4C,
-        description=description,
+        description=f"-# {description}",
     )
     _safe_set_embed_author(embed, interaction.user)
     chapter_display = ", ".join(_chapter_name_with_emoji(guild, ch) for ch in requester_chapters) if requester_chapters else "None currently assigned"
-    embed.add_field(name="Requester", value=getattr(interaction.user, "mention", str(getattr(interaction.user, "id", "Unknown"))), inline=False)
+    embed.add_field(name="`ʀᴇǫᴜᴇsᴛᴇʀ`", value=f"-# {getattr(interaction.user, 'mention', str(getattr(interaction.user, 'id', 'Unknown')))}", inline=False)
     embed.add_field(
-        name="Current Chapter(s)",
-        value=chapter_display,
+        name="`ᴄᴜʀʀᴇɴᴛ ᴄʜᴀᴘᴛᴇʀ(s)`",
+        value=f"-# {chapter_display}",
         inline=False,
     )
     embed.add_field(
-        name="Requested Chapter",
-        value=requested_label,
+        name="`ʀᴇǫᴜᴇsᴛᴇᴅ ᴄʜᴀᴘᴛᴇʀ`",
+        value=f"-# {requested_label}",
         inline=False,
     )
     for name, value in extra_fields or []:
-        embed.add_field(name=name, value=value, inline=False)
+        embed.add_field(name=f"`{name}`", value=f"-# {value}", inline=False)
     return embed
 
 
@@ -3308,8 +3308,13 @@ async def chapter_request(
     interaction: discord.Interaction,
     chapter_name: str,
 ):
+    perm_check = _b("check_command_permission")
+    channel_check = _b("is_allowed_channel")
     if not (
-        _b("check_command_permission")(interaction.user, "chapter_request") and _b("is_allowed_channel")(interaction)
+        callable(perm_check)
+        and perm_check(interaction.user, "chapter_request")
+        and callable(channel_check)
+        and channel_check(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -3421,8 +3426,13 @@ async def request_homebrew_chapter(
     lore_blurb: str,
     pauldron_image: discord.Attachment,
 ):
+    perm_check = _b("check_command_permission")
+    channel_check = _b("is_allowed_channel")
     if not (
-        _b("check_command_permission")(interaction.user, "request_homebrew_chapter") and _b("is_allowed_channel")(interaction)
+        callable(perm_check)
+        and perm_check(interaction.user, "request_homebrew_chapter")
+        and callable(channel_check)
+        and channel_check(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -3554,8 +3564,13 @@ async def chapter_assign(
     member: discord.Member,
     chapter: str,
 ):
+    perm_check = _b("check_command_permission")
+    channel_check = _b("is_allowed_channel")
     if not (
-        _b("check_command_permission")(interaction.user, "chapter_assign") and _b("is_allowed_channel")(interaction)
+        callable(perm_check)
+        and perm_check(interaction.user, "chapter_assign")
+        and callable(channel_check)
+        and channel_check(interaction)
     ):
         await interaction.response.send_message("Access denied.", ephemeral=True)
         return
@@ -3635,18 +3650,18 @@ async def chapter_assign(
             summary = f"Assigned {_with_chapter_emoji(desired_chapter)}"
 
         announce_embed = discord.Embed(
-            title="Home Chapter Updated",
+            title="`ʜᴏᴍᴇ ᴄʜᴀᴘᴛᴇʀ ᴜᴘᴅᴀᴛᴇᴅ`",
             color=0x2ECC71,
-            description=f"{member.mention} chapter assignment: **{summary}**",
+            description=f"-# {member.mention} chapter assignment: **{summary}**",
         )
         _safe_set_embed_author(announce_embed, interaction.user)
-        announce_embed.add_field(name="Brother", value=member.mention, inline=True)
+        announce_embed.add_field(name="`ʙʀᴏᴛʜᴇʀ`", value=f"-# {member.mention}", inline=True)
         announce_embed.add_field(
-            name="Previous",
-            value=(", ".join(_with_chapter_emoji(ch) for ch in old_chapter_names) if old_chapter_names else "None"),
+            name="`ᴘʀᴇᴠɪᴏᴜs`",
+            value=(f"-# {', '.join(_with_chapter_emoji(ch) for ch in old_chapter_names)}" if old_chapter_names else "-# None"),
             inline=True,
         )
-        announce_embed.add_field(name="Current", value=_with_chapter_emoji(desired_chapter), inline=True)
+        announce_embed.add_field(name="`ᴄᴜʀʀᴇɴᴛ`", value=f"-# {_with_chapter_emoji(desired_chapter)}", inline=True)
         try:
             await announcement_channel.send(embed=announce_embed)
         except Exception as e:
@@ -7719,311 +7734,6 @@ def _format_imperial_date(dt: datetime) -> str:
         return ""
 
 
-# =============================================================================
-# MILESTONE ANNOUNCEMENTS
-# =============================================================================
-
-
-def _load_milestone_tracking() -> dict:
-    """Load milestone tracking data from JSON file."""
-    try:
-        if os.path.exists(MILESTONE_TRACKING_PATH):
-            with open(MILESTONE_TRACKING_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        _g.logger.warning(f"Failed to load milestone tracking: {e}")
-    return {
-        "last_announced": {
-            "aar_points": 0,
-            "aar_count": 0,
-            "geneseed_recoveries": 0,
-            "armory_data": 0,
-            "hive_tyrant_kills": 0,
-            "bio_titan_kills": 0,
-            "tyranid_prime_kills": 0,
-        },
-        "last_check_date": None,
-    }
-
-
-def _save_milestone_tracking(data: dict) -> None:
-    """Save milestone tracking data to JSON file with atomic write."""
-    try:
-        os.makedirs(DATA_DIR, exist_ok=True)
-        tmp_path = MILESTONE_TRACKING_PATH + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, MILESTONE_TRACKING_PATH)
-    except Exception as e:
-        _g.logger.exception(f"Failed to save milestone tracking: {e}")
-
-
-def _calculate_current_milestones() -> dict:
-    """Calculate current totals for all milestone categories from AAR records."""
-    if _g.DATASTORE is None:
-        return {}
-
-    records = _g.DATASTORE.get_all_records()
-
-    totals = {
-        "aar_points": 0,
-        "aar_count": len(records),
-        "geneseed_recoveries": 0,
-        "armory_data": 0,
-        "hive_tyrant_kills": 0,
-        "bio_titan_kills": 0,
-        "tyranid_prime_kills": 0,
-    }
-
-    for aar_id, aar in records.items():
-        # Sum AAR points
-        totals["aar_points"] += aar.get("points_for_op", 0) or 0
-
-        # Count geneseed recoveries
-        if aar.get("gene_seed_status") == "carried":
-            totals["geneseed_recoveries"] += 1
-
-        # Sum armory data
-        totals["armory_data"] += aar.get("armory_data", 0) or 0
-
-        # Count mission types (boss kills)
-        mission = aar.get("mission", "") or ""
-        mission_lower = mission.lower()
-        if "decapitation" in mission_lower:
-            totals["hive_tyrant_kills"] += 1
-        elif "termination" in mission_lower:
-            totals["bio_titan_kills"] += 1
-        elif "reclamation" in mission_lower:
-            totals["tyranid_prime_kills"] += 1
-
-    return totals
-
-
-def _check_milestone_thresholds(current: dict, last_announced: dict) -> list[tuple[str, int, int]]:
-    """Check which milestones have been crossed since last announcement.
-
-    Returns list of (metric_name, new_milestone_value, current_value) tuples.
-    """
-    crossed = []
-
-    for metric, increment in MILESTONES_INCREMENTS.items():
-        current_val = current.get(metric, 0)
-        last_milestone = last_announced.get(metric, 0)
-
-        # Calculate the next milestone threshold after the last announced one
-        next_milestone = last_milestone + increment
-
-        # Check if we've crossed one or more milestones
-        while current_val >= next_milestone:
-            crossed.append((metric, next_milestone, current_val))
-            next_milestone += increment
-
-    return crossed
-
-
-def _get_milestone_display_info(metric: str) -> tuple[str, str, str, int]:
-    """Get display information for a milestone metric.
-
-    Returns (title, description, emoji_name, color).
-    """
-    info = {
-        "aar_points": (
-            "AAR POINTS MILESTONE",
-            "Total After-Action Report points earned by the Watch",
-            "Deathwatch",
-            0xC0C0C0,  # Silver
-        ),
-        "aar_count": (
-            "OPERATIONS MILESTONE",
-            "Total fortress operations completed by the Watch",
-            "Deathwatch",
-            0xC0C0C0,  # Silver
-        ),
-        "geneseed_recoveries": (
-            "GENE-SEED RECOVERIES",
-            "Precious gene-seed secured from fallen warriors",
-            "Apothecaryicon",
-            0x00FF00,  # Green
-        ),
-        "armory_data": (
-            "ARMORY DATA RECOVERED",
-            "Tactical data fragments recovered for the Forge",
-            "Techmarineicon",
-            0xFF6600,  # Orange
-        ),
-        "hive_tyrant_kills": (
-            "HIVE TYRANTS SLAIN",
-            "Decapitation missions completed - synapse lords destroyed",
-            "Tyranids",
-            0x800080,  # Purple
-        ),
-        "bio_titan_kills": (
-            "BIO-TITANS FELLED",
-            "Termination missions completed - behemoths brought low",
-            "Tyranids",
-            0x800080,  # Purple
-        ),
-        "tyranid_prime_kills": (
-            "TYRANID PRIMES PURGED",
-            "Reclamation missions completed - xenos commanders eliminated",
-            "Tyranids",
-            0x800080,  # Purple
-        ),
-    }
-    return info.get(metric, ("MILESTONE", "An achievement has been reached", "Deathwatch", 0xC0C0C0))
-
-
-def _build_milestone_embed(
-    guild: discord.Guild,
-    metric: str,
-    milestone_value: int,
-    current_value: int,
-) -> discord.Embed:
-    """Build an embed for a milestone announcement."""
-    title, description, emoji_name, color = _get_milestone_display_info(metric)
-
-    # Get emoji if available
-    emoji = _b("_get_emoji_by_name")(guild, emoji_name)
-    emoji_str = f"{emoji} " if emoji else ""
-
-    embed = discord.Embed(
-        title=f"`{emoji_str}{title} {emoji_str}`",
-        description=f"-# {description}",
-        color=color,
-    )
-
-    # Format the milestone number with commas
-    milestone_str = f"{milestone_value:,}"
-    current_str = f"{current_value:,}"
-
-    # Add the milestone field
-    embed.add_field(
-        name="`ᴍɪʟᴇsᴛᴏɴᴇ ʀᴇᴀᴄʜᴇᴅ`",
-        value=f"-# **{milestone_str}**",
-        inline=True,
-    )
-
-    embed.add_field(
-        name="`ᴄᴜʀʀᴇɴᴛ ᴛᴏᴛᴀʟ`",
-        value=f"-# **{current_str}**",
-        inline=True,
-    )
-
-    # Add thematic footer based on metric
-    footers = {
-        "aar_points": "The Deathwatch prevails. The Long Vigil continues.",
-        "aar_count": "Each operation brings us closer to victory.",
-        "geneseed_recoveries": "The legacy of our fallen brothers is preserved.",
-        "armory_data": "Knowledge is power. Guard it well.",
-        "hive_tyrant_kills": "Cut off the head, and the body will fall.",
-        "bio_titan_kills": "Even the mightiest xenos fall before the Emperor's wrath.",
-        "tyranid_prime_kills": "The swarm is weakened. Press the advantage.",
-    }
-    embed.set_footer(text=footers.get(metric, "For the Emperor and the Primarchs."))
-
-    return embed
-
-
-@tasks.loop(hours=24)
-async def _scheduled_milestone_check():
-    """Run daily; check if a week has passed and announce any new milestones.
-
-    Posts to ᛭⋅⋅general-chat⋅⋅᛭ with @Watch Brother mention when thresholds are crossed.
-    """
-    # (_g.LAST_MILESTONE_CHECK_DATE accessed via _g)
-    try:
-        if not MILESTONES_ENABLED:
-            return
-
-        if _g.DATASTORE is None:
-            return
-
-        # Use UTC for consistent scheduling
-        now_utc = datetime.now(timezone.utc)
-        today = now_utc.date()
-
-        # Load tracking data early so the persisted last_check_date is the
-        # source of truth for interval gating (survives bot restarts).
-        tracking = _load_milestone_tracking()
-        persisted_last_check = tracking.get("last_check_date")
-
-        # Use persisted date preferentially; fall back to in-memory value
-        last_check_str = persisted_last_check or _g.LAST_MILESTONE_CHECK_DATE
-        if last_check_str:
-            try:
-                last_check = datetime.strptime(last_check_str, "%Y-%m-%d").date()
-                days_since = (today - last_check).days
-                if days_since < MILESTONES_CHECK_INTERVAL_DAYS:
-                    return
-            except Exception:
-                pass  # If parsing fails, proceed with check
-
-        _g.logger.info("Milestone check starting...")
-
-        # Resolve target guild and channel
-        guild = _b("_resolve_notification_guild")()
-        if not guild:
-            _g.logger.warning("Milestone check: Could not resolve guild, skipping")
-            return
-
-        try:
-            channel = guild.get_channel(MILESTONES_CHANNEL_ID) or await _g.bot.fetch_channel(MILESTONES_CHANNEL_ID)
-        except Exception:
-            _g.logger.exception("Milestone check: Could not resolve channel")
-            return
-
-        last_announced = tracking.get("last_announced", {})
-
-        # Calculate current totals
-        current = _calculate_current_milestones()
-        if not current:
-            _g.logger.warning("Milestone check: Could not calculate current totals")
-            return
-
-        # Check for crossed milestones
-        crossed = _check_milestone_thresholds(current, last_announced)
-
-        if not crossed:
-            _g.logger.info("Milestone check complete: no new milestones")
-            _g.LAST_MILESTONE_CHECK_DATE = str(today)
-            # Persist last_check_date even when there are no announcements
-            tracking["last_check_date"] = str(today)
-            _save_milestone_tracking(tracking)
-            return
-
-        # Find Watch Brother role for mention
-        wb_role = discord.utils.get(guild.roles, name="Watch Brother")
-        wb_mention = f"<@&{wb_role.id}>" if wb_role else ""
-
-        # Post announcements for each crossed milestone
-        announcements_sent = 0
-        for metric, milestone_value, current_value in crossed:
-            try:
-                embed = _build_milestone_embed(guild, metric, milestone_value, current_value)
-                await channel.send(
-                    content=wb_mention,
-                    embed=embed,
-                    allowed_mentions=discord.AllowedMentions(users=False, roles=True, everyone=False),
-                )
-                # Update the last announced value for this metric
-                last_announced[metric] = milestone_value
-                announcements_sent += 1
-                await asyncio.sleep(1)  # Brief delay between announcements
-            except Exception as e:
-                _g.logger.exception(f"Failed to post milestone announcement for {metric}: {e}")
-
-        # Save updated tracking
-        tracking["last_announced"] = last_announced
-        tracking["last_check_date"] = str(today)
-        _save_milestone_tracking(tracking)
-
-        _g.LAST_MILESTONE_CHECK_DATE = str(today)
-        _g.logger.info(f"Milestone check complete: {announcements_sent} announcement(s) posted")
-
-    except Exception as e:
-        _g.logger.exception(f"Milestone check failed: {e}")
-
-
 # ============================================================================
 # ROSTER AUDIT COMMAND
 # ============================================================================
@@ -9517,14 +9227,6 @@ __all__ = [
     "_forum_post_autocomplete",
     "_induction_count_for_user",
     "_count_inductions_from_records",
-    # ── Milestone announcements ──────────────────────────────────────────────
-    "_load_milestone_tracking",
-    "_save_milestone_tracking",
-    "_calculate_current_milestones",
-    "_check_milestone_thresholds",
-    "_get_milestone_display_info",
-    "_build_milestone_embed",
-    "_scheduled_milestone_check",
     # ── Roster audit ─────────────────────────────────────────────────────────
     "_extract_mentions_from_text",
     "_extract_role_mention_from_text",
