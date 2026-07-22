@@ -7,9 +7,13 @@ Covers:
     * With very high rank weight the result is drawn from rank acknowledgments
     * With very high stud weight the result is drawn from stud acknowledgments
     * Tier thresholds: <=3 → tier 1, 4-11 → tier 2, >=12 → tier 3
+- armor submission cooldown helpers:
+    * legacy single-timestamp storage remains readable
+    * rolling limit allows up to 7 submissions in 7 days
 """
 
 import unittest.mock
+from datetime import datetime, timedelta, timezone
 
 from opscribe.bot import (
     _get_techmarine_acknowledgment_blended,
@@ -165,3 +169,53 @@ def test_blended_ack_returns_string():
     result = _get_techmarine_acknowledgment_blended(member, 8)
     assert isinstance(result, str)
     assert result
+
+
+def test_armor_submission_recent_timestamps_supports_legacy_single_string(monkeypatch):
+    now = datetime(2026, 7, 21, 12, 0, 0, tzinfo=timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(forge_ops, "datetime", _FrozenDateTime)
+    state = {
+        "last_submit_by_user": {
+            "42": (now - timedelta(days=1)).isoformat(),
+        }
+    }
+
+    recent = forge_ops._armor_submission_recent_timestamps(state, 42)
+    assert len(recent) == 1
+    assert recent[0] == now - timedelta(days=1)
+
+
+def test_armor_submission_cooldown_allows_seventh_but_blocks_eighth(monkeypatch):
+    now = datetime(2026, 7, 21, 12, 0, 0, tzinfo=timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(forge_ops, "datetime", _FrozenDateTime)
+    state = {
+        "last_submit_by_user": {
+            "42": [
+                (now - timedelta(days=6, hours=23)).isoformat(),
+                (now - timedelta(days=6)).isoformat(),
+                (now - timedelta(days=5)).isoformat(),
+                (now - timedelta(days=4)).isoformat(),
+                (now - timedelta(days=3)).isoformat(),
+                (now - timedelta(days=2)).isoformat(),
+            ]
+        }
+    }
+
+    assert forge_ops._armor_submission_cooldown_remaining(state, 42) is None
+
+    state["last_submit_by_user"]["42"].append((now - timedelta(days=1)).isoformat())
+    remaining = forge_ops._armor_submission_cooldown_remaining(state, 42)
+    assert remaining is not None
+    assert remaining == timedelta(hours=1)

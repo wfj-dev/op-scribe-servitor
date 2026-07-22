@@ -33,6 +33,8 @@ WATCH_KEEPER_ROLE_ID = 1488211606813806693
 HUNTMASTER_ROLE_ID = 1510397444113039581
 # Role ID for Reserves (inactive members)
 RESERVES_ROLE_ID = 1443825801345765386
+# Role name for dreadnought reserve-equivalent status
+INTERRED_BROTHER_ROLE_NAME = "Interred Brother"
 # Role ID for Leave of Absence (LOA) — members on LOA are excluded from specialist requirement generation
 LOA_ROLE_ID = 1513198169217830912
 # Ping role ID for Black Laurels challenge announcements
@@ -51,7 +53,6 @@ ACTIVITY_STATUS_PATH = os.path.join(DATA_DIR, "activity_status.json")
 ACTIVITY_STATUS_LAST_CHECK_PATH = os.path.join(DATA_DIR, "activity_status_last_check.json")
 PROMOTION_TRACKING_PATH = os.path.join(DATA_DIR, "promotion_tracking.json")
 AWARD_QUEUE_PATH = os.path.join(DATA_DIR, "award_announcement_queue.json")
-MILESTONE_TRACKING_PATH = os.path.join(DATA_DIR, "milestone_tracking.json")
 INDUCTION_OVERRIDES_PATH = os.path.join(DATA_DIR, "induction_overrides.json")
 CHALLENGE_PROGRESS_PATH = os.path.join(DATA_DIR, "challenge_progress.json")
 LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
@@ -59,6 +60,8 @@ LFG_QUEUE_PATH = os.path.join(DATA_DIR, "lfg_queues.json")
 TERMINUS_SLAYER_PATH = os.path.join(DATA_DIR, "terminus_slayer.json")
 # Kill-team / company honors tracking
 HONORS_PATH = os.path.join(DATA_DIR, "honors.json")
+# Governance poll state tracking
+GOVERNANCE_POLLS_PATH = os.path.join(DATA_DIR, "governance_polls.json")
 
 # ---------------------------------------------------------------------------
 # Kill-team renown tiers (ordered lowest → highest; index = tier level)
@@ -74,6 +77,7 @@ VETERAN_PROMOTION_CHANNEL_ID = 1443813516979994634
 SERVICE_STUDS_CHANNEL_ID = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
 BLACK_LAURELS_CHANNEL_ID = 1443813633220935774
 OATHSWORN_CHANNEL_ID = 1489282103119052903
+GOVERNANCE_POLL_CHANNEL_ID = 1489282103119052903
 TECHMARINE_STAFF_CHANNEL_ID = 1485797067577102377
 LIBRARIUS_STAFF_CHANNEL_ID = 1482786608137769182
 KILL_LOG_CHANNEL_ID = 1450572668750532699  # kill-log channel
@@ -117,22 +121,6 @@ SCHEDULE_MONTHLY_ARCHIVE_AUDIT_HOUR = 10
 # Daily role integrity audit settings
 SCHEDULE_ROLE_INTEGRITY_AUDIT_ENABLED = False
 SCHEDULE_ROLE_INTEGRITY_AUDIT_HOUR = 12
-
-# ---------------------------------------------------------------------------
-# Milestone announcement settings (weekly check)
-# ---------------------------------------------------------------------------
-MILESTONES_ENABLED = True
-MILESTONES_CHANNEL_ID: int = 1430055064969674777  # ᛭⋅⋅general-chat⋅⋅᛭
-MILESTONES_CHECK_INTERVAL_DAYS = 7  # Check once per week
-MILESTONES_INCREMENTS = {
-    "aar_points": 2500,
-    "aar_count": 500,
-    "geneseed_recoveries": 500,
-    "armory_data": 1000,
-    "hive_tyrant_kills": 100,
-    "bio_titan_kills": 100,
-    "tyranid_prime_kills": 100,
-}
 
 # ---------------------------------------------------------------------------
 # Black Laurels / Campaign Medal configuration

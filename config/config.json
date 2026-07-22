@@ -172,6 +172,14 @@
         "Forgemaster"
       ]
     },
+    "submit_armor": {
+      "min_rank": "Watch Brother"
+    },
+    "generate_poll": {
+      "roles": [
+        "Watch Command"
+      ]
+    },
     "preview_armor_alert": {
       "roles": [
         "Watch Techmarine",
@@ -394,21 +402,17 @@
     "techmarine_blocker_channel_id": "1509598835599610029",
     "librarian_blocker_channel_id": "1502840890446708766"
   },
-  "milestones": {
-    "enabled": true,
-    "check_interval_days": 7,
-    "increments": {
-      "aar_points": 2500,
-      "aar_count": 500,
-      "geneseed_recoveries": 500,
-      "armory_data": 1000,
-      "hive_tyrant_kills": 100,
-      "bio_titan_kills": 100,
-      "tyranid_prime_kills": 100
-    }
-  },
   "armor_integrity": {
     "arming_chamber_channel_id": "1429303902343401575"
+  },
+  "governance_poll": {
+    "channel_id": "1489282103119052903",
+    "quorum_percent": 0.6,
+    "normal_pass_percent": 0.66,
+    "high_command_pass_percent": 0.75,
+    "abstain_revote_percent": 0.35,
+    "close_margin_percent": 0.05,
+    "duration_hours": 24
   },
   "lfg": {
     "pc_player_role_id": 1470455014022582343,

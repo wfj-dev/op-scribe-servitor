@@ -78,9 +78,6 @@ LFG_ACTIVE_QUEUES: Dict[int, dict] = {}
 # Guard to avoid double shutdown handling
 SHUTDOWN_INITIATED = False
 
-# Track last milestone check date to prevent duplicate runs
-LAST_MILESTONE_CHECK_DATE: Optional[str] = None
-
 
 def _is_truthy(val) -> bool:
     try:
@@ -642,21 +639,6 @@ try:
 except Exception:
     pass
 
-# Apply milestones configuration if present
-try:
-    milestones_cfg = CONFIG.get("milestones") or {}
-    if "enabled" in milestones_cfg:
-        MILESTONES_ENABLED = _is_truthy(milestones_cfg.get("enabled"))
-    if milestones_cfg.get("check_interval_days") is not None:
-        MILESTONES_CHECK_INTERVAL_DAYS = int(milestones_cfg.get("check_interval_days"))
-    if milestones_cfg.get("increments"):
-        increments_cfg = milestones_cfg.get("increments")
-        for key in MILESTONES_INCREMENTS:
-            if key in increments_cfg:
-                MILESTONES_INCREMENTS[key] = int(increments_cfg[key])
-except Exception:
-    pass
-
 # Logging setup
 log_level_str = ((CONFIG.get("logging") or {}).get("level") or "INFO").upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
@@ -730,7 +712,6 @@ _g.CHALLENGE_PROGRESS_LOCK = CHALLENGE_PROGRESS_LOCK
 _g.LFG_QUEUE_LOCK = LFG_QUEUE_LOCK
 _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
-_g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
 _g.TERMINUS_SLAYER_LOCK = TERMINUS_SLAYER_LOCK
 _g.ROSTER_STATE_LOCK = ROSTER_STATE_LOCK
 _g.DEBUG_MODE = DEBUG_MODE
@@ -749,6 +730,7 @@ from . import roster_embeds as _roster_embeds  # noqa: E402,F401  # imported for
 from . import target_packages_ops as _target_packages_ops  # noqa: E402,F401  # imported for slash command + loop registration
 from . import loa_ops as _loa_ops  # noqa: E402,F401  # imported for LOA slash command + expiry loop
 from . import snapshot_challenge_baseline as _snapshot_challenge_baseline  # noqa: E402,F401  # imported for snapshot command registration
+from . import poll_ops as _poll_ops  # noqa: E402,F401  # imported for governance poll command + loop registration
 
 # Lines 828-2593 extracted to roster_ops.py
 
@@ -1642,15 +1624,6 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to start auto-roster update loop")
 
-    # Start milestone check loop if enabled (default: enabled)
-    try:
-        if MILESTONES_ENABLED:
-            if not _scheduled_milestone_check.is_running():
-                _scheduled_milestone_check.start()
-                logger.info(f"Milestone check loop started (every {MILESTONES_CHECK_INTERVAL_DAYS} days).")
-    except Exception:
-        logger.exception("Failed to start milestone check loop")
-
     # Register auto-ingest loop.
     try:
         if not _auto_ingest._auto_ingest_loop.is_running():
@@ -1671,6 +1644,12 @@ async def on_ready():
             )
     except Exception:
         logger.exception("Failed to start LFG queue system")
+
+    # Register persistent views for armor submissions
+    try:
+        await register_armor_submission_views()
+    except Exception:
+        logger.exception("Failed to register armor submission persistent views")
 
     # Start strike directives expiry loop
     try:
@@ -1709,6 +1688,19 @@ async def on_ready():
         await _target_packages_ops.register_persistent_views()
     except Exception:
         logger.exception("Failed to register strike directives persistent views")
+
+    # Register persistent views for governance polls and start expiry loop
+    try:
+        await _poll_ops.register_persistent_views()
+    except Exception:
+        logger.exception("Failed to register governance poll persistent views")
+
+    try:
+        if not _poll_ops._governance_poll_expiry_loop.is_running():
+            _poll_ops._governance_poll_expiry_loop.start()
+            logger.info("Governance poll expiry loop started (2min interval).")
+    except Exception:
+        logger.exception("Failed to start governance poll expiry loop")
 
 
 def _user_label(u: discord.User | discord.Member) -> str:
