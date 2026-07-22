@@ -88,6 +88,14 @@ def _poll_duration_hours() -> int:
         return 24
 
 
+def _revote_reminder_days() -> int:
+    cfg = _poll_cfg()
+    try:
+        return int(cfg.get("revote_reminder_days", 7) or 7)
+    except Exception:
+        return 7
+
+
 def _load_polls_state() -> dict:
     try:
         if not os.path.exists(GOVERNANCE_POLLS_PATH):
@@ -240,6 +248,11 @@ def _parse_iso(raw: Optional[str]) -> datetime:
         return dt
     except Exception:
         return datetime.now(timezone.utc)
+
+
+def _abstain_revote_triggered(evaluation: dict) -> bool:
+    reasons = evaluation.get("revote_reasons") or []
+    return any("Abstain threshold" in str(reason) for reason in reasons)
 
 
 def _evaluate_poll(poll: dict) -> dict:
@@ -444,10 +457,19 @@ async def _close_poll(guild: discord.Guild, poll: dict) -> None:
     if not poll_id:
         return
 
+    now = datetime.now(timezone.utc)
     eval_data = _evaluate_poll(poll)
     poll["status"] = "closed"
-    poll["closed_at"] = datetime.now(timezone.utc).isoformat()
+    poll["closed_at"] = now.isoformat()
     poll["evaluation"] = eval_data
+    if eval_data.get("outcome") == "revote_required" and _abstain_revote_triggered(eval_data):
+        poll["revote_reason"] = "abstain_threshold"
+        poll["revote_due_at"] = (now + timedelta(days=max(1, _revote_reminder_days()))).isoformat()
+        poll["revote_reminder_sent_at"] = None
+    else:
+        poll.pop("revote_reason", None)
+        poll.pop("revote_due_at", None)
+        poll.pop("revote_reminder_sent_at", None)
 
     channel = guild.get_channel(int(poll.get("channel_id") or 0))
     if channel is None or not hasattr(channel, "fetch_message"):
@@ -475,6 +497,8 @@ async def _close_poll(guild: discord.Guild, poll: dict) -> None:
     if reasons:
         result_lines.append("Revote-required conditions:")
         result_lines.extend(f"- {r}" for r in reasons)
+    if eval_data.get("outcome") == "revote_required" and _abstain_revote_triggered(eval_data):
+        result_lines.append("Revote required without yay/nay outcome (abstain threshold reached).")
 
     try:
         await channel.send("\n".join(result_lines), embed=final_embed)
@@ -511,10 +535,78 @@ async def _close_expired_polls() -> None:
             _save_polls_state(state)
 
 
+async def _send_due_revote_reminders(guild: discord.Guild) -> None:
+    now = datetime.now(timezone.utc)
+
+    async with _POLL_LOCK:
+        state = _load_polls_state()
+        polls = state.get("polls") or {}
+        due_polls: list[dict] = []
+        for poll_id, poll in polls.items():
+            if not isinstance(poll, dict):
+                continue
+            if str(poll.get("status") or "") != "closed":
+                continue
+            evaluation = poll.get("evaluation") or {}
+            if str(evaluation.get("outcome") or "") != "revote_required":
+                continue
+            if str(poll.get("revote_reason") or "") != "abstain_threshold":
+                continue
+            if poll.get("revote_reminder_sent_at"):
+                continue
+            due_at = _parse_iso(poll.get("revote_due_at"))
+            if now < due_at:
+                continue
+            due_polls.append({
+                "poll_id": str(poll_id),
+                "title": str(poll.get("title") or "Untitled Vote"),
+                "channel_id": int(poll.get("channel_id") or 0),
+            })
+
+    if not due_polls:
+        return
+
+    for item in due_polls:
+        channel = guild.get_channel(item["channel_id"])
+        if channel is None:
+            try:
+                channel = await _g.bot.fetch_channel(item["channel_id"])
+            except Exception:
+                channel = None
+        if channel is None:
+            continue
+
+        sent = False
+        try:
+            await channel.send(
+                (
+                    f"This poll requires a revote: **{item['title']}** (`{item['poll_id']}`).\n"
+                    "Revote required without yay/nay outcome due to abstain threshold."
+                )
+            )
+            sent = True
+        except Exception:
+            sent = False
+
+        if sent:
+            async with _POLL_LOCK:
+                state = _load_polls_state()
+                polls = state.get("polls") or {}
+                stored = polls.get(item["poll_id"])
+                if isinstance(stored, dict) and not stored.get("revote_reminder_sent_at"):
+                    stored["revote_reminder_sent_at"] = datetime.now(timezone.utc).isoformat()
+                    polls[item["poll_id"]] = stored
+                    state["polls"] = polls
+                    _save_polls_state(state)
+
+
 @tasks.loop(minutes=2)
 async def _governance_poll_expiry_loop():
     try:
         await _close_expired_polls()
+        guild = _b("_resolve_notification_guild")()
+        if guild is not None:
+            await _send_due_revote_reminders(guild)
     except Exception as exc:
         if _g.logger:
             _g.logger.warning(f"poll_ops: expiry loop failed: {exc}")

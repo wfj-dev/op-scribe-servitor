@@ -1,6 +1,7 @@
 import sys
 import types
 from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -158,6 +159,34 @@ class _Member:
 class _Guild:
     def __init__(self, members):
         self.members = members
+
+
+class _Message:
+    def __init__(self):
+        self.edits = []
+
+    async def edit(self, **kwargs):
+        self.edits.append(kwargs)
+
+
+class _Channel:
+    def __init__(self):
+        self.messages = []
+        self._message = _Message()
+
+    async def fetch_message(self, _message_id):
+        return self._message
+
+    async def send(self, content=None, embed=None):
+        self.messages.append({"content": content, "embed": embed})
+
+
+class _GuildWithChannels:
+    def __init__(self, channel_map):
+        self._channel_map = channel_map
+
+    def get_channel(self, channel_id):
+        return self._channel_map.get(channel_id)
 
 
 def _poll(votes, electorate_size=10, threshold=0.66):
@@ -328,3 +357,69 @@ def test_subject_is_explicitly_told_they_are_recused(monkeypatch):
     assert interaction.response.messages == [
         {"content": "You are the subject of this poll and are recused from voting.", "ephemeral": True}
     ]
+
+
+def test_close_poll_sets_revote_due_for_abstain_threshold():
+    channel = _Channel()
+    guild = _GuildWithChannels({1489282103119052903: channel})
+    poll = {
+        "poll_id": "gov-0042",
+        "status": "open",
+        "title": "Promotion vote",
+        "channel_id": 1489282103119052903,
+        "message_id": 9001,
+        "votes": {
+            "yay": ["1", "2"],
+            "nay": ["3", "4"],
+            "abstain": ["5", "6", "7"],
+        },
+        "electorate_size": 10,
+        "quorum_percent": 0.60,
+        "pass_threshold": 0.66,
+        "abstain_revote_percent": 0.35,
+        "close_margin_percent": 0.05,
+        "include_abstain": True,
+        "classification": "normal",
+    }
+
+    import asyncio
+    asyncio.run(po._close_poll(guild, poll))
+
+    assert poll["status"] == "closed"
+    assert poll["evaluation"]["outcome"] == "revote_required"
+    assert poll["revote_reason"] == "abstain_threshold"
+    assert poll.get("revote_due_at")
+    assert channel.messages
+    assert "without yay/nay outcome" in channel.messages[-1]["content"]
+
+
+def test_due_revote_reminder_posts_once_and_marks_sent(monkeypatch):
+    channel = _Channel()
+    guild = _GuildWithChannels({1489282103119052903: channel})
+    state = {
+        "next_id": 2,
+        "polls": {
+            "gov-0001": {
+                "poll_id": "gov-0001",
+                "title": "Promotion vote",
+                "status": "closed",
+                "channel_id": 1489282103119052903,
+                "evaluation": {"outcome": "revote_required"},
+                "revote_reason": "abstain_threshold",
+                "revote_due_at": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+                "revote_reminder_sent_at": None,
+            }
+        },
+    }
+
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+
+    import asyncio
+    asyncio.run(po._send_due_revote_reminders(guild))
+    first_count = len(channel.messages)
+    assert first_count == 1
+    assert state["polls"]["gov-0001"].get("revote_reminder_sent_at")
+
+    asyncio.run(po._send_due_revote_reminders(guild))
+    assert len(channel.messages) == first_count

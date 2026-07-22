@@ -415,6 +415,9 @@
     "close_margin_percent": 0.05,
     "duration_hours": 24
   },
+  "oathsworn": {
+    "command_notification_channel_id": 1528625106430066809
+  },
   "lfg": {
     "pc_player_role_id": 1470455014022582343,
     "console_player_role_id": 1470455285230469180,
