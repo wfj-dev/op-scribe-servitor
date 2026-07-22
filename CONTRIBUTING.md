@@ -148,6 +148,7 @@ Notes:
 - A workflow commit message containing `[skip version bump]` is ignored by the bump job to avoid recursion.
 - If multiple commits are in one push, the highest significance wins (`major > minor > patch`).
 - For local verification without mutating files, run: `python3 scripts/auto_bump_version.py --dry-run HEAD~1..HEAD`.
+- The workflow runs on pushes to `master` and `main`.
 
 ## Domain notes
 
