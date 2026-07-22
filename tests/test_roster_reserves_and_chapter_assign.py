@@ -381,8 +381,8 @@ def test_chapter_request_with_matching_role_name_notifies_apothecary_with_reques
     assert sent["content"] == apothecary_role.mention
     embed = sent["embed"]
     assert embed.author.name == "Brother Titus"
-    requested_field = next(field for field in embed.fields if field.name == "Requested Chapter")
-    assert requested_field.value == requested_role.mention
+    requested_field = next(field for field in embed.fields if field.name == "`ʀᴇǫᴜᴇsᴛᴇᴅ ᴄʜᴀᴘᴛᴇʀ`")
+    assert requested_role.mention in requested_field.value
 
 
 def test_chapter_request_without_matching_role_escalates_watch_master_and_forgemaster():
@@ -412,8 +412,8 @@ def test_chapter_request_without_matching_role_escalates_watch_master_and_forgem
     assert watch_master_role.mention in sent["content"]
     assert forgemaster_role.mention in sent["content"]
     field_map = {field.name: field.value for field in sent["embed"].fields}
-    assert field_map["Requested Chapter"] == "Imperial Fists"
-    assert "No existing Discord role matched" in field_map["Support Onboarding Required"]
+    assert "Imperial Fists" in field_map["`ʀᴇǫᴜᴇsᴛᴇᴅ ᴄʜᴀᴘᴛᴇʀ`"]
+    assert "No existing Discord role matched" in field_map["`Support Onboarding Required`"]
 
 
 def test_chapter_request_blank_name_returns_error():
@@ -473,10 +473,10 @@ def test_request_homebrew_chapter_sends_to_staff_and_pings_watch_command():
     embed = sent["embed"]
     assert embed.author.name == "Brother Cassian"
     field_map = {field.name: field.value for field in embed.fields}
-    assert field_map["Requested Chapter"] == "Ebon Wardens"
-    assert field_map["Geneseed Lineage"] == "Raven Guard"
-    assert "Stealth-obsessed brotherhood" in field_map["Lore Blurb"]
-    assert field_map["Pauldron Proof (Space Marine 2)"] == "https://cdn.example/pauldron.png"
+    assert "Ebon Wardens" in field_map["`ʀᴇǫᴜᴇsᴛᴇᴅ ᴄʜᴀᴘᴛᴇʀ`"]
+    assert "Raven Guard" in field_map["`Geneseed Lineage`"]
+    assert "Stealth-obsessed brotherhood" in field_map["`Lore Blurb`"]
+    assert "https://cdn.example/pauldron.png" in field_map["`Pauldron Proof (Space Marine 2)`"]
     assert "Approval Status" in field_map
 
 

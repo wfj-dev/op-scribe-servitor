@@ -21,7 +21,6 @@ print(f"bot.py has {total_lines} lines")
 # Global variable substitutions to apply in ALL extracted code
 GLOBAL_SUBS = [
     # Remove global declarations FIRST (before variable substitutions)
-    (r"^(\s*)global\s+LAST_MILESTONE_CHECK_DATE\s*$", r"\1# (LAST_MILESTONE_CHECK_DATE accessed via _g)"),
     (r"^(\s*)global\s+MONTHLY_AUDIT_PENDING\s*$", r"\1# (MONTHLY_AUDIT_PENDING accessed via _g)"),
     (r"^(\s*)global\s+SHUTDOWN_INITIATED\s*$", r"\1# (SHUTDOWN_INITIATED accessed via _g)"),
     # Locks and shared state
@@ -42,7 +41,6 @@ GLOBAL_SUBS = [
     (r"\bLFG_ACTIVE_QUEUES\b", "_g.LFG_ACTIVE_QUEUES"),
     (r"\bMONTHLY_AUDIT_PENDING\b", "_g.MONTHLY_AUDIT_PENDING"),
     (r"\bSHUTDOWN_INITIATED\b", "_g.SHUTDOWN_INITIATED"),
-    (r"\bLAST_MILESTONE_CHECK_DATE\b", "_g.LAST_MILESTONE_CHECK_DATE"),
     # CONFIG (not CONFIG_PATH)
     (r"\bCONFIG\b(?!_)", "_g.CONFIG"),
     # DATASTORE
@@ -663,13 +661,6 @@ __all__ = [
     "_induction_count_for_user",
     "_count_inductions_from_records",
     # ── Milestone announcements ──────────────────────────────────────────────
-    "_load_milestone_tracking",
-    "_save_milestone_tracking",
-    "_calculate_current_milestones",
-    "_check_milestone_thresholds",
-    "_get_milestone_display_info",
-    "_build_milestone_embed",
-    "_scheduled_milestone_check",
     # ── Roster audit ─────────────────────────────────────────────────────────
     "_extract_mentions_from_text",
     "_extract_role_mention_from_text",
@@ -790,7 +781,6 @@ _g.FORGE_CHRONICLE_LOCK = FORGE_CHRONICLE_LOCK
 _g.LFG_QUEUE_LOCK = LFG_QUEUE_LOCK
 _g.LFG_ACTIVE_QUEUES = LFG_ACTIVE_QUEUES
 _g.SHUTDOWN_INITIATED = SHUTDOWN_INITIATED
-_g.LAST_MILESTONE_CHECK_DATE = LAST_MILESTONE_CHECK_DATE
 
 import forge_ops  # noqa: E402
 import aar_ops    # noqa: E402
