@@ -251,8 +251,14 @@ def _parse_iso(raw: Optional[str]) -> datetime:
 
 
 def _abstain_revote_triggered(evaluation: dict) -> bool:
-    reasons = evaluation.get("revote_reasons") or []
-    return any("Abstain threshold" in str(reason) for reason in reasons)
+    abstain_rate = evaluation.get("abstain_rate")
+    abstain_threshold = evaluation.get("abstain_threshold")
+    if abstain_rate is None or abstain_threshold is None:
+        return False
+    try:
+        return float(abstain_rate) >= float(abstain_threshold)
+    except (TypeError, ValueError):
+        return False
 
 
 def _evaluate_poll(poll: dict) -> dict:
