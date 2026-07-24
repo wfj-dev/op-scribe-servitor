@@ -205,7 +205,7 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
             f"{_subject_line(poll)}\n"
             f"-# **Target Role/Rank:** {poll.get('target_role', 'Unknown')}\n"
             f"-# **Threshold Rule:** {class_label}\n"
-            "-# Vote identities and per-option totals are anonymous until close."
+            "-# Vote identities and per-option totals remain anonymous."
         ),
         color=0x3498DB,
     )
@@ -238,6 +238,19 @@ def _mentions_from_ids(ids: list[str]) -> str:
     if not ids:
         return "-# None"
     return "\n".join(f"-# <@{uid}>" for uid in ids)
+
+
+def _vote_share_percent(vote_count: int, votes_cast: int) -> float:
+    if votes_cast <= 0:
+        return 0.0
+    return (float(vote_count) / float(votes_cast)) * 100.0
+
+
+def _vote_share_field_value(vote_count: int, votes_cast: int) -> str:
+    return (
+        f"-# Ballots: **{vote_count}**\n"
+        f"-# Share: **{_vote_share_percent(vote_count, votes_cast):.2f}%**"
+    )
 
 
 def _parse_iso(raw: Optional[str]) -> datetime:
@@ -380,14 +393,10 @@ def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
         f"-# Yes Rate (yes+nay): **{yes_rate * 100:.2f}%** (needed {threshold * 100:.0f}%)"
     ), inline=False)
 
-    votes = poll.get("votes") or {}
-    embed.add_field(name="`ʏᴀʏ ᴠᴏᴛᴇʀs`", value=_mentions_from_ids(list(votes.get("yay") or [])), inline=False)
-    embed.add_field(name="`ɴᴀʏ ᴠᴏᴛᴇʀs`", value=_mentions_from_ids(list(votes.get("nay") or [])), inline=False)
+    embed.add_field(name="`ʏᴀʏ`", value=_vote_share_field_value(yes_count, votes_cast), inline=True)
+    embed.add_field(name="`ɴᴀʏ`", value=_vote_share_field_value(no_count, votes_cast), inline=True)
     if bool(poll.get("include_abstain")):
-        embed.add_field(name="`ᴀʙsᴛᴀɪɴ ᴠᴏᴛᴇʀs`", value=_mentions_from_ids(list(votes.get("abstain") or [])), inline=False)
-
-    no_show_ids = _non_voter_ids(poll)
-    embed.add_field(name="`ɴᴏ-sʜᴏᴡs`", value=_mentions_from_ids(no_show_ids), inline=False)
+        embed.add_field(name="`ᴀʙsᴛᴀɪɴ`", value=_vote_share_field_value(abstain_count, votes_cast), inline=True)
 
     reasons = evaluation.get("revote_reasons") or []
     if reasons:
@@ -432,6 +441,20 @@ class GovernanceVoteButton(discord.ui.Button):
         await _handle_vote(interaction, self.poll_id, self.option)
 
 
+class GovernanceDeletePollButton(discord.ui.Button):
+    def __init__(self, poll_id: str):
+        super().__init__(
+            label="Delete Poll",
+            style=discord.ButtonStyle.danger,
+            emoji="🗑️",
+            custom_id=f"govpoll_delete:{poll_id}",
+        )
+        self.poll_id = poll_id
+
+    async def callback(self, interaction: discord.Interaction):
+        await _handle_delete_poll(interaction, self.poll_id)
+
+
 class GovernancePollView(discord.ui.View):
     def __init__(self, poll_id: str, include_abstain: bool):
         super().__init__(timeout=None)
@@ -440,6 +463,7 @@ class GovernancePollView(discord.ui.View):
         self.add_item(GovernanceVoteButton(poll_id, "nay"))
         if include_abstain:
             self.add_item(GovernanceVoteButton(poll_id, "abstain"))
+        self.add_item(GovernanceDeletePollButton(poll_id))
 
 
 async def _refresh_active_poll_message(guild: discord.Guild, poll: dict) -> None:
@@ -701,6 +725,64 @@ async def _handle_vote(interaction: discord.Interaction, poll_id: str, option: s
 
     await _refresh_active_poll_message(guild, poll)
     await interaction.response.send_message(f"Vote recorded as **{option.upper()}**.", ephemeral=True)
+
+
+async def _handle_delete_poll(interaction: discord.Interaction, poll_id: str) -> None:
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("This action is only available in a server.", ephemeral=True)
+        return
+
+    user_id = str(getattr(interaction.user, "id", ""))
+    channel_id = 0
+    message_id = 0
+    poll_title = "Untitled Vote"
+
+    async with _POLL_LOCK:
+        state = _load_polls_state()
+        polls = state.get("polls") or {}
+        poll = polls.get(poll_id)
+        if not isinstance(poll, dict):
+            await interaction.response.send_message("This poll no longer exists.", ephemeral=True)
+            return
+
+        if str(poll.get("status") or "open") != "open":
+            await interaction.response.send_message("Only open polls can be deleted.", ephemeral=True)
+            return
+
+        if user_id != str(poll.get("created_by") or ""):
+            await interaction.response.send_message("Only the poll creator can delete this poll.", ephemeral=True)
+            return
+
+        channel_id = int(poll.get("channel_id") or 0)
+        message_id = int(poll.get("message_id") or 0)
+        poll_title = str(poll.get("title") or "Untitled Vote")
+
+        polls.pop(poll_id, None)
+        state["polls"] = polls
+        _save_polls_state(state)
+
+    removed_message = False
+    channel = guild.get_channel(channel_id) if channel_id else None
+    if channel is not None and hasattr(channel, "fetch_message") and message_id:
+        try:
+            msg = await channel.fetch_message(message_id)
+            await msg.delete()
+            removed_message = True
+        except Exception:
+            removed_message = False
+
+    if removed_message:
+        await interaction.response.send_message(
+            f"Deleted poll **{poll_title}** (`{poll_id}`).",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        f"Deleted poll **{poll_title}** (`{poll_id}`), but I could not remove the poll message.",
+        ephemeral=True,
+    )
 
 
 @_g.bot.tree.command(
