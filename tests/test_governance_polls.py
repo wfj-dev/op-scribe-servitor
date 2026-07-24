@@ -164,9 +164,13 @@ class _Guild:
 class _Message:
     def __init__(self):
         self.edits = []
+        self.deleted = False
 
     async def edit(self, **kwargs):
         self.edits.append(kwargs)
+
+    async def delete(self):
+        self.deleted = True
 
 
 class _Channel:
@@ -289,7 +293,7 @@ def test_active_embed_includes_subject_member_and_threshold_rule():
     assert "<@281651485782310914>" in embed.description
     assert "Threshold Rule" in embed.description
     assert "Standard Watch Command threshold" in embed.description
-    assert "per-option totals are anonymous" in embed.description
+    assert "per-option totals remain anonymous" in embed.description
 
     field_names = [f.name for f in embed.fields]
     assert "`ᴘᴀʀᴛɪᴄɪᴘᴀᴛɪᴏɴ`" in field_names
@@ -299,7 +303,7 @@ def test_active_embed_includes_subject_member_and_threshold_rule():
     assert "`ᴀʙsᴛᴀɪɴ`" not in field_names
 
 
-def test_final_embed_includes_no_shows():
+def test_final_embed_uses_anonymous_vote_breakdown():
     poll = {
         "poll_id": "gov-0010",
         "title": "Promotion vote",
@@ -318,9 +322,17 @@ def test_final_embed_includes_no_shows():
     evaluation = po._evaluate_poll(poll)
 
     embed = po._build_final_embed(poll, evaluation)
-    no_show_field = next((f for f in embed.fields if f.name == "`ɴᴏ-sʜᴏᴡs`"), None)
-    assert no_show_field is not None
-    assert "<@4>" in no_show_field.value
+    field_map = {f.name: f.value for f in embed.fields}
+    assert "`ʏᴀʏ`" in field_map
+    assert "`ɴᴀʏ`" in field_map
+    assert "`ᴀʙsᴛᴀɪɴ`" in field_map
+    assert "Ballots: **1**" in field_map["`ʏᴀʏ`"]
+    assert "Share: **33.33%**" in field_map["`ʏᴀʏ`"]
+    assert "Ballots: **1**" in field_map["`ɴᴀʏ`"]
+    assert "Share: **33.33%**" in field_map["`ɴᴀʏ`"]
+    assert "Ballots: **1**" in field_map["`ᴀʙsᴛᴀɪɴ`"]
+    assert "Share: **33.33%**" in field_map["`ᴀʙsᴛᴀɪɴ`"]
+    assert all("<@" not in f.value for f in embed.fields)
 
 
 class _Response:
@@ -334,6 +346,13 @@ class _Response:
 class _Interaction:
     def __init__(self, user_id):
         self.guild = _Guild([])
+        self.user = SimpleNamespace(id=user_id)
+        self.response = _Response()
+
+
+class _InteractionWithGuild:
+    def __init__(self, user_id, guild):
+        self.guild = guild
         self.user = SimpleNamespace(id=user_id)
         self.response = _Response()
 
@@ -423,3 +442,98 @@ def test_due_revote_reminder_posts_once_and_marks_sent(monkeypatch):
 
     asyncio.run(po._send_due_revote_reminders(guild))
     assert len(channel.messages) == first_count
+
+
+def test_delete_poll_creator_can_delete_open_poll(monkeypatch):
+    channel = _Channel()
+    guild = _GuildWithChannels({1489282103119052903: channel})
+    interaction = _InteractionWithGuild(42, guild)
+
+    state = {
+        "next_id": 2,
+        "polls": {
+            "gov-0001": {
+                "poll_id": "gov-0001",
+                "title": "Promotion vote",
+                "status": "open",
+                "created_by": "42",
+                "channel_id": 1489282103119052903,
+                "message_id": 9001,
+            }
+        },
+    }
+
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+
+    import asyncio
+    asyncio.run(po._handle_delete_poll(interaction, "gov-0001"))
+
+    assert "gov-0001" not in state["polls"]
+    assert channel._message.deleted is True
+    assert interaction.response.messages == [
+        {"content": "Deleted poll **Promotion vote** (`gov-0001`).", "ephemeral": True}
+    ]
+
+
+def test_delete_poll_non_creator_is_denied(monkeypatch):
+    channel = _Channel()
+    guild = _GuildWithChannels({1489282103119052903: channel})
+    interaction = _InteractionWithGuild(7, guild)
+
+    state = {
+        "next_id": 2,
+        "polls": {
+            "gov-0001": {
+                "poll_id": "gov-0001",
+                "title": "Promotion vote",
+                "status": "open",
+                "created_by": "42",
+                "channel_id": 1489282103119052903,
+                "message_id": 9001,
+            }
+        },
+    }
+
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+
+    import asyncio
+    asyncio.run(po._handle_delete_poll(interaction, "gov-0001"))
+
+    assert "gov-0001" in state["polls"]
+    assert channel._message.deleted is False
+    assert interaction.response.messages == [
+        {"content": "Only the poll creator can delete this poll.", "ephemeral": True}
+    ]
+
+
+def test_delete_poll_rejects_closed_poll(monkeypatch):
+    channel = _Channel()
+    guild = _GuildWithChannels({1489282103119052903: channel})
+    interaction = _InteractionWithGuild(42, guild)
+
+    state = {
+        "next_id": 2,
+        "polls": {
+            "gov-0001": {
+                "poll_id": "gov-0001",
+                "title": "Promotion vote",
+                "status": "closed",
+                "created_by": "42",
+                "channel_id": 1489282103119052903,
+                "message_id": 9001,
+            }
+        },
+    }
+
+    monkeypatch.setattr(po, "_load_polls_state", lambda: state)
+    monkeypatch.setattr(po, "_save_polls_state", lambda _state: None)
+
+    import asyncio
+    asyncio.run(po._handle_delete_poll(interaction, "gov-0001"))
+
+    assert "gov-0001" in state["polls"]
+    assert interaction.response.messages == [
+        {"content": "Only open polls can be deleted.", "ephemeral": True}
+    ]
