@@ -246,7 +246,9 @@ def test_armor_attachment_field_value_truncates_and_reports_omitted_links():
     attachments = [_FakeAttachment(f"{long_url}{idx}.png") for idx in range(1, 11)]
 
     value = forge_ops._build_armor_attachment_field_value(attachments)
+    lines = value.splitlines()
 
     assert "more image link(s) recorded in submission data" in value
     assert "Image 10" not in value
+    assert all(line.endswith(")") or "more image link(s)" in line for line in lines)
     assert len(value) <= 1024
