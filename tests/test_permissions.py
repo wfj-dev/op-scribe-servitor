@@ -21,15 +21,18 @@ class FakeMember:
 def test_role_index_valid():
     assert _role_index("Watch Master") == 0
     assert _role_index("Watch Sergeant") is not None
+    assert _role_index("Veteran Sergeant") is not None
 
 
 def test_sergeant_or_higher_threshold():
     member_brother = FakeMember(1001, [FakeRole("Watch Brother")])
     member_sergeant = FakeMember(1002, [FakeRole("Watch Sergeant")])
+    member_veteran_sergeant = FakeMember(1004, [FakeRole("Veteran Sergeant")])
     member_captain = FakeMember(1003, [FakeRole("Watch Captain")])
 
     assert not is_sergeant_or_higher(member_brother)
     assert is_sergeant_or_higher(member_sergeant)
+    assert is_sergeant_or_higher(member_veteran_sergeant)
     assert is_sergeant_or_higher(member_captain)
 
 

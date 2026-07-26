@@ -28,6 +28,7 @@ RANK_HONORIFICS: Dict[str, str] = {
     # Battle line (highest to lowest)
     "Watch Captain": "Warden of the Company, Watch Captain",
     "Watch Lieutenant": "Shield of the Watch, Watch Lieutenant",
+    "Veteran Sergeant": "Veteran of command, Veteran Sergeant",
     "Watch Sergeant": "Bearer of command, Watch Sergeant",
     "Oathsworn": "Oathsworn Warrior",
     "Watch Veteran": "Honored Veteran",
@@ -122,6 +123,11 @@ TECHMARINE_RANK_ACKNOWLEDGMENTS: Dict[str, List[str]] = {
         "The Lieutenant's armor must inspire those who look to you for orders.",
         "May this warplate serve as faithfully as you serve your Captain.",
     ],
+    "Veteran Sergeant": [
+        "Veteran Sergeant, your armor carries both command discipline and hard-won field wisdom.",
+        "The veterans beneath your command read your warplate as a standard for steadiness under pressure.",
+        "May this warplate honor the bridge you hold between squad command and company leadership.",
+    ],
     # Specialists
     "Watch Chaplain": [
         "Keeper of the Faith, your armor must reflect the Emperor's light.",
@@ -208,6 +214,7 @@ RANK_PRESTIGE_WEIGHTS: Dict[str, float] = {
     # Company Command - high prestige
     "Watch Captain": 0.75,
     "Watch Lieutenant": 0.65,
+    "Veteran Sergeant": 0.5,
     # Specialists - medium-high prestige
     "Watch Chaplain": 0.6,
     "Watch Apothecary": 0.6,
@@ -274,6 +281,10 @@ RANK_STUDS_COMMENTARY: Dict[str, List[str]] = {
     "Watch Lieutenant": [
         "The shield-bearer's service strengthens the Watch.",
         "Lieutenants of such dedication are the Watch's backbone.",
+    ],
+    "Veteran Sergeant": [
+        "A Veteran Sergeant's marks speak of command entrusted and command proven.",
+        "Between line and company, your service has become the hinge others depend on.",
     ],
     # Specialists - domain-specific observations
     "Watch Chaplain": [
@@ -819,6 +830,14 @@ def _apply_blade_role_aliases(mapping: Dict[str, object]) -> None:
             mapping[alias_role] = mapping[canonical_role]
 
 
+def _copy_rank_fallback(mapping: Dict[str, object], *, target_role: str, source_role: str) -> None:
+    """Copy source rank flavor to target rank when target is not yet authored."""
+    if target_role in mapping:
+        return
+    if source_role in mapping:
+        mapping[target_role] = mapping[source_role]
+
+
 for _rank_mapping in (
     RANK_HONORIFICS,
     TECHMARINE_RANK_ACKNOWLEDGMENTS,
@@ -843,4 +862,5 @@ for _rank_mapping in (
     MASTER_TERMINUS_SLAYER_RANK_LINES,
 ):
     _apply_blade_role_aliases(_rank_mapping)
+    _copy_rank_fallback(_rank_mapping, target_role="Veteran Sergeant", source_role="Watch Sergeant")
 

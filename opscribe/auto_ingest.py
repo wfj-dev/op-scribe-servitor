@@ -75,20 +75,6 @@ def _forgemaster_user_id() -> Optional[int]:
         return None
 
 
-def _escalation_hours() -> float:
-    return float(_cfg().get("escalation_hours", 48))
-
-
-def _notification_channel_id() -> int:
-    raw = _cfg().get("notification_channel_id")
-    try:
-        if raw:
-            return int(raw)
-    except Exception:
-        pass
-    return AAR_CHANNEL_ID
-
-
 # ---------------------------------------------------------------------------
 # State persistence — data/auto_ingest_state.json
 # ---------------------------------------------------------------------------

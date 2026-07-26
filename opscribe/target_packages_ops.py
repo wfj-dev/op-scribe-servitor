@@ -654,7 +654,7 @@ _REQ_TIER_NO_REQ = "no_req"
 _TIER_ROLES = {
     _REQ_TIER_VETERAN: ["Watch Veteran"],
     _REQ_TIER_OATHSWORN: ["Oathsworn"],
-    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Bladeguard"],
+    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Veteran Sergeant"],
     _REQ_TIER_COMPANY_COMMAND: [
         "Watch Captain", "Watch Lieutenant", "First Blade",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
@@ -1317,32 +1317,6 @@ def _load_cadre_ownership_config() -> dict:
         return {}
 
 
-def _get_cadre_ownership_mapping() -> dict:
-    """Get cadre ownership mapping with fallback to hardcoded values.
-
-    This function implements Phase 1 dual-read pattern:
-    1. Try config-backed cadre ownership (new)
-    2. Fall back to hardcoded _CADRE_OWNERSHIP (existing, Phase 1-2 compatibility)
-
-    Returns dict mapping leader role ID → set of owned specialist role IDs.
-    """
-    config_mapping = _load_cadre_ownership_config()
-    
-    if config_mapping:
-        # Convert config format to internal format
-        result = {}
-        for leader_role_name, cadre_info in config_mapping.items():
-            leader_id = cadre_info["id"]
-            member_ids = {m["id"] for m in cadre_info["members"] if m.get("id")}
-            if member_ids:
-                result[leader_id] = member_ids
-        return result
-    
-    # Fallback to hardcoded mapping (existing code)
-    # Will be removed in Phase 2 when config is required
-    return _get_cadre_ownership_mapping_hardcoded()
-
-
 def _get_cadre_ownership_mapping_hardcoded() -> dict:
     """Hardcoded cadre ownership mapping (Phase 1 fallback, will be removed Phase 2+).
 
@@ -1659,10 +1633,6 @@ def _queue_member_display(guild: "discord.Guild | None", user_id: int) -> str:
     if member is not None:
         return member.display_name
     return f"Brother {user_id}"
-
-
-def _queue_eta_window_text(position: int, seats_per_sweep: int, sweep_minutes: int) -> str:
-    return _queue_eta_window_text_with_context(position, seats_per_sweep, sweep_minutes, [], [])
 
 
 def _queue_eta_window_text_with_context(
@@ -2093,10 +2063,11 @@ async def _queue_member_for_strike(
     if normalized_mode == "omega" and not _tp_get_player_platform(member):
         return False, "Omega queueing requires a PC or Console role."
 
-    async def _clear_all_recruiting_directive_rosters() -> tuple[int, list[str]]:
-        """Clear all signed/specialist attachments from recruiting directives."""
+    async def _clear_all_incomplete_non_deployed_rosters() -> tuple[int, list[str]]:
+        """Clear signed/specialist attachments on active directives that are not deployed/completed."""
         changed_package_ids: list[str] = []
         changed_codes: list[str] = []
+        active_statuses = {STATUS_PENDING_SGT, STATUS_RECRUITING}
         async with _TP_LOCK:
             tp_data = _load_tp()
             packages_map = tp_data.get("packages", {}) or {}
@@ -2104,7 +2075,8 @@ async def _queue_member_for_strike(
             for package_id, pkg in packages_map.items():
                 if not isinstance(pkg, dict):
                     continue
-                if pkg.get("status") != STATUS_RECRUITING:
+                status = pkg.get("status")
+                if status not in active_statuses:
                     continue
                 had_signed = bool(pkg.get("signed_up", []) or [])
                 had_specialists = bool(pkg.get("assigned_specialist_ids", []) or [])
@@ -2123,13 +2095,12 @@ async def _queue_member_for_strike(
             try:
                 await _refresh_signup_embed_for_package(package_id, guild)
             except Exception as exc:
-                _g.logger.debug(f"[TP] Failed refreshing directive embed after recruiting-roster clear for {package_id}: {exc}")
+                _g.logger.debug(f"[TP] Failed refreshing directive embed after queue roster clear for {package_id}: {exc}")
 
         return len(changed_package_ids), changed_codes
 
-    cleared_count, cleared_codes = await _clear_all_recruiting_directive_rosters()
+    cleared_count, cleared_codes = await _clear_all_incomplete_non_deployed_rosters()
     if cleared_count > 0:
-        # Reflect roster clears on the public queue board before continuing queue flow.
         await _reconcile_strike_queue_board(guild, major_change=True, force_bump=True)
 
     data = _load_tp()
@@ -2183,7 +2154,7 @@ async def _queue_member_for_strike(
     clear_text = ""
     if cleared_count > 0:
         clear_text = (
-            f" Recruiting directive rosters cleared: **{cleared_count}**"
+            f" Incomplete non-deployed directive rosters cleared: **{cleared_count}**"
             + (f" ({', '.join(f'`{c}`' for c in cleared_codes[:4])}{' ...' if len(cleared_codes) > 4 else ''})." if cleared_codes else ".")
         )
     return True, (
@@ -2367,12 +2338,9 @@ def _member_can_remain_attached_to_directive(
         return False, "Member is no longer active or eligible."
 
     member_roles = _member_role_names(member)
-    from .forge_ops import _resolve_killteam_for_member
     from .roster_ops import _get_member_company_name
 
-    member_kt = _resolve_killteam_for_member(member)
     member_company = _get_member_company_name(member)
-    assigned_kt = pkg.get("assigned_kt")
     assigned_company = pkg.get("assigned_company")
 
     mode = str(pkg.get("mode") or "")
@@ -2391,10 +2359,8 @@ def _member_can_remain_attached_to_directive(
             return False, "Member no longer holds a required specialist role for this directive."
         return False, "This directive does not require a specialist attachment."
 
-    if _member_has_structural_scope(member_kt, member_company) and not (
-        member_kt == assigned_kt or member_company == assigned_company
-    ):
-        return False, f"Member is no longer part of {assigned_kt or assigned_company}."
+    if member_company and assigned_company and member_company != assigned_company:
+        return False, f"Member is no longer part of {assigned_company}."
 
     return True, ""
 
@@ -2417,7 +2383,7 @@ async def _reconcile_member_directive_attachments(
         data = _load_tp()
         changed = False
         for package_id, pkg in (data.get("packages") or {}).items():
-            if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING, STATUS_DEPLOYED):
+            if pkg.get("status") not in (STATUS_PENDING_SGT, STATUS_RECRUITING):
                 continue
 
             removable_kinds: set[str] = set()
@@ -3618,6 +3584,7 @@ _KT_LEADER_PRIORITY = (
     "Watch Master",
     "Watch Captain",
     "Watch Lieutenant",
+    "Veteran Sergeant",
     "Watch Sergeant",
 )
 
@@ -3625,7 +3592,7 @@ _KT_LEADER_PRIORITY = (
 def _resolve_kt_leader_for_package(pkg: dict, guild: "discord.Guild | None") -> tuple["discord.Member | None", str | None]:
     """Resolve KT leader by role precedence among active members of assigned KT.
 
-    Preference order: Watch Master > Watch Captain > Watch Lieutenant > Watch Sergeant.
+    Preference order: Watch Master > Watch Captain > Watch Lieutenant > Veteran Sergeant > Watch Sergeant.
     Ties are deterministic by display name then member id, with assigned captain preferred
     when role precedence is equal.
     """
@@ -3668,7 +3635,7 @@ def _active_members(guild: discord.Guild) -> list:
 def _count_active_kts(guild: discord.Guild) -> int:
     """Count distinct Kill Teams with at least one active non-reserves member holding a KT role (excl. champion)."""
     kt_role_names = {
-        "Watch Sergeant", "Oathsworn", "Watch Veteran", "Watch Brother",
+        "Watch Sergeant", "Veteran Sergeant", "Oathsworn", "Watch Veteran", "Watch Brother",
     }
     occupied: set = set()
     kill_teams = _b("KILL_TEAMS") or []
@@ -3815,7 +3782,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 # ---------------------------------------------------------------------------
 
 # Roles that require formal cadre assignment (not naturally present in a KT)
-# Bladeguard is KT-command tier but still requires Blade Master assignment
+# Bladeguard still requires Blade Master assignment
 _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
 ) | {"Bladeguard"}
@@ -4450,34 +4417,6 @@ async def unassign_specialist(
     )
 
 
-def _requirements_satisfied(pkg: dict, guild: discord.Guild) -> bool:
-    """Check if all required roles for a package are satisfied by assigned members."""
-    req_roles = pkg.get("required_roles", [])
-    if not req_roles:
-        return True
-
-    kt_name = pkg.get("assigned_kt")
-    company_name = pkg.get("assigned_company")
-    specialist_ids = set(pkg.get("assigned_specialist_ids", []))
-
-    # Build set of roles held by: KT members + company members + HC members + attached specialists
-    covered_roles: set = set()
-    for m in guild.members:
-        if m.bot or not _is_active(m):
-            continue
-        roles = _member_role_names(m)
-        # Is this member part of the assigned KT or company, or HC?
-        from .forge_ops import _resolve_killteam_for_member
-        from .roster_ops import _get_member_company_name
-        member_kt = _resolve_killteam_for_member(m)
-        member_company = _get_member_company_name(m)
-        is_hc = any(r in HIGH_COMMAND_RANKS for r in roles)
-        if (member_kt == kt_name or member_company == company_name or is_hc or m.id in specialist_ids):
-            covered_roles.update(roles)
-
-    return all(role in covered_roles for role in req_roles)
-
-
 async def submit_package(
     package_id: str,
     aar_link: str,
@@ -4519,28 +4458,15 @@ async def submit_package(
         if datetime.now(timezone.utc) > deadline:
             return False, f"Directive {directive_display} has expired (deadline passed)."
 
-        # Submitter must be signed up OR be command of the assigned KT/company
-        from .forge_ops import _resolve_killteam_for_member
-        from .roster_ops import _get_member_company_name
-        submitter_kt = _resolve_killteam_for_member(submitter)
-        submitter_company = _get_member_company_name(submitter)
-        submitter_roles = _member_role_names(submitter)
-        is_hc = any(r in HIGH_COMMAND_RANKS for r in submitter_roles)
-        is_command = (
-            submitter_kt == pkg.get("assigned_kt")
-            and (_has_role(submitter, "Watch Sergeant") or _has_role(submitter, "Bladeguard"))
-        )
+        # Submitter must be attached to the directive roster.
         is_signed_up = submitter.id in pkg.get("signed_up", [])
         is_specialist_attached = submitter.id in pkg.get("assigned_specialist_ids", [])
         is_rostered_participant = is_signed_up or is_specialist_attached
 
-        assigned_company = pkg.get("assigned_company")
-
-        if not (is_rostered_participant or is_command or submitter_company == assigned_company or is_hc):
+        if not is_rostered_participant:
             return False, (
                 f"You do not have permission to submit directive {directive_display}. "
-                f"Submission requires: being signed up or attached as a specialist, KT command (Sergeant/Bladeguard), "
-                f"same-company membership, or High Command."
+                "Submission requires being signed up or attached as a specialist."
             )
 
         # Package must be DEPLOYED (all reqs met)
@@ -4670,28 +4596,6 @@ async def submit_package(
         _g.logger.debug(f"[TP] Batch summary check failed after submission: {exc}")
 
     return True, f"Directive {directive_display} marked completed. Ordo Xenos standing updated."
-
-
-def _role_satisfied_by_unit(role: str, pkg: dict, guild: discord.Guild) -> bool:
-    """Check if a single required role is satisfied by the assigned unit."""
-    kt_name = pkg.get("assigned_kt")
-    company_name = pkg.get("assigned_company")
-    specialist_ids = set(pkg.get("assigned_specialist_ids", []))
-
-    for m in guild.members:
-        if m.bot or not _is_active(m):
-            continue
-        roles = _member_role_names(m)
-        if role not in roles:
-            continue
-        from .forge_ops import _resolve_killteam_for_member
-        from .roster_ops import _get_member_company_name
-        member_kt = _resolve_killteam_for_member(m)
-        member_company = _get_member_company_name(m)
-        is_hc = any(r in HIGH_COMMAND_RANKS for r in roles)
-        if (member_kt == kt_name or member_company == company_name or is_hc or m.id in specialist_ids):
-            return True
-    return False
 
 
 _BATCH_SUMMARY_CHANNEL_ID = 1512929774970998945  # legacy fallback only
@@ -4936,14 +4840,6 @@ def _compute_honors(tp_data: dict) -> dict:
         }
 
     return {"kill_teams": kt_results, "companies": co_results, "cadres": cadre_results}
-
-
-def _all_packages_terminal(data: dict) -> bool:
-    """Return True if every directive in the store is in a terminal state."""
-    return all(
-        p["status"] in (STATUS_COMPLETED, STATUS_FAILED, STATUS_LAPSED)
-        for p in data.get("packages", {}).values()
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -6672,6 +6568,7 @@ _RANK_SENIORITY: list[str] = [
     "Watch Veteran",
     "Oathsworn",
     "Watch Sergeant",
+    "Veteran Sergeant",
     "Bladeguard",
     "Watch Lieutenant",
     "Watch Captain",
@@ -6684,33 +6581,6 @@ _RANK_SENIORITY: list[str] = [
     "Watch Master",
 ]
 _RANK_SENIORITY_MAP = {r: i for i, r in enumerate(_RANK_SENIORITY)}
-
-
-def _meets_rank_requirement(member: discord.Member, required_role: str, pkg: dict, guild: discord.Guild) -> bool:
-    """Return True if member explicitly holds required role and is in the right unit."""
-    if required_role not in _RANK_SENIORITY_MAP:
-        return False
-
-    member_roles = _member_role_names(member)
-    # Member must explicitly hold the required role.
-    if required_role not in member_roles:
-        return False
-
-    # Check unit scope — same KT, same company (for company command / HC only), or HC
-    from .forge_ops import _resolve_killteam_for_member
-    from .roster_ops import _get_member_company_name
-    member_kt = _resolve_killteam_for_member(member)
-    member_company = _get_member_company_name(member)
-    assigned_kt = pkg.get("assigned_kt")
-    assigned_company = pkg.get("assigned_company")
-    is_hc = any(r in HIGH_COMMAND_RANKS for r in member_roles)
-
-    # Line ranks and KT command: same KT only
-    if required_role in ("Watch Veteran", "Oathsworn", "Watch Sergeant", "Bladeguard"):
-        return member_kt == assigned_kt or is_hc
-
-    # Company command / specialists: same company or HC
-    return member_company == assigned_company or is_hc
 
 
 def _remaining_line_requirements(line_reqs: list[str], member_ids: list[int], guild: discord.Guild) -> list[str]:
@@ -6782,16 +6652,6 @@ def _specialist_slots_allowed(pkg: dict) -> int:
     """Maximum specialist attachments allowed for this directive based on requirement slots."""
     req_roles = pkg.get("required_roles", []) or []
     return len([r for r in req_roles if r in _CADRE_SPECIALIST_ROLES])
-
-
-def _member_has_structural_scope(member_kt: str | None, member_company: str | None) -> bool:
-    """Return True when a member is structurally attached to a KT and/or company."""
-    return bool(member_kt or member_company)
-
-
-def _member_has_specialist_role(member: discord.Member) -> bool:
-    """Return True when a member holds any cadre-specialist role."""
-    return bool(_member_role_names(member) & _CADRE_SPECIALIST_ROLES)
 
 
 def _is_eligible_to_sign_up(member: discord.Member, pkg: dict, guild: discord.Guild) -> tuple[bool, str]:
@@ -6948,35 +6808,10 @@ def _can_actor_remove_attached_target(
 
     # Company command can manage members on directives under their assigned company.
     def _safe_member_company_name(member: discord.Member) -> str | None:
-        try:
-            from .roster_ops import _get_member_company_name as _fn
-            resolved = _fn(member)
-            if resolved:
-                return resolved
-        except Exception:
-            pass
         configured_names = set(_configured_company_role_names()) | {"Dreadnought Cadre"}
         for role in getattr(member, "roles", []):
             rn = (getattr(role, "name", "") or "").strip()
             if rn in configured_names:
-                return rn
-        return None
-
-    def _safe_member_kt(member: discord.Member) -> str | None:
-        try:
-            from .forge_ops import _resolve_killteam_for_member as _fn
-            resolved = _fn(member)
-            if resolved:
-                return resolved
-        except Exception:
-            pass
-        role_names = _member_role_names(member)
-        kill_teams = set(_b("KILL_TEAMS") or [])
-        for rn in role_names:
-            if rn in kill_teams:
-                return rn
-        for rn in role_names:
-            if rn.lower().startswith("kill team "):
                 return rn
         return None
 
@@ -6989,15 +6824,15 @@ def _can_actor_remove_attached_target(
     ):
         return True, set(attached), ""
 
-    # KT command can manage members on their own KT directives.
-    if "Watch Sergeant" in actor_roles:
-        actor_kt = _safe_member_kt(actor)
-        pkg_kt = pkg.get("assigned_kt")
-        if actor_kt and pkg_kt and actor_kt == pkg_kt:
+    # Watch Sergeant and Veteran Sergeant can manage members on directives
+    # under their assigned company.
+    if "Watch Sergeant" in actor_roles or "Veteran Sergeant" in actor_roles:
+        pkg_company = pkg.get("assigned_company")
+        if actor_company and pkg_company and actor_company == pkg_company:
             if target_member is None:
                 return True, set(attached), ""
-            target_kt = _safe_member_kt(target_member)
-            if target_kt == actor_kt:
+            target_company = _safe_member_company_name(target_member)
+            if target_company == actor_company:
                 return True, set(attached), ""
 
     # Cadre authority path only applies to specialist attachments and only when
@@ -7567,15 +7402,6 @@ def _check_deployed(pkg: dict, guild: discord.Guild) -> bool:
     if uncovered_cadre:
         return False
     return True
-
-
-def _role_satisfied_by_unit_ids(role: str, specialist_ids: set, pkg: dict, guild: discord.Guild) -> bool:
-    """Check if a cadre role is satisfied by an attached specialist."""
-    for sid in specialist_ids:
-        m = guild.get_member(sid)
-        if m and role in _member_role_names(m):
-            return True
-    return False
 
 
 class SgtAcceptView(discord.ui.View):
@@ -8666,7 +8492,7 @@ _HC_ROLES = {
     "Venerable Dreadnought",
 }
 _COMMAND_ROLES = {"Watch Captain", "Watch Lieutenant"} | _CADRE_LEADER_ROLES
-_KT_COMMAND_ROLES = {"Watch Sergeant", "Bladeguard"}
+_KT_COMMAND_ROLES = {"Watch Sergeant", "Veteran Sergeant",}
 
 
 def _is_cadre_leader(member: discord.Member) -> bool:
@@ -8711,14 +8537,6 @@ def _cadre_leader_owns(cadre_leader: discord.Member, specialist_role: str) -> bo
 # ---------------------------------------------------------------------------
 # Slash commands
 # ---------------------------------------------------------------------------
-
-_bot_tree = None
-
-
-def _get_tree():
-    m = _sys.modules.get("opscribe.bot") or _sys.modules.get("bot")
-    return getattr(m, "tree", None) if m else None
-
 
 # /request_strike_directives — WM only
 @app_commands.command(
