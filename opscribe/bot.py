@@ -759,10 +759,11 @@ RANK_TIERS: Dict[int, List[str]] = {
         "Watch Lieutenant",
         "Watch Techmarine",
     ],
-    3: ["Watch Sergeant"],
-    4: ["Bladeguard", "Oathsworn"],
-    5: ["Watch Veteran"],
-    6: ["Watch Brother"],
+    3: ["Veteran Sergeant"],
+    4: ["Watch Sergeant"],
+    5: ["Bladeguard", "Oathsworn"],
+    6: ["Watch Veteran"],
+    7: ["Watch Brother"],
 }
 
 # Flattened list retained for iteration and display in other modules.
@@ -1187,58 +1188,6 @@ def _is_techmarine_or_forgemaster(
         return True, "techmarine"
     # If no explicit forgemaster/techmarine role is present, treat as no role.
     return False, ""
-
-
-def _compute_authority_bracket_member_ids(
-    viewer: "discord.Member",
-    guild: "discord.Guild",
-    role_key: str,
-    cadre: str,
-) -> Optional[set]:
-    """Resolve the viewer's authority bracket for status displays.
-
-    ``cadre`` is ``"techmarine"`` or ``"librarian"`` and selects which specialist
-    role is treated as "under" a HighCom viewer (Forgemaster oversees Techmarines,
-    Void Warden oversees Librarians).
-
-    Bracket semantics — used to hide out-of-bracket brothers unless the viewer's
-    own bracket is fully clear:
-      • Forgemaster / Void Warden (and Forgemaster debug) → HighCom members +
-        members holding the relevant specialist cadre role.
-      • Company-level specialist (Watch Techmarine / Watch Librarian) → only
-        members of the viewer's company.
-      • Anyone else → returns None (no bracket; show flat list).
-    """
-    if guild is None:
-        return None
-    role_key = (role_key or "").lower()
-    cadre_role_name = TECHMARINE_ROLE_NAME if cadre == "techmarine" else LIBRARIAN_ROLE_NAME
-    if role_key in ("forgemaster", "forgemaster_debug", "void_warden"):
-        ids: set = set()
-        for m in guild.members:
-            if getattr(m, "bot", False):
-                continue
-            role_names = {r.name for r in getattr(m, "roles", []) or []}
-            if role_names & HIGH_COMMAND_ROLES:
-                ids.add(m.id)
-            elif cadre_role_name in role_names:
-                ids.add(m.id)
-        return ids
-    if role_key in ("techmarine", "librarian"):
-        company = _get_member_company_name(viewer)
-        if not company:
-            return None
-        ids = set()
-        for m in guild.members:
-            if getattr(m, "bot", False):
-                continue
-            try:
-                if _get_member_company_name(m) == company:
-                    ids.add(m.id)
-            except Exception:
-                continue
-        return ids
-    return None
 
 
 # Lines 3040-5931 extracted to forge_ops.py

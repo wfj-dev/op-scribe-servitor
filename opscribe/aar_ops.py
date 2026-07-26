@@ -259,7 +259,7 @@ async def _process_challenge_tracking(record: dict, guild: discord.Guild) -> Lis
                         r in _rn
                         for r in (
                             "Watch Veteran", "Oathsworn", "Bladeguard",
-                            "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
+                            "Watch Sergeant", "Veteran Sergeant", "Watch Techmarine", "Watch Librarian",
                             "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
                             "First Blade", "Watch Lieutenant", "Watch Captain",
                             "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",
@@ -712,25 +712,6 @@ def _get_challenge_keeper_mention(guild: discord.Guild) -> str:
     return "@Watch Keeper"
 
 
-_EMBED_FIELD_LIMIT = 1024
-
-
-def _build_url_field_text(aar_urls: List[str]) -> str:
-    """Build AAR URL list text for an embed field, capped at Discord's 1024-char field limit."""
-    lines: list[str] = []
-    for i, url in enumerate(aar_urls):
-        line = f"• {url}"
-        remaining = len(aar_urls) - i - 1
-        overflow = f"\n_(+{remaining} more)_" if remaining > 0 else ""
-        candidate = "\n".join(lines + [line]) + overflow
-        if len(candidate) > _EMBED_FIELD_LIMIT:
-            omitted = len(aar_urls) - i
-            overflow = f"\n_(+{omitted} more)_"
-            return ("\n".join(lines) + overflow) if lines else "_(none)_"
-        lines.append(line)
-    return "\n".join(lines) or "_(none)_"
-
-
 async def _send_challenge_eligibility_notifications(
     notifications: List[Tuple[str, str, int, str, List[str]]], guild: discord.Guild
 ):
@@ -807,7 +788,7 @@ async def _send_challenge_eligibility_notifications(
 _WATCH_BROTHER_OR_HIGHER = {
     "Watch Brother", "Watch Sister",
     "Watch Veteran", "Oathsworn", "Bladeguard",
-    "Watch Sergeant", "Watch Techmarine", "Watch Librarian",
+    "Watch Sergeant", "Veteran Sergeant", "Watch Techmarine", "Watch Librarian",
     "Watch Apothecary", "Watch Chaplain", "Watch Keeper",
     "First Blade", "Watch Lieutenant", "Watch Captain",
     "Venerable Dreadnought", "Honored Dreadnought", "Forgemaster",

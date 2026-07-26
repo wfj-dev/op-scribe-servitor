@@ -22,6 +22,8 @@ WATCH_BROTHER_ROLE_ID = 1429338953227440148
 HIGH_COMMAND_ROLE_ID = 1452913063970865203
 # Watch Sergeant Role ID (for vet promotions)
 WATCH_SERGEANT_ROLE_ID = 1429339146371203112
+# Veteran Sergeant Role ID
+VETERAN_SERGEANT_ROLE_ID = 1530699848272052357
 # Watch Captain and Watch Lieutenant role IDs (for strike directive distribution pings)
 WATCH_CAPTAIN_ROLE_ID = 1429341171301220502
 WATCH_LIEUTENANT_ROLE_ID = 1429340527924613120
@@ -345,6 +347,7 @@ TERMINUS_VERIFIER_RANKS = {
     "First Blade",
     "Blade Master",
     "Watch Sergeant",
+    "Veteran Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
     "Watch Chaplain",

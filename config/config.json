@@ -26,7 +26,8 @@
     1433351293103112202,
     1458255656682258504,
     1527778077323821086,
-    1528625106430066809
+    1528625106430066809,
+    1530412588293423236
   ],
   "admin_user_ids": [
     281651485782310914
@@ -478,7 +479,7 @@
   },
   "target_packages": {
     "highcom_strategium_channel_id": 1512929774970998945,
-    "highcom_audit_channel_id": 1522774471243726888,
+    "highcom_audit_channel_id": 1530412588293423236,
     "strike_queue_board_channel_id": 1429942816741523570,
     "watch_command_deployment_channel_id": 1512929565239152671,
     "strike_report_channel_id": 1429318686447108300,
