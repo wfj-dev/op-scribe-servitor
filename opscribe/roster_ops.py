@@ -5460,11 +5460,13 @@ async def tally_deeds(
                 aar_val = stat_dict.get("AAR Commendations", "0")
                 gene_val = stat_dict.get("Gene-seed Secured", "0")
                 armory_val = stat_dict.get("Armory Data Recovered", "0")
+                sd_completed = _member_completed_strike_directive_count(str(target.id))
 
                 deeds_value = (
                     f"Operations: **{ops_val}** | Siege Waves: **{waves_val}**\n"
                     f"Brothers Sanctioned: **{sanctioned_val}**\n"
-                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**"
+                    f"AAR: **{aar_val}** | Gene-seed: **{gene_val}** | Armory: **{armory_val}**\n"
+                    f"SD Completed: **{sd_completed}**"
                 )
                 embed.add_field(name="`ᴅᴇᴇᴅs ᴛᴀʟʟɪᴇᴅ`", value=deeds_value, inline=False)
 
@@ -5936,6 +5938,48 @@ def _extract_directive_ids_from_record(record: dict) -> Set[str]:
     except Exception:
         pass
     return ids
+
+
+def _member_completed_strike_directive_count(member_id: str) -> int:
+    """Return completed strike directive count for a member."""
+    try:
+        member_id_int = int(member_id)
+    except Exception:
+        return 0
+
+    try:
+        tp_module = _sys.modules.get("opscribe.target_packages_ops")
+        if tp_module is None:
+            tp_module = __import__("opscribe.target_packages_ops", fromlist=["*"])
+
+        data = tp_module._load_tp()
+        packages = (data.get("packages", {}) or {}) if isinstance(data, dict) else {}
+    except Exception:
+        return 0
+
+    completed_count = 0
+
+    for pkg in packages.values():
+        if not isinstance(pkg, dict):
+            continue
+
+        status = str(pkg.get("status") or "").strip().lower()
+        if status != "completed":
+            continue
+
+        try:
+            signed_up_ids = {int(uid) for uid in (pkg.get("signed_up", []) or [])}
+        except Exception:
+            signed_up_ids = set()
+        try:
+            specialist_ids = {int(uid) for uid in (pkg.get("assigned_specialist_ids", []) or [])}
+        except Exception:
+            specialist_ids = set()
+
+        if member_id_int in signed_up_ids or member_id_int in specialist_ids:
+            completed_count += 1
+
+    return completed_count
 
 
 _KT_RENOWN_UNLOCKS = {
