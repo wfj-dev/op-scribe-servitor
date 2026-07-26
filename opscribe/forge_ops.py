@@ -306,10 +306,11 @@ def _build_submit_armor_embed(
     if note:
         embed.add_field(name="`ɴᴏᴛᴇ`", value=f"-# {note}", inline=False)
 
-    lines = []
-    for idx, att in enumerate(attachments, start=1):
-        lines.append(f"-# Image {idx}: [view]({getattr(att, 'url', '')})")
-    embed.add_field(name="`ᴀᴛᴛᴀᴄʜᴍᴇɴᴛs`", value="\n".join(lines), inline=False)
+    embed.add_field(
+        name="`ᴀᴛᴛᴀᴄʜᴍᴇɴᴛs`",
+        value=_build_armor_attachment_field_value(attachments),
+        inline=False,
+    )
 
     first_url = str(getattr(attachments[0], "url", "") or "") if attachments else ""
     if first_url:
@@ -319,6 +320,33 @@ def _build_submit_armor_embed(
     embed.set_footer(text="Accept/Deny remains active until finalized.")
     embed.timestamp = datetime.now(timezone.utc)
     return embed
+
+
+def _build_armor_attachment_field_value(attachments: list[discord.Attachment]) -> str:
+    """Render attachment links without exceeding Discord embed field limits."""
+    field_limit = 1024
+    lines: list[str] = []
+    omitted = 0
+
+    for idx, att in enumerate(attachments, start=1):
+        url = str(getattr(att, "url", "") or "")
+        line = f"-# Image {idx}: [view]({url})"
+        candidate = "\n".join(lines + [line]) if lines else line
+        if len(candidate) <= field_limit:
+            lines.append(line)
+        else:
+            omitted += 1
+
+    value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
+    if omitted > 0:
+        suffix = f"\n-# ... +{omitted} more image link(s) recorded in submission data."
+        while lines and len("\n".join(lines)) + len(suffix) > field_limit:
+            lines.pop()
+            omitted += 1
+        value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
+        if len(value) + len(suffix) <= field_limit:
+            value += suffix
+    return value
 
 
 def _upsert_embed_field_local(embed: discord.Embed, name: str, value: str, *, inline: bool = False) -> None:
@@ -791,12 +819,20 @@ async def submit_armor(
 
         techmarine_role = discord.utils.get(getattr(guild, "roles", []) or [], name="Watch Techmarine")
         mention = techmarine_role.mention if techmarine_role else "@Watch Techmarine"
-        msg = await review_channel.send(
-            content=f"{mention} armor review requested by {interaction.user.mention}",
-            embed=embed,
-            view=view,
-            allowed_mentions=discord.AllowedMentions(users=True, roles=True, everyone=False),
-        )
+        try:
+            msg = await review_channel.send(
+                content=f"{mention} armor review requested by {interaction.user.mention}",
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=True, everyone=False),
+            )
+        except discord.HTTPException as exc:
+            _g.logger.warning("Failed to post armor submission %s for %s: %s", submission_id, interaction.user.id, exc)
+            await interaction.response.send_message(
+                "Armor submission could not be posted to the review channel. Please try again shortly.",
+                ephemeral=True,
+            )
+            return
         _g.bot.add_view(view, message_id=int(getattr(msg, "id", 0) or 0))
 
         state.setdefault("submissions", {})[submission_id] = {
