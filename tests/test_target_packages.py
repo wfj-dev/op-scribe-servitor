@@ -1017,6 +1017,98 @@ class TestGenerateSinglePackage:
         assert pkg["mission_id"] == 3
 
 
+class TestBuildBriefingRequirementFlavor:
+    def test_uses_duo_variant_when_available(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp.random, "choice", lambda seq: seq[0])
+        monkeypatch.setattr(tp, "_load_operations", lambda: [{"id": 1, "name": "Relay Purge"}])
+
+        templates = {
+            "world_type_hooks": {"dead_world": ["Hook on {node}"]},
+            "mission_hooks": {"1": ["purge the relay"]},
+            "req_tier_templates": {"no_req": ["No specialist attachment required."], "kt_command": ["Base {rank} text."]},
+            "req_tier_variants": {
+                "kt_command": {
+                    "duo": ["Variant duo: {rank} is required to coordinate this strike."],
+                }
+            },
+            "strat_tone": {"rep_neg1": ["tone"], "rep_neg2": ["tone"]},
+        }
+
+        briefing = tp._build_briefing(
+            node_name="Kastorel",
+            world_type="dead_world",
+            mission_id=1,
+            tier_key="kt_command",
+            req_roles=["Watch Sergeant", "Bladeguard"],
+            rep=10.0,
+            templates=templates,
+        )
+
+        assert "Variant duo: Watch Sergeant and Bladeguard are required to coordinate this strike." in briefing
+        assert "Relay Purge" in briefing
+
+    def test_uses_squad_variant_for_three_or_more_roles(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp.random, "choice", lambda seq: seq[0])
+        monkeypatch.setattr(tp, "_load_operations", lambda: [{"id": 2, "name": "Fortress Sweep"}])
+
+        templates = {
+            "world_type_hooks": {"dead_world": ["Hook on {node}"]},
+            "mission_hooks": {"2": ["secure the fortress"]},
+            "req_tier_templates": {"no_req": ["No specialist attachment required."], "company_command": ["Base {rank} text."]},
+            "req_tier_variants": {
+                "company_command": {
+                    "squad": ["Variant squad: {rank} are required to coordinate the assault."],
+                }
+            },
+            "strat_tone": {"rep_neg1": ["tone"], "rep_neg2": ["tone"]},
+        }
+
+        briefing = tp._build_briefing(
+            node_name="Gethsemane",
+            world_type="dead_world",
+            mission_id=2,
+            tier_key="company_command",
+            req_roles=["Watch Captain", "Watch Apothecary", "Watch Librarian"],
+            rep=10.0,
+            templates=templates,
+        )
+
+        assert "Variant squad: Watch Captain, Watch Apothecary, and Watch Librarian are required to coordinate the assault." in briefing
+        assert "Fortress Sweep" in briefing
+
+    def test_falls_back_to_legacy_tier_templates_when_no_variant_exists(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        monkeypatch.setattr(tp.random, "choice", lambda seq: seq[0])
+        monkeypatch.setattr(tp, "_load_operations", lambda: [{"id": 3, "name": "Fallback Op"}])
+
+        templates = {
+            "world_type_hooks": {"dead_world": ["Hook on {node}"]},
+            "mission_hooks": {"3": ["fallback mission"]},
+            "req_tier_templates": {
+                "no_req": ["No specialist attachment required."],
+                "veteran": ["Legacy veteran: {rank} must lead this engagement."],
+            },
+            "strat_tone": {"rep_neg1": ["tone"], "rep_neg2": ["tone"]},
+        }
+
+        briefing = tp._build_briefing(
+            node_name="Dunecall",
+            world_type="dead_world",
+            mission_id=3,
+            tier_key="veteran",
+            req_roles=["Watch Veteran"],
+            rep=10.0,
+            templates=templates,
+        )
+
+        assert "Legacy veteran: Watch Veteran must lead this engagement." in briefing
+
+
 # ---------------------------------------------------------------------------
 # _check_deployed
 # ---------------------------------------------------------------------------
@@ -2333,6 +2425,8 @@ class TestCycleReportIdempotencyAndScope:
         asyncio.run(expire_packages(guild))
 
         assert posted_batches == ["BATCH-20260624"]
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
+        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260623") is None
         assert "BATCH-20260608" not in posted_batches
         assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
         assert store["packages"]["NEW-1"]["status"] == STATUS_FAILED
@@ -2517,8 +2611,57 @@ class TestSubmitPackagePermissions:
         asyncio.run(expire_packages(guild))
 
         assert posted_batches == ["BATCH-20260624"]
-        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260624") is not None
-        assert store["cycle"].get("batch_summary_posted_at", {}).get("BATCH-20260623") is None
+
+
+class TestAttachPackageToAarRecord:
+    def test_seeds_datastore_from_live_parse_when_missing(self, monkeypatch):
+        import opscribe.target_packages_ops as tp
+
+        class _FakeDataStore:
+            def __init__(self):
+                self.records = {}
+                self.flush_calls = 0
+
+            def get_record(self, aar_id):
+                return self.records.get(str(aar_id))
+
+            def iter_records(self):
+                return iter(self.records.values())
+
+            async def set_record(self, aar_id, record):
+                self.records[str(aar_id)] = dict(record)
+
+            async def flush(self):
+                self.flush_calls += 1
+
+        ds = _FakeDataStore()
+        monkeypatch.setattr(tp._g, "DATASTORE", ds)
+
+        async def _fake_parse(_aar_link, _guild):
+            return {
+                "aar_id": 987654321,
+                "message_url": "https://discord.com/channels/1/2/987654321",
+                "brother_ids": ["111", "222"],
+                "points_for_op": 4,
+                "difficulty_class": "hard_stratagem",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+        monkeypatch.setattr(tp, "_parse_live_aar_for_link", _fake_parse)
+
+        aar_link = "https://discord.com/channels/1/2/987654321"
+        linked_id, canonical_url = asyncio.run(
+            tp._attach_package_to_aar_record("PKG-42", aar_link, guild=object())
+        )
+
+        assert linked_id == "987654321"
+        assert canonical_url == "https://discord.com/channels/1/2/987654321"
+        stored = ds.records["987654321"]
+        assert stored["target_package_id"] == "PKG-42"
+        assert stored["target_package_ids"] == ["PKG-42"]
+        assert stored["strike_directive_bonus_applied"] is True
+        assert stored["points_for_op"] == 5
+        assert ds.flush_calls == 1
 
 
 class TestDirectiveForumLifecycle:

@@ -2,6 +2,7 @@
   "_notes": {
     "usage": "Briefing text is assembled: sentence_1 = world_type_hook + req_tier_template (with rank/mission injected). sentence_2 = strat_tone (only at rep < 0). Mission name appended in parentheses.",
     "req_tier_templates": "Keyed by requirement tier. {rank} = role name(s), {mission} = mission name. If no requirement, use 'no_req' key.",
+    "req_tier_variants": "Optional count-aware requirement variants keyed by tier then single/duo/squad. Falls back to req_tier_templates when absent.",
     "world_type_hooks": "3 options per world type, bot picks one randomly. Used as the opening clause of sentence 1.",
     "strat_tone": "rep_neg1 shown at rep -1, rep_neg2 at rep -2. 2-3 options each, picked randomly."
   },
@@ -105,6 +106,59 @@
       "This package demands Fortress-level command; {rank} is required.",
       "Ordo Xenos will only authorize this package under direct {rank} oversight."
     ]
+  },
+
+  "req_tier_variants": {
+    "veteran": {
+      "duo": [
+        "This package demands the combined experience of {rank}.",
+        "Ordo Xenos requires both {rank} to steady this engagement."
+      ],
+      "squad": [
+        "This package demands a veteran cohort; {rank} must answer together.",
+        "Only a veteran-led strike element ({rank}) is authorized for this package."
+      ]
+    },
+    "oathsworn": {
+      "duo": [
+        "This package calls for sworn resolve from {rank}.",
+        "Ordo Xenos requires both {rank} to prosecute this oath-bound action."
+      ],
+      "squad": [
+        "This package demands an oathsworn cell; {rank} must deploy as one.",
+        "Only a sworn formation ({rank}) is acceptable for this engagement."
+      ]
+    },
+    "kt_command": {
+      "duo": [
+        "Kill Team command authority is required; {rank} must direct this strike.",
+        "Ordo Xenos demands paired tactical command from {rank}."
+      ],
+      "squad": [
+        "This package demands a command cadre; {rank} must coordinate the strike.",
+        "Only a Kill Team command element ({rank}) can execute this operation cleanly."
+      ]
+    },
+    "company_command": {
+      "duo": [
+        "Company-level authority is required; both {rank} must be present.",
+        "Ordo Xenos demands dual oversight from {rank}."
+      ],
+      "squad": [
+        "This package demands a company command cluster; {rank} must oversee it together.",
+        "Only a company command formation ({rank}) is suitable for this deployment."
+      ]
+    },
+    "hc": {
+      "duo": [
+        "High Command authority is required; both {rank} must sanction this deployment.",
+        "Ordo Xenos demands the judgment of {rank}."
+      ],
+      "squad": [
+        "This package demands a High Command council; {rank} must authorize it together.",
+        "Only the direct sanction of {rank} can proceed with this deployment."
+      ]
+    }
   },
 
   "mission_hooks": {
