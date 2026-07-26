@@ -654,7 +654,7 @@ _REQ_TIER_NO_REQ = "no_req"
 _TIER_ROLES = {
     _REQ_TIER_VETERAN: ["Watch Veteran"],
     _REQ_TIER_OATHSWORN: ["Oathsworn"],
-    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Veteran Sergeant", "Bladeguard"],
+    _REQ_TIER_KT_COMMAND: ["Watch Sergeant", "Veteran Sergeant"],
     _REQ_TIER_COMPANY_COMMAND: [
         "Watch Captain", "Watch Lieutenant", "First Blade",
         "Watch Techmarine", "Watch Apothecary", "Watch Chaplain",
@@ -3782,7 +3782,7 @@ def _draw_strats(rep: float, active_strats: list, mode: str = "Hard-Strat") -> d
 # ---------------------------------------------------------------------------
 
 # Roles that require formal cadre assignment (not naturally present in a KT)
-# Bladeguard is KT-command tier but still requires Blade Master assignment
+# Bladeguard still requires Blade Master assignment
 _CADRE_SPECIALIST_ROLES = set(
     _TIER_ROLES[_REQ_TIER_COMPANY_COMMAND] + _TIER_ROLES[_REQ_TIER_HC]
 ) | {"Bladeguard"}
