@@ -562,7 +562,11 @@ def _expected_difficulty_for_mode(mode: str) -> str:
     return "omega_ops" if "Omega" in (mode or "") else "hard_stratagem"
 
 
-async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple[Optional[str], Optional[str]]:
+async def _attach_package_to_aar_record(
+    package_id: str,
+    aar_link: str,
+    guild: discord.Guild | None = None,
+) -> tuple[Optional[str], Optional[str]]:
     """Attach strike directive metadata to the submitted AAR record, if present.
 
     Returns (aar_record_id, canonical_message_url) when linked, else (None, None).
@@ -575,6 +579,31 @@ async def _attach_package_to_aar_record(package_id: str, aar_link: str) -> tuple
         return None, None
 
     key, record = _resolve_aar_record_for_link(aar_link)
+
+    # If this AAR hasn't been ingested yet, parse it live and seed datastore
+    # so strike-directive linkage and downstream tally_deeds SD counters work.
+    if not record and guild is not None:
+        try:
+            parsed = await _parse_live_aar_for_link(aar_link, guild)
+        except Exception:
+            parsed = None
+        if parsed:
+            seeded = dict(parsed)
+            seeded_key = str(seeded.get("aar_id") or "")
+            if not seeded_key:
+                m = _DISCORD_MSG_URL_RE.match((aar_link or "").strip())
+                if m:
+                    seeded_key = str(m.group(2))
+                    seeded["aar_id"] = int(m.group(2))
+            if seeded_key:
+                if not seeded.get("message_url"):
+                    seeded["message_url"] = aar_link
+                try:
+                    await ds.set_record(seeded_key, seeded)
+                    record = ds.get_record(seeded_key) or seeded
+                    key = str((record or {}).get("aar_id") or seeded_key)
+                except Exception:
+                    record = None
 
     if not record:
         _g.logger.debug(f"[TP] AAR link not found in datastore for package {package_id}: {aar_link}")
@@ -3892,6 +3921,43 @@ def _draw_requirement_tier(available_roles: set, mode: str = "Hard-Strat") -> tu
     return _draw_requirements(available_roles, mode=mode)
 
 
+def _format_requirement_roles(req_roles: list[str]) -> str:
+    """Format requirement roles for human-readable briefing text."""
+    roles = [str(role).strip() for role in (req_roles or []) if str(role).strip()]
+    if not roles:
+        return ""
+    if len(roles) == 1:
+        return roles[0]
+    if len(roles) == 2:
+        return f"{roles[0]} and {roles[1]}"
+    return ", ".join(roles[:-1]) + f", and {roles[-1]}"
+
+
+def _requirement_count_bucket(req_roles: list[str]) -> str:
+    """Return a coarse count bucket used to select briefing variants."""
+    count = len([role for role in (req_roles or []) if str(role).strip()])
+    if count <= 1:
+        return "single"
+    if count == 2:
+        return "duo"
+    return "squad"
+
+
+def _select_req_clause_templates(tier_key: str, req_roles: list[str], templates: dict) -> list[str]:
+    """Pick the most specific requirement template pool available."""
+    req_templates = templates.get("req_tier_templates") or {}
+    variant_templates = templates.get("req_tier_variants") or {}
+
+    tier_variants = variant_templates.get(tier_key) if isinstance(variant_templates, dict) else None
+    if isinstance(tier_variants, dict):
+        bucket = _requirement_count_bucket(req_roles)
+        bucket_templates = tier_variants.get(bucket)
+        if isinstance(bucket_templates, list) and bucket_templates:
+            return bucket_templates
+
+    return req_templates.get(tier_key, req_templates.get(_REQ_TIER_NO_REQ, req_templates.get("no_req", [])))
+
+
 # ---------------------------------------------------------------------------
 # Briefing text assembly
 # ---------------------------------------------------------------------------
@@ -3911,15 +3977,15 @@ def _build_briefing(node_name: str, world_type: str, mission_id: int,
     if not req_roles:
         tier_templates_raw = templates["req_tier_templates"].get(_REQ_TIER_NO_REQ, templates["req_tier_templates"]["no_req"])
         req_clause = random.choice(tier_templates_raw).replace("{rank}", "").replace("{mission}", "")
-    elif len(req_roles) <= 2:
-        rank_str = " and ".join(req_roles)
-        tier_templates_raw = templates["req_tier_templates"].get(tier_key, templates["req_tier_templates"]["no_req"])
-        req_clause = random.choice(tier_templates_raw).replace("{rank}", rank_str).replace("{mission}", "")
-        if len(req_roles) == 2:
-            req_clause = req_clause.replace(" is required", " are required").replace(" is required.", " are required.")
     else:
-        # 3+ roles: use a generic multi-specialist line, list roles separately
-        req_clause = f"Multi-specialist deployment required. ({', '.join(req_roles)})"
+        rank_str = _format_requirement_roles(req_roles)
+        tier_templates_raw = _select_req_clause_templates(tier_key, req_roles, templates)
+        req_clause = random.choice(tier_templates_raw).replace("{rank}", rank_str).replace("{mission}", "")
+        if len(req_roles) >= 2:
+            req_clause = req_clause.replace(" is required", " are required").replace(" is required.", " are required.")
+        if len(req_roles) >= 3 and "squad" not in req_clause.lower():
+            # Preserve the required roles while making large requirement sets feel heavier.
+            req_clause = f"{req_clause} Multi-specialist deployment required."
 
     # Find operation name
     try:
@@ -4576,7 +4642,7 @@ async def submit_package(
         _save_tp(data)
 
     await _update_ox_rep_embed(guild)
-    linked_aar_id, canonical_aar_link = await _attach_package_to_aar_record(package_id, aar_link)
+    linked_aar_id, canonical_aar_link = await _attach_package_to_aar_record(package_id, aar_link, guild)
     if linked_aar_id or canonical_aar_link:
         async with _TP_LOCK:
             data2 = _load_tp()
