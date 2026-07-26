@@ -340,10 +340,12 @@ def _build_armor_attachment_field_value(attachments: list[discord.Attachment]) -
     value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
     if omitted > 0:
         suffix = f"\n-# ... +{omitted} more image link(s) recorded in submission data."
-        if len(value) + len(suffix) > field_limit:
-            keep = max(0, field_limit - len(suffix) - 3)
-            value = f"{value[:keep]}..."
-        value += suffix
+        while lines and len("\n".join(lines)) + len(suffix) > field_limit:
+            lines.pop()
+            omitted += 1
+        value = "\n".join(lines) if lines else "-# No image links fit in this embed field."
+        if len(value) + len(suffix) <= field_limit:
+            value += suffix
     return value
 
 
