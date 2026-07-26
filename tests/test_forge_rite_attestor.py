@@ -110,6 +110,17 @@ def test_blended_ack_uses_rank_path_when_random_below_prob_rank():
     assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Watch Sergeant"]
 
 
+def test_blended_ack_detects_veteran_sergeant_rank():
+    """Veteran Sergeant should resolve to the Veteran Sergeant acknowledgment pool."""
+    member = FakeMember(1, ["Veteran Sergeant"])
+    with (
+        unittest.mock.patch("opscribe.forge_ops.random.random", return_value=0.0),
+        unittest.mock.patch("opscribe.forge_ops.random.choice", side_effect=lambda seq: seq[0]),
+    ):
+        result = _get_techmarine_acknowledgment_blended(member, 0)
+    assert result in TECHMARINE_RANK_ACKNOWLEDGMENTS["Veteran Sergeant"]
+
+
 def test_blended_ack_uses_stud_path_when_random_above_prob_rank():
     """When random() >= prob_rank, the stud-tier acknowledgment pool is used."""
     member = FakeMember(1, ["Watch Brother"])

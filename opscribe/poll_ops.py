@@ -234,12 +234,6 @@ def _build_active_poll_embed(poll: dict) -> discord.Embed:
     return embed
 
 
-def _mentions_from_ids(ids: list[str]) -> str:
-    if not ids:
-        return "-# None"
-    return "\n".join(f"-# <@{uid}>" for uid in ids)
-
-
 def _vote_share_percent(vote_count: int, votes_cast: int) -> float:
     if votes_cast <= 0:
         return 0.0
@@ -339,18 +333,6 @@ def _evaluate_poll(poll: dict) -> dict:
         "revote_required": revote_required,
         "revote_reasons": revote_reasons,
     }
-
-
-def _non_voter_ids(poll: dict) -> list[str]:
-    electorate = [str(uid) for uid in (poll.get("electorate_ids") or []) if str(uid).strip()]
-    votes = poll.get("votes") or {}
-    voted = {
-        str(uid)
-        for key in ("yay", "nay", "abstain")
-        for uid in (votes.get(key) or [])
-        if str(uid).strip()
-    }
-    return [uid for uid in electorate if uid not in voted]
 
 
 def _build_final_embed(poll: dict, evaluation: dict) -> discord.Embed:
