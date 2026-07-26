@@ -11,7 +11,7 @@ so existing references and tests keep working unchanged.
 # ============================================================================
 # Three tracks exist:
 #   1. Battle Line: Watch Brother → Watch Veteran → Watch Sergeant
-#                   → Watch Lieutenant → Watch Captain
+#                   → Veteran Sergeant → Watch Lieutenant → Watch Captain
 #   2. Oathsworn: Watch Brother → Watch Veteran → Oathsworn
 #   3. Blade: Watch Brother → Watch Veteran → Bladeguard -> First Blade -> Blade Master
 #   4. Specialist (4 sub-tracks, each leading to High Command):
@@ -32,16 +32,19 @@ BATTLE_LINE_TRACK = {
         "Watch Brother",
         "Watch Veteran",
         "Watch Sergeant",
+        "Veteran Sergeant",
         "Watch Lieutenant",
         "Watch Captain",
     },
     "Watch Veteran": {
         "Watch Veteran",
         "Watch Sergeant",
+        "Veteran Sergeant",
         "Watch Lieutenant",
         "Watch Captain",
     },
-    "Watch Sergeant": {"Watch Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Watch Sergeant": {"Watch Sergeant", "Veteran Sergeant", "Watch Lieutenant", "Watch Captain"},
+    "Veteran Sergeant": {"Veteran Sergeant", "Watch Lieutenant", "Watch Captain"},
     "Watch Lieutenant": {"Watch Lieutenant", "Watch Captain"},
     "Watch Captain": {"Watch Captain"},
 }
@@ -49,6 +52,7 @@ BATTLE_LINE_RANKS = {
     "Watch Brother",
     "Watch Veteran",
     "Watch Sergeant",
+    "Veteran Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
 }
@@ -131,6 +135,7 @@ HIGH_COMMAND_RANKS = {
 WATCH_COMMAND_ROLES = {
     # Battle Line (Sergeant+)
     "Watch Sergeant",
+    "Veteran Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
     # Blade track (First Blade+)

@@ -433,7 +433,8 @@ def _find_company_command_staff(
 def _find_kt_sergeant(guild: discord.Guild, kt_name: str) -> Optional[discord.Member]:
     """Find the Sergeant for a Kill Team.
 
-    A Sergeant is a member who has both Watch Sergeant rank AND the specified KT role.
+    A Sergeant is a member who has either Watch Sergeant or Veteran Sergeant rank
+    and the specified KT role.
     Returns the first match or None.
     """
     try:
@@ -442,7 +443,7 @@ def _find_kt_sergeant(guild: discord.Guild, kt_name: str) -> Optional[discord.Me
             role_names = {(getattr(r, "name", "") or "").strip() for r in roles}
             if kt_name not in role_names:
                 continue
-            if "Watch Sergeant" in role_names:
+            if "Watch Sergeant" in role_names or "Veteran Sergeant" in role_names:
                 return member
     except Exception:
         pass
@@ -990,6 +991,7 @@ async def _check_award_milestones_for_members(member_ids: List[str], guild: disc
                     "Oathsworn",
                     "Bladeguard",
                     "Watch Sergeant",
+                    "Veteran Sergeant",
                     "Watch Techmarine",
                     "Watch Librarian",
                     "Watch Apothecary",
@@ -1623,6 +1625,7 @@ async def _check_promotion_milestones():
                         "Oathsworn",
                         "Bladeguard",
                         "Watch Sergeant",
+                        "Veteran Sergeant",
                         "Watch Techmarine",
                         "Watch Librarian",
                         "Watch Apothecary",
@@ -1891,6 +1894,7 @@ async def _check_promotion_milestones():
                             "Oathsworn",
                             "Bladeguard",
                             "Watch Sergeant",
+                            "Veteran Sergeant",
                             "Watch Techmarine",
                             "Watch Librarian",
                             "Watch Apothecary",
@@ -2131,12 +2135,14 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         watch_veteran.lower(),
         oathsworn.lower(),
         watch_sergeant.lower(),
+        "veteran sergeant",
         watch_lieutenant.lower(),
         watch_captain.lower(),
         watch_master.lower(),
     }
     allowed_watch_command_names_lc = {
         watch_sergeant.lower(),
+        "veteran sergeant",
         watch_chaplain.lower(),
         watch_apothecary.lower(),
         watch_techmarine.lower(),
@@ -2248,7 +2254,7 @@ async def _collect_role_integrity_findings(guild: discord.Guild) -> list[dict]:
         if has_kt_role and not has_company_role:
             _add(member, "company_role_missing", "Kill team members must also hold a company role.")
         if has_kt_role and not has_allowed_kt_rank:
-            _add(member, "kt_assignment_invalid", "Only Watch Brother, Watch Veteran, Oathsworn, Watch Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may hold kill team roles.")
+            _add(member, "kt_assignment_invalid", "Only Watch Brother, Watch Veteran, Oathsworn, Watch Sergeant, Veteran Sergeant, Watch Lieutenant, Watch Captain, and Watch Master may hold kill team roles.")
         is_oathsworn_role = oathsworn.lower() in role_names_lc
         if is_oathsworn_role and not has_company_role:
             _add(member, "oathsworn_company_missing", "Oathsworn members must hold a company role.")
@@ -4855,6 +4861,7 @@ async def tally_deeds(
             # Show Kill Team only for Sergeant and below (Sergeant, Bladeguard, Watch Veteran, Watch Brother/Sister)
             allowed_ranks = {
                 "Watch Sergeant",
+                "Veteran Sergeant",
                 "Bladeguard",
                 "Watch Veteran",
                 "Watch Brother",
@@ -4978,7 +4985,10 @@ async def tally_deeds(
                 # Rank bucket for roster sorting: Sergeant (0), Bladeguard (1), Veteran (2), Brother/Sister (3), Other (9)
                 "rank_bucket": (
                     0
-                    if ("Watch Sergeant" in _b("_canonical_role_names")(target))
+                    if (
+                        "Watch Sergeant" in _b("_canonical_role_names")(target)
+                        or "Veteran Sergeant" in _b("_canonical_role_names")(target)
+                    )
                     else 1
                     if ("Bladeguard" in _b("_canonical_role_names")(target))
                     else 2
@@ -5033,8 +5043,10 @@ async def tally_deeds(
                     return 3
                 if "Watch Lieutenant" in names:
                     return 4
-                if "First Blade" in names:
+                if "Veteran Sergeant" in names:
                     return 5
+                if "First Blade" in names:
+                    return 6
                 # Company specialists
                 comp_specs = {
                     "Watch Techmarine",
@@ -5043,15 +5055,15 @@ async def tally_deeds(
                     "Watch Chaplain",
                 }
                 if any(r in names for r in comp_specs):
-                    return 6
-                if "Watch Sergeant" in names:
                     return 7
-                if "Bladeguard" in names:
+                if "Watch Sergeant" in names:
                     return 8
-                if "Watch Veteran" in names:
+                if "Bladeguard" in names:
                     return 9
-                if "Watch Brother" in names or "Watch Sister" in names:
+                if "Watch Veteran" in names:
                     return 10
+                if "Watch Brother" in names or "Watch Sister" in names:
+                    return 11
                 return 99
 
             def _sort_key(it):
@@ -7248,6 +7260,7 @@ BATTLE_LINE_ORDER = [
     "Watch Veteran",
     "Oathsworn",
     "Watch Sergeant",
+    "Veteran Sergeant",
     "Watch Lieutenant",
     "Watch Captain",
 ]
@@ -7805,6 +7818,7 @@ POSITION_LABEL_MAP = {
     "WatchLibrarian": "Watch Librarian",
     "WatchTechmarine": "Watch Techmarine",
     "WatchSergeant": "Watch Sergeant",
+    "VeteranSergeant": "Veteran Sergeant",
     "KillTeamChampion": "Bladeguard",
     "Oathsworn": "Oathsworn",
     "WatchVeteran": "Watch Veteran",
@@ -8222,7 +8236,7 @@ async def _validate_kill_team_member_roles(
 
     Required:
     - All: companyRoleId + killTeamRoleId
-    - Sergeant: + Watch Sergeant
+    - Sergeant: + Watch Sergeant or Veteran Sergeant
     - Champion: + Bladeguard
     - Member: + at least ONE of (Watch Brother, Watch Veteran, Oathsworn)
 
@@ -8246,7 +8260,8 @@ async def _validate_kill_team_member_roles(
         pass
 
     if rank == "Sergeant":
-        expected.add("Watch Sergeant")
+        if "Watch Sergeant" not in actual_roles and "Veteran Sergeant" not in actual_roles:
+            return False, {"Watch Sergeant", "Veteran Sergeant"}, set()
     elif rank == "Champion":
         expected.add("Bladeguard")
     elif rank == "Member":
@@ -8677,6 +8692,7 @@ async def promotion_queue(interaction: discord.Interaction):
         "Oathsworn",
         "Bladeguard",
         "Watch Sergeant",
+        "Veteran Sergeant",
         "Watch Techmarine",
         "Watch Librarian",
         "Watch Apothecary",
@@ -9094,9 +9110,9 @@ async def company_roster(interaction: discord.Interaction):
         if not company_role:
             continue
 
-        # Find all members with this company role (excluding those above Sergeant)
-        # Watch Sergeant and below are indices 16+ in _b('RANK_ROLES_PRIORITY')
-        sergeant_idx = _b("_role_index")("Watch Sergeant")
+        # Find all members with this company role (excluding those above KT command).
+        # Veteran Sergeant and below remain on the company roster view.
+        sergeant_idx = _b("_role_index")("Veteran Sergeant")
         company_members = []
         for m in guild.members:
             if company_role not in m.roles or m.bot:

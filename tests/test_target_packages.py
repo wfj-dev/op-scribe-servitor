@@ -285,12 +285,21 @@ class TestRemoveAuthority:
         assert ok is False
         assert "not authorized" in reason.lower()
 
-    def test_sgt_own_kt_scope(self):
-        sgt = _make_member(["Watch Sergeant", "Kill Team Alpha"], member_id=40)
-        target = _make_member(["Watch Brother", "Kill Team Alpha"], member_id=41)
+    def test_sgt_own_company_scope(self):
+        sgt = _with_company_role(_make_member(["Watch Sergeant"], member_id=40))
+        target = _with_company_role(_make_member(["Watch Brother"], member_id=41))
         pkg = _make_pkg(status=STATUS_RECRUITING, signed_up=[41], required_roles=[], assigned_specialist_ids=[])
-        pkg["assigned_kt"] = "Kill Team Alpha"
+        pkg["assigned_company"] = "Watch Company Primus"
         ok, kinds, _ = _can_actor_remove_attached_target(sgt, target, 41, pkg, _make_guild([sgt, target]))
+        assert ok is True
+        assert kinds == {"signed"}
+
+    def test_veteran_sergeant_own_company_scope(self):
+        actor = _with_company_role(_make_member(["Veteran Sergeant"], member_id=42))
+        target = _with_company_role(_make_member(["Watch Brother"], member_id=43))
+        pkg = _make_pkg(status=STATUS_RECRUITING, signed_up=[43], required_roles=[], assigned_specialist_ids=[])
+        pkg["assigned_company"] = "Watch Company Primus"
+        ok, kinds, _ = _can_actor_remove_attached_target(actor, target, 43, pkg, _make_guild([actor, target]))
         assert ok is True
         assert kinds == {"signed"}
 
@@ -2463,15 +2472,14 @@ class TestSubmitPackagePermissions:
             types.SimpleNamespace(_get_member_company_name=lambda _member: "Watch Company Primus"),
         )
 
-        # Company match should pass permission gating, then fail later because not deployed.
+        # Company membership alone should not bypass attached-participant gating.
         submitter = _with_company_role(_make_member(["Watch Brother"], member_id=777), "Watch Company Primus")
         guild = _make_guild([submitter])
 
         ok, msg = asyncio.run(submit_package("PKG-1", "https://example.invalid/aar", submitter, guild))
 
         assert ok is False
-        assert "not yet deployed" in msg.lower()
-        assert "permission" not in msg.lower()
+        assert "permission" in msg.lower()
 
     def test_attached_specialist_without_company_role_can_submit(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -3422,6 +3430,8 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_remove_member_from_strike_queue", _fake_remove_from_queue)
         monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_notify_specialist_assigned", _fake_notify)
 
         ok, _msg = asyncio.run(tp.assign_specialist(pkg["id"], specialist, leader, guild))
@@ -3474,6 +3484,8 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_remove_member_from_strike_queue", _fake_remove_from_queue)
         monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_notify_specialist_assigned", _fake_notify)
 
         ok, _msg = asyncio.run(tp.assign_specialist(pkg["id"], specialist, leader, guild))
@@ -3692,7 +3704,7 @@ class TestStrikeQueueMatching:
         assert "<@3>" in thread.messages[0]
         assert len(thread.embeds) == 1
         assert thread.embeds[0] is not None
-        assert "Astropathic concurrence achieved" in (thread.embeds[0].description or "")
+        assert "has a ready strike element" in (thread.embeds[0].description or "")
         assert "Queue cleared for matched brothers" in (thread.embeds[0].description or "")
         assert tp_data["packages"][pkg["id"]]["signed_up"] == [1, 2, 3]
         assert tp_data["packages"][pkg["id"]]["status"] == tp.STATUS_DEPLOYED
@@ -3999,7 +4011,7 @@ class TestStrikeQueueMatching:
         payload = thread.sent[0]
         assert "<@&1429678423290281984>" not in (payload.get("content") or "")
         assert "<@1>" in (payload.get("content") or "")
-        assert getattr(payload.get("embed"), "title", "") == "Strike Team Readied"
+        assert getattr(payload.get("embed"), "title", "") == "`sᴛʀɪᴋᴇ ᴛᴇᴀᴍ ʀᴇᴀᴅɪᴇᴅ`"
 
     def test_evaluate_queue_matches_records_tentative_on_commit_miss(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -4132,6 +4144,8 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
         monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
         monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
         monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
         monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
         monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
@@ -4139,7 +4153,8 @@ class TestStrikeQueueMatching:
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "Removed from OX-EXISTING sign-up roster." in interaction.calls[1][1]
+        assert "Incomplete non-deployed directive rosters cleared: **1**" in interaction.calls[1][1]
+        assert "OX-EXISTING" in interaction.calls[1][1]
         assert tp_data["packages"][pkg["id"]]["signed_up"] == []
         assert "1" in queue_data["entries"]
 
@@ -4156,17 +4171,35 @@ class TestStrikeQueueMatching:
 
         monkeypatch.setattr(tp, "_member_meets_strike_queue_baseline", lambda _member: True)
         monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
+        monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
         monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
         monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        async def _fake_eval(_guild):
+            return 0
+
+        async def _fake_reconcile(*_args, **_kwargs):
+            return None
+
+        async def _fake_refresh(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+        monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
 
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert "specialist" in interaction.calls[1][1].lower()
+        assert "Incomplete non-deployed directive rosters cleared: **1**" in interaction.calls[1][1]
         assert "OX-SPEC" in interaction.calls[1][1]
-        assert interaction.calls[1][2] is True  # ephemeral error
-        # Must not be queued
-        assert "1" not in queue_data.get("entries", {})
+        assert interaction.calls[1][2] is True
+        # Specialist attachment is cleared before queue add, so member is queued.
+        assert tp_data["packages"][pkg["id"]]["assigned_specialist_ids"] == []
+        assert "1" in queue_data.get("entries", {})
 
     def test_queue_strike_blocks_on_auto_detach_failure(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -4183,7 +4216,23 @@ class TestStrikeQueueMatching:
         monkeypatch.setattr(tp, "_load_tp", lambda: tp_data)
         monkeypatch.setattr(tp, "_save_tp", lambda data: tp_data.update(data))
         monkeypatch.setattr(tp, "_load_strike_queue", lambda: queue_data)
+        monkeypatch.setattr(tp, "_save_strike_queue", lambda data: queue_data.update(data))
         monkeypatch.setattr(tp, "_tp_get_player_platform", lambda _member: "pc")
+
+        async def _fake_eval(_guild):
+            return 0
+
+        async def _fake_reconcile(*_args, **_kwargs):
+            return None
+
+        async def _fake_refresh(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(tp, "_evaluate_strike_queue_matches", _fake_eval)
+        monkeypatch.setattr(tp, "_reconcile_strike_queue_board", _fake_reconcile)
+        monkeypatch.setattr(tp, "_refresh_signup_embed_for_package", _fake_refresh)
+        monkeypatch.setattr(tp, "_visible_non_deployed_packages_for_member", lambda *_args, **_kwargs: [pkg])
+        monkeypatch.setattr(tp, "_is_eligible_to_sign_up", lambda *_args, **_kwargs: (True, ""))
 
         async def _fake_remove_denied(_member, _guild):
             return False, "This member fulfills a required specialist role and cannot be removed."
@@ -4193,10 +4242,11 @@ class TestStrikeQueueMatching:
         asyncio.run(_invoke_command(tp.queue_strike, interaction, minutes=60, mode_preference="any"))
 
         assert interaction.calls[0] == ("defer", True)
-        assert interaction.calls[1][1] == "This member fulfills a required specialist role and cannot be removed."
-        assert interaction.calls[1][2] is True  # ephemeral error
-        # Must not be queued when detach fails
-        assert "1" not in queue_data.get("entries", {})
+        assert "Incomplete non-deployed directive rosters cleared: **1**" in interaction.calls[1][1]
+        assert "OX-LOCKED" in interaction.calls[1][1]
+        assert interaction.calls[1][2] is True
+        # Clear happens before detach checks, so member is queued.
+        assert "1" in queue_data.get("entries", {})
 
     def test_queue_strike_reports_fully_open_queue_eligible_count(self, monkeypatch):
         import opscribe.target_packages_ops as tp
@@ -4415,10 +4465,10 @@ class TestStrikeQueueMatching:
 
         payload = interaction.calls[1][1]
         field_map = {f.name: f.value for f in payload.fields}
-        assert "1. M1 (you)" in field_map.get("Brothers In Queue", "")
-        assert "2. M2" in field_map.get("Brothers In Queue", "")
-        assert "3. M3" in field_map.get("Brothers In Queue", "")
-        assert "`OX-HARD`: M1, M2, M3" in field_map.get("Tentative Groups", "")
+        assert "1. M1 (you)" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
+        assert "2. M2" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
+        assert "3. M3" in field_map.get("`ʙʀᴏᴛʜᴇʀs ɪɴ ǫᴜᴇᴜᴇ`", "")
+        assert "`OX-HARD`: M1, M2, M3" in field_map.get("`ᴛᴇɴᴛᴀᴛɪᴠᴇ ɢʀᴏᴜᴘs`", "")
 
 
 class TestStrikeQueueBoard:
@@ -4494,6 +4544,23 @@ class TestStrikeQueueBoard:
             "Watch Techmarine",
             "Watch Apothecary",
         ]
+
+    def test_queued_member_fit_tags_includes_veteran_sergeant(self):
+        import opscribe.target_packages_ops as tp
+
+        member = _make_member(
+            [
+                "Watch Veteran",
+                "Veteran Sergeant",
+                "Watch Sergeant",
+                "Watch Brother",
+            ],
+            member_id=711,
+        )
+
+        tags = tp._queued_member_fit_tags(member)
+
+        assert "Veteran Sergeant" in tags
 
     def test_queued_member_fit_tags_includes_forgemaster(self):
         import opscribe.target_packages_ops as tp
@@ -4714,18 +4781,18 @@ class TestPhase0Regression:
         # Bladeguard is in _CADRE_SPECIALIST_ROLES (will be used in scope handling)
         assert "Bladeguard" in _CADRE_SPECIALIST_ROLES
 
-    def test_ktc_removable_by_sergeant(self):
-        """Sergeant should be able to remove regular signed-up members from own KT."""
-        sgt = _make_member(["Watch Sergeant", "Kill Team Alpha"], member_id=200)
-        target = _make_member(["Watch Brother", "Kill Team Alpha"], member_id=201)
+    def test_member_removable_by_sergeant_in_assigned_company(self):
+        """Sergeant should be able to remove regular signed-up members from own company directives."""
+        sgt = _with_company_role(_make_member(["Watch Sergeant"], member_id=200))
+        target = _with_company_role(_make_member(["Watch Brother"], member_id=201))
         pkg = _make_pkg(
             status=STATUS_RECRUITING,
             signed_up=[201],
             required_roles=["Watch Brother"],
             assigned_specialist_ids=[],
         )
-        pkg["assigned_kt"] = "Kill Team Alpha"
-        # Sergeant should be able to remove signed members from their own KT
+        pkg["assigned_company"] = "Watch Company Primus"
+        # Sergeant should be able to remove signed members from their own company directives.
         ok, kinds, _ = _can_actor_remove_attached_target(sgt, target, 201, pkg, _make_guild([sgt, target]))
         assert ok is True
         assert "signed" in kinds
